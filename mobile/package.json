@@ -1,0 +1,38 @@
+{
+  "name": "serene-dental-patient",
+  "version": "1.0.0",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-camera": "~15.0.0",
+    "expo-image-picker": "~15.0.5",
+    "expo-linear-gradient": "~13.0.2",
+    "expo-status-bar": "~1.12.1",
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "react-native-paper": "^5.12.3",
+    "react-native-safe-area-context": "4.10.1",
+    "react-native-screens": "~3.31.1",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/stack": "^6.3.20",
+    "@reduxjs/toolkit": "^2.0.1",
+    "react-redux": "^9.0.4",
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "axios": "^1.6.5",
+    "zod": "^3.22.4",
+    "react-native-vector-icons": "^10.0.3",
+    "redux-persist": "^6.0.0",
+    "date-fns": "^3.0.6"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0"
+  },
+  "private": true
+}

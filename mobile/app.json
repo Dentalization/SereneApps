@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Serene Dental Patient",
+    "slug": "serene-dental-patient",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#00BFA6"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sereneapps.dentalpatient"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#00BFA6"
+      },
+      "package": "com.sereneapps.dentalpatient",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {}
+  }
+}
