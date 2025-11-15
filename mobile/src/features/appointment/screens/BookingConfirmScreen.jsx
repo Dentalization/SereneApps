@@ -1,21 +1,201 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import React, { useMemo, useState, useLayoutEffect } from 'react';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, Button, Chip, TextInput, useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
+import { formatCurrency } from '../../../utils/formatters';
 
 const BookingConfirmScreen = () => {
   const theme = useTheme();
+  const navigation = useNavigation();
+  const route = useRoute();
+  const appointmentFromList = route.params?.appointmentId ? getAppointmentById(route.params.appointmentId) : null;
+  const dentist = route.params?.dentist || appointmentFromList?.dentist || getDentistById('dentist-001');
+  const selectedDate = route.params?.date || appointmentFromList?.startsAt;
+  const type = route.params?.type || appointmentFromList?.type || 'onsite';
+  const slotTime = route.params?.slot?.time || new Date(selectedDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const fee = appointmentFromList?.billing?.fee || 350000;
+
+  const [notes, setNotes] = useState('');
+  const [reminder, setReminder] = useState(30);
+  const [payment, setPayment] = useState('card');
+
+  const summaryDate = new Date(selectedDate);
+  const dateLabel = summaryDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const handleConfirm = () => {
+    navigation.navigate('AppointmentList');
+  };
+
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text>Booking Confirm Screen</Text>
+    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 160 }}>
+        <LinearGradient
+          colors={['#7C3AED', '#A855F7']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 28, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+            </TouchableOpacity>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>Konfirmasi janji</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <View style={{ marginTop: 24 }}>
+            <ProgressIndicator current={2} />
+          </View>
+        </LinearGradient>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A' }}>Konfirmasi janji</Text>
+          <Text style={{ color: '#94A3B8', marginBottom: 20 }}>
+            Periksa kembali detail sebelum kamu menyelesaikan pemesanan.
+          </Text>
+
+          <SummaryCard
+            dentist={dentist}
+            type={type}
+            dateLabel={dateLabel}
+            timeLabel={slotTime}
+            clinic={dentist?.clinic}
+          />
+
+        <Section title='Catatan untuk dokter'>
+          <TextInput
+            mode='outlined'
+            placeholder='Tambahkan detail keluhan, alergi, dll'
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+          />
+        </Section>
+
+        <Section title='Pengingat'>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {REMINDER_MINUTES.map((value) => (
+              <Chip
+                key={value}
+                selected={reminder === value}
+                onPress={() => setReminder(value)}
+                style={{ marginRight: 8, marginBottom: 8, backgroundColor: reminder === value ? theme.colors.primary : '#E2E8F0' }}
+                textStyle={{ color: reminder === value ? 'white' : '#475569' }}
+              >
+                {value} menit sebelumnya
+              </Chip>
+            ))}
+          </View>
+        </Section>
+
+        <Section title='Metode pembayaran'>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {[
+              { key: 'card', label: 'Kartu' },
+              { key: 'va', label: 'Virtual Account' },
+              { key: 'cash', label: 'Bayar di klinik' },
+            ].map((option) => (
+              <Chip
+                key={option.key}
+                selected={payment === option.key}
+                onPress={() => setPayment(option.key)}
+                style={{ marginRight: 8, marginBottom: 8, backgroundColor: payment === option.key ? theme.colors.primary : '#E2E8F0' }}
+                textStyle={{ color: payment === option.key ? 'white' : '#475569' }}
+              >
+                {option.label}
+              </Chip>
+            ))}
+          </View>
+        </Section>
+
+        <Section title='Ringkasan biaya'>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ color: '#475569' }}>Biaya konsultasi</Text>
+            <Text style={{ fontWeight: '600', color: '#0F172A' }}>{formatCurrency(fee)}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ color: '#475569' }}>Total dibayar</Text>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>{formatCurrency(fee)}</Text>
+          </View>
+        </Section>
+        </View>
+      </ScrollView>
+
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
+        <Button mode='contained' icon='check' onPress={handleConfirm}>
+          Konfirmasi Janji Temu
+        </Button>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-});
+const ProgressIndicator = ({ current }) => (
+  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+    {['Pilih slot', 'Konfirmasi', 'Selesai'].map((label, index) => {
+      const step = index + 1;
+      const active = step <= current;
+      return (
+        <View key={label} style={{ alignItems: 'center', flex: 1 }}>
+          <LinearGradient
+            colors={active ? ['#FDE68A', '#FBBF24'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: active ? '#78350F' : '#E5E7EB', fontWeight: '700' }}>{step}</Text>
+          </LinearGradient>
+          <Text style={{ marginTop: 6, fontSize: 12, color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>{label}</Text>
+        </View>
+      );
+    })}
+  </View>
+);
+
+const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => (
+  <LinearGradient
+    colors={['#EEF2FF', '#FFFFFF']}
+    style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
+  >
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+      <View>
+        <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dateLabel}</Text>
+        <Text style={{ color: '#5F6B7C' }}>{timeLabel} WIB</Text>
+      </View>
+      <Chip icon={type === 'virtual' ? 'video' : 'map-marker'}>{type === 'virtual' ? 'Virtual' : 'Onsite'}</Chip>
+    </View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+      <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+        <MaterialCommunityIcons name='account-heart' size={26} color='#6366F1' />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dentist?.name}</Text>
+        <Text style={{ color: '#7C8AA5', fontSize: 12 }}>{clinic?.name}</Text>
+      </View>
+    </View>
+  </LinearGradient>
+);
+
+const Section = ({ title, children }) => (
+  <View style={{ marginBottom: 24 }}>
+    <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 }}>{title}</Text>
+    {children}
+  </View>
+);
 
 export default BookingConfirmScreen;

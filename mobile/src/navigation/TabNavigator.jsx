@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
 import { useSelector } from 'react-redux';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 
 import DashboardNavigator from './DashboardNavigator';
 import AppointmentNavigator from './AppointmentNavigator';
@@ -12,6 +13,24 @@ import ShopNavigator from './ShopNavigator';
 import SettingsNavigator from './SettingsNavigator';
 
 const Tab = createBottomTabNavigator();
+
+const HIDDEN_TAB_ROUTES = new Set([
+  'ClinicSearch',
+  'ClinicDetail',
+  'ClinicDetailScreen',
+  'DentistDetail',
+  'DentistDetailScreen',
+  'BookingSlot',
+  'BookingSlotScreen',
+  'BookingConfirm',
+  'BookingConfirmScreen',
+  'ArticleList',
+  'Notifications',
+  'NearbyDentists',
+  'ProductDetail',
+  'Cart',
+  'Checkout',
+]);
 
 const TabNavigator = () => {
   const theme = useTheme();
@@ -30,6 +49,31 @@ const TabNavigator = () => {
 
   const cartItems = useSelector((state) => state.cart?.items || []); // pastikan selector sesuai slice kamu
 
+  const baseTabBarStyle = {
+    position: 'absolute',
+    backgroundColor: surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: Platform.OS === 'ios' ? 88 : 68,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: borderTop,
+    elevation: isDark ? 0 : 12,
+    shadowColor: isDark ? 'transparent' : '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: isDark ? 0 : 0.06,
+    shadowRadius: isDark ? 0 : 12,
+  };
+
+  const getTabBarStyle = (route, defaultRouteName) => {
+    const routeName = getFocusedRouteNameFromRoute(route) ?? defaultRouteName;
+    if (HIDDEN_TAB_ROUTES.has(routeName)) {
+      return { display: 'none' };
+    }
+    return { ...baseTabBarStyle };
+  };
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -37,23 +81,7 @@ const TabNavigator = () => {
         tabBarActiveTintColor: theme.colors.primary,   // pakai #62109F dari theme kamu
         tabBarInactiveTintColor: inactive,
         tabBarShowLabel: true,
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: surface,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          height: Platform.OS === 'ios' ? 88 : 68,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 12,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: borderTop,
-          // Elevation/shadow adaptif
-          elevation: isDark ? 0 : 12,
-          shadowColor: isDark ? 'transparent' : '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: isDark ? 0 : 0.06,
-          shadowRadius: isDark ? 0 : 12,
-        },
+        tabBarStyle: baseTabBarStyle,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
@@ -64,7 +92,7 @@ const TabNavigator = () => {
       <Tab.Screen
         name="DashboardTab"
         component={DashboardNavigator}
-        options={{
+        options={({ route }) => ({
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, focused }) => (
             <MaterialCommunityIcons
@@ -73,13 +101,14 @@ const TabNavigator = () => {
               color={color}
             />
           ),
-        }}
+          tabBarStyle: getTabBarStyle(route, 'Dashboard'),
+        })}
       />
 
       <Tab.Screen
         name="AppointmentTab"
         component={AppointmentNavigator}
-        options={{
+        options={({ route }) => ({
           tabBarLabel: 'My Appointments',
           tabBarIcon: ({ color, focused }) => (
             <MaterialCommunityIcons
@@ -88,7 +117,8 @@ const TabNavigator = () => {
               color={color}
             />
           ),
-        }}
+          tabBarStyle: getTabBarStyle(route, 'AppointmentList'),
+        })}
       />
 
       <Tab.Screen
@@ -114,7 +144,7 @@ const TabNavigator = () => {
       <Tab.Screen
         name="ShopTab"
         component={ShopNavigator}
-        options={{
+        options={({ route }) => ({
           tabBarLabel: 'Shop',
           tabBarIcon: ({ color, focused }) => (
             <View>
@@ -135,13 +165,14 @@ const TabNavigator = () => {
               )}
             </View>
           ),
-        }}
+          tabBarStyle: getTabBarStyle(route, 'ShopHome'),
+        })}
       />
 
       <Tab.Screen
         name="SettingsTab"
         component={SettingsNavigator}
-        options={{
+        options={({ route }) => ({
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, focused }) => (
             <MaterialCommunityIcons
@@ -150,7 +181,8 @@ const TabNavigator = () => {
               color={color}
             />
           ),
-        }}
+          tabBarStyle: getTabBarStyle(route, 'SettingsHome'),
+        })}
       />
     </Tab.Navigator>
   );
