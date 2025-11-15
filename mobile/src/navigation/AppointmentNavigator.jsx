@@ -13,7 +13,7 @@ const AppointmentNavigator = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerShown: true,
+        headerShown: false,
         headerStyle: { elevation: 0, shadowOpacity: 0 },
       }}
     >
