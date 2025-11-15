@@ -1,214 +1,198 @@
-import React from 'react';
-import { View, ScrollView, StyleSheet, FlatList } from 'react-native';
-import { Text, Card, Chip, IconButton, FAB, useTheme, Badge } from 'react-native-paper';
+import React, { useMemo, useState } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { Text, Chip, FAB, useTheme, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { SHOP_CATEGORIES, SHOP_PRODUCTS, FEATURED_BUNDLES } from '../data/products';
+import ProductCard from '../components/ProductCard';
+import PromoBanner from '../components/PromoBanner';
 import { formatCurrency } from '../../../utils/formatters';
 
 const ShopHomeScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const cartItems = useSelector((state) => state.cart.items);
-  const [selectedCategory, setSelectedCategory] = React.useState('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [query, setQuery] = useState('');
 
-  const categories = [
-    { key: 'all', label: 'Semua' },
-    { key: 'toothpaste', label: 'Pasta Gigi' },
-    { key: 'toothbrush', label: 'Sikat Gigi' },
-    { key: 'mouthwash', label: 'Mouthwash' },
-    { key: 'dental_floss', label: 'Benang Gigi' },
-  ];
+  const filteredProducts = useMemo(() => {
+    return SHOP_PRODUCTS.filter((product) => {
+      const matchCategory =
+        selectedCategory === 'all' || product.category === selectedCategory;
+      const matchQuery = product.name.toLowerCase().includes(query.toLowerCase());
+      return matchCategory && matchQuery;
+    });
+  }, [selectedCategory, query]);
 
-  const products = [
-    {
-      id: 1,
-      name: 'Sensodyne Repair & Protect',
-      price: 45000,
-      originalPrice: 55000,
-      image: 'tooth',
-      rating: 4.8,
-      reviews: 245,
-      stock: 'inStock',
-      badge: 'sale',
-    },
-    {
-      id: 2,
-      name: 'Oral-B Electric Toothbrush',
-      price: 350000,
-      image: 'toothbrush-electric',
-      rating: 4.9,
-      reviews: 189,
-      stock: 'inStock',
-      badge: 'recommended',
-    },
-  ];
-
-  const renderProduct = ({ item }) => (
-    <Card
-      style={[styles.productCard, theme.shadows.sm]}
-      onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
-    >
-      <View style={styles.productImageContainer}>
-        <MaterialCommunityIcons
-          name={item.image}
-          size={80}
-          color={theme.colors.primary}
-        />
-        {item.badge && (
-          <Chip
-            style={[
-              styles.badge,
-              { backgroundColor: theme.ecommerce.badge[item.badge] },
-            ]}
-            textStyle={styles.badgeText}
-          >
-            {item.badge === 'sale' ? 'SALE' : 'RECOMMENDED'}
-          </Chip>
-        )}
-      </View>
-      <Card.Content style={styles.productContent}>
-        <Text variant="titleSmall" numberOfLines={2}>
-          {item.name}
-        </Text>
-        <View style={styles.rating}>
-          <MaterialCommunityIcons name="star" size={16} color="#FFB300" />
-          <Text variant="bodySmall">{item.rating}</Text>
-          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-            ({item.reviews})
-          </Text>
-        </View>
-        <View style={styles.priceContainer}>
-          {item.originalPrice && (
-            <Text
-              variant="bodySmall"
-              style={[
-                styles.originalPrice,
-                { color: theme.ecommerce.price.original },
-              ]}
-            >
-              {formatCurrency(item.originalPrice)}
-            </Text>
-          )}
-          <Text
-            variant="titleMedium"
-            style={{ color: theme.ecommerce.price.final, fontWeight: 'bold' }}
-          >
-            {formatCurrency(item.price)}
-          </Text>
-        </View>
-      </Card.Content>
-    </Card>
+  const essentialCare = filteredProducts.filter((p) =>
+    ['sensitive', 'mouthwash', 'dental_floss'].includes(p.category)
   );
+  const smartDevices = filteredProducts.filter((p) => ['electric', 'whitening'].includes(p.category));
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Categories */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categories}>
-        <View style={styles.categoriesContent}>
-          {categories.map((cat) => (
-            <Chip
-              key={cat.key}
-              selected={selectedCategory === cat.key}
-              onPress={() => setSelectedCategory(cat.key)}
-              style={styles.categoryChip}
+    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+        <LinearGradient
+          colors={[theme.colors.primary, '#7F1DFF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Dental Marketplace</Text>
+              <Text style={{ color: 'white', fontSize: 24, fontWeight: '700', marginTop: 4 }}>
+                Produk perawatan modern
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Cart')}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
             >
-              {cat.label}
-            </Chip>
+              <MaterialCommunityIcons name='cart-outline' size={22} color='white' />
+              {cartItems.length > 0 && (
+                <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: '#F59E0B', paddingHorizontal: 6, borderRadius: 999 }}>
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: '700' }}>{cartItems.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <Searchbar
+            placeholder='Cari alat kesehatan gigi...'
+            value={query}
+            onChangeText={setQuery}
+            style={{ marginTop: 20, backgroundColor: 'rgba(255,255,255,0.15)', elevation: 0 }}
+            inputStyle={{ color: 'white' }}
+            iconColor='rgba(255,255,255,0.6)'
+          />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 18 }}>
+            {SHOP_CATEGORIES.map((category) => {
+              const isActive = selectedCategory === category.id;
+              return (
+                <Chip
+                  key={category.id}
+                  selected={isActive}
+                  onPress={() => setSelectedCategory(category.id)}
+                  style={{
+                    marginRight: 10,
+                    backgroundColor: isActive ? 'white' : 'rgba(255,255,255,0.15)',
+                  }}
+                  textStyle={{ color: isActive ? theme.colors.primary : 'white', fontWeight: '600' }}
+                >
+                  {category.label}
+                </Chip>
+              );
+            })}
+          </ScrollView>
+        </LinearGradient>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>
+            Katalog Pilihan
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {FEATURED_BUNDLES.map((bundle) => (
+              <PromoBanner key={bundle.id} banner={bundle} onPress={() => {}} />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <SectionHeader title='Essential care' subtitle='Untuk kebersihan harian yang lembut' />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {essentialCare.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onPress={() => navigation.navigate('ProductDetail', { productId: product.id })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 32 }}>
+          <SectionHeader title='Smart devices' subtitle='Teknologi terbaru untuk hasil klinis' />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {smartDevices.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onPress={() => navigation.navigate('ProductDetail', { productId: product.id })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 32 }}>
+          <SectionHeader
+            title='Semua produk'
+            subtitle={`${filteredProducts.length} produk ditemukan`}
+            actionText='Lihat semua'
+          />
+          {filteredProducts.map((product) => (
+            <TouchableOpacity
+              key={product.id}
+              onPress={() => navigation.navigate('ProductDetail', { productId: product.id })}
+              style={{
+                flexDirection: 'row',
+                paddingVertical: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: '#E2E8F0',
+                alignItems: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  backgroundColor: '#EEF2FF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 16,
+                }}
+              >
+                <MaterialCommunityIcons name='tooth-outline' color={theme.colors.primary} size={24} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', color: '#0F172A' }}>{product.name}</Text>
+                <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>{product.description}</Text>
+              </View>
+              <Text style={{ fontWeight: '700', color: '#0F172A' }}>{formatCurrency(product.price)}</Text>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
-      {/* Products Grid */}
-      <FlatList
-        data={products}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={2}
-        contentContainerStyle={styles.grid}
-        columnWrapperStyle={styles.row}
-      />
-
-      {/* Cart FAB */}
       {cartItems.length > 0 && (
         <FAB
-          icon="cart"
+          icon='cart'
           label={`${cartItems.length} Item`}
           onPress={() => navigation.navigate('Cart')}
-          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          style={{ position: 'absolute', right: 16, bottom: 24, backgroundColor: theme.colors.primary }}
         />
       )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  categories: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  categoriesContent: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  categoryChip: {
-    height: 36,
-  },
-  grid: {
-    padding: 16,
-  },
-  row: {
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  productCard: {
-    flex: 1,
-    maxWidth: '48%',
-    borderRadius: 12,
-  },
-  productImageContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#F5F5F5',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    position: 'relative',
-  },
-  badge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    height: 24,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  productContent: {
-    paddingTop: 12,
-  },
-  rating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginVertical: 8,
-  },
-  priceContainer: {
-    marginTop: 4,
-  },
-  originalPrice: {
-    textDecorationLine: 'line-through',
-    fontSize: 12,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-  },
-});
+const SectionHeader = ({ title, subtitle, actionText }) => (
+  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+    <View>
+      <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{title}</Text>
+      {subtitle ? <Text style={{ color: '#94A3B8', marginTop: 2 }}>{subtitle}</Text> : null}
+    </View>
+    {actionText ? (
+      <TouchableOpacity>
+        <Text style={{ color: '#6366F1', fontWeight: '700' }}>{actionText}</Text>
+      </TouchableOpacity>
+    ) : null}
+  </View>
+);
 
 export default ShopHomeScreen;
