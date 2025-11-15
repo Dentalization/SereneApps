@@ -56,9 +56,10 @@ const DentistDetailScreen = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      const parent = navigation.getParent?.();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => parent?.setOptions({ tabBarStyle: undefined });
+      const stackParent = navigation.getParent?.();
+      const tabParent = stackParent?.getParent?.() || stackParent;
+      tabParent?.setOptions({ tabBarStyle: { display: 'none' } });
+      return () => tabParent?.setOptions({ tabBarStyle: undefined });
     }, [navigation])
   );
 

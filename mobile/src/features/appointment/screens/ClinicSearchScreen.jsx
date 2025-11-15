@@ -1,170 +1,261 @@
-import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, Searchbar, Chip, Card, Button, useTheme } from 'react-native-paper';
+import React, { useLayoutEffect } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, Searchbar, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SkeletonList } from '../../../components/shared/SkeletonLoader';
-import EmptyState from '../../../components/shared/EmptyState';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 
-const ClinicSearchScreen = ({ navigation }) => {
+const filters = [
+  { key: 'all', label: 'Semua' },
+  { key: 'nearby', label: 'Terdekat' },
+  { key: 'highest_rated', label: 'Rating Tertinggi' },
+  { key: 'available', label: 'Tersedia Hari Ini' },
+  { key: 'insurance', label: 'BPJS / Asuransi' },
+];
+
+const clinics = [
+  {
+    id: 1,
+    name: 'SereneAI Dental Sudirman',
+    address: 'Jl. Sudirman No. 123, Jakarta Pusat',
+    distance: '1.2 km',
+    rating: 4.9,
+    reviews: 276,
+    dentists: 6,
+    status: 'Tersedia hari ini',
+    chips: ['Digital X-ray', 'Aligner center'],
+  },
+  {
+    id: 2,
+    name: 'Glow Dental Menteng',
+    address: 'Jl. Menteng Raya No. 45, Jakarta Pusat',
+    distance: '2.4 km',
+    rating: 4.7,
+    reviews: 198,
+    dentists: 4,
+    status: 'Virtual ready',
+    chips: ['Teledentistry', 'Anak & Dewasa'],
+  },
+  {
+    id: 3,
+    name: 'Smiles Lab Kemang',
+    address: 'Jl. Kemang Raya No. 9, Jakarta Selatan',
+    distance: '4.1 km',
+    rating: 4.8,
+    reviews: 165,
+    dentists: 5,
+    status: 'Booking 2 jam lagi',
+    chips: ['Whitening suite', 'Sedation'],
+  },
+];
+
+const ClinicSearchScreen = () => {
   const theme = useTheme();
+  const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
   const [selectedFilter, setSelectedFilter] = React.useState('all');
 
-  const filters = [
-    { key: 'all', label: 'Semua' },
-    { key: 'nearby', label: 'Terdekat' },
-    { key: 'highest_rated', label: 'Rating Tertinggi' },
-    { key: 'available', label: 'Tersedia Hari Ini' },
-  ];
-
-  // Mock clinics data
-  const clinics = [
-    {
-      id: 1,
-      name: 'Klinik Gigi SereneAI Sudirman',
-      address: 'Jl. Sudirman No. 123, Jakarta Pusat',
-      distance: '1.2 km',
-      rating: 4.8,
-      reviews: 245,
-      availableDentists: 5,
-    },
-    {
-      id: 2,
-      name: 'Dental Care Menteng',
-      address: 'Jl. Menteng Raya No. 45, Jakarta Pusat',
-      distance: '2.5 km',
-      rating: 4.6,
-      reviews: 189,
-      availableDentists: 3,
-    },
-  ];
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Search */}
-      <View style={styles.searchSection}>
-        <Searchbar
-          placeholder="Cari klinik atau lokasi..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchbar}
-        />
-      </View>
+    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+        <LinearGradient
+          colors={['#7C3AED', '#9D5DF5']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.heroHeader}>
+            <TouchableOpacity style={styles.heroBack} onPress={() => navigation.goBack()}>
+              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+            </TouchableOpacity>
+            <Text style={styles.heroTitle}>Temukan klinik terbaik</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <Text style={styles.heroSubtitle}>Kurasi klinik dengan teknologi modern & dokter pilihan Serene.</Text>
 
-      {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-        <View style={styles.filters}>
-          {filters.map((filter) => (
-            <Chip
-              key={filter.key}
-              selected={selectedFilter === filter.key}
-              onPress={() => setSelectedFilter(filter.key)}
-              style={styles.filterChip}
+          <View style={styles.heroStats}>
+            <StatPill icon='map-marker' label='Dekat Anda' value='8 klinik' />
+            <StatPill icon='star' label='Rating rata-rata' value='4.8/5' />
+          </View>
+
+          <Searchbar
+            placeholder='Cari nama klinik atau lokasi'
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.heroSearch}
+            inputStyle={{ color: '#0F172A' }}
+            iconColor='#94A3B8'
+          />
+        </LinearGradient>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginTop: 16 }}>
+          {filters.map((filter) => {
+            const active = selectedFilter === filter.key;
+            return (
+              <Chip
+                key={filter.key}
+                selected={active}
+                onPress={() => setSelectedFilter(filter.key)}
+                style={{
+                  marginRight: 10,
+                  height: 38,
+                  backgroundColor: active ? '#EEF2FF' : 'white',
+                  borderColor: active ? '#7C3AED' : '#E2E8F0',
+                  borderWidth: 1,
+                }}
+                textStyle={{ color: active ? '#7C3AED' : '#475569', fontWeight: '600' }}
+              >
+                {filter.label}
+              </Chip>
+            );
+          })}
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          {clinics.map((clinic) => (
+            <TouchableOpacity
+              key={clinic.id}
+              onPress={() => navigation.navigate('ClinicDetail', { clinicId: clinic.id })}
+              style={styles.card}
+              activeOpacity={0.9}
             >
-              {filter.label}
-            </Chip>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{clinic.name}</Text>
+                  <View style={styles.metaRow}>
+                    <MaterialCommunityIcons name='map-marker' size={16} color='#CBD5F5' />
+                    <Text style={styles.metaText}>{clinic.address}</Text>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <MaterialCommunityIcons name='map-marker-distance' size={16} color='#CBD5F5' />
+                    <Text style={styles.metaText}>{clinic.distance}</Text>
+                  </View>
+                </View>
+                <View style={styles.ratingBadge}>
+                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 16 }}>{clinic.rating}</Text>
+                  <Text style={{ color: '#94A3B8', fontSize: 11 }}>{clinic.reviews} ulasan</Text>
+                </View>
+              </View>
+
+              <View style={styles.infoChips}>
+                <InfoChip icon='doctor' label={`${clinic.dentists} dokter`} />
+                <InfoChip icon='calendar-clock' label={clinic.status} />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                {clinic.chips.map((chip) => (
+                  <View key={chip} style={styles.facilityChip}>
+                    <Text style={{ color: '#7C3AED', fontWeight: '600', fontSize: 12 }}>{chip}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
-
-      {/* Clinics List */}
-      <ScrollView style={styles.list}>
-        {clinics.map((clinic) => (
-          <Card
-            key={clinic.id}
-            style={[styles.clinicCard, theme.shadows.sm]}
-            onPress={() => navigation.navigate('ClinicDetail', { clinicId: clinic.id })}
-          >
-            <Card.Content>
-              <Text variant="titleMedium">{clinic.name}</Text>
-              <View style={styles.clinicInfo}>
-                <MaterialCommunityIcons
-                  name="map-marker"
-                  size={16}
-                  color={theme.colors.onSurfaceVariant}
-                />
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, flex: 1 }}>
-                  {clinic.address}
-                </Text>
-              </View>
-              <View style={styles.clinicMeta}>
-                <View style={styles.metaItem}>
-                  <MaterialCommunityIcons name="star" size={16} color="#FFB300" />
-                  <Text variant="bodySmall">{clinic.rating}</Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    ({clinic.reviews})
-                  </Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <MaterialCommunityIcons
-                    name="doctor"
-                    size={16}
-                    color={theme.colors.primary}
-                  />
-                  <Text variant="bodySmall">{clinic.availableDentists} Dokter</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <MaterialCommunityIcons
-                    name="map-marker-distance"
-                    size={16}
-                    color={theme.colors.onSurfaceVariant}
-                  />
-                  <Text variant="bodySmall">{clinic.distance}</Text>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
-        ))}
       </ScrollView>
     </View>
   );
 };
 
+const StatPill = ({ icon, label, value }) => (
+  <View style={styles.statPill}>
+    <MaterialCommunityIcons name={icon} size={18} color='white' />
+    <View style={{ marginLeft: 8 }}>
+      <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: 'white', fontWeight: '700', marginTop: 2 }}>{value}</Text>
+    </View>
+  </View>
+);
+
+const InfoChip = ({ icon, label }) => (
+  <View style={styles.infoChip}>
+    <MaterialCommunityIcons name={icon} size={14} color='#4C1D95' />
+    <Text style={{ marginLeft: 6, color: '#4C1D95', fontWeight: '600', fontSize: 12 }}>{label}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  hero: {
+    paddingTop: 52,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
-  searchSection: {
-    padding: 16,
-  },
-  searchbar: {
-    elevation: 0,
-  },
-  filtersContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  filters: {
+  heroHeader: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  filterChip: {
-    height: 36,
+  heroBack: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  list: {
-    flex: 1,
-    paddingHorizontal: 16,
+  heroTitle: { color: 'white', fontSize: 20, fontWeight: '700' },
+  heroSubtitle: { color: 'rgba(255,255,255,0.85)', marginTop: 10, lineHeight: 20 },
+  heroStats: { flexDirection: 'row', marginTop: 18 },
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginRight: 12,
   },
-  clinicCard: {
-    marginBottom: 12,
+  heroSearch: {
+    marginTop: 18,
+    backgroundColor: 'white',
+    borderRadius: 18,
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#EEF2FF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  ratingBadge: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  metaText: { color: '#94A3B8', marginLeft: 6, fontSize: 12, flex: 1 },
+  infoChips: { flexDirection: 'row', marginTop: 14 },
+  infoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#F5F3FF',
+    marginRight: 10,
+  },
+  facilityChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
-  },
-  clinicInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-  },
-  clinicMeta: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 12,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    backgroundColor: '#EEF2FF',
+    marginRight: 10,
   },
 });
 
