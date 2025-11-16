@@ -43,6 +43,10 @@ export const SHOP_PRODUCTS = [
     badges: ['sale'],
     highlights: ['Kandungan NovaMin', 'Tanpa paraben', 'Direkomendasikan dokter gigi'],
     image: 'https://images.unsplash.com/photo-1502740479091-635887520276?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1502740479091-635887520276?w=900',
+      'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=900',
+    ],
   },
   {
     id: 'prod-002',
@@ -57,6 +61,10 @@ export const SHOP_PRODUCTS = [
     badges: ['recommended'],
     highlights: ['5 mode pembersihan', 'Battery 14 hari', 'Aplikasi pendamping'],
     image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=900',
+      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=900',
+    ],
   },
   {
     id: 'prod-003',
@@ -71,6 +79,10 @@ export const SHOP_PRODUCTS = [
     badges: [],
     highlights: ['Fresh mint', 'Tanpa alkohol', 'Untuk penggunaan harian'],
     image: 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1524592094714-0f0654e20314?w=900',
+      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=900',
+    ],
   },
   {
     id: 'prod-004',
@@ -86,6 +98,10 @@ export const SHOP_PRODUCTS = [
     badges: ['new'],
     highlights: ['Non abrasive', 'Flavor berry', 'Vegan friendly'],
     image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
+      'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=900',
+    ],
   },
   {
     id: 'prod-005',
@@ -100,6 +116,10 @@ export const SHOP_PRODUCTS = [
     badges: ['recommended'],
     highlights: ['Anti slip', 'Travel case', 'Latex-free'],
     image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
+      'https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=900',
+    ],
   },
   {
     id: 'prod-006',
@@ -114,6 +134,10 @@ export const SHOP_PRODUCTS = [
     badges: ['new'],
     highlights: ['Bulu ultra lembut', 'Grip ergonomis', 'BPA free'],
     image: 'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=900',
+    images: [
+      'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=900',
+      'https://images.unsplash.com/photo-1490122417551-6ee9691429d0?w=900',
+    ],
   },
 ];
 

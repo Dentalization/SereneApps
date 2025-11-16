@@ -9,6 +9,7 @@ import { SHOP_CATEGORIES, SHOP_PRODUCTS, FEATURED_BUNDLES } from '../data/produc
 import ProductCard from '../components/ProductCard';
 import PromoBanner from '../components/PromoBanner';
 import { formatCurrency } from '../../../utils/formatters';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const ShopHomeScreen = () => {
   const theme = useTheme();
@@ -30,11 +31,15 @@ const ShopHomeScreen = () => {
     ['sensitive', 'mouthwash', 'dental_floss'].includes(p.category)
   );
   const smartDevices = filteredProducts.filter((p) => ['electric', 'whitening'].includes(p.category));
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+      >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
@@ -90,8 +95,13 @@ const ShopHomeScreen = () => {
             })}
           </ScrollView>
         </LinearGradient>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 140 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>
             Katalog Pilihan
           </Text>

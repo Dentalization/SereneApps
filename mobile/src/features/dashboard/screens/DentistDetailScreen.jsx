@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, useTheme, Chip } from 'react-native-paper';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDetail } from '../data/dentistDetails';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -54,14 +56,8 @@ const DentistDetailScreen = () => {
     dentist.distance ??
     (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      const stackParent = navigation.getParent?.();
-      const tabParent = stackParent?.getParent?.() || stackParent;
-      tabParent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => tabParent?.setOptions({ tabBarStyle: undefined });
-    }, [navigation])
-  );
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
@@ -114,7 +110,11 @@ const DentistDetailScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle='light-content' backgroundColor={theme.colors.primary} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 200 }}>
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+      >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
@@ -127,7 +127,14 @@ const DentistDetailScreen = () => {
             paddingHorizontal: 20,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 24,
+            }}
+          >
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               style={{
@@ -137,13 +144,26 @@ const DentistDetailScreen = () => {
                 backgroundColor: 'rgba(255,255,255,0.2)',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 12,
               }}
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Dentist Profile</Text>
+            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Dentist Profile</Text>
+            <TouchableOpacity
+              onPress={handleMessage}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: 'rgba(255,255,255,0.25)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MaterialCommunityIcons name='message-text' size={20} color='white' />
+            </TouchableOpacity>
           </View>
+
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Image
               source={{ uri: dentist.image }}
@@ -170,6 +190,7 @@ const DentistDetailScreen = () => {
               ) : null}
             </View>
           </View>
+
           <View style={{ flexDirection: 'row', marginTop: 20 }}>
             <TouchableOpacity
               onPress={handleBook}
@@ -198,12 +219,17 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='message-text' size={22} color='white' />
+              <MaterialCommunityIcons name='phone' size={22} color='white' />
             </TouchableOpacity>
           </View>
         </LinearGradient>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 220 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {[
               statCard('Experience', dentist.experience || '—', 'medal-outline'),
@@ -212,7 +238,6 @@ const DentistDetailScreen = () => {
             ]}
           </ScrollView>
 
-          {/* Tambah marginTop di Section About supaya jaraknya sama seperti About -> Specialties */}
           <Section title='About' style={{ marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>

@@ -1,11 +1,13 @@
-import React, { useMemo, useLayoutEffect } from 'react';
-import { View, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { CLINICS, getClinicById, getDentistById } from '../data/appointments';
 import { formatCurrency } from '../../../utils/formatters';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const ClinicDetailScreen = () => {
   const theme = useTheme();
@@ -18,11 +20,8 @@ const ClinicDetailScreen = () => {
     [clinic.dentists]
   );
 
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
 
   const handleBook = (dentist) => {
     navigation.navigate('BookingSlot', {
@@ -37,7 +36,12 @@ const ClinicDetailScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 140 }}>
+      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
+      >
         <LinearGradient
           colors={['#7C3AED', '#9D5DF5']}
           start={{ x: 0, y: 0 }}
@@ -51,23 +55,38 @@ const ClinicDetailScreen = () => {
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>Detail Klinik</Text>
-            <View style={{ width: 48 }} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Serene Klinik</Text>
+              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Detail Klinik</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('BookingSlot', { dentistId: clinic.dentists?.[0] })}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <MaterialCommunityIcons name='calendar' size={22} color='white' />
+            </TouchableOpacity>
           </View>
-          <Text style={{ color: 'white', fontSize: 26, fontWeight: '700', marginTop: 18 }}>{clinic.name}</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 6 }}>{clinic.tagline}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-            <MaterialCommunityIcons name='map-marker' size={16} color='rgba(255,255,255,0.8)' />
-            <Text style={{ color: 'rgba(255,255,255,0.8)', marginLeft: 6, flex: 1 }}>{clinic.address}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', marginTop: 16 }}>
-            <HeroStat label='Rating' value={`${clinic.rating} (${clinic.reviews})`} icon='star' />
-            <HeroStat label='Jarak' value={clinic.distance} icon='map-marker-distance' />
-            <HeroStat label='Dokter' value={`${clinic.stats?.dentists || '-'} dokter`} icon='doctor' />
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ color: 'white', fontSize: 26, fontWeight: '700' }}>{clinic.name}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.85)', marginTop: 6 }}>{clinic.tagline}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+              <MaterialCommunityIcons name='map-marker' size={16} color='rgba(255,255,255,0.8)' />
+              <Text style={{ color: 'rgba(255,255,255,0.85)', marginLeft: 6, flex: 1 }}>{clinic.address}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', marginTop: 16 }}>
+              <HeroStat label='Rating' value={`${clinic.rating} (${clinic.reviews})`} icon='star' />
+              <HeroStat label='Jarak' value={clinic.distance} icon='map-marker-distance' />
+              <HeroStat label='Dokter' value={`${clinic.stats?.dentists || '-'} dokter`} icon='doctor' />
+            </View>
           </View>
         </LinearGradient>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 220 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <Section title='Keunggulan klinik'>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {[clinic.tagline, ...(clinic.highlights || [])].map((item, idx) => (

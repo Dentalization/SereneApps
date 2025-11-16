@@ -1,10 +1,12 @@
-import React, { useMemo, useLayoutEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, useTheme, Chip } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDetail } from '../../dashboard/data/dentistDetails';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -54,11 +56,8 @@ const DentistDetailScreen = () => {
     dentist.distance ??
     (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
 
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
@@ -111,7 +110,11 @@ const DentistDetailScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle='light-content' backgroundColor={theme.colors.primary} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 200 }}>
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+      >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
@@ -124,7 +127,14 @@ const DentistDetailScreen = () => {
             paddingHorizontal: 20,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 24,
+            }}
+          >
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               style={{
@@ -134,13 +144,26 @@ const DentistDetailScreen = () => {
                 backgroundColor: 'rgba(255,255,255,0.2)',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 12,
               }}
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Dentist Profile</Text>
+            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Profil Dokter</Text>
+            <TouchableOpacity
+              onPress={handleMessage}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: 'rgba(255,255,255,0.25)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MaterialCommunityIcons name='message-text' size={20} color='white' />
+            </TouchableOpacity>
           </View>
+
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Image
               source={{ uri: dentist.image }}
@@ -161,12 +184,13 @@ const DentistDetailScreen = () => {
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <MaterialCommunityIcons name='map-marker-distance' color='white' size={16} />
                   <Text style={{ color: 'white', marginLeft: 4 }}>
-                    {distanceText} • {dentist.clinic?.name || ''}
+                    {distanceText} • {dentist.clinic?.name || dentist.clinic}
                   </Text>
                 </View>
               ) : null}
             </View>
           </View>
+
           <View style={{ flexDirection: 'row', marginTop: 20 }}>
             <TouchableOpacity
               onPress={handleBook}
@@ -195,22 +219,26 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='message-text' size={22} color='white' />
+              <MaterialCommunityIcons name='phone' size={22} color='white' />
             </TouchableOpacity>
           </View>
         </LinearGradient>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 220 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {[
-              statCard('Experience', dentist.experience || '—', 'medal-outline'),
-              statCard('Patients helped', dentist.patientsHelped || '1,200+', 'account-group'),
-              statCard('Response time', dentist.responseTime || '<2h', 'clock-fast'),
+              statCard('Pengalaman', dentist.experience || '—', 'medal-outline'),
+              statCard('Pasien terbantu', dentist.patientsHelped || '1,200+', 'account-group'),
+              statCard('Respons', dentist.responseTime || '<2 jam', 'clock-fast'),
             ]}
           </ScrollView>
 
-          {/* Tambah marginTop di Section About supaya jaraknya sama seperti About -> Specialties */}
-          <Section title='About' style={{ marginTop: 24 }}>
+          <Section title='Tentang dokter' style={{ marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>
               {dentist.languages?.map((lang) => (
@@ -221,7 +249,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Specialties'>
+          <Section title='Spesialisasi'>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {dentist.specialties?.map((item) => (
                 <View
@@ -241,7 +269,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Services'>
+          <Section title='Layanan populer'>
             {dentist.services?.map((service) => (
               <View
                 key={service.name}
@@ -259,7 +287,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Availability'>
+          <Section title='Ketersediaan jadwal'>
             {dentist.availability?.map((slot) => (
               <View
                 key={slot.day}
@@ -275,7 +303,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Achievements'>
+          <Section title='Prestasi'>
             {dentist.achievements?.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                 <MaterialCommunityIcons name='trophy' size={18} color='#FACC15' />
@@ -285,7 +313,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Patient Stories'>
+          <Section title='Cerita pasien'>
             {dentist.stories?.map((story) => (
               <View
                 key={story.patient}
@@ -313,7 +341,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Gallery'>
+          <Section title='Galeri klinik'>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {dentist.gallery?.map((url, index) => (
                 <Image
@@ -325,7 +353,7 @@ const DentistDetailScreen = () => {
             </ScrollView>
           </Section>
 
-          <Section title='Contact'>
+          <Section title='Kontak'>
             <View style={{ backgroundColor: 'white', borderRadius: 18, padding: 16 }}>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
                 <MaterialCommunityIcons name='phone' size={18} color={theme.colors.primary} />
@@ -363,7 +391,7 @@ const DentistDetailScreen = () => {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Consultation starts from</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Biaya konsultasi mulai dari</Text>
             <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
               {formatRupiah(dentist.price)}
             </Text>

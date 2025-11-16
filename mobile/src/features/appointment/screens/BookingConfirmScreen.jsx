@@ -1,11 +1,13 @@
-import React, { useMemo, useState, useLayoutEffect } from 'react';
-import { View, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Button, Chip, TextInput, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
 import { formatCurrency } from '../../../utils/formatters';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const BookingConfirmScreen = () => {
   const theme = useTheme();
@@ -29,20 +31,22 @@ const BookingConfirmScreen = () => {
     navigation.navigate('AppointmentList');
   };
 
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 160 }}>
+      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
+      >
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 28, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
+          style={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity
@@ -51,15 +55,35 @@ const BookingConfirmScreen = () => {
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>Konfirmasi janji</Text>
-            <View style={{ width: 48 }} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Langkah 2/2</Text>
+              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Konfirmasi jadwal</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (dentist?.clinic?.id) {
+                  navigation.navigate('ClinicDetail', { clinicId: dentist.clinic.id });
+                }
+              }}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <MaterialCommunityIcons name='information-outline' size={22} color='white' />
+            </TouchableOpacity>
           </View>
-          <View style={{ marginTop: 24 }}>
-            <ProgressIndicator current={2} />
+          <View style={{ marginTop: 20 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.8)' }}>Periksa kembali detail booking sebelum konfirmasi.</Text>
+            <View style={{ marginTop: 20 }}>
+              <ProgressIndicator current={2} />
+            </View>
           </View>
         </LinearGradient>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 160 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A' }}>Konfirmasi janji</Text>
           <Text style={{ color: '#94A3B8', marginBottom: 20 }}>
             Periksa kembali detail sebelum kamu menyelesaikan pemesanan.
