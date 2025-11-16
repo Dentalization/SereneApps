@@ -1,17 +1,29 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, ScrollView, StatusBar, StyleSheet } from 'react-native';
 import { Text, Card, Button, useTheme, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSelector } from 'react-redux';
+import { LinearGradient } from 'expo-linear-gradient';
 import RiskBadge from '../../../components/shared/RiskBadge';
 import AuthGuard from '../../../components/shared/AuthGuard';
-import { useSelector } from 'react-redux';
 import { AUTH_LEVELS } from '../../../store/slices/authSlice';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+
+const RISK_GRADIENTS = {
+  low: ['#0F9D58', '#34A853'],
+  medium: ['#F97316', '#FB923C'],
+  high: ['#DC2626', '#EF4444'],
+};
 
 const ResultScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const { result } = route.params;
   const { authLevel } = useSelector((state) => state.auth);
   const [showAuthGuard, setShowAuthGuard] = React.useState(false);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
+
+  useHideTabBar(navigation);
 
   const handleBookAppointment = () => {
     if (authLevel === AUTH_LEVELS.GUEST) {
@@ -21,97 +33,118 @@ const ResultScreen = ({ route, navigation }) => {
     }
   };
 
+  const gradient = RISK_GRADIENTS[result.riskLevel] || [theme.colors.primary, '#7F1DFF'];
+
+  const stats = [
+    { label: 'Confidence', value: `${Math.round(result.confidence * 100)}%` },
+    { label: 'Gigi terdampak', value: result.affectedTeeth.length },
+    { label: 'Kondisi terdeteksi', value: result.conditions.length },
+  ];
+
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Risk Summary */}
-      <Card style={[styles.card, theme.shadows.md]}>
-        <Card.Content>
-          <View style={styles.header}>
-            <MaterialCommunityIcons
-              name="check-decagram"
-              size={48}
-              color={theme.medicalAlert[result.riskLevel].icon}
-            />
-            <View style={styles.headerText}>
-              <Text variant="headlineSmall">Hasil Diagnosis</Text>
-              <RiskBadge level={result.riskLevel} />
+    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <StatusBar barStyle="light-content" backgroundColor={gradient[0]} />
+
+      <View onLayout={handleHeaderLayout} style={styles.anchorWrapper}>
+        <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+          <View style={styles.heroTopRow}>
+            <Button mode="text" textColor="#FFFFFF" icon="arrow-left" onPress={() => navigation.goBack()}>
+              Kembali
+            </Button>
+            <IconButtonGhost icon="share-variant" />
+          </View>
+          <View style={{ alignItems: 'flex-start', marginTop: 10 }}>
+            <Text style={styles.heroLabel}>Hasil First Diagnosis</Text>
+            <Text style={styles.heroTitle}>Tingkat risiko terdeteksi</Text>
+          </View>
+          <View style={styles.heroResultRow}>
+            <RiskBadge level={result.riskLevel} style={{ transform: [{ scale: 1.05 }] }} />
+            <View style={{ marginLeft: 16 }}>
+              <Text style={styles.heroConfidence}>Confidence {Math.round(result.confidence * 100)}%</Text>
+              <Text style={styles.heroSubtitle}>Bagikan hasil ini ke dokter untuk rekomendasi lanjutan.</Text>
             </View>
           </View>
-          <Text variant="bodyMedium" style={styles.confidence}>
-            Tingkat Kepercayaan: {Math.round(result.confidence * 100)}%
-          </Text>
-        </Card.Content>
-      </Card>
-
-      {/* Affected Teeth */}
-      <Card style={[styles.card, theme.shadows.sm]}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Gigi yang Terdeteksi
-          </Text>
-          <View style={styles.teethContainer}>
-            {result.affectedTeeth.map((tooth) => (
-              <Chip key={tooth} style={styles.toothChip}>
-                #{tooth}
-              </Chip>
+          <View style={styles.heroStats}>
+            {stats.map((stat) => (
+              <View key={stat.label} style={styles.statItem}>
+                <Text style={styles.statValue}>{stat.value}</Text>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+              </View>
             ))}
           </View>
-        </Card.Content>
-      </Card>
+        </LinearGradient>
+      </View>
 
-      {/* Conditions */}
-      <Card style={[styles.card, theme.shadows.sm]}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Kondisi Terdeteksi
-          </Text>
-          {result.conditions.map((condition, index) => (
-            <View key={index} style={styles.conditionItem}>
-              <View style={styles.conditionHeader}>
-                <Text variant="titleSmall">{condition.name}</Text>
-                <RiskBadge level={condition.severity} size="small" />
-              </View>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Kepercayaan: {Math.round(condition.confidence * 100)}%
-              </Text>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 12, paddingBottom: 180, paddingHorizontal: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text style={styles.cardTitle}>Gigi terdampak</Text>
+            <View style={styles.chipGroup}>
+              {result.affectedTeeth.map((tooth) => (
+                <Chip key={tooth} style={styles.chip}>
+                  #{tooth}
+                </Chip>
+              ))}
             </View>
-          ))}
-        </Card.Content>
-      </Card>
+          </Card.Content>
+        </Card>
 
-      {/* Recommendations */}
-      <Card style={[styles.card, theme.shadows.sm]}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Rekomendasi
-          </Text>
-          <Text variant="bodyMedium" style={styles.recommendation}>
-            Berdasarkan hasil analisis, kami merekomendasikan Anda untuk berkonsultasi dengan dokter
-            gigi untuk pemeriksaan lebih lanjut.
-          </Text>
-        </Card.Content>
-      </Card>
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text style={styles.cardTitle}>Kondisi yang terdeteksi</Text>
+            {result.conditions.map((condition, index) => (
+              <View key={condition.name} style={[styles.conditionItem, index < result.conditions.length - 1 && styles.conditionDivider]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>{condition.name}</Text>
+                  <RiskBadge level={condition.severity} size="small" />
+                </View>
+                <Text style={{ color: '#475569', marginTop: 4 }}>Confidence {Math.round(condition.confidence * 100)}%</Text>
+              </View>
+            ))}
+          </Card.Content>
+        </Card>
 
-      {/* Actions */}
-      <View style={styles.actions}>
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text style={styles.cardTitle}>Rekomendasi</Text>
+            <Text style={{ color: '#475569', lineHeight: 22 }}>
+              Mohon jadwalkan konsultasi dalam 7 hari untuk pemeriksaan manual. Dokter dapat
+              mengevaluasi kondisi gusi, melakukan scaling, ataupun tindakan lanjutan sesuai hasil
+              fisik.
+            </Text>
+            <View style={styles.recommendationChips}>
+              <Chip icon="calendar-clock" style={styles.recommendationChip}>
+                Kontrol berkala
+              </Chip>
+              <Chip icon="tooth-outline" style={styles.recommendationChip}>
+                Pembersihan profesional
+              </Chip>
+            </View>
+          </Card.Content>
+        </Card>
+      </ScrollView>
+
+      <View style={styles.bottomBar}>
         <Button
           mode="contained"
-          onPress={handleBookAppointment}
           icon="calendar-plus"
-          style={styles.button}
+          style={{ flex: 1 }}
+          onPress={handleBookAppointment}
         >
-          Buat Janji Konsultasi
+          Buat janji konsultasi
         </Button>
         <Button
           mode="outlined"
+          style={{ flex: 1, marginLeft: 12 }}
           onPress={() => navigation.navigate('AIHome')}
-          style={styles.button}
         >
-          Scan Lagi
+          Scan lagi
         </Button>
       </View>
 
-      {/* Auth Guard */}
       <AuthGuard
         visible={showAuthGuard}
         onDismiss={() => setShowAuthGuard(false)}
@@ -124,64 +157,138 @@ const ResultScreen = ({ route, navigation }) => {
           navigation.navigate('SettingsTab', { screen: 'Login' });
         }}
       />
-    </ScrollView>
+    </View>
   );
 };
 
+const IconButtonGhost = ({ icon, onPress }) => (
+  <Button
+    mode="text"
+    compact
+    icon={icon}
+    onPress={onPress}
+    textColor="rgba(255,255,255,0.9)"
+    style={{ borderRadius: 999 }}
+  />
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  anchorWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
-  card: {
-    margin: 16,
-    marginBottom: 0,
-    borderRadius: 12,
+  hero: {
+    paddingTop: 48,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginBottom: 12,
-  },
-  headerText: {
-    flex: 1,
-    gap: 8,
-  },
-  confidence: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    marginBottom: 12,
-  },
-  teethContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  toothChip: {
-    backgroundColor: '#E0F2F1',
-  },
-  conditionItem: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-  },
-  conditionHeader: {
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  recommendation: {
-    lineHeight: 22,
+  heroLabel: {
+    color: 'rgba(255,255,255,0.75)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontSize: 12,
   },
-  actions: {
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  heroResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  heroConfidence: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  heroSubtitle: {
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 8,
+    marginRight: 32,
+  },
+  heroStats: {
+    flexDirection: 'row',
+    marginTop: 24,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
     padding: 16,
-    gap: 12,
   },
-  button: {
-    width: '100%',
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  card: {
+    borderRadius: 20,
+    marginBottom: 18,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 12,
+  },
+  chipGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  chip: {
+    backgroundColor: '#EEF2FF',
+  },
+  conditionItem: {
+    paddingVertical: 10,
+  },
+  conditionDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  recommendationChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  recommendationChip: {
+    backgroundColor: '#F1F5F9',
+  },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
   },
 });
 

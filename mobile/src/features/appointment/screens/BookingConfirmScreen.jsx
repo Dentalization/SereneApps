@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Button, Chip, TextInput, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -6,7 +6,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
 import { formatCurrency } from '../../../utils/formatters';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const BookingConfirmScreen = () => {
@@ -31,7 +30,12 @@ const BookingConfirmScreen = () => {
     navigation.navigate('AppointmentList');
   };
 
-  useHideTabBar(navigation);
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
+
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
 
   return (
