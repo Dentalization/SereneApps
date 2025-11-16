@@ -1,9 +1,11 @@
-import React, { useLayoutEffect } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Searchbar, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const filters = [
   { key: 'all', label: 'Semua' },
@@ -52,18 +54,20 @@ const clinics = [
 const ClinicSearchScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [selectedFilter, setSelectedFilter] = React.useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState('all');
 
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+      >
         <LinearGradient
           colors={['#7C3AED', '#9D5DF5']}
           start={{ x: 0, y: 0 }}
@@ -74,8 +78,16 @@ const ClinicSearchScreen = () => {
             <TouchableOpacity style={styles.heroBack} onPress={() => navigation.goBack()}>
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={styles.heroTitle}>Temukan klinik terbaik</Text>
-            <View style={{ width: 44 }} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Explorer</Text>
+              <Text style={styles.heroTitle}>Temukan klinik terbaik</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.heroBack}
+              onPress={() => navigation.navigate('NearbyDentists', { maxDistanceKm: 5 })}
+            >
+              <MaterialCommunityIcons name='map-search' size={22} color='white' />
+            </TouchableOpacity>
           </View>
           <Text style={styles.heroSubtitle}>Kurasi klinik dengan teknologi modern & dokter pilihan Serene.</Text>
 
@@ -93,8 +105,13 @@ const ClinicSearchScreen = () => {
             iconColor='#94A3B8'
           />
         </LinearGradient>
+      </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginTop: 16 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 140 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginTop: 8 }}>
           {filters.map((filter) => {
             const active = selectedFilter === filter.key;
             return (

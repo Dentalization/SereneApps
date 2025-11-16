@@ -1,10 +1,12 @@
-import React, { useMemo, useState, useLayoutEffect } from 'react';
-import { View, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DENTISTS, SLOT_AVAILABILITY, getDentistById, getSlotsForDate } from '../data/appointments';
+import useHideTabBar from '../../../hooks/useHideTabBar';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const BookingSlotScreen = () => {
   const theme = useTheme();
@@ -12,6 +14,7 @@ const BookingSlotScreen = () => {
   const route = useRoute();
   const dentistId = route.params?.dentistId || DENTISTS[0].id;
   const dentist = getDentistById(dentistId) || DENTISTS[0];
+  const clinicIdForInfo = route.params?.clinicId || dentist?.clinic?.id;
 
   const dateOptions = useMemo(
     () => SLOT_AVAILABILITY.filter((entry) => entry.dentistId === dentist.id).map((entry) => entry.date),
@@ -24,11 +27,8 @@ const BookingSlotScreen = () => {
   const slots = getSlotsForDate(dentist.id, selectedDate)?.slots || [];
   const filteredSlots = slots.filter((slot) => slot.type === slotType && slot.isAvailable);
 
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
+  useHideTabBar(navigation);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
   const groupedSlots = useMemo(() => {
     const buckets = {
@@ -62,15 +62,33 @@ const BookingSlotScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 160 }}>
+      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+
+      <View
+        onLayout={handleHeaderLayout}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          elevation: 10,
+        }}
+      >
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
             paddingTop: 52,
             paddingHorizontal: 20,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,
             borderBottomRightRadius: 32,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.12,
+            shadowRadius: 16,
           }}
         >
           <View
@@ -94,11 +112,36 @@ const BookingSlotScreen = () => {
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>Pilih jadwal</Text>
-            <View style={{ width: 48 }} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>Langkah 1/2</Text>
+              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>
+                Pilih Jadwal
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => clinicIdForInfo && navigation.navigate('ClinicDetail', { clinicId: clinicIdForInfo })}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MaterialCommunityIcons name='share-variant' size={20} color='white' />
+            </TouchableOpacity>
           </View>
 
-          <View style={{ flexDirection: 'row' }}>
+          <View
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.15)',
+              borderRadius: 24,
+              padding: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
             <View
               style={{
                 width: 64,
@@ -126,14 +169,19 @@ const BookingSlotScreen = () => {
             </View>
           </View>
 
-          <View style={{ flexDirection: 'row', marginTop: 20 }}>
+          <View style={{ flexDirection: 'row', marginTop: 16 }}>
             <InfoPill icon='star' label={`${dentist.rating} rating`} />
             <InfoPill icon='map-marker-distance' label={dentist.clinic.distance} />
+            <InfoPill icon='calendar' label={`${filteredSlots.length} slot`} />
           </View>
         </LinearGradient>
+      </View>
 
-        {/* Tambahin marginTop di container pilih tanggal */}
-        <View style={{ marginTop: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 200 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ marginTop: 8 }}>
           <Text
             style={{
               marginLeft: 20,
