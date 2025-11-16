@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Searchbar, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const filters = [
@@ -57,7 +56,12 @@ const ClinicSearchScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
 
-  useHideTabBar(navigation);
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
+
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
   return (

@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useLayoutEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DENTISTS, SLOT_AVAILABILITY, getDentistById, getSlotsForDate } from '../data/appointments';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const BookingSlotScreen = () => {
@@ -27,7 +26,12 @@ const BookingSlotScreen = () => {
   const slots = getSlotsForDate(dentist.id, selectedDate)?.slots || [];
   const filteredSlots = slots.filter((slot) => slot.type === slotType && slot.isAvailable);
 
-  useHideTabBar(navigation);
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
+
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
   const groupedSlots = useMemo(() => {

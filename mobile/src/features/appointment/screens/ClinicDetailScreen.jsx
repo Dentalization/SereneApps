@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useLayoutEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -6,7 +6,6 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { CLINICS, getClinicById, getDentistById } from '../data/appointments';
 import { formatCurrency } from '../../../utils/formatters';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const ClinicDetailScreen = () => {
@@ -20,7 +19,12 @@ const ClinicDetailScreen = () => {
     [clinic.dentists]
   );
 
-  useHideTabBar(navigation);
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' }
+    });
+  }, [navigation]);
+
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
 
   const handleBook = (dentist) => {

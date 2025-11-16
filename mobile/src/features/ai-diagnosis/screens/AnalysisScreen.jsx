@@ -1,14 +1,16 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, StatusBar } from 'react-native';
 import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import useHideTabBar from '../../../hooks/useHideTabBar';
 
 const AnalysisScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const { images } = route.params;
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState('Memproses gambar...');
+  useHideTabBar(navigation);
 
   React.useEffect(() => {
     const steps = [
@@ -47,13 +49,11 @@ const AnalysisScreen = ({ route, navigation }) => {
     return () => clearInterval(interval);
   }, [navigation]);
 
+  const gradient = theme.gradients?.primary || [theme.colors.primary, '#7F1DFF'];
+
   return (
-    <LinearGradient
-      colors={theme.gradients.primary}
-      style={styles.container}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
+    <LinearGradient colors={gradient} style={styles.container} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+      <StatusBar barStyle="light-content" backgroundColor={gradient[0]} />
       <View style={styles.content}>
         <MaterialCommunityIcons name="brain" size={80} color="#FFFFFF" />
         <Text variant="headlineSmall" style={styles.title}>

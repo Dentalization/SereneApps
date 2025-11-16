@@ -1,31 +1,44 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Text, Button, IconButton, useTheme } from 'react-native-paper';
+import { Text, IconButton, useTheme } from 'react-native-paper';
 import { Camera } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import useHideTabBar from '../../../hooks/useHideTabBar';
 
 const CameraScreen = ({ navigation }) => {
   const theme = useTheme();
   const [hasPermission, setHasPermission] = React.useState(null);
-  const [type, setType] = React.useState(Camera.Constants.Type.back);
-  const [flash, setFlash] = React.useState(Camera.Constants.FlashMode.off);
+  const [type, setType] = React.useState(null); // mulai null, di-set setelah permission OK
+  const [flash, setFlash] = React.useState(Camera.Constants?.FlashMode?.off ?? 0);
   const cameraRef = React.useRef(null);
+
+  useHideTabBar(navigation);
 
   React.useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
+      if (status === 'granted') {
+        setHasPermission(true);
+        const backType = Camera.Constants?.Type?.back;
+        setType(backType); // set type di sini supaya nggak undefined
+      } else {
+        setHasPermission(false);
+      }
     })();
   }, []);
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        skipProcessing: false,
-      });
-      navigation.navigate('ImagePreview', { images: [photo] });
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          skipProcessing: false,
+        });
+        navigation.navigate('ImagePreview', { images: [photo] });
+      } catch (e) {
+        console.warn('Failed to take picture', e);
+      }
     }
   };
 
@@ -34,7 +47,7 @@ const CameraScreen = ({ navigation }) => {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 0.8,
-      maxSelected: 5,
+      selectionLimit: 5, // lebih aman di versi baru expo-image-picker
     });
 
     if (!result.canceled) {
@@ -43,33 +56,49 @@ const CameraScreen = ({ navigation }) => {
   };
 
   const toggleFlash = () => {
-    setFlash(
-      flash === Camera.Constants.FlashMode.off
-        ? Camera.Constants.FlashMode.on
-        : Camera.Constants.FlashMode.off
-    );
+    const off = Camera.Constants?.FlashMode?.off;
+    const on = Camera.Constants?.FlashMode?.on;
+    setFlash((prev) => (prev === off ? on : off));
   };
 
   const toggleCamera = () => {
-    setType(
-      type === Camera.Constants.Type.back
-        ? Camera.Constants.Type.front
-        : Camera.Constants.Type.back
-    );
+    const back = Camera.Constants?.Type?.back;
+    const front = Camera.Constants?.Type?.front;
+    setType((prev) => (prev === back ? front : back));
   };
 
-  if (hasPermission === null) {
+  // Masih loading permission atau type belum siap -> jangan render Camera dulu
+  if (hasPermission === null || type == null) {
     return <View style={styles.container} />;
   }
 
   if (hasPermission === false) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
-        <MaterialCommunityIcons name="camera-off" size={64} color={theme.colors.outline} />
-        <Text variant="titleMedium" style={{ marginTop: 16, marginBottom: 8 }}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: theme.colors.background },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="camera-off"
+          size={64}
+          color={theme.colors.outline}
+        />
+        <Text
+          variant="titleMedium"
+          style={{ marginTop: 16, marginBottom: 8 }}
+        >
           Akses Kamera Diperlukan
         </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
+        <Text
+          variant="bodyMedium"
+          style={{
+            color: theme.colors.onSurfaceVariant,
+            textAlign: 'center',
+          }}
+        >
           SereneAI membutuhkan akses kamera untuk mengambil foto gigi Anda
         </Text>
       </View>
@@ -78,7 +107,12 @@ const CameraScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <Camera style={styles.camera} type={type} flashMode={flash} ref={cameraRef}>
+      <Camera
+        style={styles.camera}
+        type={type}
+        flashMode={flash}
+        ref={cameraRef}
+      >
         {/* Top Bar */}
         <View style={styles.topBar}>
           <IconButton
@@ -148,7 +182,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
   },
   guideBox: {
     width: 280,
@@ -157,6 +190,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     borderRadius: 16,
     borderStyle: 'dashed',
+    marginBottom: 16,
   },
   guideText: {
     color: '#FFFFFF',
