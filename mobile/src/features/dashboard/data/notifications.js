@@ -324,6 +324,42 @@ export const SAMPLE_NOTIFICATIONS = [
     },
     cta: { label: 'Notify me when fixed', route: { name: 'SettingsTab', params: { screen: 'Notifications' } } },
   },
+  {
+    id: 'notif-system-012',
+    type: 'system',
+    title: 'Teleconsult Chat Invitation',
+    message: 'Dr. Sarah invited you to join consultation room.',
+    timestamp: hoursAgo(1),
+    read: false,
+    meta: {
+      appointmentId: 'apt-2451',
+      chatRoomId: 'room_789',
+      initiatorId: 'dentist-001',
+      initiatorName: 'Dr. Sarah Johnson',
+      dentistAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e',
+      status: 'Online',
+      actions: ['Join chat room', 'Start video call if available'],
+    },
+    cta: { label: 'Join Chat', route: { name: 'AppointmentTab', params: { screen: 'ChatRoom', params: { chatRoomId: 'room_789' } } } },
+  },
+  {
+    id: 'notif-system-013',
+    type: 'system',
+    title: 'New message from Dr. Sarah',
+    message: 'Untuk mempercepat penyembuhan, konsumsi obat secara teratur ya.',
+    timestamp: hoursAgo(0.5),
+    read: false,
+    meta: {
+      appointmentId: 'apt-2451',
+      chatRoomId: 'room_789',
+      messageId: 'msg_999',
+      senderId: 'dentist-001',
+      senderName: 'Dr. Sarah Johnson',
+      senderAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e',
+      unreadCount: 3,
+    },
+    cta: { label: 'Reply', route: { name: 'AppointmentTab', params: { screen: 'ChatRoom', params: { chatRoomId: 'room_789' } } } },
+  },
 ];
 
 export const NOTIFICATION_TYPE_META = {

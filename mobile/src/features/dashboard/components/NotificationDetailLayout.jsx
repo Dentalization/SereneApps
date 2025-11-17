@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
-import { Text, Button, useTheme } from 'react-native-paper';
+import { Text, useTheme } from 'react-native-paper';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,10 +24,24 @@ const NotificationDetailLayout = ({ notification, sections = [], ctaLabel, onCTA
   if (!notification) {
     return (
       <View style={styles.fallbackWrapper}>
-        <Text>Notifikasi tidak ditemukan.</Text>
-        <Button mode="contained" onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          Kembali
-        </Button>
+        <MaterialCommunityIcons name="bell-off" size={48} color="#CBD5E1" />
+        <Text style={{ fontSize: 16, fontWeight: '600', marginTop: 12, color: '#0F172A' }}>
+          Notifikasi tidak ditemukan
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{
+            marginTop: 24,
+            paddingHorizontal: 24,
+            paddingVertical: 14,
+            borderRadius: 24,
+            backgroundColor: theme.colors.primary,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+            Kembali
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -106,14 +120,20 @@ const NotificationDetailLayout = ({ notification, sections = [], ctaLabel, onCTA
 
       {showCTA ? (
         <View style={styles.ctaWrapper}>
-          <Button
-            mode="contained"
+          <TouchableOpacity
             onPress={handleCTA}
-            icon="arrow-right"
-            contentStyle={{ flexDirection: 'row-reverse' }}
+            style={[
+              styles.ctaButton,
+              {
+                backgroundColor: typeMeta.color,
+                shadowColor: typeMeta.color,
+              },
+            ]}
+            activeOpacity={0.8}
           >
-            {ctaLabel || cta?.label}
-          </Button>
+            <Text style={styles.ctaButtonText}>{ctaLabel || cta?.label}</Text>
+            <MaterialCommunityIcons name="arrow-right" size={20} color="white" />
+          </TouchableOpacity>
         </View>
       ) : null}
     </View>
@@ -217,6 +237,25 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     bottom: 24,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 28,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+    gap: 10,
+  },
+  ctaButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   fallbackWrapper: {
     flex: 1,

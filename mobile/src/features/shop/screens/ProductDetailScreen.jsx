@@ -28,15 +28,14 @@ const ProductDetailScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
 
       {/* HEADER + IMAGES (ANCHOR / TIDAK SCROLL) */}
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1000 }}>
-        <LinearGradient
-          colors={['#EEF2FF', '#FFFFFF']}
-          style={{
-            borderBottomLeftRadius: 32,
-            borderBottomRightRadius: 32,
-            paddingBottom: 24,
-          }}
-        >
+      <LinearGradient
+        colors={['#EEF2FF', '#FFFFFF']}
+        style={{
+          borderBottomLeftRadius: 32,
+          borderBottomRightRadius: 32,
+          paddingBottom: 24,
+        }}
+      >
         {/* Header */}
         <View
           style={{
@@ -246,12 +245,11 @@ const ProductDetailScreen = () => {
           ))}
         </View>
       </LinearGradient>
-      </View>
 
       {/* SISANYA SCROLLABLE */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 520, paddingBottom: 160 }}
+        contentContainerStyle={{ paddingBottom: 160 }}
       >
         <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
           <Text style={{ fontSize: 14, color: '#94A3B8', fontWeight: '600' }}>
