@@ -5,6 +5,11 @@ import ProfileScreen from '../features/settings/screens/ProfileScreen';
 import LoginScreen from '../features/settings/screens/LoginScreen';
 import RegisterScreen from '../features/settings/screens/RegisterScreen';
 import OTPScreen from '../features/settings/screens/OTPScreen';
+import PrivacyPolicyScreen from '../features/settings/screens/PrivacyPolicyScreen';
+import TermsScreen from '../features/settings/screens/TermsScreen';
+import DataManagementScreen from '../features/settings/screens/DataManagementScreen';
+import HelpCenterScreen from '../features/settings/screens/HelpCenterScreen';
+import ContactSupportScreen from '../features/settings/screens/ContactSupportScreen';
 
 const Stack = createStackNavigator();
 
@@ -40,6 +45,31 @@ const SettingsNavigator = () => {
         name="OTP"
         component={OTPScreen}
         options={{ title: 'Verifikasi OTP' }}
+      />
+      <Stack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ title: 'Kebijakan Privasi' }}
+      />
+      <Stack.Screen
+        name="Terms"
+        component={TermsScreen}
+        options={{ title: 'Syarat & Ketentuan' }}
+      />
+      <Stack.Screen
+        name="DataManagement"
+        component={DataManagementScreen}
+        options={{ title: 'Kelola Data' }}
+      />
+      <Stack.Screen
+        name="HelpCenter"
+        component={HelpCenterScreen}
+        options={{ title: 'Pusat Bantuan' }}
+      />
+      <Stack.Screen
+        name="ContactSupport"
+        component={ContactSupportScreen}
+        options={{ title: 'Hubungi Care' }}
       />
     </Stack.Navigator>
   );
