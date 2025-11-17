@@ -20,7 +20,7 @@ const Article = ArticleMod.default || ArticleMod;
 
 const DashboardScreen = () => {
   const theme = useTheme(); const navigation = useNavigation(); const { user } = useSelector((s) => s.auth);
-  const [refreshing, setRefreshing] = useState(false); const [searchText, setSearchText] = useState(''); const [selectedCategory, setSelectedCategory] = useState('All');
+  const [refreshing, setRefreshing] = useState(false); const [searchText, setSearchText] = useState(''); const [selectedCategory, setSelectedCategory] = useState('all');
   const scrollY = useRef(new Animated.Value(0)).current; const [fadeAnim] = useState(new Animated.Value(0)); const [isScrolled, _setIsScrolled] = useState(false); const lastScrollFlag = useRef(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
 
@@ -32,7 +32,12 @@ const DashboardScreen = () => {
   const onRefresh = React.useCallback(() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1500); }, []);
   useEffect(() => { Animated.timing(fadeAnim,{toValue:1,duration:800,useNativeDriver:true}).start(); setUpcomingAppointments([]); }, []);
 
-  const categories = [{ id:'all', name:'Semua', icon:'check-circle' },{ id:'orthodontic', name:'Ortodontik', icon:'tooth-outline' },{ id:'periodontic', name:'Periodontik', icon:'heart-pulse' },{ id:'endodontic', name:'Endodontik', icon:'medical-bag' }];
+  const categories = [
+    { id:'all', label:'Semua', icon:'check-circle' },
+    { id:'orthodontic', label:'Ortodontik', icon:'tooth-outline' },
+    { id:'periodontic', label:'Periodontik', icon:'heart-pulse' },
+    { id:'endodontic', label:'Endodontik', icon:'medical-bag' },
+  ];
 
   const topDoctors = NEARBY_DENTISTS.slice(0, 3);
 
@@ -83,10 +88,10 @@ const DashboardScreen = () => {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight:20 }} style={{ marginBottom:16 }}>
-            {categories.map((c)=>{ const active=selectedCategory===c.name; return (
-              <TouchableOpacity key={c.id} onPress={()=>setSelectedCategory(c.name)} style={{ backgroundColor:active?'white':'rgba(255,255,255,0.2)', borderRadius:16, paddingHorizontal:16, paddingVertical:8, flexDirection:'row', alignItems:'center', marginRight:8, borderWidth:active?0:1, borderColor:'rgba(255,255,255,0.3)' }}>
+            {categories.map((c)=>{ const active=selectedCategory===c.id; return (
+              <TouchableOpacity key={c.id} onPress={()=>setSelectedCategory(c.id)} style={{ backgroundColor:active?'white':'rgba(255,255,255,0.2)', borderRadius:16, paddingHorizontal:16, paddingVertical:8, flexDirection:'row', alignItems:'center', marginRight:8, borderWidth:active?0:1, borderColor:'rgba(255,255,255,0.3)' }}>
                 <MaterialCommunityIcons name={c.icon} size={16} color={active?theme.colors.primary:'white'} />
-                {c.name!=='Semua' && <Text style={{ fontSize:14, fontWeight:'600', color:active?'#62109F':'white', marginLeft:6 }}>{c.name}</Text>}
+                {c.id!=='all' && <Text style={{ fontSize:14, fontWeight:'600', color:active?'#62109F':'white', marginLeft:6 }}>{c.label}</Text>}
               </TouchableOpacity>
             );})}
           </ScrollView>

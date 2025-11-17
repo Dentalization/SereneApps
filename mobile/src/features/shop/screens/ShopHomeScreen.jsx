@@ -48,7 +48,7 @@ const ShopHomeScreen = () => {
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Dental Marketplace</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Toko kesehatan gigi</Text>
               <Text style={{ color: 'white', fontSize: 24, fontWeight: '700', marginTop: 4 }}>
                 Produk perawatan modern
               </Text>
@@ -113,7 +113,7 @@ const ShopHomeScreen = () => {
         </View>
 
         <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
-          <SectionHeader title='Essential care' subtitle='Untuk kebersihan harian yang lembut' />
+          <SectionHeader title='Perawatan esensial' subtitle='Untuk kebersihan harian yang lembut' />
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {essentialCare.map((product) => (
               <ProductCard
@@ -126,7 +126,7 @@ const ShopHomeScreen = () => {
         </View>
 
         <View style={{ paddingHorizontal: 20, marginTop: 32 }}>
-          <SectionHeader title='Smart devices' subtitle='Teknologi terbaru untuk hasil klinis' />
+          <SectionHeader title='Perangkat pintar' subtitle='Teknologi terbaru untuk hasil klinis' />
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {smartDevices.map((product) => (
               <ProductCard
@@ -182,7 +182,7 @@ const ShopHomeScreen = () => {
       {cartItems.length > 0 && (
         <FAB
           icon='cart'
-          label={`${cartItems.length} Item`}
+          label={`${cartItems.length} barang`}
           onPress={() => navigation.navigate('Cart')}
           style={{ position: 'absolute', right: 16, bottom: 24, backgroundColor: theme.colors.primary }}
         />

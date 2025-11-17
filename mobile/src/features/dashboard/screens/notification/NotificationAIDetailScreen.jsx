@@ -6,7 +6,12 @@ import NotificationDetailLayout from '../../components/NotificationDetailLayout'
 
 const friendlyRisk = (risk) => {
   if (!risk) return '';
-  return risk.charAt(0).toUpperCase() + risk.slice(1);
+  const map = {
+    low: 'Rendah',
+    medium: 'Sedang',
+    high: 'Tinggi',
+  };
+  return map[risk.toLowerCase()] || risk;
 };
 
 const NotificationAIDetailScreen = () => {
@@ -22,7 +27,7 @@ const NotificationAIDetailScreen = () => {
       </View>
       {meta.heatmapImage ? (
         <View style={{ flex: 1 }}>
-          <Text style={styles.previewLabel}>Heatmap AI</Text>
+          <Text style={styles.previewLabel}>Peta panas AI</Text>
           <Image source={{ uri: meta.heatmapImage }} style={styles.previewImage} />
         </View>
       ) : null}
@@ -31,11 +36,11 @@ const NotificationAIDetailScreen = () => {
 
   const sections = useMemo(() => {
     const rows = [
-      meta.scanId && { label: 'Scan ID', value: meta.scanId },
+      meta.scanId && { label: 'ID pemindaian', value: meta.scanId },
       meta.region && { label: 'Area terdeteksi', value: meta.region },
-      meta.riskLevel && { label: 'Risk level', value: friendlyRisk(meta.riskLevel) },
+      meta.riskLevel && { label: 'Tingkat risiko', value: friendlyRisk(meta.riskLevel) },
       meta.status && { label: 'Status', value: meta.status },
-      meta.confidence && { label: 'Confidence', value: meta.confidence },
+      meta.confidence && { label: 'Keyakinan analisis', value: meta.confidence },
     ];
     const metricRows =
       meta.metrics?.map((metric) => ({
@@ -52,12 +57,12 @@ const NotificationAIDetailScreen = () => {
       meta.attachments?.map((item) => ({ label: 'Lampiran', value: item })) || [];
     const reasonRows = meta.reason ? [{ label: 'Alasan', value: meta.reason }] : [];
     return [
-      { title: 'Detail AI Scan', rows: rows.filter(Boolean) },
-      ...(metricRows.length ? [{ title: 'Metric Insight', rows: metricRows }] : []),
+      { title: 'Detail Pemindaian AI', rows: rows.filter(Boolean) },
+      ...(metricRows.length ? [{ title: 'Metrik AI', rows: metricRows }] : []),
       ...(recRows.length ? [{ title: 'Tindakan yang disarankan', rows: recRows }] : []),
       ...(noteRows.length ? [{ title: 'Catatan', rows: noteRows }] : []),
       ...(attachmentRows.length ? [{ title: 'Lampiran', rows: attachmentRows }] : []),
-      ...(reasonRows.length ? [{ title: 'Alasan Gagal', rows: reasonRows }] : []),
+      ...(reasonRows.length ? [{ title: 'Alasan kegagalan', rows: reasonRows }] : []),
     ];
   }, [meta]);
 

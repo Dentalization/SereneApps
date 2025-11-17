@@ -38,7 +38,7 @@ const AppointmentListScreen = () => {
               Kelola jadwal
             </Text>
             <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-              {upcomingCount} upcoming · {completedCount} completed
+              {upcomingCount} aktif · {completedCount} selesai
             </Text>
           </View>
           <Button
@@ -105,8 +105,8 @@ const AppointmentListScreen = () => {
 
 const StatusTabs = ({ value, onChange }) => {
   const tabs = [
-    { key: 'upcoming', label: 'Upcoming', count: getAppointmentsByStatus('upcoming').length },
-    { key: 'completed', label: 'Completed', count: getAppointmentsByStatus('completed').length },
+    { key: 'upcoming', label: 'Akan datang', count: getAppointmentsByStatus('upcoming').length },
+    { key: 'completed', label: 'Selesai', count: getAppointmentsByStatus('completed').length },
   ];
   return (
     <View
@@ -151,7 +151,7 @@ const StatusTabs = ({ value, onChange }) => {
                 color: active ? '#4C1D95' : '#94A3B8',
               }}
             >
-              {tab.count} bookings
+              {tab.count} janji
             </Text>
           </TouchableOpacity>
         );
@@ -225,7 +225,7 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
               fontSize: 12,
             }}
           >
-            {appointment.type === 'virtual' ? 'Virtual' : 'Onsite'}
+            {appointment.type === 'virtual' ? 'Online' : 'Di klinik'}
           </Text>
         </View>
       </View>
@@ -299,7 +299,7 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
             style={{ flex: 1, marginRight: 10 }}
             onPress={canJoin ? onJoin : onReschedule}
           >
-            {canJoin ? 'Join Call' : 'Reschedule'}
+            {canJoin ? 'Gabung panggilan' : 'Ubah jadwal'}
           </Button>
         ) : (
           <Button
@@ -307,12 +307,12 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
             style={{ flex: 1, marginRight: 10 }}
             onPress={onReschedule}
           >
-            Book again
+            Buat janji baru
           </Button>
         )}
         {showPrimary ? (
           <Button mode="outlined" style={{ flex: 1 }}>
-            Cancel
+            Batalkan
           </Button>
         ) : null}
       </View>

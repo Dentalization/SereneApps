@@ -78,7 +78,7 @@ const ClinicDetailScreen = () => {
               <Text style={{ color: 'rgba(255,255,255,0.85)', marginLeft: 6, flex: 1 }}>{clinic.address}</Text>
             </View>
             <View style={{ flexDirection: 'row', marginTop: 16 }}>
-              <HeroStat label='Rating' value={`${clinic.rating} (${clinic.reviews})`} icon='star' />
+              <HeroStat label='Rating' value={`${clinic.rating} (${clinic.reviews} ulasan)`} icon='star' />
               <HeroStat label='Jarak' value={clinic.distance} icon='map-marker-distance' />
               <HeroStat label='Dokter' value={`${clinic.stats?.dentists || '-'} dokter`} icon='doctor' />
             </View>
@@ -163,7 +163,7 @@ const ClinicDetailScreen = () => {
           <Text style={{ fontWeight: '700', color: '#0F172A' }}>{clinic.phone}</Text>
         </View>
         <Button mode='contained' onPress={() => handleBook(dentists[0])}>
-          Book onsite
+          Pesan di klinik
         </Button>
       </View>
     </View>

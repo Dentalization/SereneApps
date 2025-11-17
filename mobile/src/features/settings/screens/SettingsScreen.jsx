@@ -124,7 +124,7 @@ const SettingsScreen = ({ navigation }) => {
             <View style={styles.heroStats}>
               {[
                 { label: 'Tema', value: isDarkMode ? 'Gelap' : 'Terang' },
-                { label: 'Bahasa', value: language === 'id' ? 'Indonesia' : 'English' },
+                { label: 'Bahasa', value: language === 'id' ? 'Indonesia' : 'Inggris' },
                 { label: 'Status', value: authLevel === AUTH_LEVELS.FULL_ACCOUNT ? 'Aktif' : 'Terbatas' },
               ].map((item, index, array) => (
                 <View
@@ -153,7 +153,7 @@ const SettingsScreen = ({ navigation }) => {
           <Divider />
           <List.Item
             title="Bahasa"
-            description={language === 'id' ? 'Indonesia' : 'English'}
+            description={language === 'id' ? 'Indonesia' : 'Inggris'}
             left={(props) => <List.Icon {...props} icon="translate" />}
             onPress={() => setSnackbar({ visible: true, message: 'Pilihan bahasa tambahan segera hadir.' })}
             right={(props) => <List.Icon {...props} icon="chevron-right" />}

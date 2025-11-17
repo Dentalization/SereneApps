@@ -36,7 +36,7 @@ const ResultScreen = ({ route, navigation }) => {
   const gradient = RISK_GRADIENTS[result.riskLevel] || [theme.colors.primary, '#7F1DFF'];
 
   const stats = [
-    { label: 'Confidence', value: `${Math.round(result.confidence * 100)}%` },
+    { label: 'Keyakinan analisis', value: `${Math.round(result.confidence * 100)}%` },
     { label: 'Gigi terdampak', value: result.affectedTeeth.length },
     { label: 'Kondisi terdeteksi', value: result.conditions.length },
   ];
@@ -54,13 +54,13 @@ const ResultScreen = ({ route, navigation }) => {
             <IconButtonGhost icon="share-variant" />
           </View>
           <View style={{ alignItems: 'flex-start', marginTop: 10 }}>
-            <Text style={styles.heroLabel}>Hasil First Diagnosis</Text>
+            <Text style={styles.heroLabel}>Hasil Diagnosis AI</Text>
             <Text style={styles.heroTitle}>Tingkat risiko terdeteksi</Text>
           </View>
           <View style={styles.heroResultRow}>
             <RiskBadge level={result.riskLevel} style={{ transform: [{ scale: 1.05 }] }} />
             <View style={{ marginLeft: 16 }}>
-              <Text style={styles.heroConfidence}>Confidence {Math.round(result.confidence * 100)}%</Text>
+              <Text style={styles.heroConfidence}>Keyakinan {Math.round(result.confidence * 100)}%</Text>
               <Text style={styles.heroSubtitle}>Bagikan hasil ini ke dokter untuk rekomendasi lanjutan.</Text>
             </View>
           </View>
@@ -101,7 +101,7 @@ const ResultScreen = ({ route, navigation }) => {
                   <Text style={{ fontWeight: '700', color: '#0F172A' }}>{condition.name}</Text>
                   <RiskBadge level={condition.severity} size="small" />
                 </View>
-                <Text style={{ color: '#475569', marginTop: 4 }}>Confidence {Math.round(condition.confidence * 100)}%</Text>
+                <Text style={{ color: '#475569', marginTop: 4 }}>Keyakinan {Math.round(condition.confidence * 100)}%</Text>
               </View>
             ))}
           </Card.Content>

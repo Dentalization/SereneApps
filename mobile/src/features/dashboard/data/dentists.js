@@ -8,7 +8,7 @@ export const NEARBY_DENTISTS = [
     price: 350000,
     image: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=600&h=600&fit=crop',
     distanceKm: 1.6,
-    clinic: 'Glow Dental Studio',
+    clinic: 'Studio Gigi Bersinar',
   },
   {
     id: 'dentist-002',
@@ -41,7 +41,7 @@ export const NEARBY_DENTISTS = [
     price: 450000,
     image: 'https://images.unsplash.com/photo-1544723795-432537f06021?w=600&h=600&fit=crop',
     distanceKm: 4.6,
-    clinic: 'Arsitek Senyum',
+    clinic: 'Studio Arsitek Senyum',
   },
   {
     id: 'dentist-005',
@@ -74,7 +74,7 @@ export const NEARBY_DENTISTS = [
     price: 520000,
     image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&h=600&fit=crop',
     distanceKm: 3.8,
-    clinic: 'Precision Oral Care',
+    clinic: 'Perawatan Oral Presisi',
   },
   {
     id: 'dentist-008',
@@ -85,6 +85,6 @@ export const NEARBY_DENTISTS = [
     price: 600000,
     image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&h=600&fit=crop',
     distanceKm: 2.9,
-    clinic: 'Lab Gigi Artisan',
+    clinic: 'Lab Gigi Artisana',
   },
 ];

@@ -4,8 +4,13 @@ import { Text } from 'react-native-paper';
 import { useRoute } from '@react-navigation/native';
 import NotificationDetailLayout from '../../components/NotificationDetailLayout';
 
-const formatCurrency = (value = 0, currency = 'USD') =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+const formatCurrency = (value = 0, currency = 'IDR') =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(value);
 
 const PaymentMethodCard = ({ method, details = {} }) => (
   <View style={styles.methodCard}>
@@ -24,10 +29,10 @@ const NotificationPaymentDetailScreen = () => {
   const route = useRoute();
   const notification = route.params?.notification;
   const meta = notification?.meta || {};
-  const currency = meta.currency || 'USD';
+  const currency = meta.currency || 'IDR';
 
   const normalizedStatus = (meta.status || '').toLowerCase();
-  const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'declined';
+  const isFailed = ['failed', 'declined', 'gagal', 'ditolak'].includes(normalizedStatus);
   const statusColor = isFailed ? '#F87171' : '#22C55E';
 
   const heroExtras = (
@@ -47,8 +52,8 @@ const NotificationPaymentDetailScreen = () => {
   const sections = useMemo(() => {
     const items = meta.items || [];
     const summaryRows = [
-      meta.invoiceId && { label: 'Invoice', value: meta.invoiceId },
-      meta.transactionId && { label: 'Transaksi', value: meta.transactionId },
+      meta.invoiceId && { label: 'Nomor tagihan', value: meta.invoiceId },
+      meta.transactionId && { label: 'ID transaksi', value: meta.transactionId },
       meta.issuedAt && {
         label: 'Diterbitkan',
         value: new Date(meta.issuedAt).toLocaleString(undefined, {
@@ -108,9 +113,9 @@ const NotificationPaymentDetailScreen = () => {
     return [
       { title: 'Ringkasan Pembayaran', rows: summaryRows.filter(Boolean) },
       { title: 'Rincian Layanan', rows: itemsRows.filter(Boolean) },
-      { title: 'Perincian Total', rows: totalsRows.filter(Boolean) },
+      { title: 'Rincian Total', rows: totalsRows.filter(Boolean) },
       { title: 'Metode & Jaringan', rows: methodRows.filter(Boolean) },
-      { title: 'Informasi Billing', rows: billingRows.filter(Boolean) },
+      { title: 'Informasi Penagihan', rows: billingRows.filter(Boolean) },
       ...(attemptRows.length ? [{ title: 'Riwayat Percobaan', rows: attemptRows }] : []),
       ...(nextStepRows?.length ? [{ title: 'Tindak Lanjut', rows: nextStepRows }] : []),
       ...(meta.reason ? [{ title: 'Alasan Penolakan', rows: [{ label: '', value: meta.reason }] }] : []),

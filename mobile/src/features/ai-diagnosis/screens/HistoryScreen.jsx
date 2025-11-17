@@ -51,7 +51,7 @@ const HistoryScreen = () => {
           >
             <View style={{ flex: 1, alignItems: 'flex-start' }}>
               <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>{historyItems.length}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 2 }}>Total scan</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 2 }}>Total pemindaian</Text>
             </View>
             <View style={{ flex: 1, alignItems: 'flex-start' }}>
               <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>{completedThisMonth}</Text>
@@ -114,7 +114,7 @@ const HistoryScreen = () => {
                   <Text style={{ color: '#475569', marginTop: 4 }}>{item.date}</Text>
                 </View>
                 <Chip mode="flat" style={{ backgroundColor: '#DBEAFE' }} textStyle={{ color: '#1D4ED8' }}>
-                  {item.status === 'completed' ? 'Selesai' : 'Draft'}
+                  {item.status === 'completed' ? 'Selesai' : 'Draf'}
                 </Chip>
               </View>
 

@@ -24,7 +24,7 @@ const REQUIRED_FIELDS = ['name', 'email', 'phoneNumber', 'password', 'confirmPas
 const interestOptions = [
   { label: 'Kontrol rutin', icon: 'calendar-check' },
   { label: 'Perawatan estetik', icon: 'tooth-outline' },
-  { label: 'Orthodontic', icon: 'toothbrush' },
+  { label: 'Ortodonti', icon: 'toothbrush' },
 ];
 
 const RegisterScreen = ({ navigation }) => {

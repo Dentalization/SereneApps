@@ -16,16 +16,16 @@ export const formatNotificationTime = (iso) => {
   if (Number.isNaN(target.getTime())) return '';
   const now = Date.now();
   const diffMs = now - target.getTime();
-  if (diffMs < 0) return 'Now';
+  if (diffMs < 0) return 'Baru saja';
 
   const diffMinutes = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMinutes < 1) return 'Now';
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return 'Yesterday';
+  if (diffMinutes < 1) return 'Baru saja';
+  if (diffMinutes < 60) return `${diffMinutes} menit lalu`;
+  if (diffHours < 24) return `${diffHours} jam lalu`;
+  if (diffDays === 1) return 'Kemarin';
 
   return target.toLocaleDateString(undefined, {
     day: 'numeric',

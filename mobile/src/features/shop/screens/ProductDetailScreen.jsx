@@ -4,7 +4,7 @@ import { Text, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SHOP_PRODUCTS, findProductById } from '../data/products';
+import { SHOP_PRODUCTS, SHOP_CATEGORIES, findProductById } from '../data/products';
 import { formatCurrency } from '../../../utils/formatters';
 
 const { width } = Dimensions.get('window');
@@ -22,6 +22,9 @@ const ProductDetailScreen = () => {
   }, [route.params]);
 
   const images = product.images?.length ? product.images : [product.image];
+  const categoryLabel =
+    SHOP_CATEGORIES.find((category) => category.id === product.category)?.label ||
+    'Kategori lainnya';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -161,7 +164,7 @@ const ProductDetailScreen = () => {
                         }}
                         numberOfLines={1}
                       >
-                        {product.category}
+                        {categoryLabel}
                       </Text>
                     </View>
 
@@ -374,7 +377,7 @@ const ProductDetailScreen = () => {
             >
               <Text style={{ color: '#94A3B8' }}>Kategori</Text>
               <Text style={{ fontWeight: '600', color: '#0F172A' }}>
-                {product.category}
+                {categoryLabel}
               </Text>
             </View>
           </View>
