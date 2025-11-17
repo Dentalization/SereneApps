@@ -39,7 +39,7 @@ const SettingsSection = ({
       )}
 
       <Card style={[styles.card, { backgroundColor: theme.colors.surface }, cardStyle]}>
-        {children}
+        <View style={styles.cardInner}>{children}</View>
       </Card>
     </View>
   );
@@ -62,8 +62,12 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 16,
     borderRadius: 16,
-    paddingVertical: 4,
+  },
+  cardInner: {
+    flex: 1,
+    borderRadius: 16,
     overflow: 'hidden',
+    paddingVertical: 4,
   },
 });
 

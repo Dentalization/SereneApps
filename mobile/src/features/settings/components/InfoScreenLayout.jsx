@@ -1,14 +1,19 @@
 import React from 'react';
 import { SafeAreaView, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Divider, Text, useTheme } from 'react-native-paper';
 import AuthHero from './AuthHero';
 
 const InfoScreenLayout = ({ heroProps, footerText, children }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         {heroProps && <AuthHero {...heroProps} />}
         {children}
         {footerText && (

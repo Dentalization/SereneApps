@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView, ScrollView, StyleSheet, View, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
   Button,
   Chip,
   Divider,
   List,
-  Snackbar,
   Switch,
   Text,
   useTheme,
@@ -14,13 +14,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { AUTH_LEVELS, logout } from '../../../store/slices/authSlice';
 import { toggleTheme } from '../../../store/slices/settingsSlice';
 import { getInitials } from '../../../utils/formatters';
 import SettingsSection from '../components/SettingsSection';
+import ValidationToast from '../components/ValidationToast';
 
 const SettingsScreen = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
   const { user, authLevel } = useSelector((state) => state.auth);
   const { isDarkMode, language } = useSelector((state) => state.settings);
@@ -30,6 +33,38 @@ const SettingsScreen = ({ navigation }) => {
     aiDigest: false,
   });
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+
+  // Restore tab bar when this screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      const isDark = theme.dark;
+      const surface = isDark
+        ? theme.colors.elevation?.level2 || '#121212'
+        : theme.colors.surface || '#FFFFFF';
+      const borderTop = isDark
+        ? 'rgba(255,255,255,0.06)'
+        : theme.colors.outlineVariant || 'rgba(0,0,0,0.06)';
+
+      navigation.getParent()?.setOptions({
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: surface,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          height: Platform.OS === 'ios' ? 88 : 68,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+          paddingTop: 12,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: borderTop,
+          elevation: isDark ? 0 : 12,
+          shadowColor: isDark ? 'transparent' : '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: isDark ? 0 : 0.06,
+          shadowRadius: isDark ? 0 : 12,
+        }
+      });
+    }, [navigation, theme])
+  );
 
   const isGuest = authLevel === AUTH_LEVELS.GUEST;
   const statusLabel = useMemo(() => {
@@ -70,7 +105,10 @@ const SettingsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroWrapper}>
           <LinearGradient
             colors={theme?.gradients?.primary || [theme.colors.primary, theme.colors.secondary]}
@@ -270,14 +308,11 @@ const SettingsScreen = ({ navigation }) => {
         )}
       </ScrollView>
 
-      <Snackbar
+      <ValidationToast
         visible={snackbar.visible}
+        message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={3500}
-        action={{ label: 'Tutup' }}
-      >
-        {snackbar.message}
-      </Snackbar>
+      />
     </SafeAreaView>
   );
 };

@@ -1,84 +1,162 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Chip, List, Text, useTheme } from 'react-native-paper';
+import React, { useLayoutEffect } from 'react';
+import { StyleSheet, View, TouchableOpacity } from 'react-native';
+import { Button, List, Text, useTheme, IconButton } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import InfoScreenLayout from '../components/InfoScreenLayout';
 import SettingsSection from '../components/SettingsSection';
+import { faqCategories, popularFaqs } from '../data/faqData';
 
-const faqItems = [
-  {
-    question: 'Bagaimana cara menjadwalkan ulang janji?',
-    answer: 'Buka tab Appointment > pilih jadwal > tekan "Reschedule" minimal 6 jam sebelum waktu janji.',
-  },
-  {
-    question: 'Apakah AI diagnosis menyimpan foto saya?',
-    answer: 'Tidak, kami hanya menyimpan metadata hasil analisis dan menghapus foto dalam 30 detik. Anda dapat menyimpan foto lokal sendiri.',
-  },
-  {
-    question: 'Bagaimana menghubungkan akun keluarga?',
-    answer: 'Hubungi care@serene.id untuk aktivasi Family Link agar Anda bisa memantau 3 anggota keluarga sekaligus.',
-  },
-];
-
-const categories = [
-  { label: 'Janji Temu', icon: 'calendar' },
-  { label: 'Pembayaran', icon: 'credit-card' },
-  { label: 'AI Diagnosis', icon: 'robot' },
-  { label: 'Rekam Medis', icon: 'clipboard-text' },
-];
-
-const HelpCenterScreen = () => {
+const HelpCenterScreen = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const featuredCategories = faqCategories.slice(0, 3);
+
+  useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' },
+    });
+  }, [navigation]);
 
   return (
-    <InfoScreenLayout
-      heroProps={{
-        title: 'Pusat Bantuan Serene',
-        subtitle: 'Panduan self-service untuk menyelesaikan kebutuhan pasien dalam hitungan menit.',
-        badgeLabel: 'Siaran langsung 24/7',
-        badgeIcon: 'headset',
-        highlights: [
-          { icon: 'clock-fast', label: 'Respons', value: '< 5 menit' },
-          { icon: 'account-group', label: 'Agent', value: '50+ Care' },
-        ],
-      }}
-      footerText="Masih butuh bantuan? Pilih Hubungi Care untuk berbicara dengan agen."
-    >
-      <SettingsSection title="KATEGORI POPULER" description="Akses cepat ke topik yang sering dicari.">
-        <View style={styles.chipRow}>
-          {categories.map((item) => (
-            <Chip key={item.label} icon={item.icon} style={styles.chip}>
-              {item.label}
-            </Chip>
-          ))}
-        </View>
-      </SettingsSection>
-
-      <SettingsSection title="PERTANYAAN UMUM">
-        {faqItems.map((item) => (
-          <List.Accordion
-            key={item.question}
-            title={item.question}
-            titleStyle={styles.accordionTitle}
-            right={(props) => <List.Icon {...props} icon="chevron-down" />}
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+      {/* Geser hero + konten sedikit ke bawah */}
+      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+        <InfoScreenLayout
+          heroProps={{
+            title: 'Pusat Bantuan Serene',
+            subtitle:
+              'Panduan self-service untuk menyelesaikan kebutuhan pasien dalam hitungan menit.',
+            badgeLabel: 'Siaran langsung 24/7',
+            badgeIcon: 'headset',
+            highlights: [
+              { icon: 'clock-fast', label: 'Respons', value: '< 5 menit' },
+              { icon: 'account-group', label: 'Agent', value: '50+ Care' },
+            ],
+          }}
+          footerText="Masih butuh bantuan? Pilih Hubungi Care untuk berbicara dengan agen."
+        >
+          <SettingsSection
+            title="KATEGORI FAQ"
+            description="Mulai dari menu di bawah atau lihat semua kategori."
+            action={
+              <Button
+                compact
+                mode="text"
+                onPress={() => navigation.navigate('FAQCategories')}
+              >
+                Lihat semua
+              </Button>
+            }
           >
-            <Text style={[styles.answer, { color: theme.colors.onSurfaceVariant }]}>{item.answer}</Text>
-          </List.Accordion>
-        ))}
-      </SettingsSection>
-    </InfoScreenLayout>
+            <View style={styles.categoryGrid}>
+              {featuredCategories.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryCard,
+                    theme?.shadows?.sm,
+                    { backgroundColor: theme.colors.surface },
+                  ]}
+                  activeOpacity={0.9}
+                  onPress={() =>
+                    navigation.navigate('FAQCategory', { categoryId: category.id })
+                  }
+                >
+                  <View style={styles.categoryIconWrapper}>
+                    <List.Icon icon={category.icon} color={theme.colors.primary} />
+                  </View>
+                  <Text variant="titleSmall" style={styles.categoryTitle}>
+                    {category.title}
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.onSurfaceVariant }}
+                    numberOfLines={2}
+                  >
+                    {category.description}
+                  </Text>
+                  <Text variant="labelSmall" style={styles.categoryMeta}>
+                    {category.articles} artikel panduan
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </SettingsSection>
+
+          <SettingsSection title="PERTANYAAN POPULER">
+            {popularFaqs.map((item) => (
+              <List.Accordion
+                key={item.question}
+                title={item.question}
+                titleStyle={styles.accordionTitle}
+                right={(props) => <List.Icon {...props} icon="chevron-down" />}
+              >
+                <Text
+                  style={[styles.answer, { color: theme.colors.onSurfaceVariant }]}
+                >
+                  {item.answer}
+                </Text>
+              </List.Accordion>
+            ))}
+          </SettingsSection>
+        </InfoScreenLayout>
+      </View>
+
+      {/* Back button overlay sama seperti FAQ screens */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 16,
+          top: insets.top + 8,
+          zIndex: 999,
+          elevation: 999,
+        }}
+      >
+        <IconButton
+          icon="arrow-left"
+          iconColor="white"
+          size={24}
+          onPress={() => navigation.goBack()}
+          style={{ margin: 0 }}
+          containerColor="rgba(0,0,0,0.3)"
+        />
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  chipRow: {
+  root: {
+    flex: 1,
+  },
+  categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 12,
-    paddingBottom: 8,
+    gap: 12,
+    marginBottom: 4,
   },
-  chip: {
-    marginHorizontal: 4,
+  categoryCard: {
+    flexBasis: '48%',
+    borderRadius: 16,
+    padding: 12,
+  },
+  categoryIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(98,16,159,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
+  },
+  categoryTitle: {
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  categoryMeta: {
+    marginTop: 6,
+    color: '#62109F',
   },
   accordionTitle: {
     fontWeight: '600',
