@@ -68,9 +68,9 @@ const NearbyDentistsScreen = () => {
             <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Dentists nearby</Text>
+            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Dokter gigi terdekat</Text>
             <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14 }}>
-              Showing specialists within {radius} km radius
+              Menampilkan spesialis dalam radius {radius} km
             </Text>
           </View>
           <View
@@ -81,7 +81,7 @@ const NearbyDentistsScreen = () => {
               borderRadius: 16,
             }}
           >
-            <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{dentists.length} doctors</Text>
+            <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{dentists.length} dokter</Text>
           </View>
         </View>
       </View>
@@ -125,7 +125,7 @@ const NearbyDentistsScreen = () => {
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
                   <MaterialCommunityIcons name='star' size={16} color='#FBBF24' />
                   <Text style={{ marginLeft: 6, color: '#475569', fontWeight: '600' }}>
-                    {dentist.rating} · {dentist.reviews} reviews
+                    {dentist.rating} · {dentist.reviews} ulasan
                   </Text>
                 </View>
               </View>
@@ -142,7 +142,7 @@ const NearbyDentistsScreen = () => {
               }}
             >
               <View>
-                <Text style={{ fontSize: 12, color: '#94A3B8' }}>Consultation starts from</Text>
+                <Text style={{ fontSize: 12, color: '#94A3B8' }}>Konsultasi mulai dari</Text>
                 <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A', marginTop: 4 }}>
                   {formatRupiah(dentist.price)}
                 </Text>
@@ -177,7 +177,7 @@ const NearbyDentistsScreen = () => {
                   }}
                 >
                   <MaterialCommunityIcons name='calendar-check' size={18} color='white' />
-                  <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Book</Text>
+                  <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Pesan</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -186,9 +186,9 @@ const NearbyDentistsScreen = () => {
         {!dentists.length && (
           <View style={{ alignItems: 'center', marginTop: 60 }}>
             <MaterialCommunityIcons name='map-marker-off' size={52} color='#CBD5F5' />
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginTop: 12 }}>No dentists nearby</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginTop: 12 }}>Belum ada dokter di area ini</Text>
             <Text style={{ color: '#475569', marginTop: 4, textAlign: 'center' }}>
-              We could not find specialists within {radius} km. Try expanding your search radius soon.
+              Kami tidak menemukan spesialis dalam radius {radius} km. Coba perluas jangkauan pencarian.
             </Text>
           </View>
         )}

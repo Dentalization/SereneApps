@@ -148,7 +148,7 @@ const DentistDetailScreen = () => {
             >
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Dentist Profile</Text>
+            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Profil Dokter</Text>
             <TouchableOpacity
               onPress={handleMessage}
               style={{
@@ -177,7 +177,7 @@ const DentistDetailScreen = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                 <MaterialCommunityIcons name='star' color='#FACC15' size={18} />
                 <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
-                  {dentist.rating?.toFixed(1)} · {dentist.reviews} reviews
+                  {dentist.rating?.toFixed(1)} · {dentist.reviews} ulasan
                 </Text>
               </View>
               {distanceText ? (
@@ -206,7 +206,7 @@ const DentistDetailScreen = () => {
               }}
             >
               <MaterialCommunityIcons name='calendar-check' size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Book</Text>
+              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Pesan Jadwal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleMessage}
@@ -232,13 +232,13 @@ const DentistDetailScreen = () => {
         <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {[
-              statCard('Experience', dentist.experience || '—', 'medal-outline'),
-              statCard('Patients helped', dentist.patientsHelped || '1,200+', 'account-group'),
-              statCard('Response time', dentist.responseTime || '<2h', 'clock-fast'),
+              statCard('Pengalaman', dentist.experience || '—', 'medal-outline'),
+              statCard('Pasien terbantu', dentist.patientsHelped || '1.200+', 'account-group'),
+              statCard('Respon rata-rata', dentist.responseTime || '<2 jam', 'clock-fast'),
             ]}
           </ScrollView>
 
-          <Section title='About' style={{ marginTop: 24 }}>
+          <Section title='Tentang Dokter' style={{ marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>
               {dentist.languages?.map((lang) => (
@@ -249,7 +249,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Specialties'>
+          <Section title='Spesialisasi'>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {dentist.specialties?.map((item) => (
                 <View
@@ -269,7 +269,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Services'>
+          <Section title='Layanan'>
             {dentist.services?.map((service) => (
               <View
                 key={service.name}
@@ -287,7 +287,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Availability'>
+          <Section title='Ketersediaan Jadwal'>
             {dentist.availability?.map((slot) => (
               <View
                 key={slot.day}
@@ -303,7 +303,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Achievements'>
+          <Section title='Pencapaian'>
             {dentist.achievements?.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                 <MaterialCommunityIcons name='trophy' size={18} color='#FACC15' />
@@ -313,7 +313,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Patient Stories'>
+          <Section title='Cerita Pasien'>
             {dentist.stories?.map((story) => (
               <View
                 key={story.patient}
@@ -341,7 +341,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Gallery'>
+          <Section title='Galeri'>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {dentist.gallery?.map((url, index) => (
                 <Image
@@ -353,7 +353,7 @@ const DentistDetailScreen = () => {
             </ScrollView>
           </Section>
 
-          <Section title='Contact'>
+          <Section title='Kontak'>
             <View style={{ backgroundColor: 'white', borderRadius: 18, padding: 16 }}>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
                 <MaterialCommunityIcons name='phone' size={18} color={theme.colors.primary} />
@@ -391,7 +391,7 @@ const DentistDetailScreen = () => {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Consultation starts from</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Konsultasi mulai dari</Text>
             <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
               {formatRupiah(dentist.price)}
             </Text>
@@ -408,7 +408,7 @@ const DentistDetailScreen = () => {
             }}
           >
             <MaterialCommunityIcons name='calendar-plus' size={20} color='white' />
-            <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Book Now</Text>
+            <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Pesan sekarang</Text>
           </TouchableOpacity>
         </View>
       </View>

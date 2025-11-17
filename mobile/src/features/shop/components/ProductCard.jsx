@@ -5,9 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatCurrency } from '../../../utils/formatters';
 
 const badgeMeta = {
-  sale: { label: 'SALE', color: '#F97316' },
-  recommended: { label: 'RECOMMENDED', color: '#10B981' },
-  new: { label: 'NEW', color: '#3B82F6' },
+  sale: { label: 'DISKON', color: '#F97316' },
+  recommended: { label: 'REKOMENDASI', color: '#10B981' },
+  new: { label: 'BARU', color: '#3B82F6' },
 };
 
 const ProductCard = ({ product, onPress }) => {
@@ -72,7 +72,7 @@ const ProductCard = ({ product, onPress }) => {
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
         <MaterialCommunityIcons name='star' size={16} color='#FACC15' />
         <Text style={{ marginLeft: 4, fontWeight: '600', color: '#475569' }}>{product.rating}</Text>
-        <Text style={{ marginLeft: 4, fontSize: 12, color: '#94A3B8' }}>({product.reviews})</Text>
+        <Text style={{ marginLeft: 4, fontSize: 12, color: '#94A3B8' }}>({product.reviews} ulasan)</Text>
       </View>
 
       <View style={{ marginTop: 10 }}>

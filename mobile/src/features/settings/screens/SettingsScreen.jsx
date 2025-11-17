@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View, Platform } from 'react-native';
+import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -14,7 +14,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { useFocusEffect } from '@react-navigation/native';
 import { AUTH_LEVELS, logout } from '../../../store/slices/authSlice';
 import { toggleTheme } from '../../../store/slices/settingsSlice';
 import { getInitials } from '../../../utils/formatters';
@@ -33,38 +32,6 @@ const SettingsScreen = ({ navigation }) => {
     aiDigest: false,
   });
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
-
-  // Restore tab bar when this screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      const isDark = theme.dark;
-      const surface = isDark
-        ? theme.colors.elevation?.level2 || '#121212'
-        : theme.colors.surface || '#FFFFFF';
-      const borderTop = isDark
-        ? 'rgba(255,255,255,0.06)'
-        : theme.colors.outlineVariant || 'rgba(0,0,0,0.06)';
-
-      navigation.getParent()?.setOptions({
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: surface,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          height: Platform.OS === 'ios' ? 88 : 68,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 12,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: borderTop,
-          elevation: isDark ? 0 : 12,
-          shadowColor: isDark ? 'transparent' : '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: isDark ? 0 : 0.06,
-          shadowRadius: isDark ? 0 : 12,
-        }
-      });
-    }, [navigation, theme])
-  );
 
   const isGuest = authLevel === AUTH_LEVELS.GUEST;
   const statusLabel = useMemo(() => {
@@ -157,7 +124,7 @@ const SettingsScreen = ({ navigation }) => {
             <View style={styles.heroStats}>
               {[
                 { label: 'Tema', value: isDarkMode ? 'Gelap' : 'Terang' },
-                { label: 'Bahasa', value: language === 'id' ? 'Indonesia' : 'English' },
+                { label: 'Bahasa', value: language === 'id' ? 'Indonesia' : 'Inggris' },
                 { label: 'Status', value: authLevel === AUTH_LEVELS.FULL_ACCOUNT ? 'Aktif' : 'Terbatas' },
               ].map((item, index, array) => (
                 <View
@@ -186,7 +153,7 @@ const SettingsScreen = ({ navigation }) => {
           <Divider />
           <List.Item
             title="Bahasa"
-            description={language === 'id' ? 'Indonesia' : 'English'}
+            description={language === 'id' ? 'Indonesia' : 'Inggris'}
             left={(props) => <List.Icon {...props} icon="translate" />}
             onPress={() => setSnackbar({ visible: true, message: 'Pilihan bahasa tambahan segera hadir.' })}
             right={(props) => <List.Icon {...props} icon="chevron-right" />}

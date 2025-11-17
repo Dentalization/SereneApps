@@ -7,21 +7,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SAMPLE_NOTIFICATIONS, NOTIFICATION_TYPE_META } from '../data/notifications';
 import { formatNotificationTime, withOpacity } from '../utils/notificationUtils';
 
-const typeFilters = [{ key: 'all', label: 'All' }].concat(
+const typeFilters = [{ key: 'all', label: 'Semua' }].concat(
   Object.entries(NOTIFICATION_TYPE_META).map(([key, meta]) => ({ key, label: meta.label }))
 );
 
 const getMetaLabel = (item) => {
   if (item.meta?.clinicName) return item.meta.clinicName;
   if (item.meta?.startsAt)
-    return new Date(item.meta.startsAt).toLocaleTimeString(undefined, {
-      hour: 'numeric',
+    return new Date(item.meta.startsAt).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
       minute: '2-digit',
     });
-  if (item.meta?.orderId) return `Order ${item.meta.orderId}`;
-  if (item.meta?.invoiceId) return `Invoice ${item.meta.invoiceId}`;
-  if (item.meta?.scanId) return `Scan ${item.meta.scanId}`;
-  if (item.meta?.productId) return `Item ${item.meta.productId}`;
+  if (item.meta?.orderId) return `Pesanan ${item.meta.orderId}`;
+  if (item.meta?.invoiceId) return `Tagihan ${item.meta.invoiceId}`;
+  if (item.meta?.scanId) return `Pemindaian ${item.meta.scanId}`;
+  if (item.meta?.productId) return `Produk ${item.meta.productId}`;
   return null;
 };
 
@@ -213,7 +213,7 @@ const NotificationScreen = () => {
                   paddingVertical: 4,
                   borderRadius: 999,
                   backgroundColor:
-                    item.meta.status.toLowerCase() === 'failed'
+                    ['failed', 'gagal'].includes(item.meta.status.toLowerCase())
                       ? withOpacity('#F87171', 0.25)
                       : withOpacity(typeMeta.color, 0.2),
                 }}
@@ -223,7 +223,7 @@ const NotificationScreen = () => {
                     fontSize: 11,
                     fontWeight: '700',
                     color:
-                      item.meta.status.toLowerCase() === 'failed'
+                      ['failed', 'gagal'].includes(item.meta.status.toLowerCase())
                         ? '#B91C1C'
                         : typeMeta.color,
                   }}
@@ -351,12 +351,12 @@ const NotificationScreen = () => {
             <Text
               style={{ color: 'white', fontSize: 22, fontWeight: '700' }}
             >
-              Notifications
+              Notifikasi
             </Text>
             <Text
               style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}
             >
-              {unreadCount} unread • stay on top of your care
+              {unreadCount} belum dibaca • tetap terhubung dengan perawatan Anda
             </Text>
           </View>
           <TouchableOpacity
@@ -364,7 +364,7 @@ const NotificationScreen = () => {
             style={{ paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Text style={{ color: 'white', fontWeight: '600' }}>
-              Mark all read
+              Tandai semua dibaca
             </Text>
           </TouchableOpacity>
         </View>
@@ -394,10 +394,10 @@ const NotificationScreen = () => {
                 color: '#0F172A',
               }}
             >
-              No notifications
+              Tidak ada notifikasi
             </Text>
             <Text style={{ color: '#475569', marginTop: 4 }}>
-              You are all caught up. We will alert you when something changes.
+              Anda sudah melihat semuanya. Kami akan memberi tahu ketika ada perubahan penting.
             </Text>
           </View>
         ) : null}

@@ -4,8 +4,8 @@ import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const FALLBACK_DENTISTS = [
-  { id:'1', name:'Dr. Thomas Mitchell', specialty:'Orthodontic Specialist', rating:5.0, reviews:412, price:350000, image:'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop', distanceKm:2.5, clinic:'Glow Dental Studio' },
-  { id:'2', name:'Dr. Sarah Johnson', specialty:'Pediatric Dentist', rating:4.8, reviews:328, price:280000, image:'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop', distanceKm:1.8, clinic:'Little Smiles' },
+  { id:'1', name:'Dr. Thomas Mitchell', specialty:'Spesialis Ortodonti', rating:5.0, reviews:412, price:350000, image:'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop', distanceKm:2.5, clinic:'Studio Gigi Bersinar' },
+  { id:'2', name:'Dr. Sarah Johnson', specialty:'Dokter Gigi Anak', rating:4.8, reviews:328, price:280000, image:'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop', distanceKm:1.8, clinic:'Klinik Senyum Ceria' },
 ];
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
@@ -13,8 +13,8 @@ const formatDistance = (dentist) => dentist.distance || (dentist.distanceKm != n
 
 export default function NearbyDentists({
   dentists = [],
-  title = 'Nearby Dentist',
-  subtitle = 'Best dental specialists near you',
+  title = 'Dokter gigi terdekat',
+  subtitle = 'Spesialis tepercaya di sekitar Anda',
   onDoctorPress,
   onMessage,
   onBook,
@@ -37,7 +37,7 @@ export default function NearbyDentists({
         {onSeeAll ? (
           <TouchableOpacity onPress={onSeeAll} style={{ backgroundColor:'#F3F4F6', borderRadius:12, padding:8, flexDirection:'row', alignItems:'center' }}>
             <MaterialCommunityIcons name="map-marker-distance" size={20} color={theme.colors.primary} />
-            <Text style={{ marginLeft:6, fontWeight:'600', color:theme.colors.primary, fontSize:13 }}>See all</Text>
+            <Text style={{ marginLeft:6, fontWeight:'600', color:theme.colors.primary, fontSize:13 }}>Lihat semua</Text>
           </TouchableOpacity>
         ) : (
           <View style={{ width:32 }} />
@@ -56,7 +56,7 @@ export default function NearbyDentists({
                 <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
                   <View style={{ flexDirection:'row', alignItems:'center' }}>
                     {[...Array(5)].map((_,ix)=>(<MaterialCommunityIcons key={ix} name="star" size={14} color={ix<Math.floor(d.rating)?"#FFD700":"#E5E7EB"} />))}
-                    <Text style={{ fontSize:13, color:'#6B7280', marginLeft:8, fontWeight:'500' }}>{d.rating} ({d.reviews})</Text>
+                    <Text style={{ fontSize:13, color:'#6B7280', marginLeft:8, fontWeight:'500' }}>{d.rating} ({d.reviews} ulasan)</Text>
                   </View>
                   <View style={{ flexDirection:'row', alignItems:'center' }}><MaterialCommunityIcons name="map-marker" size={14} color="#9CA3AF" /><Text style={{ fontSize:12, color:'#9CA3AF', marginLeft:4 }}>{d.distanceText}</Text></View>
                 </View>
@@ -66,7 +66,7 @@ export default function NearbyDentists({
               <View>{d.clinic ? <Text style={{ fontSize:12, color:'#9CA3AF', marginBottom:4 }}>{d.clinic}</Text> : null}<Text style={{ fontSize:20, fontWeight:'bold', color:'#1F2937' }}>{formatRupiah(d.price)}</Text></View>
               <View style={{ flexDirection:'row' }}>
                 <TouchableOpacity onPress={()=>onMessage?.(d)} style={{ backgroundColor:'#F3F4F6', borderRadius:15, paddingHorizontal:16, paddingVertical:10, marginRight:10 }}><MaterialCommunityIcons name="message-text" size={18} color={theme.colors.primary} /></TouchableOpacity>
-                <TouchableOpacity onPress={()=>onBook?.(d)} style={{ borderRadius:15, paddingHorizontal:20, paddingVertical:10, flexDirection:'row', alignItems:'center', shadowColor:theme.colors.primary, shadowOffset:{ width:0, height:4 }, shadowOpacity:0.3, shadowRadius:8, elevation:5, backgroundColor:theme.colors.primary }}><MaterialCommunityIcons name="calendar-check" size={16} color="white" /><Text style={{ color:'white', fontWeight:'bold', marginLeft:8, fontSize:14 }}>Book</Text></TouchableOpacity>
+                <TouchableOpacity onPress={()=>onBook?.(d)} style={{ borderRadius:15, paddingHorizontal:20, paddingVertical:10, flexDirection:'row', alignItems:'center', shadowColor:theme.colors.primary, shadowOffset:{ width:0, height:4 }, shadowOpacity:0.3, shadowRadius:8, elevation:5, backgroundColor:theme.colors.primary }}><MaterialCommunityIcons name="calendar-check" size={16} color="white" /><Text style={{ color:'white', fontWeight:'bold', marginLeft:8, fontSize:14 }}>Pesan</Text></TouchableOpacity>
               </View>
             </View>
           </TouchableOpacity>

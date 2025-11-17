@@ -24,7 +24,7 @@ const clinics = [
     reviews: 276,
     dentists: 6,
     status: 'Tersedia hari ini',
-    chips: ['Digital X-ray', 'Aligner center'],
+    chips: ['Rontgen digital', 'Pusat aligner'],
   },
   {
     id: 2,
@@ -34,8 +34,8 @@ const clinics = [
     rating: 4.7,
     reviews: 198,
     dentists: 4,
-    status: 'Virtual ready',
-    chips: ['Teledentistry', 'Anak & Dewasa'],
+    status: 'Siap sesi virtual',
+    chips: ['Konsultasi daring', 'Anak & Dewasa'],
   },
   {
     id: 3,
@@ -45,8 +45,8 @@ const clinics = [
     rating: 4.8,
     reviews: 165,
     dentists: 5,
-    status: 'Booking 2 jam lagi',
-    chips: ['Whitening suite', 'Sedation'],
+    status: 'Slot tersedia 2 jam lagi',
+    chips: ['Studio pemutihan', 'Sedasi'],
   },
 ];
 
@@ -83,7 +83,7 @@ const ClinicSearchScreen = () => {
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Explorer</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Penjelajah</Text>
               <Text style={styles.heroTitle}>Temukan klinik terbaik</Text>
             </View>
             <TouchableOpacity

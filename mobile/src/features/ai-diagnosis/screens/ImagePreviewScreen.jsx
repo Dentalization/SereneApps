@@ -50,22 +50,22 @@ const ImagePreviewScreen = ({ route, navigation }) => {
         <LinearGradient colors={['#0B1121', '#1D1B3A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={styles.heroTopRow}>
             <IconButton icon="arrow-left" size={24} iconColor="#FFFFFF" onPress={() => navigation.goBack()} />
-            <Text style={styles.heroTitle}>Review Foto</Text>
+            <Text style={styles.heroTitle}>Tinjau Foto</Text>
             <IconButton icon="information-outline" size={24} iconColor="#FFFFFF" onPress={() => {}} />
           </View>
           <Text style={styles.heroSubtitle}>
             Pastikan foto tajam dan area gigi terlihat jelas sebelum analisis.
           </Text>
           <View style={styles.heroMeta}>
-            <View style={styles.metaItem}>
-              <Text style={styles.metaValue}>{images.length}</Text>
-              <Text style={styles.metaLabel}>Foto dipilih</Text>
-            </View>
-            <View style={styles.metaDivider} />
-            <View style={styles.metaItem}>
-              <MaterialCommunityIcons name="shield-check" size={20} color="#34D399" />
-              <Text style={[styles.metaLabel, { marginTop: 6 }]}>Data terenkripsi</Text>
-            </View>
+              <View style={styles.metaItem}>
+                <Text style={styles.metaValue}>{images.length}</Text>
+                <Text style={styles.metaLabel}>Foto dipilih</Text>
+              </View>
+              <View style={styles.metaDivider} />
+              <View style={styles.metaItem}>
+                <MaterialCommunityIcons name="shield-check" size={20} color="#34D399" />
+                <Text style={[styles.metaLabel, { marginTop: 6 }]}>Data terenkripsi</Text>
+              </View>
           </View>
         </LinearGradient>
       </View>
@@ -83,7 +83,7 @@ const ImagePreviewScreen = ({ route, navigation }) => {
                 <Text style={styles.overlayText}>Pencahayaan baik</Text>
               </View>
               <Text style={styles.overlayFilename} numberOfLines={1}>
-                {images[selectedIndex]?.fileName || 'Captured photo'}
+                {images[selectedIndex]?.fileName || 'Foto yang diambil'}
               </Text>
             </View>
           </View>

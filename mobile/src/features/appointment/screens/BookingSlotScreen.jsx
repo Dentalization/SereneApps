@@ -174,9 +174,9 @@ const BookingSlotScreen = () => {
           </View>
 
           <View style={{ flexDirection: 'row', marginTop: 16 }}>
-            <InfoPill icon='star' label={`${dentist.rating} rating`} />
+            <InfoPill icon='star' label={`Rating ${dentist.rating}`} />
             <InfoPill icon='map-marker-distance' label={dentist.clinic.distance} />
-            <InfoPill icon='calendar' label={`${filteredSlots.length} slot`} />
+            <InfoPill icon='calendar' label={`${filteredSlots.length} jadwal tersedia`} />
           </View>
         </LinearGradient>
       </View>
@@ -245,8 +245,8 @@ const BookingSlotScreen = () => {
           </Text>
           <View style={{ flexDirection: 'row', marginBottom: 12 }}>
             {[
-              { key: 'onsite', label: 'Onsite' },
-              { key: 'virtual', label: 'Virtual' },
+              { key: 'onsite', label: 'Di klinik' },
+              { key: 'virtual', label: 'Online' },
             ].map((item) => (
               <Chip
                 key={item.key}
@@ -360,9 +360,7 @@ const BookingSlotScreen = () => {
               }}
             >
               {selectedSlot
-                ? `${selectedSlot.time} · ${
-                    slotType === 'virtual' ? 'Virtual' : 'Onsite'
-                  }`
+                ? `${selectedSlot.time} · ${slotType === 'virtual' ? 'Online' : 'Di klinik'}`
                 : 'Belum dipilih'}
             </Text>
           </View>

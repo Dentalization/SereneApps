@@ -32,11 +32,11 @@ const ContactSupportScreen = ({ navigation }) => {
             title: 'Hubungi care@serene.id',
             subtitle:
               'Tim Care Concierge siap membantu kebutuhan klinis dan teknis Anda kapan saja.',
-            badgeLabel: 'Response time < 5 menit',
+            badgeLabel: 'Respon < 5 menit',
             badgeIcon: 'email-fast',
             highlights: [
               { icon: 'clock-outline', label: 'Operasional', value: '24/7' },
-              { icon: 'map-marker', label: 'Coverage', value: 'Global' },
+              { icon: 'map-marker', label: 'Cakupan', value: 'Global' },
             ],
           }}
           footerText="Anda juga dapat menghubungi WhatsApp resmi +62812-3456-7890."

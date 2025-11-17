@@ -74,8 +74,8 @@ const BookingConfirmScreen = () => {
               <MaterialCommunityIcons name='information-outline' size={22} color='white' />
             </TouchableOpacity>
           </View>
-          <View style={{ marginTop: 20 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.8)' }}>Periksa kembali detail booking sebelum konfirmasi.</Text>
+      <View style={{ marginTop: 20 }}>
+        <Text style={{ color: 'rgba(255,255,255,0.8)' }}>Periksa kembali detail pemesanan sebelum konfirmasi.</Text>
             <View style={{ marginTop: 20 }}>
               <ProgressIndicator current={2} />
             </View>
@@ -129,11 +129,11 @@ const BookingConfirmScreen = () => {
 
         <Section title='Metode pembayaran'>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {[
-              { key: 'card', label: 'Kartu' },
-              { key: 'va', label: 'Virtual Account' },
-              { key: 'cash', label: 'Bayar di klinik' },
-            ].map((option) => (
+              {[
+                { key: 'card', label: 'Kartu' },
+                { key: 'va', label: 'Virtual Account (VA)' },
+                { key: 'cash', label: 'Bayar di klinik' },
+              ].map((option) => (
               <Chip
                 key={option.key}
                 selected={payment === option.key}
@@ -205,7 +205,7 @@ const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => (
         <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dateLabel}</Text>
         <Text style={{ color: '#5F6B7C' }}>{timeLabel} WIB</Text>
       </View>
-      <Chip icon={type === 'virtual' ? 'video' : 'map-marker'}>{type === 'virtual' ? 'Virtual' : 'Onsite'}</Chip>
+      <Chip icon={type === 'virtual' ? 'video' : 'map-marker'}>{type === 'virtual' ? 'Online' : 'Di klinik'}</Chip>
     </View>
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
       <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>

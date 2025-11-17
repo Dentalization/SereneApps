@@ -62,7 +62,7 @@ const AIHomeScreen = ({ navigation }) => {
           {/* Top row: title + history icon */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>First Diagnosis AI</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>Diagnosis AI Serene</Text>
               <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700' }}>Analisis gigi modern</Text>
             </View>
             <Button

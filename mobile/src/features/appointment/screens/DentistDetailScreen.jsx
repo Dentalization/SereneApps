@@ -181,7 +181,7 @@ const DentistDetailScreen = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                 <MaterialCommunityIcons name='star' color='#FACC15' size={18} />
                 <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
-                  {dentist.rating?.toFixed(1)} · {dentist.reviews} reviews
+                  {dentist.rating?.toFixed(1)} · {dentist.reviews} ulasan
                 </Text>
               </View>
               {distanceText ? (
@@ -210,7 +210,7 @@ const DentistDetailScreen = () => {
               }}
             >
               <MaterialCommunityIcons name='calendar-check' size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Book</Text>
+              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Pesan jadwal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleMessage}
@@ -237,8 +237,8 @@ const DentistDetailScreen = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {[
               statCard('Pengalaman', dentist.experience || '—', 'medal-outline'),
-              statCard('Pasien terbantu', dentist.patientsHelped || '1,200+', 'account-group'),
-              statCard('Respons', dentist.responseTime || '<2 jam', 'clock-fast'),
+              statCard('Pasien terbantu', dentist.patientsHelped || '1.200+', 'account-group'),
+              statCard('Respon rata-rata', dentist.responseTime || '<2 jam', 'clock-fast'),
             ]}
           </ScrollView>
 
@@ -412,7 +412,7 @@ const DentistDetailScreen = () => {
             }}
           >
             <MaterialCommunityIcons name='calendar-plus' size={20} color='white' />
-            <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Book Now</Text>
+            <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Pesan sekarang</Text>
           </TouchableOpacity>
         </View>
       </View>

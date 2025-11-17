@@ -32,7 +32,7 @@ const CheckoutScreen = () => {
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 160 }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A', marginBottom: 20 }}>Checkout</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A', marginBottom: 20 }}>Pembayaran</Text>
 
         <CardBlock title='Alamat pengiriman'>
           <Text style={{ fontWeight: '700', color: '#0F172A' }}>Adrian Halim</Text>
@@ -47,7 +47,7 @@ const CheckoutScreen = () => {
               <Text style={{ fontWeight: '700', color: '#0F172A' }}>Kartu Kredit</Text>
               <Text style={{ color: '#94A3B8', marginTop: 2 }}>Visa ••4123</Text>
             </View>
-            <Button mode='outlined' compact>Edit</Button>
+            <Button mode='outlined' compact>Ubah</Button>
           </View>
         </CardBlock>
 
@@ -56,7 +56,7 @@ const CheckoutScreen = () => {
             <View key={item.name} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
               <View>
                 <Text style={{ fontWeight: '600', color: '#0F172A' }}>{item.name}</Text>
-                <Text style={{ color: '#94A3B8' }}>{item.qty} item</Text>
+                <Text style={{ color: '#94A3B8' }}>{item.qty} barang</Text>
               </View>
               <Text style={{ fontWeight: '600', color: '#0F172A' }}>{formatCurrency(item.price * item.qty)}</Text>
             </View>

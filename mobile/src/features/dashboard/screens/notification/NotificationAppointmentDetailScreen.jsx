@@ -71,7 +71,7 @@ const NotificationAppointmentDetailScreen = () => {
 
   const footer = meta.mapLink ? (
     <Button mode="outlined" onPress={() => Linking.openURL(meta.mapLink)}>
-      Buka lokasi di Maps
+      Buka di Google Maps
     </Button>
   ) : null;
 

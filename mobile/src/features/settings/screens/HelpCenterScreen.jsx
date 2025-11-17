@@ -26,11 +26,11 @@ const HelpCenterScreen = ({ navigation }) => {
             title: 'Pusat Bantuan Serene',
             subtitle:
               'Panduan self-service untuk menyelesaikan kebutuhan pasien dalam hitungan menit.',
-            badgeLabel: 'Siaran langsung 24/7',
+            badgeLabel: 'Layanan langsung 24/7',
             badgeIcon: 'headset',
             highlights: [
               { icon: 'clock-fast', label: 'Respons', value: '< 5 menit' },
-              { icon: 'account-group', label: 'Agent', value: '50+ Care' },
+              { icon: 'account-group', label: 'Agen', value: '50+ personel' },
             ],
           }}
           footerText="Masih butuh bantuan? Pilih Hubungi Care untuk berbicara dengan agen."

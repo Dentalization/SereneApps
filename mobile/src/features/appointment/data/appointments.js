@@ -16,7 +16,7 @@ export const CLINICS = [
   {
     id: 'clinic-001',
     name: 'SereneAI Dental Sudirman',
-    tagline: 'Digital-first smile studio',
+    tagline: 'Studio senyum berbasis digital',
     address: 'Jl. Jend. Sudirman No. 12, Jakarta Pusat',
     distance: '1.2 km',
     rating: 4.9,
@@ -24,12 +24,12 @@ export const CLINICS = [
     phone: '+62 812-3344-5566',
     email: 'hello@sudirmandental.id',
     operationalHours: 'Setiap hari · 08:00 - 21:00',
-    stats: { dentists: 6, patients: '2.1k', rooms: '8 Smart Rooms' },
-    highlights: ['Digital 3D Scan', 'Sedation ready', 'Child-friendly'],
+    stats: { dentists: 6, patients: '2,1 rb', rooms: '8 ruang pintar' },
+    highlights: ['Pemindaian 3D digital', 'Siap sedasi', 'Ramah anak'],
     services: [
-      { name: 'Konsultasi Orthodontic', price: 280000, description: 'Penilaian komprehensif + rencana aligner' },
-      { name: 'Scaling & polishing', price: 480000, description: 'Pembersihan ultrasonik + fluor' },
-      { name: 'Laser whitening express', price: 950000, description: '60 menit, aman untuk enamel sensitif' },
+      { name: 'Konsultasi ortodonti', price: 280000, description: 'Penilaian komprehensif + rencana aligner' },
+      { name: 'Scaling dan polishing', price: 480000, description: 'Pembersihan ultrasonik + fluor' },
+      { name: 'Whitening laser ekspres', price: 950000, description: '60 menit, aman untuk enamel sensitif' },
     ],
     gallery: [
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
@@ -41,7 +41,7 @@ export const CLINICS = [
   {
     id: 'clinic-002',
     name: 'Glow Dental Menteng',
-    tagline: 'Boutique cosmetic dentistry',
+    tagline: 'Klinik kosmetik butik',
     address: 'Jl. Menteng Raya No. 22, Jakarta Pusat',
     distance: '2.5 km',
     rating: 4.7,
@@ -49,11 +49,11 @@ export const CLINICS = [
     phone: '+62 813-7788-9922',
     email: 'cs@glowdental.id',
     operationalHours: 'Senin - Sabtu · 09:00 - 20:00',
-    stats: { dentists: 4, patients: '1.4k', rooms: '5 Smart Rooms' },
-    highlights: ['Virtual consult', 'Whitening suite', 'Kids corner'],
+    stats: { dentists: 4, patients: '1,4 rb', rooms: '5 ruang pintar' },
+    highlights: ['Konsultasi virtual', 'Studio pemutihan', 'Zona anak'],
     services: [
-      { name: 'Smile design consult', price: 350000, description: 'Digital mockup & treatment plan' },
-      { name: 'Premium whitening', price: 1250000, description: 'Dual-light LED whitening' },
+      { name: 'Konsultasi desain senyum', price: 350000, description: 'Simulasi digital & rencana perawatan' },
+      { name: 'Whitening premium', price: 1250000, description: 'Whitening LED dual-light' },
     ],
     gallery: [
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1000',
@@ -67,7 +67,7 @@ const DENTIST_SEED = [
   {
     id: 'dentist-001',
     name: 'Dr. Sarah Johnson',
-    specialty: 'Orthodontic Specialist',
+    specialty: 'Spesialis ortodonti',
     avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200',
     rating: 4.9,
     clinicId: 'clinic-001',
@@ -75,7 +75,7 @@ const DENTIST_SEED = [
   {
     id: 'dentist-002',
     name: 'Dr. Thomas Mitchell',
-    specialty: 'Periodontist',
+    specialty: 'Spesialis periodonti',
     avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=200',
     rating: 4.8,
     clinicId: 'clinic-002',
@@ -83,7 +83,7 @@ const DENTIST_SEED = [
   {
     id: 'dentist-003',
     name: 'Dr. Amelia Santoso',
-    specialty: 'Cosmetic Dentist',
+    specialty: 'Dokter gigi kosmetik',
     avatar: 'https://images.unsplash.com/photo-1544723795-432537f06021?w=200',
     rating: 4.9,
     clinicId: 'clinic-001',
@@ -91,7 +91,7 @@ const DENTIST_SEED = [
   {
     id: 'dentist-004',
     name: 'Dr. Daniel Wirawan',
-    specialty: 'Implantologist',
+    specialty: 'Spesialis implan',
     avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200',
     rating: 4.7,
     clinicId: 'clinic-001',
@@ -122,7 +122,7 @@ export const APPOINTMENTS = [
     type: 'onsite',
     startsAt: makeDate(2, 10, 0),
     endsAt: addMinutesISO(makeDate(2, 10, 0), 45),
-    reason: 'Scaling & polishing',
+    reason: 'Scaling dan polishing',
     clinic: DENTISTS[1].clinic,
     dentist: DENTISTS[1],
     actions: { canJoinCall: false, canReschedule: true, canCancel: true },

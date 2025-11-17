@@ -25,7 +25,7 @@ const NotificationShopDetailScreen = () => {
 
   const sections = useMemo(() => {
     const orderRows = [
-      meta.orderId && { label: 'Order', value: meta.orderId },
+      meta.orderId && { label: 'ID Pesanan', value: meta.orderId },
       meta.status && { label: 'Status', value: meta.status },
       meta.trackingId && { label: 'No. Resi', value: meta.trackingId },
       meta.eta && { label: 'Estimasi', value: meta.eta },

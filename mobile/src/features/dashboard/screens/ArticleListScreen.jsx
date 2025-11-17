@@ -60,8 +60,8 @@ const ArticleListScreen = () => {
             <MaterialCommunityIcons name="arrow-left" color="white" size={22} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Latest Articles</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>Curated dental insights for you</Text>
+            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Artikel terbaru</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>Wawasan kesehatan gigi pilihan untuk Anda</Text>
           </View>
         </View>
       </View>
@@ -115,7 +115,7 @@ const ArticleListScreen = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <MaterialCommunityIcons name="newspaper-variant-outline" size={16} color="#6B7280" />
-                  <Text style={{ marginLeft: 8, color: '#6B7280', fontWeight: '600' }}>{item.source || 'Dental News'}</Text>
+                  <Text style={{ marginLeft: 8, color: '#6B7280', fontWeight: '600' }}>{item.source || 'Berita Kesehatan'}</Text>
                 </View>
                 <MaterialCommunityIcons name="open-in-new" size={18} color={theme.colors.primary} />
               </View>

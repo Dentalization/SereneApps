@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../../components/shared/EmptyState';
 import { getAppointmentsByStatus, APPOINTMENTS } from '../data/appointments';
@@ -15,37 +15,6 @@ const AppointmentListScreen = () => {
   const appointments = useMemo(() => getAppointmentsByStatus(tab), [tab]);
   const upcomingCount = getAppointmentsByStatus('upcoming').length;
   const completedCount = getAppointmentsByStatus('completed').length;
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const isDark = theme.dark;
-      const surface = isDark
-        ? theme.colors.elevation?.level2 || '#121212'
-        : theme.colors.surface || '#FFFFFF';
-      const borderTop = isDark
-        ? 'rgba(255,255,255,0.06)'
-        : theme.colors.outlineVariant || 'rgba(0,0,0,0.06)';
-
-      navigation.getParent()?.setOptions({
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: surface,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          height: Platform.OS === 'ios' ? 88 : 68,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 12,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: borderTop,
-          elevation: isDark ? 0 : 12,
-          shadowColor: isDark ? 'transparent' : '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: isDark ? 0 : 0.06,
-          shadowRadius: isDark ? 0 : 12,
-        },
-      });
-    }, [navigation, theme])
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -69,7 +38,7 @@ const AppointmentListScreen = () => {
               Kelola jadwal
             </Text>
             <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-              {upcomingCount} upcoming · {completedCount} completed
+              {upcomingCount} aktif · {completedCount} selesai
             </Text>
           </View>
           <Button
@@ -136,8 +105,8 @@ const AppointmentListScreen = () => {
 
 const StatusTabs = ({ value, onChange }) => {
   const tabs = [
-    { key: 'upcoming', label: 'Upcoming', count: getAppointmentsByStatus('upcoming').length },
-    { key: 'completed', label: 'Completed', count: getAppointmentsByStatus('completed').length },
+    { key: 'upcoming', label: 'Akan datang', count: getAppointmentsByStatus('upcoming').length },
+    { key: 'completed', label: 'Selesai', count: getAppointmentsByStatus('completed').length },
   ];
   return (
     <View
@@ -182,7 +151,7 @@ const StatusTabs = ({ value, onChange }) => {
                 color: active ? '#4C1D95' : '#94A3B8',
               }}
             >
-              {tab.count} bookings
+              {tab.count} janji
             </Text>
           </TouchableOpacity>
         );
@@ -256,7 +225,7 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
               fontSize: 12,
             }}
           >
-            {appointment.type === 'virtual' ? 'Virtual' : 'Onsite'}
+            {appointment.type === 'virtual' ? 'Online' : 'Di klinik'}
           </Text>
         </View>
       </View>
@@ -330,7 +299,7 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
             style={{ flex: 1, marginRight: 10 }}
             onPress={canJoin ? onJoin : onReschedule}
           >
-            {canJoin ? 'Join Call' : 'Reschedule'}
+            {canJoin ? 'Gabung panggilan' : 'Ubah jadwal'}
           </Button>
         ) : (
           <Button
@@ -338,12 +307,12 @@ const AppointmentCard = ({ appointment, onJoin, onReschedule }) => {
             style={{ flex: 1, marginRight: 10 }}
             onPress={onReschedule}
           >
-            Book again
+            Buat janji baru
           </Button>
         )}
         {showPrimary ? (
           <Button mode="outlined" style={{ flex: 1 }}>
-            Cancel
+            Batalkan
           </Button>
         ) : null}
       </View>

@@ -12,17 +12,26 @@ const CARD_W = width - SIDE * 2; // konsisten center seperti FeaturedDoctors
 const SNAP_INTERVAL = CARD_W + GAP;
 
 export const formatArticleRelativeTime = (iso) => {
-  if(!iso) return '';
+  if (!iso) return '';
   const t = new Date(iso).getTime();
-  if(Number.isNaN(t)) return '';
-  let s = Math.max(1, Math.floor((Date.now()-t)/1000));
-  const step = [[60,'s'],[60,'m'],[24,'h'],[7,'d'],[4.345,'w'],[12,'mo']];
-  let i=0, label='s';
-  while(i<step.length && s>=step[i][0]){ s = Math.floor(s/step[i][0]); label = step[i++][1]; }
-  return `${s}${label} ago`;
+  if (Number.isNaN(t)) return '';
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - t) / 1000));
+  if (diffSeconds < 60) return `${diffSeconds} detik lalu`;
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes} menit lalu`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} jam lalu`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} hari lalu`;
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 4) return `${diffWeeks} minggu lalu`;
+  const diffMonths = Math.floor(diffWeeks / 4);
+  if (diffMonths < 12) return `${diffMonths} bulan lalu`;
+  const diffYears = Math.floor(diffMonths / 12);
+  return `${diffYears} tahun lalu`;
 };
 
-export default function Article({ title='Dental Articles', subtitle='Trusted sources curated for you', articles=[], onOpen, onSeeAll }) {
+export default function Article({ title='Artikel kesehatan gigi', subtitle='Kumpulan sumber tepercaya untuk Anda', articles=[], onOpen, onSeeAll }) {
   const theme = useTheme();
   const data = useMemo(() => (articles.length ? articles : SAMPLE_ARTICLES), [articles]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -62,7 +71,7 @@ export default function Article({ title='Dental Articles', subtitle='Trusted sou
                 <Text numberOfLines={2} style={{ fontSize:16, fontWeight:'700', color:'#FFF', marginBottom:6 }}>{a.title}</Text>
                 <View style={{ flexDirection:'row', alignItems:'center', opacity:0.9 }}>
                   <MaterialCommunityIcons name="newspaper-variant-outline" size={14} color="#FFF" />
-                  <Text style={{ marginLeft:6, fontSize:12, color:'#FFF' }}>{a.source || 'Source'}</Text>
+                  <Text style={{ marginLeft:6, fontSize:12, color:'#FFF' }}>{a.source || 'Sumber'}</Text>
                   <View style={{ width:4, height:4, borderRadius:2, backgroundColor:'rgba(255,255,255,0.8)', marginHorizontal:8 }} />
                   <MaterialCommunityIcons name="clock-time-four-outline" size={14} color="#FFF" />
                   <Text style={{ marginLeft:6, fontSize:12, color:'#FFF' }}>{formatArticleRelativeTime(a.publishedAt)}</Text>

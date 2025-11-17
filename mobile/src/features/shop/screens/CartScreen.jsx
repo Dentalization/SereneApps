@@ -13,7 +13,7 @@ const CartScreen = () => {
 
   const cartItems = useMemo(() => [
     { ...SHOP_PRODUCTS[0], qty: 2, variant: '100gr' },
-    { ...SHOP_PRODUCTS[1], qty: 1, variant: 'Graphite Black' },
+    { ...SHOP_PRODUCTS[1], qty: 1, variant: 'Hitam Grafit' },
   ], []);
 
   const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.qty, 0);
