@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { StyleSheet, View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 
 import DashboardNavigator from './DashboardNavigator';
 import AppointmentNavigator from './AppointmentNavigator';
@@ -35,40 +36,32 @@ const HIDDEN_TAB_ROUTES = new Set([
   'ProductDetail',
   'Cart',
   'Checkout',
+  'HelpCenter',
+  'FAQCategories',
+  'FAQCategory',
 ]);
 
 const TabNavigator = () => {
   const theme = useTheme();
   const isDark = theme.dark;
 
-  // Warna yang mengikuti Paper MD3 + fallback aman
-  const surface = isDark
-    ? theme.colors.elevation?.level2 || '#121212'
-    : theme.colors.surface || '#FFFFFF';
-  const borderTop = isDark
-    ? 'rgba(255,255,255,0.06)'
-    : theme.colors.outlineVariant || 'rgba(0,0,0,0.06)';
-  const inactive = isDark
-    ? theme.colors.onSurfaceVariant || '#9E9E9E'
-    : '#666666';
+  const cartItems = useSelector((state) => state.cart?.items || []);
 
-  const cartItems = useSelector((state) => state.cart?.items || []); // pastikan selector sesuai slice kamu
-
+  // Liquid glass effect - white frosted glass
   const baseTabBarStyle = {
     position: 'absolute',
-    backgroundColor: surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: Platform.OS === 'ios' ? 88 : 68,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: borderTop,
-    elevation: isDark ? 0 : 12,
-    shadowColor: isDark ? 'transparent' : '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: isDark ? 0 : 0.06,
-    shadowRadius: isDark ? 0 : 12,
+    left: 16,
+    right: 16,
+    bottom: Platform.OS === 'ios' ? 24 : 16,
+    backgroundColor: 'transparent',
+    borderRadius: 32,
+    height: Platform.OS === 'ios' ? 80 : 70,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+    paddingTop: 10,
+    paddingHorizontal: 24,
+    borderTopWidth: 0,
+    elevation: 0,
+    overflow: 'hidden',
   };
 
   const getTabBarStyle = (route, defaultRouteName) => {
@@ -79,18 +72,44 @@ const TabNavigator = () => {
     return { ...baseTabBarStyle };
   };
 
+  // Custom tab bar background with BlurView
+  const tabBarBackground = () => (
+    <BlurView
+      intensity={Platform.OS === 'ios' ? 80 : 100}
+      tint="light"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 32,
+        backgroundColor: Platform.OS === 'ios' 
+          ? 'rgba(255, 255, 255, 0.7)' 
+          : 'rgba(255, 255, 255, 0.95)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.5)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.15,
+        shadowRadius: 25,
+      }}
+    />
+  );
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.primary,   // pakai #62109F dari theme kamu
-        tabBarInactiveTintColor: inactive,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: '#64748B',
         tabBarShowLabel: true,
         tabBarStyle: baseTabBarStyle,
+        tabBarBackground: tabBarBackground,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginTop: 4,
+          marginTop: 2,
         },
       }}
     >
@@ -100,11 +119,13 @@ const TabNavigator = () => {
         options={({ route }) => ({
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <MaterialCommunityIcons
-              name={focused ? 'home' : 'home-outline'}
-              size={24}
-              color={color}
-            />
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons
+                name={focused ? 'home' : 'home-outline'}
+                size={24}
+                color={color}
+              />
+            </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'Dashboard'),
         })}
@@ -116,11 +137,13 @@ const TabNavigator = () => {
         options={({ route }) => ({
           tabBarLabel: 'My Appointments',
           tabBarIcon: ({ color, focused }) => (
-            <MaterialCommunityIcons
-              name={focused ? 'calendar-check' : 'calendar-check-outline'}
-              size={24}
-              color={color}
-            />
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons
+                name={focused ? 'calendar-check' : 'calendar-check-outline'}
+                size={24}
+                color={color}
+              />
+            </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'AppointmentList'),
         })}
@@ -130,17 +153,14 @@ const TabNavigator = () => {
         name="AITab"
         component={AINavigator}
         options={{
-          tabBarLabel: '',
-          tabBarIcon: ({ focused }) => (
-            <View style={styles.centerButtonContainer}>
-              <View
-                style={[
-                  styles.centerButton,
-                  { backgroundColor: theme.colors.primary }, // #62109F
-                ]}
-              >
-                <MaterialCommunityIcons name="camera" size={32} color="#FFF" />
-              </View>
+          tabBarLabel: 'AI Scan',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons
+                name={focused ? 'camera' : 'camera-outline'}
+                size={24}
+                color={color}
+              />
             </View>
           ),
         }}
@@ -152,7 +172,7 @@ const TabNavigator = () => {
         options={({ route }) => ({
           tabBarLabel: 'Shop',
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconContainer}>
               <MaterialCommunityIcons
                 name={focused ? 'cart' : 'cart-outline'}
                 size={24}
@@ -180,11 +200,13 @@ const TabNavigator = () => {
         options={({ route }) => ({
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, focused }) => (
-            <MaterialCommunityIcons
-              name={focused ? 'account' : 'account-outline'}
-              size={24}
-              color={color}
-            />
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons
+                name={focused ? 'account' : 'account-outline'}
+                size={24}
+                color={color}
+              />
+            </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'SettingsHome'),
         })}
@@ -194,23 +216,9 @@ const TabNavigator = () => {
 };
 
 const styles = StyleSheet.create({
-  centerButtonContainer: {
-    position: 'absolute',
-    top: -28,
+  iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  centerButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 10,
   },
   badge: {
     position: 'absolute',

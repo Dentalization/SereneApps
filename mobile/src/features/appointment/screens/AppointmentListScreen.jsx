@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../../components/shared/EmptyState';
 import { getAppointmentsByStatus, APPOINTMENTS } from '../data/appointments';
@@ -15,37 +15,6 @@ const AppointmentListScreen = () => {
   const appointments = useMemo(() => getAppointmentsByStatus(tab), [tab]);
   const upcomingCount = getAppointmentsByStatus('upcoming').length;
   const completedCount = getAppointmentsByStatus('completed').length;
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const isDark = theme.dark;
-      const surface = isDark
-        ? theme.colors.elevation?.level2 || '#121212'
-        : theme.colors.surface || '#FFFFFF';
-      const borderTop = isDark
-        ? 'rgba(255,255,255,0.06)'
-        : theme.colors.outlineVariant || 'rgba(0,0,0,0.06)';
-
-      navigation.getParent()?.setOptions({
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: surface,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          height: Platform.OS === 'ios' ? 88 : 68,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 12,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: borderTop,
-          elevation: isDark ? 0 : 12,
-          shadowColor: isDark ? 'transparent' : '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: isDark ? 0 : 0.06,
-          shadowRadius: isDark ? 0 : 12,
-        },
-      });
-    }, [navigation, theme])
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
