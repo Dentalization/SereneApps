@@ -7,7 +7,9 @@ import {
   View,
   TextInput as RNTextInput,
 } from 'react-native';
-import { Button, Card, ProgressBar, Snackbar, Text, useTheme } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Card, ProgressBar, Text, useTheme } from 'react-native-paper';
+import ValidationToast from '../components/ValidationToast';
 import { useDispatch, useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
@@ -17,6 +19,7 @@ import { otpVerified } from '../../../store/slices/authSlice';
 const OTPScreen = ({ navigation, route }) => {
   const dispatch = useDispatch();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const storedPhone = useSelector((state) => state.auth.phoneNumber);
   const phoneNumber = route?.params?.phoneNumber || storedPhone || '+628';
   const [otp, setOtp] = useState('');
@@ -69,7 +72,10 @@ const OTPScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <AuthHero
           title="Konfirmasi nomor Anda"
           subtitle={`Kami mengirim kode verifikasi ke ${phoneNumber}. Pastikan nomor aktif.`}
@@ -176,14 +182,12 @@ const OTPScreen = ({ navigation, route }) => {
         </Card>
       </ScrollView>
 
-      <Snackbar
+      <ValidationToast
         visible={snackbar.visible}
+        message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={3500}
-        action={{ label: 'Tutup' }}
-      >
-        {snackbar.message}
-      </Snackbar>
+        status="info"
+      />
     </SafeAreaView>
   );
 };

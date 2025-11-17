@@ -10,6 +10,8 @@ import TermsScreen from '../features/settings/screens/TermsScreen';
 import DataManagementScreen from '../features/settings/screens/DataManagementScreen';
 import HelpCenterScreen from '../features/settings/screens/HelpCenterScreen';
 import ContactSupportScreen from '../features/settings/screens/ContactSupportScreen';
+import FAQCategoriesScreen from '../features/settings/screens/FAQCategoriesScreen';
+import FAQCategoryScreen from '../features/settings/screens/FAQCategoryScreen';
 
 const Stack = createStackNavigator();
 
@@ -65,6 +67,16 @@ const SettingsNavigator = () => {
         name="HelpCenter"
         component={HelpCenterScreen}
         options={{ title: 'Pusat Bantuan' }}
+      />
+      <Stack.Screen
+        name="FAQCategories"
+        component={FAQCategoriesScreen}
+        options={{ title: 'Semua Kategori FAQ' }}
+      />
+      <Stack.Screen
+        name="FAQCategory"
+        component={FAQCategoryScreen}
+        options={{ title: 'Detail Kategori FAQ' }}
       />
       <Stack.Screen
         name="ContactSupport"

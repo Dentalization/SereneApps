@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Button,
   Card,
@@ -7,7 +8,6 @@ import {
   HelperText,
   ProgressBar,
   SegmentedButtons,
-  Snackbar,
   Text,
   TextInput,
   useTheme,
@@ -15,6 +15,7 @@ import {
 import { useDispatch } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
+import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema, phoneSchema } from '../../../utils/validation';
 import { setPhoneNumber } from '../../../store/slices/authSlice';
 
@@ -28,6 +29,7 @@ const interestOptions = [
 
 const RegisterScreen = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
   const [form, setForm] = useState({
     name: '',
@@ -112,7 +114,10 @@ const RegisterScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <AuthHero
           title="Buat akun Serene"
           subtitle="Personalisasikan rencana perawatan gigi dan nikmati pemantauan cerdas berbasis AI."
@@ -275,14 +280,12 @@ const RegisterScreen = ({ navigation }) => {
         </Card>
       </ScrollView>
 
-      <Snackbar
+      <ValidationToast
         visible={snackbar.visible}
+        message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={3500}
-        action={{ label: 'OK' }}
-      >
-        {snackbar.message}
-      </Snackbar>
+        status="info"
+      />
     </SafeAreaView>
   );
 };

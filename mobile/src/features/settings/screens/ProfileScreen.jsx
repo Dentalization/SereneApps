@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
   Button,
   Chip,
   Divider,
   List,
-  Snackbar,
   Text,
   useTheme,
 } from 'react-native-paper';
@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import SettingsSection from '../components/SettingsSection';
+import ValidationToast from '../components/ValidationToast';
 import RiskBadge from '../../../components/shared/RiskBadge';
 import { getInitials } from '../../../utils/formatters';
 
@@ -50,6 +51,7 @@ const defaultProfile = {
 
 const ProfileScreen = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { user, patientProfile } = useSelector((state) => state.auth);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
@@ -120,7 +122,10 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroWrapper}>
           <LinearGradient
             colors={theme?.gradients?.secondary || [theme.colors.primary, theme.colors.secondary]}
@@ -288,14 +293,11 @@ const ProfileScreen = ({ navigation }) => {
         </SettingsSection>
       </ScrollView>
 
-      <Snackbar
+      <ValidationToast
         visible={snackbar.visible}
+        message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={3000}
-        action={{ label: 'Tutup' }}
-      >
-        {snackbar.message}
-      </Snackbar>
+      />
     </SafeAreaView>
   );
 };

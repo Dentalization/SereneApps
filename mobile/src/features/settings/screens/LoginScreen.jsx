@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Button,
   Card,
@@ -7,7 +9,6 @@ import {
   Divider,
   HelperText,
   IconButton,
-  Snackbar,
   Text,
   TextInput,
   useTheme,
@@ -15,18 +16,42 @@ import {
 import { useDispatch } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
+import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema } from '../../../utils/validation';
 import { loginSuccess } from '../../../store/slices/authSlice';
 
+const HAS_LOGGED_IN_KEY = 'serene_has_logged_in_before';
+
 const LoginScreen = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
+
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+
+  // flag untuk tahu apakah smartphone ini sudah pernah login
+  const [hasLoggedInBefore, setHasLoggedInBefore] = useState(false);
+
+  useEffect(() => {
+    const loadLoginFlag = async () => {
+      try {
+        const value = await AsyncStorage.getItem(HAS_LOGGED_IN_KEY);
+        if (value === 'true') {
+          setHasLoggedInBefore(true);
+        }
+      } catch (error) {
+        // kalau gagal baca, diamkan saja, default-nya dianggap belum pernah login
+        console.log('Failed to load login flag', error);
+      }
+    };
+
+    loadLoginFlag();
+  }, []);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -56,7 +81,7 @@ const LoginScreen = ({ navigation }) => {
     }
 
     setLoading(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       dispatch(
         loginSuccess({
           user: {
@@ -98,6 +123,15 @@ const LoginScreen = ({ navigation }) => {
           refreshToken: 'demo-refresh',
         })
       );
+
+      // tandai bahwa device ini sudah pernah login
+      try {
+        await AsyncStorage.setItem(HAS_LOGGED_IN_KEY, 'true');
+        setHasLoggedInBefore(true);
+      } catch (error) {
+        console.log('Failed to save login flag', error);
+      }
+
       setLoading(false);
       setSnackbar({ visible: true, message: 'Selamat datang kembali di SereneApps!' });
       navigation.goBack();
@@ -130,10 +164,12 @@ const LoginScreen = ({ navigation }) => {
     [form.email, form.password, loading]
   );
 
+  const welcomeTitle = hasLoggedInBefore ? 'Selamat datang kembali' : 'Selamat datang';
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -158,19 +194,28 @@ const LoginScreen = ({ navigation }) => {
         <Card style={[styles.formCard, theme?.shadows?.lg]}>
           <Card.Content>
             <View style={styles.cardHeader}>
-              <View>
+              {/* Baris judul + ikon "?" di satu line */}
+              <View style={styles.titleRow}>
                 <Text variant="titleLarge" style={styles.cardTitle}>
-                  Selamat datang kembali
+                  {welcomeTitle}
                 </Text>
-                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Masuk untuk melanjutkan progres kesehatan gigi Anda
-                </Text>
+                <IconButton
+                  icon="help-circle-outline"
+                  size={20}
+                  onPress={() =>
+                    setSnackbar({
+                      visible: true,
+                      message: 'Hubungi care@serene.id untuk bantuan.',
+                    })
+                  }
+                  style={styles.helpIcon}
+                />
               </View>
-              <IconButton
-                icon="help-circle-outline"
-                size={20}
-                onPress={() => setSnackbar({ visible: true, message: 'Hubungi care@serene.id untuk bantuan.' })}
-              />
+
+              {/* Subtitle di bawah judul */}
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                Masuk untuk melanjutkan progres kesehatan gigi Anda
+              </Text>
             </View>
 
             <View style={styles.fieldSpacing}>
@@ -221,7 +266,9 @@ const LoginScreen = ({ navigation }) => {
               <Button
                 compact
                 mode="text"
-                onPress={() => setSnackbar({ visible: true, message: 'Link reset dikirim ke email Anda.' })}
+                onPress={() =>
+                  setSnackbar({ visible: true, message: 'Link reset dikirim ke email Anda.' })
+                }
               >
                 Lupa password?
               </Button>
@@ -277,14 +324,12 @@ const LoginScreen = ({ navigation }) => {
         </Card>
       </ScrollView>
 
-      <Snackbar
+      <ValidationToast
         visible={snackbar.visible}
+        message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={3500}
-        action={{ label: 'Tutup' }}
-      >
-        {snackbar.message}
-      </Snackbar>
+        status="info"
+      />
     </SafeAreaView>
   );
 };
@@ -302,14 +347,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: 24,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between', // title kiri, icon kanan dalam satu baris
+    marginBottom: 4,
   },
   cardTitle: {
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  helpIcon: {
+    margin: 0,
   },
   fieldSpacing: {
     marginBottom: 12,
