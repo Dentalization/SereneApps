@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SAMPLE_NOTIFICATIONS, NOTIFICATION_TYPE_META } from '../data/notifications';
 import { formatNotificationTime, withOpacity } from '../utils/notificationUtils';
@@ -42,14 +42,6 @@ const NotificationScreen = () => {
   useEffect(() => {
     setNotifications(initialData);
   }, [initialData]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const parent = navigation.getParent?.();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => parent?.setOptions({ tabBarStyle: undefined });
-    }, [navigation])
-  );
 
   const filtered = useMemo(
     () =>
@@ -284,11 +276,17 @@ const NotificationScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 18,
-                  backgroundColor: '#0F172A',
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 24,
+                  backgroundColor: typeMeta.color,
+                  shadowColor: typeMeta.color,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 4,
                 }}
+                activeOpacity={0.8}
               >
                 <Text
                   style={{
@@ -296,13 +294,14 @@ const NotificationScreen = () => {
                     fontWeight: '700',
                     fontSize: 13,
                     marginRight: 6,
+                    letterSpacing: 0.3,
                   }}
                 >
                   {item.cta.label}
                 </Text>
                 <MaterialCommunityIcons
                   name="arrow-right"
-                  size={16}
+                  size={18}
                   color="white"
                 />
               </TouchableOpacity>

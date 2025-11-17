@@ -1,157 +1,114 @@
-<<<<<<< ours
-# Clinic Detail Screen
+# Complete Appointment Flow
 
-This document defines the UX contract for `ClinicDetailScreen` (`mobile/src/features/appointment/screens/ClinicDetailScreen.jsx`) and the data it consumes from `mobile/src/features/appointment/data/appointments.js`.
+Dokumen ini merinci seluruh perjalanan pasien dari mencari jadwal dokter gigi, melakukan booking, menyelesaikan pembayaran, hingga mengelola janji yang sudah dibuat. Semua informasi bersumber dari implementasi produksi pada folder `backend/src/routes` dan layanan terkait sehingga dapat langsung dijadikan referensi untuk pengembangan front-end maupun QA.
 
-## Hero section
-- Gradient background with back button, name, rating, address, and distance.
-- Quick stats pill row:
-  - `tech` → example: `Digital 3D Scan`
-  - `patients` → example: `2.1k pasien`
-  - `operationalHours` short summary.
+## 1. Aktor, Tampilan Default, dan Scope Hak Akses
 
-## Clinic entity shape
-```ts
-type Clinic = {
-  id: string;
-  name: string;
-  tagline: string;
-  address: string;
-  distance: string;
-  rating: number;
-  reviews: number;
-  phone: string;
-  email: string;
-  operationalHours: string;
-  stats: { dentists: number; patients: string; rooms: string };
-  highlights: string[];
-  services: { name: string; price: number; description: string }[];
-  gallery: string[];
-  dentists: string[]; // array of dentist ids
-};
-```
+| Aktor | Kemampuan Utama |
+| --- | --- |
+| Pasien (`patient`) | Melihat ketersediaan, membuat janji, melihat daftar sendiri, menjadwalkan ulang, membatalkan. |
+| Dokter gigi (`dentist`) | Melihat jadwal pribadi, mengonfirmasi janji, menerima pembaruan status. |
+| Staf klinik (`clinic_*`) | Melihat jadwal per klinik/cabang, membantu konfirmasi, memantau janji aktif. |
 
-## UI blocks
-1. **Highlights chips** – use `clinic.tagline` + `clinic.highlights`.
-2. **Services list** – show name, short description, formatted fee.
-3. **Gallery carousel** – horizontal scroll of images.
-4. **Dentist roster** – cards derived from `clinic.dentists` (call `getDentistById`). Each card:
-   - Avatar (use `dentist.avatar`).
-   - Name, specialty, rating.
-   - CTA buttons: `Lihat profil` (→ DentistDetail) and `Pilih jadwal` (→ BookingSlot).
-5. **Contact card** – phone + email + address button (open map later).
-6. **Sticky CTA** – “Book onsite” (navigate to BookingSlot with first dentist) and “Chat clinic” placeholder.
+Helper `deriveDefaultView` menentukan tampilan default berdasarkan role sehingga parameter `view` otomatis berisi `patient`, `dentist`, atau `clinic` ketika memanggil listing janji. 【F:backend/src/routes/appointments.js†L186-L210】【F:backend/src/routes/appointments.js†L1059-L1089】
 
-## Data source
-- `mobile/src/features/appointment/data/appointments.js` exports:
-  - `CLINICS` array (see example below).
-  - `getClinicById(id)` helper.
-  - `getDentistById(id)` re-used for roster.
+Staf klinik mendapatkan konteks cabang melalui `resolveClinicStaffContext` sebelum listing sehingga hanya data klinik terkait yang muncul. 【F:backend/src/routes/appointments.js†L200-L222】【F:backend/src/routes/appointments.js†L1084-L1184】
 
-Example entry:
-```js
-{
-  id: 'clinic-001',
-  name: 'SereneAI Dental Sudirman',
-  tagline: 'Digital-first smile studio',
-  address: 'Jl. Jend. Sudirman No. 12, Jakarta Pusat',
-  distance: '1.2 km',
-  rating: 4.9,
-  reviews: 276,
-  phone: '+62 812-3344-5566',
-  email: 'hello@sudirmandental.id',
-  operationalHours: 'Setiap hari · 08:00 - 21:00',
-  stats: { dentists: 6, patients: '2.1k', rooms: '8 Smart Rooms' },
-  highlights: ['Digital 3D Scan', 'Sedation ready', 'Child-friendly'],
-  services: [
-    { name: 'Konsultasi Orthodontic', price: 280000, description: 'Penilaian komprehensif + rencana aligner' },
-    { name: 'Scaling & polishing', price: 480000, description: 'Pembersihan ultrasonik + fluor' },
-    { name: 'Laser whitening express', price: 950000, description: '60 menit, aman untuk enamel sensitif' },
-  ],
-  gallery: [
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900',
-    'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=900',
-    'https://images.unsplash.com/photo-1487412720507-e75fd3b8d278?w=900',
-  ],
-  dentists: ['dentist-001', 'dentist-003', 'dentist-004'],
-}
-```
+## 2. Struktur Data & Status Appointment
 
-## Navigation
-- Dentist cards: `navigation.navigate('DentistDetail', { dentistId, dentist })`.
-- CTA “Book onsite” defaults to first dentist id.
-- Hide bottom tab bar via `useFocusEffect`.
-=======
-# Clinic Detail Screen (Patient App)
+Serializer `serializeAppointment` memastikan respons API konsisten: identitas pasien/dokter, cabang klinik, rentang waktu, alasan, catatan, referensi chat/video, metadata, serta histori status. Nilai tanggal selalu diubah ke ISO string. 【F:backend/src/routes/appointments.js†L167-L224】
 
-Dokumen ini memetakan semua data yang saat ini tersedia dari backend untuk ditampilkan pada **ClinicDetailScreen** di aplikasi pasien. Sumber utama berasal dari endpoint `GET /v1/clinics/:id` beserta turunan `GET /v1/clinics/:id/dentists` dan `GET /v1/clinics/:id/services`.
+Konfigurasi pada `appointmentConfig` mengatur cutoff reschedule 24 jam, cutoff cancel 12 jam, serta persentase biaya pembatalan. 【F:backend/src/services/appointments/config.js†L1-L15】
 
-## 1. Ringkasan Endpoint & Struktur Respons
+Status yang menggerakkan flow pasien dan notifikasi:
 
-| Tujuan | Endpoint | Highlight Data |
+- `scheduled` – status awal setelah booking berhasil. 【F:backend/src/routes/appointments.js†L324-L409】
+- `confirmed` – di-set ketika pembayaran sukses atau dokter/staf menyetujui janji. 【F:backend/src/routes/appointments.js†L890-L973】【F:backend/src/services/payments/status.js†L18-L69】
+- `rescheduled` – status perantara saat jadwal berpindah tapi belum dikonfirmasi ulang. 【F:backend/src/routes/appointments.js†L563-L679】【F:backend/src/routes/appointments.js†L889-L948】
+- `cancelled` – akhir dari proses pembatalan oleh pasien atau akibat pembayaran gagal. 【F:backend/src/routes/appointments.js†L688-L818】【F:backend/src/services/payments/status.js†L30-L74】
+
+Selain status inti, kolom `commStatus`, `chatRoomRef`, dan `videoRoomRef` disiapkan agar tim komunikasi bisa mengaktifkan chat/video secara otomatis ketika janji terkonfirmasi. 【F:backend/src/routes/appointments.js†L167-L224】【F:backend/src/services/payments/status.js†L40-L74】
+
+## 3. Tahapan Pra-Booking: Menemukan Slot Dokter
+
+1. **Validasi Parameter** – Endpoint `GET /api/appointments/availability` memerlukan `dentistId` dan tanggal (YYYY-MM-DD). Format diverifikasi lewat helper `ensureIsoDate`; jika kosong, API mengembalikan error kode khusus (`dentist_id_required`, `date_required`). 【F:backend/src/routes/appointments.js†L212-L266】
+2. **Jam Operasional Klinik** – `getWorkingWindow` membaca konfigurasi jam kerja per hari (JSON) dari profil dokter. Bila klinik tutup di tanggal tersebut, respons tetap valid namun daftar slot kosong. 【F:backend/src/routes/appointments.js†L228-L303】
+3. **Generasi Slot dan Cek Bentrok** – Slot dibuat per kelipatan `slotMinutes` (default 30 menit). Setiap slot difilter agar tidak overlap dengan janji berstatus aktif (`scheduled`, `confirmed`). 【F:backend/src/routes/appointments.js†L234-L303】
+4. **Respons** – Payload berisi `dentistId`, tanggal, zona waktu default, durasi slot, dan daftar slot ISO start/end sehingga UI dapat langsung mengisi komponen kalender. 【F:backend/src/routes/appointments.js†L296-L303】
+
+## 4. Booking Appointment: Dari Submit Hingga Respons
+
+1. **Hak Akses** – Hanya user berperan `patient` yang boleh memanggil `POST /api/appointments`. 【F:backend/src/routes/appointments.js†L305-L333】
+2. **Validasi Field** – Server memastikan dokter dan waktu dipilih, format waktu valid, tidak booking di masa lalu, serta pasien tidak bisa mem-booking dirinya sendiri. 【F:backend/src/routes/appointments.js†L331-L357】
+3. **Proteksi Double-Booking** – Menggunakan transaksi + `pg_advisory_xact_lock` per dokter untuk menahan race condition, lalu memeriksa overlap terhadap janji aktif. Jika ada, API mengembalikan `409 slot_taken`. 【F:backend/src/routes/appointments.js†L330-L372】【F:backend/src/routes/appointments.js†L411-L437】
+4. **Pencatatan Riwayat** – Setelah `appointment` dibuat dengan status `scheduled`, sistem menambahkan entri histori `appointment_created` (patient sebagai pelaku). 【F:backend/src/routes/appointments.js†L372-L409】
+5. **Payload Ringkasan Dokter** – Respons `201` menyertakan detail dokter (nama, gelar, spesialisasi, alamat klinik, biaya konsultasi) untuk mengisi layar konfirmasi/pembayaran tanpa panggilan tambahan. 【F:backend/src/routes/appointments.js†L379-L409】
+6. **Event & Komunikasi** – Event `appointment_created` dikirim melalui `emitAppointmentEvent`, memungkinkan sistem notifikasi atau integrasi real-time bereaksi (misal push/email). 【F:backend/src/routes/appointments.js†L635-L679】
+
+## 5. Integrasi Pembayaran & Aktivasi Komunikasi
+
+Setelah booking, pasien membuat payment intent via endpoint `POST /api/payments`. Layanan pembayaran menyimpan relasi ke appointment dan menolak duplikasi intent aktif. 【F:backend/src/routes/payments.js†L88-L150】
+
+Saat status pembayaran berubah:
+
+1. **Sinkronisasi Status** – Fungsi `applyPaymentStatus` memetakan status `succeeded` → `confirmed`, `failed` → `payment_failed`, `cancelled` → `cancelled`, lalu mengubah record appointment pada transaksi yang sama. 【F:backend/src/services/payments/status.js†L18-L74】
+2. **Aktivasi Chat/Video** – Ketika appointment menjadi `confirmed`, layanan komunikasi memastikan ruang chat & video tersedia, serta memperbarui `commStatus` menjadi `ready`. 【F:backend/src/services/payments/status.js†L40-L74】
+3. **Ledger & Event** – Status final memicu pencatatan ke `paymentLedger` dan event `appointment_confirmed`/`appointment_payment_failed`/`appointment_cancelled` melalui `emitAppointmentEvent`. 【F:backend/src/services/payments/status.js†L75-L121】
+4. **Notifikasi** – Fungsi `queueNotificationEvent` menyiapkan undangan chat agar pasien menerima instruksi komunikasi setelah pembayaran sukses. 【F:backend/src/services/payments/status.js†L52-L74】
+
+## 6. Mengelola Appointment dari Sisi Pasien
+
+1. **Daftar Appointment (Upcoming/Past/Cancelled)** – Endpoint `GET /api/appointments?view=patient` mendukung filter status (koma), rentang tanggal, pencarian teks, paginasi, dan opsi `includeHistory` untuk timeline mini. Respons juga memuat agregasi total dan jumlah per status guna membangun tab UI. 【F:backend/src/routes/appointments.js†L1059-L1244】
+2. **Detail Appointment** – `GET /api/appointments/:id` memverifikasi hak akses (pasien pemilik, dokter terkait, atau staf klinik) lalu mengembalikan detail lengkap termasuk histori status, metadata pembatalan, dan referensi komunikasi. 【F:backend/src/routes/appointments.js†L812-L886】
+3. **Reschedule** – `PATCH /api/appointments/:id/reschedule` mengecek cutoff (`rescheduleCutoffHours`), memastikan slot baru tidak bentrok, menyimpan `lastReschedule`, menambahkan histori `patient_reschedule`, serta menerbitkan event `appointment_rescheduled`. 【F:backend/src/routes/appointments.js†L527-L679】【F:backend/src/services/appointments/config.js†L1-L15】
+4. **Cancel** – `PATCH /api/appointments/:id/cancel` menghitung jarak ke jadwal, menerapkan biaya pembatalan bila ada payment intent terakhir, memperbarui metadata `cancelledAt` dan `cancellationFee`, serta menambahkan histori `patient_cancelled` sebelum mengirim event `appointment_cancelled`. 【F:backend/src/routes/appointments.js†L688-L818】
+
+## 7. Operasi Dokter & Klinik
+
+- **Konfirmasi Manual** – Dokter atau staf memanggil `PATCH /api/appointments/:id/confirm`. Endpoint memeriksa kepemilikan (untuk dokter), memastikan status awal masih `scheduled`/`rescheduled`, lalu menyimpan status `confirmed` dan event notifikasi. 【F:backend/src/routes/appointments.js†L889-L973】
+- **Daftar Dokter** – Parameter `view=dentist` membuat listing hanya menampilkan janji milik dokter tersebut. Respons sama dengan pasien namun difilter berdasarkan `dentistId`. 【F:backend/src/routes/appointments.js†L1071-L1135】
+- **Daftar Klinik** – Parameter `view=clinic` menampilkan janji berdasarkan cabang yang sudah dipetakan oleh `resolveClinicStaffContext`, termasuk filter status, rentang waktu, dan pencarian teks. 【F:backend/src/routes/appointments.js†L1084-L1184】
+
+## 8. Error Handling & Kode yang Perlu Ditangani UI
+
+Endpoint mengembalikan struktur `error.code` konsisten, contoh: `invalid_date`, `slot_taken`, `invalid_payload`, `cancel_window_elapsed`, `cannot_cancel_status`. UI dapat memetakan kode ini ke pesan lokal. 【F:backend/src/routes/appointments.js†L236-L437】【F:backend/src/routes/appointments.js†L688-L818】
+
+Saat payment intent gagal/sudah final, layanan mengembalikan error `PAYMENT_ALREADY_FINAL` atau `PAYMENT_INTENT_NOT_FOUND` dengan status HTTP sesuai agar UI dapat menampilkan state pembayaran. 【F:backend/src/services/payments/status.js†L76-L121】
+
+## 9. Rangkuman Endpoint Utama
+
+| Tujuan | Method & Endpoint | Keterangan |
 | --- | --- | --- |
-| Detail klinik | `GET /v1/clinics/:id` | Nama brand, jenis fasilitas, alamat lengkap, kontak, status verifikasi, jam operasional, metadata verifikasi. 【F:backend/src/controllers/clinicsController.js†L120-L160】|
-| Daftar dokter | `GET /v1/clinics/:id/dentists` | Profil dokter per klinik termasuk spesialisasi, pengalaman, biaya konsultasi, status verifikasi. 【F:backend/src/controllers/clinicsController.js†L170-L254】|
-| Layanan klinik | `GET /v1/clinics/:id/services` | Saat ini mengembalikan array kosong + pesan placeholder (belum ada tabel layanan). 【F:backend/src/controllers/clinicsController.js†L260-L301】|
+| Load slot dokter | `GET /api/appointments/availability` | Filter slot aktif dan jam kerja klinik. 【F:backend/src/routes/appointments.js†L212-L303】 |
+| Buat janji | `POST /api/appointments` | Validasi payload, proteksi double-booking, histori awal. 【F:backend/src/routes/appointments.js†L305-L409】 |
+| Daftar janji | `GET /api/appointments` | Mendukung view patient/dentist/clinic, agregasi tab. 【F:backend/src/routes/appointments.js†L1059-L1244】 |
+| Detail janji | `GET /api/appointments/:id` | Hak akses lintas peran, histori lengkap. 【F:backend/src/routes/appointments.js†L812-L886】 |
+| Reschedule | `PATCH /api/appointments/:id/reschedule` | Cutoff 24 jam, histori `patient_reschedule`, event real-time. 【F:backend/src/routes/appointments.js†L527-L679】 |
+| Cancel | `PATCH /api/appointments/:id/cancel` | Cutoff 12 jam, biaya pembatalan, event `appointment_cancelled`. 【F:backend/src/routes/appointments.js†L688-L818】 |
+| Konfirmasi dokter | `PATCH /api/appointments/:id/confirm` | Validasi kepemilikan, event `appointment_confirmed`. 【F:backend/src/routes/appointments.js†L889-L973】 |
+| Payment intent | `POST /api/payments` | Cegah duplikasi, hubungkan appointment. 【F:backend/src/routes/payments.js†L88-L150】 |
+| Update status bayar | `POST /api/payment-webhooks/midtrans` → `applyPaymentStatus` | Sinkronkan status appointment, aktifkan chat/video. 【F:backend/src/routes/payment-webhooks.js†L1-L102】【F:backend/src/services/payments/status.js†L18-L121】 |
 
-Jam operasional disimpan dalam kolom JSON dengan struktur per-hari (`open`, `close`, `isOpen`) yang dipakai sebagai dasar logika open/closed di UI. 【F:backend/migrations/006_add_clinic_profile.sql†L5-L59】【F:backend/migrations/006_add_clinic_profile.sql†L126-L128】
+## 10. Skenario End-to-End (E2E) untuk QA / Dokumentasi UI
 
-## 2. Susunan Konten Layar
+1. **Booking Pertama kali**
+   1. Pasien membuka daftar dokter dan memilih profil → panggil `GET /api/appointments/availability` untuk tanggal terpilih.
+   2. Pilih slot, isi alasan/notes, kirim `POST /api/appointments` → UI menampilkan layar ringkasan dengan data dokter & status `scheduled`.
+   3. Lanjut ke pembayaran (`POST /api/payments`) dan tunggu notifikasi sukses yang otomatis mengubah status menjadi `confirmed` sekaligus mengaktifkan chat/video room.
 
-### 2.1 Header Klinik
-- **Nama Brand** (`name`) – headline utama layar. 【F:backend/src/controllers/clinicsController.js†L125-L140】
-- **Jenis Fasilitas** (`facility_type`) – tampilkan label seperti *Klinik Gigi* atau *RSGM*. 【F:backend/src/controllers/clinicsController.js†L125-L140】
-- **Status Verifikasi** (`is_verified`, `verification_date`) – gunakan badge "Verified Clinic" jika true, serta tooltip tanggal verifikasi. 【F:backend/src/controllers/clinicsController.js†L142-L144】
-- **CTA Booking** – gunakan label dari terjemahan `clinics.details.bookHere`. 【F:mobile-translations/en.json†L219-L237】
+2. **Reschedule Appointment yang Sudah Dibayar**
+   1. Pada tab Upcoming, panggil `GET /api/appointments?view=patient&includeHistory=true` untuk memunculkan tombol `Reschedule` jika status `confirmed`/`scheduled`.
+   2. UI memuat slot baru (panggil kembali endpoint availability) lalu mengirim `PATCH /api/appointments/:id/reschedule` beserta alasan perubahan.
+   3. Respons memuat status `rescheduled`; event `appointment_rescheduled` memberi tahu dokter/staf untuk menyetujui atau melakukan follow-up.
 
-### 2.2 Tab "About"
-- **Nama Legal** (`legal_name`) – tampilkan sebagai subjudul atau detail resmi. 【F:backend/src/controllers/clinicsController.js†L125-L140】
-- **Deskripsi Fasilitas** – saat ini belum ada field deskripsi, gunakan fallback teks seperti "Belum ada deskripsi" atau copy marketing jika tersedia di CMS lain.
-- **Status Operasional** – hitung dari `operating_hours` + timezone (`timezone`). Dapat menampilkan chip "Open Now" atau "Closed Now" berdasarkan jam saat ini. 【F:backend/src/controllers/clinicsController.js†L135-L138】【F:backend/migrations/006_add_clinic_profile.sql†L21-L28】
+3. **Cancel dengan Pembayaran Aktif**
+   1. Dari halaman detail (`GET /api/appointments/:id`), pasien memilih `Cancel`.
+   2. Endpoint `PATCH /api/appointments/:id/cancel` memverifikasi cutoff 12 jam dan menghitung biaya pembatalan berdasarkan payment intent terakhir.
+   3. UI menampilkan ringkasan biaya (jika ada) dan status `cancelled`. Event `appointment_cancelled` dapat digunakan untuk memicu refund otomatis.
 
-### 2.3 Tab "Services"
-- Endpoint mengembalikan `services: []` plus pesan placeholder sehingga UI dapat menampilkan state "Coming Soon". 【F:backend/src/controllers/clinicsController.js†L285-L296】
-- Siapkan kartu kosong atau ilustrasi sampai tabel layanan tersedia.
+4. **Konfirmasi Manual oleh Dokter**
+   1. Dokter membuka `GET /api/appointments?view=dentist&status=scheduled`.
+   2. Setelah memeriksa detail pasien (`GET /api/appointments/:id`), dokter memanggil `PATCH /api/appointments/:id/confirm`.
+   3. Status berubah menjadi `confirmed` dan, jika chat/video belum aktif, dokter dapat memulai konsultasi melalui channel yang sama.
 
-### 2.4 Tab "Dentists"
-Gunakan `GET /v1/clinics/:id/dentists` untuk mengisi daftar dokter dalam klinik.
-- **Nama & Gelar** (`name`, `title`) – teks utama tiap kartu. 【F:backend/src/controllers/clinicsController.js†L213-L226】
-- **Spesialisasi Utama** (`specialization`) – tampilkan di bawah nama. 【F:backend/src/controllers/clinicsController.js†L220-L227】
-- **Pengalaman** (`years_of_experience`) – konversi ke teks "{{years}} tahun pengalaman" atau versi Inggris. 【F:backend/src/controllers/clinicsController.js†L221-L224】【F:mobile-translations/en.json†L247-L255】
-- **Biaya Konsultasi** (`consultation_fee`) – format ke rupiah. 【F:backend/src/controllers/clinicsController.js†L225-L226】
-- **Atribut Lain**: status verifikasi (`dp.is_verified`), penerimaan asuransi (`accepts_insurance`, `accepts_bpjs`), ketersediaan darurat (`emergency_availability`), avatar dokter (`avatar_url`). 【F:backend/src/controllers/clinicsController.js†L217-L231】
-- **Pagination** – gunakan `data.pagination` untuk infinite scroll / tombol "Load more". 【F:backend/src/controllers/clinicsController.js†L243-L252】
-
-### 2.5 Tab "Operating Hours"
-- Render per hari menggunakan struktur JSON `operating_hours`. Tampilkan status `open`/`closed` dan jam `open`-`close`. 【F:backend/src/controllers/clinicsController.js†L135-L138】【F:backend/migrations/006_add_clinic_profile.sql†L23-L28】【F:mobile-translations/en.json†L238-L245】
-- Bila suatu hari `isOpen: false`, tampilkan "Closed".
-
-### 2.6 Tab "Location"
-- **Alamat Lengkap** (`address`, `city`, `province`, `postal_code`) – satukan menjadi format alamat siap copy. 【F:backend/src/controllers/clinicsController.js†L129-L134】
-- **Pin Peta** – gunakan geocoding eksternal berdasarkan alamat (belum ada koordinat dari API).
-- **Cabang** – API belum mengembalikan data cabang. Bila dibutuhkan, perlu endpoint tambahan yang memaparkan `clinic_branches`. 【F:backend/migrations/006_add_clinic_profile.sql†L61-L95】
-
-### 2.7 Tab "Contact"
-- **Nomor Telepon** (`phone_number`) – sediakan tombol tap-to-call. 【F:backend/src/controllers/clinicsController.js†L133-L135】
-- **Email** (`email`) – buka composer email.
-- **WhatsApp Owner** (`owner_whatsapp`) – karena `GET /v1/clinics/:id` mengembalikan field ini, validasi dulu sebelum menampilkan ke pasien (opsional, per kebijakan privasi). 【F:backend/src/controllers/clinicsController.js†L138-L142】
-- **PIC Name** (`owner_name`, `owner_position`) – bisa muncul sebagai "Contact Person" bila ingin menampilkan representatif klinik. 【F:backend/src/controllers/clinicsController.js†L138-L142】
-
-### 2.8 Tab "Reviews" & "Facilities"
-- Belum ada data dari API. Gunakan placeholder state hingga modul rating dan fasilitas terpublikasi.
-- Untuk "Facilities", referensi potensial berasal dari tabel `clinic_branches` (`treatment_rooms_count`, `has_sterilization`, `has_radiography`) apabila nanti diekspos. 【F:backend/migrations/006_add_clinic_profile.sql†L61-L95】
-
-## 3. Experience Notes untuk UI/UX
-1. **State Loading & Error** – tangani error `CLINIC_NOT_FOUND` dari endpoint detail sehingga layar menampilkan empty state atau kembali ke daftar. 【F:backend/src/controllers/clinicsController.js†L152-L160】
-2. **Badge dan Copywriting** – gunakan kunci lokal `clinics.details` untuk judul tab, `clinics.hours` untuk label status buka/tutup. 【F:mobile-translations/en.json†L219-L245】
-3. **Future-proof Services & Reviews** – desain modul agar mudah mengonsumsi data saat tabel layanan/review tersedia tanpa refactor besar.
-
-## 4. Checklist Implementasi
-- [ ] Integrasi data detail klinik dan jam operasional.
-- [ ] Render daftar dokter dengan pagination dan filter spesialisasi (opsional).
-- [ ] Tangani placeholder Services/Reviews.
-- [ ] Tambahkan CTA booking yang mengarah ke flow appointment dengan pre-filled `clinicId`.
-- [ ] Audit privasi sebelum menampilkan kontak PIC (owner).
-
-Dokumen ini dapat menjadi panduan lintas tim (produk, desain, mobile, QA) untuk memastikan ClinicDetailScreen menampilkan data yang konsisten dengan kontrak backend saat ini.
->>>>>>> theirs
+Skenario di atas mengikat seluruh endpoint utama dan memastikan UI menampilkan 3 tab daftar (Upcoming/Past/Cancelled), detail timeline, serta tindakan lanjutan (reschedule/cancel/confirm) dengan memanfaatkan kode error terstruktur.
