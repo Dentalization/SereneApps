@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { List, Text, useTheme, IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,12 +32,6 @@ const TermsScreen = ({ navigation }) => {
     'Hasil AI diagnosis bersifat saran awal, bukan keputusan final.',
     'Pelayanan darurat harus menghubungi fasilitas kesehatan terdekat.',
   ];
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>

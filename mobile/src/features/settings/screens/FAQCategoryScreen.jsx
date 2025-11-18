@@ -1,4 +1,4 @@
-import React, { useMemo, useLayoutEffect } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { IconButton, List, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,12 +15,6 @@ const FAQCategoryScreen = ({ route, navigation }) => {
     () => faqCategories.find((item) => item.id === categoryId) || faqCategories[0],
     [categoryId]
   );
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>

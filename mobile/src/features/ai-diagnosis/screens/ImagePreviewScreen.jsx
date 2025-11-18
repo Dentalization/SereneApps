@@ -3,7 +3,6 @@ import { View, ScrollView, StatusBar, Image, Dimensions, StyleSheet } from 'reac
 import { Text, Button, IconButton, useTheme, Chip } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const { width } = Dimensions.get('window');
@@ -15,7 +14,6 @@ const ImagePreviewScreen = ({ route, navigation }) => {
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(260);
 
-  useHideTabBar(navigation);
 
   React.useEffect(() => {
     if (!images.length) {

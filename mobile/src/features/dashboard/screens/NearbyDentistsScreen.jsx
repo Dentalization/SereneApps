@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NEARBY_DENTISTS } from '../data/dentists';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
@@ -22,14 +22,6 @@ const NearbyDentistsScreen = () => {
         .filter((d) => (d.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
         .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0)),
     [source, radius]
-  );
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const parent = navigation.getParent?.();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => parent?.setOptions({ tabBarStyle: undefined });
-    }, [navigation])
   );
 
   const handleDoctorPress = (dentist) =>

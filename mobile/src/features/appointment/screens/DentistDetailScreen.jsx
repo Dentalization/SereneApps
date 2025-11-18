@@ -1,4 +1,4 @@
-import React, { useMemo, useLayoutEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, useTheme, Chip } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -54,12 +54,6 @@ const DentistDetailScreen = () => {
   const distanceText =
     dentist.distance ??
     (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 

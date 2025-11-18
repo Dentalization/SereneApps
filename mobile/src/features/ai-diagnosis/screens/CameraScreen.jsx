@@ -4,7 +4,6 @@ import { Text, IconButton, useTheme } from 'react-native-paper';
 import { Camera } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 
 const CameraScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -13,7 +12,6 @@ const CameraScreen = ({ navigation }) => {
   const [flash, setFlash] = React.useState(Camera.Constants?.FlashMode?.off ?? 0);
   const cameraRef = React.useRef(null);
 
-  useHideTabBar(navigation);
 
   React.useEffect(() => {
     (async () => {

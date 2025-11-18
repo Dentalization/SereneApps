@@ -37,8 +37,32 @@ const HIDDEN_TAB_ROUTES = new Set([
   'Cart',
   'Checkout',
   'HelpCenter',
+  'HelpCenterScreen',
   'FAQCategories',
+  'FAQCategoriesScreen',
   'FAQCategory',
+  'FAQCategoryScreen',
+  'Profile',
+  'ProfileScreen',
+  'Login',
+  'LoginScreen',
+  'Register',
+  'RegisterScreen',
+  'OTP',
+  'OTPScreen',
+  'PrivacyPolicy',
+  'PrivacyPolicyScreen',
+  'Terms',
+  'TermsScreen',
+  'DataManagement',
+  'DataManagementScreen',
+  'ContactSupport',
+  'ContactSupportScreen',
+  'Camera',
+  'ImagePreview',
+  'Analysis',
+  'Result',
+  'History',
 ]);
 
 const TabNavigator = () => {
@@ -152,7 +176,7 @@ const TabNavigator = () => {
       <Tab.Screen
         name="AITab"
         component={AINavigator}
-        options={{
+        options={({ route }) => ({
           tabBarLabel: 'AI Scan',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
@@ -163,7 +187,8 @@ const TabNavigator = () => {
               />
             </View>
           ),
-        }}
+          tabBarStyle: getTabBarStyle(route, 'AIHome'),
+        })}
       />
 
       <Tab.Screen
@@ -208,7 +233,7 @@ const TabNavigator = () => {
               />
             </View>
           ),
-          tabBarStyle: getTabBarStyle(route, 'SettingsHome'),
+          tabBarStyle: getTabBarStyle(route, 'Settings'),
         })}
       />
     </Tab.Navigator>

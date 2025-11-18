@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNotificationTime, getTypeMeta } from '../utils/notificationUtils';
@@ -12,14 +12,6 @@ const NotificationDetailLayout = ({ notification, sections = [], ctaLabel, onCTA
   const typeMeta = getTypeMeta(notification?.type);
   const cta = notification?.cta;
   const showCTA = ctaLabel || cta?.label;
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const parent = navigation.getParent?.();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => parent?.setOptions({ tabBarStyle: undefined });
-    }, [navigation])
-  );
 
   if (!notification) {
     return (

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useLayoutEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,12 +25,6 @@ const BookingSlotScreen = () => {
 
   const slots = getSlotsForDate(dentist.id, selectedDate)?.slots || [];
   const filteredSlots = slots.filter((slot) => slot.type === slotType && slot.isAvailable);
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 

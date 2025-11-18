@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   Button,
@@ -16,12 +16,6 @@ import SettingsSection from '../components/SettingsSection';
 const ContactSupportScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>

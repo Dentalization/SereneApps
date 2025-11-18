@@ -3,6 +3,7 @@ import { View, ScrollView, StatusBar } from 'react-native';
 import { Text, Button, Chip, useTheme, Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const FEATURES = [
