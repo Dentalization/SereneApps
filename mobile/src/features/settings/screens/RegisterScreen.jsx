@@ -31,6 +31,7 @@ const RegisterScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
+  
   const [form, setForm] = useState({
     name: '',
     email: '',

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, Linking, StatusBar } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { formatArticleRelativeTime } from '../components/article';
 import { SAMPLE_ARTICLES } from '../data/articles';
 
@@ -14,14 +14,6 @@ const ArticleListScreen = () => {
   const articles = useMemo(
     () => (route.params?.articles?.length ? route.params.articles : SAMPLE_ARTICLES),
     [route.params?.articles]
-  );
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const parent = navigation.getParent?.();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => parent?.setOptions({ tabBarStyle: undefined });
-    }, [navigation])
   );
 
   const handleOpen = (item) => {

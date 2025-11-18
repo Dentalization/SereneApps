@@ -38,9 +38,15 @@ const NotificationAIDetailScreen = () => {
     const rows = [
       meta.scanId && { label: 'ID pemindaian', value: meta.scanId },
       meta.region && { label: 'Area terdeteksi', value: meta.region },
-      meta.riskLevel && { label: 'Tingkat risiko', value: friendlyRisk(meta.riskLevel) },
+      meta.riskLevel && {
+        label: 'Tingkat risiko',
+        value: friendlyRisk(meta.riskLevel),
+      },
       meta.status && { label: 'Status', value: meta.status },
-      meta.confidence && { label: 'Keyakinan analisis', value: meta.confidence },
+      meta.confidence && {
+        label: 'Keyakinan analisis',
+        value: meta.confidence,
+      },
     ];
     const metricRows =
       meta.metrics?.map((metric) => ({
@@ -54,20 +60,35 @@ const NotificationAIDetailScreen = () => {
       })) || [];
     const noteRows = meta.notes ? [{ label: '', value: meta.notes }] : [];
     const attachmentRows =
-      meta.attachments?.map((item) => ({ label: 'Lampiran', value: item })) || [];
-    const reasonRows = meta.reason ? [{ label: 'Alasan', value: meta.reason }] : [];
+      meta.attachments?.map((item) => ({
+        label: 'Lampiran',
+        value: item,
+      })) || [];
+    const reasonRows = meta.reason
+      ? [{ label: 'Alasan', value: meta.reason }]
+      : [];
     return [
       { title: 'Detail Pemindaian AI', rows: rows.filter(Boolean) },
       ...(metricRows.length ? [{ title: 'Metrik AI', rows: metricRows }] : []),
-      ...(recRows.length ? [{ title: 'Tindakan yang disarankan', rows: recRows }] : []),
+      ...(recRows.length
+        ? [{ title: 'Tindakan yang disarankan', rows: recRows }]
+        : []),
       ...(noteRows.length ? [{ title: 'Catatan', rows: noteRows }] : []),
-      ...(attachmentRows.length ? [{ title: 'Lampiran', rows: attachmentRows }] : []),
-      ...(reasonRows.length ? [{ title: 'Alasan kegagalan', rows: reasonRows }] : []),
+      ...(attachmentRows.length
+        ? [{ title: 'Lampiran', rows: attachmentRows }]
+        : []),
+      ...(reasonRows.length
+        ? [{ title: 'Alasan kegagalan', rows: reasonRows }]
+        : []),
     ];
   }, [meta]);
 
   return (
-    <NotificationDetailLayout notification={notification} sections={sections} heroExtras={heroExtras} />
+    <NotificationDetailLayout
+      notification={notification}
+      sections={sections}
+      heroExtras={heroExtras}
+    />
   );
 };
 

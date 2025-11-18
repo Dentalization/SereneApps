@@ -63,7 +63,7 @@ const AppointmentListScreen = () => {
         {/* HANYA APPOINTMENT CARD YANG SCROLLABLE */}
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 140 }}
         >
           {appointments.length === 0 ? (
             <EmptyState

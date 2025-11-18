@@ -101,7 +101,7 @@ const DashboardScreen = () => {
       {/* CONTENT */}
       <Animated.ScrollView
         style={{ flex:1, backgroundColor:'#F8FAFC', opacity:fadeAnim }}
-        contentContainerStyle={{ paddingTop, paddingBottom: Platform.OS === 'ios' ? 110 : 90 }}
+        contentContainerStyle={{ paddingTop, paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
         onScroll={handleMainScroll}
         scrollEventThrottle={16}

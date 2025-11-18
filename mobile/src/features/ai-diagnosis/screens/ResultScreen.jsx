@@ -7,7 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import RiskBadge from '../../../components/shared/RiskBadge';
 import AuthGuard from '../../../components/shared/AuthGuard';
 import { AUTH_LEVELS } from '../../../store/slices/authSlice';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const RISK_GRADIENTS = {
@@ -23,7 +22,6 @@ const ResultScreen = ({ route, navigation }) => {
   const [showAuthGuard, setShowAuthGuard] = React.useState(false);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
 
-  useHideTabBar(navigation);
 
   const handleBookAppointment = () => {
     if (authLevel === AUTH_LEVELS.GUEST) {

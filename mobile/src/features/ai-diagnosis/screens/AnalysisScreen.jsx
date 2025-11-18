@@ -3,14 +3,12 @@ import { View, StyleSheet, StatusBar } from 'react-native';
 import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 
 const AnalysisScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const { images } = route.params;
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState('Memproses gambar...');
-  useHideTabBar(navigation);
 
   React.useEffect(() => {
     const steps = [

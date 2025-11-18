@@ -1,4 +1,4 @@
-import React, { useMemo, useLayoutEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { Text, Chip, Button, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,12 +18,6 @@ const ClinicDetailScreen = () => {
     () => (clinic.dentists || []).map((id) => getDentistById(id)).filter(Boolean),
     [clinic.dentists]
   );
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
 

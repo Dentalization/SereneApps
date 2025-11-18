@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Chip, List, Text, useTheme, IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,12 +22,6 @@ const PrivacyPolicyScreen = ({ navigation }) => {
     'Meminta penghapusan permanen',
     'Menarik persetujuan untuk komunikasi marketing',
   ];
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>

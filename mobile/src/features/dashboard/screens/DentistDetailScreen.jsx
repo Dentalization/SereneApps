@@ -5,7 +5,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDetail } from '../data/dentistDetails';
-import useHideTabBar from '../../../hooks/useHideTabBar';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
@@ -56,7 +55,6 @@ const DentistDetailScreen = () => {
     dentist.distance ??
     (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
 
-  useHideTabBar(navigation);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>

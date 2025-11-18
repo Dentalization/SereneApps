@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { List, Searchbar, Text, useTheme, IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,12 +10,6 @@ const FAQCategoriesScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = React.useState('');
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   const filtered = faqCategories.filter((category) =>
     category.title.toLowerCase().includes(query.toLowerCase())

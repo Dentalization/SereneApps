@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect } from 'react';
+import React, { useState } from 'react';
 import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Button, Chip, TextInput, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -29,12 +29,6 @@ const BookingConfirmScreen = () => {
   const handleConfirm = () => {
     navigation.navigate('AppointmentList');
   };
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' }
-    });
-  }, [navigation]);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
 

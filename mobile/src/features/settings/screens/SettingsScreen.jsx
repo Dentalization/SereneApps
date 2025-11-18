@@ -73,7 +73,7 @@ const SettingsScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: 140 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroWrapper}>

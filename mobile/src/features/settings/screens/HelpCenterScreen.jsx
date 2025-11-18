@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View, TouchableOpacity } from 'react-native';
 import { Button, List, Text, useTheme, IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,12 +10,6 @@ const HelpCenterScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const featuredCategories = faqCategories.slice(0, 3);
-
-  useLayoutEffect(() => {
-    navigation.getParent()?.setOptions({
-      tabBarStyle: { display: 'none' },
-    });
-  }, [navigation]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
