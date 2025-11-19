@@ -135,8 +135,8 @@ export const getPatientProfile = async (req, res, next) => {
  * 
  * Expected body:
  * {
- *   "full_name": "string (optional)",
- *   "phone": "string (optional)",
+ *   "name": "string (optional)",
+ *   "phone_number": "string (optional)",
  *   "date_of_birth": "YYYY-MM-DD (optional)",
  *   "gender": "male|female|other (optional)",
  *   "address": {
@@ -166,8 +166,8 @@ export const updatePatientProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const {
-      full_name,
-      phone,
+      name,
+      phone_number,
       date_of_birth,
       gender,
       address,
@@ -191,19 +191,19 @@ export const updatePatientProfile = async (req, res, next) => {
 
     await client.query('BEGIN');
 
-    // Update users table (full_name, phone)
+    // Update users table (name, phone_number)
     const userUpdateFields = [];
     const userUpdateValues = [];
     let userParamCount = 1;
 
-    if (full_name !== undefined) {
-      userUpdateFields.push(`full_name = $${userParamCount++}`);
-      userUpdateValues.push(full_name);
+    if (name !== undefined) {
+      userUpdateFields.push(`name = $${userParamCount++}`);
+      userUpdateValues.push(name);
     }
 
-    if (phone !== undefined) {
-      userUpdateFields.push(`phone = $${userParamCount++}`);
-      userUpdateValues.push(phone);
+    if (phone_number !== undefined) {
+      userUpdateFields.push(`phone_number = $${userParamCount++}`);
+      userUpdateValues.push(phone_number);
     }
 
     if (userUpdateFields.length > 0) {
@@ -212,7 +212,7 @@ export const updatePatientProfile = async (req, res, next) => {
         UPDATE users 
         SET ${userUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
         WHERE id = $${userParamCount}
-        RETURNING id, full_name, email, phone, roles
+        RETURNING id, name, email, phone_number, roles
       `;
       await client.query(userUpdateQuery, userUpdateValues);
     }
@@ -308,7 +308,7 @@ export const updatePatientProfile = async (req, res, next) => {
 
     // Fetch complete user data
     const userData = await client.query(
-      'SELECT id, full_name, email, phone, roles FROM users WHERE id = $1',
+      'SELECT id, name, email, phone_number, roles FROM users WHERE id = $1',
       [userId]
     );
 

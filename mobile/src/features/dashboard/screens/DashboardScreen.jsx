@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { getInitials } from '../../../utils/formatters';
+import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { NEARBY_DENTISTS } from '../data/dentists';
@@ -23,8 +24,8 @@ const DashboardScreen = () => {
   const navigation = useNavigation(); 
   const { user } = useSelector((s) => s.auth);
   
-  // Get avatar from user (users.avatar_url in database)
-  const avatarUrl = user?.avatar_url || null;
+  // Get avatar from user (users.avatar_url in database) and resolve to full URL
+  const avatarUrl = resolveMediaUrl(user?.avatar_url || null);
   const [refreshing, setRefreshing] = useState(false); const [searchText, setSearchText] = useState(''); const [selectedCategory, setSelectedCategory] = useState('all');
   const scrollY = useRef(new Animated.Value(0)).current; const [fadeAnim] = useState(new Animated.Value(0)); const [isScrolled, _setIsScrolled] = useState(false); const lastScrollFlag = useRef(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);

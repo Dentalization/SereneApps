@@ -18,6 +18,7 @@ import SettingsSection from '../components/SettingsSection';
 import ValidationToast from '../components/ValidationToast';
 import RiskBadge from '../../../components/shared/RiskBadge';
 import { getInitials } from '../../../utils/formatters';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const ProfileScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -28,7 +29,7 @@ const ProfileScreen = ({ navigation }) => {
   // Use real data from backend - only fields that exist in database
   const profile = useMemo(() => {
     return {
-      avatarUrl: user?.avatar_url || null,
+  avatarUrl: resolveMediaUrl(user?.avatar_url || null),
       gender: patientProfile?.gender || null,
       dateOfBirth: patientProfile?.dateOfBirth || null,
       phoneNumber: user?.phoneNumber || user?.phone_number || null,

@@ -17,6 +17,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AUTH_LEVELS, logout } from '../../../store/slices/authSlice';
 import { toggleTheme } from '../../../store/slices/settingsSlice';
 import { getInitials } from '../../../utils/formatters';
+import { resolveMediaUrl } from '../../../utils/media';
 import SettingsSection from '../components/SettingsSection';
 import ValidationToast from '../components/ValidationToast';
 
@@ -84,11 +85,18 @@ const SettingsScreen = ({ navigation }) => {
             style={[styles.heroCard, theme?.shadows?.lg]}
           >
             <View style={styles.heroHeader}>
-              <Avatar.Text
-                size={64}
-                label={getInitials(user?.name || 'Tamu')}
-                style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-              />
+              {user?.avatar_url ? (
+                <Avatar.Image
+                  size={64}
+                  source={{ uri: resolveMediaUrl(user.avatar_url) }}
+                />
+              ) : (
+                <Avatar.Text
+                  size={64}
+                  label={getInitials(user?.name || 'Tamu')}
+                  style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+                />
+              )}
               <View style={styles.heroInfo}>
                 <Text variant="titleLarge" style={styles.heroName}>
                   {isGuest ? 'Selamat datang' : user?.name}
