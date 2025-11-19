@@ -255,7 +255,8 @@ const EditProfileScreen = ({ navigation }) => {
         const uploadResult = await uploadPatientAvatar(avatarFile);
         
         if (uploadResult.success) {
-          avatarUrl = uploadResult.data.avatar_url;
+          // Service returns: { success: true, data: {...}, avatarUrl: '/uploads/avatars/xxx.jpg' }
+          avatarUrl = uploadResult.avatarUrl || uploadResult.data?.avatar_url;
           console.log('✅ Avatar uploaded:', avatarUrl);
           
           // Update user in Redux with new avatar
