@@ -18,9 +18,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import ValidationToast from '../components/ValidationToast';
-import { updateProfile, updateUser } from '../../../store/slices/authSlice';
+import { updateProfile, updateUser, loginSuccess } from '../../../store/slices/authSlice';
 import { getInitials } from '../../../utils/formatters';
-import { updatePatientProfile, uploadPatientAvatar } from '../../../services/patientService';
+import { updatePatientProfile, uploadPatientAvatar, getPatientProfile } from '../../../services/patientService';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const EditProfileScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -73,7 +74,8 @@ const EditProfileScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', status: 'info' });
   const [avatarMenuVisible, setAvatarMenuVisible] = useState(false);
-  const [avatarUri, setAvatarUri] = useState(user?.avatar_url || null);
+  // Resolve avatar path to full URI for React Native Image
+  const [avatarUri, setAvatarUri] = useState(resolveMediaUrl(user?.avatar_url || null));
   const [avatarFile, setAvatarFile] = useState(null);
   
   // Temporary input states for adding items to arrays
@@ -261,6 +263,12 @@ const EditProfileScreen = ({ navigation }) => {
           
           // Update user in Redux with new avatar
           dispatch(updateUser({ avatar_url: avatarUrl }));
+          // Also update local displayed avatar to resolved full URL
+          try {
+            setAvatarUri(resolveMediaUrl(avatarUrl));
+          } catch (e) {
+            // ignore
+          }
         } else {
           if (__DEV__) {
             console.log('⚠️ Avatar upload failed:', uploadResult.message);
@@ -337,6 +345,17 @@ const EditProfileScreen = ({ navigation }) => {
         if (result.success) {
           console.log('✅ Backend updated successfully!');
           backendSuccess = true;
+          
+          // Refetch profile from backend to get latest data
+          const profileResult = await getPatientProfile();
+          if (profileResult.success && profileResult.data) {
+            // Update Redux with fresh data from backend
+            dispatch(loginSuccess({ 
+              user: { ...user, avatar_url: avatarUrl }, // Update avatar in user object
+              patientProfile: profileResult.data,
+              tokens: { accessToken: null, refreshToken: null } // Keep existing tokens
+            }));
+          }
         } else {
           console.warn('⚠️ Backend update failed:', result.message);
           console.warn('⚠️ Continuing with local update only...');
