@@ -35,12 +35,12 @@ const ProfileScreen = ({ navigation }) => {
       medicalDetails: patientProfile?.medicalDetails || null,
       emergencyContact: patientProfile?.emergencyContact || null,
       insurance: {
-        provider: patientProfile?.insurance_provider || null,
-        number: patientProfile?.insurance_number || null,
-        memberId: patientProfile?.insurance_member_id || null,
+        provider: patientProfile?.insuranceProvider || null,
+        number: patientProfile?.insuranceNumber || null,
+        memberId: patientProfile?.insuranceMemberId || null,
       },
       address: patientProfile?.address || null,
-      preferredLanguage: patientProfile?.preferred_language || 'id',
+      preferredLanguage: patientProfile?.preferredLanguage || 'id',
     };
   }, [patientProfile, user]);
 

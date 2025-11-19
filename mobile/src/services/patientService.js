@@ -58,28 +58,22 @@ export const getPatientProfile = async () => {
 
     if (__DEV__) {
       console.log('✅ Patient profile fetched successfully!');
+      console.log('📦 Response structure:', JSON.stringify(response.data, null, 2));
     }
 
-    // Transform snake_case from backend to camelCase for Redux
-    const profileData = response.data.data || response.data;
-    const transformedData = {
-      userId: profileData.user_id,
-      dateOfBirth: profileData.date_of_birth,
-      gender: profileData.gender,
-      insurance_provider: profileData.insurance_provider,
-      insurance_number: profileData.insurance_number,
-      insurance_member_id: profileData.insurance_member_id,
-      preferred_language: profileData.preferred_language,
-      address: profileData.address, // JSONB, already camelCase inside
-      emergencyContact: profileData.emergency_contact, // JSONB
-      medicalDetails: profileData.medical_details, // JSONB
-      createdAt: profileData.created_at,
-      updatedAt: profileData.updated_at,
-    };
+    // Backend returns: { status: 'success', data: { user: {...}, profile: {...} } }
+    const responseData = response.data.data || response.data;
+    
+    // Backend already returns camelCase, just extract profile
+    const profile = responseData.profile || {};
+    
+    if (__DEV__) {
+      console.log('📋 Extracted profile:', profile);
+    }
 
     return {
       success: true,
-      data: transformedData,
+      data: profile, // Return profile as-is (already in correct format)
     };
   } catch (error) {
     if (__DEV__) {
