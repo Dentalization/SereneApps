@@ -280,7 +280,7 @@ export const updatePatientProfile = async (req, res, next) => {
           UPDATE patient_profiles 
           SET ${profileUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
           WHERE user_id = $${profileParamCount}
-          RETURNING user_id, date_of_birth, gender, address, emergency_contact, medical_details, avatar_url
+          RETURNING user_id, date_of_birth, gender, address, emergency_contact, medical_details
         `;
         profileResult = await client.query(profileUpdateQuery, profileUpdateValues);
       } else {
@@ -292,14 +292,14 @@ export const updatePatientProfile = async (req, res, next) => {
         const profileInsertQuery = `
           INSERT INTO patient_profiles (${insertFields.join(', ')})
           VALUES (${insertParams.join(', ')})
-          RETURNING user_id, date_of_birth, gender, address, emergency_contact, medical_details, avatar_url
+          RETURNING user_id, date_of_birth, gender, address, emergency_contact, medical_details
         `;
         profileResult = await client.query(profileInsertQuery, insertValues);
       }
     } else {
       // No profile updates, just fetch existing
       profileResult = await client.query(
-        'SELECT user_id, date_of_birth, gender, address, emergency_contact, medical_details, avatar_url FROM patient_profiles WHERE user_id = $1',
+        'SELECT user_id, date_of_birth, gender, address, emergency_contact, medical_details FROM patient_profiles WHERE user_id = $1',
         [userId]
       );
     }
