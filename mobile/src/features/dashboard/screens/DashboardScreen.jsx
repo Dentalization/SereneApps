@@ -10,13 +10,16 @@ import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { NEARBY_DENTISTS } from '../data/dentists';
+import { NEARBY_CLINICS } from '../data/clinics';
 
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
 import * as NearbyDentistsMod from '../components/nearbyDentists';
+import * as NearbyClinicsMod from '../components/nearbyClinics';
 import * as ArticleMod from '../components/article';
 const FeaturedDoctors = FeaturedDoctorsMod.default || FeaturedDoctorsMod;
 const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
+const NearbyClinics = NearbyClinicsMod.default || NearbyClinicsMod;
 const Article = ArticleMod.default || ArticleMod;
 
 const DashboardScreen = () => {
@@ -46,6 +49,7 @@ const DashboardScreen = () => {
   ];
 
   const topDoctors = NEARBY_DENTISTS.slice(0, 3);
+  const topClinics = NEARBY_CLINICS.slice(0, 2);
 
   const articles = SAMPLE_ARTICLES;
   const notifications = SAMPLE_NOTIFICATIONS;
@@ -55,10 +59,16 @@ const DashboardScreen = () => {
   const handleDoctorPress = (d) => navigation.navigate('DentistDetail', { dentistId: d.id, dentist: d });
   const handleJoinCall   = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id } });
   const handleBook       = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id } });
+  const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id });
+  const handleClinicBook = (clinic) =>
+    navigation.navigate('AppointmentTab', { screen: 'ClinicDetail', params: { clinicId: clinic.id } });
   const handleArticleOpen = (url) => { if(url) { try { Linking.openURL(url); } catch(e) {} } };
   const handleSeeAllArticles = () => navigation.navigate('ArticleList', { articles });
   const handleNotificationPress = () => navigation.navigate('Notifications', { notifications });
-  const handleSeeAllDentists = () => navigation.navigate('NearbyDentists', { dentists: NEARBY_DENTISTS, maxDistanceKm: 5 });
+  const handleSeeAllDentists = () =>
+    navigation.navigate('NearbyDentists', { dentists: NEARBY_DENTISTS, maxDistanceKm: 5 });
+  const handleSeeAllClinics = () =>
+    navigation.navigate('NearbyClinics', { clinics: NEARBY_CLINICS, maxDistanceKm: 6 });
 
   return (
     <View style={{ flex:1, backgroundColor:'#F8FAFC' }}>
@@ -126,6 +136,12 @@ const DashboardScreen = () => {
         keyboardShouldPersistTaps="handled"
       >
         <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleDoctorPress} onJoinCall={handleJoinCall} />
+        <NearbyClinics
+          clinics={topClinics}
+          onClinicPress={handleClinicPress}
+          onBook={handleClinicBook}
+          onSeeAll={handleSeeAllClinics}
+        />
         <NearbyDentists
           dentists={topDoctors}
           onDoctorPress={handleDoctorPress}
