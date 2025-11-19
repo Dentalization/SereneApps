@@ -17,7 +17,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
 import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema, phoneSchema } from '../../../utils/validation';
-import { setPhoneNumber } from '../../../store/slices/authSlice';
+import { setPhoneNumber, loginSuccess } from '../../../store/slices/authSlice';
+import { registerPatient } from '../../../services/authService';
 
 const REQUIRED_FIELDS = ['name', 'email', 'phoneNumber', 'password', 'confirmPassword'];
 
@@ -36,16 +37,43 @@ const RegisterScreen = ({ navigation }) => {
     name: '',
     email: '',
     phoneNumber: '+62',
+    dateOfBirth: '',
     password: '',
     confirmPassword: '',
     gender: 'female',
+    city: '',
     interests: ['Kontrol rutin'],
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (field, value) => {
+    // Auto-format date of birth input
+    if (field === 'dateOfBirth') {
+      // Remove all non-digit characters
+      const digits = value.replace(/\D/g, '');
+      
+      // Auto-format as DD/MM/YYYY
+      let formatted = digits;
+      if (digits.length >= 2) {
+        formatted = digits.slice(0, 2);
+        if (digits.length >= 4) {
+          formatted += '/' + digits.slice(2, 4);
+          if (digits.length >= 5) {
+            formatted += '/' + digits.slice(4, 8);
+          }
+        } else if (digits.length > 2) {
+          formatted += '/' + digits.slice(2);
+        }
+      }
+      
+      setForm((prev) => ({ ...prev, [field]: formatted }));
+      return;
+    }
+    
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -83,6 +111,45 @@ const RegisterScreen = ({ navigation }) => {
       nextErrors.phoneNumber = phoneCheck.error.issues?.[0]?.message || 'Nomor telepon tidak valid';
     }
 
+    // Validate dateOfBirth if provided (optional field)
+    if (form.dateOfBirth.trim()) {
+      // Expected format: DD/MM/YYYY
+      const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+      if (!dateRegex.test(form.dateOfBirth.trim())) {
+        nextErrors.dateOfBirth = 'Format tanggal tidak valid. Gunakan DD/MM/YYYY';
+      } else {
+        // Parse DD/MM/YYYY to Date object
+        const parts = form.dateOfBirth.trim().split('/');
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+        const year = parseInt(parts[2], 10);
+        
+        const date = new Date(year, month, day);
+        
+        // Validate the date is valid (handles invalid dates like 31/02/2020)
+        if (
+          isNaN(date.getTime()) ||
+          date.getDate() !== day ||
+          date.getMonth() !== month ||
+          date.getFullYear() !== year
+        ) {
+          nextErrors.dateOfBirth = 'Tanggal tidak valid';
+        } else {
+          // Check if date is in the future
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (date > today) {
+            nextErrors.dateOfBirth = 'Tanggal lahir tidak boleh di masa depan';
+          }
+          // Check if age is reasonable (e.g., max 150 years old)
+          const age = (today - date) / (1000 * 60 * 60 * 24 * 365.25);
+          if (age > 150) {
+            nextErrors.dateOfBirth = 'Tanggal lahir tidak valid';
+          }
+        }
+      }
+    }
+
     const passwordCheck = passwordSchema.safeParse(form.password);
     if (!passwordCheck.success) {
       nextErrors.password = passwordCheck.error.issues?.[0]?.message || 'Password lemah';
@@ -95,22 +162,112 @@ const RegisterScreen = ({ navigation }) => {
     return nextErrors;
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const validationResult = validateForm();
     setErrors(validationResult);
 
     if (Object.keys(validationResult).length > 0) {
+      setSnackbar({ 
+        visible: true, 
+        message: 'Mohon perbaiki kesalahan pada form' 
+      });
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const phone = form.phoneNumber.trim();
-      dispatch(setPhoneNumber(phone));
+
+    try {
+      // Prepare registration data sesuai dengan backend API
+      const registrationData = {
+        // Required fields
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        phoneNumber: form.phoneNumber.trim(),
+        // Optional fields - sesuai dokumentasi backend
+        gender: form.gender.toLowerCase(),
+      };
+
+      // Add optional fields if filled
+      if (form.dateOfBirth.trim()) {
+        // Convert DD/MM/YYYY to YYYY-MM-DD for backend
+        const parts = form.dateOfBirth.trim().split('/');
+        const day = parts[0];
+        const month = parts[1];
+        const year = parts[2];
+        registrationData.dateOfBirth = `${year}-${month}-${day}`;
+      }
+      
+      if (form.city.trim()) {
+        registrationData.city = form.city.trim();
+      }
+
+      console.log('📤 Sending registration data:', {
+        ...registrationData,
+        password: '***hidden***'
+      });
+
+      // Call registration API
+      const result = await registerPatient(registrationData);
+
+      if (result.success) {
+        // Registration successful!
+        console.log('✅ Registration successful!', result.data.user);
+
+        // Update Redux store with user data
+        dispatch(
+          loginSuccess({
+            user: result.data.user,
+            patientProfile: result.data.user.patientProfile,
+            accessToken: result.data.accessToken,
+            refreshToken: result.data.refreshToken,
+          })
+        );
+
+        setSnackbar({ 
+          visible: true, 
+          message: `Selamat datang, ${result.data.user.name}! Akun berhasil dibuat.` 
+        });
+
+        // Navigate to dashboard after 1 second
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'DashboardTab' }],
+          });
+        }, 1500);
+      } else {
+        // Registration failed
+        console.error('❌ Registration failed:', result.error);
+        
+        let errorMessage = result.message || 'Pendaftaran gagal. Silakan coba lagi.';
+        
+        // Show validation errors if any
+        if (result.errors && result.errors.length > 0) {
+          const errorFields = {};
+          result.errors.forEach(err => {
+            if (err.field) {
+              errorFields[err.field] = err.message;
+            }
+          });
+          setErrors(errorFields);
+          errorMessage = 'Mohon perbaiki kesalahan pada form';
+        }
+
+        setSnackbar({ 
+          visible: true, 
+          message: errorMessage
+        });
+      }
+    } catch (error) {
+      console.error('❌ Unexpected error during registration:', error);
+      setSnackbar({ 
+        visible: true, 
+        message: 'Terjadi kesalahan tidak terduga. Silakan coba lagi.' 
+      });
+    } finally {
       setLoading(false);
-      setSnackbar({ visible: true, message: `Kode OTP dikirim ke ${phone}` });
-      navigation.navigate('OTP', { phoneNumber: phone });
-    }, 700);
+    }
   };
 
   return (
@@ -171,6 +328,8 @@ const RegisterScreen = ({ navigation }) => {
                 onChangeText={(text) => handleChange('email', text)}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="off"
+                textContentType="none"
                 left={<TextInput.Icon icon="email-outline" />}
                 error={Boolean(errors.email)}
               />
@@ -186,11 +345,55 @@ const RegisterScreen = ({ navigation }) => {
                 value={form.phoneNumber}
                 onChangeText={(text) => handleChange('phoneNumber', text)}
                 keyboardType="phone-pad"
+                autoComplete="off"
+                textContentType="none"
                 left={<TextInput.Icon icon="cellphone" />}
                 error={Boolean(errors.phoneNumber)}
               />
               <HelperText type="error" visible={Boolean(errors.phoneNumber)}>
                 {errors.phoneNumber}
+              </HelperText>
+            </View>
+
+            <View style={styles.fieldSpacing}>
+              <TextInput
+                mode="outlined"
+                label="Tanggal lahir (opsional)"
+                placeholder="15/08/1995"
+                value={form.dateOfBirth}
+                onChangeText={(text) => handleChange('dateOfBirth', text)}
+                keyboardType="number-pad"
+                maxLength={10}
+                autoComplete="off"
+                textContentType="none"
+                left={<TextInput.Icon icon="calendar" />}
+                error={Boolean(errors.dateOfBirth)}
+              />
+              <HelperText type="info" visible={!errors.dateOfBirth && !form.dateOfBirth}>
+                Format: DD/MM/YYYY (contoh: 15/08/1995)
+              </HelperText>
+              <HelperText type="error" visible={Boolean(errors.dateOfBirth)}>
+                {errors.dateOfBirth}
+              </HelperText>
+            </View>
+
+            <View style={styles.fieldSpacing}>
+              <TextInput
+                mode="outlined"
+                label="Kota tempat tinggal (opsional)"
+                placeholder="Jakarta, Surabaya, Bandung, dll"
+                value={form.city}
+                onChangeText={(text) => handleChange('city', text)}
+                autoComplete="off"
+                textContentType="none"
+                left={<TextInput.Icon icon="map-marker" />}
+                error={Boolean(errors.city)}
+              />
+              <HelperText type="info" visible={!errors.city && !form.city}>
+                Membantu kami merekomendasikan klinik terdekat
+              </HelperText>
+              <HelperText type="error" visible={Boolean(errors.city)}>
+                {errors.city}
               </HelperText>
             </View>
 
@@ -231,8 +434,17 @@ const RegisterScreen = ({ navigation }) => {
                 label="Password"
                 value={form.password}
                 onChangeText={(text) => handleChange('password', text)}
-                secureTextEntry
+                secureTextEntry={!showPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="no"
                 left={<TextInput.Icon icon="lock-outline" />}
+                right={
+                  <TextInput.Icon
+                    icon={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    onPress={() => setShowPassword(!showPassword)}
+                  />
+                }
                 error={Boolean(errors.password)}
               />
               <HelperText type="error" visible={Boolean(errors.password)}>
@@ -246,8 +458,17 @@ const RegisterScreen = ({ navigation }) => {
                 label="Konfirmasi password"
                 value={form.confirmPassword}
                 onChangeText={(text) => handleChange('confirmPassword', text)}
-                secureTextEntry
+                secureTextEntry={!showConfirmPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="no"
                 left={<TextInput.Icon icon="lock-check-outline" />}
+                right={
+                  <TextInput.Icon
+                    icon={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  />
+                }
                 error={Boolean(errors.confirmPassword)}
               />
               <HelperText type="error" visible={Boolean(errors.confirmPassword)}>
@@ -269,9 +490,10 @@ const RegisterScreen = ({ navigation }) => {
               mode="contained"
               onPress={handleRegister}
               loading={loading}
+              disabled={loading}
               style={styles.primaryButton}
             >
-              Kirim kode OTP
+              Daftar Sekarang
             </Button>
 
             <Button mode="text" onPress={() => navigation.navigate('Login')}>
@@ -302,6 +524,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 28,
     paddingVertical: 16,
+    paddingHorizontal: 8,
+  },
+  // input modern: rounded + dim background
+  input: {
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.02)',
+  },
+  inputOutline: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.35)',
   },
   progressRow: {
     flexDirection: 'row',

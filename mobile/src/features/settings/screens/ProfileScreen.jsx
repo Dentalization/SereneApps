@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   Divider,
+  IconButton,
   List,
   Text,
   useTheme,
@@ -18,57 +19,30 @@ import ValidationToast from '../components/ValidationToast';
 import RiskBadge from '../../../components/shared/RiskBadge';
 import { getInitials } from '../../../utils/formatters';
 
-const defaultProfile = {
-  membershipTier: 'Silver',
-  lastVisit: null,
-  loyaltyPoints: 0,
-  gender: 'female',
-  dateOfBirth: '1995-05-10',
-  phoneNumber: '+628123456789',
-  medicalDetails: {
-    allergies: ['Penisilin', 'Latex'],
-    chronicConditions: ['Hipertensi'],
-    medications: ['Metformin 500mg', 'Vitamin D'],
-    notes: 'Riwayat gigi sensitif sejak 2021',
-  },
-  emergencyContact: {
-    name: 'Sarah Putri',
-    phone: '+628987654321',
-    relationship: 'Suami/Istri',
-  },
-  insurance: {
-    provider: 'BPJS Kesehatan',
-    number: '00011223344',
-    memberId: 'PLAT-9912',
-  },
-  address: {
-    line1: 'Jl. Kemang Raya No. 12',
-    city: 'Jakarta Selatan',
-    province: 'DKI Jakarta',
-    postalCode: '12720',
-  },
-};
-
 const ProfileScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user, patientProfile } = useSelector((state) => state.auth);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
+  // Use real data from backend - only fields that exist in database
   const profile = useMemo(() => {
     return {
-      ...defaultProfile,
-      ...patientProfile,
-      medicalDetails: {
-        ...defaultProfile.medicalDetails,
-        ...(patientProfile?.medicalDetails || {}),
+      avatarUrl: user?.avatar_url || null,
+      gender: patientProfile?.gender || null,
+      dateOfBirth: patientProfile?.dateOfBirth || null,
+      phoneNumber: user?.phoneNumber || user?.phone_number || null,
+      medicalDetails: patientProfile?.medicalDetails || null,
+      emergencyContact: patientProfile?.emergencyContact || null,
+      insurance: {
+        provider: patientProfile?.insurance_provider || null,
+        number: patientProfile?.insurance_number || null,
+        memberId: patientProfile?.insurance_member_id || null,
       },
-      emergencyContact: patientProfile?.emergencyContact || defaultProfile.emergencyContact,
-      insurance: patientProfile?.insurance || defaultProfile.insurance,
-      address: patientProfile?.address || defaultProfile.address,
-      phoneNumber: patientProfile?.phoneNumber || defaultProfile.phoneNumber,
+      address: patientProfile?.address || null,
+      preferredLanguage: patientProfile?.preferred_language || 'id',
     };
-  }, [patientProfile]);
+  }, [patientProfile, user]);
 
   const riskLevel = useMemo(() => {
     const allergies = profile.medicalDetails?.allergies?.length || 0;
@@ -104,12 +78,6 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  const stats = [
-    { label: 'Terakhir kunjungan', value: formatDate(profile.lastVisit) },
-    { label: 'Poin loyalti', value: `${profile.loyaltyPoints || 0}` },
-    { label: 'Tier', value: profile.membershipTier || 'Member' },
-  ];
-
   const addressLine = useMemo(() => {
     const parts = [
       profile.address?.line1,
@@ -122,6 +90,19 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+      {/* Back Button */}
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
+        <Text variant="titleLarge" style={styles.headerTitle}>
+          Profil Saya
+        </Text>
+        <View style={{ width: 48 }} />
+      </View>
+
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -134,43 +115,34 @@ const ProfileScreen = ({ navigation }) => {
             style={[styles.heroCard, theme?.shadows?.lg]}
           >
             <View style={styles.heroHeader}>
-              <Avatar.Text
-                size={64}
-                label={getInitials(user?.name || 'Serene User')}
-                style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-              />
+              {profile.avatarUrl ? (
+                <Avatar.Image
+                  size={64}
+                  source={{ uri: profile.avatarUrl }}
+                />
+              ) : (
+                <Avatar.Text
+                  size={64}
+                  label={getInitials(user?.name || 'Serene User')}
+                  style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+                />
+              )}
               <View style={{ flex: 1, marginLeft: 16 }}>
                 <Text variant="titleLarge" style={styles.heroName}>
                   {user?.name || 'Pasien Serene'}
                 </Text>
                 <Text variant="bodyMedium" style={{ color: theme.colors.onPrimary }}>
-                  {profile.membershipTier} Member • {profile.phoneNumber}
+                  {user?.email || 'Email tidak tersedia'}
                 </Text>
               </View>
               <Button
                 mode="contained-tonal"
                 compact
                 textColor={theme.colors.primary}
-                onPress={() => setSnackbar({ visible: true, message: 'Fitur edit profil segera hadir.' })}
+                onPress={() => navigation.navigate('EditProfile')}
               >
                 Ubah
               </Button>
-            </View>
-
-            <View style={styles.statRow}>
-              {stats.map((item, index) => (
-                <View
-                  key={item.label}
-                  style={[styles.statCard, index !== stats.length - 1 && styles.statSeparator]}
-                >
-                  <Text variant="labelSmall" style={styles.statLabel}>
-                    {item.label}
-                  </Text>
-                  <Text variant="titleMedium" style={styles.statValue}>
-                    {item.value || '-'}
-                  </Text>
-                </View>
-              ))}
             </View>
           </LinearGradient>
         </View>
@@ -204,7 +176,12 @@ const ProfileScreen = ({ navigation }) => {
           <Divider />
           <List.Item
             title="Jenis kelamin"
-            description={profile.gender === 'female' ? 'Perempuan' : 'Laki-laki'}
+            description={
+              profile.gender === 'female' ? 'Perempuan' : 
+              profile.gender === 'male' ? 'Laki-laki' : 
+              profile.gender === 'other' ? 'Lainnya' :
+              'Belum diisi'
+            }
             left={(props) => <List.Icon {...props} icon="account" />}
           />
         </SettingsSection>
@@ -306,8 +283,18 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  headerTitle: {
+    fontWeight: '700',
+  },
   content: {
-    paddingVertical: 24,
+    paddingVertical: 16,
   },
   heroWrapper: {
     marginHorizontal: 16,
@@ -320,27 +307,10 @@ const styles = StyleSheet.create({
   heroHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
   },
   heroName: {
     color: '#FFFFFF',
     fontWeight: '700',
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-  },
-  statSeparator: {
-    marginRight: 12,
-  },
-  statLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
   },
   statValue: {
     color: '#FFFFFF',

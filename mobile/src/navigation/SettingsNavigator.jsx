@@ -2,6 +2,7 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import SettingsScreen from '../features/settings/screens/SettingsScreen';
 import ProfileScreen from '../features/settings/screens/ProfileScreen';
+import EditProfileScreen from '../features/settings/screens/EditProfileScreen';
 import LoginScreen from '../features/settings/screens/LoginScreen';
 import RegisterScreen from '../features/settings/screens/RegisterScreen';
 import OTPScreen from '../features/settings/screens/OTPScreen';
@@ -32,6 +33,11 @@ const SettingsNavigator = () => {
         name="Profile"
         component={ProfileScreen}
         options={{ title: 'Profil Saya' }}
+      />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ title: 'Edit Profil' }}
       />
       <Stack.Screen
         name="Login"
