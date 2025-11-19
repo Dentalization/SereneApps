@@ -19,6 +19,8 @@ import AuthHero from '../components/AuthHero';
 import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema } from '../../../utils/validation';
 import { loginSuccess } from '../../../store/slices/authSlice';
+import { loginPatient } from '../../../services/authService';
+import { getPatientProfile } from '../../../services/patientService';
 
 const HAS_LOGGED_IN_KEY = 'serene_has_logged_in_before';
 
@@ -32,7 +34,7 @@ const LoginScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '', status: 'info' });
 
   // flag untuk tahu apakah smartphone ini sudah pernah login
   const [hasLoggedInBefore, setHasLoggedInBefore] = useState(false);
@@ -72,70 +74,107 @@ const LoginScreen = ({ navigation }) => {
     return nextErrors;
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const validationResult = validateForm();
     setErrors(validationResult);
 
     if (Object.keys(validationResult).length > 0) {
+      setSnackbar({ 
+        visible: true, 
+        message: 'Mohon perbaiki kesalahan pada form',
+        status: 'warning'
+      });
       return;
     }
 
     setLoading(true);
-    setTimeout(async () => {
-      dispatch(
-        loginSuccess({
-          user: {
-            name: 'Serene Patient',
-            email: form.email.trim(),
-            phone_number: '+628123400000',
-          },
-          patientProfile: {
-            membershipTier: 'Platinum',
-            lastVisit: '2024-06-12',
-            loyaltyPoints: 820,
-            phoneNumber: '+628123400000',
-            gender: 'female',
-            dateOfBirth: '1993-08-22',
-            medicalDetails: {
-              allergies: ['Penisilin', 'Latex'],
-              chronicConditions: ['Diabetes Tipe 2'],
-              medications: ['Metformin 500mg', 'Vitamin D'],
-              notes: 'Riwayat perawatan ortho selesai 2022',
-            },
-            emergencyContact: {
-              name: 'Sarah Putri',
-              phone: '+628987654321',
-              relationship: 'Suami/Istri',
-            },
-            insurance: {
-              provider: 'BPJS Kesehatan',
-              number: '00011223344',
-              memberId: 'PLAT-9912',
-            },
-            address: {
-              line1: 'Jl. Kemang Raya No. 12',
-              city: 'Jakarta Selatan',
-              province: 'DKI Jakarta',
-              postalCode: '12720',
-            },
-          },
-          accessToken: 'demo-token',
-          refreshToken: 'demo-refresh',
-        })
-      );
 
-      // tandai bahwa device ini sudah pernah login
-      try {
-        await AsyncStorage.setItem(HAS_LOGGED_IN_KEY, 'true');
-        setHasLoggedInBefore(true);
-      } catch (error) {
-        console.log('Failed to save login flag', error);
+    try {
+      console.log('📤 Attempting login for:', form.email.trim());
+
+      // Call login API
+      const result = await loginPatient(form.email.trim(), form.password);
+
+      if (result.success) {
+        // Login successful!
+        console.log('✅ Login successful!', result.data.user);
+
+        // Fetch patient profile after login
+        let patientProfile = null;
+        
+        if (__DEV__) {
+          console.log('📥 Fetching patient profile after login...');
+        }
+
+        const profileResult = await getPatientProfile();
+        
+        if (profileResult.success) {
+          patientProfile = profileResult.data;
+          if (__DEV__) {
+            console.log('✅ Patient profile loaded:', patientProfile);
+          }
+        } else {
+          if (__DEV__) {
+            console.log('⚠️ Patient profile not loaded:', profileResult.message);
+          }
+          // Don't block login if profile fetch fails - profile might not exist yet
+        }
+
+        // Update Redux store with user data and patient profile
+        dispatch(
+          loginSuccess({
+            user: result.data.user,
+            patientProfile: patientProfile,
+            accessToken: result.data.accessToken,
+            refreshToken: result.data.refreshToken,
+          })
+        );
+
+        // Mark that device has logged in before
+        try {
+          await AsyncStorage.setItem(HAS_LOGGED_IN_KEY, 'true');
+          setHasLoggedInBefore(true);
+        } catch (error) {
+          console.log('Failed to save login flag', error);
+        }
+
+        setSnackbar({ 
+          visible: true, 
+          message: `Selamat datang kembali, ${result.data.user.name}!`,
+          status: 'success'
+        });
+
+        // Navigate to dashboard after 1 second
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'DashboardTab' }],
+          });
+        }, 1500);
+      } else {
+        // Login failed
+        if (__DEV__) {
+          console.log('⚠️ Login unsuccessful:', result.message);
+        }
+        
+        setSnackbar({ 
+          visible: true, 
+          message: result.message || 'Login gagal. Silakan coba lagi.',
+          status: 'error'
+        });
       }
-
+    } catch (error) {
+      if (__DEV__) {
+        console.log('⚠️ Unexpected error:', error.message);
+      }
+      setSnackbar({ 
+        visible: true, 
+        message: 'Terjadi kesalahan tidak terduga. Silakan coba lagi.',
+        status: 'error'
+      });
+    } finally {
       setLoading(false);
-      setSnackbar({ visible: true, message: 'Selamat datang kembali di SereneApps!' });
-      navigation.goBack();
-    }, 650);
+    }
   };
 
   const quickActions = useMemo(
@@ -148,12 +187,20 @@ const LoginScreen = ({ navigation }) => {
       {
         icon: 'face-recognition',
         label: 'Face ID',
-        onPress: () => setSnackbar({ visible: true, message: 'Aktifkan Face ID di perangkat Anda' }),
+        onPress: () => setSnackbar({ 
+          visible: true, 
+          message: 'Aktifkan Face ID di perangkat Anda',
+          status: 'info'
+        }),
       },
       {
         icon: 'fingerprint',
         label: 'Sidik Jari',
-        onPress: () => setSnackbar({ visible: true, message: 'Gunakan sensor fingerprint perangkat Anda' }),
+        onPress: () => setSnackbar({ 
+          visible: true, 
+          message: 'Gunakan sensor fingerprint perangkat Anda',
+          status: 'info'
+        }),
       },
     ],
     [navigation]
@@ -206,6 +253,7 @@ const LoginScreen = ({ navigation }) => {
                     setSnackbar({
                       visible: true,
                       message: 'Hubungi care@serene.id untuk bantuan.',
+                      status: 'info'
                     })
                   }
                   style={styles.helpIcon}
@@ -267,7 +315,11 @@ const LoginScreen = ({ navigation }) => {
                 compact
                 mode="text"
                 onPress={() =>
-                  setSnackbar({ visible: true, message: 'Link reset dikirim ke email Anda.' })
+                  setSnackbar({ 
+                    visible: true, 
+                    message: 'Link reset dikirim ke email Anda.',
+                    status: 'info'
+                  })
                 }
               >
                 Lupa password?
@@ -327,8 +379,8 @@ const LoginScreen = ({ navigation }) => {
       <ValidationToast
         visible={snackbar.visible}
         message={snackbar.message}
-        onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        status="info"
+        onDismiss={() => setSnackbar({ visible: false, message: '', status: 'info' })}
+        status={snackbar.status}
       />
     </SafeAreaView>
   );

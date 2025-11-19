@@ -44,6 +44,8 @@ const HIDDEN_TAB_ROUTES = new Set([
   'FAQCategoryScreen',
   'Profile',
   'ProfileScreen',
+  'EditProfile',
+  'EditProfileScreen',
   'Login',
   'LoginScreen',
   'Register',

@@ -1,11 +1,12 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'http://localhost:4000/api';
+export const API_BASE_URL = 'http://localhost:4000';
+export const API_VERSION = 'v1';
 
 // Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/${API_VERSION}`,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -43,7 +44,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = await AsyncStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+          const response = await axios.post(`${API_BASE_URL}/${API_VERSION}/auth/refresh`, {
             refreshToken,
           });
 

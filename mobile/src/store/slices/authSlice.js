@@ -46,6 +46,12 @@ const authSlice = createSlice({
         ...action.payload,
       };
     },
+    updateUser: (state, action) => {
+      state.user = {
+        ...state.user,
+        ...action.payload,
+      };
+    },
     logout: (state) => {
       return {
         ...initialState,
@@ -71,6 +77,7 @@ export const {
   otpVerified,
   loginSuccess,
   updateProfile,
+  updateUser,
   logout,
   setLoading,
   setError,

@@ -19,7 +19,12 @@ const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
 const Article = ArticleMod.default || ArticleMod;
 
 const DashboardScreen = () => {
-  const theme = useTheme(); const navigation = useNavigation(); const { user } = useSelector((s) => s.auth);
+  const theme = useTheme(); 
+  const navigation = useNavigation(); 
+  const { user } = useSelector((s) => s.auth);
+  
+  // Get avatar from user (users.avatar_url in database)
+  const avatarUrl = user?.avatar_url || null;
   const [refreshing, setRefreshing] = useState(false); const [searchText, setSearchText] = useState(''); const [selectedCategory, setSelectedCategory] = useState('all');
   const scrollY = useRef(new Animated.Value(0)).current; const [fadeAnim] = useState(new Animated.Value(0)); const [isScrolled, _setIsScrolled] = useState(false); const lastScrollFlag = useRef(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
@@ -63,8 +68,19 @@ const DashboardScreen = () => {
         <LinearGradient colors={isScrolled ? ['rgba(98,16,159,0.95)','rgba(98,16,159,0.85)'] : ((theme.gradients&&theme.gradients.primary)||[theme.colors.primary, theme.colors.primary])} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={{ paddingTop:64, paddingHorizontal:20, paddingBottom:12, shadowColor:'#000', shadowOffset:{ width:0, height:4 }, shadowOpacity:0.1, shadowRadius:8, elevation:4, borderBottomLeftRadius:isScrolled?0:24, borderBottomRightRadius:isScrolled?0:24 }}>
           <View style={{ flexDirection:'row', alignItems:'center', marginBottom:16 }}>
             <View style={{ flex:1, flexDirection:'row', alignItems:'center' }}>
-              <View style={{ marginRight:12 }}>{user ? <Avatar.Text size={48} label={getInitials(user.name)} style={{ backgroundColor:'rgba(255,255,255,0.3)' }} /> : <Avatar.Icon size={48} icon="account" style={{ backgroundColor:'rgba(255,255,255,0.3)' }} />}</View>
-              <View style={{ flex:1 }}><Text style={{ fontSize:14, color:'rgba(255,255,255,0.8)', marginBottom:2 }}>Selamat Datang Kembali</Text><Text style={{ fontSize:20, fontWeight:'bold', color:'#FFFFFF' }}>{user?.name || 'Tamu'} 👋</Text></View>
+              <View style={{ marginRight:12 }}>
+                {avatarUrl ? (
+                  <Avatar.Image size={48} source={{ uri: avatarUrl }} />
+                ) : user ? (
+                  <Avatar.Text size={48} label={getInitials(user.name)} style={{ backgroundColor:'rgba(255,255,255,0.3)' }} />
+                ) : (
+                  <Avatar.Icon size={48} icon="account" style={{ backgroundColor:'rgba(255,255,255,0.3)' }} />
+                )}
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={{ fontSize:14, color:'rgba(255,255,255,0.8)', marginBottom:2 }}>Selamat Datang Kembali</Text>
+                <Text style={{ fontSize:20, fontWeight:'bold', color:'#FFFFFF' }}>{user?.name || 'Tamu'} 👋</Text>
+              </View>
             </View>
             <TouchableOpacity
               onPress={handleNotificationPress}
