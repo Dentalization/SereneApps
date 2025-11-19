@@ -212,7 +212,7 @@ export const updatePatientProfile = async (req, res, next) => {
         UPDATE users 
         SET ${userUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
         WHERE id = $${userParamCount}
-        RETURNING id, full_name, email, phone, role
+        RETURNING id, full_name, email, phone, roles
       `;
       await client.query(userUpdateQuery, userUpdateValues);
     }
@@ -308,7 +308,7 @@ export const updatePatientProfile = async (req, res, next) => {
 
     // Fetch complete user data
     const userData = await client.query(
-      'SELECT id, full_name, email, phone, role FROM users WHERE id = $1',
+      'SELECT id, full_name, email, phone, roles FROM users WHERE id = $1',
       [userId]
     );
 

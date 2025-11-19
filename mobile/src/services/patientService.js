@@ -32,6 +32,34 @@ const getAccessToken = async () => {
 };
 
 /**
+ * Transform camelCase profile data to snake_case for backend
+ */
+const transformToBackendFormat = (profileData) => {
+  const transformed = { ...profileData };
+  
+  // Transform address fields
+  if (transformed.address) {
+    const { postalCode, ...restAddress } = transformed.address;
+    transformed.address = {
+      ...restAddress,
+      postal_code: postalCode, // postalCode → postal_code
+    };
+  }
+  
+  // Transform medical_details fields
+  if (transformed.medical_details) {
+    const { medications, chronicConditions, ...restMedical } = transformed.medical_details;
+    transformed.medical_details = {
+      ...restMedical,
+      current_medications: medications, // medications → current_medications
+      medical_conditions: chronicConditions, // chronicConditions → medical_conditions
+    };
+  }
+  
+  return transformed;
+};
+
+/**
  * Get patient profile
  * @returns {Promise<Object>} - Returns patient profile data
  */
@@ -58,28 +86,22 @@ export const getPatientProfile = async () => {
 
     if (__DEV__) {
       console.log('✅ Patient profile fetched successfully!');
+      console.log('📦 Response structure:', JSON.stringify(response.data, null, 2));
     }
 
-    // Transform snake_case from backend to camelCase for Redux
-    const profileData = response.data.data || response.data;
-    const transformedData = {
-      userId: profileData.user_id,
-      dateOfBirth: profileData.date_of_birth,
-      gender: profileData.gender,
-      insurance_provider: profileData.insurance_provider,
-      insurance_number: profileData.insurance_number,
-      insurance_member_id: profileData.insurance_member_id,
-      preferred_language: profileData.preferred_language,
-      address: profileData.address, // JSONB, already camelCase inside
-      emergencyContact: profileData.emergency_contact, // JSONB
-      medicalDetails: profileData.medical_details, // JSONB
-      createdAt: profileData.created_at,
-      updatedAt: profileData.updated_at,
-    };
+    // Backend returns: { status: 'success', data: { user: {...}, profile: {...} } }
+    const responseData = response.data.data || response.data;
+    
+    // Backend already returns camelCase, just extract profile
+    const profile = responseData.profile || {};
+    
+    if (__DEV__) {
+      console.log('📋 Extracted profile:', profile);
+    }
 
     return {
       success: true,
-      data: transformedData,
+      data: profile, // Return profile as-is (already in correct format)
     };
   } catch (error) {
     if (__DEV__) {
@@ -141,12 +163,17 @@ export const updatePatientProfile = async (profileData) => {
       throw new Error('No access token found');
     }
 
-    console.log('� Access Token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'NULL');
-    console.log('�📤 Updating patient profile...', profileData);
+    // Transform camelCase to snake_case for backend
+    const backendData = transformToBackendFormat(profileData);
+
+    if (__DEV__) {
+      console.log('🔑 Access Token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'NULL');
+      console.log('📤 Updating patient profile (after transform):', backendData);
+    }
 
     const response = await axios.put(
       `${API_BASE_URL}/v1/patient/profile`,
-      profileData,
+      backendData, // Use transformed data
       {
         timeout: 15000,
         headers: {
@@ -249,11 +276,13 @@ export const uploadPatientAvatar = async (avatarFile) => {
       }
     );
 
-    console.log('✅ Avatar uploaded successfully!', response.data.avatar_url);
-
+    console.log('✅ Avatar uploaded successfully!', response.data?.data?.avatar_url);
+    
+    // Backend returns: { status: 'success', message: '...', data: { avatar_url: '/uploads/avatars/xxx.jpg' } }
     return {
       success: true,
-      data: response.data,
+      data: response.data.data, // Extract nested data object
+      avatarUrl: response.data.data?.avatar_url, // Direct access to avatar_url
     };
   } catch (error) {
     if (__DEV__) {
