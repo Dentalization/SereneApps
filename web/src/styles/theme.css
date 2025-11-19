@@ -1,0 +1,363 @@
+/* Healthcare SaaS Premium Theme Variables */
+/* Brand Accent: #7C3AED (Purple) - Consistent across themes */
+
+:root {
+  /* === LIGHT THEME VARIABLES === */
+  
+  /* Primary Colors */
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-surface-elevated: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-surface-active: #e2e8f0;
+  
+  /* Text Colors */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #64748b;
+  --color-text-muted: #94a3b8;
+  --color-text-inverse: #ffffff;
+  
+  /* Border Colors */
+  --color-border-primary: #e2e8f0;
+  --color-border-secondary: #cbd5e1;
+  --color-border-focus: #7c3aed;
+  --color-border-hover: #94a3b8;
+  
+  /* Brand & Accent */
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-light: #ede9fe;
+  --color-accent-text: #ffffff;
+  
+  /* Status Colors */
+  --color-success: #10b981;
+  --color-success-light: #d1fae5;
+  --color-warning: #f59e0b;
+  --color-warning-light: #fef3c7;
+  --color-error: #ef4444;
+  --color-error-light: #fee2e2;
+  --color-info: #3b82f6;
+  --color-info-light: #dbeafe;
+  
+  /* Shadows - Warm & Soft for Light Mode */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Glass Effect */
+  --glass-background: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-backdrop: blur(12px);
+
+  /* Skeleton Shimmer */
+  --skeleton-base: rgba(226, 232, 240, 0.85);
+  --skeleton-highlight: rgba(255, 255, 255, 0.7);
+  --skeleton-border: rgba(148, 163, 184, 0.45);
+  --skeleton-angle: 100deg;
+  
+  /* Transition Variables */
+  --transition-duration: 240ms;
+  --transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-veil-duration: 120ms;
+  
+  /* Scale Effect */
+  --scale-normal: 1.0;
+  --scale-transition: 0.99;
+}
+
+/* === DARK THEME VARIABLES === */
+.dark {
+  /* Primary Colors */
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-elevated: #334155;
+  --color-surface-hover: #475569;
+  --color-surface-active: #64748b;
+  
+  /* Text Colors */
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #e2e8f0;
+  --color-text-tertiary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-text-inverse: #0f172a;
+  
+  /* Border Colors */
+  --color-border-primary: #475569;
+  --color-border-secondary: #64748b;
+  --color-border-focus: #8b5cf6;
+  --color-border-hover: #64748b;
+  
+  /* Brand & Accent - Adapted for Dark Mode Contrast */
+  --color-accent: #8b5cf6;
+  --color-accent-hover: #7c3aed;
+  --color-accent-light: #2d1b69;
+  --color-accent-text: #ffffff;
+  
+  /* Status Colors - Darker Variants */
+  --color-success: #059669;
+  --color-success-light: #064e3b;
+  --color-warning: #d97706;
+  --color-warning-light: #92400e;
+  --color-error: #dc2626;
+  --color-error-light: #991b1b;
+  --color-info: #2563eb;
+  --color-info-light: #1e3a8a;
+  
+  /* Shadows - Cooler & Darker for Dark Mode */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  
+  /* Glass Effect - Dark Mode */
+  --glass-background: rgba(15, 23, 42, 0.8);
+  --glass-border: rgba(148, 163, 184, 0.1);
+  --glass-backdrop: blur(12px);
+
+  /* Skeleton Shimmer - Dark */
+  --skeleton-base: rgba(71, 85, 105, 0.55);
+  --skeleton-highlight: rgba(148, 163, 184, 0.32);
+  --skeleton-border: rgba(100, 116, 139, 0.45);
+}
+
+/* === THEME TRANSITION SYSTEM === */
+
+/* Base transition for all theme-aware elements */
+.theme-transition {
+  transition: 
+    background-color var(--transition-duration) var(--transition-easing),
+    border-color var(--transition-duration) var(--transition-easing),
+    color var(--transition-duration) var(--transition-easing),
+    box-shadow var(--transition-duration) var(--transition-easing),
+    backdrop-filter var(--transition-duration) var(--transition-easing);
+}
+
+/* App shell scale transition */
+.app-shell {
+  transform: scale(var(--scale-normal));
+  transition: transform var(--transition-duration) var(--transition-easing);
+}
+
+.app-shell.theme-transitioning {
+  transform: scale(var(--scale-transition));
+}
+
+/* Glass veil overlay for premium transition effect */
+.theme-veil {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--glass-background);
+  backdrop-filter: var(--glass-backdrop);
+  border: 1px solid var(--glass-border);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: 
+    opacity var(--transition-veil-duration) var(--transition-easing),
+    backdrop-filter var(--transition-veil-duration) var(--transition-easing);
+}
+
+.theme-veil.active {
+  opacity: 1;
+  backdrop-filter: blur(6px);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition,
+  .app-shell,
+  .theme-veil {
+    transition: none !important;
+  }
+  
+  .theme-veil {
+    display: none !important;
+  }
+  
+  .app-shell.theme-transitioning {
+    transform: none !important;
+  }
+}
+
+/* === UTILITY CLASSES === */
+
+/* Optional reduced motion toggle controlled via PreferencesContext */
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Apply theme-aware colors */
+.bg-surface {
+  background-color: var(--color-surface);
+}
+
+.bg-surface-elevated {
+  background-color: var(--color-surface-elevated);
+}
+
+.text-primary {
+  color: var(--color-text-primary);
+}
+
+/* Dentist portal skeleton shimmer system */
+.dentist-skeleton,
+.clinic-skeleton,
+.admin-skeleton {
+  --skeleton-bg: var(--skeleton-base);
+  --skeleton-glow: var(--skeleton-highlight);
+  --skeleton-border-active: var(--skeleton-border);
+}
+
+.dentist-skeleton .animate-pulse,
+.clinic-skeleton .animate-pulse,
+.admin-skeleton .animate-pulse {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton-bg) !important;
+  background-image: linear-gradient(
+    var(--skeleton-angle),
+    var(--skeleton-bg) 0%,
+    var(--skeleton-glow) 50%,
+    var(--skeleton-bg) 100%
+  );
+  background-size: 200% 100%;
+  border-color: var(--skeleton-border-active) !important;
+  color: transparent;
+  animation: dentist-shimmer 1.4s ease-in-out infinite !important;
+  will-change: background-position;
+}
+
+.dentist-skeleton .animate-pulse::selection,
+.clinic-skeleton .animate-pulse::selection,
+.admin-skeleton .animate-pulse::selection {
+  background: transparent;
+}
+
+.dentist-skeleton .skeleton-surface,
+.clinic-skeleton .skeleton-surface,
+.admin-skeleton .skeleton-surface {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton-bg);
+  border-color: var(--skeleton-border-active) !important;
+  background-image: linear-gradient(
+    var(--skeleton-angle),
+    var(--skeleton-bg) 0%,
+    var(--skeleton-glow) 50%,
+    var(--skeleton-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: dentist-shimmer 1.8s ease-in-out infinite;
+  will-change: background-position;
+}
+
+@keyframes dentist-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.border-primary {
+  border-color: var(--color-border-primary);
+}
+
+.shadow-theme-sm {
+  box-shadow: var(--shadow-sm);
+}
+
+.shadow-theme-md {
+  box-shadow: var(--shadow-md);
+}
+
+.shadow-theme-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+/* Accent color utilities */
+.bg-accent {
+  background-color: var(--color-accent);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.border-accent {
+  border-color: var(--color-accent);
+}
+
+/* Interactive states */
+.hover\:bg-surface-hover:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.hover\:bg-accent-hover:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.focus\:border-accent:focus {
+  border-color: var(--color-border-focus);
+}
+
+/* Glass morphism utilities */
+.glass {
+  background: var(--glass-background);
+  backdrop-filter: var(--glass-backdrop);
+  border: 1px solid var(--glass-border);
+}
+
+/* Healthcare-specific color utilities */
+.status-success {
+  color: var(--color-success);
+}
+
+.status-warning {
+  color: var(--color-warning);
+}
+
+.status-error {
+  color: var(--color-error);
+}
+
+.status-info {
+  color: var(--color-info);
+}
+
+.bg-success-light {
+  background-color: var(--color-success-light);
+}
+
+.bg-warning-light {
+  background-color: var(--color-warning-light);
+}
+
+.bg-error-light {
+  background-color: var(--color-error-light);
+}
+
+.bg-info-light {
+  background-color: var(--color-info-light);
+}

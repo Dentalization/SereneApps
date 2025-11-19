@@ -1,0 +1,88 @@
+// Clinic Portal Route Exports
+// Import all clinic portal pages for routing
+
+export { default as ClinicDashboard } from './home';
+export { default as ClinicSchedule } from './schedule';
+export { default as ClinicPatients } from './patients';
+export { default as ClinicBilling } from './billing';
+export { default as ClinicInventory } from './inventory';
+export { default as ClinicReports } from './reports';
+export { default as ClinicSettings } from './settings';
+
+// UI Components
+export { default as ClinicSideBar } from './ui/SideBar-Clinic';
+
+// Sample Route Configuration for React Router
+export const clinicRoutes = [
+  {
+    path: '/clinic-portal',
+    children: [
+      { path: '', element: 'ClinicDashboard' }, // Default to home/dashboard
+      { path: 'home', element: 'ClinicDashboard' },
+      { path: 'schedule', element: 'ClinicSchedule' },
+      { path: 'patients', element: 'ClinicPatients' },
+      { path: 'billing', element: 'ClinicBilling' },
+      { path: 'inventory', element: 'ClinicInventory' },
+      { path: 'reports', element: 'ClinicReports' },
+      { path: 'settings', element: 'ClinicSettings' }
+    ]
+  }
+];
+
+// Role-based Access Control Configuration
+export const rolePermissions = {
+  owner: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'],
+  manager: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'],
+  front_office: ['dashboard', 'schedule', 'patients'],
+  nurse: ['dashboard', 'schedule', 'patients', 'inventory'],
+  cashier: ['dashboard', 'billing'],
+  staff: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'] // fallback
+};
+
+// Menu Configuration (used by sidebar)
+export const menuConfig = {
+  items: [
+    { 
+      id: 'dashboard', 
+      path: '/clinic-portal/home',
+      icon: 'Home',
+      roles: ['front_office', 'nurse', 'cashier', 'manager', 'owner', 'staff']
+    },
+    { 
+      id: 'schedule', 
+      path: '/clinic-portal/schedule',
+      icon: 'Calendar',
+      roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
+    },
+    { 
+      id: 'patients', 
+      path: '/clinic-portal/patients',
+      icon: 'Users',
+      roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
+    },
+    { 
+      id: 'billing', 
+      path: '/clinic-portal/billing',
+      icon: 'Receipt',
+      roles: ['cashier', 'manager', 'owner', 'staff']
+    },
+    { 
+      id: 'inventory', 
+      path: '/clinic-portal/inventory',
+      icon: 'Boxes',
+      roles: ['nurse', 'manager', 'owner', 'staff']
+    },
+    { 
+      id: 'reports', 
+      path: '/clinic-portal/reports',
+      icon: 'BarChart3',
+      roles: ['manager', 'owner', 'staff']
+    },
+    { 
+      id: 'settings', 
+      path: '/clinic-portal/settings',
+      icon: 'Settings',
+      roles: ['manager', 'owner', 'staff']
+    }
+  ]
+};

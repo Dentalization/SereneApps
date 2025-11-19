@@ -1,0 +1,470 @@
+{
+  "app": {
+    "name": "SereneAI",
+    "tagline": "Perawatan Gigi Jadi Mudah"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "delete": "Hapus",
+    "edit": "Edit",
+    "search": "Cari",
+    "loading": "Memuat...",
+    "retry": "Coba Lagi",
+    "back": "Kembali",
+    "next": "Lanjut",
+    "done": "Selesai",
+    "close": "Tutup",
+    "confirm": "Konfirmasi",
+    "yes": "Ya",
+    "no": "Tidak",
+    "required": "Wajib",
+    "optional": "Opsional",
+    "submit": "Kirim",
+    "continue": "Lanjutkan",
+    "skip": "Lewati",
+    "success": "Berhasil",
+    "error": "Error",
+    "warning": "Peringatan",
+    "info": "Informasi",
+    "noData": "Tidak ada data",
+    "selectAll": "Pilih Semua",
+    "deselectAll": "Hapus Semua Pilihan"
+  },
+  "validation": {
+    "required": "Field ini wajib diisi",
+    "email": "Masukkan alamat email yang valid",
+    "phone": "Masukkan nomor telepon yang valid",
+    "password": "Password minimal 8 karakter",
+    "passwordMatch": "Password tidak sama",
+    "minLength": "Minimal {{min}} karakter",
+    "maxLength": "Maksimal {{max}} karakter",
+    "invalidFormat": "Format tidak valid",
+    "futureDate": "Tanggal harus di masa depan",
+    "pastDate": "Tanggal harus di masa lalu",
+    "minAge": "Usia minimal {{age}} tahun"
+  },
+  "auth": {
+    "login": {
+      "title": "Masuk",
+      "subtitle": "Selamat datang kembali di SereneAI",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Masukkan email Anda",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Masukkan password Anda",
+      "loginButton": "Masuk",
+      "forgotPassword": "Lupa password?",
+      "noAccount": "Belum punya akun?",
+      "signUp": "Daftar",
+      "rememberMe": "Ingat saya"
+    },
+    "register": {
+      "title": "Buat Akun",
+      "subtitle": "Bergabung dengan SereneAI untuk perawatan gigi yang lebih baik",
+      "nameLabel": "Nama Lengkap",
+      "namePlaceholder": "Masukkan nama lengkap Anda",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Masukkan email Anda",
+      "phoneLabel": "Nomor Telepon",
+      "phonePlaceholder": "+62812XXXX",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Minimal 8 karakter",
+      "confirmPasswordLabel": "Konfirmasi Password",
+      "confirmPasswordPlaceholder": "Masukkan ulang password",
+      "dobLabel": "Tanggal Lahir",
+      "dobPlaceholder": "YYYY-MM-DD",
+      "genderLabel": "Jenis Kelamin",
+      "genderMale": "Laki-laki",
+      "genderFemale": "Perempuan",
+      "genderOther": "Lainnya",
+      "registerButton": "Buat Akun",
+      "hasAccount": "Sudah punya akun?",
+      "signIn": "Masuk",
+      "termsAgree": "Saya setuju dengan",
+      "termsLink": "Syarat & Ketentuan",
+      "privacyLink": "Kebijakan Privasi"
+    },
+    "otp": {
+      "title": "Verifikasi Nomor Telepon",
+      "subtitle": "Kami telah mengirim kode 6 digit ke {{phone}}",
+      "codeLabel": "Kode Verifikasi",
+      "codePlaceholder": "Masukkan kode 6 digit",
+      "verifyButton": "Verifikasi",
+      "resendCode": "Tidak menerima kode?",
+      "resendButton": "Kirim Ulang Kode",
+      "resendTimer": "Kirim ulang dalam {{seconds}} detik",
+      "changeNumber": "Ganti nomor telepon",
+      "otpSent": "Kode OTP berhasil dikirim",
+      "otpExpired": "Kode sudah kadaluarsa. Silakan minta kode baru.",
+      "otpInvalid": "Kode tidak valid. Silakan coba lagi.",
+      "maxAttempts": "Terlalu banyak percobaan. Silakan minta kode baru."
+    },
+    "forgotPassword": {
+      "title": "Lupa Password",
+      "subtitle": "Masukkan email Anda untuk reset password",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Masukkan email Anda",
+      "sendButton": "Kirim Link Reset",
+      "backToLogin": "Kembali ke Login",
+      "emailSent": "Link reset telah dikirim ke email Anda"
+    },
+    "resetPassword": {
+      "title": "Reset Password",
+      "subtitle": "Buat password baru",
+      "newPasswordLabel": "Password Baru",
+      "newPasswordPlaceholder": "Masukkan password baru",
+      "confirmPasswordLabel": "Konfirmasi Password",
+      "confirmPasswordPlaceholder": "Masukkan ulang password baru",
+      "resetButton": "Reset Password",
+      "success": "Password berhasil direset"
+    },
+    "logout": {
+      "title": "Keluar",
+      "message": "Anda yakin ingin keluar?",
+      "confirm": "Keluar",
+      "cancel": "Batal"
+    },
+    "errors": {
+      "invalidCredentials": "Email atau password salah",
+      "emailExists": "Email sudah terdaftar",
+      "phoneExists": "Nomor telepon sudah terdaftar",
+      "networkError": "Gagal terhubung ke server. Silakan coba lagi.",
+      "serverError": "Terjadi kesalahan server. Silakan coba lagi nanti.",
+      "sessionExpired": "Sesi berakhir. Silakan login kembali.",
+      "unauthorized": "Akses tidak diizinkan",
+      "forbidden": "Akses ditolak"
+    }
+  },
+  "home": {
+    "greeting": "Halo, {{name}}",
+    "subtitle": "Apa yang bisa kami bantu hari ini?",
+    "bookAppointment": "Buat Janji",
+    "myAppointments": "Janji Saya",
+    "dentalRecords": "Rekam Medis",
+    "payments": "Pembayaran",
+    "upcomingTitle": "Janji Mendatang",
+    "noUpcoming": "Belum ada janji mendatang",
+    "viewAll": "Lihat Semua",
+    "quickActions": "Aksi Cepat",
+    "emergencyContact": "Kontak Darurat",
+    "findClinic": "Cari Klinik"
+  },
+  "appointments": {
+    "title": "Janji Temu",
+    "book": "Buat Janji",
+    "upcoming": "Mendatang",
+    "past": "Sebelumnya",
+    "cancelled": "Dibatalkan",
+    "bookNew": {
+      "title": "Buat Janji Temu",
+      "selectClinic": "Pilih Klinik",
+      "selectDentist": "Pilih Dokter Gigi",
+      "selectService": "Pilih Layanan",
+      "selectDate": "Pilih Tanggal",
+      "selectTime": "Pilih Waktu",
+      "addNotes": "Catatan Tambahan",
+      "notesPlaceholder": "Ada permintaan khusus atau keluhan?",
+      "confirmBooking": "Konfirmasi Booking",
+      "bookingSuccess": "Janji temu berhasil dibuat!",
+      "bookingFailed": "Gagal membuat janji temu. Silakan coba lagi."
+    },
+    "details": {
+      "title": "Detail Janji Temu",
+      "clinic": "Klinik",
+      "dentist": "Dokter Gigi",
+      "service": "Layanan",
+      "date": "Tanggal",
+      "time": "Waktu",
+      "status": "Status",
+      "notes": "Catatan",
+      "cancel": "Batalkan Janji",
+      "reschedule": "Reschedule",
+      "directions": "Petunjuk Arah",
+      "call": "Hubungi Klinik",
+      "chat": "Chat dengan Dokter"
+    },
+    "status": {
+      "pending": "Menunggu",
+      "confirmed": "Dikonfirmasi",
+      "in_progress": "Sedang Berlangsung",
+      "completed": "Selesai",
+      "cancelled": "Dibatalkan",
+      "no_show": "Tidak Hadir"
+    },
+    "cancel": {
+      "title": "Batalkan Janji Temu",
+      "message": "Anda yakin ingin membatalkan janji temu ini?",
+      "reason": "Alasan pembatalan",
+      "reasonPlaceholder": "Mohon beritahu kami alasannya",
+      "confirm": "Ya, Batalkan",
+      "success": "Janji temu berhasil dibatalkan",
+      "deadline": "Tidak bisa dibatalkan dalam 24 jam sebelum janji"
+    },
+    "reschedule": {
+      "title": "Reschedule Janji Temu",
+      "selectNewDate": "Pilih tanggal baru",
+      "selectNewTime": "Pilih waktu baru",
+      "confirm": "Konfirmasi Reschedule",
+      "success": "Janji temu berhasil di-reschedule",
+      "deadline": "Tidak bisa di-reschedule dalam 24 jam sebelum janji"
+    },
+    "errors": {
+      "notFound": "Janji temu tidak ditemukan",
+      "conflict": "Waktu yang dipilih sudah dibooking. Silakan pilih waktu lain.",
+      "outsideHours": "Silakan pilih waktu antara 08:00 - 18:00",
+      "alreadyConfirmed": "Janji temu sudah dikonfirmasi"
+    }
+  },
+  "clinics": {
+    "title": "Cari Klinik",
+    "search": "Cari klinik...",
+    "nearby": "Klinik Terdekat",
+    "all": "Semua Klinik",
+    "filters": "Filter",
+    "distance": "Jarak",
+    "rating": "Rating",
+    "details": {
+      "about": "Tentang",
+      "services": "Layanan",
+      "dentists": "Dokter Gigi",
+      "hours": "Jam Operasional",
+      "location": "Lokasi",
+      "contact": "Kontak",
+      "reviews": "Review",
+      "facilities": "Fasilitas",
+      "bookHere": "Buat Janji di Sini"
+    },
+    "hours": {
+      "open": "Buka",
+      "closed": "Tutup",
+      "opensAt": "Buka jam {{time}}",
+      "closesAt": "Tutup jam {{time}}",
+      "openNow": "Sedang Buka",
+      "closedNow": "Sedang Tutup"
+    }
+  },
+  "dentists": {
+    "title": "Dokter Gigi",
+    "specialization": "Spesialisasi",
+    "experience": "Pengalaman {{years}} tahun",
+    "available": "Tersedia",
+    "unavailable": "Tidak Tersedia",
+    "viewProfile": "Lihat Profil",
+    "bookWith": "Buat Janji dengan {{name}}",
+    "details": {
+      "about": "Tentang",
+      "education": "Pendidikan",
+      "certifications": "Sertifikasi",
+      "specializations": "Spesialisasi",
+      "languages": "Bahasa yang Dikuasai",
+      "availability": "Ketersediaan"
+    }
+  },
+  "profile": {
+    "title": "Profil",
+    "personalInfo": "Informasi Pribadi",
+    "medicalInfo": "Informasi Medis",
+    "insuranceInfo": "Asuransi",
+    "emergencyInfo": "Kontak Darurat",
+    "settingsInfo": "Pengaturan",
+    "edit": {
+      "title": "Edit Profil",
+      "fullName": "Nama Lengkap",
+      "email": "Email",
+      "phone": "Nomor Telepon",
+      "dob": "Tanggal Lahir",
+      "gender": "Jenis Kelamin",
+      "address": "Alamat",
+      "save": "Simpan Perubahan",
+      "success": "Profil berhasil diperbarui"
+    },
+    "medical": {
+      "allergies": "Alergi",
+      "conditions": "Kondisi Medis",
+      "medications": "Obat yang Sedang Dikonsumsi",
+      "bloodType": "Golongan Darah",
+      "addAllergy": "Tambah Alergi",
+      "addCondition": "Tambah Kondisi",
+      "addMedication": "Tambah Obat"
+    },
+    "insurance": {
+      "provider": "Penyedia Asuransi",
+      "policyNumber": "Nomor Polis",
+      "memberId": "ID Member",
+      "expiryDate": "Tanggal Kadaluarsa"
+    },
+    "emergency": {
+      "name": "Nama Kontak",
+      "phone": "Nomor Telepon",
+      "relationship": "Hubungan"
+    },
+    "settings": {
+      "notifications": "Notifikasi",
+      "language": "Bahasa",
+      "theme": "Tema",
+      "privacy": "Privasi",
+      "security": "Keamanan",
+      "help": "Bantuan & Dukungan",
+      "about": "Tentang",
+      "logout": "Keluar"
+    }
+  },
+  "payments": {
+    "title": "Pembayaran",
+    "pending": "Pembayaran Tertunda",
+    "history": "Riwayat Pembayaran",
+    "methods": "Metode Pembayaran",
+    "pay": {
+      "title": "Bayar",
+      "amount": "Jumlah",
+      "method": "Metode Pembayaran",
+      "selectMethod": "Pilih metode pembayaran",
+      "bankTransfer": "Transfer Bank",
+      "creditCard": "Kartu Kredit",
+      "eWallet": "E-Wallet",
+      "insurance": "Asuransi",
+      "confirm": "Konfirmasi Pembayaran",
+      "processing": "Memproses pembayaran...",
+      "success": "Pembayaran berhasil!",
+      "failed": "Pembayaran gagal. Silakan coba lagi."
+    },
+    "details": {
+      "invoice": "Invoice",
+      "date": "Tanggal",
+      "status": "Status",
+      "items": "Item",
+      "subtotal": "Subtotal",
+      "tax": "Pajak",
+      "discount": "Diskon",
+      "total": "Total",
+      "download": "Unduh Invoice"
+    },
+    "status": {
+      "pending": "Tertunda",
+      "paid": "Lunas",
+      "failed": "Gagal",
+      "refunded": "Dikembalikan",
+      "cancelled": "Dibatalkan"
+    }
+  },
+  "chat": {
+    "title": "Pesan",
+    "noMessages": "Belum ada pesan",
+    "startChat": "Mulai percakapan",
+    "typeMessage": "Ketik pesan...",
+    "send": "Kirim",
+    "attachFile": "Lampirkan File",
+    "takePhoto": "Ambil Foto",
+    "online": "Online",
+    "offline": "Offline",
+    "typing": "sedang mengetik...",
+    "delivered": "Terkirim",
+    "read": "Dibaca",
+    "fileAttached": "File dilampirkan",
+    "imageSent": "Gambar terkirim",
+    "errors": {
+      "messageTooLong": "Pesan terlalu panjang. Maksimal 5000 karakter.",
+      "fileTooLarge": "File terlalu besar. Maksimal 5MB.",
+      "sendFailed": "Gagal mengirim pesan. Silakan coba lagi."
+    }
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "markAllRead": "Tandai semua sudah dibaca",
+    "noNotifications": "Tidak ada notifikasi",
+    "types": {
+      "appointment": "Janji Temu",
+      "payment": "Pembayaran",
+      "reminder": "Pengingat",
+      "message": "Pesan",
+      "system": "Sistem"
+    },
+    "settings": {
+      "title": "Pengaturan Notifikasi",
+      "push": "Push Notification",
+      "email": "Email Notification",
+      "sms": "SMS Notification",
+      "appointments": "Pengingat Janji Temu",
+      "messages": "Pesan Baru",
+      "payments": "Update Pembayaran",
+      "promotions": "Promosi & Penawaran"
+    }
+  },
+  "records": {
+    "title": "Rekam Medis Gigi",
+    "history": "Riwayat Perawatan",
+    "xrays": "X-Ray",
+    "prescriptions": "Resep",
+    "documents": "Dokumen",
+    "noRecords": "Belum ada rekam medis",
+    "view": "Lihat",
+    "download": "Unduh",
+    "share": "Bagikan"
+  },
+  "errors": {
+    "network": {
+      "title": "Error Jaringan",
+      "message": "Periksa koneksi internet Anda dan coba lagi.",
+      "retry": "Coba Lagi"
+    },
+    "server": {
+      "title": "Error Server",
+      "message": "Terjadi kesalahan. Silakan coba lagi nanti.",
+      "contact": "Hubungi Support"
+    },
+    "notFound": {
+      "title": "Tidak Ditemukan",
+      "message": "Halaman yang Anda cari tidak ada."
+    },
+    "unauthorized": {
+      "title": "Tidak Terotorisasi",
+      "message": "Silakan login untuk melanjutkan."
+    },
+    "forbidden": {
+      "title": "Akses Ditolak",
+      "message": "Anda tidak memiliki izin untuk mengakses resource ini."
+    },
+    "rateLimit": {
+      "title": "Terlalu Banyak Request",
+      "message": "Silakan tunggu sebentar sebelum mencoba lagi.",
+      "waitTime": "Mohon tunggu {{seconds}} detik"
+    }
+  },
+  "date": {
+    "today": "Hari Ini",
+    "tomorrow": "Besok",
+    "yesterday": "Kemarin",
+    "days": {
+      "monday": "Senin",
+      "tuesday": "Selasa",
+      "wednesday": "Rabu",
+      "thursday": "Kamis",
+      "friday": "Jumat",
+      "saturday": "Sabtu",
+      "sunday": "Minggu"
+    },
+    "months": {
+      "january": "Januari",
+      "february": "Februari",
+      "march": "Maret",
+      "april": "April",
+      "may": "Mei",
+      "june": "Juni",
+      "july": "Juli",
+      "august": "Agustus",
+      "september": "September",
+      "october": "Oktober",
+      "november": "November",
+      "december": "Desember"
+    }
+  },
+  "time": {
+    "morning": "Pagi",
+    "afternoon": "Siang",
+    "evening": "Sore",
+    "night": "Malam",
+    "am": "AM",
+    "pm": "PM"
+  }
+}

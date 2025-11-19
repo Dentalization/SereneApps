@@ -1,0 +1,17 @@
+/* Fallback CSS Variables for Testing */
+:root {
+  /* Safe fallback colors */
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-surface-elevated: #ffffff;
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #64748b;
+  --color-accent: #3b82f6;
+  --color-border-primary: #e2e8f0;
+}
+
+/* Ensure no undefined variables cause crashes */
+.bg-surface { background-color: #f8fafc !important; }
+.bg-surface-elevated { background-color: #ffffff !important; }
+.text-primary { color: #1e293b !important; }
+.text-secondary { color: #64748b !important; }
