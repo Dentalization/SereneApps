@@ -15,10 +15,12 @@ import { NEARBY_CLINICS } from '../data/clinics';
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
 import * as NearbyDentistsMod from '../components/nearbyDentists';
+import * as QuickActionsMod from '../components/quickActions';
 import * as NearbyClinicsMod from '../components/nearbyClinics';
 import * as ArticleMod from '../components/article';
 const FeaturedDoctors = FeaturedDoctorsMod.default || FeaturedDoctorsMod;
 const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
+const QuickActions = QuickActionsMod.default || QuickActionsMod;
 const NearbyClinics = NearbyClinicsMod.default || NearbyClinicsMod;
 const Article = ArticleMod.default || ArticleMod;
 
@@ -50,6 +52,52 @@ const DashboardScreen = () => {
 
   const topDoctors = NEARBY_DENTISTS.slice(0, 3);
   const topClinics = NEARBY_CLINICS.slice(0, 2);
+  const quickActions = [
+    {
+      key: 'book',
+      label: 'Buat Janji',
+      icon: 'calendar-plus',
+      tint: 'rgba(249, 115, 22, 0.2)',
+      onPress: () => navigation.navigate('AppointmentTab', { screen: 'ClinicSearch' }),
+    },
+    {
+      key: 'ai',
+      label: 'AI Scan Gigi',
+      icon: 'camera',
+      tint: 'rgba(16, 185, 129, 0.22)',
+      iconColor: '#064E3B',
+      onPress: () => navigation.navigate('AITab', { screen: 'AIHome' }),
+    },
+    {
+      key: 'myAppointments',
+      label: 'Janji Saya',
+      icon: 'clipboard-text',
+      tint: 'rgba(168, 85, 247, 0.2)',
+      onPress: () => navigation.navigate('AppointmentTab', { screen: 'AppointmentList' }),
+    },
+    {
+      key: 'medicalHistory',
+      label: 'Riwayat Medis',
+      icon: 'file-document',
+      tint: 'rgba(59, 130, 246, 0.22)',
+      onPress: () => navigation.navigate('SettingsTab', { screen: 'DataManagement' }),
+    },
+    {
+      key: 'shop',
+      label: 'Belanja',
+      icon: 'shopping',
+      tint: 'rgba(250, 204, 21, 0.25)',
+      iconColor: '#78350F',
+      onPress: () => navigation.navigate('ShopTab', { screen: 'ShopHome' }),
+    },
+    {
+      key: 'help',
+      label: 'Bantuan',
+      icon: 'lifebuoy',
+      tint: 'rgba(148, 163, 184, 0.2)',
+      onPress: () => navigation.navigate('SettingsTab', { screen: 'HelpCenter' }),
+    },
+  ];
 
   const articles = SAMPLE_ARTICLES;
   const notifications = SAMPLE_NOTIFICATIONS;
@@ -135,7 +183,9 @@ const DashboardScreen = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
       >
+        
         <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleDoctorPress} onJoinCall={handleJoinCall} />
+        <QuickActions actions={quickActions} />
         <NearbyClinics
           clinics={topClinics}
           onClinicPress={handleClinicPress}

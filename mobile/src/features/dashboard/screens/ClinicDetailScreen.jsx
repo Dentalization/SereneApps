@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getClinicById, formatClinicDistance } from '../data/clinics';
 import { formatCurrency } from '../../../utils/formatters';
+import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const StatPill = ({ icon, label, value }) => (
   <View
@@ -24,8 +25,8 @@ const StatPill = ({ icon, label, value }) => (
   </View>
 );
 
-const Section = ({ title, description, children }) => (
-  <View style={{ marginBottom: 24 }}>
+const Section = ({ title, description, children, onLayout }) => (
+  <View style={{ marginBottom: 24 }} onLayout={onLayout}>
     <View style={{ marginBottom: 12 }}>
       <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{title}</Text>
       {description ? (
@@ -40,11 +41,70 @@ const ClinicDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  const scrollViewRef = useRef(null);
+  const [activeSection, setActiveSection] = useState('kontak');
+  const [anchorHeight, setAnchorHeight] = useState(64);
+
+  // Store section positions
+  const sectionPositions = useRef({
+    kontak: 0,
+    keunggulan: 0,
+    layanan: 0,
+    dokter: 0,
+    fasilitas: 0,
+    galeri: 0,
+  });
 
   const clinic = getClinicById(route.params?.clinicId);
+  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
+
+  const sections = [
+    { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
+    { id: 'keunggulan', label: 'Keunggulan', icon: 'star' },
+    { id: 'layanan', label: 'Layanan', icon: 'medical-bag' },
+    { id: 'dokter', label: 'Dokter', icon: 'doctor' },
+    { id: 'fasilitas', label: 'Fasilitas', icon: 'hospital-building' },
+    { id: 'galeri', label: 'Galeri', icon: 'image-multiple' },
+  ];
+
+  const scrollToSection = (sectionId) => {
+    const position = sectionPositions.current[sectionId];
+    if (scrollViewRef.current && position !== undefined) {
+      scrollViewRef.current.scrollTo({
+        y: Math.max(position - anchorHeight, 0),
+        animated: true,
+      });
+      setActiveSection(sectionId);
+    }
+  };
+
+  const handleSectionLayout = (sectionId, event) => {
+    const { y } = event.nativeEvent.layout;
+    sectionPositions.current[sectionId] = y;
+  };
+
+  const handleScroll = (event) => {
+    const offsetY = event.nativeEvent.contentOffset.y + anchorHeight + 16;
+    let currentSection = sections[0].id;
+    for (const section of sections) {
+      const position = sectionPositions.current[section.id];
+      if (position !== undefined && offsetY >= position) {
+        currentSection = section.id;
+      } else {
+        break;
+      }
+    }
+    if (currentSection !== activeSection) {
+      setActiveSection(currentSection);
+    }
+  };
 
   const handleBook = () =>
-    navigation.navigate('AppointmentTab', { screen: 'ClinicDetail', params: { clinicId: clinic.id } });
+    navigation.navigate('AppointmentTab', {
+      screen: 'ClinicDetail',
+      params: { clinicId: clinic.id },
+    });
+
   const handleCall = () => {
     if (clinic.phone) {
       Linking.openURL(`tel:${clinic.phone}`).catch(() => {});
@@ -55,9 +115,9 @@ const ClinicDetailScreen = () => {
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
 
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 220 }}
-        showsVerticalScrollIndicator={false}
+      <View
+        onLayout={handleHeaderLayout}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, zIndex: 20, elevation: 20 }}
       >
         <LinearGradient
           colors={[theme.colors.primary, '#7C3AED']}
@@ -133,10 +193,89 @@ const ClinicDetailScreen = () => {
             </View>
           </View>
         </LinearGradient>
+      </View>
 
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 220 }}
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        {/* ANCHOR HEADER STICKY */}
+        <View
+          onLayout={(event) => setAnchorHeight(event.nativeEvent.layout.height)}
+          style={{
+            marginHorizontal: 16,
+            backgroundColor: 'white',
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            paddingVertical: 12,
+            paddingHorizontal: 8,
+            shadowColor: '#0F172A',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.08,
+            shadowRadius: 12,
+            elevation: 6,
+          }}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 8 }}
+          >
+            {sections.map((section) => (
+              <TouchableOpacity
+                key={section.id}
+                onPress={() => scrollToSection(section.id)}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  marginRight: 8,
+                  borderRadius: 20,
+                  backgroundColor:
+                    activeSection === section.id ? theme.colors.primary : '#F1F5F9',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={section.icon}
+                  size={16}
+                  color={activeSection === section.id ? 'white' : '#64748B'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={{
+                    color: activeSection === section.id ? 'white' : '#64748B',
+                    fontWeight: activeSection === section.id ? '700' : '600',
+                    fontSize: 13,
+                  }}
+                >
+                  {section.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* CONTENT */}
         <View style={{ padding: 20 }}>
-          <Section title="Alamat & kontak">
-            <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#E2E8F0' }}>
+          <Section
+            title="Alamat & kontak"
+            onLayout={(e) => handleSectionLayout('kontak', e)}
+          >
+            <View
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 20,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+              }}
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                 <MaterialCommunityIcons name="map-marker" size={18} color={theme.colors.primary} />
                 <Text style={{ marginLeft: 8, color: '#0F172A', flex: 1 }}>{clinic.address}</Text>
@@ -155,6 +294,7 @@ const ClinicDetailScreen = () => {
           <Section
             title="Keunggulan klinik"
             description="Kurasi layanan dan fasilitas premium untuk pasien modern."
+            onLayout={(e) => handleSectionLayout('keunggulan', e)}
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {(clinic.highlights || []).map((item) => (
@@ -174,7 +314,10 @@ const ClinicDetailScreen = () => {
             </ScrollView>
           </Section>
 
-          <Section title="Layanan populer">
+          <Section
+            title="Layanan populer"
+            onLayout={(e) => handleSectionLayout('layanan', e)}
+          >
             {(clinic.services || []).map((service) => (
               <View
                 key={service.name}
@@ -187,7 +330,13 @@ const ClinicDetailScreen = () => {
                   borderColor: '#E2E8F0',
                 }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                  }}
+                >
                   <View style={{ flex: 1, paddingRight: 16 }}>
                     <Text style={{ fontWeight: '700', color: '#0F172A' }}>{service.name}</Text>
                     <Text style={{ color: '#94A3B8', marginTop: 4 }}>{service.description}</Text>
@@ -200,7 +349,10 @@ const ClinicDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title="Tim dokter">
+          <Section
+            title="Tim dokter"
+            onLayout={(e) => handleSectionLayout('dokter', e)}
+          >
             {(clinic.doctors || []).map((doctor) => (
               <View
                 key={doctor.id}
@@ -214,7 +366,10 @@ const ClinicDetailScreen = () => {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Image source={{ uri: doctor.avatar }} style={{ width: 64, height: 64, borderRadius: 16, marginRight: 16 }} />
+                  <Image
+                    source={{ uri: doctor.avatar }}
+                    style={{ width: 64, height: 64, borderRadius: 16, marginRight: 16 }}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: '700', color: '#0F172A' }}>{doctor.name}</Text>
                     <Text style={{ color: '#94A3B8', marginTop: 2 }}>{doctor.specialty}</Text>
@@ -245,10 +400,28 @@ const ClinicDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title="Fasilitas unggulan">
-            <View style={{ backgroundColor: 'white', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#E2E8F0' }}>
+          <Section
+            title="Fasilitas unggulan"
+            onLayout={(e) => handleSectionLayout('fasilitas', e)}
+          >
+            <View
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 20,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+              }}
+            >
               {(clinic.facilities || []).map((facility) => (
-                <View key={facility} style={{ flexDirection: 'row', marginBottom: 12, alignItems: 'center' }}>
+                <View
+                  key={facility}
+                  style={{
+                    flexDirection: 'row',
+                    marginBottom: 12,
+                    alignItems: 'center',
+                  }}
+                >
                   <View
                     style={{
                       width: 28,
@@ -260,7 +433,11 @@ const ClinicDetailScreen = () => {
                       marginRight: 10,
                     }}
                   >
-                    <MaterialCommunityIcons name="check" size={16} color={theme.colors.primary} />
+                    <MaterialCommunityIcons
+                      name="check"
+                      size={16}
+                      color={theme.colors.primary}
+                    />
                   </View>
                   <Text style={{ flex: 1, color: '#475569' }}>{facility}</Text>
                 </View>
@@ -268,7 +445,10 @@ const ClinicDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title="Galeri suasana">
+          <Section
+            title="Galeri suasana"
+            onLayout={(e) => handleSectionLayout('galeri', e)}
+          >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {(clinic.gallery || []).map((image, idx) => (
                 <Image
@@ -282,6 +462,7 @@ const ClinicDetailScreen = () => {
         </View>
       </ScrollView>
 
+      {/* BOTTOM ACTION BAR */}
       <View
         style={{
           position: 'absolute',
@@ -308,7 +489,12 @@ const ClinicDetailScreen = () => {
           >
             Hubungi
           </Button>
-          <Button mode="contained" style={{ flex: 1 }} onPress={handleBook} icon="calendar">
+          <Button
+            mode="contained"
+            style={{ flex: 1 }}
+            onPress={handleBook}
+            icon="calendar"
+          >
             Buat janji
           </Button>
         </View>
