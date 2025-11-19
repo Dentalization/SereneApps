@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Authentication</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        .debug-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .debug-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .token-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .login-form {
+            display: grid;
+            gap: 15px;
+            max-width: 400px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .user-info {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>SereneAI Authentication Debug</h1>
+    
+    <div class="debug-section">
+        <div class="debug-title">Current Authentication Status</div>
+        <div id="currentAuth">Loading...</div>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">Local Storage Tokens</div>
+        <div id="tokenInfo">Loading...</div>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">Admin Login</div>
+        <form class="login-form" id="loginForm">
+            <div class="form-group">
+                <label>Email:</label>
+                <select id="email">
+                    <option value="admin@sereneai.com">Super Admin (admin@sereneai.com)</option>
+                    <option value="success@sereneai.com">Customer Success Manager (success@sereneai.com)</option>
+                    <option value="business@sereneai.com">Business Manager (business@sereneai.com)</option>
+                    <option value="platform@sereneai.com">Platform Manager (platform@sereneai.com)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="password" value="admin123">
+            </div>
+            <button type="submit" class="btn">Login</button>
+        </form>
+        <button type="button" class="btn btn-danger" id="logoutBtn" style="margin-top: 10px;">Logout</button>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">Test Admin API</div>
+        <button type="button" class="btn" id="testDentists">Test Get Dentists</button>
+        <div id="apiResults"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:4000/api';
+
+        function displayCurrentAuth() {
+            const accessToken = localStorage.getItem('accessToken');
+            const refreshToken = localStorage.getItem('refreshToken');
+            
+            let tokenInfo = '';
+            if (accessToken) {
+                try {
+                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                    tokenInfo = `
+                        <div class="token-info">
+                            <strong>Access Token Payload:</strong><br>
+                            User ID: ${payload.userId}<br>
+                            Email: ${payload.email || 'N/A'}<br>
+                            Roles: ${JSON.stringify(payload.roles || [])}<br>
+                            Exp: ${new Date(payload.exp * 1000).toLocaleString()}<br>
+                            Issued: ${new Date(payload.iat * 1000).toLocaleString()}
+                        </div>
+                    `;
+                } catch (e) {
+                    tokenInfo = '<div class="error">Invalid token format</div>';
+                }
+            } else {
+                tokenInfo = '<div class="error">No access token found</div>';
+            }
+
+            document.getElementById('tokenInfo').innerHTML = tokenInfo;
+            
+            if (accessToken && refreshToken) {
+                fetchCurrentUser();
+            } else {
+                document.getElementById('currentAuth').innerHTML = '<div class="error">Not authenticated</div>';
+            }
+        }
+
+        async function fetchCurrentUser() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    document.getElementById('currentAuth').innerHTML = `
+                        <div class="user-info">
+                            <strong>Logged in as:</strong><br>
+                            Name: ${user.name}<br>
+                            Email: ${user.email}<br>
+                            Roles: ${JSON.stringify(user.roles)}<br>
+                            ID: ${user.id}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('currentAuth').innerHTML = '<div class="error">Failed to fetch user info</div>';
+                }
+            } catch (error) {
+                document.getElementById('currentAuth').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function login(email, password) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                    localStorage.setItem('refreshToken', data.refreshToken);
+                    document.getElementById('apiResults').innerHTML = '<div class="success">Login successful!</div>';
+                    displayCurrentAuth();
+                } else {
+                    document.getElementById('apiResults').innerHTML = `<div class="error">Login failed: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('apiResults').innerHTML = `<div class="error">Login error: ${error.message}</div>`;
+            }
+        }
+
+        async function testDentistsAPI() {
+            try {
+                const response = await fetch(`${API_BASE}/admin-dentists/dentists`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('apiResults').innerHTML = `
+                        <div class="success">
+                            <strong>Dentists API Success!</strong><br>
+                            Found ${data.length} dentists
+                        </div>
+                        <div class="token-info">
+                            ${JSON.stringify(data.slice(0, 2), null, 2)}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('apiResults').innerHTML = `
+                        <div class="error">
+                            <strong>API Error (${response.status}):</strong><br>
+                            ${data.message || JSON.stringify(data)}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('apiResults').innerHTML = `<div class="error">Request error: ${error.message}</div>`;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            login(email, password);
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            document.getElementById('apiResults').innerHTML = '<div class="success">Logged out</div>';
+            displayCurrentAuth();
+        });
+
+        document.getElementById('testDentists').addEventListener('click', testDentistsAPI);
+
+        // Initialize
+        displayCurrentAuth();
+    </script>
+</body>
+</html>

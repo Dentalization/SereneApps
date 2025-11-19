@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Patient Endpoints</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2563eb;
+            margin-top: 0;
+        }
+        h2 {
+            color: #1e40af;
+            margin-top: 30px;
+            border-bottom: 2px solid #3b82f6;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #374151;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin-right: 10px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .success {
+            background: #d1fae5;
+            border: 1px solid #6ee7b7;
+            color: #065f46;
+        }
+        .error {
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+        .info {
+            background: #dbeafe;
+            border: 1px solid #93c5fd;
+            color: #1e40af;
+        }
+        .token-display {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Patient Profile Endpoints</h1>
+        <p style="color: #6b7280;">Test suite untuk endpoint patient profile di SereneAI</p>
+    </div>
+
+    <div class="container">
+        <h2>Step 1: Register Patient</h2>
+        <div class="form-group">
+            <label>Email:</label>
+            <input type="email" id="registerEmail" value="patient.test@example.com" placeholder="patient@example.com">
+        </div>
+        <div class="form-group">
+            <label>Password:</label>
+            <input type="password" id="registerPassword" value="SecurePass123!" placeholder="Min. 8 characters">
+        </div>
+        <div class="form-group">
+            <label>Full Name:</label>
+            <input type="text" id="registerFullName" value="Test Patient" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+            <label>Phone:</label>
+            <input type="tel" id="registerPhone" value="+6281234567890" placeholder="+628123456789">
+        </div>
+        <button onclick="registerPatient()">Register Patient</button>
+        <div id="registerResponse"></div>
+        <div id="tokenDisplay"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: Update Patient Profile (PUT /v1/patient/profile)</h2>
+        <div class="form-group">
+            <label>Date of Birth (YYYY-MM-DD):</label>
+            <input type="text" id="profileDOB" value="1990-05-15" placeholder="1990-05-15">
+        </div>
+        <div class="form-group">
+            <label>Gender:</label>
+            <select id="profileGender" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px;">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Address (JSON):</label>
+            <textarea id="profileAddress">{"line1": "Jl. Sudirman No. 123", "line2": "Apt 45", "city": "Jakarta", "province": "DKI Jakarta", "postal_code": "12190"}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Emergency Contact (JSON):</label>
+            <textarea id="profileEmergency">{"name": "Jane Doe", "phone": "+6281987654321", "relationship": "Spouse"}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Medical Details (JSON):</label>
+            <textarea id="profileMedical">{"allergies": ["Penicillin", "Peanuts"], "current_medications": ["Aspirin"], "medical_conditions": ["Hypertension"], "blood_type": "A+", "notes": "Regular checkup needed"}</textarea>
+        </div>
+        <button onclick="updateProfile()">Update Profile</button>
+        <div id="profileResponse"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Upload Avatar (POST /v1/patient/avatar)</h2>
+        <div class="form-group">
+            <label>Avatar Image:</label>
+            <input type="file" id="avatarFile" accept="image/jpeg,image/png">
+        </div>
+        <button onclick="uploadAvatar()">Upload Avatar</button>
+        <div id="avatarResponse"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:4000/v1';
+        let accessToken = '';
+
+        async function registerPatient() {
+            const responseDiv = document.getElementById('registerResponse');
+            const tokenDiv = document.getElementById('tokenDisplay');
+            responseDiv.innerHTML = '<div class="response info">Registering patient...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/patient/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: document.getElementById('registerEmail').value,
+                        password: document.getElementById('registerPassword').value,
+                        full_name: document.getElementById('registerFullName').value,
+                        phone: document.getElementById('registerPhone').value,
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    accessToken = data.data.tokens.accessToken;
+                    responseDiv.innerHTML = `<div class="response success">✅ Registration successful!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                    tokenDiv.innerHTML = `<div class="token-display"><strong>Access Token:</strong><br>${accessToken}</div>`;
+                } else {
+                    responseDiv.innerHTML = `<div class="response error">❌ Registration failed!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="response error">❌ Network error: ${error.message}</div>`;
+            }
+        }
+
+        async function updateProfile() {
+            if (!accessToken) {
+                alert('Please register a patient first to get access token!');
+                return;
+            }
+
+            const responseDiv = document.getElementById('profileResponse');
+            responseDiv.innerHTML = '<div class="response info">Updating profile...</div>';
+            
+            try {
+                const address = JSON.parse(document.getElementById('profileAddress').value);
+                const emergency_contact = JSON.parse(document.getElementById('profileEmergency').value);
+                const medical_details = JSON.parse(document.getElementById('profileMedical').value);
+
+                const response = await fetch(`${API_URL}/patient/profile`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({
+                        date_of_birth: document.getElementById('profileDOB').value,
+                        gender: document.getElementById('profileGender').value,
+                        address: address,
+                        emergency_contact: emergency_contact,
+                        medical_details: medical_details
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    responseDiv.innerHTML = `<div class="response success">✅ Profile updated successfully!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                } else {
+                    responseDiv.innerHTML = `<div class="response error">❌ Profile update failed!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="response error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function uploadAvatar() {
+            if (!accessToken) {
+                alert('Please register a patient first to get access token!');
+                return;
+            }
+
+            const fileInput = document.getElementById('avatarFile');
+            if (!fileInput.files.length) {
+                alert('Please select an image file!');
+                return;
+            }
+
+            const responseDiv = document.getElementById('avatarResponse');
+            responseDiv.innerHTML = '<div class="response info">Uploading avatar...</div>';
+            
+            try {
+                const formData = new FormData();
+                formData.append('avatar', fileInput.files[0]);
+
+                const response = await fetch(`${API_URL}/patient/avatar`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    responseDiv.innerHTML = `<div class="response success">✅ Avatar uploaded successfully!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                } else {
+                    responseDiv.innerHTML = `<div class="response error">❌ Avatar upload failed!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="response error">❌ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

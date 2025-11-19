@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Set Admin Token</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .success { color: green; }
+        .error { color: red; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Set Admin Token for Testing</h1>
+        <p>This will set the admin token in localStorage for testing the admin portal.</p>
+        
+        <div>
+            <label>Admin Token:</label>
+            <textarea id="tokenInput" placeholder="Paste admin token here...">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5Iiwicm9sZXMiOlsic3VwZXJfYWRtaW4iLCJhZG1pbiJdLCJpYXQiOjE3NjAwMjYyMDYsImV4cCI6MTc2MDAyNzEwNn0.wm-QE6tvaxPTW9F7nrnNHOyWwzNggyOmWMa3zCSIrPk</textarea>
+        </div>
+        
+        <button onclick="setToken()">Set Admin Token</button>
+        <button onclick="clearToken()">Clear Token</button>
+        <button onclick="checkToken()">Check Current Token</button>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        function setToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if (!token) {
+                showResult('Please enter a token', 'error');
+                return;
+            }
+            
+            localStorage.setItem('auth.accessToken', token);
+            showResult('Admin token set successfully!', 'success');
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('auth.accessToken');
+            showResult('Token cleared successfully!', 'success');
+        }
+        
+        function checkToken() {
+            const token = localStorage.getItem('auth.accessToken');
+            if (token) {
+                showResult(`Current token: ${token.substring(0, 50)}...`, 'success');
+            } else {
+                showResult('No token found', 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const result = document.getElementById('result');
+            result.textContent = message;
+            result.className = type;
+        }
+        
+        // Check current token on page load
+        window.onload = function() {
+            checkToken();
+        }
+    </script>
+</body>
+</html>

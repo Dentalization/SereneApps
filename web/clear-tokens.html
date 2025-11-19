@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Expired Tokens</title>
+</head>
+<body>
+    <h1>Clear Expired Authentication Tokens</h1>
+    <button id="clearTokens">Clear Tokens</button>
+    <p id="status"></p>
+    
+    <script>
+        document.getElementById('clearTokens').addEventListener('click', function() {
+            // Clear all auth-related localStorage items
+            localStorage.removeItem('auth.accessToken');
+            localStorage.removeItem('auth.refreshToken');
+            
+            // Also clear any other potential auth keys
+            const keys = Object.keys(localStorage);
+            keys.forEach(key => {
+                if (key.includes('auth') || key.includes('token')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            document.getElementById('status').innerHTML = '<span style="color: green;">✅ All authentication tokens cleared! You can now try logging in again.</span>';
+        });
+    </script>
+</body>
+</html>

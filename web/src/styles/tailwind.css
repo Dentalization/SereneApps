@@ -1,0 +1,429 @@
+/* src/index.css (atau global.css) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    /* === Dentalization Brand Tokens (GLOBAL) === */
+    --primary: #483AA0;              /* trust purple */
+    --primary-rgb: 72, 58, 160;
+    --border-color-rgb: 72 58 160;
+    --border-opacity-base: 0.12;
+    --border-opacity-20: 0.024;
+    --border-opacity-30: 0.036;
+    --border-opacity-40: 0.048;
+    --border-opacity-50: 0.06;
+    --border-opacity-60: 0.072;
+    --accent: #A08A48;               /* warm gold */
+    --violet-1: #6854C0;
+    --blue-1: #4848C0;
+
+    --bg-light: #F2F1F8;
+    --text-dark: #333333;
+    --text-medium: #6E6E6E;
+
+    /* Light Mode Core Colors */
+    --color-background: #FEFEFE;
+    --color-foreground: var(--text-dark);
+    --color-border: rgb(var(--border-color-rgb) / var(--border-opacity-base));
+    --color-input: #FFFFFF;
+    --color-ring: var(--primary);
+
+    /* Light Mode Card Colors */
+    --color-card: #FFFFFF;
+    --color-card-foreground: var(--text-dark);
+    --color-popover: #FFFFFF;
+    --color-popover-foreground: var(--text-dark);
+
+    /* Light Mode Muted Colors */
+    --color-muted: #F8F7FC;
+    --color-muted-foreground: var(--text-medium);
+
+    /* Brand Colors (map ke token) */
+    --color-primary: var(--primary);
+    --color-primary-foreground: #FFFFFF;
+    --color-secondary: #6B5ACD;
+    --color-secondary-foreground: #FFFFFF;
+
+    /* State Colors */
+    --color-destructive: #EF4444;
+    --color-destructive-foreground: #FFFFFF;
+    --color-accent: var(--accent);
+    --color-accent-foreground: #FFFFFF;
+    --color-success: #22C55E;
+    --color-success-foreground: #FFFFFF;
+    --color-warning: #F59E0B;
+    --color-warning-foreground: #FFFFFF;
+    --color-error: #EF4444;
+    --color-error-foreground: #FFFFFF;
+
+    /* Additional Brand Colors */
+    --color-surface: var(--bg-light);
+    --color-text-primary: var(--text-dark);
+    --color-text-secondary: var(--text-medium);
+    --color-brand-canvas: #F2F1F8;
+    --color-trust-green: #2E7D32;
+    --color-trust-green-foreground: #FFFFFF;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    /* === Dark Mode: brand tetap konsisten === */
+    --primary: #483AA0;
+    --primary-rgb: 72, 58, 160;
+    --border-color-rgb: 255 255 255;
+    --border-opacity-base: 0.1;
+    --border-opacity-20: 0.02;
+    --border-opacity-30: 0.03;
+    --border-opacity-40: 0.04;
+    --border-opacity-50: 0.05;
+    --border-opacity-60: 0.06;
+    --accent: #A08A48;
+
+    /* Dark Mode Core Colors - Improved Contrast */
+    --color-background: #0A0A0B;
+    --color-foreground: #F8F9FA;
+    --color-border: rgb(var(--border-color-rgb) / var(--border-opacity-base));
+    --color-input: #1A1A1B;
+    --color-ring: var(--primary);
+
+    /* Dark Mode Card Colors */
+    --color-card: #161618;
+    --color-card-foreground: #F8F9FA;
+    --color-popover: #161618;
+    --color-popover-foreground: #F8F9FA;
+
+    /* Dark Mode Muted Colors */
+    --color-muted: #1A1A1B;
+    --color-muted-foreground: #A1A1AA;
+
+    /* Brand Colors (tetap brand) */
+    --color-primary: var(--primary);
+    --color-primary-foreground: #0A0A0B;
+    --color-secondary: #C4B5FD;
+    --color-secondary-foreground: #0A0A0B;
+
+    /* State Colors (improved contrast) */
+    --color-destructive: #F87171;
+    --color-destructive-foreground: #0A0A0B;
+    --color-accent: var(--accent);
+    --color-accent-foreground: #0A0A0B;
+    --color-success: #34D399;
+    --color-success-foreground: #0A0A0B;
+    --color-warning: #FBBF24;
+    --color-warning-foreground: #0A0A0B;
+    --color-error: #F87171;
+    --color-error-foreground: #0A0A0B;
+
+    /* Additional Brand Colors */
+    --color-surface: #161618;
+    --color-text-primary: #F8F9FA;
+    --color-text-secondary: #A1A1AA;
+    --color-brand-canvas: #1A1A1B;
+    --color-trust-green: #34D399;
+    --color-trust-green-foreground: #0A0A0B;
+  }
+
+  * { @apply border-border; }
+
+  body {
+    @apply bg-background text-foreground transition-colors duration-300;
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Ensure all major elements respect theme */
+  main, section, article, aside, header, footer, nav {
+    @apply bg-background text-foreground;
+  }
+
+  /* Ensure cards and surfaces work in both themes */
+  .card, .surface, [class*="card"], [class*="surface"] {
+    @apply bg-card text-card-foreground border-border;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    @apply text-foreground;
+  }
+
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Modal overlay pattern: allows conditional centering based on content height */
+  .modal-overlay-wrapper {
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+    z-index: 50;
+  }
+
+  .modal-centering-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  @media (min-width: 768px) {
+    .modal-centering-container {
+      padding: 1.5rem;
+    }
+  }
+}
+
+@layer components {
+  /* Brand Gradient Utilities */
+  .bg-brand-gradient {
+    background: linear-gradient(135deg, var(--primary) 0%, #6B5ACD 50%, #8A7FD8 100%);
+  }
+  .bg-brand-gradient-radial {
+    background: radial-gradient(circle at center, var(--primary) 0%, #6B5ACD 70%);
+  }
+
+  /* Trust Building Shadows (light) */
+  .shadow-brand {
+    box-shadow: 0 4px 8px rgba(var(--primary-rgb), 0.08), 0 1px 3px rgba(var(--primary-rgb), 0.12);
+  }
+  .shadow-brand-hover {
+    box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.2);
+  }
+
+  /* Dark mode shadows – improved contrast */
+  .dark .shadow-brand {
+    box-shadow:
+      0 8px 18px rgba(0, 0, 0, 0.8),
+      0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  }
+  .dark .shadow-brand-hover {
+    box-shadow:
+      0 16px 40px rgba(167, 139, 250, 0.3),
+      0 2px 0 rgba(255, 255, 255, 0.08) inset;
+  }
+
+  /* Dark mode gradient backgrounds – improved visibility */
+  .dark .bg-brand-gradient {
+    background: linear-gradient(135deg, var(--primary) 0%, #C4B5FD 45%, #DDD6FE 100%);
+  }
+  .dark .bg-brand-gradient-radial {
+    background: radial-gradient(60% 60% at 50% 40%, var(--primary) 0%, #C4B5FD 70%);
+  }
+
+  /* Empathetic Micro-interactions */
+  .hover-lift {
+    transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.2);
+  }
+  .dark .hover-lift:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Biometric Pulse Animation */
+  .pulse-heartbeat { animation: heartbeat 2s infinite ease-in-out; }
+  @keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+  }
+
+  /* Shimmer Loading Effect */
+  .shimmer {
+    background: linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.1), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  .dark .shimmer {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Trust Signal Reveal Animation */
+  .trust-reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 300ms ease-out, transform 300ms ease-out;
+  }
+  .trust-reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Clinical Serenity Spacing */
+  .spacing-clinical { padding: 2rem; }
+  @media (min-width: 768px) { .spacing-clinical { padding: 3.25rem; } }
+  @media (min-width: 1024px) { .spacing-clinical { padding: 5.25rem; } }
+}
+
+@layer utilities {
+  /* Responsive Typography */
+  .text-hero {
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    line-height: 1.2;
+    font-weight: 700;
+  }
+  .text-value-prop {
+    font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+    line-height: 1.4;
+    font-weight: 600;
+  }
+  .text-body-medical {
+    font-size: 1rem;
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  /* Brand Color Utilities */
+  .text-brand-primary { color: var(--primary); }
+  .text-brand-accent { color: var(--accent); }
+  .bg-brand-canvas { background-color: var(--color-brand-canvas); }
+  .bg-trust-green { background-color: var(--color-trust-green); }
+
+  /* Confident Reassurance Animations */
+  .fade-in-up {
+    animation: fadeInUp 600ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  @keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Medical Interface Borders */
+  .border-medical {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+  }
+
+  /* Gentle Guidance Transitions */
+  .transition-gentle {
+    transition: all 300ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+
+  /* Progressive Disclosure */
+  .disclosure-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 400ms ease-out;
+  }
+  .disclosure-content.open { max-height: 1000px; }
+
+  /* Elevation & backdrop helpers (dark-friendly) */
+  .elev-1 {
+    background: var(--color-card);
+    box-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.6),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .elev-2 {
+    background: var(--color-card);
+    box-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.65),
+      0 14px 40px rgba(167, 139, 250, 0.08);
+  }
+  .backdrop-tint {
+    background-color: rgba(10, 10, 11, 0.6);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Dark mode specific utilities */
+  .dark .elev-1 {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.1) inset,
+      0 8px 24px rgba(0, 0, 0, 0.8);
+  }
+  .dark .elev-2 {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.15) inset,
+      0 14px 40px rgba(167, 139, 250, 0.2);
+  }
+  .dark .backdrop-tint {
+    background-color: rgba(10, 10, 11, 0.8);
+  }
+
+  /* Force dark mode colors on specific elements */
+  .dark footer {
+    background-color: var(--color-card);
+    color: var(--color-card-foreground);
+  }
+
+  .dark header {
+    background-color: rgba(10, 10, 11, 0.95);
+    color: var(--color-foreground);
+  }
+
+  /* Text color overrides for better visibility */
+  .dark .text-gray-400 { color: #A1A1AA !important; }
+  .dark .text-gray-500 { color: #71717A !important; }
+  .dark .text-gray-600 { color: #52525B !important; }
+  .dark .text-gray-700 { color: #3F3F46 !important; }
+  .dark .text-gray-800 { color: #27272A !important; }
+
+  .dark .bg-white {
+    background-color: var(--color-card) !important;
+    color: var(--color-card-foreground) !important;
+  }
+
+  .dark .bg-gray-50 { background-color: var(--color-muted) !important; }
+  .dark .bg-gray-100 { background-color: var(--color-surface) !important; }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 1rem;
+  }
+
+  .modal-overlay.backdrop-strong {
+    @apply bg-black/70 backdrop-blur-sm;
+  }
+
+  .modal-overlay.no-blur {
+    @apply backdrop-blur-none;
+  }
+
+  .modal-container {
+    position: relative;
+    width: 100%;
+    max-width: 42rem;
+    max-height: 90vh;
+    background-color: var(--color-surface);
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border: 1px solid;
+    border-color: var(--color-border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-container.tight {
+    @apply max-w-lg;
+  }
+
+  /* Border opacity helpers tied to theme tokens */
+  .border-border\/20 { border-color: rgb(var(--border-color-rgb) / var(--border-opacity-20)); }
+  .border-border\/30 { border-color: rgb(var(--border-color-rgb) / var(--border-opacity-30)); }
+  .border-border\/40 { border-color: rgb(var(--border-color-rgb) / var(--border-opacity-40)); }
+  .border-border\/50 { border-color: rgb(var(--border-color-rgb) / var(--border-opacity-50)); }
+  .border-border\/60 { border-color: rgb(var(--border-color-rgb) / var(--border-opacity-60)); }
+}

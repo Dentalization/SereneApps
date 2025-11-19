@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Staff Endpoint</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        input {
+            padding: 10px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Staff Endpoint</h1>
+    
+    <div>
+        <h2>API Configuration</h2>
+        <p>Base URL: <span id="baseUrl"></span></p>
+        <p>API Version: <span id="apiVersion"></span></p>
+        <p>Full Base URL: <span id="fullBaseUrl"></span></p>
+    </div>
+
+    <div>
+        <h2>Authentication</h2>
+        <input type="text" id="token" placeholder="Enter JWT token">
+        <button id="setToken">Set Token</button>
+        <button id="clearToken">Clear Token</button>
+    </div>
+
+    <div>
+        <h2>Test Endpoints</h2>
+        <button id="testHealth">Test Health</button>
+        <button id="testDebug">Test Debug</button>
+        <button id="testStaff">Test Staff</button>
+        <button id="testError">Test Error Handling</button>
+    </div>
+
+    <div>
+        <h2>Results</h2>
+        <pre id="results">No results yet</pre>
+    </div>
+
+    <script>
+        // Get environment variables
+        const authBase = localStorage.getItem('auth.apiBaseUrl') || 'http://localhost:4000';
+        const authVersion = localStorage.getItem('auth.apiVersion') || 'v1';
+        const authBaseURL = [authBase?.replace(/\/$/, ''), authVersion?.replace(/^\//, '')].filter(Boolean).join('/');
+
+        // Display configuration
+        document.getElementById('baseUrl').textContent = authBase;
+        document.getElementById('apiVersion').textContent = authVersion;
+        document.getElementById('fullBaseUrl').textContent = authBaseURL;
+
+        // Token handling
+        document.getElementById('token').value = localStorage.getItem('auth.accessToken') || '';
+        
+        document.getElementById('setToken').addEventListener('click', () => {
+            const token = document.getElementById('token').value;
+            localStorage.setItem('auth.accessToken', token);
+            alert('Token set successfully');
+        });
+
+        document.getElementById('clearToken').addEventListener('click', () => {
+            localStorage.removeItem('auth.accessToken');
+            document.getElementById('token').value = '';
+            alert('Token cleared successfully');
+        });
+
+        // Test endpoints
+        document.getElementById('testHealth').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${authBase}/health`);
+                const data = await response.json();
+                
+                document.getElementById('results').innerHTML = 
+                    `<span class="success">Health check successful (${response.status})</span>\n` +
+                    `URL: ${authBase}/health\n\n` +
+                    JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('results').innerHTML = 
+                    `<span class="error">Health check failed</span>\n` +
+                    `URL: ${authBase}/health\n\n` +
+                    error.toString();
+            }
+        });
+
+        document.getElementById('testDebug').addEventListener('click', async () => {
+            const token = localStorage.getItem('auth.accessToken');
+            if (!token) {
+                document.getElementById('results').innerHTML = '<span class="error">No token set. Please set a token first.</span>';
+                return;
+            }
+
+            try {
+                const debugUrl = `${authBaseURL}/clinic/debug-user`;
+                const response = await fetch(debugUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('results').innerHTML = 
+                        `<span class="success">Debug endpoint successful (${response.status})</span>\n` +
+                        `URL: ${debugUrl}\n\n` +
+                        JSON.stringify(data, null, 2);
+                } else {
+                    const errorData = await response.json();
+                    document.getElementById('results').innerHTML = 
+                        `<span class="error">Debug endpoint failed (${response.status})</span>\n` +
+                        `URL: ${debugUrl}\n\n` +
+                        JSON.stringify(errorData, null, 2);
+                }
+            } catch (error) {
+                document.getElementById('results').innerHTML = 
+                    `<span class="error">Debug endpoint failed</span>\n` +
+                    `URL: ${authBaseURL}/clinic/debug-user\n\n` +
+                    error.toString();
+            }
+        });
+
+        document.getElementById('testStaff').addEventListener('click', async () => {
+            const token = localStorage.getItem('auth.accessToken');
+            if (!token) {
+                document.getElementById('results').innerHTML = '<span class="error">No token set. Please set a token first.</span>';
+                return;
+            }
+
+            try {
+                const staffUrl = `${authBaseURL}/clinic/staff`;
+                const response = await fetch(staffUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('results').innerHTML = 
+                        `<span class="success">Staff endpoint successful (${response.status})</span>\n` +
+                        `URL: ${staffUrl}\n` +
+                        `Staff count: ${data.staff?.length || 0}\n\n` +
+                        JSON.stringify(data, null, 2);
+                } else {
+                    const errorData = await response.json();
+                    document.getElementById('results').innerHTML = 
+                        `<span class="error">Staff endpoint failed (${response.status})</span>\n` +
+                        `URL: ${staffUrl}\n\n` +
+                        JSON.stringify(errorData, null, 2);
+                }
+            } catch (error) {
+                document.getElementById('results').innerHTML = 
+                    `<span class="error">Staff endpoint failed</span>\n` +
+                    `URL: ${authBaseURL}/clinic/staff\n\n` +
+                    error.toString();
+            }
+        });
+        
+        // Test error handling for "Something went wrong" error
+        document.getElementById('testError').addEventListener('click', async () => {
+            const resultsElement = document.getElementById('results');
+            
+            // Simulate the error handling in our application
+            const simulateErrorHandling = (errorMessage) => {
+                // Check if this is an unexpected error (similar to our staff management page)
+                const isUnexpectedError = errorMessage.includes('Something went wrong') || 
+                                         errorMessage.includes('unexpected error');
+                
+                // Format the results
+                let result = '';
+                result += `<span class="error">Testing error handling for: "${errorMessage}"</span>\n\n`;
+                result += `Is unexpected error: ${isUnexpectedError ? 'Yes' : 'No'}\n`;
+                result += `Would show retry button: ${isUnexpectedError ? 'Yes' : 'No'}\n`;
+                result += `Would use mock data in development mode: ${isUnexpectedError ? 'Yes' : 'No'}\n\n`;
+                
+                // Show the friendly error message that would be displayed to the user
+                if (isUnexpectedError) {
+                    result += `User-friendly message: "Something went wrong while processing your request. Please try again."\n\n`;
+                    result += `Troubleshooting steps that would be shown:\n`;
+                    result += `1. Check your internet connection\n`;
+                    result += `2. Verify that you have the necessary permissions to view staff data\n`;
+                    result += `3. Try logging out and logging back in\n`;
+                    result += `4. Clear your browser cache and cookies\n`;
+                    result += `5. Contact your system administrator if the problem persists\n`;
+                }
+                
+                return result;
+            };
+            
+            // Test different error messages
+            let results = '';
+            results += simulateErrorHandling('Something went wrong');
+            results += '\n' + '-'.repeat(50) + '\n\n';
+            results += simulateErrorHandling('An unexpected error occurred');
+            results += '\n' + '-'.repeat(50) + '\n\n';
+            results += simulateErrorHandling('Error 404: Not Found');
+            
+            resultsElement.innerHTML = results;
+        });
+    </script>
+</body>
+</html>

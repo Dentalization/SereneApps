@@ -1,0 +1,470 @@
+{
+  "app": {
+    "name": "SereneAI",
+    "tagline": "Dental Care Made Easy"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "required": "Required",
+    "optional": "Optional",
+    "submit": "Submit",
+    "continue": "Continue",
+    "skip": "Skip",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Information",
+    "noData": "No data available",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  },
+  "validation": {
+    "required": "This field is required",
+    "email": "Please enter a valid email address",
+    "phone": "Please enter a valid phone number",
+    "password": "Password must be at least 8 characters",
+    "passwordMatch": "Passwords do not match",
+    "minLength": "Must be at least {{min}} characters",
+    "maxLength": "Must not exceed {{max}} characters",
+    "invalidFormat": "Invalid format",
+    "futureDate": "Date must be in the future",
+    "pastDate": "Date must be in the past",
+    "minAge": "Must be at least {{age}} years old"
+  },
+  "auth": {
+    "login": {
+      "title": "Login",
+      "subtitle": "Welcome back to SereneAI",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "loginButton": "Login",
+      "forgotPassword": "Forgot password?",
+      "noAccount": "Don't have an account?",
+      "signUp": "Sign Up",
+      "rememberMe": "Remember me"
+    },
+    "register": {
+      "title": "Create Account",
+      "subtitle": "Join SereneAI for better dental care",
+      "nameLabel": "Full Name",
+      "namePlaceholder": "Enter your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "+62812XXXX",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Minimum 8 characters",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Re-enter password",
+      "dobLabel": "Date of Birth",
+      "dobPlaceholder": "YYYY-MM-DD",
+      "genderLabel": "Gender",
+      "genderMale": "Male",
+      "genderFemale": "Female",
+      "genderOther": "Other",
+      "registerButton": "Create Account",
+      "hasAccount": "Already have an account?",
+      "signIn": "Sign In",
+      "termsAgree": "I agree to the",
+      "termsLink": "Terms & Conditions",
+      "privacyLink": "Privacy Policy"
+    },
+    "otp": {
+      "title": "Verify Phone Number",
+      "subtitle": "We've sent a 6-digit code to {{phone}}",
+      "codeLabel": "Verification Code",
+      "codePlaceholder": "Enter 6-digit code",
+      "verifyButton": "Verify",
+      "resendCode": "Didn't receive code?",
+      "resendButton": "Resend Code",
+      "resendTimer": "Resend in {{seconds}}s",
+      "changeNumber": "Change phone number",
+      "otpSent": "OTP sent successfully",
+      "otpExpired": "Code expired. Please request a new one.",
+      "otpInvalid": "Invalid code. Please try again.",
+      "maxAttempts": "Too many attempts. Please request a new code."
+    },
+    "forgotPassword": {
+      "title": "Forgot Password",
+      "subtitle": "Enter your email to reset password",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "sendButton": "Send Reset Link",
+      "backToLogin": "Back to Login",
+      "emailSent": "Reset link sent to your email"
+    },
+    "resetPassword": {
+      "title": "Reset Password",
+      "subtitle": "Create a new password",
+      "newPasswordLabel": "New Password",
+      "newPasswordPlaceholder": "Enter new password",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Re-enter new password",
+      "resetButton": "Reset Password",
+      "success": "Password reset successfully"
+    },
+    "logout": {
+      "title": "Logout",
+      "message": "Are you sure you want to logout?",
+      "confirm": "Logout",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "invalidCredentials": "Invalid email or password",
+      "emailExists": "This email is already registered",
+      "phoneExists": "This phone number is already registered",
+      "networkError": "Network error. Please try again.",
+      "serverError": "Server error. Please try again later.",
+      "sessionExpired": "Session expired. Please login again.",
+      "unauthorized": "Unauthorized access",
+      "forbidden": "Access denied"
+    }
+  },
+  "home": {
+    "greeting": "Hello, {{name}}",
+    "subtitle": "How can we help you today?",
+    "bookAppointment": "Book Appointment",
+    "myAppointments": "My Appointments",
+    "dentalRecords": "Dental Records",
+    "payments": "Payments",
+    "upcomingTitle": "Upcoming Appointments",
+    "noUpcoming": "No upcoming appointments",
+    "viewAll": "View All",
+    "quickActions": "Quick Actions",
+    "emergencyContact": "Emergency Contact",
+    "findClinic": "Find Clinic"
+  },
+  "appointments": {
+    "title": "Appointments",
+    "book": "Book Appointment",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "cancelled": "Cancelled",
+    "bookNew": {
+      "title": "Book Appointment",
+      "selectClinic": "Select Clinic",
+      "selectDentist": "Select Dentist",
+      "selectService": "Select Service",
+      "selectDate": "Select Date",
+      "selectTime": "Select Time",
+      "addNotes": "Additional Notes",
+      "notesPlaceholder": "Any special requests or concerns?",
+      "confirmBooking": "Confirm Booking",
+      "bookingSuccess": "Appointment booked successfully!",
+      "bookingFailed": "Failed to book appointment. Please try again."
+    },
+    "details": {
+      "title": "Appointment Details",
+      "clinic": "Clinic",
+      "dentist": "Dentist",
+      "service": "Service",
+      "date": "Date",
+      "time": "Time",
+      "status": "Status",
+      "notes": "Notes",
+      "cancel": "Cancel Appointment",
+      "reschedule": "Reschedule",
+      "directions": "Get Directions",
+      "call": "Call Clinic",
+      "chat": "Chat with Dentist"
+    },
+    "status": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "no_show": "No Show"
+    },
+    "cancel": {
+      "title": "Cancel Appointment",
+      "message": "Are you sure you want to cancel this appointment?",
+      "reason": "Reason for cancellation",
+      "reasonPlaceholder": "Please tell us why",
+      "confirm": "Yes, Cancel",
+      "success": "Appointment cancelled successfully",
+      "deadline": "Cannot cancel within 24 hours of appointment"
+    },
+    "reschedule": {
+      "title": "Reschedule Appointment",
+      "selectNewDate": "Select new date",
+      "selectNewTime": "Select new time",
+      "confirm": "Confirm Reschedule",
+      "success": "Appointment rescheduled successfully",
+      "deadline": "Cannot reschedule within 24 hours of appointment"
+    },
+    "errors": {
+      "notFound": "Appointment not found",
+      "conflict": "Time slot already booked. Please select another time.",
+      "outsideHours": "Please select time between 08:00 - 18:00",
+      "alreadyConfirmed": "Appointment already confirmed"
+    }
+  },
+  "clinics": {
+    "title": "Find Clinic",
+    "search": "Search clinics...",
+    "nearby": "Nearby Clinics",
+    "all": "All Clinics",
+    "filters": "Filters",
+    "distance": "Distance",
+    "rating": "Rating",
+    "details": {
+      "about": "About",
+      "services": "Services",
+      "dentists": "Dentists",
+      "hours": "Operating Hours",
+      "location": "Location",
+      "contact": "Contact",
+      "reviews": "Reviews",
+      "facilities": "Facilities",
+      "bookHere": "Book Appointment Here"
+    },
+    "hours": {
+      "open": "Open",
+      "closed": "Closed",
+      "opensAt": "Opens at {{time}}",
+      "closesAt": "Closes at {{time}}",
+      "openNow": "Open Now",
+      "closedNow": "Closed Now"
+    }
+  },
+  "dentists": {
+    "title": "Dentists",
+    "specialization": "Specialization",
+    "experience": "{{years}} years experience",
+    "available": "Available",
+    "unavailable": "Unavailable",
+    "viewProfile": "View Profile",
+    "bookWith": "Book with {{name}}",
+    "details": {
+      "about": "About",
+      "education": "Education",
+      "certifications": "Certifications",
+      "specializations": "Specializations",
+      "languages": "Languages Spoken",
+      "availability": "Availability"
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "personalInfo": "Personal Information",
+    "medicalInfo": "Medical Information",
+    "insuranceInfo": "Insurance",
+    "emergencyInfo": "Emergency Contact",
+    "settingsInfo": "Settings",
+    "edit": {
+      "title": "Edit Profile",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone Number",
+      "dob": "Date of Birth",
+      "gender": "Gender",
+      "address": "Address",
+      "save": "Save Changes",
+      "success": "Profile updated successfully"
+    },
+    "medical": {
+      "allergies": "Allergies",
+      "conditions": "Medical Conditions",
+      "medications": "Current Medications",
+      "bloodType": "Blood Type",
+      "addAllergy": "Add Allergy",
+      "addCondition": "Add Condition",
+      "addMedication": "Add Medication"
+    },
+    "insurance": {
+      "provider": "Insurance Provider",
+      "policyNumber": "Policy Number",
+      "memberId": "Member ID",
+      "expiryDate": "Expiry Date"
+    },
+    "emergency": {
+      "name": "Contact Name",
+      "phone": "Contact Phone",
+      "relationship": "Relationship"
+    },
+    "settings": {
+      "notifications": "Notifications",
+      "language": "Language",
+      "theme": "Theme",
+      "privacy": "Privacy",
+      "security": "Security",
+      "help": "Help & Support",
+      "about": "About",
+      "logout": "Logout"
+    }
+  },
+  "payments": {
+    "title": "Payments",
+    "pending": "Pending Payments",
+    "history": "Payment History",
+    "methods": "Payment Methods",
+    "pay": {
+      "title": "Pay",
+      "amount": "Amount",
+      "method": "Payment Method",
+      "selectMethod": "Select payment method",
+      "bankTransfer": "Bank Transfer",
+      "creditCard": "Credit Card",
+      "eWallet": "E-Wallet",
+      "insurance": "Insurance",
+      "confirm": "Confirm Payment",
+      "processing": "Processing payment...",
+      "success": "Payment successful!",
+      "failed": "Payment failed. Please try again."
+    },
+    "details": {
+      "invoice": "Invoice",
+      "date": "Date",
+      "status": "Status",
+      "items": "Items",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
+      "discount": "Discount",
+      "total": "Total",
+      "download": "Download Invoice"
+    },
+    "status": {
+      "pending": "Pending",
+      "paid": "Paid",
+      "failed": "Failed",
+      "refunded": "Refunded",
+      "cancelled": "Cancelled"
+    }
+  },
+  "chat": {
+    "title": "Messages",
+    "noMessages": "No messages yet",
+    "startChat": "Start a conversation",
+    "typeMessage": "Type a message...",
+    "send": "Send",
+    "attachFile": "Attach File",
+    "takePhoto": "Take Photo",
+    "online": "Online",
+    "offline": "Offline",
+    "typing": "typing...",
+    "delivered": "Delivered",
+    "read": "Read",
+    "fileAttached": "File attached",
+    "imageSent": "Image sent",
+    "errors": {
+      "messageTooLong": "Message too long. Maximum 5000 characters.",
+      "fileTooLarge": "File too large. Maximum 5MB.",
+      "sendFailed": "Failed to send message. Please try again."
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "noNotifications": "No notifications",
+    "types": {
+      "appointment": "Appointment",
+      "payment": "Payment",
+      "reminder": "Reminder",
+      "message": "Message",
+      "system": "System"
+    },
+    "settings": {
+      "title": "Notification Settings",
+      "push": "Push Notifications",
+      "email": "Email Notifications",
+      "sms": "SMS Notifications",
+      "appointments": "Appointment Reminders",
+      "messages": "New Messages",
+      "payments": "Payment Updates",
+      "promotions": "Promotions & Offers"
+    }
+  },
+  "records": {
+    "title": "Dental Records",
+    "history": "Treatment History",
+    "xrays": "X-Rays",
+    "prescriptions": "Prescriptions",
+    "documents": "Documents",
+    "noRecords": "No records available",
+    "view": "View",
+    "download": "Download",
+    "share": "Share"
+  },
+  "errors": {
+    "network": {
+      "title": "Network Error",
+      "message": "Please check your internet connection and try again.",
+      "retry": "Retry"
+    },
+    "server": {
+      "title": "Server Error",
+      "message": "Something went wrong. Please try again later.",
+      "contact": "Contact Support"
+    },
+    "notFound": {
+      "title": "Not Found",
+      "message": "The page you're looking for doesn't exist."
+    },
+    "unauthorized": {
+      "title": "Unauthorized",
+      "message": "Please login to continue."
+    },
+    "forbidden": {
+      "title": "Access Denied",
+      "message": "You don't have permission to access this resource."
+    },
+    "rateLimit": {
+      "title": "Too Many Requests",
+      "message": "Please wait a moment before trying again.",
+      "waitTime": "Please wait {{seconds}} seconds"
+    }
+  },
+  "date": {
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "days": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "months": {
+      "january": "January",
+      "february": "February",
+      "march": "March",
+      "april": "April",
+      "may": "May",
+      "june": "June",
+      "july": "July",
+      "august": "August",
+      "september": "September",
+      "october": "October",
+      "november": "November",
+      "december": "December"
+    }
+  },
+  "time": {
+    "morning": "Morning",
+    "afternoon": "Afternoon",
+    "evening": "Evening",
+    "night": "Night",
+    "am": "AM",
+    "pm": "PM"
+  }
+}

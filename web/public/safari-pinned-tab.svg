@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Safari pinned tab icon.
+  This SVG references the regenerated 512px PNG so the glyph is scaled to fill the viewBox.
+  Ideally this would be a true vector silhouette (SVG path) so Safari can color it via the 'color' attribute.
+  If you can provide an SVG logo, replace the <image> element with the vector path for best results.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img">
+  <title>Serene AI</title>
+  <!-- white background to ensure full-bleed appearance in pinned tabs -->
+  <rect width="512" height="512" fill="#000000" fill-opacity="0"/>
+  <!-- Reference the full-size PNG so Safari will render the glyph at the correct size.
+    Use 'slice' to fill the viewBox (cropping if necessary) so the glyph occupies more space.
+    Safari's mask-icon prefers a clean silhouette; if you can supply an SVG logo path, replace this image with a vector path. -->
+  <image href="/icon-512.png" x="0" y="0" width="512" height="512" preserveAspectRatio="xMidYMid slice"/>
+</svg>
