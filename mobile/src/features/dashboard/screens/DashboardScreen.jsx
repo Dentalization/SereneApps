@@ -54,6 +54,13 @@ const DashboardScreen = () => {
   const topClinics = NEARBY_CLINICS.slice(0, 2);
   const quickActions = [
     {
+      key: 'dentists',
+      label: 'Dentist',
+      icon: 'tooth-outline',
+      tint: 'rgba(14,165,233,0.18)',
+      onPress: () => navigation.navigate('DentistDirectory'),
+    },
+    {
       key: 'book',
       label: 'Buat Janji',
       icon: 'calendar-plus',

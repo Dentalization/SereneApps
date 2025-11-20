@@ -11,6 +11,8 @@ import NotificationSystemDetailScreen from '../features/dashboard/screens/notifi
 import NearbyDentistsScreen from '../features/dashboard/screens/NearbyDentistsScreen';
 import NearbyClinicsScreen from '../features/dashboard/screens/NearbyClinicsScreen';
 import ClinicDetailScreen from '../features/dashboard/screens/ClinicDetailScreen';
+import DentistDirectoryScreen from '../features/dashboard/screens/DentistDirectoryScreen';
+import DentistSpecialtyScreen from '../features/dashboard/screens/DentistSpecialtyScreen';
 import DentistDetailScreen from '../features/dashboard/screens/DentistDetailScreen';
 
 const Stack = createStackNavigator();
@@ -29,6 +31,8 @@ const DashboardNavigator = () => {
       <Stack.Screen name="NearbyDentists" component={NearbyDentistsScreen} />
       <Stack.Screen name="NearbyClinics" component={NearbyClinicsScreen} />
       <Stack.Screen name="ClinicDetail" component={ClinicDetailScreen} />
+      <Stack.Screen name="DentistDirectory" component={DentistDirectoryScreen} />
+      <Stack.Screen name="DentistSpecialty" component={DentistSpecialtyScreen} />
       <Stack.Screen name="DentistDetail" component={DentistDetailScreen} />
     </Stack.Navigator>
   );

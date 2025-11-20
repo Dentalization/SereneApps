@@ -34,6 +34,8 @@ const HIDDEN_TAB_ROUTES = new Set([
   'NotificationSystemDetail',
   'NearbyDentists',
   'NearbyClinics',
+  'DentistDirectory',
+  'DentistSpecialty',
   'ProductDetail',
   'Cart',
   'Checkout',
