@@ -19,6 +19,10 @@ import Teledentistry from './pages/dentist-portal/teledentistry';
 import DentistSettings from './pages/dentist-portal/dentist-settings';
 import Reports from './pages/dentist-portal/reports';
 import AIAnalysis from './pages/dentist-portal/ai';
+import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
+import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
+import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
+import ClinicServicesView from './pages/dentist-portal/profile/ClinicServices';
 import ProtectedRoute from 'components/auth/ProtectedRoute';
 import GetTheApp from './pages/get-the-app';
 import PatientAppointments from './pages/patient-portal/appointments';
@@ -80,6 +84,13 @@ const Routes = () => {
           <Route path="/dentist-portal/dentist-settings" element={<DentistSettings />} />
           <Route path="/dentist-portal/reports" element={<Reports />} />
           <Route path="/dentist-portal/ai-analysis" element={<AIAnalysis />} />
+          <Route path="/dentist-portal/practice/services" element={<DentistPracticeServices />} />
+          <Route path="/dentist-portal/practice/availability" element={<DentistPracticeAvailability />} />
+          <Route path="/dentist-portal/practice/earnings" element={<DentistPracticeEarnings />} />
+          <Route path="/dentist-portal/profile/services" element={<ClinicServicesView />} />
+          <Route path="/dentist-portal/profile/schedule" element={<DentistSchedule />} />
+          <Route path="/dentist-portal/profile/patients" element={<PatientManagement />} />
+          <Route path="/dentist-portal/profile" element={<Navigate to="/dentist-portal/profile/services" replace />} />
           {/* Keep compatibility with existing sidebar link */}
           <Route path="/dentist-portal/appointments" element={<DentistSchedule />} />
         </Route>
