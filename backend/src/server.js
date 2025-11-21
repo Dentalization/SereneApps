@@ -20,6 +20,8 @@ import paymentWebhooksRouter from './routes/payment-webhooks.js';
 import communicationsRouter from './routes/communications.js';
 import notificationsRouter from './routes/notifications.js';
 import chatRouter from './routes/chat.js';
+import clinicServicesRouter from './routes/clinicServices.js';
+import clinicProfileRouter from './routes/clinicProfile.js';
 import { verify } from './utils/tokens.js';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
@@ -105,6 +107,8 @@ app.use(`${prefix}`, authRouter); // Also mount auth routes under /v1 for profil
 app.use(`${prefix}/profile`, profileRouter);
 app.use(`${prefix}/patient`, patientRouter); // Patient-specific routes
 app.use(`${prefix}/clinic`, clinicRouter);
+app.use(`${prefix}/clinic`, clinicServicesRouter); // Clinic services management
+app.use(`${prefix}/clinic`, clinicProfileRouter); // Clinic profile (gallery, highlights, facilities)
 app.use(`${prefix}/clinics`, clinicsRouter);
 app.use(`${prefix}/dentists`, dentistsRouter);
 app.use(`${prefix}/appointments`, appointmentsRouter);

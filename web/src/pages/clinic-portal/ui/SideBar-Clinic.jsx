@@ -115,6 +115,14 @@ const ClinicSideBar = () => {
       roles: ['manager', 'owner'] // Only manager & owner can manage branches
     },
     { 
+      id: 'public-profile', 
+      label: t('clinic.sidebar.publicProfile') || 'Public Profile', 
+      icon: 'Store', 
+      path: '/clinic-portal/public-profile', 
+      description: t('clinic.sidebar.descriptions.publicProfile') || 'Services, Gallery & Facilities',
+      roles: ['manager', 'owner', 'admin'] // Only manager, owner & admin can manage public profile
+    },
+    { 
       id: 'settings',
       label: t('clinic.sidebar.settings') || 'Settings', 
       icon: 'Settings', 
