@@ -692,8 +692,16 @@ const StaffManagement = () => {
         console.error('❌ Error inviting staff:', result);
         if (response.status === 401) {
           setShowTokenExpiredModal(true);
+        } else if (response.status === 400 && result.errorCode === 'ALREADY_ASSIGNED') {
+          // User already assigned to a clinic
+          setInviteError(result.details || 'Email sudah terdaftar dan ditugaskan ke klinik lain. Setiap staff hanya bisa bekerja di satu klinik.');
+        } else if (response.status === 409) {
+          // Email duplicate or other conflict
+          setInviteError(result.details || 'Email sudah terdaftar. Silakan gunakan email lain.');
         } else {
-          setInviteError(result.error || 'Failed to invite staff member');
+          // Generic error with details if available
+          const errorMessage = result.details || result.error || 'Failed to invite staff member';
+          setInviteError(errorMessage);
         }
       }
     } catch (error) {
@@ -753,109 +761,29 @@ const StaffManagement = () => {
 
       if (response.ok) {
         console.log('✅ Dentist registered successfully:', result);
+        console.log('ℹ️ Note: Dentist should already be added to clinic_staff by auth endpoint');
         
-        // Now add the dentist to clinic staff
-        let staffAssignmentSuccess = false;
-        try {
-          const staffPayload = {
-            email: result.user.email, // Use email from registered user
-            role: 'dentist',
-            position: 'Dentist',
-            department: 'Medical',
-            assignedBranchId: formData.get('selectedBranch') || null, // Get branch from form data
-            permissions: []
-          };
-          
-          console.log('🏥 Adding dentist to clinic staff with payload:', staffPayload);
-          
-          const staffResponse = await fetch('http://localhost:4000/v1/clinic/staff', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${getAccessToken()}`
-            },
-            body: JSON.stringify(staffPayload)
-          });
-
-          console.log('🏥 Staff assignment response status:', staffResponse.status);
-          const staffResult = await staffResponse.json();
-          console.log('🏥 Staff assignment response data:', staffResult);
-
-          if (staffResponse.ok) {
-            console.log('✅ Dentist added to clinic staff successfully:', staffResult);
-            staffAssignmentSuccess = true;
-          } else {
-            console.warn('⚠️ Dentist registered but failed to add to clinic staff:', staffResult);
-            console.warn('⚠️ Trying alternative approach...');
-            
-            // Try alternative: direct staff invitation
-            try {
-              const invitePayload = {
-                name: result.user.name || formData.get('name'),
-                email: result.user.email,
-                password: formData.get('password'), // Use the same password
-                role: 'dentist',
-                position: 'Dentist',
-                department: 'Medical',
-                assignedBranchId: formData.get('selectedBranch') || null,
-                permissions: []
-              };
-              
-              console.log('🔄 Trying alternative staff invite approach:', invitePayload);
-              
-              const inviteResponse = await fetch('http://localhost:4000/v1/clinic/staff', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${getAccessToken()}`
-                },
-                body: JSON.stringify(invitePayload)
-              });
-              
-              const inviteResult = await inviteResponse.json();
-              console.log('🔄 Alternative invite result:', inviteResult);
-              
-              if (inviteResponse.ok) {
-                staffAssignmentSuccess = true;
-                console.log('✅ Alternative staff assignment successful');
-              }
-            } catch (altError) {
-              console.error('❌ Alternative approach also failed:', altError);
-            }
-          }
-        } catch (staffError) {
-          console.warn('⚠️ Dentist registered but failed to add to clinic staff:', staffError);
-        }
-        
-        // Log final assignment status
-        console.log('📊 Final staff assignment status:', staffAssignmentSuccess ? 'SUCCESS' : 'FAILED');
-        
-        // Close modal first to show immediate feedback
+        // Close modal immediately
         setAddDentistModal(false);
         
-        // Show success notice with assignment status
-        const successMessage = staffAssignmentSuccess 
-          ? `Dentist berhasil ditambahkan ke staff clinic dan akan menerima email konfirmasi`
-          : `Dentist berhasil terdaftar tapi mungkin perlu di-assign manual ke clinic staff`;
+        // Show success message
+        setNotice('Dentist berhasil ditambahkan ke staff clinic!');
         
-        setNotice(successMessage);
-        
-        // Refresh staff list to include new dentist - add small delay to ensure backend processing is complete
+        // Refresh staff list to include new dentist - the auth endpoint already added them to clinic_staff
         setTimeout(async () => {
           try {
-            console.log('🔄 Force refreshing staff list after adding dentist...');
-            console.log('🔄 Staff assignment was successful:', staffAssignmentSuccess);
+            console.log('🔄 Refreshing staff list to show new dentist...');
             await fetchStaff();
-            console.log('✅ Staff list refreshed after adding dentist');
+            console.log('✅ Staff list refreshed successfully');
           } catch (error) {
             console.error('❌ Error refreshing staff list:', error);
-            // Try one more time after another delay
+            // Try again after a short delay
             setTimeout(() => {
               console.log('🔄 Retrying staff list refresh...');
               fetchStaff();
-            }, 1000);
+            }, 1500);
           }
-        }, 1000); // Increase delay to 1 second
+        }, 800);
       } else {
         console.error('❌ Error adding dentist:', result);
         console.error('❌ Response status:', response.status);
@@ -863,9 +791,24 @@ const StaffManagement = () => {
         
         if (response.status === 401) {
           setShowTokenExpiredModal(true);
+        } else if (response.status === 409) {
+          // Email already registered
+          const errorDetails = result.details || 'Email sudah terdaftar. Silakan gunakan email lain.';
+          console.error('❌ DUPLICATE EMAIL - User already exists');
+          setAddDentistError(errorDetails);
         } else {
-          // Try to give more specific error message
-          const errorMessage = result.error || result.message || `Registration failed with status ${response.status}`;
+          // Try to give more specific error message based on error code
+          let errorMessage = result.error || result.message || `Registration failed with status ${response.status}`;
+          
+          // Add user-friendly details if available
+          if (result.details) {
+            errorMessage = result.details;
+          } else if (result.errorCode === 'DUPLICATE_EMAIL') {
+            errorMessage = 'Email sudah terdaftar. Silakan gunakan email yang berbeda atau login dengan akun yang sudah ada.';
+          } else if (result.errorCode === 'DUPLICATE_LICENSE') {
+            errorMessage = 'Nomor lisensi atau registrasi sudah terdaftar di sistem kami.';
+          }
+          
           console.error('❌ Setting error message:', errorMessage);
           setAddDentistError(errorMessage);
         }
@@ -873,53 +816,7 @@ const StaffManagement = () => {
     } catch (error) {
       console.error('❌ Error adding dentist:', error);
       console.error('❌ Error stack:', error.stack);
-      
-      // Try last resort: use invite staff endpoint directly
-      console.log('🔄 Attempting last resort: direct staff invitation...');
-      try {
-        const directInvitePayload = {
-          name: formData.get('name'),
-          email: formData.get('email'),
-          password: formData.get('password'),
-          role: 'dentist',
-          position: 'Dentist',
-          department: 'Medical',
-          assignedBranchId: formData.get('selectedBranch') || null,
-          permissions: []
-        };
-        
-        console.log('🚨 Last resort payload:', directInvitePayload);
-        
-        const lastResortResponse = await fetch('http://localhost:4000/v1/clinic/staff', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getAccessToken()}`
-          },
-          body: JSON.stringify(directInvitePayload)
-        });
-        
-        const lastResortResult = await lastResortResponse.json();
-        console.log('🚨 Last resort result:', lastResortResult);
-        
-        if (lastResortResponse.ok) {
-          // Close modal first
-          setAddDentistModal(false);
-          
-          setNotice(`Dentist berhasil ditambahkan melalui staff invitation`);
-          
-          // Refresh staff list
-          setTimeout(async () => {
-            await fetchStaff();
-          }, 1000);
-          
-          return; // Exit successfully
-        }
-      } catch (lastResortError) {
-        console.error('🚨 Last resort also failed:', lastResortError);
-      }
-      
-      setAddDentistError('Failed to add dentist - please try again or contact support');
+      setAddDentistError('Failed to add dentist. Please check your connection and try again.');
     } finally {
       setAddDentistLoading(false);
     }

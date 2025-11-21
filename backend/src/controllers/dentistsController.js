@@ -2,6 +2,244 @@ import { query } from '../db.js';
 import { APIError, ERROR_CODES } from '../utils/error-codes.js';
 
 /**
+ * Haversine formula to calculate distance between two GPS coordinates
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in kilometers
+  const toRad = (deg) => deg * (Math.PI / 180);
+  
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 100) / 100; // Round to 2 decimals
+}
+
+/**
+ * Get bounding box for efficient database queries
+ */
+function getBoundingBox(lat, lon, radiusKm) {
+  const latDelta = radiusKm / 111.32;
+  const lonDelta = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+  
+  return {
+    minLat: lat - latDelta,
+    maxLat: lat + latDelta,
+    minLon: lon - lonDelta,
+    maxLon: lon + lonDelta
+  };
+}
+
+/**
+ * Get nearby dentists based on geolocation
+ * Supports filtering by type (independent/clinic) and specialization
+ */
+export const getNearbyDentists = async (req, res, next) => {
+  try {
+    const { 
+      latitude, 
+      longitude, 
+      radius = 10, // Default 10km
+      type, // 'independent', 'clinic', or null (all)
+      specialization,
+      limit = 20,
+      offset = 0
+    } = req.query;
+
+    // Validate coordinates
+    if (!latitude || !longitude) {
+      throw new APIError({
+        ...ERROR_CODES.VALIDATION_ERROR,
+        message: 'Latitude dan longitude harus diisi',
+        messageEn: 'Latitude and longitude are required',
+        fields: { 
+          latitude: !latitude ? 'Required' : undefined,
+          longitude: !longitude ? 'Required' : undefined
+        }
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+    const radiusKm = parseFloat(radius);
+
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      throw new APIError({
+        ...ERROR_CODES.VALIDATION_ERROR,
+        message: 'Koordinat tidak valid',
+        messageEn: 'Invalid coordinates'
+      });
+    }
+
+    // Get bounding box for efficient query
+    const bbox = getBoundingBox(lat, lon, radiusKm);
+
+    // Build query with filters
+    let sqlQuery = `
+      SELECT 
+        dp.id,
+        u.id as user_id,
+        u.name,
+        u.email,
+        u.avatar_url,
+        dp.title,
+        dp.license_number,
+        dp.primary_specialization as specialization,
+        dp.years_of_experience,
+        dp.clinic_name,
+        dp.clinic_address,
+        dp.clinic_working_hours,
+        dp.consultation_types,
+        dp.services_offered,
+        dp.consultation_fee,
+        dp.accepts_insurance,
+        dp.accepts_bpjs,
+        dp.emergency_availability,
+        dp.is_verified,
+        dp.latitude,
+        dp.longitude,
+        dp.district,
+        dp.province,
+        dp.postal_code,
+        dp.dentist_type,
+        dp.clinic_id,
+        dp.is_clinic_owner
+      FROM dentist_profiles dp
+      JOIN users u ON dp.user_id = u.id
+      WHERE 
+        dp.latitude IS NOT NULL 
+        AND dp.longitude IS NOT NULL
+        AND dp.latitude BETWEEN $1 AND $2
+        AND dp.longitude BETWEEN $3 AND $4
+    `;
+
+    const queryParams = [bbox.minLat, bbox.maxLat, bbox.minLon, bbox.maxLon];
+    let paramIndex = 5;
+
+    // Filter by dentist type
+    if (type && (type === 'independent' || type === 'clinic')) {
+      sqlQuery += ` AND dp.dentist_type = $${paramIndex}`;
+      queryParams.push(type);
+      paramIndex++;
+    }
+
+    // Filter by specialization
+    if (specialization) {
+      sqlQuery += ` AND dp.primary_specialization ILIKE $${paramIndex}`;
+      queryParams.push(`%${specialization}%`);
+      paramIndex++;
+    }
+
+    sqlQuery += ` ORDER BY dp.is_verified DESC, dp.years_of_experience DESC`;
+    sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    queryParams.push(parseInt(limit), parseInt(offset));
+
+    // Execute query
+    const result = await query(sqlQuery, queryParams);
+
+    // Calculate distances and filter by radius
+    const dentists = result.rows
+      .map(row => {
+        const distance = calculateDistance(
+          lat, lon, 
+          parseFloat(row.latitude), 
+          parseFloat(row.longitude)
+        );
+
+        return {
+          id: row.id,
+          userId: row.user_id,
+          name: row.name,
+          email: row.email,
+          avatarUrl: row.avatar_url,
+          title: row.title,
+          licenseNumber: row.license_number,
+          specialization: row.specialization,
+          yearsOfExperience: row.years_of_experience,
+          clinicName: row.clinic_name,
+          clinicAddress: row.clinic_address,
+          workingHours: row.clinic_working_hours,
+          consultationTypes: row.consultation_types,
+          servicesOffered: row.services_offered,
+          consultationFee: row.consultation_fee,
+          acceptsInsurance: row.accepts_insurance,
+          acceptsBpjs: row.accepts_bpjs,
+          emergencyAvailable: row.emergency_availability,
+          isVerified: row.is_verified,
+          location: {
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            district: row.district,
+            province: row.province,
+            postalCode: row.postal_code
+          },
+          dentistType: row.dentist_type,
+          clinicId: row.clinic_id,
+          isClinicOwner: row.is_clinic_owner,
+          distance
+        };
+      })
+      .filter(dentist => dentist.distance <= radiusKm)
+      .sort((a, b) => a.distance - b.distance);
+
+    // Get total count (for pagination)
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM dentist_profiles dp
+      WHERE 
+        dp.latitude IS NOT NULL 
+        AND dp.longitude IS NOT NULL
+        AND dp.latitude BETWEEN $1 AND $2
+        AND dp.longitude BETWEEN $3 AND $4
+    `;
+    const countParams = [bbox.minLat, bbox.maxLat, bbox.minLon, bbox.maxLon];
+    let countParamIndex = 5;
+
+    if (type && (type === 'independent' || type === 'clinic')) {
+      countQuery += ` AND dp.dentist_type = $${countParamIndex}`;
+      countParams.push(type);
+      countParamIndex++;
+    }
+
+    if (specialization) {
+      countQuery += ` AND dp.primary_specialization ILIKE $${countParamIndex}`;
+      countParams.push(`%${specialization}%`);
+    }
+
+    const countResult = await query(countQuery, countParams);
+    const totalDentists = parseInt(countResult.rows[0].total);
+
+    res.json({
+      success: true,
+      data: {
+        dentists,
+        pagination: {
+          total: totalDentists,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: (parseInt(offset) + dentists.length) < totalDentists
+        },
+        search: {
+          latitude: lat,
+          longitude: lon,
+          radius: radiusKm,
+          type: type || 'all',
+          specialization: specialization || 'all'
+        }
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get dentist profile by ID
  */
 export const getDentistById = async (req, res, next) => {

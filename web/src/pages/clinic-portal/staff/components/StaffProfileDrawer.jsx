@@ -56,6 +56,11 @@ const StaffProfileDrawer = ({
       value: staff.department || fallbackMissing
     },
     {
+      icon: 'MapPin',
+      label: labels?.fields?.branch || 'Branch Location',
+      value: staff.branch?.name || fallbackMissing
+    },
+    {
       icon: 'CalendarDays',
       label: labels?.fields?.joinDate || 'Join Date',
       value: formatDate(staff.joinDate, locale, { dateStyle: 'medium' }, fallbackMissing)
@@ -130,7 +135,43 @@ const StaffProfileDrawer = ({
             ))}
           </div>
 
-          <div className="space-y-3">
+          {/* Branch & Location Info */}
+          {staff.branch && (
+            <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-center gap-2 text-blue-700">
+                <AppIcon name="MapPin" size={16} />
+                <h3 className="text-sm font-semibold">Branch & Location</h3>
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div>
+                  <p className="text-xs font-medium text-blue-600">Branch Name</p>
+                  <p className="text-blue-900">{staff.branch.name}</p>
+                </div>
+                
+                {staff.branch.city && (
+                  <div>
+                    <p className="text-xs font-medium text-blue-600">Location</p>
+                    <p className="text-blue-900">
+                      {staff.branch.city}, {staff.branch.province}
+                      {staff.branch.district && ` (${staff.branch.district})`}
+                    </p>
+                  </div>
+                )}
+                
+                {(staff.branch.latitude && staff.branch.longitude) && (
+                  <div>
+                    <p className="text-xs font-medium text-blue-600">GPS Coordinates</p>
+                    <p className="text-blue-900 font-mono text-xs">
+                      {staff.branch.latitude.toFixed(6)}, {staff.branch.longitude.toFixed(6)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-secondary/70">
               {labels?.permissions || 'Permissions'}
             </p>

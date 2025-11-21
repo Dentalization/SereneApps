@@ -62,7 +62,13 @@ const Routes = () => {
         <Route path="/homepage" element={<Navigate to="/" replace />} />
         <Route path="/for-patients" element={<ForPatientsPage />} />
         <Route path="/for-dentists" element={<ForDentists />} />
+        
+        {/* Auth Routes - support both /login and /auth/login */}
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/auth/register" element={<Register />} />
+        
         {/* Protected app routes */}
         <Route element={<ProtectedRoute allow={["dentist"]} />}>
           <Route path="/dentist-portal" element={<DentistPortal />} />
