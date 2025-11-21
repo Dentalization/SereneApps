@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import ModalPortal from '../../components/ui/ModalPortal';
 import { registerApi } from 'services/authService';
 import { useAuth } from 'contexts/AuthContext';
+import { useToast } from 'contexts/ToastContext';
 import { redirectByRole } from 'utils/auth/redirectByRole';
 import Icon from '../../components/AppIcon';
 
 const Register = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const toast = useToast();
 
   // Personal Information
   const [name, setName] = useState('');
@@ -45,6 +47,14 @@ const Register = () => {
     .map(d => `${d.day}: ${d.open}-${d.close}`).join(', ');
   const [consultationTypes, setConsultationTypes] = useState([]);
   const [servicesOffered, setServicesOffered] = useState([]);
+  
+  // Geolocation Information (for Independent Dentist)
+  const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
+  const [province, setProvince] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
   
   // Optional Information
   const [consultationFee, setConsultationFee] = useState('');
@@ -159,6 +169,13 @@ const Register = () => {
   const [consultationTypesError, setConsultationTypesError] = useState('');
   const [servicesOfferedError, setServicesOfferedError] = useState('');
   const [consultationFeeError, setConsultationFeeError] = useState('');
+  // Geolocation errors
+  const [cityError, setCityError] = useState('');
+  const [districtError, setDistrictError] = useState('');
+  const [provinceError, setProvinceError] = useState('');
+  const [postalCodeError, setPostalCodeError] = useState('');
+  const [latitudeError, setLatitudeError] = useState('');
+  const [longitudeError, setLongitudeError] = useState('');
 
   // Data options
   const specializations = [
@@ -201,6 +218,32 @@ const Register = () => {
     'Veneer Gigi',
     'Bleaching Gigi',
     'Perawatan Gusi'
+  ];
+
+  // Indonesian Cities with coordinates
+  const indonesianCities = [
+    // DKI Jakarta
+    { name: 'Jakarta Pusat', province: 'DKI Jakarta', lat: -6.1944, lng: 106.8229 },
+    { name: 'Jakarta Selatan', province: 'DKI Jakarta', lat: -6.2424, lng: 106.7991 },
+    { name: 'Jakarta Utara', province: 'DKI Jakarta', lat: -6.1555, lng: 106.8994 },
+    { name: 'Jakarta Barat', province: 'DKI Jakarta', lat: -6.1867, lng: 106.7674 },
+    { name: 'Jakarta Timur', province: 'DKI Jakarta', lat: -6.1783, lng: 106.9364 },
+    // Major Cities
+    { name: 'Surabaya', province: 'Jawa Timur', lat: -7.2754, lng: 112.7378 },
+    { name: 'Bandung', province: 'Jawa Barat', lat: -6.9175, lng: 107.6191 },
+    { name: 'Medan', province: 'Sumatera Utara', lat: 3.5952, lng: 98.6722 },
+    { name: 'Semarang', province: 'Jawa Tengah', lat: -6.9667, lng: 110.4167 },
+    { name: 'Makassar', province: 'Sulawesi Selatan', lat: -5.1477, lng: 119.4327 },
+    { name: 'Palembang', province: 'Sumatera Selatan', lat: -2.9761, lng: 104.7754 },
+    { name: 'Tangerang', province: 'Banten', lat: -6.1783, lng: 106.6319 },
+    { name: 'Depok', province: 'Jawa Barat', lat: -6.4025, lng: 106.7942 },
+    { name: 'Bekasi', province: 'Jawa Barat', lat: -6.2383, lng: 106.9756 },
+    { name: 'Yogyakarta', province: 'DI Yogyakarta', lat: -7.7956, lng: 110.3695 },
+    { name: 'Malang', province: 'Jawa Timur', lat: -7.9666, lng: 112.6326 },
+    { name: 'Denpasar', province: 'Bali', lat: -8.6705, lng: 115.2126 },
+    { name: 'Balikpapan', province: 'Kalimantan Timur', lat: -1.2379, lng: 116.8529 },
+    { name: 'Batam', province: 'Kepulauan Riau', lat: 1.1304, lng: 104.0530 },
+    { name: 'Bandar Lampung', province: 'Lampung', lat: -5.4292, lng: 105.2619 },
   ];
 
   // Validation functions
@@ -247,6 +290,26 @@ const Register = () => {
     const today = new Date();
     if (expiryDate <= today) return 'SIP sudah berakhir atau akan berakhir hari ini';
     return null;
+  };
+
+  const validateGPSCoordinates = () => {
+    let isValid = true;
+
+    // Validate latitude
+    const lat = parseFloat(latitude);
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      setLatitudeError('Latitude harus antara -90 dan 90');
+      isValid = false;
+    }
+
+    // Validate longitude  
+    const lng = parseFloat(longitude);
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      setLongitudeError('Longitude harus antara -180 dan 180');
+      isValid = false;
+    }
+
+    return isValid;
   };
 
   const formatCurrency = (value) => {
@@ -312,6 +375,11 @@ const Register = () => {
     if (password !== confirmPassword) return setError('Konfirmasi password tidak cocok');
     if (feeError) return setError(`Biaya konsultasi: ${feeError}`);
     if (!agree) return setError('Anda harus menyetujui syarat dan ketentuan');
+    
+    // Validate geolocation
+    if (!city) return setError('Kota wajib dipilih');
+    if (!district) return setError('Kecamatan wajib diisi');
+    if (!validateGPSCoordinates()) return setError('Koordinat GPS tidak valid');
 
     setSubmitting(true);
     try {
@@ -429,17 +497,19 @@ const Register = () => {
       
       console.log('✅ Registration response received:', registerResponse);
       
-      // Jangan ubah file state setelah upload - biarkan tetap sebagai File object
-      // File akan tetap ada di state untuk retry tanpa perlu re-pick
+      // Show success toast
+      toast.success('Registrasi berhasil! Silakan login dengan akun Anda.', 6000);
       
-      // Redirect to login page with success message instead of auto-login
-      navigate('/auth/login', { 
-        replace: true, 
-        state: { 
-          message: 'Registrasi berhasil! Silakan login dengan akun Anda.',
-          email: email // Pre-fill email in login form
-        } 
-      });
+      // Redirect to login page
+      setTimeout(() => {
+        navigate('/auth/login', { 
+          replace: true, 
+          state: { 
+            email: email // Pre-fill email in login form
+          } 
+        });
+      }, 1000); // Small delay to show toast
+      
     } catch (err) {
       console.error('❌ Registration error caught:', err);
       console.error('Error response:', err?.response);
@@ -448,6 +518,9 @@ const Register = () => {
       console.error('Error message:', err?.message);
       
       const msg = err?.response?.data?.message || err?.message || 'Registrasi gagal';
+      
+      // Show error toast
+      toast.error(msg, 7000);
       
       // Handle specific error messages
       if (msg.toLowerCase().includes('license number') && msg.toLowerCase().includes('already exists')) {
@@ -584,7 +657,7 @@ const Register = () => {
                         setPhoneError('');
                       }}
                       className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${phoneError ? 'border-red-400' : 'border-gray-200'}`}
-                      placeholder="0812-3456-7890"
+                      placeholder="+6281234567890"
                       required
                     />
                     {phoneError && <p className="text-xs text-red-500 mt-1">{phoneError}</p>}
@@ -1164,6 +1237,173 @@ const Register = () => {
                       required
                     />
                     {clinicAddressError && <p className="text-xs text-red-500 mt-1">{clinicAddressError}</p>}
+                  </div>
+
+                  {/* Geolocation Information */}
+                  <div className="col-span-full">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                      <Icon name="map-marker" className="w-5 h-5 mr-2 text-indigo-600" />
+                      Lokasi Praktik
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Informasi ini digunakan untuk membantu pasien menemukan praktik Anda berdasarkan lokasi terdekat
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Kota <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={city}
+                        onChange={(e) => {
+                          const selectedCity = indonesianCities.find(c => c.name === e.target.value);
+                          setCity(e.target.value);
+                          if (selectedCity) {
+                            setProvince(selectedCity.province);
+                            setLatitude(selectedCity.lat.toString());
+                            setLongitude(selectedCity.lng.toString());
+                          }
+                          setCityError('');
+                        }}
+                        className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${cityError ? 'border-red-400' : 'border-gray-200'}`}
+                        required
+                      >
+                        <option value="">Pilih Kota</option>
+                        {indonesianCities.map(city => (
+                          <option key={city.name} value={city.name}>
+                            {city.name} - {city.province}
+                          </option>
+                        ))}
+                      </select>
+                      {cityError && <p className="text-xs text-red-500 mt-1">{cityError}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Kecamatan/Distrik <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={district}
+                        onChange={(e) => {
+                          setDistrict(e.target.value);
+                          setDistrictError('');
+                        }}
+                        className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${districtError ? 'border-red-400' : 'border-gray-200'}`}
+                        placeholder="Contoh: Menteng, Kebayoran Baru"
+                        required
+                      />
+                      {districtError && <p className="text-xs text-red-500 mt-1">{districtError}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Provinsi <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={province}
+                        readOnly
+                        className="w-full px-4 py-3 border-2 rounded-xl bg-gray-50 text-gray-700 border-gray-200"
+                        placeholder="Otomatis terisi"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Provinsi otomatis terisi berdasarkan kota yang dipilih</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Kode Pos
+                      </label>
+                      <input
+                        type="text"
+                        value={postalCode}
+                        onChange={(e) => {
+                          setPostalCode(e.target.value);
+                          setPostalCodeError('');
+                        }}
+                        maxLength={5}
+                        className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${postalCodeError ? 'border-red-400' : 'border-gray-200'}`}
+                        placeholder="12345"
+                      />
+                      {postalCodeError && <p className="text-xs text-red-500 mt-1">{postalCodeError}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Latitude <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0000001"
+                        value={latitude}
+                        onChange={(e) => {
+                          setLatitude(e.target.value);
+                          setLatitudeError('');
+                        }}
+                        className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${latitudeError ? 'border-red-400' : 'border-gray-200'}`}
+                        placeholder="-6.1944"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        💡 Otomatis terisi dari kota, atau cari di{' '}
+                        <a 
+                          href="https://www.google.com/maps" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-700 underline"
+                        >
+                          Google Maps
+                        </a>
+                      </p>
+                      {latitudeError && <p className="text-xs text-red-500 mt-1">{latitudeError}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Longitude <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0000001"
+                        value={longitude}
+                        onChange={(e) => {
+                          setLongitude(e.target.value);
+                          setLongitudeError('');
+                        }}
+                        className={`w-full px-4 py-3 border-2 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors ${longitudeError ? 'border-red-400' : 'border-gray-200'}`}
+                        placeholder="106.8229"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        💡 Klik kanan lokasi praktik di Google Maps → Copy koordinat
+                      </p>
+                      {longitudeError && <p className="text-xs text-red-500 mt-1">{longitudeError}</p>}
+                    </div>
+                  </div>
+
+                  {/* GPS Help Section */}
+                  <div className="col-span-full bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-start">
+                      <Icon name="information-outline" className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-semibold text-blue-900 mb-2">
+                          Cara Mendapatkan Koordinat GPS Akurat:
+                        </h4>
+                        <ol className="text-xs text-blue-800 space-y-1 list-decimal list-inside">
+                          <li>Buka <strong>Google Maps</strong> di browser</li>
+                          <li>Cari dan zoom ke lokasi praktik Anda</li>
+                          <li><strong>Klik kanan</strong> tepat di lokasi praktik</li>
+                          <li>Pilih koordinat yang muncul (contoh: -6.1944, 106.8229)</li>
+                          <li>Koordinat akan tersalin otomatis</li>
+                          <li>Paste ke field Latitude dan Longitude di atas</li>
+                        </ol>
+                        <p className="text-xs text-blue-700 mt-3">
+                          ℹ️ Koordinat akurat membantu pasien menemukan praktik Anda lebih mudah
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   <div>

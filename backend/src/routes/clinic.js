@@ -581,8 +581,11 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'manager']), 
       branchCode, 
       streetAddress, 
       city, 
-      province, 
-      postalCode, 
+      province,
+      district,
+      postalCode,
+      latitude,
+      longitude,
       phone, 
       treatmentRoomsCount, 
       hasSterlization, 
@@ -616,7 +619,10 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'manager']), 
       streetAddress: streetAddress?.trim(),
       city: city?.trim(),
       province: province?.trim(),
-      postalCode: postalCode?.trim(),
+      district: district?.trim() || null,
+      postalCode: postalCode?.trim() || null,
+      latitude: latitude ? parseFloat(latitude) : null,
+      longitude: longitude ? parseFloat(longitude) : null,
       phone: phone?.trim() || null,
       treatmentRoomsCount: parseInt(treatmentRoomsCount) || 1,
       hasSterlization: Boolean(hasSterlization),
@@ -923,7 +929,12 @@ router.get('/staff', authenticateToken, requireRoles(['owner', 'manager']), asyn
           select: {
             id: true,
             branchName: true,
-            branchCode: true
+            branchCode: true,
+            city: true,
+            province: true,
+            district: true,
+            latitude: true,
+            longitude: true
           }
         }
       },
@@ -950,7 +961,12 @@ router.get('/staff', authenticateToken, requireRoles(['owner', 'manager']), asyn
       branch: staff.assignedBranch ? {
         id: staff.assignedBranch.id.toString(),
         name: staff.assignedBranch.branchName,
-        code: staff.assignedBranch.branchCode
+        code: staff.assignedBranch.branchCode,
+        city: staff.assignedBranch.city,
+        province: staff.assignedBranch.province,
+        district: staff.assignedBranch.district,
+        latitude: staff.assignedBranch.latitude ? parseFloat(staff.assignedBranch.latitude) : null,
+        longitude: staff.assignedBranch.longitude ? parseFloat(staff.assignedBranch.longitude) : null
       } : null
     }));
 
@@ -1004,13 +1020,15 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'manager']), asy
 
     const clinicId = requestingUserStaff.clinicProfileId;
 
-    // Check if user already exists
+    // Check if user already exists - CRITICAL SECURITY CHECK
+    console.log('🔍 Checking if email already exists:', email);
     let targetUser = await prisma.user.findUnique({
       where: { email: email }
     });
 
     // If user doesn't exist, create them
     if (!targetUser) {
+      console.log('✅ Email is available, creating new user:', email);
       // Hash the provided password
       const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -1023,27 +1041,36 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'manager']), asy
         }
       });
 
-      console.log(`Created new user ${email} with provided password`);
+      console.log(`✅ Created new user ${email} with provided password`);
     } else {
-      // If user exists, update their password with the provided one
-      const hashedPassword = await bcrypt.hash(password, 10);
-      await prisma.user.update({
-        where: { id: targetUser.id },
-        data: { password_hash: hashedPassword }
+      // User already exists - check if they're already a staff member
+      console.warn('⚠️ User with this email already exists!');
+      console.warn('⚠️ Existing user ID:', targetUser.id.toString());
+      console.warn('⚠️ Existing user roles:', targetUser.roles);
+      console.warn('⚠️ Existing user name:', targetUser.name);
+      
+      // Check if this user is already assigned to ANY clinic
+      const existingStaffCheck = await prisma.clinicStaff.findUnique({
+        where: { userId: targetUser.id }
       });
-      console.log(`Updated existing user ${email} with new provided password`);
-    }
-
-    // Check if user is already assigned to ANY clinic
-    const existingStaff = await prisma.clinicStaff.findUnique({
-      where: { userId: targetUser.id }
-    });
-
-    if (existingStaff) {
-      return res.status(400).json({ 
-        error: 'User is already assigned to a clinic',
-        details: 'Each staff member can only work at one clinic'
-      });
+      
+      if (existingStaffCheck) {
+        console.error('❌ STAFF ASSIGNMENT BLOCKED - User already assigned to a clinic!');
+        console.error('❌ User email:', email);
+        console.error('❌ Clinic ID:', existingStaffCheck.clinicProfileId.toString());
+        console.error('❌ Assignment attempt from IP:', req.ip || req.connection.remoteAddress);
+        return res.status(400).json({ 
+          error: 'User is already assigned to a clinic',
+          errorCode: 'ALREADY_ASSIGNED',
+          details: 'This email is already registered and assigned to a clinic. Each staff member can only work at one clinic.'
+        });
+      }
+      
+      // User exists but not assigned to any clinic yet
+      // This could be a dentist or patient being added as staff
+      console.log('⚠️ User exists but not assigned to clinic, will assign with EXISTING password');
+      console.log('⚠️ NOT updating password - user should use their existing password');
+      // DO NOT update password - let them keep their existing one
     }
 
     // Validate branch assignment if provided
@@ -1092,7 +1119,12 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'manager']), asy
           select: {
             id: true,
             branchName: true,
-            branchCode: true
+            branchCode: true,
+            city: true,
+            province: true,
+            district: true,
+            latitude: true,
+            longitude: true
           }
         }
       }
@@ -1126,7 +1158,12 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'manager']), asy
         branch: newStaff.assignedBranch ? {
           id: serializeId(newStaff.assignedBranch.id),
           name: newStaff.assignedBranch.branchName,
-          code: newStaff.assignedBranch.branchCode
+          code: newStaff.assignedBranch.branchCode,
+          city: newStaff.assignedBranch.city,
+          province: newStaff.assignedBranch.province,
+          district: newStaff.assignedBranch.district,
+          latitude: newStaff.assignedBranch.latitude ? parseFloat(newStaff.assignedBranch.latitude) : null,
+          longitude: newStaff.assignedBranch.longitude ? parseFloat(newStaff.assignedBranch.longitude) : null
         } : null
       }
     });
@@ -1278,7 +1315,12 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'manager
           select: {
             id: true,
             branchName: true,
-            branchCode: true
+            branchCode: true,
+            city: true,
+            province: true,
+            district: true,
+            latitude: true,
+            longitude: true
           }
         }
       }
@@ -1306,7 +1348,12 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'manager
         branch: refreshedStaff.assignedBranch ? {
           id: serializeId(refreshedStaff.assignedBranch.id),
           name: refreshedStaff.assignedBranch.branchName,
-          code: refreshedStaff.assignedBranch.branchCode
+          code: refreshedStaff.assignedBranch.branchCode,
+          city: refreshedStaff.assignedBranch.city,
+          province: refreshedStaff.assignedBranch.province,
+          district: refreshedStaff.assignedBranch.district,
+          latitude: refreshedStaff.assignedBranch.latitude ? parseFloat(refreshedStaff.assignedBranch.latitude) : null,
+          longitude: refreshedStaff.assignedBranch.longitude ? parseFloat(refreshedStaff.assignedBranch.longitude) : null
         } : null
       }
     });
@@ -1362,7 +1409,12 @@ router.get('/staff/:userId/profile', authenticateToken, requireRoles(['owner', '
             id: true,
             branchName: true,
             branchCode: true,
-            address: true
+            address: true,
+            city: true,
+            province: true,
+            district: true,
+            latitude: true,
+            longitude: true
           }
         }
       }

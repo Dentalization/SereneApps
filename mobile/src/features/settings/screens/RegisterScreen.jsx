@@ -238,12 +238,23 @@ const RegisterScreen = ({ navigation }) => {
         }, 1500);
       } else {
         // Registration failed
-        console.error('❌ Registration failed:', result.error);
+        console.error('❌ Registration failed:', result);
+        console.error('❌ Status code:', response.status);
         
         let errorMessage = result.message || 'Pendaftaran gagal. Silakan coba lagi.';
         
+        // Handle specific error codes
+        if (response.status === 409) {
+          // Email already registered
+          if (result.error === 'DUPLICATE_EMAIL') {
+            errorMessage = result.details || 'Email sudah terdaftar. Silakan gunakan email lain atau login dengan akun yang sudah ada.';
+            setErrors({ email: errorMessage });
+          } else {
+            errorMessage = result.details || 'Email sudah terdaftar. Silakan gunakan email yang berbeda.';
+          }
+        }
         // Show validation errors if any
-        if (result.errors && result.errors.length > 0) {
+        else if (result.errors && result.errors.length > 0) {
           const errorFields = {};
           result.errors.forEach(err => {
             if (err.field) {
@@ -252,6 +263,10 @@ const RegisterScreen = ({ navigation }) => {
           });
           setErrors(errorFields);
           errorMessage = 'Mohon perbaiki kesalahan pada form';
+        }
+        // Show details if available
+        else if (result.details) {
+          errorMessage = result.details;
         }
 
         setSnackbar({ 

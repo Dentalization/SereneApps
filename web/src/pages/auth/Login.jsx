@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from 'contexts/AuthContext';
+import { useToast } from 'contexts/ToastContext';
 import { redirectByRole } from 'utils/auth/redirectByRole';
 import Icon from '../../components/AppIcon';
 
@@ -8,6 +9,7 @@ const Login = () => {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,20 +17,18 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showPw, setShowPw] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
 
   // Handle state from registration redirect
   useEffect(() => {
-    if (location.state?.message) {
-      setSuccessMessage(location.state.message);
-      // Clear the message after 5 seconds
-      const timer = setTimeout(() => setSuccessMessage(''), 5000);
-      return () => clearTimeout(timer);
-    }
     if (location.state?.email) {
       setEmail(location.state.email);
+      // Show success toast if coming from registration
+      toast.success('Registrasi berhasil! Silakan login dengan akun Anda.', 6000);
+      
+      // Clear state to prevent showing toast on refresh
+      navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state]);
+  }, [location.state, navigate, toast]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -38,12 +38,22 @@ const Login = () => {
       const user = await login({ email, password });
       console.log('User after login:', user);
       console.log('User roles for redirect:', user?.roles);
+      
+      // Show success toast
+      toast.success(`Selamat datang kembali, ${user?.name || 'Dokter'}!`, 3000);
+      
       const target = redirectByRole(user?.roles || []);
       console.log('Redirect target:', target);
-      navigate(target, { replace: true });
+      
+      setTimeout(() => {
+        navigate(target, { replace: true });
+      }, 500);
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Login failed';
       const errorCode = err?.response?.data?.code;
+      
+      // Show error toast
+      toast.error(msg, 7000);
       
       // Special handling for unverified dentist
       if (errorCode === 'DENTIST_NOT_VERIFIED') {
@@ -239,13 +249,6 @@ const Login = () => {
                   Forgot password?
                 </a>
               </div>
-
-              {/* Success Message */}
-              {successMessage && (
-                <div className="text-sm text-green-600 bg-green-50 border border-green-200 p-4 rounded-xl">
-                  {successMessage}
-                </div>
-              )}
 
               {/* Error Message */}
               {error && (

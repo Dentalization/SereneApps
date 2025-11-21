@@ -4,6 +4,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { PreferencesProvider } from "./contexts/PreferencesContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { ToastProvider } from "./contexts/ToastContext";
 
 function App() {
   console.log('App component rendering...'); // Debug log
@@ -14,7 +15,9 @@ function App() {
         <PreferencesProvider>
           <LanguageProvider>
             <AuthProvider>
-              <Routes />
+              <ToastProvider>
+                <Routes />
+              </ToastProvider>
             </AuthProvider>
           </LanguageProvider>
         </PreferencesProvider>

@@ -5,6 +5,12 @@ import ModalPortal from '../../../../components/ui/ModalPortal';
 const INITIAL_FORM = {
   branchName: '',
   address: '',
+  city: '',
+  province: '',
+  district: '',
+  postalCode: '',
+  latitude: '',
+  longitude: '',
   phone: '',
   email: '',
   operatingHours: '08:00 - 17:00',
@@ -13,6 +19,30 @@ const INITIAL_FORM = {
   isMainBranch: false,
   status: 'active'
 };
+
+// Indonesian cities with GPS coordinates
+const INDONESIAN_CITIES = [
+  { name: 'Jakarta', province: 'DKI Jakarta', lat: -6.2088, lng: 106.8456 },
+  { name: 'Surabaya', province: 'Jawa Timur', lat: -7.2575, lng: 112.7521 },
+  { name: 'Bandung', province: 'Jawa Barat', lat: -6.9175, lng: 107.6191 },
+  { name: 'Medan', province: 'Sumatera Utara', lat: 3.5952, lng: 98.6722 },
+  { name: 'Semarang', province: 'Jawa Tengah', lat: -6.9667, lng: 110.4167 },
+  { name: 'Makassar', province: 'Sulawesi Selatan', lat: -5.1477, lng: 119.4327 },
+  { name: 'Palembang', province: 'Sumatera Selatan', lat: -2.9761, lng: 104.7754 },
+  { name: 'Tangerang', province: 'Banten', lat: -6.1783, lng: 106.6319 },
+  { name: 'Depok', province: 'Jawa Barat', lat: -6.4025, lng: 106.7942 },
+  { name: 'Bekasi', province: 'Jawa Barat', lat: -6.2383, lng: 106.9756 },
+  { name: 'Yogyakarta', province: 'DI Yogyakarta', lat: -7.7956, lng: 110.3695 },
+  { name: 'Malang', province: 'Jawa Timur', lat: -7.9666, lng: 112.6326 },
+  { name: 'Bogor', province: 'Jawa Barat', lat: -6.5950, lng: 106.8166 },
+  { name: 'Batam', province: 'Kepulauan Riau', lat: 1.0456, lng: 104.0305 },
+  { name: 'Denpasar', province: 'Bali', lat: -8.6705, lng: 115.2126 },
+  { name: 'Balikpapan', province: 'Kalimantan Timur', lat: -1.2379, lng: 116.8529 },
+  { name: 'Bandar Lampung', province: 'Lampung', lat: -5.3971, lng: 105.2668 },
+  { name: 'Padang', province: 'Sumatera Barat', lat: -0.9471, lng: 100.4172 },
+  { name: 'Manado', province: 'Sulawesi Utara', lat: 1.4748, lng: 124.8421 },
+  { name: 'Pontianak', province: 'Kalimantan Barat', lat: -0.0263, lng: 109.3425 },
+];
 
 const AVAILABLE_FACILITIES = [
   'X-Ray Machine',
@@ -54,6 +84,51 @@ const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleCityChange = (event) => {
+    const cityName = event.target.value;
+    const selectedCity = INDONESIAN_CITIES.find(c => c.name === cityName);
+    
+    if (selectedCity) {
+      setForm(prev => ({
+        ...prev,
+        city: selectedCity.name,
+        province: selectedCity.province,
+        latitude: selectedCity.lat.toString(),
+        longitude: selectedCity.lng.toString()
+      }));
+    } else {
+      setForm(prev => ({ ...prev, city: cityName }));
+    }
+  };
+
+  const validateGPSCoordinates = () => {
+    // Allow empty coordinates
+    if (!form.latitude && !form.longitude) {
+      return { valid: true };
+    }
+
+    // Clean the input (remove spaces, handle comma as decimal separator)
+    const cleanLat = form.latitude.toString().trim().replace(',', '.');
+    const cleanLng = form.longitude.toString().trim().replace(',', '.');
+    
+    const lat = parseFloat(cleanLat);
+    const lng = parseFloat(cleanLng);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      return { valid: false, message: 'Please enter valid GPS coordinates (e.g., -6.200000, 106.816666)' };
+    }
+    
+    if (lat < -90 || lat > 90) {
+      return { valid: false, message: 'Latitude must be between -90 and 90' };
+    }
+    
+    if (lng < -180 || lng > 180) {
+      return { valid: false, message: 'Longitude must be between -180 and 180' };
+    }
+    
+    return { valid: true };
+  };
+
   const handleFacilityAdd = (facility) => {
     if (facility && !form.facilities.includes(facility)) {
       setForm(prev => ({
@@ -75,10 +150,21 @@ const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
     event.preventDefault();
     if (loading) return;
     
+    // Validate GPS if provided
+    if (form.latitude || form.longitude) {
+      const gpsValidation = validateGPSCoordinates();
+      if (!gpsValidation.valid) {
+        alert(gpsValidation.message);
+        return;
+      }
+    }
+    
     // Prepare form data with proper number conversion
     const submitData = {
       ...form,
-      treatmentRooms: form.treatmentRooms === '' ? 1 : parseInt(form.treatmentRooms) || 1
+      treatmentRooms: form.treatmentRooms === '' ? 1 : parseInt(form.treatmentRooms) || 1,
+      latitude: form.latitude ? parseFloat(form.latitude) : null,
+      longitude: form.longitude ? parseFloat(form.longitude) : null
     };
     
     onSubmit(submitData);
@@ -135,19 +221,139 @@ const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
 
                 <div className="md:col-span-2">
                   <label htmlFor="address" className="block text-sm font-medium text-secondary mb-2">
-                    Address *
+                    Street Address *
                   </label>
                   <textarea
                     id="address"
                     value={form.address}
                     onChange={handleChange('address')}
-                    placeholder="Complete branch address"
+                    placeholder="Complete street address"
                     required
-                    rows={3}
+                    rows={2}
                     className="w-full rounded-lg border border-border/40 bg-surface px-3 py-2 text-sm text-primary placeholder-secondary/60 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 resize-none"
                   />
                 </div>
 
+                <div>
+                  <label htmlFor="city" className="block text-sm font-medium text-secondary mb-2">
+                    City *
+                  </label>
+                  <select
+                    id="city"
+                    value={form.city}
+                    onChange={handleCityChange}
+                    required
+                    className="w-full rounded-lg border border-border/40 bg-surface px-3 py-2 text-sm text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  >
+                    <option value="">Select a city...</option>
+                    {INDONESIAN_CITIES.map(city => (
+                      <option key={city.name} value={city.name}>
+                        {city.name}, {city.province}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-secondary/60 mt-1">Auto-fills province and GPS coordinates</p>
+                </div>
+
+                <div>
+                  <label htmlFor="province" className="block text-sm font-medium text-secondary mb-2">
+                    Province *
+                  </label>
+                  <input
+                    id="province"
+                    type="text"
+                    value={form.province}
+                    onChange={handleChange('province')}
+                    placeholder="Auto-filled from city"
+                    required
+                    readOnly
+                    className="w-full rounded-lg border border-border/40 bg-surface-elevated px-3 py-2 text-sm text-primary placeholder-secondary/60 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="district" className="block text-sm font-medium text-secondary mb-2">
+                    District / Subdistrict
+                  </label>
+                  <input
+                    id="district"
+                    type="text"
+                    value={form.district}
+                    onChange={handleChange('district')}
+                    placeholder="e.g., Menteng, Kebayoran Baru"
+                    className="w-full rounded-lg border border-border/40 bg-surface px-3 py-2 text-sm text-primary placeholder-secondary/60 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="postalCode" className="block text-sm font-medium text-secondary mb-2">
+                    Postal Code
+                  </label>
+                  <input
+                    id="postalCode"
+                    type="text"
+                    value={form.postalCode}
+                    onChange={handleChange('postalCode')}
+                    placeholder="e.g., 12345"
+                    maxLength={5}
+                    className="w-full rounded-lg border border-border/40 bg-surface px-3 py-2 text-sm text-primary placeholder-secondary/60 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                </div>
+              </div>
+
+              {/* GPS Coordinates */}
+              <div className="space-y-3 p-4 rounded-xl bg-blue-50 border border-blue-100">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <AppIcon name="MapPin" size={16} />
+                  <h4 className="text-sm font-medium">GPS Coordinates</h4>
+                </div>
+                <p className="text-xs text-blue-600">
+                  Coordinates are auto-filled when you select a city. You can adjust them for precise location.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="latitude" className="block text-xs font-medium text-blue-700 mb-1">
+                      Latitude
+                    </label>
+                    <input
+                      id="latitude"
+                      type="text"
+                      value={form.latitude}
+                      onChange={handleChange('latitude')}
+                      placeholder="-6.200000"
+                      className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-primary placeholder-secondary/60 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 font-mono"
+                    />
+                    <p className="text-xs text-blue-600 mt-1">Range: -90 to 90</p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="longitude" className="block text-xs font-medium text-blue-700 mb-1">
+                      Longitude
+                    </label>
+                    <input
+                      id="longitude"
+                      type="text"
+                      value={form.longitude}
+                      onChange={handleChange('longitude')}
+                      placeholder="106.816666"
+                      className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-primary placeholder-secondary/60 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 font-mono"
+                    />
+                    <p className="text-xs text-blue-600 mt-1">Range: -180 to 180</p>
+                  </div>
+                </div>
+                
+                <div className="text-xs text-blue-600 space-y-1">
+                  <p className="font-medium">💡 How to get coordinates from Google Maps:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 ml-2">
+                    <li>Right-click on location in Google Maps</li>
+                    <li>Click the coordinates to copy them</li>
+                    <li>Paste here (format: -6.200000, 106.816666)</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="phone" className="block text-sm font-medium text-secondary mb-2">
                     Phone Number *

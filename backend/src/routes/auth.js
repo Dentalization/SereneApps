@@ -233,10 +233,22 @@ router.post('/patient/register', async (req, res) => {
       return res.status(400).json({ message: 'Validation error', errors });
     }
 
+    // Check if email already exists - CRITICAL SECURITY CHECK
+    console.log('🔍 [PATIENT REGISTRATION] Checking if email already exists:', normalizedEmail);
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
-      return res.status(409).json({ message: 'Email already registered' });
+      console.error('❌ [PATIENT REGISTRATION] BLOCKED - Email already registered!');
+      console.error('❌ Attempted email:', normalizedEmail);
+      console.error('❌ Existing user ID:', existing.id);
+      console.error('❌ Existing user roles:', existing.roles);
+      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
+      return res.status(409).json({ 
+        message: 'Email already registered',
+        error: 'DUPLICATE_EMAIL',
+        details: 'Email ini sudah terdaftar. Silakan gunakan email lain atau login dengan akun yang sudah ada.'
+      });
     }
+    console.log('✅ [PATIENT REGISTRATION] Email is available:', normalizedEmail);
 
     await query('BEGIN');
 
@@ -390,6 +402,9 @@ router.post('/register', upload.fields([
       
       // Clinic Information
       clinicName, clinicAddress, clinicWorkingHours, 
+      
+      // Geolocation Information
+      city, district, province, postalCode, latitude, longitude,
       
       // Optional Information
       consultationFee, acceptsInsurance, acceptsBPJS, emergencyAvailability,
@@ -614,24 +629,48 @@ router.post('/register', upload.fields([
       return res.status(400).json({ message: 'Years of experience must be between 0-60' });
     }
 
-    // Check if user already exists
+    // Check if user already exists - CRITICAL SECURITY CHECK
+    console.log('🔍 Checking if email already exists:', email);
     const existing = await findUserByEmail(email);
-    if (existing) return res.status(409).json({ message: 'Email already registered' });
+    if (existing) {
+      console.error('❌ REGISTRATION BLOCKED - Email already registered!');
+      console.error('❌ Attempted email:', email);
+      console.error('❌ Existing user ID:', existing.id);
+      console.error('❌ Existing user roles:', existing.roles);
+      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
+      return res.status(409).json({ 
+        message: 'Email already registered',
+        error: 'DUPLICATE_EMAIL',
+        details: 'This email is already associated with an account. Please use a different email or login with existing credentials.'
+      });
+    }
+    console.log('✅ Email is available:', email);
 
     // Check if license number or registration number already exists
+    console.log('🔍 Checking if license/registration number already exists...');
     const existingLicense = await query(
       'SELECT id FROM dentist_profiles WHERE license_number = $1 OR registration_number = $2',
       [licenseNumber, registrationNumber]
     );
     if (existingLicense.rows.length > 0) {
-      return res.status(409).json({ message: 'License number or registration number already exists' });
+      console.error('❌ REGISTRATION BLOCKED - License/Registration number already exists!');
+      console.error('❌ Attempted license number:', licenseNumber);
+      console.error('❌ Attempted registration number:', registrationNumber);
+      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
+      return res.status(409).json({ 
+        message: 'License number or registration number already exists',
+        error: 'DUPLICATE_LICENSE',
+        details: 'A dentist profile with this license or registration number already exists in our system.'
+      });
     }
+    console.log('✅ License and registration numbers are available');
 
     // Start transaction
     console.log('Starting database transaction...');
     await query('BEGIN');
     console.log('Database transaction started successfully');
 
+    let transactionCommitted = false; // Track if we've committed the transaction
     try {
       // Create user
       console.log('Creating user in database...');
@@ -680,13 +719,21 @@ router.post('/register', upload.fields([
           registration_number, primary_specialization, education_qualification, years_of_experience,
           clinic_name, clinic_address, clinic_working_hours, consultation_types, services_offered,
           consultation_fee, accepts_insurance, accepts_bpjs, emergency_availability,
+          city, district, province, postal_code, latitude, longitude, dentist_type,
           sip_file_path, str_file_path, ijazah_file_paths, certification_file_paths
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
         [user.id, title, licenseNumber, licenseIssuingBody, licenseExpiryDate,
           registrationNumber, primarySpecialization, educationQualification, parseInt(yearsOfExperience),
           clinicName, clinicAddress, parsedWorkingHours, consultationTypes, servicesOffered,
           consultationFee ? parseInt(consultationFee) : null, 
           acceptsInsurance === 'true', acceptsBPJS === 'true', emergencyAvailability === 'true',
+          city || null,
+          district || null,
+          province || null,
+          postalCode || null,
+          latitude ? parseFloat(latitude) : null,
+          longitude ? parseFloat(longitude) : null,
+          'independent', // Default to independent for web registration
           sipFile ? `uploads/documents/sip/${sipFile.filename}` : null,
           strFile ? `uploads/documents/str/${strFile.filename}` : null,
           ijazahFiles.map(f => `uploads/documents/ijazah/${f.filename}`),
@@ -696,7 +743,23 @@ router.post('/register', upload.fields([
       
       console.log('Dentist profile created successfully!');
 
+      // Commit transaction FIRST - before clinic staff assignment
+      // This is critical because Prisma uses a different connection and needs the user to exist
+      console.log('💾 Committing transaction to save user and dentist profile...');
+      await query('COMMIT');
+      transactionCommitted = true; // Mark as committed
+      console.log('✅ Transaction committed - user and dentist profile saved to database');
+
       // Handle clinic staff assignment for clinic-staff registration type
+      // This happens AFTER commit so the user.id foreign key exists
+      console.log('🔍 Checking clinic staff assignment conditions...', {
+        registrationType,
+        hasClinicId: !!clinicId,
+        clinicId,
+        branchId,
+        conditionResult: (registrationType === 'clinic-staff' && clinicId)
+      });
+      
       if (registrationType === 'clinic-staff' && clinicId) {
         console.log('🏥 Adding dentist to clinic staff...', { registrationType, clinicId, branchId });
         
@@ -706,6 +769,7 @@ router.post('/register', upload.fields([
           const branchIdBigInt = branchId ? BigInt(branchId) : null;
           
           // Insert into clinic_staff table using Prisma
+          // User is already committed to database, so foreign key will work
           const clinicStaffRecord = await prisma.clinicStaff.create({
             data: {
               clinicProfileId: clinicIdBigInt,
@@ -723,19 +787,30 @@ router.post('/register', upload.fields([
           console.log('✅ Dentist successfully added to clinic staff!', { 
             id: clinicStaffRecord.id.toString(),
             clinicProfileId: clinicStaffRecord.clinicProfileId.toString(),
-            userId: clinicStaffRecord.userId.toString()
+            userId: clinicStaffRecord.userId.toString(),
+            role: clinicStaffRecord.role
           });
         } catch (clinicStaffError) {
-          console.error('❌ Error adding dentist to clinic staff:', clinicStaffError);
-          // Don't fail the entire registration if clinic staff assignment fails
-          // The dentist is still created, they just won't appear in staff list until manually added
+          console.error('❌ Error adding dentist to clinic staff:');
+          console.error('Error name:', clinicStaffError.name);
+          console.error('Error message:', clinicStaffError.message);
+          console.error('Error code:', clinicStaffError.code);
+          console.error('Full error:', clinicStaffError);
+          
+          // If clinic staff assignment fails, we should still return success
+          // because the dentist profile was created successfully
+          console.warn('⚠️ Dentist profile created but clinic staff assignment failed');
+          console.warn('⚠️ User will need to be manually assigned to clinic staff');
         }
       } else {
-        console.log('ℹ️ Skipping clinic staff assignment - not a clinic-staff registration or missing clinicId');
+        console.log('ℹ️ Skipping clinic staff assignment - conditions not met:', {
+          registrationType,
+          hasClinicId: !!clinicId,
+          reason: !registrationType ? 'no registrationType' :
+                  registrationType !== 'clinic-staff' ? 'registrationType not clinic-staff' :
+                  !clinicId ? 'no clinicId' : 'unknown'
+        });
       }
-
-      // Commit transaction
-      await query('COMMIT');
 
       // Return success response with file information
       const uploadedFiles = {
@@ -771,8 +846,15 @@ router.post('/register', upload.fields([
         uploadedFiles 
       });
     } catch (error) {
-      // Rollback transaction
-      await query('ROLLBACK');
+      // Only rollback if transaction hasn't been committed yet
+      if (!transactionCommitted) {
+        console.error('❌ Error occurred before commit, rolling back transaction...');
+        await query('ROLLBACK');
+        console.error('✅ Transaction rolled back');
+      } else {
+        console.error('❌ Error occurred after commit, transaction already saved');
+        console.error('❌ User and dentist profile are saved but clinic staff assignment failed');
+      }
       
       // Clean up uploaded files if transaction fails
       const files = req.files || {};
