@@ -31,6 +31,7 @@ import {
   ClinicBilling,
   ClinicInventory,
   ClinicReports,
+  ClinicPublicProfile,
   ClinicSettings
 } from './pages/clinic-portal';
 import StaffManagement from './pages/clinic-portal/staff';
@@ -103,6 +104,7 @@ const Routes = () => {
         <Route element={<ProtectedRoute allow={["owner", "manager"]} />}>
           <Route path="/clinic-portal/staff" element={<StaffManagement />} />
           <Route path="/clinic-portal/branches" element={<BranchManagement />} />
+          <Route path="/clinic-portal/public-profile" element={<ClinicPublicProfile />} />
         </Route>
         
         {/* Admin Portal Routes - Protected for admin roles */}

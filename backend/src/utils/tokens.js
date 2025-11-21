@@ -26,7 +26,17 @@ export function authenticateToken(req, res, next) {
 
   try {
     const decoded = verify(token);
-    req.user = { id: decoded.sub, roles: decoded.roles || [] };
+    const userId = decoded?.sub?.toString?.() ?? decoded?.sub;
+    if (!userId) {
+      console.error('Token payload missing subject (user id)');
+      return res.status(401).json({ error: 'Invalid access token' });
+    }
+
+    req.user = {
+      id: userId,
+      userId, // legacy alias used across older routes
+      roles: decoded.roles || []
+    };
     next();
   } catch (error) {
     console.error('Token verification failed:', error);
@@ -55,4 +65,3 @@ export function requireRoles(allowedRoles) {
     next();
   };
 }
-

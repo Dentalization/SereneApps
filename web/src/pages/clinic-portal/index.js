@@ -4,9 +4,12 @@
 export { default as ClinicDashboard } from './home';
 export { default as ClinicSchedule } from './schedule';
 export { default as ClinicPatients } from './patients';
+export { default as ClinicStaff } from './staff';
+export { default as ClinicBranches } from './branches';
 export { default as ClinicBilling } from './billing';
 export { default as ClinicInventory } from './inventory';
 export { default as ClinicReports } from './reports';
+export { default as ClinicPublicProfile } from './public-profile';
 export { default as ClinicSettings } from './settings';
 
 // UI Components
@@ -21,9 +24,12 @@ export const clinicRoutes = [
       { path: 'home', element: 'ClinicDashboard' },
       { path: 'schedule', element: 'ClinicSchedule' },
       { path: 'patients', element: 'ClinicPatients' },
+      { path: 'staff', element: 'ClinicStaff' },
+      { path: 'branches', element: 'ClinicBranches' },
       { path: 'billing', element: 'ClinicBilling' },
       { path: 'inventory', element: 'ClinicInventory' },
       { path: 'reports', element: 'ClinicReports' },
+      { path: 'public-profile', element: 'ClinicPublicProfile' },
       { path: 'settings', element: 'ClinicSettings' }
     ]
   }
@@ -31,8 +37,8 @@ export const clinicRoutes = [
 
 // Role-based Access Control Configuration
 export const rolePermissions = {
-  owner: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'],
-  manager: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'],
+  owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'public-profile', 'settings'],
+  manager: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'public-profile', 'settings'],
   front_office: ['dashboard', 'schedule', 'patients'],
   nurse: ['dashboard', 'schedule', 'patients', 'inventory'],
   cashier: ['dashboard', 'billing'],
@@ -61,6 +67,18 @@ export const menuConfig = {
       roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
     },
     { 
+      id: 'staff', 
+      path: '/clinic-portal/staff',
+      icon: 'UserCog',
+      roles: ['manager', 'owner', 'staff']
+    },
+    { 
+      id: 'branches', 
+      path: '/clinic-portal/branches',
+      icon: 'Building2',
+      roles: ['manager', 'owner', 'staff']
+    },
+    { 
       id: 'billing', 
       path: '/clinic-portal/billing',
       icon: 'Receipt',
@@ -76,6 +94,12 @@ export const menuConfig = {
       id: 'reports', 
       path: '/clinic-portal/reports',
       icon: 'BarChart3',
+      roles: ['manager', 'owner', 'staff']
+    },
+    { 
+      id: 'public-profile', 
+      path: '/clinic-portal/public-profile',
+      icon: 'Globe',
       roles: ['manager', 'owner', 'staff']
     },
     { 
