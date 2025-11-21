@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import AppImage from '../../../components/AppImage';
@@ -6,6 +6,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { resolveMediaUrl } from '../../../utils/media';
+import { getDentistServicesContext } from '../../../services/dentistPortalService';
 
 const FLAG_SRC = {
   en: '/assets/images/ukflag.png', // place file in /public/assets/images/ukflag.png
@@ -23,6 +24,7 @@ const SideBar = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const [dentistContext, setDentistContext] = useState({ loading: true, dentistType: null });
 
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
@@ -39,6 +41,30 @@ const SideBar = () => {
     document.documentElement.style.setProperty('--sidebar-width', isCollapsed ? '7rem' : '20rem');
   }, [isCollapsed]);
 
+  useEffect(() => {
+    let mounted = true;
+    const fetchDentistContext = async () => {
+      if (!user?.roles?.includes('dentist')) {
+        setDentistContext({ loading: false, dentistType: null });
+        return;
+      }
+      try {
+        const data = await getDentistServicesContext();
+        if (!mounted) return;
+        setDentistContext({ loading: false, dentistType: data.dentistType });
+      } catch (error) {
+        console.error('Failed to fetch dentist type', error);
+        if (!mounted) return;
+        setDentistContext({ loading: false, dentistType: null });
+      }
+    };
+
+    fetchDentistContext();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, user?.roles]);
+
   const formatNameWithTitle = (name, title) => {
     if (!name) return title || 'User Name';
     if (!title) return `Dr. ${name}`;
@@ -53,14 +79,83 @@ const SideBar = () => {
     return `${title} ${name}`;
   };
 
-  const menuItems = [
-    { id: 'dashboard', label: t('sidebar.dashboard'), icon: 'LayoutDashboard', path: '/dentist-portal/home', description: 'Overview & Analytics' },
-    { id: 'patients', label: t('sidebar.patients'), icon: 'Users', path: '/dentist-portal/patient', description: 'Patient Management' },
-    { id: 'consultations', label: t('sidebar.teledentistry'), icon: 'Video', path: '/dentist-portal/teledentistry', description: 'Teledentistry Sessions' },
-    { id: 'ai-analysis', label: t('sidebar.aiInsights'), icon: 'Brain', path: '/dentist-portal/ai-analysis', description: 'AI Clinical Decision Support' },
-    { id: 'appointments', label: t('sidebar.schedule'), icon: 'Calendar', path: '/dentist-portal/appointments', description: 'Schedule Management' },
-    { id: 'reports', label: t('sidebar.reports'), icon: 'BarChart3', path: '/dentist-portal/reports', description: 'Reports & Statistics' },
+  const userIsDentist = user?.roles?.includes('dentist');
+  const dentistType = dentistContext.dentistType;
+  const isClinicDentist = dentistType === 'clinic';
+
+  const baseMenuItems = useMemo(
+    () => [
+      { id: 'dashboard', label: t('sidebar.dashboard'), icon: 'LayoutDashboard', path: '/dentist-portal/home', description: 'Overview & Analytics' },
+      { id: 'patients', label: t('sidebar.patients'), icon: 'Users', path: '/dentist-portal/patient', description: 'Patient Management' },
+      { id: 'consultations', label: t('sidebar.teledentistry'), icon: 'Video', path: '/dentist-portal/teledentistry', description: 'Teledentistry Sessions' },
+      { id: 'ai-analysis', label: t('sidebar.aiInsights'), icon: 'Brain', path: '/dentist-portal/ai-analysis', description: 'AI Clinical Decision Support' },
+      { id: 'appointments', label: t('sidebar.schedule'), icon: 'Calendar', path: '/dentist-portal/appointments', description: 'Schedule Management' },
+      { id: 'reports', label: t('sidebar.reports'), icon: 'BarChart3', path: '/dentist-portal/reports', description: 'Reports & Statistics' },
+    ],
+    [t]
+  );
+
+  const independentPracticeMenu = [
+    {
+      id: 'practice-services',
+      label: 'My Services & Pricing',
+      icon: 'BadgeDollarSign',
+      path: '/dentist-portal/practice/services',
+      description: 'Create offerings & fees',
+    },
+    {
+      id: 'practice-availability',
+      label: 'Availability',
+      icon: 'Clock',
+      path: '/dentist-portal/practice/availability',
+      description: 'Control slots & hours',
+    },
+    {
+      id: 'practice-earnings',
+      label: 'Earnings',
+      icon: 'Wallet',
+      path: '/dentist-portal/practice/earnings',
+      description: 'Monitor revenue',
+    },
   ];
+
+  const clinicProfileMenu = [
+    {
+      id: 'clinic-services',
+      label: 'View My Services',
+      icon: 'Layers',
+      path: '/dentist-portal/profile/services',
+      description: 'Clinic-managed services',
+    },
+    {
+      id: 'clinic-schedule',
+      label: 'My Schedule',
+      icon: 'CalendarDays',
+      path: '/dentist-portal/profile/schedule',
+      description: 'Branch schedule view',
+    },
+    {
+      id: 'clinic-patients',
+      label: 'My Patients',
+      icon: 'UserCircle2',
+      path: '/dentist-portal/profile/patients',
+      description: 'Assigned patients',
+    },
+  ];
+
+  const menuItems = useMemo(() => {
+    if (!userIsDentist) return baseMenuItems;
+    if (dentistContext.loading) return baseMenuItems;
+
+    const roleMenu = isClinicDentist ? clinicProfileMenu : independentPracticeMenu;
+    if (!roleMenu.length) return baseMenuItems;
+
+    return [
+      ...baseMenuItems,
+      { type: 'section', id: 'dentist-section', label: isClinicDentist ? 'My Profile' : 'My Practice' },
+      ...roleMenu,
+    ];
+  }, [baseMenuItems, dentistContext.loading, isClinicDentist, userIsDentist]);
 
   const handleNavigation = (path) => navigate(path);
   const handleLogout = async () => { try { await logout(); navigate('/login'); } catch (e) { console.error(e); } };
@@ -122,6 +217,20 @@ const SideBar = () => {
           <nav className="flex-1 px-3 py-4 overflow-y-auto bg-surface-elevated">
             <div className={isCollapsed ? 'space-y-2' : 'space-y-1'}>
               {menuItems.map((item) => {
+                if (item.type === 'section') {
+                  return isCollapsed ? (
+                    <div key={item.id} className="my-4 border-t border-primary/20 relative">
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 text-[10px] uppercase tracking-widest text-muted bg-surface-elevated">
+                        {item.label}
+                      </span>
+                    </div>
+                  ) : (
+                    <div key={item.id} className="px-3 pt-5 pb-2 text-[11px] uppercase tracking-[0.3em] text-muted">
+                      {item.label}
+                    </div>
+                  );
+                }
+
                 const active = isActive(item.path);
                 return (
                   <div key={item.path} className="relative group">

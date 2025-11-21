@@ -689,7 +689,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
