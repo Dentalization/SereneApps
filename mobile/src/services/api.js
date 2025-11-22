@@ -1,8 +1,28 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-export const API_BASE_URL = 'http://localhost:4000';
+// Detect the correct API base URL based on platform
+const getApiBaseUrl = () => {
+  if (__DEV__) {
+    // Development mode
+    if (Platform.OS === 'android') {
+      // Android emulator uses 10.0.2.2 to access host machine's localhost
+      return 'http://10.0.2.2:4000';
+    } else if (Platform.OS === 'ios') {
+      // iOS simulator can use localhost or Mac's LAN IP
+      // For physical device, use your Mac's LAN IP (e.g., 'http://192.168.1.xxx:4000')
+      return 'http://localhost:4000';
+    }
+  }
+  // Production: use your deployed backend URL
+  return 'http://localhost:4000';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 export const API_VERSION = 'v1';
+
+console.log('🌐 [API] Using base URL:', API_BASE_URL);
 
 // Create axios instance
 const api = axios.create({

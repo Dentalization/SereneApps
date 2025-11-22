@@ -2,10 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, ImageBackground, Animated } from 'react-native';
 import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { NEARBY_CLINICS, formatClinicDistance } from '../data/clinics';
+import { formatClinicDistance } from '../data/clinics';
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
-
-const FALLBACK_CLINICS = NEARBY_CLINICS.slice(0, 2);
 
 const StatChip = ({ icon, label }) => (
   <View
@@ -82,7 +80,7 @@ const NearbyClinics = ({
   }, [fade]);
 
   const dataSource = clinics.length ? clinics : fetchedClinics;
-  const data = (dataSource.length ? dataSource : FALLBACK_CLINICS).map((clinic) => ({
+  const data = dataSource.map((clinic) => ({
     ...clinic,
     distanceLabel: formatClinicDistance(clinic.distanceKm),
   }));

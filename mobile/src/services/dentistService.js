@@ -39,8 +39,21 @@ export async function getNearbyDentists(params) {
   if (type) queryParams.append('type', type);
   if (specialization) queryParams.append('specialization', specialization);
 
+  console.log('🌐 [dentistService] Calling API:', `/dentists/nearby?${queryParams.toString()}`);
   const response = await api.get(`/dentists/nearby?${queryParams.toString()}`);
-  return response.data;
+  console.log('🌐 [dentistService] Full axios response:', JSON.stringify(response.data, null, 2));
+  console.log('🌐 [dentistService] response.data keys:', Object.keys(response.data || {}));
+  console.log('🌐 [dentistService] response.data.success:', response.data?.success);
+  console.log('🌐 [dentistService] response.data.data:', response.data?.data);
+  console.log('🌐 [dentistService] response.data.data?.dentists length:', response.data?.data?.dentists?.length);
+  
+  // Backend returns: { success: true, data: { dentists: [...], pagination: {...}, search: {...} } }
+  // Axios unwraps one level, so response.data = { success: true, data: {...} }
+  // We need to return response.data.data = { dentists: [...], pagination: {...}, search: {...} }
+  const result = response.data?.data ?? response.data;
+  console.log('🌐 [dentistService] Returning result with keys:', Object.keys(result || {}));
+  console.log('🌐 [dentistService] result.dentists length:', result?.dentists?.length);
+  return result;
 }
 
 /**

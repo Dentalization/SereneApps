@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as Location from 'expo-location';
 import { getNearbyClinics } from '../services/clinicService';
-import { NEARBY_CLINICS } from '../features/dashboard/data/clinics';
 
 const DEFAULT_COORDS = {
   latitude: -6.2088,   // Jakarta, Indonesia
   longitude: 106.8456,
 };
 
-// Force use Jakarta coordinates for development (all clinics are in Jakarta)
-const USE_MOCK_LOCATION = true;
+// Use real location when available, fallback to Jakarta if permission denied
+const USE_MOCK_LOCATION = false;
 
 const normalizeClinic = (clinic) => ({
   ...clinic,
@@ -41,16 +40,11 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
   const [usedMockData, setUsedMockData] = useState(false);
   const [usedDefaultLocation, setUsedDefaultLocation] = useState(false);
 
-  const applyFallbackData = useCallback(() => {
-    setClinics(
-      NEARBY_CLINICS.slice(0, limit).map((clinic) => normalizeClinic(clinic))
-    );
-    setUsedMockData(true);
-  }, [limit]);
-
   const fetchWithCoords = useCallback(
     async (currentCoords) => {
-      if (!currentCoords) return;
+      if (!currentCoords) {
+        throw new Error('Koordinat tidak tersedia');
+      }
       console.log('🏥 [useNearbyClinics] Fetching with coords:', currentCoords);
       const response = await getNearbyClinics({
         latitude: currentCoords.latitude,
@@ -66,6 +60,14 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
       // Service already unwraps response.data.data, so response = { clinics, pagination, search }
       const items = response?.clinics || [];
       console.log('🏥 [useNearbyClinics] Items to set:', items.length);
+      
+      if (!items || items.length === 0) {
+        console.warn('⚠️ [useNearbyClinics] No clinics found in response');
+        setClinics([]);
+        setUsedMockData(false);
+        return;
+      }
+      
       setClinics(items.map((clinic) => normalizeClinic(clinic)));
       setUsedMockData(false);
     },
@@ -90,15 +92,38 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
         coordinates = DEFAULT_COORDS;
         setUsedDefaultLocation(true);
       } else if (status === 'granted') {
-        console.log('📍 [useNearbyClinics] Getting current position...');
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        coordinates = position.coords;
-        console.log('📍 [useNearbyClinics] Got coordinates:', coordinates);
-        setUsedDefaultLocation(false);
+        try {
+          console.log('📍 [useNearbyClinics] Getting current position...');
+          const position = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          
+          // Check if coordinates are valid (not simulator default or outside Indonesia)
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          
+          // Indonesia roughly: latitude -11 to 6, longitude 95 to 141
+          const isValidIndonesia = lat >= -11 && lat <= 6 && lon >= 95 && lon <= 141;
+          
+          if (isValidIndonesia) {
+            coordinates = position.coords;
+            console.log('✅ [useNearbyClinics] Got valid Indonesia coordinates:', coordinates);
+            setUsedDefaultLocation(false);
+          } else {
+            console.log('ℹ️ [useNearbyClinics] GPS location is outside Indonesia (simulator detected)');
+            console.log('ℹ️ [useNearbyClinics] Received GPS:', { lat, lon });
+            console.log('📍 [useNearbyClinics] Using Jakarta default for better results');
+            coordinates = DEFAULT_COORDS;
+            setUsedDefaultLocation(true);
+          }
+        } catch (positionError) {
+          console.error('❌ [useNearbyClinics] Failed to get position:', positionError);
+          console.log('📍 [useNearbyClinics] Falling back to Jakarta coordinates');
+          coordinates = DEFAULT_COORDS;
+          setUsedDefaultLocation(true);
+        }
       } else {
-        console.log('📍 [useNearbyClinics] Using default coordinates');
+        console.log('📍 [useNearbyClinics] Permission denied, using default coordinates');
         coordinates = DEFAULT_COORDS;
         setUsedDefaultLocation(true);
       }
@@ -108,12 +133,14 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
     } catch (err) {
       console.error('❌ [useNearbyClinics] Failed to load nearby clinics:', err);
       console.error('❌ [useNearbyClinics] Error details:', err.message, err.stack);
-      setError('Tidak dapat memuat klinik terdekat.');
-      applyFallbackData();
+      const errorMessage = err.message || 'Tidak dapat memuat klinik terdekat.';
+      setError(errorMessage);
+      setClinics([]);
+      setUsedMockData(false);
     } finally {
       setLoading(false);
     }
-  }, [applyFallbackData, fetchWithCoords]);
+  }, [fetchWithCoords]);
 
   const refetch = useCallback(async () => {
     if (!coords) {
@@ -126,13 +153,16 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
     try {
       await fetchWithCoords(coords);
     } catch (err) {
-      console.error('Failed to refresh clinics:', err);
-      setError('Tidak dapat menyegarkan daftar klinik.');
-      applyFallbackData();
+      console.error('❌ [useNearbyClinics] Failed to refresh clinics:', err);
+      console.error('❌ [useNearbyClinics] Error details:', err.message, err.stack);
+      const errorMessage = err.message || 'Tidak dapat menyegarkan daftar klinik.';
+      setError(errorMessage);
+      setClinics([]);
+      setUsedMockData(false);
     } finally {
       setLoading(false);
     }
-  }, [applyFallbackData, coords, fetchWithCoords, requestLocationAndFetch]);
+  }, [coords, fetchWithCoords, requestLocationAndFetch]);
 
   useEffect(() => {
     if (autoFetch) {

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
+import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking, Platform } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,6 +8,36 @@ import { formatClinicDistance } from '../data/clinics';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
+
+// API Base URL for avatar resolution
+const API_BASE_URL = Platform.select({
+  ios: 'http://localhost:4000',
+  android: 'http://10.0.2.2:4000',
+  default: 'http://localhost:4000',
+});
+
+const DICEBEAR_BG = '8B5CF6';
+
+// Utility to normalize Dicebear URLs
+const normalizeDicebear = (url, seed) => {
+  if (!url) return `https://api.dicebear.com/7.x/avataaars/png?seed=${seed}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  if (url.includes('dicebear.com')) {
+    return url.replace(/\/svg\?/, '/png?').replace(/&size=\d+/, '&size=256');
+  }
+  return url;
+};
+
+// Resolve avatar URL from backend or use Dicebear fallback
+const resolveAvatar = (path, seed = 'dentist') => {
+  if (!path) {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${seed}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return normalizeDicebear(path, seed);
+  }
+  const normalized = path.startsWith('/') ? path.slice(1) : path;
+  return `${API_BASE_URL}/${normalized}`;
+};
 
 const StatPill = ({ icon, label, value }) => (
   <View
@@ -65,11 +95,69 @@ const ClinicDetailScreen = () => {
     const loadClinic = async () => {
       try {
         setLoading(true);
-        const clinicId = route.params?.clinicId;
+        const clinicId = route.params?.clinicId || route.params?.clinic?.id;
         console.log('🏥 [ClinicDetail] Loading clinic:', clinicId);
-        const data = await fetchClinicById(clinicId);
-        console.log('🏥 [ClinicDetail] Clinic data:', data);
-        setClinic(data);
+        
+        const response = await fetchClinicById(clinicId);
+        console.log('🏥 [ClinicDetail] Raw response:', response);
+        
+        // Backend returns { success: true, data: {...} }
+        const clinicData = response?.data || response;
+        console.log('🏥 [ClinicDetail] Clinic data:', clinicData);
+        
+        if (!clinicData) {
+          throw new Error('Data klinik tidak ditemukan');
+        }
+
+        // Map backend data to component format
+        const mappedClinic = {
+          id: clinicData.id || clinicData.branchId,
+          name: clinicData.name,
+          tagline: clinicData.tagline,
+          address: clinicData.address,
+          city: clinicData.city,
+          province: clinicData.province,
+          distanceKm: clinicData.distanceKm || route.params?.clinic?.distanceKm,
+          rating: clinicData.rating || 0,
+          reviews: clinicData.reviews || 0,
+          queue: clinicData.queue || 'N/A',
+          openStatus: clinicData.openStatus || 'Tutup',
+          isOpenNow: clinicData.isOpenNow || false,
+          phone: clinicData.phone || clinicData.contact?.phone,
+          email: clinicData.email || clinicData.contact?.email,
+          contact: {
+            phone: clinicData.phone || clinicData.contact?.phone,
+            email: clinicData.email || clinicData.contact?.email,
+          },
+          heroImage: clinicData.heroImage,
+          coverImage: clinicData.coverImage,
+          gallery: clinicData.gallery || [],
+          highlights: clinicData.highlights || [],
+          facilities: clinicData.facilities || [],
+          services: (clinicData.services || []).map(service => ({
+            name: service.name,
+            description: service.description,
+            price: service.price,
+          })),
+          doctors: (clinicData.doctors || []).map(doctor => ({
+            id: doctor.id || doctor.userId,
+            userId: doctor.userId,
+            name: doctor.name,
+            avatar: resolveAvatar(doctor.avatar, doctor.id || doctor.userId),
+            specialty: doctor.specialty,
+            experience: doctor.experience,
+            rating: parseFloat(doctor.rating) || 0,
+            slots: doctor.slots || [],
+          })),
+          operatingHours: clinicData.operatingHours,
+          dentistCount: clinicData.dentistCount,
+          treatmentRooms: clinicData.treatmentRooms,
+          badgeColor: '#EEF2FF',
+        };
+
+        console.log('🏥 [ClinicDetail] Mapped clinic:', mappedClinic);
+        setClinic(mappedClinic);
+        setError(null);
       } catch (err) {
         console.error('❌ [ClinicDetail] Failed to load clinic:', err);
         setError('Tidak dapat memuat detail klinik');
@@ -79,7 +167,7 @@ const ClinicDetailScreen = () => {
     };
 
     loadClinic();
-  }, [route.params?.clinicId]);
+  }, [route.params?.clinicId, route.params?.clinic?.id]);
 
   const sections = [
     { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
@@ -400,8 +488,12 @@ const ClinicDetailScreen = () => {
             onLayout={(e) => handleSectionLayout('dokter', e)}
           >
             {(clinic.doctors || []).map((doctor) => (
-              <View
+              <TouchableOpacity
                 key={doctor.id}
+                onPress={() => navigation.navigate('DentistDetail', { 
+                  dentistId: doctor.id,
+                  dentist: doctor,
+                })}
                 style={{
                   backgroundColor: 'white',
                   borderRadius: 20,
@@ -433,16 +525,17 @@ const ClinicDetailScreen = () => {
                 <Button
                   mode="contained"
                   style={{ marginTop: 12 }}
-                  onPress={() =>
+                  onPress={(e) => {
+                    e.stopPropagation();
                     navigation.navigate('AppointmentTab', {
                       screen: 'BookingSlot',
                       params: { dentistId: doctor.id },
-                    })
-                  }
+                    });
+                  }}
                 >
                   Pilih jadwal dokter
                 </Button>
-              </View>
+              </TouchableOpacity>
             ))}
           </Section>
 

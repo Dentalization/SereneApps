@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
-import { Text, useTheme, Chip } from 'react-native-paper';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, ScrollView, TouchableOpacity, Image, StatusBar, Linking } from 'react-native';
+import { Text, useTheme, Chip, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getDentistDetail } from '../data/dentistDetails';
+import { getDentistById } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
@@ -64,40 +64,166 @@ const DentistDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  
+  const [dentist, setDentist] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const fallbackDetail = useMemo(
-    () => getDentistDetail(route.params?.dentistId || route.params?.dentist?.id),
-    [route.params?.dentistId, route.params?.dentist?.id]
-  );
+  const dentistId = route.params?.dentistId || route.params?.dentist?.id;
 
-  const dentist = useMemo(() => {
-    const merged = {
-      ...fallbackDetail,
-      ...(route.params?.dentist || {}),
+  useEffect(() => {
+    const fetchDentistDetail = async () => {
+      if (!dentistId) {
+        setError('ID dokter tidak ditemukan');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log('🦷 [DentistDetail] Fetching dentist:', dentistId);
+        const response = await getDentistById(dentistId);
+        console.log('🦷 [DentistDetail] Response:', response);
+        
+        // Backend returns { success: true, data: {...} }
+        const dentistData = response?.data || response;
+        
+        if (!dentistData) {
+          throw new Error('Data dokter tidak ditemukan');
+        }
+
+        // Parse working hours if it's a string
+        let workingHours = dentistData.clinic_working_hours;
+        if (typeof workingHours === 'string') {
+          try {
+            workingHours = JSON.parse(workingHours);
+          } catch (e) {
+            workingHours = null;
+          }
+        }
+
+        // Map backend data to component format
+        const mappedDentist = {
+          id: dentistData.id || dentistData.user_id,
+          name: dentistData.name,
+          specialty: dentistData.specialization,
+          title: dentistData.title,
+          image: resolveAvatar(dentistData.avatar_url, dentistData.id),
+          rating: 4.8, // TODO: Get from reviews table
+          reviews: 0, // TODO: Get from reviews table
+          experience: `${dentistData.years_of_experience || 0} tahun`,
+          languages: ['Bahasa Indonesia', 'English'], // TODO: Add to backend
+          bio: `Dokter gigi profesional dengan spesialisasi ${dentistData.specialization}. Berpengalaman ${dentistData.years_of_experience || 0} tahun dalam memberikan perawatan gigi berkualitas.`,
+          specialties: dentistData.services_offered || [],
+          services: (dentistData.services_offered || []).map(service => ({
+            name: service,
+            price: dentistData.consultation_fee,
+          })),
+          availability: workingHours ? Object.entries(workingHours).map(([day, hours]) => ({
+            day: day.charAt(0).toUpperCase() + day.slice(1),
+            slots: hours === 'Tutup' ? [] : [hours.split('-')[0]],
+          })) : [],
+          achievements: dentistData.is_verified ? [
+            { title: 'Dokter Terverifikasi', year: new Date(dentistData.verification_date || dentistData.created_at).getFullYear() }
+          ] : [],
+          stories: [], // TODO: Get from reviews
+          gallery: [], // TODO: Add to backend
+          contact: {
+            phone: dentistData.phone_number,
+            email: dentistData.email,
+            address: dentistData.clinic_address,
+          },
+          clinic: dentistData.clinic_name,
+          clinicAddress: dentistData.clinic_address,
+          price: dentistData.consultation_fee,
+          consultationTypes: dentistData.consultation_types || [],
+          acceptsInsurance: dentistData.accepts_insurance,
+          acceptsBpjs: dentistData.accepts_bpjs,
+          emergencyAvailable: dentistData.emergency_availability,
+          isVerified: dentistData.is_verified,
+          licenseNumber: dentistData.license_number,
+          registrationNumber: dentistData.registration_number,
+          patientsHelped: Math.floor(Math.random() * 1000) + 500, // TODO: Add to backend
+          responseTime: '2 jam', // TODO: Add to backend
+        };
+
+        setDentist(mappedDentist);
+        setError(null);
+      } catch (err) {
+        console.error('❌ [DentistDetail] Error fetching dentist:', err);
+        setError(err.message || 'Gagal memuat detail dokter');
+      } finally {
+        setLoading(false);
+      }
     };
-    return {
-      ...merged,
-      image: resolveAvatar(merged.image || merged.avatarUrl, merged.id),
-    };
-  }, [fallbackDetail, route.params?.dentist]);
+
+    fetchDentistDetail();
+  }, [dentistId]);
 
   const distanceText =
-    dentist.distance ??
-    (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
+    route.params?.dentist?.distance ??
+    (typeof route.params?.dentist?.distanceKm === 'number' ? `${route.params.dentist.distanceKm.toFixed(1)} km` : null);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist.id },
+      params: { dentistId: dentist?.id },
     });
 
   const handleMessage = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist.id },
+      params: { dentistId: dentist?.id },
     });
+
+  const handleCall = () => {
+    if (dentist?.contact?.phone) {
+      Linking.openURL(`tel:${dentist.contact.phone}`);
+    }
+  };
+
+  const handleEmail = () => {
+    if (dentist?.contact?.email) {
+      Linking.openURL(`mailto:${dentist.contact.email}`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 12, color: '#475569' }}>Memuat detail dokter...</Text>
+      </View>
+    );
+  }
+
+  if (error || !dentist) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <MaterialCommunityIcons name="alert-circle" size={64} color="#EF4444" />
+        <Text style={{ marginTop: 16, fontSize: 18, fontWeight: '700', color: '#0F172A' }}>
+          Gagal Memuat Data
+        </Text>
+        <Text style={{ marginTop: 8, color: '#64748B', textAlign: 'center' }}>
+          {error || 'Data dokter tidak ditemukan'}
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{
+            marginTop: 20,
+            backgroundColor: theme.colors.primary,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '600' }}>Kembali</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const statCard = (label, value, icon) => (
     <View

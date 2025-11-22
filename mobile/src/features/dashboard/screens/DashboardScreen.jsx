@@ -9,7 +9,6 @@ import { getInitials } from '../../../utils/formatters';
 import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
-import { NEARBY_DENTISTS } from '../data/dentists';
 
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
@@ -49,7 +48,6 @@ const DashboardScreen = () => {
     { id:'endodontic', label:'Endodontik', icon:'medical-bag' },
   ];
 
-  const topDoctors = NEARBY_DENTISTS.slice(0, 3);
   const quickActions = [
     {
       key: 'dentists',
@@ -119,7 +117,7 @@ const DashboardScreen = () => {
   const handleSeeAllArticles = () => navigation.navigate('ArticleList', { articles });
   const handleNotificationPress = () => navigation.navigate('Notifications', { notifications });
   const handleSeeAllDentists = () =>
-    navigation.navigate('NearbyDentists', { dentists: NEARBY_DENTISTS, maxDistanceKm: 5 });
+    navigation.navigate('NearbyDentists', { maxDistanceKm: 8 });
   const handleSeeAllClinics = () =>
     navigation.navigate('NearbyClinics', { maxDistanceKm: 6 });
 
@@ -197,9 +195,8 @@ const DashboardScreen = () => {
           onSeeAll={handleSeeAllClinics}
         />
         <NearbyDentists
-          dentists={topDoctors}
           onDoctorPress={handleDoctorPress}
-          onMessage={()=>{}}
+          onMessage={() => {}}
           onBook={handleBook}
           onSeeAll={handleSeeAllDentists}
         />

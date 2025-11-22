@@ -15,8 +15,6 @@ import {
 const initialForm = {
   name: '',
   description: '',
-  category: 'general',
-  specialty: '',
   price: '',
   durationMinutes: 30,
   isActive: true,
@@ -99,8 +97,6 @@ const MyServices = () => {
       setFormData({
         name: service.name || '',
         description: service.description || '',
-        category: service.category || 'general',
-        specialty: service.specialty || '',
         price: service.price ? Math.round(Number(service.price)) : '',
         durationMinutes: service.duration_minutes || 30,
         isActive: service.is_active,
@@ -129,8 +125,6 @@ const MyServices = () => {
     const payload = {
       name: formData.name?.trim(),
       description: formData.description?.trim(),
-      category: formData.category,
-      specialty: formData.category === 'specialist' ? formData.specialty?.trim() : '',
       price: Number(formData.price || 0),
       durationMinutes: Number(formData.durationMinutes || 30),
       isActive: formData.isActive,
@@ -262,8 +256,10 @@ const MyServices = () => {
               </div>
               <div className="bg-surface-elevated border border-primary/10 rounded-2xl p-4 shadow-theme-sm">
                 <p className="text-xs uppercase tracking-widest text-muted">Specialist</p>
-                <p className="text-3xl font-bold text-brand-secondary">{services.filter((s) => s.category === 'specialist').length}</p>
-                <p className="text-muted-foreground text-sm">Advanced care programs</p>
+                <p className="text-3xl font-bold text-brand-secondary">
+                  {context?.primarySpecialization || '—'}
+                </p>
+                <p className="text-muted-foreground text-sm">Your expertise area</p>
               </div>
               <div className="bg-surface-elevated border border-primary/10 rounded-2xl p-4 shadow-theme-sm">
                 <p className="text-xs uppercase tracking-widest text-muted">Last Updated</p>
@@ -282,7 +278,12 @@ const MyServices = () => {
               <div className="bg-surface-elevated border border-dashed border-primary/30 rounded-2xl p-10 text-center space-y-3 shadow-theme-sm">
                 <h3 className="text-lg font-semibold text-foreground">No services yet</h3>
                 <p className="text-muted-foreground text-sm max-w-lg mx-auto">
-                  Start by creating your core treatments or teleconsultation packages. You can set specialist pricing, session duration, and add detailed descriptions.
+                  Start by creating your core treatments or teleconsultation packages. You can set pricing, session duration, and add detailed descriptions.
+                  {context?.primarySpecialization && (
+                    <span className="block mt-2 text-brand-primary font-medium">
+                      Your specialization: {context.primarySpecialization}
+                    </span>
+                  )}
                 </p>
                 <Button onClick={() => handleOpenDialog()} className="mt-2">
                   Create Your First Service
@@ -296,19 +297,9 @@ const MyServices = () => {
                       <div>
                         <h3 className="text-lg font-semibold text-foreground">{service.name}</h3>
                         <div className="flex items-center gap-2 mt-2 text-xs uppercase tracking-widest">
-                          <span
-                            className={cn(
-                              'px-2 py-1 rounded-full',
-                              service.category === 'specialist'
-                                ? 'bg-brand-secondary/15 text-brand-secondary'
-                                : 'bg-brand-primary/15 text-brand-primary'
-                            )}
-                          >
-                            {service.category === 'specialist' ? 'Specialist Service' : 'General Care'}
-                          </span>
-                          {service.specialty && (
-                            <span className="px-2 py-1 rounded-full bg-accent/15 text-accent">
-                              {service.specialty}
+                          {context?.primarySpecialization && (
+                            <span className="px-2 py-1 rounded-full bg-brand-secondary/15 text-brand-secondary">
+                              {context.primarySpecialization}
                             </span>
                           )}
                           <span
@@ -379,33 +370,6 @@ const MyServices = () => {
                     value={formData.description}
                     onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                   />
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Category</label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          category: e.target.value,
-                          specialty: e.target.value === 'specialist' ? prev.specialty : '',
-                        }))
-                      }
-                      className="w-full rounded-xl border border-primary/20 bg-background/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      <option value="general">General Care</option>
-                      <option value="specialist">Specialist</option>
-                    </select>
-                  </div>
-                  {formData.category === 'specialist' && (
-                    <Input
-                      label="Specialty"
-                      placeholder="e.g., Orthodontics, Periodontics"
-                      value={formData.specialty}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, specialty: e.target.value }))}
-                    />
-                  )}
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>

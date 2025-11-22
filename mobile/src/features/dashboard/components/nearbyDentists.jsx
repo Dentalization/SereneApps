@@ -1,12 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, Image, Animated } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-const FALLBACK_DENTISTS = [
-  { id:'1', name:'Dr. Thomas Mitchell', specialty:'Spesialis Ortodonti', rating:5.0, reviews:412, price:350000, image:'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop', distanceKm:2.5, clinic:'Studio Gigi Bersinar' },
-  { id:'2', name:'Dr. Sarah Johnson', specialty:'Dokter Gigi Anak', rating:4.8, reviews:328, price:280000, image:'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop', distanceKm:1.8, clinic:'Klinik Senyum Ceria' },
-];
+import useNearbyDentists from '../../../hooks/useNearbyDentists';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 const formatDistance = (dentist) => dentist.distance || (dentist.distanceKm != null ? `${dentist.distanceKm.toFixed(1)} km` : '—');
@@ -22,11 +18,21 @@ export default function NearbyDentists({
 }) {
   const theme = useTheme();
   const fade = useRef(new Animated.Value(0)).current;
+  const shouldAutoload = !dentists?.length;
+  const {
+    dentists: fetchedDentists,
+    loading,
+    error,
+    refresh,
+    usedMockData,
+    usedDefaultLocation,
+  } = useNearbyDentists({ radius: 8, limit: 4, autoFetch: shouldAutoload });
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, [fade]);
 
-  const data = (dentists.length ? dentists : FALLBACK_DENTISTS).map((d) => ({
+  const dataSource = dentists.length ? dentists : fetchedDentists;
+  const data = dataSource.map((d) => ({
     ...d,
     distanceText: formatDistance(d),
   }));
@@ -43,6 +49,50 @@ export default function NearbyDentists({
           <View style={{ width:32 }} />
         )}
       </View>
+      {shouldAutoload && (
+        <View
+          style={{
+            borderRadius: 18,
+            padding: 14,
+            backgroundColor: '#ECFEFF',
+            borderWidth: 1,
+            borderColor: '#A7F3D0',
+            marginBottom: 16,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name='crosshairs-gps' size={18} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 8, color: '#0F172A', fontWeight: '600' }}>
+              {usedDefaultLocation
+                ? 'Menampilkan dokter populer di area default'
+                : 'Menyesuaikan dengan lokasi Anda'}
+            </Text>
+          </View>
+          {loading && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+              <ActivityIndicator size='small' color={theme.colors.primary} />
+              <Text style={{ marginLeft: 8, color: '#475569' }}>Memuat data dokter...</Text>
+            </View>
+          )}
+          {error && !loading && (
+            <TouchableOpacity
+              onPress={refresh}
+              style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}
+            >
+              <MaterialCommunityIcons name='refresh' size={16} color='#DC2626' />
+              <Text style={{ marginLeft: 6, color: '#DC2626', fontWeight: '600' }}>
+                Tidak dapat memuat lokasi, ketuk untuk coba lagi
+              </Text>
+            </TouchableOpacity>
+          )}
+          {usedMockData && !loading && !error && (
+            <Text style={{ marginTop: 8, color: '#475569' }}>
+              Menampilkan data contoh sementara jaringan bermasalah.
+            </Text>
+          )}
+        </View>
+      )}
+
       {data.map((d, i)=>(
         <Animated.View key={d.id} style={{ transform:[{ translateY:fade.interpolate({ inputRange:[0,1], outputRange:[20*(i+1),0] }) }], opacity:fade }}>
           <TouchableOpacity activeOpacity={0.9} onPress={()=>onDoctorPress?.(d)} style={{ backgroundColor:'white', borderRadius:20, padding:20, marginBottom:16, shadowColor:'#667eea', shadowOffset:{ width:0, height:8 }, shadowOpacity:0.1, shadowRadius:20, elevation:8, borderWidth:1, borderColor:'rgba(102,126,234,0.1)' }}>
