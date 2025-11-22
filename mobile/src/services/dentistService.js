@@ -40,7 +40,33 @@ export async function getNearbyDentists(params) {
   if (specialization) queryParams.append('specialization', specialization);
 
   const response = await api.get(`/dentists/nearby?${queryParams.toString()}`);
-  
+  return response.data;
+}
+
+/**
+ * Get dentists directory without geolocation
+ */
+export async function getDentistDirectory(params = {}) {
+  const {
+    specialization,
+    dentistType,
+    clinicId,
+    verifiedOnly = true,
+    limit = 50,
+    offset = 0,
+  } = params;
+
+  const queryParams = new URLSearchParams({
+    limit: limit.toString(),
+    offset: offset.toString(),
+    verifiedOnly: verifiedOnly ? 'true' : 'false',
+  });
+
+  if (specialization) queryParams.append('specialization', specialization);
+  if (dentistType) queryParams.append('dentistType', dentistType);
+  if (clinicId) queryParams.append('clinicId', clinicId.toString());
+
+  const response = await api.get(`/dentists?${queryParams.toString()}`);
   return response.data;
 }
 
@@ -91,6 +117,7 @@ export async function getDentistAvailableSlots(id, date, clinicId, duration = 30
 
 export default {
   getNearbyDentists,
+  getDentistDirectory,
   getDentistById,
   getDentistSchedule,
   getDentistAvailableSlots

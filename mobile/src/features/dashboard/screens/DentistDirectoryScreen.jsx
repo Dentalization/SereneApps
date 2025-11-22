@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image } from 'react-native';
+import { Text, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { NEARBY_DENTISTS } from '../data/dentists';
+import { getDentistDirectory, getNearbyDentists } from '../../../services/dentistService';
+import { API_BASE_URL } from '../../../services/api';
 
 const slugify = (value = '') =>
   value
@@ -12,12 +13,111 @@ const slugify = (value = '') =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const DEFAULT_COORDS = {
+  latitude: -6.2088,
+  longitude: 106.8456,
+};
+
+const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
+const API_BASE = API_BASE_URL.replace(/\/$/, '');
+
+const normalizeDicebear = (url = '', fallbackSeed) => {
+  if (!url.includes('dicebear.com')) {
+    return url;
+  }
+
+  if (!url) {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+
+  return url.replace('/svg', '/png').replace('format=svg', 'format=png');
+};
+
+const resolveAvatar = (path, fallbackSeed) => {
+  if (!path) {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return normalizeDicebear(path, fallbackSeed);
+  }
+
+  const normalized = path.startsWith('/') ? path.slice(1) : path;
+  return `${API_BASE}/${normalized}`;
+};
+
+const mapDentist = (dentist) => {
+  const years = dentist.yearsOfExperience || 0;
+  const baseRating = 4 + Math.min(1, years / 15);
+
+  return {
+    id: dentist.id?.toString() || dentist.userId?.toString(),
+    name: dentist.name || dentist.clinicName || 'Dokter Gigi',
+    specialty: dentist.specialization || 'Dentist',
+    clinic: dentist.clinicName || dentist.clinicAddress || 'Alamat Klinik',
+    rating: Number(baseRating.toFixed(1)),
+    reviews: dentist.reviewCount || 0,
+    price: dentist.consultationFee || 0,
+    image: resolveAvatar(dentist.avatarUrl || dentist.image, dentist.id),
+    consultationTypes: dentist.consultationTypes,
+    raw: dentist,
+  };
+};
+
 const DentistDirectoryScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  const [dentists, setDentists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [usedFallback, setUsedFallback] = useState(false);
+
+  const fetchDentists = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      let apiDentists = [];
+      try {
+        const directoryResponse = await getDentistDirectory({
+          verifiedOnly: true,
+          limit: 200,
+        });
+        apiDentists = directoryResponse.data?.dentists || [];
+        setUsedFallback(false);
+      } catch (dirError) {
+        console.warn('Dentist directory endpoint unavailable, falling back to nearby list', dirError);
+        const nearbyResponse = await getNearbyDentists({
+          latitude: DEFAULT_COORDS.latitude,
+          longitude: DEFAULT_COORDS.longitude,
+          radius: 50,
+          limit: 200,
+        });
+        apiDentists = nearbyResponse.data?.dentists || [];
+        setUsedFallback(true);
+      }
+
+      console.log('📸 First 3 dentists with avatars:', apiDentists.slice(0, 3).map(d => ({
+        id: d.id,
+        name: d.name,
+        avatarUrl: d.avatarUrl
+      })));
+
+      setDentists(apiDentists.map(mapDentist));
+    } catch (err) {
+      console.error('Failed to load dentists directory:', err);
+      setError('Gagal memuat data dokter. Tarik untuk menyegarkan atau coba lagi nanti.');
+      setDentists([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDentists();
+  }, [fetchDentists]);
 
   const groups = useMemo(() => {
-    const map = NEARBY_DENTISTS.reduce((acc, dentist) => {
+    const map = dentists.reduce((acc, dentist) => {
       const id = slugify(dentist.specialty || 'lainnya');
       if (!acc[id]) {
         acc[id] = {
@@ -40,7 +140,7 @@ const DentistDirectoryScreen = () => {
         };
       })
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, []);
+  }, [dentists]);
 
   const colorPresets = [
     ['#C084FC', '#9333EA'],
@@ -86,7 +186,7 @@ const DentistDirectoryScreen = () => {
               Pilih spesialis
             </Text>
             <Text style={{ color: 'rgba(255,255,255,0.75)', marginTop: 6 }}>
-              {NEARBY_DENTISTS.length} dokter tepercaya · {groups.length} spesialisasi
+              {dentists.length} dokter tepercaya · {groups.length} spesialisasi
             </Text>
           </View>
           <TouchableOpacity
@@ -110,6 +210,52 @@ const DentistDirectoryScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View>
+          {loading && (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator animating size="large" color={theme.colors.primary} />
+              <Text style={{ marginTop: 12, color: '#475569' }}>Memuat data dokter...</Text>
+            </View>
+          )}
+
+          {error && !loading && (
+            <TouchableOpacity
+              onPress={fetchDentists}
+              style={{
+                backgroundColor: '#FFE4E6',
+                borderColor: '#FDA4AF',
+                borderWidth: 1,
+                padding: 16,
+                borderRadius: 16,
+                marginBottom: 20,
+              }}
+            >
+              <Text style={{ color: '#9F1239', fontWeight: '600', marginBottom: 4 }}>Terjadi Kesalahan</Text>
+              <Text style={{ color: '#9F1239' }}>{error}</Text>
+              <Text style={{ color: '#9F1239', marginTop: 8, fontWeight: '600' }}>Ketuk untuk coba lagi</Text>
+            </TouchableOpacity>
+          )}
+
+          {!loading && !error && groups.length === 0 && (
+            <View
+              style={{
+                padding: 24,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                alignItems: 'center',
+                backgroundColor: 'white',
+              }}
+            >
+              <MaterialCommunityIcons name="database-off" size={36} color="#94A3B8" />
+              <Text style={{ marginTop: 12, fontWeight: '600', color: '#0F172A', fontSize: 16 }}>
+                Data belum tersedia
+              </Text>
+              <Text style={{ color: '#94A3B8', marginTop: 4, textAlign: 'center' }}>
+                Kami belum menemukan dokter di area Anda. Silakan coba lagi nanti.
+              </Text>
+            </View>
+          )}
+
           <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 16 }}>
             Spesialis tersedia
           </Text>
@@ -183,9 +329,32 @@ const DentistDirectoryScreen = () => {
                       justifyContent: 'space-between',
                     }}
                   >
-                    <InfoChip icon="map-marker-distance" label="Radius" value="≤ 5 km" />
-                    <InfoChip icon="account-multiple" label="Ketersediaan" value="Slot hari ini" />
+                    <InfoChip icon="account-multiple" label="Dokter" value={`${group.count}`} />
+                    <InfoChip icon="crown" label="Terverifikasi" value="Prioritas" />
                     <InfoChip icon="star" label="Rating" value={`${group.avgRating}/5`} />
+                  </View>
+
+                  {/* Show dentist avatars preview */}
+                  <View style={{ flexDirection: 'row', marginTop: 16, alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', marginRight: 8 }}>
+                      {group.dentists.slice(0, 4).map((dentist, idx) => (
+                        <Image
+                          key={dentist.id}
+                          source={{ uri: dentist.image }}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            borderWidth: 2,
+                            borderColor: 'white',
+                            marginLeft: idx > 0 ? -12 : 0,
+                          }}
+                        />
+                      ))}
+                    </View>
+                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600' }}>
+                      {group.count > 4 ? `+${group.count - 4} dokter lainnya` : `${group.count} dokter tersedia`}
+                    </Text>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>

@@ -12,6 +12,15 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Izinkan Serene Dental Patient mengakses lokasi Anda untuk menemukan klinik dan dokter terdekat.",
+          "locationAlwaysAndWhenInUsePermission": "Izinkan Serene Dental Patient mengakses lokasi Anda untuk menemukan klinik dan dokter terdekat."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sereneapps.dentalpatient"
@@ -24,7 +33,9 @@
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
       ]
     },
     "web": {}

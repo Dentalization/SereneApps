@@ -38,7 +38,7 @@ const CLINIC_NAMES = [
 const DENTIST_FIRST_NAMES = ['Alex', 'Maria', 'John', 'Emma', 'Ryan', 'Olivia', 'Lucas', 'Sophia', 'Noah', 'Isabella'];
 const DENTIST_LAST_NAMES = ['Kumar', 'Santos', 'Nguyen', 'Patel', 'Cohen', 'Silva', 'Wang', 'Ali', 'Lopez', 'Kim'];
 
-// Spesialisasi Dokter Gigi di Indonesia
+// Spesialisasi Dokter Gigi di Indonesia (10 spesialisasi standar)
 const SPECIALTIES = [
   'Ortodonti (Sp.Ort)', // Kawat gigi, clear aligner
   'Konservasi Gigi (Sp.KG)', // Gigi berlubang, saluran akar, restorasi
@@ -49,6 +49,7 @@ const SPECIALTIES = [
   'Penyakit Mulut (Sp.PM)', // Sariawan kronis, tumor, kanker mulut
   'Radiologi Kedokteran Gigi (Sp.RKG)', // Rontgen, CT scan, MRI gigi
   'Odontologi Forensik', // Identifikasi jenazah, analisis bekas gigitan
+  'Dokter Gigi Umum', // Dokter gigi umum (tidak spesialis)
   'Dokter Gigi Umum' // General dentistry
 ];
 
@@ -405,7 +406,7 @@ async function createStaff(client, clinics, branches, users) {
           `Branch Manager ${branchNum}`,
           `manager.branch${branchNum}@${CLINIC_NAMES[clinic.clinicNum - 1].toLowerCase().replace(/\s+/g, '')}.com`,
           PASSWORD_HASH,
-          ['clinic_staff'],
+          ['manager'],
           `+62 822-${String(clinic.clinicNum).padStart(2, '0')}${String(branchNum).padStart(2, '0')}-0001`
         ]
       );
@@ -425,7 +426,7 @@ async function createStaff(client, clinics, branches, users) {
           `Branch Admin ${branchNum}`,
           `admin.branch${branchNum}@${CLINIC_NAMES[clinic.clinicNum - 1].toLowerCase().replace(/\s+/g, '')}.com`,
           PASSWORD_HASH,
-          ['clinic_staff'],
+          ['admin'],
           `+62 822-${String(clinic.clinicNum).padStart(2, '0')}${String(branchNum).padStart(2, '0')}-0002`
         ]
       );

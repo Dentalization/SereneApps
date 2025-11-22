@@ -1,12 +1,13 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
-import { Text, Button, useTheme } from 'react-native-paper';
+import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { getClinicById, formatClinicDistance } from '../data/clinics';
+import { formatClinicDistance } from '../data/clinics';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import { getClinicById as fetchClinicById } from '../../../services/clinicService';
 
 const StatPill = ({ icon, label, value }) => (
   <View
@@ -44,6 +45,9 @@ const ClinicDetailScreen = () => {
   const scrollViewRef = useRef(null);
   const [activeSection, setActiveSection] = useState('kontak');
   const [anchorHeight, setAnchorHeight] = useState(64);
+  const [clinic, setClinic] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Store section positions
   const sectionPositions = useRef({
@@ -55,8 +59,27 @@ const ClinicDetailScreen = () => {
     galeri: 0,
   });
 
-  const clinic = getClinicById(route.params?.clinicId);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
+
+  useEffect(() => {
+    const loadClinic = async () => {
+      try {
+        setLoading(true);
+        const clinicId = route.params?.clinicId;
+        console.log('🏥 [ClinicDetail] Loading clinic:', clinicId);
+        const data = await fetchClinicById(clinicId);
+        console.log('🏥 [ClinicDetail] Clinic data:', data);
+        setClinic(data);
+      } catch (err) {
+        console.error('❌ [ClinicDetail] Failed to load clinic:', err);
+        setError('Tidak dapat memuat detail klinik');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadClinic();
+  }, [route.params?.clinicId]);
 
   const sections = [
     { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
@@ -106,10 +129,33 @@ const ClinicDetailScreen = () => {
     });
 
   const handleCall = () => {
-    if (clinic.phone) {
-      Linking.openURL(`tel:${clinic.phone}`).catch(() => {});
+    if (clinic?.phone || clinic?.contact?.phone) {
+      Linking.openURL(`tel:${clinic?.phone || clinic?.contact?.phone}`).catch(() => {});
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 16, color: '#64748B' }}>Memuat detail klinik...</Text>
+      </View>
+    );
+  }
+
+  if (error || !clinic) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <MaterialCommunityIcons name="hospital-box-outline" size={64} color="#CBD5E1" />
+        <Text style={{ marginTop: 16, fontWeight: '700', fontSize: 18, color: '#0F172A' }}>
+          {error || 'Klinik tidak ditemukan'}
+        </Text>
+        <Button mode="contained" onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          Kembali
+        </Button>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -413,35 +459,47 @@ const ClinicDetailScreen = () => {
                 borderColor: '#E2E8F0',
               }}
             >
-              {(clinic.facilities || []).map((facility) => (
-                <View
-                  key={facility}
-                  style={{
-                    flexDirection: 'row',
-                    marginBottom: 12,
-                    alignItems: 'center',
-                  }}
-                >
+              {(clinic.facilities || []).map((facility, index) => {
+                // Handle both object format {name, description, icon} and string format
+                const facilityName = typeof facility === 'string' ? facility : facility?.name || facility;
+                const facilityDesc = typeof facility === 'object' ? facility?.description : null;
+                
+                return (
                   <View
+                    key={`facility-${index}`}
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      backgroundColor: '#EEF2FF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 10,
+                      flexDirection: 'row',
+                      marginBottom: 12,
+                      alignItems: 'flex-start',
                     }}
                   >
-                    <MaterialCommunityIcons
-                      name="check"
-                      size={16}
-                      color={theme.colors.primary}
-                    />
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        backgroundColor: '#EEF2FF',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                        marginTop: 2,
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="check"
+                        size={16}
+                        color={theme.colors.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0F172A', fontWeight: '600' }}>{facilityName}</Text>
+                      {facilityDesc ? (
+                        <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>{facilityDesc}</Text>
+                      ) : null}
+                    </View>
                   </View>
-                  <Text style={{ flex: 1, color: '#475569' }}>{facility}</Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </Section>
 
@@ -450,13 +508,21 @@ const ClinicDetailScreen = () => {
             onLayout={(e) => handleSectionLayout('galeri', e)}
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {(clinic.gallery || []).map((image, idx) => (
-                <Image
-                  key={`${image}-${idx}`}
-                  source={{ uri: image }}
-                  style={{ width: 220, height: 140, borderRadius: 20, marginRight: 14 }}
-                />
-              ))}
+              {(clinic.gallery || []).map((image, idx) => {
+                // Replace invalid Unsplash URLs with valid fallback
+                let imageUrl = image;
+                if (image && image.includes('photo-160000')) {
+                  imageUrl = `https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop&q=80&random=${idx}`;
+                }
+                
+                return (
+                  <Image
+                    key={`${image}-${idx}`}
+                    source={{ uri: imageUrl }}
+                    style={{ width: 220, height: 140, borderRadius: 20, marginRight: 14 }}
+                  />
+                );
+              })}
             </ScrollView>
           </Section>
         </View>

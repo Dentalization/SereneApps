@@ -5,6 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDetail } from '../data/dentistDetails';
+import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
@@ -33,6 +34,32 @@ const Section = ({ title, children, action, style }) => (
   </View>
 );
 
+const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
+const API_BASE = API_BASE_URL.replace(/\/$/, '');
+
+const normalizeDicebear = (url = '', fallbackSeed) => {
+  if (!url.includes('dicebear.com')) {
+    return url;
+  }
+
+  if (!url) {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+
+  return url.replace('/svg', '/png').replace('format=svg', 'format=png');
+};
+
+const resolveAvatar = (path, fallbackSeed) => {
+  if (!path) {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return normalizeDicebear(path, fallbackSeed);
+  }
+  const normalized = path.startsWith('/') ? path.slice(1) : path;
+  return `${API_BASE}/${normalized}`;
+};
+
 const DentistDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -43,13 +70,16 @@ const DentistDetailScreen = () => {
     [route.params?.dentistId, route.params?.dentist?.id]
   );
 
-  const dentist = useMemo(
-    () => ({
+  const dentist = useMemo(() => {
+    const merged = {
       ...fallbackDetail,
       ...(route.params?.dentist || {}),
-    }),
-    [fallbackDetail, route.params?.dentist]
-  );
+    };
+    return {
+      ...merged,
+      image: resolveAvatar(merged.image || merged.avatarUrl, merged.id),
+    };
+  }, [fallbackDetail, route.params?.dentist]);
 
   const distanceText =
     dentist.distance ??
@@ -175,7 +205,7 @@ const DentistDetailScreen = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                 <MaterialCommunityIcons name='star' color='#FACC15' size={18} />
                 <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
-                  {dentist.rating?.toFixed(1)} · {dentist.reviews} ulasan
+                  {(dentist.rating || 0).toFixed(1)} · {dentist.reviews || 0} ulasan
                 </Text>
               </View>
               {distanceText ? (
