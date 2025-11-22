@@ -9,14 +9,15 @@ const CATEGORIES = [
 ];
 
 const SPECIALTIES = [
-  'Orthodontics',
-  'Periodontics',
-  'Endodontics',
-  'Prosthodontics',
-  'Oral Surgery',
-  'Pediatric Dentistry',
-  'Cosmetic Dentistry',
-  'Implantology',
+  'Ortodonti (Sp.Ort)',
+  'Konservasi Gigi (Sp.KG)',
+  'Bedah Mulut (Sp.BM)',
+  'Periodonsia (Sp.Perio)',
+  'Prostodonsia (Sp.Pros)',
+  'Kedokteran Gigi Anak (Sp.KGA)',
+  'Penyakit Mulut (Sp.PM)',
+  'Radiologi Kedokteran Gigi (Sp.RKG)',
+  'Odontologi Forensik',
 ];
 
 const ServicesSettings = () => {
@@ -29,7 +30,7 @@ const ServicesSettings = () => {
   const [editingService, setEditingService] = useState(null);
 
   const userRole = user?.roles?.[0] || user?.role || 'staff';
-  const canEdit = ['owner', 'manager', 'admin'].includes(userRole);
+  const canEdit = ['owner', 'clinic_owner', 'manager', 'admin', 'clinic_staff'].includes(userRole);
 
   const fetchServices = async () => {
     try {

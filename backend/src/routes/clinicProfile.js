@@ -30,7 +30,7 @@ const requireClinicRole = async (req, res, next) => {
                 LIMIT 1
               )) as branch_id
        FROM clinic_staff cs
-       WHERE cs.user_id = $1 AND cs.role IN ('owner', 'manager', 'admin') AND cs.is_active = true`,
+       WHERE cs.user_id = $1 AND cs.role IN ('owner', 'manager', 'admin', 'clinic_admin') AND cs.is_active = true`,
       [userId]
     );
 

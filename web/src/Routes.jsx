@@ -100,7 +100,7 @@ const Routes = () => {
         </Route>
         
         {/* Clinic Portal Routes - Protected for clinic staff roles */}
-        <Route element={<ProtectedRoute allow={["owner", "manager", "front_office", "nurse", "cashier", "staff"]} />}>
+        <Route element={<ProtectedRoute allow={["clinic_owner","owner", "manager", "clinic_admin","front_office", "nurse", "cashier", "staff"]} />}>
           <Route path="/clinic-portal" element={<Navigate to="/clinic-portal/home" replace />} />
           <Route path="/clinic-portal/home" element={<ClinicDashboard />} />
           <Route path="/clinic-portal/schedule" element={<ClinicSchedule />} />
@@ -112,7 +112,7 @@ const Routes = () => {
         </Route>
         
         {/* Staff Management Route - Only for owner and manager */}
-        <Route element={<ProtectedRoute allow={["owner", "manager"]} />}>
+        <Route element={<ProtectedRoute allow={["clinic_owner","owner", "manager","clinic_admin"]} />}>
           <Route path="/clinic-portal/staff" element={<StaffManagement />} />
           <Route path="/clinic-portal/branches" element={<BranchManagement />} />
           <Route path="/clinic-portal/public-profile" element={<ClinicPublicProfile />} />

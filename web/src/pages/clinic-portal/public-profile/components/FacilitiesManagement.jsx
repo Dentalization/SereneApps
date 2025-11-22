@@ -19,7 +19,7 @@ const FacilitiesManagement = () => {
   });
 
   const userRole = user?.roles?.[0] || user?.role || 'staff';
-  const canEdit = ['owner', 'manager', 'admin'].includes(userRole);
+  const canEdit = ['owner', 'clinic_owner', 'manager', 'admin', 'clinic_staff'].includes(userRole);
 
   useEffect(() => {
     if (canEdit) {

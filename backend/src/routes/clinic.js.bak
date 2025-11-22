@@ -562,7 +562,7 @@ router.put('/admin/:id/verify', authenticateToken, requireRoles(['admin']), asyn
 });
 
 // Branch management routes
-router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.post('/branches', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     console.log('🏢 POST /branches called with data:', req.body);
     
@@ -682,7 +682,7 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
 });
 
 // Get all branches for the clinic
-router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.get('/branches', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const clinicProfile = await prisma.clinicProfile.findFirst({
       where: { userId: req.user.id }
@@ -731,7 +731,7 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
   }
 });
 
-router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -780,7 +780,7 @@ router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_ow
   }
 });
 
-router.delete('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.delete('/branches/:id', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -886,7 +886,7 @@ router.get('/debug-user', authenticateToken, async (req, res) => {
 });
 
 // Get all staff for the clinic (owner/manager only)
-router.get('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.get('/staff', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const user = req.user;
     console.log('🔍 Staff API: User requesting staff:', { id: user.id, type: typeof user.id, roles: user.roles });
@@ -983,7 +983,7 @@ router.get('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', '
 });
 
 // Add staff to clinic (owner/manager only)
-router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.post('/staff', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { name, email, password, role, position, department, permissions, assignedBranchId } = req.body;
     const user = req.user;
@@ -1175,7 +1175,7 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
 });
 
 // Update staff (owner/manager only)
-router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { staffId } = req.params;
     const { role, position, department, status, permissions, phone, name, email, branchId } = req.body;
@@ -1369,7 +1369,7 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
 // Enhanced Staff Management Endpoints
 
 // Get staff member profile details
-router.get('/staff/:userId/profile', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.get('/staff/:userId/profile', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { userId } = req.params;
     const user = req.user;
@@ -1456,7 +1456,7 @@ router.get('/staff/:userId/profile', authenticateToken, requireRoles(['owner', '
 });
 
 // Update staff member role and status
-router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { userId } = req.params;
     const { role, status } = req.body;
@@ -1547,7 +1547,7 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
 });
 
 // Remove staff member (owner/manager only)
-router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'manager']), async (req, res) => {
   try {
     const { userId } = req.params;
     const user = req.user;

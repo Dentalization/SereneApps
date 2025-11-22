@@ -179,17 +179,16 @@ const Register = () => {
 
   // Data options
   const specializations = [
-    'Bedah Mulut dan Maksilofasial',
-    'Konservasi Gigi',
-    'Endodontik',
-    'Periodonsia',
-    'Prostodontik',
-    'Ortodontik',
-    'Kedokteran Gigi Anak',
-    'Penyakit Mulut',
-    'Radiologi Kedokteran Gigi',
-    'Kesehatan Gigi Masyarakat',
-    'Umum'
+    'Ortodonti (Sp.Ort)', // Kawat gigi, clear aligner
+    'Konservasi Gigi (Sp.KG)', // Gigi berlubang, saluran akar, restorasi
+    'Bedah Mulut (Sp.BM)', // Operasi gigi bungsu, bibir sumbing, operasi rahang
+    'Periodonsia (Sp.Perio)', // Penyakit gusi dan tulang rahang
+    'Prostodonsia (Sp.Pros)', // Gigi tiruan, mahkota, implan
+    'Kedokteran Gigi Anak (Sp.KGA)', // Perawatan gigi anak
+    'Penyakit Mulut (Sp.PM)', // Sariawan kronis, tumor, kanker mulut
+    'Radiologi Kedokteran Gigi (Sp.RKG)', // Rontgen, CT scan, MRI gigi
+    'Odontologi Forensik', // Identifikasi jenazah, analisis bekas gigitan
+    'Dokter Gigi Umum' // General dentistry
   ];
 
   const educationLevels = [

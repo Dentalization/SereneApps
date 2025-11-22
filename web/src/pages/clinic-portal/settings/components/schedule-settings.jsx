@@ -13,7 +13,7 @@ const ScheduleSettings = () => {
 
   // Check if user can edit schedule settings
   const userRole = user?.roles?.[0] || user?.role || 'staff';
-  const canEdit = ['owner', 'manager', 'admin'].includes(userRole);
+  const canEdit = ['owner', 'clinic_owner', 'manager', 'admin', 'clinic_staff'].includes(userRole);
 
   const [operatingHours, setOperatingHours] = useState({
     monday: { open: '08:00', close: '17:00', closed: false },
