@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, ImageBackground, Animated } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NEARBY_CLINICS, formatClinicDistance } from '../data/clinics';
+import useNearbyClinics from '../../../hooks/useNearbyClinics';
 
 const FALLBACK_CLINICS = NEARBY_CLINICS.slice(0, 2);
 
@@ -66,15 +67,38 @@ const NearbyClinics = ({
 }) => {
   const theme = useTheme();
   const fade = useRef(new Animated.Value(0)).current;
+  const shouldAutoload = !clinics?.length;
+  const {
+    clinics: fetchedClinics,
+    loading,
+    error,
+    refresh,
+    usedMockData,
+    usedDefaultLocation,
+  } = useNearbyClinics({ radius: 8, limit: 4, autoFetch: shouldAutoload });
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, [fade]);
 
-  const data = (clinics.length ? clinics : FALLBACK_CLINICS).map((clinic) => ({
+  const dataSource = clinics.length ? clinics : fetchedClinics;
+  const data = (dataSource.length ? dataSource : FALLBACK_CLINICS).map((clinic) => ({
     ...clinic,
     distanceLabel: formatClinicDistance(clinic.distanceKm),
   }));
+
+  // Debug: Log image URLs
+  useEffect(() => {
+    if (data.length > 0) {
+      console.log('🖼️ [NearbyClinics] First clinic images:', {
+        name: data[0].name,
+        heroImage: data[0].heroImage,
+        coverImage: data[0].coverImage,
+        hasHero: !!data[0].heroImage,
+        hasCover: !!data[0].coverImage,
+      });
+    }
+  }, [data]);
 
   return (
     <Animated.View style={{ paddingHorizontal: 20, marginBottom: 24, opacity: fade }}>
@@ -91,7 +115,7 @@ const NearbyClinics = ({
             {title}
           </Text>
           <Text style={{ color: '#64748B', fontWeight: '500' }}>{subtitle}</Text>
-        </View>
+      </View>
         {onSeeAll ? (
           <TouchableOpacity
             onPress={onSeeAll}
@@ -112,27 +136,93 @@ const NearbyClinics = ({
         ) : null}
       </View>
 
-      {data.map((clinic) => (
-        <TouchableOpacity
-          key={clinic.id}
-          activeOpacity={0.92}
-          onPress={() => onClinicPress?.(clinic)}
+      {shouldAutoload && (
+        <View
           style={{
-            borderRadius: 28,
-            overflow: 'hidden',
-            marginBottom: 18,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 18 },
-            shadowOpacity: 0.15,
-            shadowRadius: 24,
-            elevation: 7,
+            borderRadius: 18,
+            padding: 14,
+            backgroundColor: '#EEF2FF',
+            borderWidth: 1,
+            borderColor: '#C7D2FE',
+            marginBottom: 16,
           }}
         >
-          <ImageBackground
-            source={{ uri: clinic.heroImage || clinic.coverImage }}
-            style={{ padding: 20, minHeight: 240, justifyContent: 'space-between' }}
-            imageStyle={{ resizeMode: 'cover' }}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons
+              name="crosshairs-gps"
+              size={18}
+              color={theme.colors.primary}
+            />
+            <Text style={{ marginLeft: 8, color: '#1F2937', fontWeight: '600' }}>
+              {usedDefaultLocation
+                ? 'Menampilkan klinik populer di area default'
+                : 'Menyesuaikan dengan lokasi Anda'}
+            </Text>
+          </View>
+          {loading && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={{ marginLeft: 8, color: '#475569' }}>Memuat data klinik...</Text>
+            </View>
+          )}
+          {error && !loading && (
+            <TouchableOpacity
+              onPress={refresh}
+              style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}
+            >
+              <MaterialCommunityIcons name="refresh" size={16} color="#DC2626" />
+              <Text style={{ marginLeft: 6, color: '#DC2626', fontWeight: '600' }}>
+                Tidak dapat memuat lokasi, ketuk untuk coba lagi
+              </Text>
+            </TouchableOpacity>
+          )}
+          {usedMockData && !loading && !error && (
+            <Text style={{ marginTop: 8, color: '#475569' }}>
+              Menampilkan data contoh sementara jaringan bermasalah.
+            </Text>
+          )}
+        </View>
+      )}
+
+      {data.map((clinic) => {
+        // Use fallback if Unsplash URL is invalid (404)
+        let imageUri = clinic.heroImage || clinic.coverImage;
+        
+        // Check if URL looks invalid (photo-XXXXXXX format with low numbers are usually invalid)
+        if (imageUri && imageUri.includes('photo-160000')) {
+          imageUri = 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
+        }
+        
+        // Final fallback
+        if (!imageUri) {
+          imageUri = 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
+        }
+        
+        console.log('🖼️ Loading image for', clinic.name, ':', imageUri);
+        
+        return (
+          <TouchableOpacity
+            key={clinic.id}
+            activeOpacity={0.92}
+            onPress={() => onClinicPress?.(clinic)}
+            style={{
+              borderRadius: 28,
+              overflow: 'hidden',
+              marginBottom: 18,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 18 },
+              shadowOpacity: 0.15,
+              shadowRadius: 24,
+              elevation: 7,
+            }}
           >
+            <ImageBackground
+              source={{ uri: imageUri }}
+              style={{ padding: 20, minHeight: 240, justifyContent: 'space-between', backgroundColor: '#E2E8F0' }}
+              imageStyle={{ resizeMode: 'cover' }}
+              onError={(error) => console.error('❌ Image load error:', clinic.name, error.nativeEvent)}
+              onLoad={() => console.log('✅ Image loaded:', clinic.name)}
+            >
             <View>
               <View
                 style={{
@@ -206,7 +296,8 @@ const NearbyClinics = ({
             </View>
           </ImageBackground>
         </TouchableOpacity>
-      ))}
+        );
+      })}
     </Animated.View>
   );
 };

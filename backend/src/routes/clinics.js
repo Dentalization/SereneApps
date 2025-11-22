@@ -3,7 +3,8 @@ import {
   getClinics,
   getClinicById,
   getClinicDentists,
-  getClinicServices
+  getClinicServices,
+  getNearbyClinics
 } from '../controllers/clinicsController.js';
 
 const router = express.Router();
@@ -14,6 +15,13 @@ const router = express.Router();
  * @access Public
  */
 router.get('/', getClinics);
+
+/**
+ * @route GET /v1/clinics/nearby
+ * @desc Get clinics near a coordinate using geolocation
+ * @access Public
+ */
+router.get('/nearby', getNearbyClinics);
 
 /**
  * @route GET /v1/clinics/:id

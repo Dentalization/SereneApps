@@ -591,3 +591,160 @@ export const getDentistAvailableSlots = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getDentistDirectory = async (req, res, next) => {
+  try {
+    const {
+      specialization,
+      dentistType,
+      clinicId,
+      verifiedOnly = 'false',
+      limit = 50,
+      offset = 0
+    } = req.query;
+
+    let sqlQuery = `
+      SELECT 
+        dp.id,
+        u.id as user_id,
+        u.name,
+        u.email,
+        u.avatar_url,
+        dp.title,
+        dp.license_number,
+        dp.primary_specialization as specialization,
+        dp.years_of_experience,
+        dp.clinic_name,
+        dp.clinic_address,
+        dp.clinic_working_hours,
+        dp.consultation_types,
+        dp.services_offered,
+        dp.consultation_fee,
+        dp.accepts_insurance,
+        dp.accepts_bpjs,
+        dp.emergency_availability,
+        dp.is_verified,
+        dp.latitude,
+        dp.longitude,
+        dp.district,
+        dp.province,
+        dp.postal_code,
+        dp.dentist_type,
+        dp.clinic_id,
+        dp.is_clinic_owner,
+        dp.created_at
+      FROM dentist_profiles dp
+      JOIN users u ON dp.user_id = u.id
+      WHERE 1=1
+    `;
+
+    const queryParams = [];
+    let paramIndex = 1;
+
+    if (specialization) {
+      sqlQuery += ` AND dp.primary_specialization ILIKE $${paramIndex}`;
+      queryParams.push(`%${specialization}%`);
+      paramIndex++;
+    }
+
+    if (dentistType) {
+      sqlQuery += ` AND dp.dentist_type = $${paramIndex}`;
+      queryParams.push(dentistType);
+      paramIndex++;
+    }
+
+    if (clinicId) {
+      sqlQuery += ` AND dp.clinic_id = $${paramIndex}`;
+      queryParams.push(BigInt(clinicId));
+      paramIndex++;
+    }
+
+    if (String(verifiedOnly).toLowerCase() === 'true') {
+      sqlQuery += ` AND dp.is_verified = true`;
+    }
+
+    sqlQuery += ` ORDER BY dp.is_verified DESC, dp.years_of_experience DESC, dp.created_at DESC`;
+    sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    queryParams.push(parseInt(limit), parseInt(offset));
+
+    const result = await query(sqlQuery, queryParams);
+
+    let countQuery = `SELECT COUNT(*) AS total FROM dentist_profiles dp WHERE 1=1`;
+    const countParams = [];
+    let countIndex = 1;
+
+    if (specialization) {
+      countQuery += ` AND dp.primary_specialization ILIKE $${countIndex}`;
+      countParams.push(`%${specialization}%`);
+      countIndex++;
+    }
+
+    if (dentistType) {
+      countQuery += ` AND dp.dentist_type = $${countIndex}`;
+      countParams.push(dentistType);
+      countIndex++;
+    }
+
+    if (clinicId) {
+      countQuery += ` AND dp.clinic_id = $${countIndex}`;
+      countParams.push(BigInt(clinicId));
+      countIndex++;
+    }
+
+    if (String(verifiedOnly).toLowerCase() === 'true') {
+      countQuery += ` AND dp.is_verified = true`;
+    }
+
+    const countResult = await query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].total, 10) || 0;
+
+    const dentists = result.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      email: row.email,
+      avatarUrl: row.avatar_url,
+      title: row.title,
+      licenseNumber: row.license_number,
+      specialization: row.specialization,
+      yearsOfExperience: row.years_of_experience,
+      clinicName: row.clinic_name,
+      clinicAddress: row.clinic_address,
+      workingHours: row.clinic_working_hours,
+      consultationTypes: row.consultation_types,
+      servicesOffered: row.services_offered,
+      consultationFee: row.consultation_fee,
+      acceptsInsurance: row.accepts_insurance,
+      acceptsBpjs: row.accepts_bpjs,
+      emergencyAvailable: row.emergency_availability,
+      isVerified: row.is_verified,
+      location: {
+        latitude: row.latitude ? parseFloat(row.latitude) : null,
+        longitude: row.longitude ? parseFloat(row.longitude) : null,
+        district: row.district,
+        province: row.province,
+        postalCode: row.postal_code,
+      },
+      dentistType: row.dentist_type,
+      clinicId: row.clinic_id,
+      isClinicOwner: row.is_clinic_owner,
+      createdAt: row.created_at,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        dentists,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: offset + dentists.length < total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error fetching dentist directory:', error);
+    next(error);
+  }
+};

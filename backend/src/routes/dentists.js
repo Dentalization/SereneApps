@@ -3,10 +3,13 @@ import {
   getDentistById,
   getDentistSchedule,
   getDentistAvailableSlots,
-  getNearbyDentists
+  getNearbyDentists,
+  getDentistDirectory
 } from '../controllers/dentistsController.js';
 
 const router = express.Router();
+
+router.get('/', getDentistDirectory);
 
 /**
  * @route GET /v1/dentists/nearby

@@ -10,7 +10,6 @@ import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { NEARBY_DENTISTS } from '../data/dentists';
-import { NEARBY_CLINICS } from '../data/clinics';
 
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
@@ -51,7 +50,6 @@ const DashboardScreen = () => {
   ];
 
   const topDoctors = NEARBY_DENTISTS.slice(0, 3);
-  const topClinics = NEARBY_CLINICS.slice(0, 2);
   const quickActions = [
     {
       key: 'dentists',
@@ -123,7 +121,7 @@ const DashboardScreen = () => {
   const handleSeeAllDentists = () =>
     navigation.navigate('NearbyDentists', { dentists: NEARBY_DENTISTS, maxDistanceKm: 5 });
   const handleSeeAllClinics = () =>
-    navigation.navigate('NearbyClinics', { clinics: NEARBY_CLINICS, maxDistanceKm: 6 });
+    navigation.navigate('NearbyClinics', { maxDistanceKm: 6 });
 
   return (
     <View style={{ flex:1, backgroundColor:'#F8FAFC' }}>
@@ -194,7 +192,6 @@ const DashboardScreen = () => {
         <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleDoctorPress} onJoinCall={handleJoinCall} />
         <QuickActions actions={quickActions} />
         <NearbyClinics
-          clinics={topClinics}
           onClinicPress={handleClinicPress}
           onBook={handleClinicBook}
           onSeeAll={handleSeeAllClinics}

@@ -1,32 +1,47 @@
 import React, { useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, ImageBackground, StatusBar } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import {
+  View,
+  ScrollView,
+  TouchableOpacity,
+  ImageBackground,
+  StatusBar,
+  RefreshControl,
+} from 'react-native';
+import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NEARBY_CLINICS, formatClinicDistance } from '../data/clinics';
+import useNearbyClinics from '../../../hooks/useNearbyClinics';
 
 const NearbyClinicsScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
 
-  const radius = route.params?.maxDistanceKm ?? 5;
-  const source = route.params?.clinics?.length ? route.params.clinics : NEARBY_CLINICS;
+  const radius = route.params?.maxDistanceKm ?? 8;
+  const {
+    clinics: fetchedClinics,
+    loading,
+    error,
+    refresh,
+    requestLocation,
+    usedMockData,
+    usedDefaultLocation,
+  } = useNearbyClinics({ radius, limit: 40 });
 
-  const clinics = useMemo(
-    () =>
-      source
-        .filter((clinic) => (clinic.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
-        .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0)),
-    [source, radius]
-  );
+  const clinics = useMemo(() => {
+    const list = fetchedClinics.length ? fetchedClinics : NEARBY_CLINICS;
+    return list
+      .filter((clinic) => (clinic.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
+      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  }, [fetchedClinics, radius]);
 
-  const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id });
+  const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id || clinic.branchId });
   const handleBook = (clinic) =>
     navigation.navigate('AppointmentTab', {
       screen: 'ClinicDetail',
-      params: { clinicId: clinic.id },
+      params: { clinicId: clinic.id || clinic.branchId },
     });
 
   return (
@@ -71,7 +86,49 @@ const NearbyClinicsScreen = () => {
         </View>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 16, paddingBottom: 160 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingTop: 16, paddingBottom: 160 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+      >
+        <View
+          style={{
+            borderRadius: 18,
+            padding: 16,
+            backgroundColor: '#EEF2FF',
+            borderWidth: 1,
+            borderColor: '#CBD5F5',
+            marginBottom: 20,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <MaterialCommunityIcons name="crosshairs-gps" size={18} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 8, fontWeight: '600', color: '#0F172A' }}>
+              {usedDefaultLocation
+                ? 'Lokasi mati — menampilkan cabang populer'
+                : 'Menampilkan klinik sesuai lokasi Anda'}
+            </Text>
+          </View>
+          {error ? (
+            <TouchableOpacity onPress={requestLocation} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <MaterialCommunityIcons name="alert-circle" size={18} color="#DC2626" />
+              <Text style={{ marginLeft: 8, color: '#DC2626', fontWeight: '600' }}>
+                {error} · Ketuk untuk coba lagi
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ color: '#475569' }}>
+              Radius {radius} km · {usedMockData ? 'data contoh' : 'data real-time'}
+            </Text>
+          )}
+        </View>
+
+        {loading && !clinics.length && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <ActivityIndicator animating size="large" color={theme.colors.primary} />
+            <Text style={{ marginTop: 12, color: '#475569' }}>Memuat klinik terdekat...</Text>
+          </View>
+        )}
+
         {clinics.map((clinic) => (
           <TouchableOpacity
             key={clinic.id}
@@ -90,8 +147,10 @@ const NearbyClinicsScreen = () => {
             }}
           >
             <ImageBackground
-              source={{ uri: clinic.coverImage || clinic.heroImage }}
-              style={{ height: 180 }}
+              source={{ 
+                uri: clinic.coverImage || clinic.heroImage || 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800'
+              }}
+              style={{ height: 180, backgroundColor: '#E2E8F0' }}
               imageStyle={{ resizeMode: 'cover' }}
             >
               <View
@@ -123,9 +182,11 @@ const NearbyClinicsScreen = () => {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: 'white', fontWeight: '700' }}>{clinic.rating?.toFixed(1)}</Text>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>
+                    {clinic.rating ? clinic.rating.toFixed(1) : '4.8'}
+                  </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>
-                    {clinic.reviews} ulasan
+                    {(clinic.reviews || 0).toLocaleString('id-ID')} ulasan
                   </Text>
                 </View>
               </View>
@@ -206,7 +267,7 @@ const NearbyClinicsScreen = () => {
           </TouchableOpacity>
         ))}
 
-        {!clinics.length && (
+        {!loading && !clinics.length && (
           <View style={{ alignItems: 'center', marginTop: 40 }}>
             <MaterialCommunityIcons name="hospital-box-outline" size={58} color="#CBD5F5" />
             <Text style={{ marginTop: 12, fontWeight: '700', color: '#0F172A', fontSize: 16 }}>
