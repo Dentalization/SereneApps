@@ -101,7 +101,14 @@ const deriveReviewCount = (branchId, dentistCount = 1) => {
 const formatClinicName = (brandName, branchName, isMainBranch) => {
   if (!brandName) return branchName || 'Klinik Digital';
   if (!branchName || isMainBranch) return brandName;
-  return `${brandName} • ${branchName}`;
+  
+  // If branch name already contains brand name, just use branch name
+  if (branchName.includes(brandName)) {
+    return branchName;
+  }
+  
+  // Otherwise combine them
+  return `${brandName} - ${branchName}`;
 };
 
 export const getNearbyClinics = async (req, res, next) => {
