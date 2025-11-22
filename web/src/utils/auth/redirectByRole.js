@@ -5,7 +5,9 @@ export function redirectByRole(roles = []) {
     admin: has('admin'), 
     dentist: has('dentist'), 
     patient: has('patient'),
+    clinic_owner: has('clinic_owner'),
     owner: has('owner'),
+    clinic_staff: has('clinic_staff'),
     manager: has('manager'),
     front_office: has('front_office'),
     nurse: has('nurse'),
@@ -25,7 +27,7 @@ export function redirectByRole(roles = []) {
   }
   
   // Clinic roles - redirect to clinic portal
-  const clinicRoles = ['owner', 'manager', 'front_office', 'nurse', 'cashier', 'staff'];
+  const clinicRoles = ['clinic_owner', 'owner', 'clinic_staff', 'manager', 'front_office', 'nurse', 'cashier', 'staff'];
   if (clinicRoles.some(role => has(role))) {
     console.log('Redirecting to clinic portal: /clinic-portal/home');
     return '/clinic-portal/home';

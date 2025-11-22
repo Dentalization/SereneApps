@@ -13,7 +13,7 @@ const ClinicSettings = () => {
 
   // Check if user can edit clinic settings
   const userRole = user?.roles?.[0] || user?.role || 'staff';
-  const canEdit = ['owner', 'manager', 'admin'].includes(userRole);
+  const canEdit = ['owner', 'clinic_owner', 'manager', 'admin', 'clinic_staff'].includes(userRole);
 
   const [formData, setFormData] = useState({
     name: 'Klinik Gigi Serene',

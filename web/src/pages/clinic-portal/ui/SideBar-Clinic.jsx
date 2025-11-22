@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import AppImage from '../../../components/AppImage';
@@ -46,8 +46,22 @@ const ClinicSideBar = () => {
   };
 
   // Role-based menu filtering
-  const getUserRole = () => user?.roles?.[0] || user?.role || 'staff';
-  const userRole = getUserRole();
+  const userRoles = useMemo(() => {
+    const roles = new Set(user?.roles || []);
+    if (roles.has('clinic_owner')) roles.add('owner');
+    if (roles.has('clinic_admin')) roles.add('manager');
+    if (!roles.size && user?.role) roles.add(user.role);
+    if (!roles.size) roles.add('staff');
+    return roles;
+  }, [user?.roles, user?.role]);
+
+  const primaryRole = useMemo(() => {
+    const priorities = ['owner', 'clinic_owner', 'manager', 'clinic_admin', 'front_office', 'nurse', 'cashier', 'staff'];
+    for (const role of priorities) {
+      if (userRoles.has(role)) return role;
+    }
+    return Array.from(userRoles)[0] || 'staff';
+  }, [userRoles]);
 
   const menuItems = [
     { 
@@ -132,9 +146,9 @@ const ClinicSideBar = () => {
     },
   ];
 
-  // Filter menu items based on user role
+  // Filter menu items based on user role(s)
   const filteredMenuItems = menuItems.filter(item => 
-    item.roles.includes(userRole) || item.roles.includes('staff')
+    item.roles.some(role => userRoles.has(role))
   );
 
   const handleNavigation = (path) => navigate(path);
@@ -270,7 +284,7 @@ const ClinicSideBar = () => {
                     </span>
                   </div>
                   <div className="text-sm font-medium text-primary capitalize">
-                    {userRole.replace('_', ' ')}
+                    {primaryRole.replace('_', ' ')}
                   </div>
                   <div className="text-xs text-secondary mt-1">
                     {filteredMenuItems.length} menu accessible

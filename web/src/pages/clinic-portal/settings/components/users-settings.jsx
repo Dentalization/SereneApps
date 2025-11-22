@@ -15,8 +15,8 @@ const UsersSettings = () => {
 
   // Check if user can edit users
   const userRole = user?.roles?.[0] || user?.role || 'staff';
-  const canEdit = ['owner', 'manager', 'admin'].includes(userRole);
-  const canManageRoles = ['owner', 'manager'].includes(userRole);
+  const canEdit = ['owner', 'clinic_owner', 'manager', 'admin', 'clinic_staff'].includes(userRole);
+  const canManageRoles = ['owner', 'clinic_owner', 'manager'].includes(userRole);
 
   const [users, setUsers] = useState([
     {
