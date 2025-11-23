@@ -6,6 +6,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDirectory, getNearbyDentists } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
 
 const slugify = (value = '') =>
   value
@@ -72,6 +74,8 @@ const DentistDirectoryScreen = () => {
   const [error, setError] = useState(null);
   const [usedFallback, setUsedFallback] = useState(false);
 
+  const { toast, showToast, hideToast } = useToast();
+
   const fetchDentists = useCallback(async () => {
     try {
       setLoading(true);
@@ -85,7 +89,7 @@ const DentistDirectoryScreen = () => {
         apiDentists = directoryResponse.data?.dentists || [];
         setUsedFallback(false);
       } catch (dirError) {
-        console.warn('Dentist directory endpoint unavailable, falling back to nearby list', dirError);
+        console.log('ℹ️ [DentistDirectory] Using nearby fallback:', dirError.message);
         const nearbyResponse = await getNearbyDentists({
           latitude: DEFAULT_COORDS.latitude,
           longitude: DEFAULT_COORDS.longitude,
@@ -104,8 +108,9 @@ const DentistDirectoryScreen = () => {
 
       setDentists(apiDentists.map(mapDentist));
     } catch (err) {
-      console.error('Failed to load dentists directory:', err);
+      console.log('🔍 [DentistDirectory] Failed to load:', err.message);
       setError('Gagal memuat data dokter. Tarik untuk menyegarkan atau coba lagi nanti.');
+      showToast('Gagal memuat daftar dokter', 'error');
       setDentists([]);
     } finally {
       setLoading(false);
@@ -362,6 +367,13 @@ const DentistDirectoryScreen = () => {
           })}
         </View>
       </ScrollView>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

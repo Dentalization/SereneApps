@@ -8,6 +8,8 @@ import { formatClinicDistance } from '../data/clinics';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
 
 // API Base URL for avatar resolution
 const API_BASE_URL = Platform.select({
@@ -78,6 +80,8 @@ const ClinicDetailScreen = () => {
   const [clinic, setClinic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const { toast, showToast, hideToast } = useToast();
 
   // Store section positions
   const sectionPositions = useRef({
@@ -159,13 +163,14 @@ const ClinicDetailScreen = () => {
         setClinic(mappedClinic);
         setError(null);
       } catch (err) {
-        console.error('❌ [ClinicDetail] Failed to load clinic:', err);
+        console.log('🔍 [ClinicDetail] Failed to load clinic:', err.message);
         setError('Tidak dapat memuat detail klinik');
-      } finally {
+        showToast('Gagal memuat data klinik', 'error');
+      } finally { {
         setLoading(false);
       }
     };
-
+  };
     loadClinic();
   }, [route.params?.clinicId, route.params?.clinic?.id]);
 
@@ -658,6 +663,13 @@ const ClinicDetailScreen = () => {
           </Button>
         </View>
       </View>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

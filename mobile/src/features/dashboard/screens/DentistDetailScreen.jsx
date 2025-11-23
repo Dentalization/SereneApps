@@ -7,6 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistById } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -68,6 +70,8 @@ const DentistDetailScreen = () => {
   const [dentist, setDentist] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const { toast, showToast, hideToast } = useToast();
 
   const dentistId = route.params?.dentistId || route.params?.dentist?.id;
 
@@ -150,8 +154,9 @@ const DentistDetailScreen = () => {
         setDentist(mappedDentist);
         setError(null);
       } catch (err) {
-        console.error('❌ [DentistDetail] Error fetching dentist:', err);
+        console.log('🔍 [DentistDetail] Error fetching dentist:', err.message);
         setError(err.message || 'Gagal memuat detail dokter');
+        showToast('Gagal memuat data dokter', 'error');
       } finally {
         setLoading(false);
       }
@@ -566,6 +571,13 @@ const DentistDetailScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

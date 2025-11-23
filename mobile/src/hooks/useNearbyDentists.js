@@ -66,7 +66,7 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
         throw new Error('Koordinat tidak tersedia');
       }
 
-      console.log('🦷 [useNearbyDentists] Fetching dentists with coords:', currentCoords);
+      console.log('🦷 [useNearbyDentists] Fetching dentists with coords:', JSON.stringify(currentCoords));
       
       const response = await getNearbyDentists({
         latitude: currentCoords.latitude,
@@ -77,10 +77,6 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
 
       console.log('🦷 [useNearbyDentists] Got response type:', typeof response);
       console.log('🦷 [useNearbyDentists] Response keys:', response ? Object.keys(response) : 'null');
-      console.log('🦷 [useNearbyDentists] Response:', JSON.stringify(response, null, 2).substring(0, 500));
-      console.log('🦷 [useNearbyDentists] Response.dentists exists?:', !!response?.dentists);
-      console.log('🦷 [useNearbyDentists] Response.dentists type:', typeof response?.dentists);
-      console.log('🦷 [useNearbyDentists] Response.dentists isArray?:', Array.isArray(response?.dentists));
       console.log('🦷 [useNearbyDentists] Dentists count:', response?.dentists?.length);
 
       // Service already unwraps response.data.data, so response = { dentists, pagination, search }
@@ -89,13 +85,13 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
       
       if (!items || items.length === 0) {
         if (!options.isDefaultAttempt) {
-          console.info('ℹ️ [useNearbyDentists] No dentists near coords, retrying with default Jakarta location');
+          console.log('ℹ️ [useNearbyDentists] No dentists near coords, retrying with default Jakarta location');
           setUsedDefaultLocation(true);
           await fetchWithCoords(DEFAULT_COORDS, { isDefaultAttempt: true });
           return;
         }
 
-        console.warn('⚠️ [useNearbyDentists] No dentists found in database even with default location');
+        console.log('ℹ️ [useNearbyDentists] No dentists found in database even with default location');
         setDentists([]);
         setUsedMockData(false);
         setUsedDefaultLocation(true);
@@ -139,17 +135,17 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
           
           if (isValidIndonesia) {
             positionCoords = position.coords;
-            console.log('✅ [useNearbyDentists] Got valid Indonesia coordinates:', positionCoords);
+            console.log('✅ [useNearbyDentists] Got valid Indonesia coordinates');
             setUsedDefaultLocation(false);
           } else {
             console.log('ℹ️ [useNearbyDentists] GPS location is outside Indonesia (simulator detected)');
-            console.log('ℹ️ [useNearbyDentists] Received GPS:', { lat, lon });
+            console.log('ℹ️ [useNearbyDentists] Received GPS: lat=' + lat + ', lon=' + lon);
             console.log('📍 [useNearbyDentists] Using Jakarta default for better results');
             positionCoords = DEFAULT_COORDS;
             setUsedDefaultLocation(true);
           }
         } catch (positionError) {
-          console.error('❌ [useNearbyDentists] Failed to get position:', positionError);
+          console.log('🔍 [useNearbyDentists] Failed to get position:', positionError.message);
           console.log('📍 [useNearbyDentists] Falling back to Jakarta coordinates');
           positionCoords = DEFAULT_COORDS;
           setUsedDefaultLocation(true);
@@ -163,8 +159,7 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
       setCoords(positionCoords);
       await fetchWithCoords(positionCoords);
     } catch (err) {
-      console.error('❌ [useNearbyDentists] Failed to load nearby dentists:', err);
-      console.error('❌ [useNearbyDentists] Error details:', err.message, err.stack);
+      console.log('🔍 [useNearbyDentists] Failed to load nearby dentists:', err.message);
       const errorMessage = err.message || 'Tidak dapat memuat dokter terdekat.';
       setError(errorMessage);
       setDentists([]);
@@ -185,8 +180,7 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
     try {
       await fetchWithCoords(coords);
     } catch (err) {
-      console.error('❌ [useNearbyDentists] Failed to refresh nearby dentists:', err);
-      console.error('❌ [useNearbyDentists] Error details:', err.message, err.stack);
+      console.log('🔍 [useNearbyDentists] Failed to refresh nearby dentists:', err.message);
       const errorMessage = err.message || 'Tidak dapat menyegarkan daftar dokter.';
       setError(errorMessage);
       setDentists([]);
