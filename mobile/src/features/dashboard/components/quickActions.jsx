@@ -1,7 +1,21 @@
 import React from 'react';
-import { View, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity, Dimensions, Platform, PixelRatio } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+// --- UTILS RESPONSIVE (Sama seperti komponen sebelumnya) ---
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = SCREEN_WIDTH / 375; // Base width iPhone 11/Pro
+
+const normalize = (size) => {
+  const newSize = size * scale;
+  if (Platform.OS === 'ios') {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+  } else {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 1;
+  }
+};
+// -----------------------------------------------------------
 
 const QuickActions = ({ actions = [] }) => {
   const theme = useTheme();
@@ -15,7 +29,7 @@ const QuickActions = ({ actions = [] }) => {
           backgroundColor: '#F8FAFC',
           borderRadius: 24,
           paddingHorizontal: 16,
-          paddingVertical: 14,
+          paddingVertical: normalize(16), // Padding vertikal responsif
           borderWidth: 1,
           borderColor: 'rgba(148,163,184,0.25)',
         }}
@@ -25,18 +39,18 @@ const QuickActions = ({ actions = [] }) => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginBottom: 12,
+            marginBottom: normalize(14),
           }}
         >
           <View style={{ flex: 1 }}>
             <Text
               style={{
                 color: '#64748B',
-                fontSize: 11,
-                fontWeight: '600',
+                fontSize: normalize(10), // Font diperkecil sedikit agar rapi
+                fontWeight: '700',
                 textTransform: 'uppercase',
-                letterSpacing: 0.8,
-                marginBottom: 2,
+                letterSpacing: 1,
+                marginBottom: 4,
               }}
             >
               Quick actions
@@ -44,17 +58,18 @@ const QuickActions = ({ actions = [] }) => {
             <Text
               style={{
                 color: '#0F172A',
-                fontSize: 16,
-                fontWeight: '700',
+                fontSize: normalize(16),
+                fontWeight: '800',
               }}
             >
-              Akses kilat
+              Akses Kilat
             </Text>
             <Text
               style={{
                 color: '#94A3B8',
                 marginTop: 2,
-                fontSize: 11,
+                fontSize: normalize(11),
+                maxWidth: '90%', // Mencegah teks terlalu panjang di layar kecil
               }}
             >
               Mulai perawatanmu dalam sekali sentuh
@@ -62,42 +77,42 @@ const QuickActions = ({ actions = [] }) => {
           </View>
         </View>
 
-        {/* Actions */}
+        {/* Actions Grid */}
         <View
           style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
-            justifyContent: 'space-between',
+            justifyContent: 'space-between', // Menyebar item secara merata
             marginTop: 8,
           }}
         >
-          {actions.map((action) => (
+          {actions.map((action, index) => (
             <TouchableOpacity
-              key={action.key}
+              key={action.key || index}
               onPress={action.onPress}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               style={{
-                flexBasis: '32%',
-                maxWidth: '32%',
+                // 30% lebih aman daripada 32% untuk layout 3 kolom di layar sempit
+                width: '30%', 
                 alignItems: 'center',
-                marginBottom: 16,
+                marginBottom: normalize(16),
               }}
             >
               <View
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 18,
+                  width: normalize(50), // Ukuran box responsif
+                  height: normalize(50),
+                  borderRadius: normalize(18),
                   alignItems: 'center',
                   justifyContent: 'center',
                   backgroundColor: action.tint || 'rgba(15,23,42,0.03)',
                   borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.4)',
+                  borderColor: 'rgba(148,163,184,0.3)', // Border lebih subtle
                 }}
               >
                 <MaterialCommunityIcons
                   name={action.icon}
-                  size={22}
+                  size={normalize(22)} // Icon ikut membesar/mengecil
                   color={action.iconColor || theme.colors.primary}
                 />
               </View>
@@ -105,16 +120,24 @@ const QuickActions = ({ actions = [] }) => {
                 style={{
                   color: '#0F172A',
                   fontWeight: '600',
-                  fontSize: 12,
+                  fontSize: normalize(11),
                   marginTop: 8,
                   textAlign: 'center',
+                  lineHeight: normalize(16),
                 }}
-                numberOfLines={2}
+                numberOfLines={2} // Maksimal 2 baris agar layout tidak rusak
               >
                 {action.label}
               </Text>
             </TouchableOpacity>
           ))}
+          
+          {/* Trik Layout:
+             Jika jumlah item bukan kelipatan 3 (misal ada 4 atau 5 item),
+             justifyContent: 'space-between' bisa membuat item terakhir melayang di tengah atau kanan.
+             View kosong ini memastikan item terakhir tetap rata kiri jika baris tidak penuh.
+          */}
+          {actions.length % 3 !== 0 && <View style={{ width: '30%' }} />}
         </View>
       </View>
     </View>

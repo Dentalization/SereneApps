@@ -117,7 +117,15 @@ const normalizeClinic = (clinic, index = 0) => {
   };
 };
 
-export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = {}) => {
+export const useNearbyClinics = ({
+  radius = 10,
+  limit = 6,
+  autoFetch = true,
+  allowRadiusExpansion = true,
+  maxRadiusMultiplier = 2.5,
+  strictRadius = false,
+  fallbackToDefault = true,
+} = {}) => {
   const [clinics, setClinics] = useState([]);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState(null);
@@ -134,7 +142,7 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
         throw new Error('Koordinat tidak tersedia');
       }
 
-      const effectiveRadius = radius * radiusMultiplier;
+      const effectiveRadius = allowRadiusExpansion ? radius * radiusMultiplier : radius;
       console.log(
         '🏥 [useNearbyClinics] Fetching with coords:',
         JSON.stringify(currentCoords),
@@ -156,9 +164,19 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
       console.log('🏥 [useNearbyClinics] Clinics count:', response?.clinics?.length);
 
       const items = response?.clinics || [];
+      const normalized = items.map((clinic, index) => normalizeClinic(clinic, index));
 
-      if (!items || items.length === 0) {
-        if (radiusMultiplier < 2.5) {
+      const allowedDistance = strictRadius ? radius : effectiveRadius;
+      const acceptableClinics = normalized.filter((clinic) => {
+        if (clinic.distanceKm == null) {
+          return !strictRadius;
+        }
+        return clinic.distanceKm <= allowedDistance;
+      });
+
+      if (acceptableClinics.length === 0) {
+        const canExpand = allowRadiusExpansion && radiusMultiplier < maxRadiusMultiplier;
+        if (canExpand) {
           console.log('ℹ️ [useNearbyClinics] Expanding radius for more results');
           await fetchWithCoords(currentCoords, {
             attempt: attempt + 1,
@@ -168,11 +186,15 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
           return;
         }
 
-        if (!isDefaultAttempt) {
+        if (!isDefaultAttempt && fallbackToDefault) {
           console.log('ℹ️ [useNearbyClinics] No clinics found, retrying with Jakarta default coordinates');
           setUsedDefaultLocation(true);
           setCoords(DEFAULT_COORDS);
-          await fetchWithCoords(DEFAULT_COORDS, { attempt: attempt + 1, isDefaultAttempt: true });
+          await fetchWithCoords(DEFAULT_COORDS, {
+            attempt: attempt + 1,
+            radiusMultiplier: 1,
+            isDefaultAttempt: true,
+          });
           return;
         }
 
@@ -183,13 +205,19 @@ export const useNearbyClinics = ({ radius = 10, limit = 6, autoFetch = true } = 
         return;
       }
 
-      const normalized = items.map((clinic, index) => normalizeClinic(clinic, index));
-      console.log('🏥 [useNearbyClinics] Setting clinics:', normalized.length);
-      setClinics(normalized);
+      const sorted = acceptableClinics.sort((a, b) => {
+        const distA = a.distanceKm ?? Number.POSITIVE_INFINITY;
+        const distB = b.distanceKm ?? Number.POSITIVE_INFINITY;
+        return distA - distB;
+      });
+
+      const limitedClinics = sorted.slice(0, limit);
+      console.log('🏥 [useNearbyClinics] Setting clinics:', limitedClinics.length);
+      setClinics(limitedClinics);
       setUsedMockData(false);
       setError(null);
     },
-    [limit, radius],
+    [allowRadiusExpansion, fallbackToDefault, limit, maxRadiusMultiplier, radius, strictRadius],
   );
 
   const requestLocationAndFetch = useCallback(async () => {

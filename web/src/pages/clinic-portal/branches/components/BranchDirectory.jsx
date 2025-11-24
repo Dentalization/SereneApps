@@ -304,6 +304,18 @@ const BranchDirectory = ({ branches, onEdit, onDelete, onAdd }) => {
                     </div>
                   </div>
 
+                  {branch?.ownerEmail && (
+                    <div className="flex items-center gap-3">
+                      <AppIcon name="Mail" size={16} className="text-secondary flex-shrink-0" />
+                      <div>
+                        <p className="text-sm text-primary font-medium">Owner Email</p>
+                        <p className="text-sm text-secondary break-all">
+                          {branch.ownerEmail}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {branch?.operatingHours && (
                     <div className="flex items-center gap-3">
                       <AppIcon name="Clock" size={16} className="text-secondary flex-shrink-0" />

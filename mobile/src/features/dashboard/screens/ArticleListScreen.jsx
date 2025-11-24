@@ -3,6 +3,9 @@ import { View, ScrollView, TouchableOpacity, Image, Linking, StatusBar } from 'r
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+// 1. Import hook ini
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
+
 import { formatArticleRelativeTime } from '../components/article';
 import { SAMPLE_ARTICLES } from '../data/articles';
 
@@ -10,6 +13,9 @@ const ArticleListScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  
+  // 2. Panggil hook ini agar variabel 'insets' tersedia
+  const insets = useSafeAreaInsets(); 
 
   const articles = useMemo(
     () => (route.params?.articles?.length ? route.params.articles : SAMPLE_ARTICLES),
@@ -29,13 +35,15 @@ const ArticleListScreen = () => {
       <View
         style={{
           backgroundColor: theme.colors.primary,
-          paddingTop: 48,
+          // 3. Sekarang baris ini akan berjalan normal
+          paddingTop: insets.top + 2, 
           paddingBottom: 24,
           paddingHorizontal: 20,
           borderBottomLeftRadius: 24,
           borderBottomRightRadius: 24,
         }}
       >
+        {/* ... sisa kode sama persis ... */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}

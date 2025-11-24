@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { View, ScrollView, StyleSheet, Platform } from 'react-native'; // Ganti SafeAreaView jadi View biasa agar kontrol manual lebih presisi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -23,7 +23,7 @@ import ValidationToast from '../components/ValidationToast';
 
 const SettingsScreen = ({ navigation }) => {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const insets = useSafeAreaInsets(); // Kita gunakan variabel ini
   const dispatch = useDispatch();
   const { user, authLevel } = useSelector((state) => state.auth);
   const { isDarkMode, language } = useSelector((state) => state.settings);
@@ -72,9 +72,17 @@ const SettingsScreen = ({ navigation }) => {
   ].filter((item) => item.visible);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+    // Ubah SafeAreaView menjadi View biasa agar kita bisa kontrol padding sendiri
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: 140 }]}
+        contentContainerStyle={[
+          styles.content, 
+          { 
+            paddingBottom: 140,
+            // PERBAIKAN DISINI: Menambahkan insets.top agar turun kebawah sesuai notch HP
+            paddingTop: insets.top + 24 
+          }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroWrapper}>
@@ -288,17 +296,17 @@ const SettingsScreen = ({ navigation }) => {
         message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
   },
   content: {
     paddingBottom: 32,
-    paddingTop: 24,
+    // paddingTop statis dihapus dari sini, dipindah ke inline style
   },
   heroWrapper: {
     marginHorizontal: 16,

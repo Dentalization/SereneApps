@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -71,7 +70,8 @@ const OTPScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+    // PERBAIKAN: Ganti SafeAreaView dengan View + paddingTop manual
+    <View style={[styles.safeArea, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -188,7 +188,7 @@ const OTPScreen = ({ navigation, route }) => {
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
         status="info"
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

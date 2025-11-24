@@ -19,8 +19,12 @@ const ContactSupportScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser hero + konten sedikit ke bawah */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+      
+      {/* PERBAIKAN: 
+        Hapus padding top manual di sini. 
+        Biarkan InfoScreenLayout mengisi layar penuh (immersive) agar background header menyentuh status bar.
+      */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: 'Hubungi care@serene.id',
@@ -120,7 +124,9 @@ const ContactSupportScreen = ({ navigation }) => {
         </InfoScreenLayout>
       </View>
 
-      {/* Back button overlay konsisten dengan screen lain */}
+      {/* Floating Back Button
+        Posisinya sudah benar menggunakan absolute + insets.top agar aman dari notch 
+      */}
       <View
         style={{
           position: 'absolute',

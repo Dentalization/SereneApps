@@ -10,6 +10,7 @@ import BranchAddModal from './components/BranchAddModal';
 import BranchEditModal from './components/BranchEditModal';
 import BranchDeleteDialog from './components/BranchDeleteDialog';
 import clinicService from '../../../services/clinicService';
+import httpClient from '../../../utils/httpClient';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -25,26 +26,42 @@ const BranchManagement = () => {
       console.log('🔍 Branch Access Check: No user data yet');
       return false;
     }
-    
-    const userRole = user.role || (user.roles && user.roles[0]);
-    const hasOwnerAccess = userRole === 'owner' || (user.roles && user.roles.includes('owner'));
-    const hasManagerAccess = userRole === 'manager' || (user.roles && user.roles.includes('manager'));
+
+    const normalizedRoles = Array.isArray(user.roles)
+      ? user.roles
+      : user.role
+      ? [user.role]
+      : [];
+
+    const detectedRole = user.role || normalizedRoles[0] || null;
+    const ownerRoles = new Set(['owner', 'clinic_owner']);
+    const managerRoles = new Set(['manager', 'clinic_manager', 'clinic_admin']);
+
+    const hasOwnerAccess =
+      ownerRoles.has(detectedRole) ||
+      normalizedRoles.some((role) => ownerRoles.has(role));
+    const hasManagerAccess =
+      managerRoles.has(detectedRole) ||
+      normalizedRoles.some((role) => managerRoles.has(role));
+
     const finalAccess = hasOwnerAccess || hasManagerAccess;
-    
+
     console.log('🔍 Branch Access Check:', {
-      user: user,
+      user,
       role: user?.role,
       roles: user?.roles,
-      detectedRole: userRole,
+      detectedRole,
+      normalizedRoles,
       hasOwnerAccess,
       hasManagerAccess,
-      finalAccess
+      finalAccess,
     });
-    
+
     return finalAccess;
   }, [user]);
 
   const [branches, setBranches] = useState([]);
+  const [ownerInfo, setOwnerInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -107,9 +124,33 @@ const BranchManagement = () => {
   //   }
   // }, [hasAccess, user, navigate]);
 
-  // Fetch branches data - using existing clinic service
-  const fetchBranches = async () => {
-    console.log('🏢 Fetching branches data directly from branches endpoint...');
+const normalizeBranch = (branch, ownerFallback = null) => {
+  if (!branch || typeof branch !== 'object') return null;
+  const normalized = {
+    ...branch,
+    id: branch.id?.toString?.() || branch.id,
+    clinicProfileId: branch.clinicProfileId?.toString?.() || branch.clinicProfileId,
+  };
+
+  return {
+    ...normalized,
+    ownerEmail: normalized.ownerEmail || ownerFallback?.email || null,
+    ownerName: normalized.ownerName || ownerFallback?.name || null,
+    ownerWhatsapp: normalized.ownerWhatsapp || ownerFallback?.whatsapp || null,
+  };
+};
+
+  const extractBranchesFromPayload = (payload) => {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload.branches)) return payload.branches;
+    if (Array.isArray(payload.data?.branches)) return payload.data.branches;
+    return [];
+  };
+
+  // Fetch branches data - using centralized clinic service
+  const fetchBranches = useCallback(async () => {
+    console.log('🏢 Fetching branches data via clinicService...');
     loadStartRef.current = Date.now();
     setLoading(true);
     setError(null);
@@ -123,64 +164,27 @@ const BranchManagement = () => {
     }
 
     try {
-      // Use direct branches endpoint for more reliable data
-      const response = await fetch('http://localhost:4000/v1/clinic/branches', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const data = await clinicService.getBranches();
+      const owner = data?.owner || data?.data?.owner || null;
+      const branchList = extractBranchesFromPayload(data)
+        .map((branch) => normalizeBranch(branch, owner))
+        .filter(Boolean);
 
-      console.log('🌐 Response status:', response.status);
-      console.log('🌐 Response ok:', response.ok);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setShowTokenExpiredModal(true);
-          return;
-        }
-        const errorText = await response.text();
-        console.error('❌ Response error text:', errorText);
-        throw new Error(`Failed to fetch branches: ${response.status}`);
-      }
-
-      const responseText = await response.text();
-      console.log('📄 Raw response text:', responseText);
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('❌ JSON parse error:', parseError);
-        console.error('❌ Response text that failed to parse:', responseText);
-        throw new Error('Invalid JSON response from server');
-      }
-
-      console.log('🏢 Branches API response:', data);
-      console.log('🏢 Sample branch data:', data.branches?.[0]);
-      
-      if (data && data.branches && Array.isArray(data.branches)) {
-        setBranches(data.branches);
-        console.log('✅ Loaded branches directly:', data.branches.length);
-        console.log('🔍 First branch structure:', data.branches[0]);
-      } else {
-        console.warn('⚠️ No branches data, starting with empty array');
-        setBranches([]);
-      }
+      console.log('🏢 Branches API response:', branchList.length);
+      setOwnerInfo(owner);
+      setBranches(branchList);
     } catch (error) {
       console.error('❌ Error fetching branches:', error);
-      console.error('❌ Error stack:', error.stack);
-      // Don't show error immediately, maybe there are no branches yet
       setBranches([]);
       setError(`Failed to load branches: ${error.message}`);
+      setOwnerInfo(null);
     } finally {
       finishLoading();
     }
-  };
+  }, [finishLoading]);
 
   // Fetch revenue data for all branches
-  const fetchRevenueData = async () => {
+  const fetchRevenueData = useCallback(async () => {
     console.log('💰 Fetching real revenue data from API...');
     setRevenueLoading(true);
     
@@ -191,19 +195,20 @@ const BranchManagement = () => {
         return;
       }
 
-      // Try to fetch real revenue data from API
-      const cacheBuster = `?_t=${Date.now()}`;
-      const response = await fetch(`http://localhost:4000/v1/clinic/analytics/revenue-by-branch${cacheBuster}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await httpClient.get('/clinic/analytics/revenue-by-branch', {
+        params: { _t: Date.now() },
       });
 
-      if (response.ok) {
-        const revenueResult = await response.json();
+      if (response?.data) {
+        const revenueResult = response.data?.data || response.data;
         console.log('💰 Real revenue data:', revenueResult);
-        setRevenueData(revenueResult.data || []);
+        if (Array.isArray(revenueResult)) {
+          setRevenueData(revenueResult);
+        } else if (Array.isArray(revenueResult?.branches)) {
+          setRevenueData(revenueResult.branches);
+        } else {
+          setRevenueData([]);
+        }
       } else {
         // Fallback to calculated revenue data based on real branches with realistic numbers
         console.log('💰 Using calculated revenue data for real branches');
@@ -266,19 +271,19 @@ const BranchManagement = () => {
     } finally {
       setRevenueLoading(false);
     }
-  };
+  }, [branches]);
 
   useEffect(() => {
     if (hasAccess) {
       fetchBranches();
     }
-  }, [hasAccess]);
+  }, [hasAccess, fetchBranches]);
 
   useEffect(() => {
     if (branches.length > 0) {
       fetchRevenueData();
     }
-  }, [branches]);
+  }, [branches, fetchRevenueData]);
 
   // Handle add branch
   const handleAddBranch = async (formData) => {
@@ -322,24 +327,9 @@ const BranchManagement = () => {
       console.log('📤 Sending branch data:', branchData);
 
       // API call to add branch
-      const response = await fetch('http://localhost:4000/v1/clinic/branches', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(branchData)
-      });
-
-      console.log('📥 Add branch response status:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to add branch');
-      }
-
-      const result = await response.json();
+      const result = await clinicService.createBranch(branchData);
       console.log('✅ Branch added successfully:', result);
+      const createdBranch = normalizeBranch(result?.branch || result, ownerInfo);
       
       setAddBranchModal(false);
       setNotice({
@@ -347,7 +337,12 @@ const BranchManagement = () => {
         message: `Branch "${formData.branchName}" has been added successfully`
       });
       
-      // Refresh data immediately
+      setBranches((prev) => {
+        if (createdBranch) {
+          return [createdBranch, ...prev];
+        }
+        return prev;
+      });
       await fetchBranches();
       
     } catch (error) {
@@ -371,22 +366,10 @@ const BranchManagement = () => {
       }
 
       // API call to update branch
-      const response = await fetch(`http://localhost:4000/v1/clinic/branches/${branchId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update branch');
-      }
-
-      const updatedBranch = await response.json();
+      const updatedBranch = await clinicService.updateBranch(branchId, formData);
+      const normalizedBranch = normalizeBranch(updatedBranch?.branch || updatedBranch, ownerInfo);
       setBranches(prev => prev.map(branch => 
-        branch.id === branchId ? updatedBranch : branch
+        branch.id === branchId ? normalizedBranch || branch : branch
       ));
       setEditBranchModal(null);
       setNotice({
@@ -413,18 +396,7 @@ const BranchManagement = () => {
         return;
       }
 
-      // API call to delete branch
-      const response = await fetch(`http://localhost:4000/v1/clinic/branches/${branchId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete branch');
-      }
+      await clinicService.deleteBranch(branchId);
 
       setBranches(prev => prev.filter(branch => branch.id !== branchId));
       setDeleteBranchModal(null);
@@ -459,7 +431,7 @@ const BranchManagement = () => {
 
     return {
       totalBranches: branches.length,
-      activeBranches: branches.filter(b => b.status === 'active').length,
+      activeBranches: branches.filter(b => (b.status === 'active') || b.isActive === true).length,
       totalRevenue,
       avgGrowth,
       totalTransactions,
@@ -659,6 +631,28 @@ const BranchManagement = () => {
                 <p className="text-sm text-secondary max-w-2xl">
                   {t('clinic.branches.subtitle') || 'Kelola cabang klinik, monitor performa, dan analisis pendapatan'}
                 </p>
+                {ownerInfo && (
+                  <div className="text-xs sm:text-sm text-secondary flex flex-wrap gap-4 items-center">
+                    <span className="flex items-center gap-2">
+                      <AppIcon name="UserCircle" size={14} />
+                      <strong className="text-primary">Owner:</strong> {ownerInfo.name || '—'}
+                    </span>
+                    {ownerInfo.email && (
+                      <span className="flex items-center gap-2">
+                        <AppIcon name="Mail" size={14} />
+                        <a href={`mailto:${ownerInfo.email}`} className="text-accent hover:underline">
+                          {ownerInfo.email}
+                        </a>
+                      </span>
+                    )}
+                    {ownerInfo.whatsapp && (
+                      <span className="flex items-center gap-2">
+                        <AppIcon name="PhoneCall" size={14} />
+                        {ownerInfo.whatsapp}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">

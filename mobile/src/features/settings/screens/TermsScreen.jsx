@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { List, Text, useTheme, IconButton } from 'react-native-paper';
+import { Chip, List, Text, useTheme, IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import InfoScreenLayout from '../components/InfoScreenLayout';
 import SettingsSection from '../components/SettingsSection';
@@ -9,83 +9,95 @@ const TermsScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  const obligations = [
-    {
-      title: 'Penggunaan layanan',
-      description: 'Anda wajib memberikan data yang akurat untuk diagnosa dan janji temu.',
-      icon: 'check-decagram',
-    },
-    {
-      title: 'Kerahasiaan akun',
-      description: 'Jaga OTP, PIN, dan perangkat Anda agar akses tidak disalahgunakan.',
-      icon: 'shield-lock',
-    },
-    {
-      title: 'Pembatalan janji',
-      description: 'Batal minimal 24 jam sebelumnya untuk menghindari biaya no-show.',
-      icon: 'calendar-remove',
-    },
-  ];
-
-  const disclaimers = [
-    'Serene tidak menggantikan konsultasi langsung dengan dokter gigi.',
-    'Hasil AI diagnosis bersifat saran awal, bukan keputusan final.',
-    'Pelayanan darurat harus menghubungi fasilitas kesehatan terdekat.',
+  const usageRules = [
+    'Dilarang menggunakan akun palsu',
+    'Tidak menyalahgunakan fitur konsultasi',
+    'Menghargai hak kekayaan intelektual',
+    'Mematuhi etika komunikasi medis',
   ];
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser hero + konten sedikit ke bawah */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+      
+      {/* PERBAIKAN: Hapus padding top manual. Biarkan layout full screen (immersive). */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: 'Syarat & Ketentuan',
             subtitle:
-              'Ketentuan ini mengatur penggunaan SereneApps dan layanan klinik mitra.',
-            badgeLabel: 'Efektif 1 Juli 2024',
-            badgeIcon: 'scale-balance',
+              'Perjanjian penggunaan layanan antara Anda (Pasien) dan Serene Dental Care.',
+            badgeLabel: 'Efektif 1 Jan 2024',
+            badgeIcon: 'file-document-check',
             highlights: [
-              { icon: 'account-check', label: 'Persetujuan', value: 'Digital' },
-              { icon: 'book-account', label: 'Pasal', value: '12 Bab' },
+              { icon: 'scale-balance', label: 'Hukum', value: 'Indonesia' },
+              { icon: 'account-check', label: 'Usia', value: '17+' },
             ],
           }}
-          footerText="Dengan melanjutkan, Anda menyetujui seluruh ketentuan ini."
+          footerText="Dengan melanjutkan, Anda menyetujui seluruh poin di atas."
         >
           <SettingsSection
-            title="KEWAJIBAN PENGGUNA"
-            description="Pastikan aplikasi digunakan secara bertanggung jawab."
+            title="KETENTUAN UMUM"
+            description="Prinsip dasar penggunaan aplikasi."
           >
-            {obligations.map((item) => (
-              <List.Item
-                key={item.title}
-                title={item.title}
-                description={item.description}
-                left={(props) => <List.Icon {...props} icon={item.icon} />}
-              />
-            ))}
+            <View style={styles.paragraph}>
+              <Text
+                variant="bodyMedium"
+                style={{ color: theme.colors.onSurfaceVariant }}
+              >
+                Aplikasi SereneApps adalah platform pendukung kesehatan gigi.
+                Layanan ini tidak menggantikan penanganan gawat darurat medis.
+                Segera ke IGD rumah sakit terdekat untuk kondisi kritis.
+              </Text>
+            </View>
+            <View style={styles.chipRow}>
+              {usageRules.map((item) => (
+                <Chip key={item} icon="check" style={styles.chip}>
+                  {item}
+                </Chip>
+              ))}
+            </View>
           </SettingsSection>
 
           <SettingsSection
-            title="BATASAN LAYANAN"
-            description="Kapan Anda harus menghubungi klinik secara langsung."
+            title="LAYANAN MEDIS"
+            description="Batasan tanggung jawab klinis."
           >
-            {disclaimers.map((text) => (
-              <View key={text} style={styles.bulletRow}>
-                <Text style={[styles.bullet, { color: theme.colors.primary }]}>
-                  •
-                </Text>
-                <Text
-                  style={[styles.bulletText, { color: theme.colors.onSurface }]}
-                >
-                  {text}
-                </Text>
-              </View>
-            ))}
+            <List.Item
+              title="Telekonsultasi"
+              description="Diagnosis via chat/video bersifat sementara dan wajib diverifikasi dengan kunjungan fisik."
+              left={(props) => <List.Icon {...props} icon="doctor" />}
+            />
+            <List.Item
+              title="Rekam Medis"
+              description="Anda memberikan izin kepada kami untuk menyimpan dan mengolah data kesehatan sesuai permenkes."
+              left={(props) => <List.Icon {...props} icon="file-medical" />}
+            />
+            <List.Item
+              title="Resep Digital"
+              description="Hanya diberikan setelah verifikasi identitas dan kondisi medis yang memadai."
+              left={(props) => <List.Icon {...props} icon="pill" />}
+            />
+          </SettingsSection>
+
+          <SettingsSection
+            title="PEMBAYARAN & PEMBATALAN"
+            description="Kebijakan transaksi finansial."
+          >
+            <List.Item
+              title="Deposit Janji Temu"
+              description="Deposit hangus jika pembatalan dilakukan kurang dari 24 jam sebelum jadwal."
+              left={(props) => <List.Icon {...props} icon="cash-remove" />}
+            />
+            <List.Item
+              title="Refund"
+              description="Proses pengembalian dana membutuhkan waktu 3-5 hari kerja."
+              left={(props) => <List.Icon {...props} icon="refresh-circle" />}
+            />
           </SettingsSection>
         </InfoScreenLayout>
       </View>
 
-      {/* Back button overlay (sama gaya dengan screen lain) */}
+      {/* Floating Back Button - Posisinya sudah benar */}
       <View
         style={{
           position: 'absolute',
@@ -112,19 +124,19 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  bulletRow: {
-    flexDirection: 'row',
+  paragraph: {
     paddingHorizontal: 16,
-    marginBottom: 10,
+    paddingBottom: 12,
   },
-  bullet: {
-    fontSize: 20,
-    marginRight: 10,
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
-  bulletText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
+  chip: {
+    marginHorizontal: 4,
+    marginBottom: 8,
   },
 });
 

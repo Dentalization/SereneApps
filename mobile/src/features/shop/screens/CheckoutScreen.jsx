@@ -3,6 +3,9 @@ import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, Button, useTheme, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+// 1. IMPORT DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import CheckoutSummary from '../components/CheckoutSummary';
 import { SHOP_PRODUCTS } from '../data/products';
 import { formatCurrency } from '../../../utils/formatters';
@@ -10,6 +13,9 @@ import { formatCurrency } from '../../../utils/formatters';
 const CheckoutScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  
+  // 2. DEFINISI INSETS DITAMBAHKAN
+  const insets = useSafeAreaInsets();
 
   const items = [
     { name: SHOP_PRODUCTS[0].name, qty: 2, price: SHOP_PRODUCTS[0].price },
@@ -23,7 +29,14 @@ const CheckoutScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-      <View style={{ paddingTop: 48, paddingHorizontal: 20, paddingBottom: 16, backgroundColor: '#F8FAFC' }}>
+      
+      <View style={{ 
+        // 3. KODE INI SEKARANG AMAN
+        paddingTop: insets.top + 2, 
+        paddingHorizontal: 20, 
+        paddingBottom: 16, 
+        backgroundColor: '#F8FAFC' 
+      }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 }}
@@ -31,6 +44,7 @@ const CheckoutScreen = () => {
           <MaterialCommunityIcons name='arrow-left' size={24} color='#0F172A' />
         </TouchableOpacity>
       </View>
+
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 160 }}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A', marginBottom: 20 }}>Pembayaran</Text>
 

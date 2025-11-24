@@ -18,8 +18,9 @@ const FAQCategoryScreen = ({ route, navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser hero + konten sedikit ke bawah agar tidak ketiban back button */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top}}>
+      
+      {/* PERBAIKAN: Hapus padding top manual. Biarkan layout full screen (immersive). */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: category.title,
@@ -69,7 +70,7 @@ const FAQCategoryScreen = ({ route, navigation }) => {
         </InfoScreenLayout>
       </View>
 
-      {/* Back button overlay sama seperti FAQCategoriesScreen */}
+      {/* Floating Back Button - Posisinya sudah benar */}
       <View
         style={{
           position: 'absolute',

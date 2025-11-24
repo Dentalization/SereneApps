@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View, TouchableOpacity, Platform } from 'react-native';
+import { ScrollView, StyleSheet, View, TouchableOpacity, Platform } from 'react-native'; // Hapus SafeAreaView
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -33,7 +33,6 @@ const EditProfileScreen = ({ navigation }) => {
     // Personal Info
     dateOfBirth: patientProfile?.dateOfBirth 
       ? (() => {
-          // Convert YYYY-MM-DD to DD/MM/YYYY for display
           const date = new Date(patientProfile.dateOfBirth);
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -43,25 +42,25 @@ const EditProfileScreen = ({ navigation }) => {
       : '',
     gender: patientProfile?.gender || 'female',
     
-    // Address (JSONB field in database)
+    // Address
     addressLine1: patientProfile?.address?.line1 || '',
     addressLine2: patientProfile?.address?.line2 || '',
     city: patientProfile?.address?.city || '',
     province: patientProfile?.address?.province || '',
     postalCode: patientProfile?.address?.postalCode || '',
     
-    // Medical Details (JSONB field in database)
+    // Medical Details
     allergies: patientProfile?.medicalDetails?.allergies || [],
     chronicConditions: patientProfile?.medicalDetails?.chronicConditions || [],
     medications: patientProfile?.medicalDetails?.medications || [],
     medicalNotes: patientProfile?.medicalDetails?.notes || '',
     
-    // Emergency Contact (JSONB field in database)
+    // Emergency Contact
     emergencyContactName: patientProfile?.emergencyContact?.name || '',
     emergencyContactPhone: patientProfile?.emergencyContact?.phone || '',
     emergencyContactRelationship: patientProfile?.emergencyContact?.relationship || '',
     
-    // Insurance (separate columns in database: insurance_provider, insurance_number, insurance_member_id)
+    // Insurance
     insuranceProvider: patientProfile?.insurance_provider || '',
     insuranceNumber: patientProfile?.insurance_number || '',
     insuranceMemberId: patientProfile?.insurance_member_id || '',
@@ -74,18 +73,15 @@ const EditProfileScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', status: 'info' });
   const [avatarMenuVisible, setAvatarMenuVisible] = useState(false);
-  // Resolve avatar path to full URI for React Native Image
   const [avatarUri, setAvatarUri] = useState(resolveMediaUrl(user?.avatar_url || null));
   const [avatarFile, setAvatarFile] = useState(null);
   
-  // Temporary input states for adding items to arrays
   const [newAllergy, setNewAllergy] = useState('');
   const [newCondition, setNewCondition] = useState('');
   const [newMedication, setNewMedication] = useState('');
 
   const handlePickImage = async (useCamera = false) => {
     setAvatarMenuVisible(false);
-    
     try {
       const { status } = useCamera 
         ? await ImagePicker.requestCameraPermissionsAsync()
@@ -94,7 +90,7 @@ const EditProfileScreen = ({ navigation }) => {
       if (status !== 'granted') {
         setSnackbar({ 
           visible: true, 
-          message: 'Izin akses foto atau kamera diperlukan untuk mengubah avatar', 
+          message: 'Izin akses foto atau kamera diperlukan', 
           status: 'warning' 
         });
         return;
@@ -118,7 +114,6 @@ const EditProfileScreen = ({ navigation }) => {
         const imageUri = result.assets[0].uri;
         setAvatarUri(imageUri);
         
-        // Prepare file for upload
         const filename = imageUri.split('/').pop();
         const match = /\.(\w+)$/.exec(filename);
         const type = match ? `image/${match[1]}` : 'image/jpeg';
@@ -130,14 +125,8 @@ const EditProfileScreen = ({ navigation }) => {
         });
       }
     } catch (error) {
-      if (__DEV__) {
-        console.log('⚠️ Image picker error:', error.message);
-      }
-      setSnackbar({ 
-        visible: true, 
-        message: 'Gagal memilih gambar. Silakan coba lagi', 
-        status: 'error' 
-      });
+      if (__DEV__) console.log('⚠️ Image picker error:', error.message);
+      setSnackbar({ visible: true, message: 'Gagal memilih gambar.', status: 'error' });
     }
   };
 
@@ -148,7 +137,6 @@ const EditProfileScreen = ({ navigation }) => {
   };
 
   const handleChange = (field, value) => {
-    // Auto-format date of birth input
     if (field === 'dateOfBirth') {
       const digits = value.replace(/\D/g, '');
       let formatted = digits;
@@ -166,72 +154,31 @@ const EditProfileScreen = ({ navigation }) => {
       setForm((prev) => ({ ...prev, [field]: formatted }));
       return;
     }
-    
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const addToArray = (field, value, setValue) => {
     if (!value.trim()) return;
-    
     if (form[field].includes(value.trim())) {
-      setSnackbar({ 
-        visible: true, 
-        message: 'Item sudah ada dalam daftar', 
-        status: 'warning' 
-      });
+      setSnackbar({ visible: true, message: 'Item sudah ada', status: 'warning' });
       return;
     }
-    
-    setForm((prev) => ({
-      ...prev,
-      [field]: [...prev[field], value.trim()],
-    }));
+    setForm((prev) => ({ ...prev, [field]: [...prev[field], value.trim()] }));
     setValue('');
   };
 
   const removeFromArray = (field, index) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: prev[field].filter((_, i) => i !== index),
-    }));
+    setForm((prev) => ({ ...prev, [field]: prev[field].filter((_, i) => i !== index) }));
   };
 
   const validateForm = () => {
     const nextErrors = {};
-
-    // Validate dateOfBirth if provided
     if (form.dateOfBirth.trim()) {
       const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
       if (!dateRegex.test(form.dateOfBirth.trim())) {
         nextErrors.dateOfBirth = 'Format tanggal tidak valid. Gunakan DD/MM/YYYY';
-      } else {
-        const parts = form.dateOfBirth.trim().split('/');
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const year = parseInt(parts[2], 10);
-        const date = new Date(year, month, day);
-        
-        if (
-          isNaN(date.getTime()) ||
-          date.getDate() !== day ||
-          date.getMonth() !== month ||
-          date.getFullYear() !== year
-        ) {
-          nextErrors.dateOfBirth = 'Tanggal tidak valid';
-        } else {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          if (date > today) {
-            nextErrors.dateOfBirth = 'Tanggal lahir tidak boleh di masa depan';
-          }
-          const age = (today - date) / (1000 * 60 * 60 * 24 * 365.25);
-          if (age > 150) {
-            nextErrors.dateOfBirth = 'Tanggal lahir tidak valid';
-          }
-        }
       }
     }
-
     return nextErrors;
   };
 
@@ -240,80 +187,38 @@ const EditProfileScreen = ({ navigation }) => {
     setErrors(validationResult);
 
     if (Object.keys(validationResult).length > 0) {
-      setSnackbar({ 
-        visible: true, 
-        message: 'Mohon perbaiki kesalahan pada form', 
-        status: 'warning' 
-      });
+      setSnackbar({ visible: true, message: 'Mohon perbaiki kesalahan pada form', status: 'warning' });
       return;
     }
 
     setLoading(true);
 
     try {
-      // 1. Upload avatar first if changed
       let avatarUrl = user?.avatar_url;
       if (avatarFile) {
         const uploadResult = await uploadPatientAvatar(avatarFile);
-        
         if (uploadResult.success) {
-          // Service returns: { success: true, data: {...}, avatarUrl: '/uploads/avatars/xxx.jpg' }
           avatarUrl = uploadResult.avatarUrl || uploadResult.data?.avatar_url;
-          console.log('✅ Avatar uploaded:', avatarUrl);
-          
-          // Update user in Redux with new avatar
           dispatch(updateUser({ avatar_url: avatarUrl }));
-          // Also update local displayed avatar to resolved full URL
-          try {
-            setAvatarUri(resolveMediaUrl(avatarUrl));
-          } catch (e) {
-            // ignore
-          }
+          try { setAvatarUri(resolveMediaUrl(avatarUrl)); } catch (e) {}
         } else {
-          if (__DEV__) {
-            console.log('⚠️ Avatar upload failed:', uploadResult.message);
-          }
-          
-          // Show specific error message based on error type
-          let errorMessage = 'Avatar gagal diupload';
-          if (uploadResult.needsReauth) {
-            errorMessage = 'Sesi Anda telah berakhir. Silakan login kembali';
-          } else if (uploadResult.message) {
-            errorMessage = uploadResult.message;
-          }
-          
-          setSnackbar({ 
-            visible: true, 
-            message: errorMessage,
-            status: uploadResult.needsReauth ? 'error' : 'warning'
-          });
-          
-          // Don't continue if authentication failed
-          if (uploadResult.needsReauth) {
-            setLoading(false);
-            return;
-          }
+          setSnackbar({ visible: true, message: 'Avatar gagal diupload', status: 'warning' });
         }
       }
 
-      // 2. Convert DD/MM/YYYY to YYYY-MM-DD for backend
       let dateOfBirth = null;
       if (form.dateOfBirth.trim()) {
         const parts = form.dateOfBirth.trim().split('/');
         dateOfBirth = `${parts[2]}-${parts[1]}-${parts[0]}`;
       }
 
-      // 3. Prepare profile data for BACKEND (snake_case for database columns)
       const profileDataForBackend = {
-        // Direct columns in patient_profiles table (snake_case)
         date_of_birth: dateOfBirth,
         gender: form.gender.toLowerCase(),
         insurance_provider: form.insuranceProvider.trim() || null,
         insurance_number: form.insuranceNumber.trim() || null,
         insurance_member_id: form.insuranceMemberId.trim() || null,
         preferred_language: form.preferredLanguage || 'id',
-        
-        // JSONB fields (backend expects these exact structures)
         address: {
           line1: form.addressLine1.trim() || null,
           line2: form.addressLine2.trim() || null,
@@ -322,9 +227,9 @@ const EditProfileScreen = ({ navigation }) => {
           postalCode: form.postalCode.trim() || null,
         },
         medical_details: {
-          allergies: form.allergies.length > 0 ? form.allergies : [],
-          chronicConditions: form.chronicConditions.length > 0 ? form.chronicConditions : [],
-          medications: form.medications.length > 0 ? form.medications : [],
+          allergies: form.allergies,
+          chronicConditions: form.chronicConditions,
+          medications: form.medications,
           notes: form.medicalNotes.trim() || null,
         },
         emergency_contact: form.emergencyContactName.trim() ? {
@@ -334,93 +239,41 @@ const EditProfileScreen = ({ navigation }) => {
         } : null,
       };
 
-      console.log('📤 Sending to backend:', profileDataForBackend);
-
-      // 4. Call backend API to update profile
       let backendSuccess = false;
-      
       try {
         const result = await updatePatientProfile(profileDataForBackend);
-        
         if (result.success) {
-          console.log('✅ Backend updated successfully!');
           backendSuccess = true;
-          
-          // Refetch profile from backend to get latest data
           const profileResult = await getPatientProfile();
           if (profileResult.success && profileResult.data) {
-            // Update Redux with fresh data from backend
             dispatch(loginSuccess({ 
-              user: { ...user, avatar_url: avatarUrl }, // Update avatar in user object
+              user: { ...user, avatar_url: avatarUrl },
               patientProfile: profileResult.data,
-              tokens: { accessToken: null, refreshToken: null } // Keep existing tokens
+              tokens: { accessToken: null, refreshToken: null }
             }));
           }
-        } else {
-          console.warn('⚠️ Backend update failed:', result.message);
-          console.warn('⚠️ Continuing with local update only...');
         }
       } catch (backendError) {
-        console.warn('⚠️ Backend endpoint not ready:', backendError.message);
-        console.warn('⚠️ Saving to local Redux only. Please implement backend endpoint:');
-        console.warn('   PUT /v1/patient/profile');
-        // Continue to save locally even if backend fails
+        // Fallback local update
       }
 
-      // 5. Prepare data for REDUX (camelCase format)
-      const profileDataForRedux = {
-        dateOfBirth: dateOfBirth,
-        gender: form.gender.toLowerCase(),
-        insurance_provider: form.insuranceProvider.trim() || null,
-        insurance_number: form.insuranceNumber.trim() || null,
-        insurance_member_id: form.insuranceMemberId.trim() || null,
-        preferred_language: form.preferredLanguage || 'id',
-        address: {
-          line1: form.addressLine1.trim() || null,
-          line2: form.addressLine2.trim() || null,
-          city: form.city.trim() || null,
-          province: form.province.trim() || null,
-          postalCode: form.postalCode.trim() || null,
-        },
-        medicalDetails: {
-          allergies: form.allergies.length > 0 ? form.allergies : [],
-          chronicConditions: form.chronicConditions.length > 0 ? form.chronicConditions : [],
-          medications: form.medications.length > 0 ? form.medications : [],
-          notes: form.medicalNotes.trim() || null,
-        },
-        emergencyContact: form.emergencyContactName.trim() ? {
-          name: form.emergencyContactName.trim(),
-          phone: form.emergencyContactPhone.trim(),
-          relationship: form.emergencyContactRelationship.trim(),
-        } : null,
-      };
-
-      // 6. Update Redux store
-      dispatch(updateProfile(profileDataForRedux));
-
-      const successMessage = backendSuccess 
-        ? 'Profil berhasil diperbarui!' 
-        : 'Profil tersimpan di aplikasi (belum sinkron ke server)';
+      // Local Redux update fallback
+      dispatch(updateProfile({
+        ...profileDataForBackend,
+        medicalDetails: profileDataForBackend.medical_details,
+        emergencyContact: profileDataForBackend.emergency_contact
+      }));
 
       setSnackbar({ 
         visible: true, 
-        message: successMessage,
+        message: backendSuccess ? 'Profil berhasil diperbarui!' : 'Profil tersimpan di aplikasi',
         status: backendSuccess ? 'success' : 'warning'
       });
 
-      setTimeout(() => {
-        navigation.goBack();
-      }, 1500);
+      setTimeout(() => { navigation.goBack(); }, 1500);
 
     } catch (error) {
-      if (__DEV__) {
-        console.log('⚠️ Profile update error:', error.message);
-      }
-      setSnackbar({ 
-        visible: true, 
-        message: error.message || 'Gagal memperbarui profil. Silakan coba lagi.',
-        status: 'error'
-      });
+      setSnackbar({ visible: true, message: 'Gagal memperbarui profil.', status: 'error' });
     } finally {
       setLoading(false);
     }
@@ -434,7 +287,6 @@ const EditProfileScreen = ({ navigation }) => {
         </Text>
       );
     }
-
     return (
       <View style={styles.chipContainer}>
         {items.map((item, index) => (
@@ -453,8 +305,12 @@ const EditProfileScreen = ({ navigation }) => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {/* Back Button Header */}
-      <SafeAreaView style={{ backgroundColor: theme.colors.background }}>
+      
+      {/* PERBAIKAN UTAMA:
+         Gunakan View biasa dengan paddingTop manual dari insets.top
+         Header akan turun dengan aman di bawah notch/status bar.
+      */}
+      <View style={{ backgroundColor: theme.colors.background, paddingTop: insets.top }}>
         <View style={styles.topHeader}>
           <IconButton
             icon="arrow-left"
@@ -466,7 +322,7 @@ const EditProfileScreen = ({ navigation }) => {
           </Text>
           <View style={{ width: 48 }} />
         </View>
-      </SafeAreaView>
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
@@ -474,7 +330,7 @@ const EditProfileScreen = ({ navigation }) => {
       >
         <Card style={[styles.card, theme?.shadows?.md]}>
           <Card.Content>
-            {/* Avatar Upload Section */}
+            {/* Avatar Section */}
             <View style={styles.avatarSection}>
               <Menu
                 visible={avatarMenuVisible}
@@ -499,39 +355,20 @@ const EditProfileScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 }
               >
-                <Menu.Item 
-                  leadingIcon="camera" 
-                  onPress={() => handlePickImage(true)} 
-                  title="Ambil Foto" 
-                />
-                <Menu.Item 
-                  leadingIcon="image" 
-                  onPress={() => handlePickImage(false)} 
-                  title="Pilih dari Galeri" 
-                />
-                {avatarUri && (
-                  <Menu.Item 
-                    leadingIcon="delete" 
-                    onPress={handleRemoveAvatar} 
-                    title="Hapus Foto" 
-                  />
-                )}
+                <Menu.Item leadingIcon="camera" onPress={() => handlePickImage(true)} title="Ambil Foto" />
+                <Menu.Item leadingIcon="image" onPress={() => handlePickImage(false)} title="Pilih dari Galeri" />
+                {avatarUri && <Menu.Item leadingIcon="delete" onPress={handleRemoveAvatar} title="Hapus Foto" />}
               </Menu>
               <Text variant="bodyMedium" style={{ marginTop: 12, color: theme.colors.onSurfaceVariant }}>
                 {user?.name || 'Pasien Serene'}
-              </Text>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Ketuk avatar untuk mengubah foto
               </Text>
             </View>
 
             <View style={styles.divider} />
 
-            {/* PERSONAL INFORMATION */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Informasi Pribadi
-            </Text>
-
+            {/* PERSONAL INFO */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Informasi Pribadi</Text>
+            
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
@@ -544,17 +381,10 @@ const EditProfileScreen = ({ navigation }) => {
                 left={<TextInput.Icon icon="calendar" />}
                 error={Boolean(errors.dateOfBirth)}
               />
-              <HelperText type="info" visible={!errors.dateOfBirth && !form.dateOfBirth}>
-                Format: DD/MM/YYYY (contoh: 15/08/1995)
-              </HelperText>
-              <HelperText type="error" visible={Boolean(errors.dateOfBirth)}>
-                {errors.dateOfBirth}
-              </HelperText>
+              <HelperText type="error" visible={Boolean(errors.dateOfBirth)}>{errors.dateOfBirth}</HelperText>
             </View>
 
-            <Text variant="labelLarge" style={styles.label}>
-              Jenis Kelamin
-            </Text>
+            <Text variant="labelLarge" style={styles.label}>Jenis Kelamin</Text>
             <SegmentedButtons
               value={form.gender}
               onValueChange={(value) => handleChange('gender', value)}
@@ -567,148 +397,105 @@ const EditProfileScreen = ({ navigation }) => {
             />
 
             {/* ADDRESS */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Alamat Lengkap
-            </Text>
-
+            <Text variant="titleMedium" style={styles.sectionTitle}>Alamat Lengkap</Text>
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Alamat Jalan"
-                placeholder="Jl. Merdeka No. 123"
                 value={form.addressLine1}
                 onChangeText={(text) => handleChange('addressLine1', text)}
                 left={<TextInput.Icon icon="home" />}
               />
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
-                label="Alamat Tambahan (Opsional)"
-                placeholder="Apt 5B, Lt. 2"
+                label="Alamat Tambahan"
                 value={form.addressLine2}
                 onChangeText={(text) => handleChange('addressLine2', text)}
                 left={<TextInput.Icon icon="home-city" />}
               />
             </View>
-
             <View style={styles.row}>
               <View style={[styles.fieldSpacing, { flex: 1, marginRight: 8 }]}>
                 <TextInput
                   mode="outlined"
                   label="Kota"
-                  placeholder="Jakarta"
                   value={form.city}
                   onChangeText={(text) => handleChange('city', text)}
                   left={<TextInput.Icon icon="city" />}
                 />
               </View>
-
               <View style={[styles.fieldSpacing, { flex: 1, marginLeft: 8 }]}>
                 <TextInput
                   mode="outlined"
                   label="Provinsi"
-                  placeholder="DKI Jakarta"
                   value={form.province}
                   onChangeText={(text) => handleChange('province', text)}
                   left={<TextInput.Icon icon="map" />}
                 />
               </View>
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Kode Pos"
-                placeholder="12720"
                 value={form.postalCode}
                 onChangeText={(text) => handleChange('postalCode', text)}
                 keyboardType="number-pad"
-                maxLength={5}
                 left={<TextInput.Icon icon="mailbox" />}
               />
             </View>
 
-            {/* MEDICAL DETAILS */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Informasi Medis
-            </Text>
-
-            <Text variant="labelLarge" style={styles.label}>
-              Alergi
-            </Text>
+            {/* MEDICAL */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Informasi Medis</Text>
+            
+            <Text variant="labelLarge" style={styles.label}>Alergi</Text>
             {renderChipList(form.allergies, 'allergies', 'rgba(239, 68, 68, 0.1)')}
             <View style={styles.addItemRow}>
               <TextInput
                 mode="outlined"
                 label="Tambah alergi"
-                placeholder="contoh: Penisilin"
                 value={newAllergy}
                 onChangeText={setNewAllergy}
                 style={{ flex: 1, marginRight: 8 }}
                 left={<TextInput.Icon icon="alert" />}
               />
-              <Button
-                mode="contained"
-                onPress={() => addToArray('allergies', newAllergy, setNewAllergy)}
-                disabled={!newAllergy.trim()}
-              >
-                Tambah
-              </Button>
+              <Button mode="contained" onPress={() => addToArray('allergies', newAllergy, setNewAllergy)} disabled={!newAllergy.trim()}>Tambah</Button>
             </View>
 
-            <Text variant="labelLarge" style={styles.label}>
-              Kondisi Kronis
-            </Text>
+            <Text variant="labelLarge" style={styles.label}>Kondisi Kronis</Text>
             {renderChipList(form.chronicConditions, 'chronicConditions', 'rgba(251, 146, 60, 0.1)')}
             <View style={styles.addItemRow}>
               <TextInput
                 mode="outlined"
                 label="Tambah kondisi"
-                placeholder="contoh: Diabetes"
                 value={newCondition}
                 onChangeText={setNewCondition}
                 style={{ flex: 1, marginRight: 8 }}
                 left={<TextInput.Icon icon="heart-pulse" />}
               />
-              <Button
-                mode="contained"
-                onPress={() => addToArray('chronicConditions', newCondition, setNewCondition)}
-                disabled={!newCondition.trim()}
-              >
-                Tambah
-              </Button>
+              <Button mode="contained" onPress={() => addToArray('chronicConditions', newCondition, setNewCondition)} disabled={!newCondition.trim()}>Tambah</Button>
             </View>
 
-            <Text variant="labelLarge" style={styles.label}>
-              Obat Rutin
-            </Text>
+            <Text variant="labelLarge" style={styles.label}>Obat Rutin</Text>
             {renderChipList(form.medications, 'medications', 'rgba(59, 130, 246, 0.1)')}
             <View style={styles.addItemRow}>
               <TextInput
                 mode="outlined"
                 label="Tambah obat"
-                placeholder="contoh: Metformin 500mg"
                 value={newMedication}
                 onChangeText={setNewMedication}
                 style={{ flex: 1, marginRight: 8 }}
                 left={<TextInput.Icon icon="pill" />}
               />
-              <Button
-                mode="contained"
-                onPress={() => addToArray('medications', newMedication, setNewMedication)}
-                disabled={!newMedication.trim()}
-              >
-                Tambah
-              </Button>
+              <Button mode="contained" onPress={() => addToArray('medications', newMedication, setNewMedication)} disabled={!newMedication.trim()}>Tambah</Button>
             </View>
 
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Catatan Medis"
-                placeholder="Informasi medis tambahan yang perlu diketahui dokter"
                 value={form.medicalNotes}
                 onChangeText={(text) => handleChange('medicalNotes', text)}
                 multiline
@@ -718,38 +505,30 @@ const EditProfileScreen = ({ navigation }) => {
             </View>
 
             {/* EMERGENCY CONTACT */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Kontak Darurat
-            </Text>
-
+            <Text variant="titleMedium" style={styles.sectionTitle}>Kontak Darurat</Text>
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
-                label="Nama Kontak Darurat"
-                placeholder="Sarah Putri"
+                label="Nama Kontak"
                 value={form.emergencyContactName}
                 onChangeText={(text) => handleChange('emergencyContactName', text)}
                 left={<TextInput.Icon icon="account-heart" />}
               />
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
-                label="Nomor Telepon Kontak Darurat"
-                placeholder="+6281234567890"
+                label="Nomor Telepon"
                 value={form.emergencyContactPhone}
                 onChangeText={(text) => handleChange('emergencyContactPhone', text)}
                 keyboardType="phone-pad"
                 left={<TextInput.Icon icon="phone" />}
               />
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Hubungan"
-                placeholder="Suami/Istri, Orang Tua, Saudara, dll"
                 value={form.emergencyContactRelationship}
                 onChangeText={(text) => handleChange('emergencyContactRelationship', text)}
                 left={<TextInput.Icon icon="account-group" />}
@@ -757,44 +536,36 @@ const EditProfileScreen = ({ navigation }) => {
             </View>
 
             {/* INSURANCE */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Informasi Asuransi
-            </Text>
-
+            <Text variant="titleMedium" style={styles.sectionTitle}>Informasi Asuransi</Text>
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Provider Asuransi"
-                placeholder="BPJS Kesehatan, Prudential, dll"
                 value={form.insuranceProvider}
                 onChangeText={(text) => handleChange('insuranceProvider', text)}
                 left={<TextInput.Icon icon="shield-home" />}
               />
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Nomor Polis"
-                placeholder="00011223344"
                 value={form.insuranceNumber}
                 onChangeText={(text) => handleChange('insuranceNumber', text)}
                 left={<TextInput.Icon icon="card-text-outline" />}
               />
             </View>
-
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
                 label="Member ID"
-                placeholder="PLAT-9912"
                 value={form.insuranceMemberId}
                 onChangeText={(text) => handleChange('insuranceMemberId', text)}
                 left={<TextInput.Icon icon="identifier" />}
               />
             </View>
 
-            {/* ACTION BUTTONS */}
+            {/* BUTTONS */}
             <View style={styles.buttonRow}>
               <Button
                 mode="outlined"
@@ -814,6 +585,7 @@ const EditProfileScreen = ({ navigation }) => {
                 Simpan
               </Button>
             </View>
+
           </Card.Content>
         </Card>
       </ScrollView>

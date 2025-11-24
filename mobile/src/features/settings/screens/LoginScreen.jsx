@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native'; // Hapus SafeAreaView
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -214,7 +214,8 @@ const LoginScreen = ({ navigation }) => {
   const welcomeTitle = hasLoggedInBefore ? 'Selamat datang kembali' : 'Selamat datang';
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+    // PERBAIKAN: Ganti SafeAreaView dengan View biasa + paddingTop manual
+    <View style={[styles.safeArea, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -382,7 +383,7 @@ const LoginScreen = ({ navigation }) => {
         onDismiss={() => setSnackbar({ visible: false, message: '', status: 'info' })}
         status={snackbar.status}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

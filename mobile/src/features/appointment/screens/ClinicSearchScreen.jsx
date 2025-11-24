@@ -27,7 +27,7 @@ const filters = [
   { key: 'all', label: 'Semua' },
   { key: 'nearby', label: 'Terdekat' },
   { key: 'highest_rated', label: 'Rating Tertinggi' },
-  { key: 'available', label: 'Tersedia Hari Ini' },
+  { key: 'available_today', label: 'Tersedia Hari Ini' },
   { key: 'insurance', label: 'BPJS / Asuransi' },
 ];
 
@@ -128,7 +128,12 @@ const ClinicSearchScreen = () => {
     refresh,
     location,
     usedDefaultLocation,
-  } = useNearbyClinics({ radius: 30, limit: 20 });
+  } = useNearbyClinics({
+    radius: 12,
+    limit: 30,
+    allowRadiusExpansion: false,
+    strictRadius: true,
+  });
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
@@ -172,7 +177,7 @@ const ClinicSearchScreen = () => {
           (a, b) => (b.rating || 0) - (a.rating || 0),
         );
         break;
-      case 'available':
+      case 'available_today':
         data = data.filter(isClinicAvailable);
         break;
       case 'insurance':
@@ -233,7 +238,7 @@ const ClinicSearchScreen = () => {
           colors={['#7C3AED', '#9D5DF5']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.hero, { paddingTop: insets.top + 8 }]}
+          style={[styles.hero, { paddingTop: insets.top + 2 }]}
         >
           <View style={styles.heroHeader}>
             <TouchableOpacity

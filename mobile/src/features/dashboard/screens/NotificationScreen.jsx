@@ -4,6 +4,9 @@ import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+// 1. IMPORT DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { SAMPLE_NOTIFICATIONS, NOTIFICATION_TYPE_META } from '../data/notifications';
 import { formatNotificationTime, withOpacity } from '../utils/notificationUtils';
 
@@ -29,6 +32,10 @@ const NotificationScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  
+  // 2. DEFINISI INSETS DITAMBAHKAN
+  const insets = useSafeAreaInsets();
+
   const initialData = useMemo(
     () =>
       route.params?.notifications?.length
@@ -321,7 +328,8 @@ const NotificationScreen = () => {
       <View
         style={{
           backgroundColor: theme.colors.primary,
-          paddingTop: 48,
+          // 3. INSETS SEKARANG BISA DIPAKAI
+          paddingTop: insets.top + 2,
           paddingBottom: 24,
           paddingHorizontal: 20,
           borderBottomLeftRadius: 24,
@@ -404,6 +412,7 @@ const NotificationScreen = () => {
       </ScrollView>
     </View>
   );
+// 4. PENUTUP FUNGSI YANG HILANG DITAMBAHKAN
 };
 
 export default NotificationScreen;

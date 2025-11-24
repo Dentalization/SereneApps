@@ -13,8 +13,9 @@ const HelpCenterScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser hero + konten sedikit ke bawah */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+      
+      {/* PERBAIKAN: Hapus padding top manual. Biarkan layout full screen (immersive). */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: 'Pusat Bantuan Serene',
@@ -96,7 +97,7 @@ const HelpCenterScreen = ({ navigation }) => {
         </InfoScreenLayout>
       </View>
 
-      {/* Back button overlay sama seperti FAQ screens */}
+      {/* Floating Back Button - Posisinya sudah benar */}
       <View
         style={{
           position: 'absolute',

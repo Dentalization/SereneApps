@@ -684,9 +684,20 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
 // Get all branches for the clinic
 router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
   try {
-    const clinicProfile = await prisma.clinicProfile.findFirst({
+    let clinicProfile = await prisma.clinicProfile.findFirst({
       where: { userId: req.user.id }
     });
+
+    if (!clinicProfile) {
+      const staffRecord = await prisma.clinicStaff.findFirst({
+        where: { userId: req.user.id },
+        include: { clinicProfile: true }
+      });
+
+      if (staffRecord?.clinicProfile) {
+        clinicProfile = staffRecord.clinicProfile;
+      }
+    }
 
     if (!clinicProfile) {
       return res.status(404).json({ error: 'Clinic profile not found' });
@@ -707,7 +718,10 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
     const serializableBranches = branches.map(branch => ({
       ...branch,
       id: branch.id.toString(),
-      clinicProfileId: branch.clinicProfileId.toString()
+      clinicProfileId: branch.clinicProfileId.toString(),
+      ownerEmail: clinicProfile.ownerEmail,
+      ownerName: clinicProfile.ownerName,
+      ownerWhatsapp: clinicProfile.ownerWhatsapp
     }));
 
     console.log('🔄 After BigInt conversion, sample branch:', serializableBranches[0]);
@@ -722,6 +736,11 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
     }
 
     res.json({
+      owner: {
+        name: clinicProfile.ownerName,
+        email: clinicProfile.ownerEmail,
+        whatsapp: clinicProfile.ownerWhatsapp
+      },
       branches: serializableBranches
     });
 

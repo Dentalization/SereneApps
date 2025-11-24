@@ -116,6 +116,11 @@ class ClinicService {
     return response.data;
   }
 
+  async deleteBranch(branchId) {
+    const response = await httpClient.delete(`/clinic/branches/${branchId}`);
+    return response.data;
+  }
+
   // Utility methods
   generateOperatingHours() {
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];

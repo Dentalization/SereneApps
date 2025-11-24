@@ -4,6 +4,9 @@ import { Text, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+// 1. Import ditambahkan di sini
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { getDentistDirectory, getNearbyDentists } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
 import ValidationToast from '../../settings/components/ValidationToast';
@@ -69,6 +72,10 @@ const mapDentist = (dentist) => {
 const DentistDirectoryScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  
+  // 2. Definisi insets ditambahkan di sini
+  const insets = useSafeAreaInsets();
+
   const [dentists, setDentists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -164,7 +171,8 @@ const DentistDirectoryScreen = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
-          paddingTop: 52,
+          // 3. Sekarang insets.top sudah terbaca dengan benar
+          paddingTop: insets.top + 2,
           paddingHorizontal: 20,
           paddingBottom: 32,
           borderBottomLeftRadius: 32,

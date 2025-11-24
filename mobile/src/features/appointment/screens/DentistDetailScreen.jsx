@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, StatusBar, Linking } from 'react-native';
 import { Text, useTheme, Chip, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -66,7 +66,7 @@ const DentistDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
-  
+
   const initialDentist = route.params?.dentist || null;
   const [dentist, setDentist] = useState(initialDentist);
   const [loading, setLoading] = useState(!initialDentist);
@@ -96,10 +96,10 @@ const DentistDetailScreen = () => {
         console.log('🦷 [DentistDetail] Fetching dentist:', dentistId);
         const response = await getDentistById(dentistId);
         console.log('🦷 [DentistDetail] Response:', response);
-        
+
         // Backend returns { success: true, data: {...} }
         const dentistData = response?.data || response;
-        
+
         if (!dentistData) {
           throw new Error('Data dokter tidak ditemukan');
         }
@@ -148,19 +148,28 @@ const DentistDetailScreen = () => {
           reviews: 0, // TODO: Get from reviews table
           experience: `${dentistData.years_of_experience || 0} tahun`,
           languages: ['Bahasa Indonesia', 'English'], // TODO: Add to backend
-          bio: `Dokter gigi profesional dengan spesialisasi ${dentistData.specialization}. Berpengalaman ${dentistData.years_of_experience || 0} tahun dalam memberikan perawatan gigi berkualitas.`,
+          bio: `Dokter gigi profesional dengan spesialisasi ${dentistData.specialization}. Berpengalaman ${
+            dentistData.years_of_experience || 0
+          } tahun dalam memberikan perawatan gigi berkualitas.`,
           specialties: dentistData.services_offered || [],
-          services: (dentistData.services_offered || []).map(service => ({
+          services: (dentistData.services_offered || []).map((service) => ({
             name: service,
             price: dentistData.consultation_fee,
           })),
-          availability: workingHours ? Object.entries(workingHours).map(([day, hours]) => ({
-            day: day.charAt(0).toUpperCase() + day.slice(1),
-            slots: hours === 'Tutup' ? [] : [hours.split('-')[0]],
-          })) : [],
-          achievements: dentistData.is_verified ? [
-            { title: 'Dokter Terverifikasi', year: new Date(dentistData.verification_date || dentistData.created_at).getFullYear() }
-          ] : [],
+          availability: workingHours
+            ? Object.entries(workingHours).map(([day, hours]) => ({
+                day: day.charAt(0).toUpperCase() + day.slice(1),
+                slots: hours === 'Tutup' ? [] : [hours.split('-')[0]],
+              }))
+            : [],
+          achievements: dentistData.is_verified
+            ? [
+                {
+                  title: 'Dokter Terverifikasi',
+                  year: new Date(dentistData.verification_date || dentistData.created_at).getFullYear(),
+                },
+              ]
+            : [],
           stories: [], // TODO: Get from reviews
           gallery: [], // TODO: Add to backend
           contact: {
@@ -251,7 +260,15 @@ const DentistDetailScreen = () => {
 
   if (error || !dentist) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: '#F8FAFC',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}
+      >
         <MaterialCommunityIcons name="alert-circle" size={64} color="#EF4444" />
         <Text style={{ marginTop: 16, fontSize: 18, fontWeight: '700', color: '#0F172A' }}>
           Gagal Memuat Data
@@ -313,18 +330,18 @@ const DentistDetailScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle='light-content' backgroundColor={theme.colors.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: insets.top }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
       >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: 48,
+            paddingTop: insets.top + 2,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,
             borderBottomRightRadius: 32,
@@ -350,7 +367,7 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+              <MaterialCommunityIcons name="arrow-left" size={22} color="white" />
             </TouchableOpacity>
             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Profil Dokter</Text>
             <TouchableOpacity
@@ -364,7 +381,7 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='message-text' size={20} color='white' />
+              <MaterialCommunityIcons name="message-text" size={20} color="white" />
             </TouchableOpacity>
           </View>
 
@@ -379,14 +396,14 @@ const DentistDetailScreen = () => {
                 {dentist.specialty}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                <MaterialCommunityIcons name='star' color='#FACC15' size={18} />
+                <MaterialCommunityIcons name="star" color="#FACC15" size={18} />
                 <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
                   {(dentist.rating || 0).toFixed(1)} · {dentist.reviews || 0} ulasan
                 </Text>
               </View>
               {distanceText ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                  <MaterialCommunityIcons name='map-marker-distance' color='white' size={16} />
+                  <MaterialCommunityIcons name="map-marker-distance" color="white" size={16} />
                   <Text style={{ color: 'white', marginLeft: 4 }}>
                     {distanceText} • {dentist.clinic}
                   </Text>
@@ -409,8 +426,10 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='calendar-check' size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Pesan Jadwal</Text>
+              <MaterialCommunityIcons name="calendar-check" size={20} color={theme.colors.primary} />
+              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>
+                Pesan Jadwal
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleMessage}
@@ -423,7 +442,7 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name='phone' size={22} color='white' />
+              <MaterialCommunityIcons name="phone" size={22} color="white" />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -442,7 +461,7 @@ const DentistDetailScreen = () => {
             ]}
           </ScrollView>
 
-          <Section title='Tentang Dokter' style={{ marginTop: 24 }}>
+          <Section title="Tentang Dokter" style={{ marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>
               {dentist.languages?.map((lang) => (
@@ -453,7 +472,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Spesialisasi'>
+          <Section title="Spesialisasi">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {dentist.specialties?.map((item) => (
                 <View
@@ -473,7 +492,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Layanan'>
+          <Section title="Layanan">
             {dentist.services?.map((service) => (
               <View
                 key={service.name}
@@ -491,7 +510,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Ketersediaan Jadwal'>
+          <Section title="Ketersediaan Jadwal">
             {dentist.availability?.map((slot) => (
               <View
                 key={slot.day}
@@ -507,17 +526,17 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Pencapaian'>
+          <Section title="Pencapaian">
             {dentist.achievements?.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                <MaterialCommunityIcons name='trophy' size={18} color='#FACC15' />
+                <MaterialCommunityIcons name="trophy" size={18} color="#FACC15" />
                 <Text style={{ marginLeft: 10, fontWeight: '600', color: '#0F172A' }}>{ach.title}</Text>
                 <Text style={{ marginLeft: 6, color: '#94A3B8' }}>{ach.year}</Text>
               </View>
             ))}
           </Section>
 
-          <Section title='Cerita Pasien'>
+          <Section title="Cerita Pasien">
             {dentist.stories?.map((story) => (
               <View
                 key={story.patient}
@@ -534,7 +553,7 @@ const DentistDetailScreen = () => {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <MaterialCommunityIcons name='account-circle' size={26} color='#94A3B8' />
+                  <MaterialCommunityIcons name="account-circle" size={26} color="#94A3B8" />
                   <View style={{ marginLeft: 10 }}>
                     <Text style={{ fontWeight: '600', color: '#0F172A' }}>{story.patient}</Text>
                     <Text style={{ color: '#F59E0B', fontWeight: '600' }}>{story.rating} ★</Text>
@@ -545,7 +564,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Galeri'>
+          <Section title="Galeri">
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {dentist.gallery?.map((url, index) => (
                 <Image
@@ -557,18 +576,18 @@ const DentistDetailScreen = () => {
             </ScrollView>
           </Section>
 
-          <Section title='Kontak'>
+          <Section title="Kontak">
             <View style={{ backgroundColor: 'white', borderRadius: 18, padding: 16 }}>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-                <MaterialCommunityIcons name='phone' size={18} color={theme.colors.primary} />
+                <MaterialCommunityIcons name="phone" size={18} color={theme.colors.primary} />
                 <Text style={{ marginLeft: 8, color: '#475569' }}>{dentist.contact?.phone}</Text>
               </View>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-                <MaterialCommunityIcons name='email' size={18} color={theme.colors.primary} />
+                <MaterialCommunityIcons name="email" size={18} color={theme.colors.primary} />
                 <Text style={{ marginLeft: 8, color: '#475569' }}>{dentist.contact?.email}</Text>
               </View>
               <View style={{ flexDirection: 'row' }}>
-                <MaterialCommunityIcons name='map-marker' size={18} color={theme.colors.primary} />
+                <MaterialCommunityIcons name="map-marker" size={18} color={theme.colors.primary} />
                 <Text style={{ marginLeft: 8, color: '#475569', flex: 1 }}>{dentist.contact?.address}</Text>
               </View>
             </View>
@@ -611,7 +630,7 @@ const DentistDetailScreen = () => {
               borderRadius: 24,
             }}
           >
-            <MaterialCommunityIcons name='calendar-plus' size={20} color='white' />
+            <MaterialCommunityIcons name="calendar-plus" size={20} color="white" />
             <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Pesan sekarang</Text>
           </TouchableOpacity>
         </View>
