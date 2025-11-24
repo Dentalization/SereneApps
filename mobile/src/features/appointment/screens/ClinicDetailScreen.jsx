@@ -295,7 +295,7 @@ const ClinicDetailScreen = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: insets.top + 12,
+            paddingTop: insets.top + 2,
             paddingHorizontal: 20,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,

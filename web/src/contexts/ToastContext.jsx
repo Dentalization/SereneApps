@@ -4,6 +4,40 @@ import { subscribeToToastEvents, toastService } from '../utils/toastBus';
 
 const ToastContext = createContext(null);
 
+const INTERNAL_DEBUG_PATTERNS = [
+  /\bLanguageContext\b/i,
+  /\bServices response\b/i,
+  /\bGallery response\b/i,
+  /\bHighlights response\b/i,
+  /\bFacilities response\b/i,
+  /\bStaff state updated/i,
+  /\bREAL Staff data\b/i,
+  /✅.*data/i,
+  /\bBranches loaded\b/i,
+  /\bAPI Response\b/i,
+  /\bAPI Response Data\b/i,
+  /\bSetting initial clinic data\b/i,
+  /✅\s+(services|gallery|highlights|facilities)/i,
+  /✅\s+[A-Za-z\s]+response/i,
+  /\{[\s\S]*"clinic_branch_id"/i,
+];
+
+const shouldSuppressToastMessage = (message = '') => {
+  const normalized = typeof message === 'string' ? message : String(message);
+
+  if (INTERNAL_DEBUG_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return true;
+  }
+
+  const containsJsonPayload = normalized.includes('{') || normalized.includes('[');
+  const isVeryLong = normalized.length > 160;
+  if (containsJsonPayload && isVeryLong) {
+    return true;
+  }
+
+  return false;
+};
+
 export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {
@@ -24,7 +58,7 @@ export const ToastProvider = ({ children }) => {
   const [toast, setToast] = useState(null);
 
   const triggerToast = useCallback((payload) => {
-    if (!payload?.message) return;
+    if (!payload?.message || shouldSuppressToastMessage(payload.message)) return;
     setToast(normalizeToastPayload(payload));
   }, []);
 

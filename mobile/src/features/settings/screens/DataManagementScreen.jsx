@@ -25,8 +25,11 @@ const DataManagementScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser hero + konten sedikit ke bawah */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+      
+      {/* PERBAIKAN: Hapus padding top manual. 
+          Biarkan InfoScreenLayout mengisi layar penuh agar Header Gradient menyentuh status bar. 
+      */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: 'Kelola Data Anda',
@@ -105,7 +108,9 @@ const DataManagementScreen = ({ navigation }) => {
         </InfoScreenLayout>
       </View>
 
-      {/* Back button overlay (konsisten dengan screen lain) */}
+      {/* Floating Back Button 
+          Posisi sudah benar menggunakan absolute + insets.top
+      */}
       <View
         style={{
           position: 'absolute',

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native'; // Hapus SafeAreaView
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Button,
@@ -17,7 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
 import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema, phoneSchema } from '../../../utils/validation';
-import { setPhoneNumber, loginSuccess } from '../../../store/slices/authSlice';
+import { loginSuccess } from '../../../store/slices/authSlice';
 import { registerPatient } from '../../../services/authService';
 
 const REQUIRED_FIELDS = ['name', 'email', 'phoneNumber', 'password', 'confirmPassword'];
@@ -239,13 +239,11 @@ const RegisterScreen = ({ navigation }) => {
       } else {
         // Registration failed
         console.error('❌ Registration failed:', result);
-        console.error('❌ Status code:', response.status);
         
         let errorMessage = result.message || 'Pendaftaran gagal. Silakan coba lagi.';
         
         // Handle specific error codes
-        if (response.status === 409) {
-          // Email already registered
+        if (result.status === 409) {
           if (result.error === 'DUPLICATE_EMAIL') {
             errorMessage = result.details || 'Email sudah terdaftar. Silakan gunakan email lain atau login dengan akun yang sudah ada.';
             setErrors({ email: errorMessage });
@@ -286,7 +284,8 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+    // PERBAIKAN: Ganti SafeAreaView dengan View biasa + paddingTop manual
+    <View style={[styles.safeArea, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -524,7 +523,7 @@ const RegisterScreen = ({ navigation }) => {
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
         status="info"
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

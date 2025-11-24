@@ -17,8 +17,9 @@ const FAQCategoriesScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      {/* Geser seluruh layout (hero card + content) sedikit ke bawah */}
-      <View style={{ flex: 1, paddingTop: 30 + insets.top }}>
+      
+      {/* PERBAIKAN: Hapus padding manual. Biarkan layout full screen. */}
+      <View style={{ flex: 1 }}>
         <InfoScreenLayout
           heroProps={{
             title: 'Kategori FAQ Serene',
@@ -60,7 +61,7 @@ const FAQCategoriesScreen = ({ navigation }) => {
         </InfoScreenLayout>
       </View>
 
-      {/* Back button di luar content, inline style satu baris */}
+      {/* Floating Back Button - Posisinya sudah benar */}
       <View style={{ position: 'absolute', left: 16, top: insets.top + 8, zIndex: 999, elevation: 999 }}>
         <IconButton
           icon="arrow-left"

@@ -31,7 +31,9 @@ LogBox.ignoreLogs([
 ]);
 
 // Lazy load to catch import errors
-let store, persistor, lightTheme, darkTheme, TabNavigator;
+const TabNavigator = React.lazy(() => import('./src/navigation/TabNavigator'));
+
+let store, persistor, lightTheme, darkTheme;
 
 try {
   const storeModule = require('./src/store');
@@ -51,12 +53,6 @@ try {
   console.error('❌ Error loading theme:', error);
 }
 
-try {
-  TabNavigator = require('./src/navigation/TabNavigator').default;
-  console.log('✅ TabNavigator loaded successfully');
-} catch (error) {
-  console.error('❌ Error loading TabNavigator:', error);
-}
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -132,21 +128,20 @@ function AppContent() {
     const isDarkMode = useSelector((state) => state?.settings?.isDarkMode || false);
     const theme = isDarkMode ? darkTheme : lightTheme;
 
-    if (!TabNavigator) {
-      return (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorTitle}>⚠️ Navigation Error</Text>
-          <Text style={styles.errorMessage}>TabNavigator failed to load</Text>
-        </View>
-      );
-    }
-
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
           <NavigationContainer>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-            <TabNavigator />
+            <React.Suspense
+              fallback={
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#0066CC" />
+                </View>
+              }
+            >
+              <TabNavigator />
+            </React.Suspense>
           </NavigationContainer>
         </SafeAreaProvider>
       </PaperProvider>

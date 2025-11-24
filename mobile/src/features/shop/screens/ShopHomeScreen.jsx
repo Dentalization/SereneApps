@@ -5,6 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+// 1. IMPORT DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { SHOP_CATEGORIES, SHOP_PRODUCTS, FEATURED_BUNDLES } from '../data/products';
 import ProductCard from '../components/ProductCard';
 import PromoBanner from '../components/PromoBanner';
@@ -14,6 +17,10 @@ import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 const ShopHomeScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  
+  // 2. DEFINISI INSETS DITAMBAHKAN
+  const insets = useSafeAreaInsets();
+  
   const cartItems = useSelector((state) => state.cart.items);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [query, setQuery] = useState('');
@@ -36,6 +43,7 @@ const ShopHomeScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+      
       <View
         onLayout={handleHeaderLayout}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
@@ -44,7 +52,14 @@ const ShopHomeScreen = () => {
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}
+          style={{ 
+            // 3. SEKARANG KODE INI BERJALAN LANCAR
+            paddingTop: insets.top + 2,  
+            paddingHorizontal: 20, 
+            paddingBottom: 32, 
+            borderBottomLeftRadius: 28, 
+            borderBottomRightRadius: 28 
+          }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
@@ -73,6 +88,7 @@ const ShopHomeScreen = () => {
             style={{ marginTop: 20, backgroundColor: 'rgba(255,255,255,0.15)', elevation: 0 }}
             inputStyle={{ color: 'white' }}
             iconColor='rgba(255,255,255,0.6)'
+            placeholderTextColor='rgba(255,255,255,0.6)' 
           />
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 18 }}>

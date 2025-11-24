@@ -131,7 +131,7 @@ const DashboardScreen = () => {
 
       {/* HEADER */}
       <Animated.View onLayout={onHeaderLayout} style={{ position:'absolute', top:0, left:0, right:0, zIndex:1000, opacity:scrollY.interpolate({ inputRange:[0,50,100], outputRange:[1,0.95,0.9], extrapolate:'clamp' }) }}>
-        <LinearGradient colors={isScrolled ? ['rgba(98,16,159,0.95)','rgba(98,16,159,0.85)'] : ((theme.gradients&&theme.gradients.primary)||[theme.colors.primary, theme.colors.primary])} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={{ paddingTop:64, paddingHorizontal:20, paddingBottom:12, shadowColor:'#000', shadowOffset:{ width:0, height:4 }, shadowOpacity:0.1, shadowRadius:8, elevation:4, borderBottomLeftRadius:isScrolled?0:24, borderBottomRightRadius:isScrolled?0:24 }}>
+        <LinearGradient colors={isScrolled ? ['rgba(98,16,159,0.95)','rgba(98,16,159,0.85)'] : ((theme.gradients&&theme.gradients.primary)||[theme.colors.primary, theme.colors.primary])} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={{ paddingTop: 64, paddingHorizontal:20, paddingBottom:12, shadowColor:'#000', shadowOffset:{ width:0, height:4 }, shadowOpacity:0.1, shadowRadius:8, elevation:4, borderBottomLeftRadius:isScrolled?0:24, borderBottomRightRadius:isScrolled?0:24 }}>
           <View style={{ flexDirection:'row', alignItems:'center', marginBottom:16 }}>
             <View style={{ flex:1, flexDirection:'row', alignItems:'center' }}>
               <View style={{ marginRight:12 }}>

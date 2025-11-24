@@ -4,6 +4,9 @@ import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+// 1. IMPORT DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { formatClinicDistance } from '../data/clinics';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
@@ -69,6 +72,10 @@ const ClinicDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  
+  // 2. DEFINISI INSETS DITAMBAHKAN
+  const insets = useSafeAreaInsets();
+  
   const scrollViewRef = useRef(null);
   const [activeSection, setActiveSection] = useState('kontak');
   const [anchorHeight, setAnchorHeight] = useState(64);
@@ -273,7 +280,8 @@ const ClinicDetailScreen = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: 52,
+            // 3. PENGGUNAAN INSETS SEKARANG SUDAH AMAN
+            paddingTop: insets.top + 2,
             paddingHorizontal: 20,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,

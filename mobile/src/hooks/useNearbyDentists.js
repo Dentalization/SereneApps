@@ -26,26 +26,29 @@ const resolveAvatar = (path, seed = 'dentist') => {
 };
 
 const extractClinicContext = (dentist) => {
-  const clinicId =
-    dentist?.clinicId ||
-    dentist?.clinic_id ||
+  const profileId =
     dentist?.clinicProfileId ||
     dentist?.clinic_profile_id ||
+    dentist?.clinicId ||
+    dentist?.clinic_id ||
+    dentist?.primaryClinicId;
+  const branchId =
+    dentist?.assigned_branch_id ||
     dentist?.clinicBranchId ||
     dentist?.clinic_branch_id ||
-    dentist?.branchId ||
-    dentist?.primaryClinicId;
+    dentist?.branchId;
+
+  if (!profileId && !branchId) return null;
 
   const clinicName = dentist?.clinicName || dentist?.clinic || dentist?.clinicAddress || dentist?.primaryClinicName;
   const clinicAddress = dentist?.clinicAddress || dentist?.address || dentist?.clinic_location;
 
-  return clinicId
-    ? {
-        id: clinicId.toString(),
-        name: clinicName,
-        address: clinicAddress,
-      }
-    : null;
+  return {
+    profileId: profileId?.toString?.() || null,
+    branchId: branchId?.toString?.() || null,
+    name: clinicName,
+    address: clinicAddress,
+  };
 };
 
 const normalizeDentist = (dentist) => {

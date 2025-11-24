@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image } from 'react-native';
 import { ActivityIndicator, Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -18,6 +18,19 @@ const getUpcomingDates = (days = 5) => {
     d.setDate(d.getDate() + index);
     return d.toISOString().split('T')[0];
   });
+};
+
+const buildAvatarUrl = (rawUrl, seed) => {
+  if (!rawUrl) {
+    const fallbackSeed = seed || 'dentist';
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed}&backgroundColor=8B5CF6`;
+  }
+
+  if (rawUrl.includes('dicebear.com')) {
+    return rawUrl.replace('/svg', '/png');
+  }
+
+  return rawUrl;
 };
 
 const formatTime = (isoOrTime) => {
@@ -48,8 +61,19 @@ const BookingSlotScreen = () => {
   const isLiveDentistId = /^\d+$/.test(dentistId?.toString?.() || '');
   const initialDentist = route.params?.dentist;
   const clinicIdForInfo = route.params?.clinicId;
+  const fallbackDentist =
+    initialDentist ||
+    DENTISTS.find((doc) => doc.id === dentistId) ||
+    null;
 
-  const [dentist, setDentist] = useState(initialDentist || DENTISTS.find((doc) => doc.id === dentistId));
+  const [dentist, setDentist] = useState(
+    fallbackDentist
+      ? {
+          ...fallbackDentist,
+          avatarUrl: buildAvatarUrl(fallbackDentist.avatarUrl || fallbackDentist.avatar, fallbackDentist.id),
+        }
+      : null,
+  );
   const [dentistLoading, setDentistLoading] = useState(!initialDentist);
   const [dentistError, setDentistError] = useState(null);
 
@@ -70,7 +94,10 @@ const BookingSlotScreen = () => {
   useEffect(() => {
     let ignore = false;
     const fetchDentistDetail = async () => {
-      if (initialDentist || !isLiveDentistId) return;
+      if (!isLiveDentistId) {
+        setDentistLoading(false);
+        return;
+      }
       try {
         setDentistLoading(true);
         const response = await getDentistById(dentistId);
@@ -89,24 +116,32 @@ const BookingSlotScreen = () => {
           const fallbackClinicContext = data.clinic_branch_id || data.clinic_id || data.clinic_profile_id;
           const clinicContext = primaryClinic
             ? {
-                id: primaryClinic.id?.toString?.(),
-                name: primaryClinic.name || data.clinic_name,
-                address: primaryClinic.address || data.clinic_address,
+                profileId: primaryClinic.id?.toString?.(),
+                branchId:
+                  (primaryClinic.assigned_branch_id ||
+                    primaryClinic.branch_id ||
+                    primaryClinic.branchId)?.toString?.() || null,
+                name: primaryClinic.branch_name || primaryClinic.name || data.clinic_name,
+                address: primaryClinic.branch_address || primaryClinic.address || data.clinic_address,
                 distance: data.distance || data.distanceKm,
               }
             : fallbackClinicContext
             ? {
-                id: fallbackClinicContext.toString(),
+                profileId: data.clinic_profile_id?.toString?.() || data.clinic_id?.toString?.() || null,
+                branchId: data.clinic_branch_id?.toString?.() || null,
                 name: data.clinic_name,
                 address: data.clinic_address,
                 distance: data.distance || data.distanceKm,
               }
             : null;
 
+          const fallbackAvatar =
+            data.avatar_url || data.avatarUrl || data.profile_picture || data.photo_url || data.avatar;
           setDentist({
             id: data.id?.toString?.() || data.userId?.toString?.() || dentistId,
             name: data.name || data.fullName,
             specialty: data.specialization || data.primary_specialization,
+            avatarUrl: buildAvatarUrl(fallbackAvatar, data.id || dentistId),
             rating: data.rating || 4.8,
             clinicContext,
             consultationFee: data.consultationFee || data.consultation_fee || 0,
@@ -131,7 +166,7 @@ const BookingSlotScreen = () => {
     return () => {
       ignore = true;
     };
-  }, [dentistId, initialDentist, isLiveDentistId]);
+  }, [dentistId, isLiveDentistId, initialDentist]);
 
   useEffect(() => {
     let ignore = false;
@@ -255,7 +290,7 @@ const BookingSlotScreen = () => {
           colors={['#7C3AED', '#A855F7']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16 }}
+          style={{ paddingTop: insets.top + 2, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16 }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
@@ -286,8 +321,27 @@ const BookingSlotScreen = () => {
           </View>
 
           <View style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-              <MaterialCommunityIcons name='account-heart' size={30} color='#6366F1' />
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                backgroundColor: 'white',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 16,
+                overflow: 'hidden',
+              }}
+            >
+              {dentist?.avatarUrl ? (
+                <Image
+                  source={{ uri: dentist.avatarUrl }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode='cover'
+                />
+              ) : (
+                <MaterialCommunityIcons name='account-heart' size={30} color='#6366F1' />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 20, fontWeight: '700', color: 'white' }}>{dentist?.name || 'Dokter'}</Text>

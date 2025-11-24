@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+// 1. Ganti SafeAreaView dengan View
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -29,7 +30,7 @@ const ProfileScreen = ({ navigation }) => {
   // Use real data from backend - only fields that exist in database
   const profile = useMemo(() => {
     return {
-  avatarUrl: resolveMediaUrl(user?.avatar_url || null),
+      avatarUrl: resolveMediaUrl(user?.avatar_url || null),
       gender: patientProfile?.gender || null,
       dateOfBirth: patientProfile?.dateOfBirth || null,
       phoneNumber: user?.phoneNumber || user?.phone_number || null,
@@ -90,8 +91,10 @@ const ProfileScreen = ({ navigation }) => {
   }, [profile]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      {/* Back Button */}
+    // 2. PERBAIKAN DISINI: Gunakan View biasa + paddingTop manual
+    <View style={[styles.safeArea, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
+      
+      {/* Back Button (Header ini sekarang akan aman di bawah notch) */}
       <View style={styles.header}>
         <IconButton
           icon="arrow-left"
@@ -276,7 +279,7 @@ const ProfileScreen = ({ navigation }) => {
         message={snackbar.message}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
