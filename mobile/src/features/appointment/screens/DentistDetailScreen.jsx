@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -40,19 +41,17 @@ const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
 const API_BASE = API_BASE_URL.replace(/\/$/, '');
 
 const normalizeDicebear = (url = '', fallbackSeed) => {
+  if (!url || typeof url !== 'string') {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
   if (!url.includes('dicebear.com')) {
     return url;
   }
-
-  if (!url) {
-    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
-  }
-
   return url.replace('/svg', '/png').replace('format=svg', 'format=png');
 };
 
 const resolveAvatar = (path, fallbackSeed) => {
-  if (!path) {
+  if (!path || typeof path !== 'string') {
     return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
   }
   if (/^https?:\/\//i.test(path)) {
@@ -66,19 +65,28 @@ const DentistDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   
-  const [dentist, setDentist] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialDentist = route.params?.dentist || null;
+  const [dentist, setDentist] = useState(initialDentist);
+  const [loading, setLoading] = useState(!initialDentist);
   const [error, setError] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
 
-  const dentistId = route.params?.dentistId || route.params?.dentist?.id;
+  const dentistId = route.params?.dentistId || initialDentist?.id;
+  const isLiveDentistId = /^\d+$/.test(dentistId?.toString?.() || '');
 
   useEffect(() => {
+    let ignore = false;
     const fetchDentistDetail = async () => {
       if (!dentistId) {
         setError('ID dokter tidak ditemukan');
+        setLoading(false);
+        return;
+      }
+
+      if (!isLiveDentistId) {
         setLoading(false);
         return;
       }
@@ -107,6 +115,29 @@ const DentistDetailScreen = () => {
         }
 
         // Map backend data to component format
+        const clinicsList = Array.isArray(dentistData.clinics) ? dentistData.clinics : [];
+        const primaryClinic = clinicsList.find((c) => c.is_active) || clinicsList[0];
+        const clinicContext = primaryClinic
+          ? {
+              profileId: primaryClinic.id?.toString?.(),
+              branchId:
+                (primaryClinic.assigned_branch_id ||
+                  primaryClinic.branch_id ||
+                  primaryClinic.branchId ||
+                  primaryClinic.assignedBranchId)?.toString?.() || null,
+              name: primaryClinic.branch_name || primaryClinic.name || dentistData.clinic_name,
+              address: primaryClinic.branch_address || primaryClinic.address || dentistData.clinic_address,
+              phone: primaryClinic.branch_phone || primaryClinic.phone_number,
+            }
+          : dentistData.clinic_name
+          ? {
+              profileId: dentistData.clinic_profile_id?.toString?.() || dentistData.clinic_id?.toString?.() || null,
+              branchId: null,
+              name: dentistData.clinic_name,
+              address: dentistData.clinic_address,
+            }
+          : null;
+
         const mappedDentist = {
           id: dentistData.id || dentistData.user_id,
           name: dentistData.name,
@@ -137,8 +168,9 @@ const DentistDetailScreen = () => {
             email: dentistData.email,
             address: dentistData.clinic_address,
           },
-          clinic: dentistData.clinic_name,
+          clinic: clinicContext?.name || dentistData.clinic_name,
           clinicAddress: dentistData.clinic_address,
+          clinicContext,
           price: dentistData.consultation_fee,
           consultationTypes: dentistData.consultation_types || [],
           acceptsInsurance: dentistData.accepts_insurance,
@@ -151,36 +183,49 @@ const DentistDetailScreen = () => {
           responseTime: '2 jam', // TODO: Add to backend
         };
 
-        setDentist(mappedDentist);
-        setError(null);
+        if (!ignore) {
+          setDentist(mappedDentist);
+          setError(null);
+        }
       } catch (err) {
         console.log('🔍 [DentistDetail] Error fetching dentist:', err.message);
-        setError(err.message || 'Gagal memuat detail dokter');
-        showToast('Gagal memuat data dokter', 'error');
+        if (!ignore) {
+          setError(err.message || 'Gagal memuat detail dokter');
+          showToast('Gagal memuat data dokter', 'error');
+        }
       } finally {
-        setLoading(false);
+        if (!ignore) {
+          setLoading(false);
+        }
       }
     };
 
     fetchDentistDetail();
-  }, [dentistId]);
+    return () => {
+      ignore = true;
+    };
+  }, [dentistId, isLiveDentistId]);
 
   const distanceText =
     route.params?.dentist?.distance ??
-    (typeof route.params?.dentist?.distanceKm === 'number' ? `${route.params.dentist.distanceKm.toFixed(1)} km` : null);
+    (typeof route.params?.dentist?.distanceKm === 'number'
+      ? `${route.params.dentist.distanceKm.toFixed(1)} km`
+      : typeof dentist?.clinicContext?.distance === 'number'
+      ? `${dentist.clinicContext.distance.toFixed(1)} km`
+      : dentist?.clinicContext?.distance || null);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id },
+      params: { dentistId: dentist?.id, dentist },
     });
 
   const handleMessage = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id },
+      params: { dentistId: dentist?.id, dentist },
     });
 
   const handleCall = () => {
@@ -272,7 +317,7 @@ const DentistDetailScreen = () => {
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: insets.top }}
       >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}

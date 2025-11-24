@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking, Platform } from 'react-native';
+import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,15 +9,11 @@ import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
-
-// API Base URL for avatar resolution
-const API_BASE_URL = Platform.select({
-  ios: 'http://localhost:4000',
-  android: 'http://10.0.2.2:4000',
-  default: 'http://localhost:4000',
-});
+import { API_BASE_URL } from '../../../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const DICEBEAR_BG = '8B5CF6';
+const API_BASE = API_BASE_URL.replace(/\/$/, '');
 
 // Utility to normalize Dicebear URLs
 const normalizeDicebear = (url, seed) => {
@@ -37,7 +33,7 @@ const resolveAvatar = (path, seed = 'dentist') => {
     return normalizeDicebear(path, seed);
   }
   const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return `${API_BASE_URL}/${normalized}`;
+  return `${API_BASE}/${normalized}`;
 };
 
 // Format clinic distance
@@ -81,11 +77,13 @@ const ClinicDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const scrollViewRef = useRef(null);
   const [activeSection, setActiveSection] = useState('kontak');
   const [anchorHeight, setAnchorHeight] = useState(64);
-  const [clinic, setClinic] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialClinic = route.params?.clinic || null;
+  const [clinic, setClinic] = useState(initialClinic);
+  const [loading, setLoading] = useState(!initialClinic);
   const [error, setError] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
@@ -102,13 +100,23 @@ const ClinicDetailScreen = () => {
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
+  const clinicId = route.params?.clinicId || initialClinic?.id;
+  const isLiveClinicId = /^\d+$/.test(clinicId?.toString?.() || '');
+
   useEffect(() => {
+    let ignore = false;
     const loadClinic = async () => {
+      if (!clinicId || !isLiveClinicId) {
+        setLoading(false);
+        if (!initialClinic && !clinicId) {
+          setError('Data klinik tidak tersedia');
+        }
+        return;
+      }
+
       try {
         setLoading(true);
-        const clinicId = route.params?.clinicId || route.params?.clinic?.id;
         console.log('🏥 [ClinicDetail] Loading clinic:', clinicId);
-        
         const response = await fetchClinicById(clinicId);
         console.log('🏥 [ClinicDetail] Raw response:', response);
         
@@ -167,19 +175,28 @@ const ClinicDetailScreen = () => {
         };
 
         console.log('🏥 [ClinicDetail] Mapped clinic:', mappedClinic);
-        setClinic(mappedClinic);
-        setError(null);
+        if (!ignore) {
+          setClinic(mappedClinic);
+          setError(null);
+        }
       } catch (err) {
         console.log('🔍 [ClinicDetail] Failed to load clinic:', err.message);
-        setError('Tidak dapat memuat detail klinik');
-        showToast('Gagal memuat data klinik', 'error');
+        if (!ignore) {
+          setError('Tidak dapat memuat detail klinik');
+          showToast('Gagal memuat data klinik', 'error');
+        }
       } finally {
-        setLoading(false);
+        if (!ignore) {
+          setLoading(false);
+        }
       }
     };
 
     loadClinic();
-  }, [route.params?.clinicId, route.params?.clinic?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [clinicId, isLiveClinicId]);
 
   const sections = [
     { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
@@ -259,18 +276,26 @@ const ClinicDetailScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
+      {/* HEADER / HERO */}
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, zIndex: 20, elevation: 20 }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          zIndex: 20,
+          elevation: 20,
+        }}
       >
         <LinearGradient
           colors={[theme.colors.primary, '#7C3AED']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: 52,
+            paddingTop: insets.top + 12,
             paddingHorizontal: 20,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,

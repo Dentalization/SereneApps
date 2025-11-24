@@ -6,8 +6,9 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "splash": {
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#00BFA6"
+      "backgroundColor": "#0F172A"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -27,7 +28,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#00BFA6"
+        "backgroundColor": "#0F172A"
       },
       "package": "com.sereneapps.dentalpatient",
       "permissions": [
@@ -37,6 +38,10 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ]
+    },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0F172A"
     },
     "web": {}
   }

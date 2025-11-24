@@ -1,23 +1,9 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { API_BASE_URL } from './api';
 
-// Backend always runs on port 4000
-const getApiBaseUrl = () => {
-  if (__DEV__) {
-    // Development mode
-    if (Platform.OS === 'android') {
-      // Android emulator uses 10.0.2.2 to access host machine's localhost
-      return 'http://10.0.2.2:4000';
-    }
-    // iOS simulator and web can use localhost
-    return 'http://localhost:4000';
-  }
-  // Production
-  return 'https://api.dentalization.id';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+console.log('🌐 API Base URL:', API_BASE_URL);
 
 /**
  * Get access token from storage
@@ -34,28 +20,82 @@ const getAccessToken = async () => {
 /**
  * Transform camelCase profile data to snake_case for backend
  */
-const transformToBackendFormat = (profileData) => {
+const sanitizeAddressPayload = (address) => {
+  if (!address) return undefined;
+  const { line1, line2, city, province, postalCode } = address;
+  const required = [line1, city, province, postalCode].map((value) =>
+    typeof value === 'string' ? value.trim() : value,
+  );
+
+  if (required.some((value) => !value)) {
+    return undefined;
+  }
+
+  return {
+    line1: line1.trim(),
+    line2: line2?.trim?.() || null,
+    city: city.trim(),
+    province: province.trim(),
+    postal_code: postalCode.trim(),
+  };
+};
+
+const sanitizeEmergencyContact = (contact) => {
+  if (!contact) return undefined;
+  const { name, phone, relationship } = contact;
+  const hasData = [name, phone, relationship].some((value) => value);
+  if (!hasData) return undefined;
+  return {
+    name: name?.trim?.() || null,
+    phone: phone?.trim?.() || null,
+    relationship: relationship?.trim?.() || null,
+  };
+};
+
+const sanitizeMedicalDetails = (medicalDetails) => {
+  if (!medicalDetails) return undefined;
+  const { medications, chronicConditions, ...restMedical } = medicalDetails;
+  return {
+    ...restMedical,
+    current_medications: Array.isArray(medications) ? medications : [],
+    medical_conditions: Array.isArray(chronicConditions) ? chronicConditions : [],
+  };
+};
+
+const transformToBackendFormat = (profileData = {}) => {
   const transformed = { ...profileData };
-  
-  // Transform address fields
-  if (transformed.address) {
-    const { postalCode, ...restAddress } = transformed.address;
-    transformed.address = {
-      ...restAddress,
-      postal_code: postalCode, // postalCode → postal_code
-    };
+
+  const normalizedAddress = sanitizeAddressPayload(transformed.address);
+  if (normalizedAddress) {
+    transformed.address = normalizedAddress;
+  } else {
+    delete transformed.address;
   }
-  
-  // Transform medical_details fields
-  if (transformed.medical_details) {
-    const { medications, chronicConditions, ...restMedical } = transformed.medical_details;
-    transformed.medical_details = {
-      ...restMedical,
-      current_medications: medications, // medications → current_medications
-      medical_conditions: chronicConditions, // chronicConditions → medical_conditions
-    };
+
+  const normalizedEmergency = sanitizeEmergencyContact(transformed.emergency_contact);
+  if (normalizedEmergency) {
+    transformed.emergency_contact = normalizedEmergency;
+  } else {
+    delete transformed.emergency_contact;
   }
-  
+
+  const normalizedMedical = sanitizeMedicalDetails(transformed.medical_details);
+  if (normalizedMedical) {
+    transformed.medical_details = normalizedMedical;
+  } else {
+    delete transformed.medical_details;
+  }
+
+  Object.keys(transformed).forEach((key) => {
+    if (
+      transformed[key] === null ||
+      transformed[key] === undefined ||
+      (typeof transformed[key] === 'string' && transformed[key].trim() === '')
+    ) {
+      delete transformed[key];
+    }
+  });
+
   return transformed;
 };
 

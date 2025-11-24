@@ -4,6 +4,7 @@ import App from "./App";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 import "./styles/modal-fix.css";
+import "./utils/consoleToaster";
 import { initDevCleanup } from "./utils/devCleanup";
 
 const INITIAL_LOADER_MIN_VISIBLE_MS = 1500;

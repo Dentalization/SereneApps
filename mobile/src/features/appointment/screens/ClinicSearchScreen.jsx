@@ -1,11 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, StatusBar, RefreshControl, ImageBackground } from 'react-native';
-import { ActivityIndicator, Text, Searchbar, Chip, useTheme } from 'react-native-paper';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  StatusBar,
+  RefreshControl,
+  ImageBackground,
+} from 'react-native';
+import {
+  ActivityIndicator,
+  Text,
+  Searchbar,
+  Chip,
+  useTheme,
+} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
+import resolveMediaUrl from '../../../utils/media';
 
 const filters = [
   { key: 'all', label: 'Semua' },
@@ -15,10 +31,24 @@ const filters = [
   { key: 'insurance', label: 'BPJS / Asuransi' },
 ];
 
-const formatDistance = (clinic) =>
-  typeof clinic.distanceKm === 'number'
-    ? `${clinic.distanceKm.toFixed(1)} km`
-    : clinic.distance || '—';
+const formatDistance = (clinic) => {
+  if (typeof clinic.distanceKm === 'number') {
+    return `${clinic.distanceKm.toFixed(1)} km`;
+  }
+  if (typeof clinic.distance === 'number') {
+    return `${clinic.distance.toFixed(1)} km`;
+  }
+  return clinic.distance || '—';
+};
+
+const isClinicAvailable = (clinic) => {
+  if (typeof clinic.isOpenNow === 'boolean') return clinic.isOpenNow;
+  if (typeof clinic.openStatus === 'string') {
+    const lowered = clinic.openStatus.toLowerCase();
+    return lowered.includes('buka') && !lowered.includes('tutup');
+  }
+  return false;
+};
 
 const StatChip = ({ icon, label }) => (
   <View
@@ -33,7 +63,16 @@ const StatChip = ({ icon, label }) => (
     }}
   >
     <MaterialCommunityIcons name={icon} size={14} color="white" />
-    <Text style={{ color: 'white', marginLeft: 6, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+    <Text
+      style={{
+        color: 'white',
+        marginLeft: 6,
+        fontSize: 12,
+        fontWeight: '600',
+      }}
+    >
+      {label}
+    </Text>
   </View>
 );
 
@@ -55,7 +94,11 @@ const ActionButton = ({ label, icon, onPress, variant }) => {
         marginLeft: isFilled ? 12 : 0,
       }}
     >
-      <MaterialCommunityIcons name={icon} size={16} color={isFilled ? '#1D1B20' : 'white'} />
+      <MaterialCommunityIcons
+        name={icon}
+        size={16}
+        color={isFilled ? '#1D1B20' : 'white'}
+      />
       <Text
         style={{
           color: isFilled ? '#1D1B20' : 'white',
@@ -73,8 +116,11 @@ const ActionButton = ({ label, icon, onPress, variant }) => {
 const ClinicSearchScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
+
   const {
     clinics,
     loading,
@@ -82,35 +128,64 @@ const ClinicSearchScreen = () => {
     refresh,
     location,
     usedDefaultLocation,
-  } = useNearbyClinics({ radius: 12, limit: 50 });
+  } = useNearbyClinics({ radius: 30, limit: 20 });
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
   const filteredClinics = useMemo(() => {
-    let data = clinics;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      data = data.filter(
-        (clinic) =>
-          clinic.name?.toLowerCase().includes(q) ||
-          clinic.address?.toLowerCase().includes(q) ||
-          clinic.city?.toLowerCase().includes(q)
-      );
+    let data = Array.isArray(clinics) ? [...clinics] : [];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      data = data.filter((clinic) => {
+        const nameMatch = clinic.name?.toLowerCase().includes(q);
+        const address = (
+          clinic.addressText ||
+          clinic.address ||
+          ''
+        )
+          .toString()
+          .toLowerCase();
+        const addressMatch = address.includes(q);
+        const cityMatch = clinic.city?.toLowerCase().includes(q);
+        return nameMatch || addressMatch || cityMatch;
+      });
     }
 
     switch (selectedFilter) {
-      case 'nearby':
-        data = [...data].sort((a, b) => (a.distanceKm || Infinity) - (b.distanceKm || Infinity));
+      case 'nearby': {
+        data = [...data].sort((a, b) => {
+          const aDist =
+            typeof a.distanceKm === 'number'
+              ? a.distanceKm
+              : Number(a.distance) || Infinity;
+          const bDist =
+            typeof b.distanceKm === 'number'
+              ? b.distanceKm
+              : Number(b.distance) || Infinity;
+          return aDist - bDist;
+        });
         break;
+      }
       case 'highest_rated':
-        data = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        data = [...data].sort(
+          (a, b) => (b.rating || 0) - (a.rating || 0),
+        );
         break;
       case 'available':
-        data = data.filter((clinic) => clinic.isOpenNow);
+        data = data.filter(isClinicAvailable);
         break;
       case 'insurance':
         data = data.filter((clinic) =>
-          (clinic.highlights || []).some((item) => item.toLowerCase().includes('insurance'))
+          (clinic.highlights || []).some((item) => {
+            if (typeof item !== 'string') return false;
+            const lowered = item.toLowerCase();
+            return (
+              lowered.includes('insurance') ||
+              lowered.includes('bpjs') ||
+              lowered.includes('asuransi')
+            );
+          }),
         );
         break;
       default:
@@ -122,42 +197,84 @@ const ClinicSearchScreen = () => {
 
   const stats = useMemo(() => {
     const total = clinics.length;
-    const nearby = clinics.filter((clinic) => (clinic.distanceKm || 0) <= 10).length;
+    const nearby = clinics.filter(
+      (clinic) => (clinic.distanceKm || 0) <= 10,
+    ).length;
     const avgRating = total
-      ? (clinics.reduce((sum, clinic) => sum + (clinic.rating || 0), 0) / total).toFixed(1)
+      ? (
+          clinics.reduce(
+            (sum, clinic) => sum + (clinic.rating || 0),
+            0,
+          ) / total
+        ).toFixed(1)
       : '0.0';
     return { total, nearby, avgRating };
   }, [clinics]);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+        }}
       >
         <LinearGradient
           colors={['#7C3AED', '#9D5DF5']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.hero}
+          style={[styles.hero, { paddingTop: insets.top + 8 }]}
         >
           <View style={styles.heroHeader}>
-            <TouchableOpacity style={styles.heroBack} onPress={() => navigation.goBack()}>
-              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+            <TouchableOpacity
+              style={styles.heroBack}
+              onPress={() => navigation.goBack()}
+            >
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={22}
+                color="white"
+              />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Penjelajah</Text>
-              <Text style={styles.heroTitle}>Temukan klinik terbaik</Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 12,
+                }}
+              >
+                Penjelajah
+              </Text>
+              <Text style={styles.heroTitle}>
+                Temukan klinik terbaik
+              </Text>
             </View>
             <TouchableOpacity
               style={styles.heroBack}
-              onPress={() => navigation.navigate('NearbyDentists', { maxDistanceKm: 5 })}
+              onPress={() =>
+                navigation.navigate('NearbyDentists', {
+                  maxDistanceKm: 5,
+                })
+              }
             >
-              <MaterialCommunityIcons name='map-search' size={22} color='white' />
+              <MaterialCommunityIcons
+                name="map-search"
+                size={22}
+                color="white"
+              />
             </TouchableOpacity>
           </View>
+
           <Text style={styles.heroSubtitle}>
             {usedDefaultLocation
               ? 'Menampilkan klinik populer karena lokasi perangkat belum aktif.'
@@ -165,27 +282,44 @@ const ClinicSearchScreen = () => {
           </Text>
 
           <View style={styles.heroStats}>
-            <StatPill icon='map-marker' label='Dekat Anda' value={`${stats.nearby} klinik`} />
-            <StatPill icon='star' label='Rating rata-rata' value={`${stats.avgRating}/5`} />
+            <StatPill
+              icon="map-marker"
+              label="Dekat Anda"
+              value={`${stats.nearby} klinik`}
+            />
+            <StatPill
+              icon="star"
+              label="Rating rata-rata"
+              value={`${stats.avgRating}/5`}
+            />
           </View>
 
           <Searchbar
-            placeholder='Cari nama klinik atau lokasi'
+            placeholder="Cari nama klinik atau lokasi"
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.heroSearch}
             inputStyle={{ color: '#0F172A' }}
-            iconColor='#94A3B8'
+            iconColor="#94A3B8"
           />
         </LinearGradient>
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 140 }}
+        contentContainerStyle={{
+          paddingTop: headerHeight + 16,
+          paddingBottom: 140,
+        }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={refresh} />
+        }
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginTop: 8 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ paddingHorizontal: 20, marginTop: 8 }}
+        >
           {filters.map((filter) => {
             const active = selectedFilter === filter.key;
             return (
@@ -200,7 +334,10 @@ const ClinicSearchScreen = () => {
                   borderColor: active ? '#7C3AED' : '#E2E8F0',
                   borderWidth: 1,
                 }}
-                textStyle={{ color: active ? '#7C3AED' : '#475569', fontWeight: '600' }}
+                textStyle={{
+                  color: active ? '#7C3AED' : '#475569',
+                  fontWeight: '600',
+                }}
               >
                 {filter.label}
               </Chip>
@@ -221,150 +358,267 @@ const ClinicSearchScreen = () => {
                 borderColor: '#FECACA',
               }}
             >
-              <Text style={{ color: '#B91C1C', fontWeight: '700' }}>Tidak dapat memuat klinik</Text>
-              <Text style={{ color: '#B91C1C', marginTop: 4 }}>Ketuk untuk coba lagi</Text>
+              <Text
+                style={{
+                  color: '#B91C1C',
+                  fontWeight: '700',
+                }}
+              >
+                Tidak dapat memuat klinik
+              </Text>
+              <Text
+                style={{
+                  color: '#B91C1C',
+                  marginTop: 4,
+                }}
+              >
+                Ketuk untuk coba lagi
+              </Text>
             </TouchableOpacity>
           ) : null}
 
           {!filteredClinics.length && !loading ? (
             <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <MaterialCommunityIcons name='hospital-box-outline' size={56} color='#CBD5F5' />
-              <Text style={{ fontWeight: '700', color: '#0F172A', marginTop: 12 }}>
+              <MaterialCommunityIcons
+                name="hospital-box-outline"
+                size={56}
+                color="#CBD5F5"
+              />
+              <Text
+                style={{
+                  fontWeight: '700',
+                  color: '#0F172A',
+                  marginTop: 12,
+                }}
+              >
                 Klinik tidak ditemukan
               </Text>
-              <Text style={{ color: '#475569', textAlign: 'center', marginTop: 4 }}>
+              <Text
+                style={{
+                  color: '#475569',
+                  textAlign: 'center',
+                  marginTop: 4,
+                }}
+              >
                 Coba ubah kata kunci atau filter pencarian Anda.
               </Text>
             </View>
           ) : null}
 
           {loading && !clinics.length ? (
-            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-              <ActivityIndicator animating color={theme.colors.primary} />
-              <Text style={{ marginTop: 12, color: '#475569' }}>Memuat klinik terdekat...</Text>
+            <View
+              style={{
+                alignItems: 'center',
+                paddingVertical: 40,
+              }}
+            >
+              <ActivityIndicator
+                animating
+                color={theme.colors.primary}
+              />
+              <Text
+                style={{ marginTop: 12, color: '#475569' }}
+              >
+                Memuat klinik terdekat...
+              </Text>
             </View>
           ) : null}
 
-          {filteredClinics.map((clinic) => (
-            <TouchableOpacity
-              key={clinic.id}
-              onPress={() =>
-                navigation.navigate('ClinicDetail', {
-                  clinicId: clinic.id,
-                  clinic,
-                  coords: location,
-                })
-              }
-              style={{ marginBottom: 20 }}
-              activeOpacity={0.9}
-            >
-              <ImageBackground
-                source={{
-                  uri:
-                    clinic.coverImage ||
-                    clinic.heroImage ||
-                    'https://images.unsplash.com/photo-1629909613654-28e377c37b09',
-                }}
-                style={{
-                  width: '100%',
-                  height: 240,
-                  borderRadius: 24,
-                  overflow: 'hidden',
-                }}
-                imageStyle={{ borderRadius: 24 }}
+          {filteredClinics.map((clinic) => {
+            let imageUri =
+              resolveMediaUrl(clinic.heroImage) ||
+              resolveMediaUrl(clinic.coverImage) ||
+              clinic.heroImage ||
+              clinic.coverImage;
+
+            if (
+              !imageUri &&
+              Array.isArray(clinic.gallery) &&
+              clinic.gallery.length > 0
+            ) {
+              imageUri =
+                resolveMediaUrl(clinic.gallery[0]) ||
+                clinic.gallery[0];
+            }
+
+            if (!imageUri || imageUri.includes('photo-160000')) {
+              imageUri =
+                'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
+            }
+
+            return (
+              <TouchableOpacity
+                key={clinic.id}
+                onPress={() =>
+                  navigation.navigate('ClinicDetail', {
+                    clinicId: clinic.id,
+                    clinic,
+                    coords: location,
+                  })
+                }
+                style={{ marginBottom: 20 }}
+                activeOpacity={0.9}
               >
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.75)']}
+                <ImageBackground
+                  source={{ uri: imageUri }}
                   style={{
-                    flex: 1,
-                    padding: 20,
-                    justifyContent: 'space-between',
+                    width: '100%',
+                    height: 240,
+                    borderRadius: 24,
+                    overflow: 'hidden',
                   }}
+                  imageStyle={{ borderRadius: 24 }}
                 >
-                  {/* Top Row: Distance Badge + Rating */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <LinearGradient
+                    colors={[
+                      'rgba(0,0,0,0.1)',
+                      'rgba(0,0,0,0.75)',
+                    ]}
+                    style={{
+                      flex: 1,
+                      padding: 20,
+                      justifyContent: 'space-between',
+                    }}
+                  >
                     <View
                       style={{
-                        backgroundColor: 'rgba(255,255,255,0.95)',
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderRadius: 999,
                         flexDirection: 'row',
-                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
                       }}
                     >
-                      <MaterialCommunityIcons name='map-marker-distance' size={16} color='#7C3AED' />
-                      <Text style={{ color: '#1D1B20', fontWeight: '700', marginLeft: 6, fontSize: 13 }}>
-                        {formatDistance(clinic)}
+                      <View
+                        style={{
+                          backgroundColor: 'rgba(255,255,255,0.95)',
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 999,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="map-marker-distance"
+                          size={16}
+                          color="#7C3AED"
+                        />
+                        <Text
+                          style={{
+                            color: '#1D1B20',
+                            fontWeight: '700',
+                            marginLeft: 6,
+                            fontSize: 13,
+                          }}
+                        >
+                          {formatDistance(clinic)}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          backgroundColor: 'rgba(255,255,255,0.95)',
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="star"
+                          size={14}
+                          color="#F59E0B"
+                        />
+                        <Text
+                          style={{
+                            color: '#1D1B20',
+                            fontWeight: '700',
+                            marginLeft: 4,
+                            fontSize: 13,
+                          }}
+                        >
+                          {(clinic.rating || 4.8).toFixed(1)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View>
+                      <Text
+                        style={{
+                          color: 'white',
+                          fontSize: 20,
+                          fontWeight: '800',
+                          marginBottom: 6,
+                        }}
+                      >
+                        {clinic.name}
                       </Text>
-                    </View>
-                    <View
-                      style={{
-                        backgroundColor: 'rgba(255,255,255,0.95)',
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 999,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <MaterialCommunityIcons name='star' size={14} color='#F59E0B' />
-                      <Text style={{ color: '#1D1B20', fontWeight: '700', marginLeft: 4, fontSize: 13 }}>
-                        {(clinic.rating || 4.8).toFixed(1)}
+                      <Text
+                        style={{
+                          color: 'rgba(255,255,255,0.9)',
+                          fontSize: 14,
+                          marginBottom: 14,
+                        }}
+                      >
+                        {clinic.tagline ||
+                          clinic.addressText ||
+                          clinic.address ||
+                          clinic.city}
                       </Text>
-                    </View>
-                  </View>
 
-                  {/* Bottom Section: Clinic Info + Actions */}
-                  <View>
-                    <Text style={{ color: 'white', fontSize: 20, fontWeight: '800', marginBottom: 6 }}>
-                      {clinic.name}
-                    </Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 14 }}>
-                      {clinic.tagline || clinic.address}
-                    </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          marginBottom: 14,
+                        }}
+                      >
+                        <StatChip
+                          icon="doctor"
+                          label={`${clinic.dentistCount || 0} Dokter`}
+                        />
+                        <StatChip
+                          icon="clock-outline"
+                          label={
+                            clinic.isOpenNow
+                              ? 'Buka'
+                              : clinic.openStatus ||
+                                'Jadwal Fleksibel'
+                          }
+                        />
+                      </View>
 
-                    {/* Stats Chips */}
-                    <View style={{ flexDirection: 'row', marginBottom: 14 }}>
-                      <StatChip icon='doctor' label={`${clinic.dentistCount || 0} Dokter`} />
-                      <StatChip
-                        icon='clock-outline'
-                        label={clinic.isOpenNow ? 'Buka' : clinic.openStatus || 'Jadwal Fleksibel'}
-                      />
+                      <View style={{ flexDirection: 'row' }}>
+                        <ActionButton
+                          label="Info"
+                          icon="information-outline"
+                          onPress={() =>
+                            navigation.navigate('ClinicDetail', {
+                              clinicId: clinic.id,
+                              clinic,
+                              coords: location,
+                            })
+                          }
+                          variant="outline"
+                        />
+                        <ActionButton
+                          label="Booking"
+                          icon="calendar-check"
+                          onPress={() =>
+                            navigation.navigate('ClinicDetail', {
+                              clinicId: clinic.id,
+                              clinic,
+                              coords: location,
+                            })
+                          }
+                          variant="filled"
+                        />
+                      </View>
                     </View>
-
-                    {/* Action Buttons */}
-                    <View style={{ flexDirection: 'row' }}>
-                      <ActionButton
-                        label='Info'
-                        icon='information-outline'
-                        onPress={() =>
-                          navigation.navigate('ClinicDetail', {
-                            clinicId: clinic.id,
-                            clinic,
-                            coords: location,
-                          })
-                        }
-                        variant='outline'
-                      />
-                      <ActionButton
-                        label='Booking'
-                        icon='calendar-check'
-                        onPress={() =>
-                          navigation.navigate('ClinicDetail', {
-                            clinicId: clinic.id,
-                            clinic,
-                            coords: location,
-                          })
-                        }
-                        variant='filled'
-                      />
-                    </View>
-                  </View>
-                </LinearGradient>
-              </ImageBackground>
-            </TouchableOpacity>
-          ))}
+                  </LinearGradient>
+                </ImageBackground>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
     </View>
@@ -373,24 +627,47 @@ const ClinicSearchScreen = () => {
 
 const StatPill = ({ icon, label, value }) => (
   <View style={styles.statPill}>
-    <MaterialCommunityIcons name={icon} size={18} color='white' />
+    <MaterialCommunityIcons name={icon} size={18} color="white" />
     <View style={{ marginLeft: 8 }}>
-      <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{label}</Text>
-      <Text style={{ color: 'white', fontWeight: '700', marginTop: 2 }}>{value}</Text>
+      <Text
+        style={{
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: 12,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          color: 'white',
+          fontWeight: '700',
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </Text>
     </View>
   </View>
 );
 
 const InfoChip = ({ icon, label }) => (
   <View style={styles.infoChip}>
-    <MaterialCommunityIcons name={icon} size={14} color='#4C1D95' />
-    <Text style={{ marginLeft: 6, color: '#4C1D95', fontWeight: '600', fontSize: 12 }}>{label}</Text>
+    <MaterialCommunityIcons name={icon} size={14} color="#4C1D95" />
+    <Text
+      style={{
+        marginLeft: 6,
+        color: '#4C1D95',
+        fontWeight: '600',
+        fontSize: 12,
+      }}
+    >
+      {label}
+    </Text>
   </View>
 );
 
 const styles = StyleSheet.create({
   hero: {
-    paddingTop: 52,
     paddingHorizontal: 20,
     paddingBottom: 32,
     borderBottomLeftRadius: 32,
@@ -410,7 +687,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroTitle: { color: 'white', fontSize: 20, fontWeight: '700' },
-  heroSubtitle: { color: 'rgba(255,255,255,0.85)', marginTop: 10, lineHeight: 20 },
+  heroSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 10,
+    lineHeight: 20,
+  },
   heroStats: { flexDirection: 'row', marginTop: 18 },
   statPill: {
     flexDirection: 'row',
@@ -466,8 +747,17 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#F8FAFC',
   },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  metaText: { color: '#94A3B8', marginLeft: 6, fontSize: 12, flex: 1 },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  metaText: {
+    color: '#94A3B8',
+    marginLeft: 6,
+    fontSize: 12,
+    flex: 1,
+  },
   infoChips: { flexDirection: 'row', marginTop: 14 },
   infoChip: {
     flexDirection: 'row',

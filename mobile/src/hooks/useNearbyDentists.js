@@ -25,6 +25,29 @@ const resolveAvatar = (path, seed = 'dentist') => {
   return `${API_BASE}/${normalized}`;
 };
 
+const extractClinicContext = (dentist) => {
+  const clinicId =
+    dentist?.clinicId ||
+    dentist?.clinic_id ||
+    dentist?.clinicProfileId ||
+    dentist?.clinic_profile_id ||
+    dentist?.clinicBranchId ||
+    dentist?.clinic_branch_id ||
+    dentist?.branchId ||
+    dentist?.primaryClinicId;
+
+  const clinicName = dentist?.clinicName || dentist?.clinic || dentist?.clinicAddress || dentist?.primaryClinicName;
+  const clinicAddress = dentist?.clinicAddress || dentist?.address || dentist?.clinic_location;
+
+  return clinicId
+    ? {
+        id: clinicId.toString(),
+        name: clinicName,
+        address: clinicAddress,
+      }
+    : null;
+};
+
 const normalizeDentist = (dentist) => {
   const years = dentist?.yearsOfExperience || 0;
   const fallbackRating = 4 + Math.min(1, years / 15);
@@ -40,6 +63,7 @@ const normalizeDentist = (dentist) => {
     name: dentist?.name || dentist?.fullname || 'Dokter Gigi',
     specialty: dentist?.specialization || dentist?.primarySpecialization || 'Dokter Gigi',
     clinic: dentist?.clinicName || dentist?.clinic || dentist?.clinicAddress || 'Klinik gigimu',
+    clinicContext: extractClinicContext(dentist),
     rating: Number((dentist?.rating || fallbackRating).toFixed(1)),
     reviews: dentist?.reviewCount || dentist?.reviews || 0,
     price: dentist?.consultationFee || dentist?.price || 0,

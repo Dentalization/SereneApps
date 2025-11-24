@@ -9,6 +9,7 @@ import { getDentistById, getDentistAvailableSlots } from '../../../services/dent
 import { DENTISTS, SLOT_AVAILABILITY } from '../data/appointments';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getUpcomingDates = (days = 5) => {
   const today = new Date();
@@ -62,6 +63,7 @@ const BookingSlotScreen = () => {
   const [slotError, setSlotError] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
+  const insets = useSafeAreaInsets();
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
@@ -83,24 +85,32 @@ const BookingSlotScreen = () => {
             : null;
           
           console.log('🏥 [BookingSlot] Primary clinic:', primaryClinic);
-          
+
+          const fallbackClinicContext = data.clinic_branch_id || data.clinic_id || data.clinic_profile_id;
+          const clinicContext = primaryClinic
+            ? {
+                id: primaryClinic.id?.toString?.(),
+                name: primaryClinic.name || data.clinic_name,
+                address: primaryClinic.address || data.clinic_address,
+                distance: data.distance || data.distanceKm,
+              }
+            : fallbackClinicContext
+            ? {
+                id: fallbackClinicContext.toString(),
+                name: data.clinic_name,
+                address: data.clinic_address,
+                distance: data.distance || data.distanceKm,
+              }
+            : null;
+
           setDentist({
             id: data.id?.toString?.() || data.userId?.toString?.() || dentistId,
             name: data.name || data.fullName,
             specialty: data.specialization || data.primary_specialization,
             rating: data.rating || 4.8,
-            clinic: primaryClinic ? {
-              id: primaryClinic.id?.toString?.(),
-              name: primaryClinic.name || data.clinic_name,
-              address: primaryClinic.address || data.clinic_address,
-              distance: data.distance || data.distanceKm,
-            } : {
-              id: null,
-              name: data.clinic_name,
-              address: data.clinic_address,
-              distance: data.distance || data.distanceKm,
-            },
+            clinicContext,
             consultationFee: data.consultationFee || data.consultation_fee || 0,
+            distance: data.distance || data.distanceKm,
           });
           setDentistError(null);
         }
@@ -129,21 +139,26 @@ const BookingSlotScreen = () => {
       setSlotsLoading(true);
       setSlotError(null);
       setSelectedSlot(null);
-      const clinicRef =
+      const clinicProfileRef =
         clinicIdForInfo ||
-        dentist?.clinic?.id ||
+        dentist?.clinicContext?.profileId ||
         dentist?.clinics?.[0]?.id ||
         dentist?.primaryClinicId;
+      const clinicBranchRef = dentist?.clinicContext?.branchId;
+
+      const isLiveClinicRef = /^\d+$/.test((clinicProfileRef || '').toString());
       
       console.log('📅 [BookingSlot] Loading slots for:', {
         dentistId,
         selectedDate,
         clinicIdForInfo,
-        'dentist.clinic.id': dentist?.clinic?.id,
-        clinicRef,
+        clinicProfileRef,
+        clinicBranchRef,
+        'clinicContext.profileId': dentist?.clinicContext?.profileId,
+        'clinicContext.branchId': dentist?.clinicContext?.branchId,
       });
       
-      if (!clinicRef) {
+      if (!clinicProfileRef || !isLiveClinicRef) {
         // Silently use fallback without user-facing warning
         console.log('📍 [BookingSlot] Using fallback slots (clinic ID not available)');
         const fallback = SLOT_AVAILABILITY.find(
@@ -159,11 +174,11 @@ const BookingSlotScreen = () => {
         return;
       }
       try {
-        if (!isLiveDentistId) {
+        if (!isLiveDentistId || !isLiveClinicRef) {
           throw new Error('Using fallback data for demo dentist');
         }
         console.log('🌐 [BookingSlot] Calling API getDentistAvailableSlots...');
-        const response = await getDentistAvailableSlots(dentistId, selectedDate, clinicRef);
+        const response = await getDentistAvailableSlots(dentistId, selectedDate, clinicProfileRef);
         console.log('✅ [BookingSlot] Got slots response:', response);
         const data = response?.data || response;
         const available = data?.slots || data?.availableSlots || [];
@@ -199,7 +214,7 @@ const BookingSlotScreen = () => {
     return () => {
       ignore = true;
     };
-  }, [clinicIdForInfo, dentist?.clinic?.id, dentistId, selectedDate, isLiveDentistId, selectedSlot]);
+  }, [clinicIdForInfo, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId, selectedSlot]);
 
   const filteredSlots = useMemo(
     () => slots.filter((slot) => slot.type === slotType && slot.isAvailable),
@@ -235,7 +250,7 @@ const BookingSlotScreen = () => {
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
 
-      <View onLayout={handleHeaderLayout} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}>
+      <View onLayout={handleHeaderLayout} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10, paddingTop: insets.top }}>
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
           start={{ x: 0, y: 0 }}
@@ -251,7 +266,19 @@ const BookingSlotScreen = () => {
               <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Pilih Jadwal</Text>
             </View>
             <TouchableOpacity
-              onPress={() => dentist?.clinic?.id && navigation.navigate('ClinicDetail', { clinicId: dentist.clinic.id })}
+              onPress={() => {
+                const targetClinicId = dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId;
+                if (targetClinicId) {
+                  navigation.navigate('ClinicDetail', {
+                    clinicId: targetClinicId,
+                    clinic: {
+                      id: targetClinicId,
+                      name: dentist?.clinicContext?.name,
+                      address: dentist?.clinicContext?.address,
+                    },
+                  });
+                }
+              }}
               style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
             >
               <MaterialCommunityIcons name='share-variant' size={20} color='white' />
@@ -269,14 +296,16 @@ const BookingSlotScreen = () => {
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
                 <MaterialCommunityIcons name='map-marker' size={14} color='rgba(255,255,255,0.7)' />
-                <Text style={{ color: 'rgba(255,255,255,0.7)', marginLeft: 4 }}>{dentist?.clinic?.address}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.7)', marginLeft: 4 }}>
+                  {dentist?.clinicContext?.address || dentist?.clinic?.address}
+                </Text>
               </View>
             </View>
           </View>
 
           <View style={{ flexDirection: 'row', marginTop: 16 }}>
             <InfoPill icon='star' label={`Rating ${((dentist?.rating || 4.8)).toFixed(1)}`} />
-            <InfoPill icon='map-marker-distance' label={dentist?.clinic?.distance || '—'} />
+            <InfoPill icon='map-marker-distance' label={dentist?.clinicContext?.distance || dentist?.distance || '—'} />
             <InfoPill icon='calendar' label={`${filteredSlots.length} jadwal tersedia`} />
           </View>
         </LinearGradient>

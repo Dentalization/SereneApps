@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BookingConfirmScreen = () => {
   const theme = useTheme();
@@ -33,6 +34,7 @@ const BookingConfirmScreen = () => {
   };
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -40,7 +42,7 @@ const BookingConfirmScreen = () => {
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10, paddingTop: insets.top }}
       >
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
@@ -61,8 +63,16 @@ const BookingConfirmScreen = () => {
             </View>
             <TouchableOpacity
               onPress={() => {
-                if (dentist?.clinic?.id) {
-                  navigation.navigate('ClinicDetail', { clinicId: dentist.clinic.id });
+                const targetClinicId = dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId || dentist?.clinic?.id;
+                if (targetClinicId) {
+                  navigation.navigate('ClinicDetail', {
+                    clinicId: targetClinicId,
+                    clinic: {
+                      id: targetClinicId,
+                      name: dentist?.clinicContext?.name || dentist?.clinic?.name,
+                      address: dentist?.clinicContext?.address || dentist?.clinic?.address,
+                    },
+                  });
                 }
               }}
               style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}

@@ -297,9 +297,16 @@ export const getDentistById = async (req, res, next) => {
         cp.city,
         cp.phone as phone_number,
         cs.role,
-        cs.is_active
+        cs.is_active,
+        cs.assigned_branch_id,
+        cb.id as branch_id,
+        cb.branch_name,
+        cb.street_address as branch_address,
+        cb.city as branch_city,
+        cb.phone as branch_phone
       FROM clinic_staff cs
       JOIN clinic_profiles cp ON cs.clinic_profile_id = cp.id
+      LEFT JOIN clinic_branches cb ON cs.assigned_branch_id = cb.id
       WHERE cs.user_id = $1
       ORDER BY cs.is_active DESC, cp.brand_name ASC
     `;

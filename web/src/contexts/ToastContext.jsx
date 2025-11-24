@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import Toast from '../components/Toast';
+import { subscribeToToastEvents, toastService } from '../utils/toastBus';
 
 const ToastContext = createContext(null);
 
@@ -11,36 +12,58 @@ export const useToast = () => {
   return context;
 };
 
+const normalizeToastPayload = ({ message, status = 'info', duration = 5000, meta = {} }) => ({
+  message,
+  status,
+  duration,
+  meta,
+  visible: true,
+});
+
 export const ToastProvider = ({ children }) => {
   const [toast, setToast] = useState(null);
 
-  const showToast = useCallback(({ message, status = 'info', duration = 5000 }) => {
-    setToast({ message, status, duration, visible: true });
+  const triggerToast = useCallback((payload) => {
+    if (!payload?.message) return;
+    setToast(normalizeToastPayload(payload));
   }, []);
+
+  const showToast = useCallback(
+    ({ message, status = 'info', duration = 5000, meta }) => {
+      triggerToast({ message, status, duration, meta });
+    },
+    [triggerToast],
+  );
 
   const hideToast = useCallback(() => {
     setToast((prev) => (prev ? { ...prev, visible: false } : null));
   }, []);
 
-  // Convenience methods
-  const success = useCallback((message, duration) => {
-    showToast({ message, status: 'success', duration });
-  }, [showToast]);
+  useEffect(() => subscribeToToastEvents(triggerToast), [triggerToast]);
 
-  const error = useCallback((message, duration) => {
-    showToast({ message, status: 'error', duration });
-  }, [showToast]);
+  const success = useCallback((message, duration, meta) => {
+    triggerToast({ message, status: 'success', duration, meta });
+  }, [triggerToast]);
 
-  const warning = useCallback((message, duration) => {
-    showToast({ message, status: 'warning', duration });
-  }, [showToast]);
+  const error = useCallback((message, duration, meta) => {
+    triggerToast({ message, status: 'error', duration, meta });
+  }, [triggerToast]);
 
-  const info = useCallback((message, duration) => {
-    showToast({ message, status: 'info', duration });
-  }, [showToast]);
+  const warning = useCallback((message, duration, meta) => {
+    triggerToast({ message, status: 'warning', duration, meta });
+  }, [triggerToast]);
+
+  const info = useCallback((message, duration, meta) => {
+    triggerToast({ message, status: 'info', duration, meta });
+  }, [triggerToast]);
+
+  const contextValue = useMemo(
+    () => ({ showToast, hideToast, success, error, warning, info }),
+    [showToast, hideToast, success, error, warning, info],
+  );
 
   return (
-    <ToastContext.Provider value={{ showToast, hideToast, success, error, warning, info }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       {toast && (
         <Toast
@@ -54,3 +77,5 @@ export const ToastProvider = ({ children }) => {
     </ToastContext.Provider>
   );
 };
+
+export { toastService };

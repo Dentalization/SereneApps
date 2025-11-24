@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking, Platform } from 'react-native';
+import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,15 +10,10 @@ import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
-
-// API Base URL for avatar resolution
-const API_BASE_URL = Platform.select({
-  ios: 'http://localhost:4000',
-  android: 'http://10.0.2.2:4000',
-  default: 'http://localhost:4000',
-});
+import { API_BASE_URL } from '../../../services/api';
 
 const DICEBEAR_BG = '8B5CF6';
+const API_BASE = API_BASE_URL.replace(/\/$/, '');
 
 // Utility to normalize Dicebear URLs
 const normalizeDicebear = (url, seed) => {
@@ -38,7 +33,7 @@ const resolveAvatar = (path, seed = 'dentist') => {
     return normalizeDicebear(path, seed);
   }
   const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return `${API_BASE_URL}/${normalized}`;
+  return `${API_BASE}/${normalized}`;
 };
 
 const StatPill = ({ icon, label, value }) => (
@@ -77,8 +72,9 @@ const ClinicDetailScreen = () => {
   const scrollViewRef = useRef(null);
   const [activeSection, setActiveSection] = useState('kontak');
   const [anchorHeight, setAnchorHeight] = useState(64);
-  const [clinic, setClinic] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialClinic = route.params?.clinic || null;
+  const [clinic, setClinic] = useState(initialClinic);
+  const [loading, setLoading] = useState(!initialClinic);
   const [error, setError] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
@@ -95,25 +91,31 @@ const ClinicDetailScreen = () => {
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
+  const clinicId = route.params?.clinicId || initialClinic?.id;
+  const isLiveClinicId = /^\d+$/.test(clinicId?.toString?.() || '');
+
   useEffect(() => {
+    let ignore = false;
     const loadClinic = async () => {
+      if (!clinicId || !isLiveClinicId) {
+        setLoading(false);
+        if (!initialClinic && !clinicId) {
+          setError('Data klinik tidak tersedia');
+        }
+        return;
+      }
+
       try {
         setLoading(true);
-        const clinicId = route.params?.clinicId || route.params?.clinic?.id;
         console.log('🏥 [ClinicDetail] Loading clinic:', clinicId);
-        
+
         const response = await fetchClinicById(clinicId);
-        console.log('🏥 [ClinicDetail] Raw response:', response);
-        
-        // Backend returns { success: true, data: {...} }
         const clinicData = response?.data || response;
-        console.log('🏥 [ClinicDetail] Clinic data:', clinicData);
-        
+
         if (!clinicData) {
           throw new Error('Data klinik tidak ditemukan');
         }
 
-        // Map backend data to component format
         const mappedClinic = {
           id: clinicData.id || clinicData.branchId,
           name: clinicData.name,
@@ -138,12 +140,12 @@ const ClinicDetailScreen = () => {
           gallery: clinicData.gallery || [],
           highlights: clinicData.highlights || [],
           facilities: clinicData.facilities || [],
-          services: (clinicData.services || []).map(service => ({
+          services: (clinicData.services || []).map((service) => ({
             name: service.name,
             description: service.description,
             price: service.price,
           })),
-          doctors: (clinicData.doctors || []).map(doctor => ({
+          doctors: (clinicData.doctors || []).map((doctor) => ({
             id: doctor.id || doctor.userId,
             userId: doctor.userId,
             name: doctor.name,
@@ -159,20 +161,28 @@ const ClinicDetailScreen = () => {
           badgeColor: '#EEF2FF',
         };
 
-        console.log('🏥 [ClinicDetail] Mapped clinic:', mappedClinic);
-        setClinic(mappedClinic);
-        setError(null);
+        if (!ignore) {
+          setClinic(mappedClinic);
+          setError(null);
+        }
       } catch (err) {
         console.log('🔍 [ClinicDetail] Failed to load clinic:', err.message);
-        setError('Tidak dapat memuat detail klinik');
-        showToast('Gagal memuat data klinik', 'error');
-      } finally { {
-        setLoading(false);
+        if (!ignore) {
+          setError('Tidak dapat memuat detail klinik');
+          showToast('Gagal memuat data klinik', 'error');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
       }
     };
-  };
+
     loadClinic();
-  }, [route.params?.clinicId, route.params?.clinic?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [clinicId, isLiveClinicId]);
 
   const sections = [
     { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
