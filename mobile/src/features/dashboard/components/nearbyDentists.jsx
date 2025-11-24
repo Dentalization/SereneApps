@@ -40,7 +40,7 @@ export default function NearbyDentists({
     refresh,
     usedMockData,
     usedDefaultLocation,
-  } = useNearbyDentists({ radius: 8, limit: 4, autoFetch: shouldAutoload });
+  } = useNearbyDentists({ radius: 8, limit: 4, autoFetch: shouldAutoload, type: 'clinic' });
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();

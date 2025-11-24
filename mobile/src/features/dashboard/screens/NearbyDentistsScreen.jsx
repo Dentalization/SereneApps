@@ -35,6 +35,7 @@ const NearbyDentistsScreen = () => {
   const insets = useSafeAreaInsets();
 
   const radius = route.params?.maxDistanceKm ?? 8;
+  const dentistType = route.params?.dentistType || 'clinic';
   const {
     dentists: fetchedDentists,
     loading,
@@ -43,7 +44,7 @@ const NearbyDentistsScreen = () => {
     requestLocation,
     usedMockData,
     usedDefaultLocation,
-  } = useNearbyDentists({ radius, limit: 40 });
+  } = useNearbyDentists({ radius, limit: 40, type: dentistType });
 
   const dentists = useMemo(() => {
     return fetchedDentists
@@ -51,12 +52,28 @@ const NearbyDentistsScreen = () => {
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   }, [fetchedDentists, radius]);
 
+  const buildParams = (dentist) => ({
+    clinicContext: dentist?.clinicContext,
+    clinicId: dentist?.clinicContext?.profileId,
+    clinicBranchId: dentist?.clinicContext?.branchId,
+  });
+
   const handleDoctorPress = (dentist) =>
-    navigation.navigate('DentistDetail', { dentistId: dentist.id, dentist });
+    navigation.navigate('DentistDetail', {
+      dentistId: dentist.id,
+      dentist,
+      ...buildParams(dentist),
+    });
   const handleBook = (dentist) =>
-    navigation.navigate('AppointmentTab', { screen: 'BookingSlot', params: { dentistId: dentist.id } });
+    navigation.navigate('AppointmentTab', {
+      screen: 'BookingSlot',
+      params: { dentistId: dentist.id, dentist, ...buildParams(dentist) },
+    });
   const handleMessage = (dentist) =>
-    navigation.navigate('AppointmentTab', { screen: 'BookingSlot', params: { dentistId: dentist.id } });
+    navigation.navigate('AppointmentTab', {
+      screen: 'BookingSlot',
+      params: { dentistId: dentist.id, dentist, ...buildParams(dentist) },
+    });
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>

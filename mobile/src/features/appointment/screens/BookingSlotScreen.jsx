@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image, Platform } from 'react-native';
 import { ActivityIndicator, Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { getDentistById, getDentistAvailableSlots } from '../../../services/dent
 import { DENTISTS, SLOT_AVAILABILITY } from '../data/appointments';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+// 1. Pastikan import ini ada
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getUpcomingDates = (days = 5) => {
@@ -60,7 +61,9 @@ const BookingSlotScreen = () => {
   const dentistId = route.params?.dentistId || DENTISTS[0].id;
   const isLiveDentistId = /^\d+$/.test(dentistId?.toString?.() || '');
   const initialDentist = route.params?.dentist;
-  const clinicIdForInfo = route.params?.clinicId;
+  const routeClinicContext = route.params?.clinicContext || route.params?.dentist?.clinicContext;
+  const clinicIdForInfo = route.params?.clinicId || routeClinicContext?.profileId;
+  const clinicBranchParam = route.params?.clinicBranchId || routeClinicContext?.branchId;
   const fallbackDentist =
     initialDentist ||
     DENTISTS.find((doc) => doc.id === dentistId) ||
@@ -87,6 +90,8 @@ const BookingSlotScreen = () => {
   const [slotError, setSlotError] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
+  
+  // 2. Panggil Hook Insets
   const insets = useSafeAreaInsets();
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
@@ -179,7 +184,7 @@ const BookingSlotScreen = () => {
         dentist?.clinicContext?.profileId ||
         dentist?.clinics?.[0]?.id ||
         dentist?.primaryClinicId;
-      const clinicBranchRef = dentist?.clinicContext?.branchId;
+      const clinicBranchRef = clinicBranchParam || dentist?.clinicContext?.branchId;
 
       const isLiveClinicRef = /^\d+$/.test((clinicProfileRef || '').toString());
       
@@ -249,7 +254,7 @@ const BookingSlotScreen = () => {
     return () => {
       ignore = true;
     };
-  }, [clinicIdForInfo, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId, selectedSlot]);
+  }, [clinicIdForInfo, clinicBranchParam, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId, selectedSlot]);
 
   const filteredSlots = useMemo(
     () => slots.filter((slot) => slot.type === slotType && slot.isAvailable),
@@ -283,14 +288,37 @@ const BookingSlotScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+      {/* 3. Update StatusBar agar transparan & konten bisa naik ke notch */}
+      <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
-      <View onLayout={handleHeaderLayout} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10, paddingTop: insets.top }}>
+      <View 
+        onLayout={handleHeaderLayout} 
+        style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          zIndex: 10, 
+          elevation: 10, 
+          // 4. HAPUS paddingTop: insets.top di sini agar background naik mentok ke atas
+        }}
+      >
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: insets.top + 2, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16 }}
+          style={{ 
+            // 5. PINDAHKAN padding insets ke sini. Tambah sedikit (+ 10) agar konten tidak terlalu mepet.
+            paddingTop: insets.top + 10, 
+            paddingHorizontal: 20, 
+            paddingBottom: 32, 
+            borderBottomLeftRadius: 32, 
+            borderBottomRightRadius: 32, 
+            shadowColor: '#000', 
+            shadowOffset: { width: 0, height: 8 }, 
+            shadowOpacity: 0.12, 
+            shadowRadius: 16 
+          }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>

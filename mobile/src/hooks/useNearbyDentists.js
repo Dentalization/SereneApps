@@ -78,7 +78,13 @@ const normalizeDentist = (dentist) => {
   };
 };
 
-export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = {}) => {
+export const useNearbyDentists = ({
+  radius = 8,
+  limit = 6,
+  autoFetch = true,
+  type = 'clinic',
+  specialization,
+} = {}) => {
   const [dentists, setDentists] = useState([]);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState(null);
@@ -100,6 +106,8 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
         longitude: currentCoords.longitude,
         radius,
         limit,
+        ...(type && type !== 'all' ? { type } : {}),
+        ...(specialization ? { specialization } : {}),
       });
 
       console.log('🦷 [useNearbyDentists] Got response type:', typeof response);
@@ -132,7 +140,7 @@ export const useNearbyDentists = ({ radius = 8, limit = 6, autoFetch = true } = 
         setUsedDefaultLocation(true);
       }
     },
-    [limit, radius]
+    [limit, radius, specialization, type]
   );
 
   const requestLocationAndFetch = useCallback(async () => {

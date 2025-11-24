@@ -51,9 +51,32 @@ const resolveAvatar = (path, fallbackSeed) => {
   return `${API_BASE}/${normalized}`;
 };
 
+const extractClinicContext = (dentist = {}) => {
+  const profileId =
+    dentist?.clinicProfileId ||
+    dentist?.clinic_profile_id ||
+    dentist?.clinicId ||
+    dentist?.clinic_id;
+  const branchId =
+    dentist?.clinicBranchId ||
+    dentist?.clinic_branch_id ||
+    dentist?.assigned_branch_id;
+
+  if (!profileId && !branchId) return null;
+
+  return {
+    profileId: profileId?.toString?.() || null,
+    branchId: branchId?.toString?.() || null,
+    name: dentist?.clinicBranchName || dentist?.clinicName,
+    address: dentist?.clinicBranchAddress || dentist?.clinicAddress,
+    distance: dentist?.distance || dentist?.distanceKm,
+  };
+};
+
 const mapDentist = (dentist) => {
   const years = dentist.yearsOfExperience || 0;
   const baseRating = 4 + Math.min(1, years / 15);
+  const clinicContext = extractClinicContext(dentist);
 
   return {
     id: dentist.id?.toString() || dentist.userId?.toString(),
@@ -65,6 +88,7 @@ const mapDentist = (dentist) => {
     price: dentist.consultationFee || 0,
     image: resolveAvatar(dentist.avatarUrl || dentist.image, dentist.id),
     consultationTypes: dentist.consultationTypes,
+    clinicContext,
     raw: dentist,
   };
 };
@@ -102,6 +126,7 @@ const DentistDirectoryScreen = () => {
           longitude: DEFAULT_COORDS.longitude,
           radius: 50,
           limit: 200,
+          type: 'clinic',
         });
         apiDentists = nearbyResponse.data?.dentists || [];
         setUsedFallback(true);
@@ -113,7 +138,10 @@ const DentistDirectoryScreen = () => {
         avatarUrl: d.avatarUrl
       })));
 
-      setDentists(apiDentists.map(mapDentist));
+      const normalized = apiDentists
+        .map(mapDentist)
+        .filter((dentist) => dentist.clinicContext?.profileId);
+      setDentists(normalized);
     } catch (err) {
       console.log('🔍 [DentistDirectory] Failed to load:', err.message);
       setError('Gagal memuat data dokter. Tarik untuk menyegarkan atau coba lagi nanti.');

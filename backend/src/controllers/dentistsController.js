@@ -86,6 +86,7 @@ export const getNearbyDentists = async (req, res, next) => {
         u.id as user_id,
         u.name,
         u.email,
+        u.phone_number,
         u.avatar_url,
         dp.title,
         dp.license_number,
@@ -108,9 +109,43 @@ export const getNearbyDentists = async (req, res, next) => {
         dp.postal_code,
         dp.dentist_type,
         dp.clinic_id,
-        dp.is_clinic_owner
+        dp.is_clinic_owner,
+        staff.clinic_profile_id,
+        COALESCE(staff.assigned_branch_id, branch.branch_id) AS clinic_branch_id,
+        staff.assigned_branch_id,
+        branch.branch_name AS clinic_branch_name,
+        branch.branch_address AS clinic_branch_address,
+        branch.branch_city AS clinic_branch_city,
+        branch.branch_phone AS clinic_branch_phone
       FROM dentist_profiles dp
       JOIN users u ON dp.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT cs.clinic_profile_id,
+               cs.assigned_branch_id,
+               cs.role,
+               cs.is_active,
+               cs.updated_at
+        FROM clinic_staff cs
+        WHERE cs.user_id = dp.user_id
+          AND cs.role IN ('dentist', 'clinic_dentist')
+        ORDER BY cs.is_active DESC, cs.updated_at DESC NULLS LAST, cs.id ASC
+        LIMIT 1
+      ) staff ON true
+      LEFT JOIN LATERAL (
+        SELECT cb.id as branch_id,
+               cb.branch_name,
+               cb.street_address as branch_address,
+               cb.city as branch_city,
+               cb.phone as branch_phone
+        FROM clinic_branches cb
+        WHERE cb.clinic_profile_id = staff.clinic_profile_id
+          AND cb.is_active = true
+        ORDER BY 
+          (cb.id = staff.assigned_branch_id) DESC NULLS LAST,
+          cb.is_main_branch DESC,
+          cb.id ASC
+        LIMIT 1
+      ) branch ON true
       WHERE 
         dp.latitude IS NOT NULL 
         AND dp.longitude IS NOT NULL
@@ -151,18 +186,24 @@ export const getNearbyDentists = async (req, res, next) => {
           parseFloat(row.longitude)
         );
 
+        const clinicProfileId = row.clinic_profile_id || row.clinic_id;
+        const clinicBranchId = row.clinic_branch_id || row.assigned_branch_id;
+        const clinicName = row.clinic_branch_name || row.clinic_name;
+        const clinicAddress = row.clinic_branch_address || row.clinic_address;
+
         return {
           id: row.id,
           userId: row.user_id,
           name: row.name,
           email: row.email,
+          phoneNumber: row.phone_number,
           avatarUrl: row.avatar_url,
           title: row.title,
           licenseNumber: row.license_number,
           specialization: row.specialization,
           yearsOfExperience: row.years_of_experience,
-          clinicName: row.clinic_name,
-          clinicAddress: row.clinic_address,
+          clinicName,
+          clinicAddress,
           workingHours: row.clinic_working_hours,
           consultationTypes: row.consultation_types,
           servicesOffered: row.services_offered,
@@ -179,7 +220,16 @@ export const getNearbyDentists = async (req, res, next) => {
             postalCode: row.postal_code
           },
           dentistType: row.dentist_type,
-          clinicId: row.clinic_id,
+          clinicId: clinicProfileId || row.clinic_id,
+          clinicProfileId,
+          clinic_profile_id: clinicProfileId,
+          clinicBranchId,
+          clinic_branch_id: clinicBranchId,
+          assigned_branch_id: row.assigned_branch_id,
+          clinicBranchName: row.clinic_branch_name,
+          clinicBranchAddress: row.clinic_branch_address,
+          clinicBranchCity: row.clinic_branch_city,
+          clinicBranchPhone: row.clinic_branch_phone,
           isClinicOwner: row.is_clinic_owner,
           distance
         };
@@ -311,7 +361,60 @@ export const getDentistById = async (req, res, next) => {
       ORDER BY cs.is_active DESC, cp.brand_name ASC
     `;
 
-    const clinicsResult = await query(clinicsQuery, [dentist.user_id]);
+    let clinicsResult = await query(clinicsQuery, [dentist.user_id]);
+
+    // Fallback: if no clinic_staff record but dentist.clinic_id exists, load clinic + main branch
+    if (clinicsResult.rows.length === 0 && dentist.clinic_id) {
+      const clinicProfileQuery = `
+        SELECT 
+          cp.id,
+          cp.brand_name AS name,
+          cp.street_address AS address,
+          cp.city,
+          cp.phone AS phone_number
+        FROM clinic_profiles cp
+        WHERE cp.id = $1
+        LIMIT 1
+      `;
+      const clinicProfileResult = await query(clinicProfileQuery, [dentist.clinic_id]);
+
+      if (clinicProfileResult.rows.length > 0) {
+        const clinicRow = clinicProfileResult.rows[0];
+
+        const branchQuery = `
+          SELECT 
+            cb.id AS branch_id,
+            cb.branch_name,
+            cb.street_address AS branch_address,
+            cb.city AS branch_city,
+            cb.phone AS branch_phone
+          FROM clinic_branches cb
+          WHERE cb.clinic_profile_id = $1
+            AND cb.is_active = true
+          ORDER BY cb.is_main_branch DESC, cb.id ASC
+          LIMIT 1
+        `;
+
+        const branchResult = await query(branchQuery, [clinicRow.id]);
+        const branchRow = branchResult.rows[0];
+
+        clinicsResult = {
+          rows: [
+            {
+              ...clinicRow,
+              role: dentist.dentist_type === 'clinic' ? 'clinic_dentist' : 'independent',
+              is_active: true,
+              assigned_branch_id: branchRow?.branch_id || null,
+              branch_id: branchRow?.branch_id || null,
+              branch_name: branchRow?.branch_name || null,
+              branch_address: branchRow?.branch_address || clinicRow.address,
+              branch_city: branchRow?.branch_city || clinicRow.city,
+              branch_phone: branchRow?.branch_phone || clinicRow.phone_number,
+            },
+          ],
+        };
+      }
+    }
 
     res.json({
       success: true,
@@ -349,7 +452,7 @@ export const getDentistSchedule = async (req, res, next) => {
     if (clinicId) {
       const staffCheck = await query(
         `SELECT id FROM clinic_staff 
-         WHERE user_id = $1 AND clinic_profile_id = $2 AND role = 'dentist' AND is_active = true`,
+         WHERE user_id = $1 AND clinic_profile_id = $2 AND role IN ('dentist', 'clinic_dentist') AND is_active = true`,
         [dentist.user_id, clinicId]
       );
 
@@ -371,7 +474,7 @@ export const getDentistSchedule = async (req, res, next) => {
       FROM clinic_staff cs
       JOIN clinic_profiles cp ON cs.clinic_profile_id = cp.id
       WHERE cs.user_id = $1 
-        AND cs.role = 'dentist' 
+        AND cs.role IN ('dentist', 'clinic_dentist')
         AND cs.is_active = true
         ${clinicId ? 'AND cp.id = $2' : ''}
     `;
@@ -478,9 +581,9 @@ export const getDentistAvailableSlots = async (req, res, next) => {
       `SELECT dp.id, dp.user_id, dp.consultation_types
        FROM dentist_profiles dp
        JOIN clinic_staff cs ON dp.user_id = cs.user_id
-       WHERE dp.id = $1 
+         WHERE dp.id = $1 
          AND cs.clinic_profile_id = $2 
-         AND cs.role = 'dentist' 
+         AND cs.role IN ('dentist', 'clinic_dentist')
          AND cs.is_active = true`,
       [id, clinicId]
     );
