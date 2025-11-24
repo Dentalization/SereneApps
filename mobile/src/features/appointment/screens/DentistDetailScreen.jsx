@@ -137,6 +137,17 @@ const DentistDetailScreen = () => {
               address: dentistData.clinic_address,
             }
           : null;
+        const resolvedClinicContext =
+          clinicContext ||
+          initialDentist?.clinicContext ||
+          (dentistData.clinic_id
+            ? {
+                profileId: dentistData.clinic_id?.toString?.() || null,
+                branchId: null,
+                name: dentistData.clinic_name,
+                address: dentistData.clinic_address,
+              }
+            : null);
 
         const mappedDentist = {
           id: dentistData.id || dentistData.user_id,
@@ -177,9 +188,9 @@ const DentistDetailScreen = () => {
             email: dentistData.email,
             address: dentistData.clinic_address,
           },
-          clinic: clinicContext?.name || dentistData.clinic_name,
+          clinic: resolvedClinicContext?.name || dentistData.clinic_name,
           clinicAddress: dentistData.clinic_address,
-          clinicContext,
+          clinicContext: resolvedClinicContext,
           price: dentistData.consultation_fee,
           consultationTypes: dentistData.consultation_types || [],
           acceptsInsurance: dentistData.accepts_insurance,
@@ -225,16 +236,22 @@ const DentistDetailScreen = () => {
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
+  const appendClinicContext = {
+    clinicContext: dentist?.clinicContext,
+    clinicId: dentist?.clinicContext?.profileId,
+    clinicBranchId: dentist?.clinicContext?.branchId,
+  };
+
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id, dentist },
+      params: { dentistId: dentist?.id, dentist, ...appendClinicContext },
     });
 
   const handleMessage = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id, dentist },
+      params: { dentistId: dentist?.id, dentist, ...appendClinicContext },
     });
 
   const handleCall = () => {

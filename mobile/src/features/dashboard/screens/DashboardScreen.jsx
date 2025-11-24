@@ -107,9 +107,27 @@ const DashboardScreen = () => {
   const unreadNotifications = notifications.filter((n) => !n.read).length;
 
   const handleMainScroll = Animated.event([{ nativeEvent:{ contentOffset:{ y:scrollY } } }], { useNativeDriver:false, listener:(e)=>{ const flag = e.nativeEvent.contentOffset.y > 50; if (flag !== lastScrollFlag.current) { lastScrollFlag.current = flag; _setIsScrolled(flag); } }});
-  const handleDoctorPress = (d) => navigation.navigate('DentistDetail', { dentistId: d.id, dentist: d });
-  const handleJoinCall   = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id, dentist: d } });
-  const handleBook       = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id, dentist: d } });
+  const appendClinicParams = (d = {}) => ({
+    clinicContext: d?.clinicContext,
+    clinicId: d?.clinicContext?.profileId,
+    clinicBranchId: d?.clinicContext?.branchId,
+  });
+  const handleDoctorPress = (d) =>
+    navigation.navigate('DentistDetail', {
+      dentistId: d.id,
+      dentist: d,
+      ...appendClinicParams(d),
+    });
+  const handleJoinCall = (d) =>
+    navigation.navigate('AppointmentTab', {
+      screen: 'BookingSlot',
+      params: { dentistId: d.id, dentist: d, ...appendClinicParams(d) },
+    });
+  const handleBook = (d) =>
+    navigation.navigate('AppointmentTab', {
+      screen: 'BookingSlot',
+      params: { dentistId: d.id, dentist: d, ...appendClinicParams(d) },
+    });
   const handleClinicPress = (clinic) =>
     navigation.navigate('ClinicDetail', { clinicId: clinic?.id, clinic });
   const handleClinicBook = (clinic) =>

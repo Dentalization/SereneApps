@@ -57,9 +57,32 @@ const resolveAvatar = (path, fallbackSeed) => {
   return `${API_BASE}/${normalized}`;
 };
 
+const extractClinicContext = (dentist = {}) => {
+  const profileId =
+    dentist?.clinicProfileId ||
+    dentist?.clinic_profile_id ||
+    dentist?.clinicId ||
+    dentist?.clinic_id;
+  const branchId =
+    dentist?.clinicBranchId ||
+    dentist?.clinic_branch_id ||
+    dentist?.assigned_branch_id;
+
+  if (!profileId && !branchId) return null;
+
+  return {
+    profileId: profileId?.toString?.() || null,
+    branchId: branchId?.toString?.() || null,
+    name: dentist?.clinicBranchName || dentist?.clinicName,
+    address: dentist?.clinicBranchAddress || dentist?.clinicAddress,
+    distance: dentist?.distance || dentist?.distanceKm,
+  };
+};
+
 const mapDentist = (dentist) => {
   const years = dentist.yearsOfExperience || 0;
   const baseRating = 4 + Math.min(1, years / 15);
+  const clinicContext = extractClinicContext(dentist);
 
   return {
     id: dentist.id?.toString() || dentist.userId?.toString(),
@@ -71,6 +94,7 @@ const mapDentist = (dentist) => {
     price: dentist.consultationFee || 0,
     image: resolveAvatar(dentist.avatarUrl || dentist.image, dentist.id),
     consultationTypes: dentist.consultationTypes,
+    clinicContext,
     raw: dentist,
   };
 };
@@ -85,7 +109,9 @@ const DentistSpecialtyScreen = () => {
 
   const specialtyId = route.params?.specialtyId;
   const specialtyLabel = route.params?.specialtyLabel || 'Spesialis';
-  const initialDentists = route.params?.dentists;
+  const initialDentists = (route.params?.dentists || []).filter(
+    (dentist) => dentist?.clinicContext?.profileId
+  );
   const avgRating = route.params?.avgRating;
   const [dentists, setDentists] = useState(initialDentists || []);
   const [loading, setLoading] = useState(!initialDentists?.length);
@@ -103,6 +129,7 @@ const DentistSpecialtyScreen = () => {
         const directoryResponse = await getDentistDirectory({
           specialization: specialtyLabel,
           verifiedOnly: true,
+          dentistType: 'clinic',
           limit: 50,
         });
         apiDentists = directoryResponse?.dentists || [];
@@ -114,10 +141,14 @@ const DentistSpecialtyScreen = () => {
           radius: 50,
           specialization: specialtyLabel,
           limit: 50,
+          type: 'clinic',
         });
         apiDentists = nearbyResponse?.dentists || [];
       }
-      setDentists(apiDentists.map(mapDentist));
+      const normalized = apiDentists
+        .map(mapDentist)
+        .filter((dentist) => dentist.clinicContext?.profileId);
+      setDentists(normalized);
     } catch (err) {
       console.log('🔍 [DentistSpecialty] Failed to load:', err.message);
       setError('Tidak dapat memuat daftar dokter untuk spesialisasi ini.');
@@ -140,15 +171,25 @@ const DentistSpecialtyScreen = () => {
       ? (dentists.reduce((sum, doc) => sum + (doc.rating || 0), 0) / dentists.length).toFixed(1)
       : '0.0');
 
+  const buildClinicParams = (dentist) => ({
+    clinicContext: dentist?.clinicContext,
+    clinicId: dentist?.clinicContext?.profileId,
+    clinicBranchId: dentist?.clinicContext?.branchId,
+  });
+
   const handleBook = (dentist) => {
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist.id },
+      params: { dentistId: dentist.id, dentist, ...buildClinicParams(dentist) },
     });
   };
 
   const handleProfile = (dentist) => {
-    navigation.navigate('DentistDetail', { dentistId: dentist.id, dentist });
+    navigation.navigate('DentistDetail', {
+      dentistId: dentist.id,
+      dentist,
+      ...buildClinicParams(dentist),
+    });
   };
 
   return (
