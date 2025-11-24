@@ -120,6 +120,7 @@ router.get('/services/context', authenticateToken, requireDentistProfile, async 
     const payload = {
       dentistType: req.dentistType,
       dentistProfileId: req.dentistProfileId,
+      primarySpecialization: req.dentistProfile.primary_specialization,
     };
 
     if (req.dentistType === 'clinic' && req.clinicProfileId) {
@@ -165,9 +166,8 @@ router.post('/practice/services', authenticateToken, requireDentistProfile, asyn
       name,
       description,
       price,
-      category = 'general',
-      specialty,
       durationMinutes = 30,
+      isActive = true,
     } = req.body;
 
     const trimmedName = (name || '').trim();
@@ -180,24 +180,31 @@ router.post('/practice/services', authenticateToken, requireDentistProfile, asyn
       return res.status(400).json({ error: 'Price must be a positive number' });
     }
 
-    const normalizedCategory = category === 'specialist' ? 'specialist' : 'general';
-    const normalizedSpecialty = normalizedCategory === 'specialist' ? (specialty || '').trim() : null;
     const parsedDuration = durationMinutes ? parseInt(durationMinutes, 10) : 30;
+
+    // Get dentist's primary specialization to determine category and specialty
+    const primarySpec = req.dentistProfile.primary_specialization || 'Dokter Gigi Umum';
+    const isGeneralDentist = primarySpec.toLowerCase().includes('umum') || 
+                            primarySpec.toLowerCase() === 'dokter gigi';
+    
+    const category = isGeneralDentist ? 'general' : 'specialist';
+    const specialty = isGeneralDentist ? null : primarySpec;
 
     const { rows } = await pool.query(
       `INSERT INTO dentist_services (
         dentist_profile_id, name, description, price, category,
-        specialty, duration_minutes, managed_by, can_edit
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'dentist', true)
+        specialty, duration_minutes, is_active, managed_by, can_edit
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'dentist', true)
       RETURNING *`,
       [
         req.dentistProfileId,
         trimmedName,
         description || null,
         parsedPrice,
-        normalizedCategory,
-        normalizedSpecialty,
+        category,
+        specialty,
         parsedDuration,
+        isActive,
       ]
     );
 
@@ -228,8 +235,6 @@ router.put('/practice/services/:id', authenticateToken, requireDentistProfile, a
       name,
       description,
       price,
-      category,
-      specialty,
       durationMinutes,
       isActive,
     } = req.body;
@@ -247,18 +252,15 @@ router.put('/practice/services/:id', authenticateToken, requireDentistProfile, a
          name = COALESCE($1, name),
          description = COALESCE($2, description),
          price = COALESCE($3, price),
-         category = COALESCE($4, category),
-         specialty = COALESCE($5, specialty),
-         duration_minutes = COALESCE($6, duration_minutes),
-         is_active = COALESCE($7, is_active)
-       WHERE id = $8 AND dentist_profile_id = $9
+         duration_minutes = COALESCE($4, duration_minutes),
+         is_active = COALESCE($5, is_active),
+         updated_at = NOW()
+       WHERE id = $6 AND dentist_profile_id = $7
        RETURNING *`,
       [
         name?.trim() || null,
         description || null,
         price,
-        category,
-        category === 'specialist' ? (specialty || '').trim() : specialty || null,
         durationMinutes,
         typeof isActive === 'boolean' ? isActive : null,
         id,

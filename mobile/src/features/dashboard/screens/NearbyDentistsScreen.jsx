@@ -1,28 +1,35 @@
 import React, { useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import { View, ScrollView, TouchableOpacity, Image, StatusBar, RefreshControl } from 'react-native';
+import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NEARBY_DENTISTS } from '../data/dentists';
+import useNearbyDentists from '../../../hooks/useNearbyDentists';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
-const formatDistance = (km) => `${Number(km || 0).toFixed(1)} km`;
+const formatDistance = (km) =>
+  typeof km === 'number' ? `${Number(km).toFixed(1)} km` : km || '—';
 
 const NearbyDentistsScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
 
-  const radius = route.params?.maxDistanceKm ?? 5;
-  const source = route.params?.dentists?.length ? route.params.dentists : NEARBY_DENTISTS;
+  const radius = route.params?.maxDistanceKm ?? 8;
+  const {
+    dentists: fetchedDentists,
+    loading,
+    error,
+    refresh,
+    requestLocation,
+    usedMockData,
+    usedDefaultLocation,
+  } = useNearbyDentists({ radius, limit: 40 });
 
-  const dentists = useMemo(
-    () =>
-      source
-        .filter((d) => (d.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
-        .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0)),
-    [source, radius]
-  );
+  const dentists = useMemo(() => {
+    return fetchedDentists
+      .filter((d) => (d.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
+      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  }, [fetchedDentists, radius]);
 
   const handleDoctorPress = (dentist) =>
     navigation.navigate('DentistDetail', { dentistId: dentist.id, dentist });
@@ -78,7 +85,49 @@ const NearbyDentistsScreen = () => {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+      >
+        <View
+          style={{
+            borderRadius: 18,
+            padding: 16,
+            backgroundColor: '#ECFEFF',
+            borderWidth: 1,
+            borderColor: '#A5F3FC',
+            marginBottom: 18,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+            <MaterialCommunityIcons name='crosshairs-gps' size={18} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 8, fontWeight: '600', color: '#0F172A' }}>
+              {usedDefaultLocation
+                ? 'Menampilkan dokter populer di area default'
+                : 'Menampilkan dokter sesuai lokasi Anda'}
+            </Text>
+          </View>
+          {error ? (
+            <TouchableOpacity onPress={requestLocation} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <MaterialCommunityIcons name='alert-circle' size={18} color='#DC2626' />
+              <Text style={{ marginLeft: 8, color: '#DC2626', fontWeight: '600' }}>
+                {error} · Ketuk untuk coba lagi
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ color: '#475569' }}>
+              Radius {radius} km · {usedMockData ? 'data contoh' : 'data real-time'}
+            </Text>
+          )}
+        </View>
+
+        {loading && !dentists.length && (
+          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+            <ActivityIndicator animating size='large' color={theme.colors.primary} />
+            <Text style={{ marginTop: 12, color: '#475569' }}>Memuat dokter terdekat...</Text>
+          </View>
+        )}
+
         {dentists.map((dentist) => (
           <TouchableOpacity
             key={dentist.id}

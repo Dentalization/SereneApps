@@ -104,8 +104,8 @@ const NearbyClinicsScreen = () => {
             <MaterialCommunityIcons name="crosshairs-gps" size={18} color={theme.colors.primary} />
             <Text style={{ marginLeft: 8, fontWeight: '600', color: '#0F172A' }}>
               {usedDefaultLocation
-                ? 'Lokasi mati — menampilkan cabang populer'
-                : 'Menampilkan klinik sesuai lokasi Anda'}
+                ? 'Menampilkan klinik populer di area default'
+                : 'Menyesuaikan dengan lokasi Anda'}
             </Text>
           </View>
           {error ? (

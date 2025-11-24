@@ -39,8 +39,21 @@ export async function getNearbyDentists(params) {
   if (type) queryParams.append('type', type);
   if (specialization) queryParams.append('specialization', specialization);
 
+  console.log('🌐 [dentistService] Calling API:', `/dentists/nearby?${queryParams.toString()}`);
   const response = await api.get(`/dentists/nearby?${queryParams.toString()}`);
-  return response.data;
+  console.log('🌐 [dentistService] Full axios response:', JSON.stringify(response.data, null, 2));
+  console.log('🌐 [dentistService] response.data keys:', Object.keys(response.data || {}));
+  console.log('🌐 [dentistService] response.data.success:', response.data?.success);
+  console.log('🌐 [dentistService] response.data.data:', response.data?.data);
+  console.log('🌐 [dentistService] response.data.data?.dentists length:', response.data?.data?.dentists?.length);
+  
+  // Backend returns: { success: true, data: { dentists: [...], pagination: {...}, search: {...} } }
+  // Axios unwraps one level, so response.data = { success: true, data: {...} }
+  // We need to return response.data.data = { dentists: [...], pagination: {...}, search: {...} }
+  const result = response.data?.data ?? response.data;
+  console.log('🌐 [dentistService] Returning result with keys:', Object.keys(result || {}));
+  console.log('🌐 [dentistService] result.dentists length:', result?.dentists?.length);
+  return result;
 }
 
 /**
@@ -64,7 +77,9 @@ export async function getDentistDirectory(params = {}) {
 
   if (specialization) queryParams.append('specialization', specialization);
   if (dentistType) queryParams.append('dentistType', dentistType);
-  if (clinicId) queryParams.append('clinicId', clinicId.toString());
+  if (clinicId !== undefined && clinicId !== null) {
+    queryParams.append('clinicId', clinicId.toString());
+  }
 
   const response = await api.get(`/dentists?${queryParams.toString()}`);
   return response.data;
@@ -77,7 +92,7 @@ export async function getDentistDirectory(params = {}) {
  */
 export async function getDentistById(id) {
   const response = await api.get(`/dentists/${id}`);
-  return response.data;
+  return response.data?.data ?? response.data;
 }
 
 /**
@@ -88,9 +103,15 @@ export async function getDentistById(id) {
  * @returns {Promise<Object>} Schedule data
  */
 export async function getDentistSchedule(id, date, clinicId) {
+  if (!id) {
+    throw new Error('Dentist ID is required');
+  }
+  
   const params = new URLSearchParams();
   if (date) params.append('date', date);
-  if (clinicId) params.append('clinicId', clinicId);
+  if (clinicId !== undefined && clinicId !== null) {
+    params.append('clinicId', clinicId.toString());
+  }
 
   const response = await api.get(`/dentists/${id}/schedule?${params.toString()}`);
   return response.data;
@@ -105,14 +126,26 @@ export async function getDentistSchedule(id, date, clinicId) {
  * @returns {Promise<Object>} Available slots
  */
 export async function getDentistAvailableSlots(id, date, clinicId, duration = 30) {
+  if (!id) {
+    throw new Error('Dentist ID is required');
+  }
+  if (!date) {
+    throw new Error('Date is required');
+  }
+  
   const params = new URLSearchParams({
     date,
-    clinicId: clinicId.toString(),
     duration: duration.toString()
   });
 
+  // Only add clinicId if it's provided
+  if (clinicId !== undefined && clinicId !== null) {
+    params.append('clinicId', clinicId.toString());
+  }
+
+  console.log('🌐 [dentistService] Fetching slots for dentist:', id, 'date:', date, 'clinicId:', clinicId);
   const response = await api.get(`/dentists/${id}/available-slots?${params.toString()}`);
-  return response.data;
+  return response.data?.data ?? response.data;
 }
 
 export default {

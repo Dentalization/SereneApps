@@ -7,21 +7,19 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./contexts/ToastContext";
 
 function App() {
-  console.log('App component rendering...'); // Debug log
-  
   try {
     return (
-      <ThemeProvider>
-        <PreferencesProvider>
-          <LanguageProvider>
-            <AuthProvider>
-              <ToastProvider>
+      <ToastProvider>
+        <ThemeProvider>
+          <PreferencesProvider>
+            <LanguageProvider>
+              <AuthProvider>
                 <Routes />
-              </ToastProvider>
-            </AuthProvider>
-          </LanguageProvider>
-        </PreferencesProvider>
-      </ThemeProvider>
+              </AuthProvider>
+            </LanguageProvider>
+          </PreferencesProvider>
+        </ThemeProvider>
+      </ToastProvider>
     );
   } catch (error) {
     console.error('Error in App component:', error);

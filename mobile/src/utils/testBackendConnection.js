@@ -1,22 +1,11 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import { API_BASE_URL } from '../services/api';
 
 /**
  * Test backend connection
  * This utility helps verify that mobile app can connect to backend server
  */
-
-const getApiBaseUrl = () => {
-  if (__DEV__) {
-    if (Platform.OS === 'android') {
-      return 'http://10.0.2.2:4000';
-    }
-    return 'http://localhost:4000';
-  }
-  return 'https://api.dentalization.id';
-};
-
-const API_BASE_URL = getApiBaseUrl();
 
 export const testBackendConnection = async () => {
   console.log('\n🔍 Testing Backend Connection...');

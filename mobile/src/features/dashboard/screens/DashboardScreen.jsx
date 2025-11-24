@@ -9,7 +9,6 @@ import { getInitials } from '../../../utils/formatters';
 import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
-import { NEARBY_DENTISTS } from '../data/dentists';
 
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
@@ -49,7 +48,6 @@ const DashboardScreen = () => {
     { id:'endodontic', label:'Endodontik', icon:'medical-bag' },
   ];
 
-  const topDoctors = NEARBY_DENTISTS.slice(0, 3);
   const quickActions = [
     {
       key: 'dentists',
@@ -110,16 +108,20 @@ const DashboardScreen = () => {
 
   const handleMainScroll = Animated.event([{ nativeEvent:{ contentOffset:{ y:scrollY } } }], { useNativeDriver:false, listener:(e)=>{ const flag = e.nativeEvent.contentOffset.y > 50; if (flag !== lastScrollFlag.current) { lastScrollFlag.current = flag; _setIsScrolled(flag); } }});
   const handleDoctorPress = (d) => navigation.navigate('DentistDetail', { dentistId: d.id, dentist: d });
-  const handleJoinCall   = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id } });
-  const handleBook       = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id } });
-  const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id });
+  const handleJoinCall   = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id, dentist: d } });
+  const handleBook       = (d) => navigation.navigate('AppointmentTab',{ screen:'BookingSlot',  params:{ dentistId:d.id, dentist: d } });
+  const handleClinicPress = (clinic) =>
+    navigation.navigate('ClinicDetail', { clinicId: clinic?.id, clinic });
   const handleClinicBook = (clinic) =>
-    navigation.navigate('AppointmentTab', { screen: 'ClinicDetail', params: { clinicId: clinic.id } });
+    navigation.navigate('AppointmentTab', {
+      screen: 'ClinicDetail',
+      params: { clinicId: clinic?.id, clinic },
+    });
   const handleArticleOpen = (url) => { if(url) { try { Linking.openURL(url); } catch(e) {} } };
   const handleSeeAllArticles = () => navigation.navigate('ArticleList', { articles });
   const handleNotificationPress = () => navigation.navigate('Notifications', { notifications });
   const handleSeeAllDentists = () =>
-    navigation.navigate('NearbyDentists', { dentists: NEARBY_DENTISTS, maxDistanceKm: 5 });
+    navigation.navigate('NearbyDentists', { maxDistanceKm: 8 });
   const handleSeeAllClinics = () =>
     navigation.navigate('NearbyClinics', { maxDistanceKm: 6 });
 
@@ -197,9 +199,8 @@ const DashboardScreen = () => {
           onSeeAll={handleSeeAllClinics}
         />
         <NearbyDentists
-          dentists={topDoctors}
           onDoctorPress={handleDoctorPress}
-          onMessage={()=>{}}
+          onMessage={() => {}}
           onBook={handleBook}
           onSeeAll={handleSeeAllDentists}
         />

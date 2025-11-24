@@ -1,23 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-
-// Backend always runs on port 4000
-const getApiBaseUrl = () => {
-  if (__DEV__) {
-    // Development mode
-    if (Platform.OS === 'android') {
-      // Android emulator uses 10.0.2.2 to access host machine's localhost
-      return 'http://10.0.2.2:4000';
-    }
-    // iOS simulator and web can use localhost
-    return 'http://localhost:4000';
-  }
-  // Production
-  return 'https://api.dentalization.id';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+import { API_BASE_URL } from './api';
 
 console.log('🌐 API Base URL:', API_BASE_URL);
 

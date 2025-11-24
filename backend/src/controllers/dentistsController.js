@@ -297,9 +297,16 @@ export const getDentistById = async (req, res, next) => {
         cp.city,
         cp.phone as phone_number,
         cs.role,
-        cs.is_active
+        cs.is_active,
+        cs.assigned_branch_id,
+        cb.id as branch_id,
+        cb.branch_name,
+        cb.street_address as branch_address,
+        cb.city as branch_city,
+        cb.phone as branch_phone
       FROM clinic_staff cs
       JOIN clinic_profiles cp ON cs.clinic_profile_id = cp.id
+      LEFT JOIN clinic_branches cb ON cs.assigned_branch_id = cb.id
       WHERE cs.user_id = $1
       ORDER BY cs.is_active DESC, cp.brand_name ASC
     `;
@@ -446,6 +453,8 @@ export const getDentistAvailableSlots = async (req, res, next) => {
     const { id } = req.params;
     const { date, clinicId, duration = 30 } = req.query;
 
+    console.log('📅 [getDentistAvailableSlots] Request:', { id, date, clinicId, duration });
+
     if (!date) {
       throw new APIError({
         ...ERROR_CODES.VALIDATION_ERROR,
@@ -464,9 +473,9 @@ export const getDentistAvailableSlots = async (req, res, next) => {
       });
     }
 
-    // Verify dentist exists and works at this clinic
+    // Verify dentist exists and works at this clinic, get consultation types
     const dentistCheck = await query(
-      `SELECT dp.id, dp.user_id
+      `SELECT dp.id, dp.user_id, dp.consultation_types
        FROM dentist_profiles dp
        JOIN clinic_staff cs ON dp.user_id = cs.user_id
        WHERE dp.id = $1 
@@ -476,43 +485,99 @@ export const getDentistAvailableSlots = async (req, res, next) => {
       [id, clinicId]
     );
 
+    console.log('👨‍⚕️ [getDentistAvailableSlots] Dentist check:', dentistCheck.rows);
+
     if (dentistCheck.rows.length === 0) {
       throw new APIError(ERROR_CODES.DENTIST_NOT_FOUND);
     }
 
-    // Get clinic operating hours
+    // Get consultation types (default to onsite if not set)
+    const consultationTypes = dentistCheck.rows[0].consultation_types || ['onsite'];
+    console.log('💡 [getDentistAvailableSlots] Consultation types:', consultationTypes);
+    
+    // Normalize consultation types to match frontend expectations
+    // Database might have: 'in-person', 'teleconsultation'
+    // Frontend expects: 'onsite', 'virtual'
+    const normalizedTypes = consultationTypes.map(type => {
+      if (type === 'in-person') return 'onsite';
+      if (type === 'teleconsultation') return 'virtual';
+      return type; // Keep 'onsite' and 'virtual' as is
+    });
+    console.log('✨ [getDentistAvailableSlots] Normalized types:', normalizedTypes);
+
+    // Get clinic branch operating hours
+    // Note: clinicId from frontend is clinic_profile_id, we need to get the branch
     const clinicQuery = `
-      SELECT operating_hours
-      FROM clinic_profiles
-      WHERE id = $1
+      SELECT cb.id as branch_id, cb.operating_hours, cb.branch_name, cb.is_main_branch
+      FROM clinic_branches cb
+      WHERE cb.clinic_profile_id = $1 
+        AND cb.is_active = true
+      ORDER BY cb.is_main_branch DESC, cb.id ASC
+      LIMIT 1
     `;
     const clinicResult = await query(clinicQuery, [clinicId]);
+    
+    console.log('🏥 [getDentistAvailableSlots] Clinic result:', clinicResult.rows);
+    
+    if (clinicResult.rows.length === 0) {
+      throw new APIError({
+        ...ERROR_CODES.VALIDATION_ERROR,
+        message: 'Klinik tidak ditemukan',
+        messageEn: 'Clinic not found'
+      });
+    }
+
     const operatingHours = clinicResult.rows[0]?.operating_hours || {};
+    console.log('⏰ [getDentistAvailableSlots] Operating hours:', operatingHours);
 
     // Get day of week from date
     const requestedDate = new Date(date);
     const dayOfWeek = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    console.log('📆 [getDentistAvailableSlots] Day of week:', dayOfWeek);
 
-    // Get operating hours for that day
-    const dayHours = operatingHours[dayOfWeek];
+    // Get operating hours for that day (format: "08:00-20:00" or "Closed")
+    const daySchedule = operatingHours[dayOfWeek];
+    console.log('🕐 [getDentistAvailableSlots] Day schedule:', daySchedule);
 
-    if (!dayHours || dayHours.isOpen === false) {
+    if (!daySchedule || daySchedule.toLowerCase() === 'closed') {
       return res.json({
         success: true,
         data: {
           dentist_id: id,
           clinic_id: clinicId,
           date,
-          available_slots: [],
+          slots: [],
           message: `Klinik tutup pada hari ${dayOfWeek}`,
           messageEn: `Clinic is closed on ${dayOfWeek}`
         }
       });
     }
 
-    // Parse opening and closing times
-    const [openHour, openMinute] = dayHours.open.split(':').map(Number);
-    const [closeHour, closeMinute] = dayHours.close.split(':').map(Number);
+    // Parse opening and closing times from format "08:00-20:00"
+    if (!daySchedule.includes('-')) {
+      console.warn('⚠️ Invalid schedule format:', daySchedule);
+      return res.json({
+        success: true,
+        data: {
+          dentist_id: id,
+          clinic_id: clinicId,
+          date,
+          slots: [],
+          message: `Format jadwal tidak valid`,
+          messageEn: `Invalid schedule format`
+        }
+      });
+    }
+
+    const [openTime, closeTime] = daySchedule.split('-').map(t => t.trim());
+    const [openHour, openMinute] = openTime.split(':').map(Number);
+    const [closeHour, closeMinute] = closeTime.split(':').map(Number);
+
+    console.log('🕐 [getDentistAvailableSlots] Hours:', { openHour, openMinute, closeHour, closeMinute });
+
+    // Get the branch_id from the clinic result
+    const branchId = clinicResult.rows[0].branch_id;
+    console.log('🏢 [getDentistAvailableSlots] Using branch_id:', branchId);
 
     // Get all booked appointments for this dentist on this date
     const bookedQuery = `
@@ -524,7 +589,7 @@ export const getDentistAvailableSlots = async (req, res, next) => {
         AND status NOT IN ('cancelled', 'rejected')
       ORDER BY starts_at ASC
     `;
-    const bookedResult = await query(bookedQuery, [id, clinicId, date]);
+    const bookedResult = await query(bookedQuery, [id, branchId, date]);
 
     // Generate all possible time slots
     const slots = [];
@@ -561,9 +626,17 @@ export const getDentistAvailableSlots = async (req, res, next) => {
                          (slotEndHour === closeHour && slotEndMinute <= closeMinute);
 
       if (!isBooked && withinHours) {
-        slots.push({
-          time: slotTime,
-          available: true
+        // Generate slots for each consultation type the dentist supports
+        normalizedTypes.forEach(type => {
+          slots.push({
+            id: `${date}-${slotTime}-${type}`,
+            time: slotTime,
+            startsAt: `${date}T${slotTime}:00`,
+            duration: slotDuration,
+            durationMinutes: slotDuration,
+            type: type, // 'onsite' or 'virtual'
+            isAvailable: true,
+          });
         });
       }
 
@@ -575,16 +648,21 @@ export const getDentistAvailableSlots = async (req, res, next) => {
       }
     }
 
+    console.log('✅ [getDentistAvailableSlots] Generated slots:', slots.length);
+
     res.json({
       success: true,
       data: {
-        dentist_id: id,
-        clinic_id: clinicId,
+        dentistId: id,
+        clinicId: clinicId,
+        branchId: branchId, // The actual branch ID for appointments
+        branchName: clinicResult.rows[0].branch_name,
         date,
-        day_of_week: dayOfWeek,
-        operating_hours: dayHours,
-        slot_duration: slotDuration,
-        available_slots: slots
+        dayOfWeek: dayOfWeek,
+        operatingHours: daySchedule,
+        slotDuration: slotDuration,
+        slots: slots,
+        availableSlots: slots, // Alias for compatibility
       }
     });
   } catch (error) {

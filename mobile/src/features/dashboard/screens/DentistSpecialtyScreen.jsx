@@ -6,6 +6,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistDirectory, getNearbyDentists } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
 
 const DEFAULT_COORDS = {
   latitude: -6.2088,
@@ -69,6 +71,8 @@ const DentistSpecialtyScreen = () => {
   const [loading, setLoading] = useState(!initialDentists?.length);
   const [error, setError] = useState(null);
 
+  const { toast, showToast, hideToast } = useToast();
+
   const fetchDentists = useCallback(async () => {
     if (!specialtyLabel) return;
     try {
@@ -83,7 +87,7 @@ const DentistSpecialtyScreen = () => {
         });
         apiDentists = directoryResponse?.dentists || [];
       } catch (dirError) {
-        console.warn('Directory endpoint unavailable for specialty, falling back to nearby list', dirError);
+        console.log('ℹ️ [DentistSpecialty] Using nearby fallback:', dirError.message);
         const nearbyResponse = await getNearbyDentists({
           latitude: DEFAULT_COORDS.latitude,
           longitude: DEFAULT_COORDS.longitude,
@@ -95,8 +99,9 @@ const DentistSpecialtyScreen = () => {
       }
       setDentists(apiDentists.map(mapDentist));
     } catch (err) {
-      console.error('Failed to load dentists for specialty:', err);
+      console.log('🔍 [DentistSpecialty] Failed to load:', err.message);
       setError('Tidak dapat memuat daftar dokter untuk spesialisasi ini.');
+      showToast('Gagal memuat daftar dokter', 'error');
       setDentists([]);
     } finally {
       setLoading(false);
@@ -349,6 +354,13 @@ const DentistSpecialtyScreen = () => {
         })}
 
       </ScrollView>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

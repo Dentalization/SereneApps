@@ -1,11 +1,15 @@
-import React, { useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
-import { Text, useTheme, Chip } from 'react-native-paper';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, ScrollView, TouchableOpacity, Image, StatusBar, Linking } from 'react-native';
+import { Text, useTheme, Chip, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getDentistDetail } from '../../dashboard/data/dentistDetails';
+import { getDentistById } from '../../../services/dentistService';
+import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -33,41 +37,243 @@ const Section = ({ title, children, action, style }) => (
   </View>
 );
 
+const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
+const API_BASE = API_BASE_URL.replace(/\/$/, '');
+
+const normalizeDicebear = (url = '', fallbackSeed) => {
+  if (!url || typeof url !== 'string') {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+  if (!url.includes('dicebear.com')) {
+    return url;
+  }
+  return url.replace('/svg', '/png').replace('format=svg', 'format=png');
+};
+
+const resolveAvatar = (path, fallbackSeed) => {
+  if (!path || typeof path !== 'string') {
+    return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return normalizeDicebear(path, fallbackSeed);
+  }
+  const normalized = path.startsWith('/') ? path.slice(1) : path;
+  return `${API_BASE}/${normalized}`;
+};
+
 const DentistDetailScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
+  
+  const initialDentist = route.params?.dentist || null;
+  const [dentist, setDentist] = useState(initialDentist);
+  const [loading, setLoading] = useState(!initialDentist);
+  const [error, setError] = useState(null);
 
-  const fallbackDetail = useMemo(
-    () => getDentistDetail(route.params?.dentistId || route.params?.dentist?.id),
-    [route.params?.dentistId, route.params?.dentist?.id]
-  );
+  const { toast, showToast, hideToast } = useToast();
 
-  const dentist = useMemo(
-    () => ({
-      ...fallbackDetail,
-      ...(route.params?.dentist || {}),
-    }),
-    [fallbackDetail, route.params?.dentist]
-  );
+  const dentistId = route.params?.dentistId || initialDentist?.id;
+  const isLiveDentistId = /^\d+$/.test(dentistId?.toString?.() || '');
+
+  useEffect(() => {
+    let ignore = false;
+    const fetchDentistDetail = async () => {
+      if (!dentistId) {
+        setError('ID dokter tidak ditemukan');
+        setLoading(false);
+        return;
+      }
+
+      if (!isLiveDentistId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log('🦷 [DentistDetail] Fetching dentist:', dentistId);
+        const response = await getDentistById(dentistId);
+        console.log('🦷 [DentistDetail] Response:', response);
+        
+        // Backend returns { success: true, data: {...} }
+        const dentistData = response?.data || response;
+        
+        if (!dentistData) {
+          throw new Error('Data dokter tidak ditemukan');
+        }
+
+        // Parse working hours if it's a string
+        let workingHours = dentistData.clinic_working_hours;
+        if (typeof workingHours === 'string') {
+          try {
+            workingHours = JSON.parse(workingHours);
+          } catch (e) {
+            workingHours = null;
+          }
+        }
+
+        // Map backend data to component format
+        const clinicsList = Array.isArray(dentistData.clinics) ? dentistData.clinics : [];
+        const primaryClinic = clinicsList.find((c) => c.is_active) || clinicsList[0];
+        const clinicContext = primaryClinic
+          ? {
+              profileId: primaryClinic.id?.toString?.(),
+              branchId:
+                (primaryClinic.assigned_branch_id ||
+                  primaryClinic.branch_id ||
+                  primaryClinic.branchId ||
+                  primaryClinic.assignedBranchId)?.toString?.() || null,
+              name: primaryClinic.branch_name || primaryClinic.name || dentistData.clinic_name,
+              address: primaryClinic.branch_address || primaryClinic.address || dentistData.clinic_address,
+              phone: primaryClinic.branch_phone || primaryClinic.phone_number,
+            }
+          : dentistData.clinic_name
+          ? {
+              profileId: dentistData.clinic_profile_id?.toString?.() || dentistData.clinic_id?.toString?.() || null,
+              branchId: null,
+              name: dentistData.clinic_name,
+              address: dentistData.clinic_address,
+            }
+          : null;
+
+        const mappedDentist = {
+          id: dentistData.id || dentistData.user_id,
+          name: dentistData.name,
+          specialty: dentistData.specialization,
+          title: dentistData.title,
+          image: resolveAvatar(dentistData.avatar_url, dentistData.id),
+          rating: 4.8, // TODO: Get from reviews table
+          reviews: 0, // TODO: Get from reviews table
+          experience: `${dentistData.years_of_experience || 0} tahun`,
+          languages: ['Bahasa Indonesia', 'English'], // TODO: Add to backend
+          bio: `Dokter gigi profesional dengan spesialisasi ${dentistData.specialization}. Berpengalaman ${dentistData.years_of_experience || 0} tahun dalam memberikan perawatan gigi berkualitas.`,
+          specialties: dentistData.services_offered || [],
+          services: (dentistData.services_offered || []).map(service => ({
+            name: service,
+            price: dentistData.consultation_fee,
+          })),
+          availability: workingHours ? Object.entries(workingHours).map(([day, hours]) => ({
+            day: day.charAt(0).toUpperCase() + day.slice(1),
+            slots: hours === 'Tutup' ? [] : [hours.split('-')[0]],
+          })) : [],
+          achievements: dentistData.is_verified ? [
+            { title: 'Dokter Terverifikasi', year: new Date(dentistData.verification_date || dentistData.created_at).getFullYear() }
+          ] : [],
+          stories: [], // TODO: Get from reviews
+          gallery: [], // TODO: Add to backend
+          contact: {
+            phone: dentistData.phone_number,
+            email: dentistData.email,
+            address: dentistData.clinic_address,
+          },
+          clinic: clinicContext?.name || dentistData.clinic_name,
+          clinicAddress: dentistData.clinic_address,
+          clinicContext,
+          price: dentistData.consultation_fee,
+          consultationTypes: dentistData.consultation_types || [],
+          acceptsInsurance: dentistData.accepts_insurance,
+          acceptsBpjs: dentistData.accepts_bpjs,
+          emergencyAvailable: dentistData.emergency_availability,
+          isVerified: dentistData.is_verified,
+          licenseNumber: dentistData.license_number,
+          registrationNumber: dentistData.registration_number,
+          patientsHelped: Math.floor(Math.random() * 1000) + 500, // TODO: Add to backend
+          responseTime: '2 jam', // TODO: Add to backend
+        };
+
+        if (!ignore) {
+          setDentist(mappedDentist);
+          setError(null);
+        }
+      } catch (err) {
+        console.log('🔍 [DentistDetail] Error fetching dentist:', err.message);
+        if (!ignore) {
+          setError(err.message || 'Gagal memuat detail dokter');
+          showToast('Gagal memuat data dokter', 'error');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchDentistDetail();
+    return () => {
+      ignore = true;
+    };
+  }, [dentistId, isLiveDentistId]);
 
   const distanceText =
-    dentist.distance ??
-    (typeof dentist.distanceKm === 'number' ? `${dentist.distanceKm.toFixed(1)} km` : null);
+    route.params?.dentist?.distance ??
+    (typeof route.params?.dentist?.distanceKm === 'number'
+      ? `${route.params.dentist.distanceKm.toFixed(1)} km`
+      : typeof dentist?.clinicContext?.distance === 'number'
+      ? `${dentist.clinicContext.distance.toFixed(1)} km`
+      : dentist?.clinicContext?.distance || null);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist.id },
+      params: { dentistId: dentist?.id, dentist },
     });
 
   const handleMessage = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist.id },
+      params: { dentistId: dentist?.id, dentist },
     });
+
+  const handleCall = () => {
+    if (dentist?.contact?.phone) {
+      Linking.openURL(`tel:${dentist.contact.phone}`);
+    }
+  };
+
+  const handleEmail = () => {
+    if (dentist?.contact?.email) {
+      Linking.openURL(`mailto:${dentist.contact.email}`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 12, color: '#475569' }}>Memuat detail dokter...</Text>
+      </View>
+    );
+  }
+
+  if (error || !dentist) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <MaterialCommunityIcons name="alert-circle" size={64} color="#EF4444" />
+        <Text style={{ marginTop: 16, fontSize: 18, fontWeight: '700', color: '#0F172A' }}>
+          Gagal Memuat Data
+        </Text>
+        <Text style={{ marginTop: 8, color: '#64748B', textAlign: 'center' }}>
+          {error || 'Data dokter tidak ditemukan'}
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{
+            marginTop: 20,
+            backgroundColor: theme.colors.primary,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '600' }}>Kembali</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const statCard = (label, value, icon) => (
     <View
@@ -111,7 +317,7 @@ const DentistDetailScreen = () => {
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: insets.top }}
       >
         <LinearGradient
           colors={[theme.colors.primary, '#7F1DFF']}
@@ -175,14 +381,14 @@ const DentistDetailScreen = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                 <MaterialCommunityIcons name='star' color='#FACC15' size={18} />
                 <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
-                  {dentist.rating?.toFixed(1)} · {dentist.reviews} ulasan
+                  {(dentist.rating || 0).toFixed(1)} · {dentist.reviews || 0} ulasan
                 </Text>
               </View>
               {distanceText ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <MaterialCommunityIcons name='map-marker-distance' color='white' size={16} />
                   <Text style={{ color: 'white', marginLeft: 4 }}>
-                    {distanceText} • {dentist.clinic?.name || dentist.clinic}
+                    {distanceText} • {dentist.clinic}
                   </Text>
                 </View>
               ) : null}
@@ -204,7 +410,7 @@ const DentistDetailScreen = () => {
               }}
             >
               <MaterialCommunityIcons name='calendar-check' size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Pesan jadwal</Text>
+              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>Pesan Jadwal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleMessage}
@@ -236,7 +442,7 @@ const DentistDetailScreen = () => {
             ]}
           </ScrollView>
 
-          <Section title='Tentang dokter' style={{ marginTop: 24 }}>
+          <Section title='Tentang Dokter' style={{ marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>
               {dentist.languages?.map((lang) => (
@@ -267,7 +473,7 @@ const DentistDetailScreen = () => {
             </View>
           </Section>
 
-          <Section title='Layanan populer'>
+          <Section title='Layanan'>
             {dentist.services?.map((service) => (
               <View
                 key={service.name}
@@ -285,7 +491,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Ketersediaan jadwal'>
+          <Section title='Ketersediaan Jadwal'>
             {dentist.availability?.map((slot) => (
               <View
                 key={slot.day}
@@ -301,7 +507,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Prestasi'>
+          <Section title='Pencapaian'>
             {dentist.achievements?.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                 <MaterialCommunityIcons name='trophy' size={18} color='#FACC15' />
@@ -311,7 +517,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Cerita pasien'>
+          <Section title='Cerita Pasien'>
             {dentist.stories?.map((story) => (
               <View
                 key={story.patient}
@@ -339,7 +545,7 @@ const DentistDetailScreen = () => {
             ))}
           </Section>
 
-          <Section title='Galeri klinik'>
+          <Section title='Galeri'>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {dentist.gallery?.map((url, index) => (
                 <Image
@@ -389,7 +595,7 @@ const DentistDetailScreen = () => {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Biaya konsultasi mulai dari</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Konsultasi mulai dari</Text>
             <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
               {formatRupiah(dentist.price)}
             </Text>
@@ -410,6 +616,13 @@ const DentistDetailScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

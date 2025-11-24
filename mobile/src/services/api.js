@@ -1,8 +1,72 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform, NativeModules } from 'react-native';
+import Constants from 'expo-constants';
 
-export const API_BASE_URL = 'http://localhost:4000';
+const ENV_API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL;
+
+// Detect the correct API base URL based on platform
+const guessExpoHost = () => {
+  const hostCandidates = [
+    Constants.expoConfig?.hostUri,
+    Constants.expoConfig?.debuggerHost,
+    Constants.expoGoConfig?.debuggerHost,
+    Constants.manifest?.hostUri,
+    Constants.manifest?.debuggerHost,
+    Constants.manifest2?.extra?.expoGo?.debuggerHost,
+  ].filter(Boolean);
+
+  for (const candidate of hostCandidates) {
+    const host = candidate.split(':')[0];
+    if (host && host !== 'localhost') {
+      return host;
+    }
+  }
+
+  const scriptURL = NativeModules.SourceCode?.scriptURL;
+  if (scriptURL) {
+    const match = scriptURL.match(/https?:\/\/([^:]+)/);
+    if (match?.[1] && match[1] !== 'localhost') {
+      return match[1];
+    }
+  }
+
+  return null;
+};
+
+const buildDevBaseUrl = () => {
+  if (ENV_API_BASE_URL) {
+    return ENV_API_BASE_URL;
+  }
+
+  const host = guessExpoHost();
+  if (host) {
+    return `http://${host}:4000`;
+  }
+
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:4000';
+  }
+
+  return 'http://localhost:4000';
+};
+
+export const resolveApiBaseUrl = () => {
+  if (__DEV__) {
+    return buildDevBaseUrl();
+  }
+
+  if (ENV_API_BASE_URL) {
+    return ENV_API_BASE_URL;
+  }
+
+  return 'https://api.dentalization.id';
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 export const API_VERSION = 'v1';
+
+console.log('🌐 [API] Using base URL:', API_BASE_URL);
 
 // Create axios instance
 const api = axios.create({

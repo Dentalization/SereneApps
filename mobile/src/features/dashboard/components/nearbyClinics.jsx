@@ -2,10 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, ImageBackground, Animated } from 'react-native';
 import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { NEARBY_CLINICS, formatClinicDistance } from '../data/clinics';
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
-
-const FALLBACK_CLINICS = NEARBY_CLINICS.slice(0, 2);
+import resolveMediaUrl from '../../../utils/media';
 
 const StatChip = ({ icon, label }) => (
   <View
@@ -81,10 +79,20 @@ const NearbyClinics = ({
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, [fade]);
 
+  const formatDistanceLabel = (clinic) => {
+    if (typeof clinic.distanceKm === 'number') {
+      return `${clinic.distanceKm.toFixed(1)} km`;
+    }
+    if (typeof clinic.distance === 'number') {
+      return `${clinic.distance.toFixed(1)} km`;
+    }
+    return clinic.distance || '—';
+  };
+
   const dataSource = clinics.length ? clinics : fetchedClinics;
-  const data = (dataSource.length ? dataSource : FALLBACK_CLINICS).map((clinic) => ({
+  const data = dataSource.map((clinic) => ({
     ...clinic,
-    distanceLabel: formatClinicDistance(clinic.distanceKm),
+    distanceLabel: formatDistanceLabel(clinic),
   }));
 
   // Debug: Log image URLs
@@ -185,21 +193,17 @@ const NearbyClinics = ({
       )}
 
       {data.map((clinic) => {
-        // Use fallback if Unsplash URL is invalid (404)
-        let imageUri = clinic.heroImage || clinic.coverImage;
-        
-        // Check if URL looks invalid (photo-XXXXXXX format with low numbers are usually invalid)
-        if (imageUri && imageUri.includes('photo-160000')) {
-          imageUri = 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
+        let imageUri =
+          resolveMediaUrl(clinic.heroImage) ||
+          resolveMediaUrl(clinic.coverImage) ||
+          clinic.heroImage ||
+          clinic.coverImage;
+
+        if (!imageUri || imageUri.includes('photo-160000')) {
+          imageUri =
+            'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
         }
-        
-        // Final fallback
-        if (!imageUri) {
-          imageUri = 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop';
-        }
-        
-        console.log('🖼️ Loading image for', clinic.name, ':', imageUri);
-        
+
         return (
           <TouchableOpacity
             key={clinic.id}

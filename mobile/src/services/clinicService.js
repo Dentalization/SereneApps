@@ -46,8 +46,23 @@ export async function getClinicById(id) {
   return response.data?.data ?? response.data;
 }
 
+export async function getClinicDentists(id, params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.append(key, value);
+    }
+  });
+
+  const url = `/clinics/${id}/dentists${query.toString() ? `?${query.toString()}` : ''}`;
+  console.log('🌐 [clinicService] Fetching clinic dentists via', url);
+  const response = await api.get(url);
+  return response.data?.data ?? response.data;
+}
+
 export default {
   getNearbyClinics,
   getClinics,
   getClinicById,
+  getClinicDentists,
 };
