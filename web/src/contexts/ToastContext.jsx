@@ -22,13 +22,35 @@ const INTERNAL_DEBUG_PATTERNS = [
   /\{[\s\S]*"clinic_branch_id"/i,
 ];
 
-const shouldSuppressToastMessage = (message = '') => {
+export const shouldSuppressToastMessage = (message = '') => {
   const normalized = typeof message === 'string' ? message : String(message);
 
+  // Block all internal debug patterns
   if (INTERNAL_DEBUG_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return true;
   }
 
+  // Block any message containing 'BUTUH PERHATIAN' (case-insensitive)
+  if (/butuh perhatian/i.test(normalized)) {
+    return true;
+  }
+
+  // Block any message containing 'Request failed with status code' (case-insensitive)
+  if (/request failed with status code \d+/i.test(normalized)) {
+    return true;
+  }
+
+  // Block React DOM nesting warnings
+  if (/validateDOMNesting/i.test(normalized)) {
+    return true;
+  }
+
+  // Block React warning patterns
+  if (/Warning:.*react/i.test(normalized)) {
+    return true;
+  }
+
+  // Block long JSON payloads
   const containsJsonPayload = normalized.includes('{') || normalized.includes('[');
   const isVeryLong = normalized.length > 160;
   if (containsJsonPayload && isVeryLong) {
@@ -59,6 +81,8 @@ export const ToastProvider = ({ children }) => {
 
   const triggerToast = useCallback((payload) => {
     if (!payload?.message || shouldSuppressToastMessage(payload.message)) return;
+    // Suppress error boundary and debug logs
+    if (typeof payload.message === 'string' && (payload.message.includes('END ERROR BOUNDARY') || payload.message.includes('BUTUH PERHATIAN'))) return;
     setToast(normalizeToastPayload(payload));
   }, []);
 

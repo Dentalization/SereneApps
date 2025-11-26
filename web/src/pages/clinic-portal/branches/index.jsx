@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { shouldSuppressToastMessage } from '../../../contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import AppIcon from '../../../components/AppIcon';
 import ModalPortal from '../../../components/ui/ModalPortal';
@@ -170,14 +171,23 @@ const normalizeBranch = (branch, ownerFallback = null) => {
         .map((branch) => normalizeBranch(branch, owner))
         .filter(Boolean);
 
-      console.log('🏢 Branches API response:', branchList.length);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🏢 Branches API response:', branchList.length);
+      }
       setOwnerInfo(owner);
       setBranches(branchList);
     } catch (error) {
-      console.error('❌ Error fetching branches:', error);
+      const errorMsg = error?.message || 'Failed to load branches';
+      if (!shouldSuppressToastMessage(errorMsg)) {
+        setError(`Failed to load branches: ${errorMsg}`);
+      } else {
+        setError(null);
+      }
       setBranches([]);
-      setError(`Failed to load branches: ${error.message}`);
       setOwnerInfo(null);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('❌ Error fetching branches:', error);
+      }
     } finally {
       finishLoading();
     }
@@ -201,7 +211,9 @@ const normalizeBranch = (branch, ownerFallback = null) => {
 
       if (response?.data) {
         const revenueResult = response.data?.data || response.data;
-        console.log('💰 Real revenue data:', revenueResult);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('💰 Real revenue data:', revenueResult);
+        }
         if (Array.isArray(revenueResult)) {
           setRevenueData(revenueResult);
         } else if (Array.isArray(revenueResult?.branches)) {
@@ -211,7 +223,9 @@ const normalizeBranch = (branch, ownerFallback = null) => {
         }
       } else {
         // Fallback to calculated revenue data based on real branches with realistic numbers
-        console.log('💰 Using calculated revenue data for real branches');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('💰 Using calculated revenue data for real branches');
+        }
         const calculatedRevenueData = branches.map((branch, index) => {
           // Base revenue on branch characteristics
           const baseRevenue = branch.isMainBranch ? 300000000 : 150000000; // 300M for main, 150M for others
@@ -235,12 +249,15 @@ const normalizeBranch = (branch, ownerFallback = null) => {
             ]
           };
         });
-        
         setRevenueData(calculatedRevenueData);
       }
     } catch (error) {
-      console.error('❌ Error fetching revenue data:', error);
-      
+      const errorMsg = error?.message || 'Failed to fetch revenue data';
+      if (!shouldSuppressToastMessage(errorMsg)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('❌ Error fetching revenue data:', error);
+        }
+      }
       // Fallback to realistic calculated data for real branches
       if (branches.length > 0) {
         const fallbackRevenueData = branches.map((branch, index) => {
@@ -265,7 +282,6 @@ const normalizeBranch = (branch, ownerFallback = null) => {
             ]
           };
         });
-        
         setRevenueData(fallbackRevenueData);
       }
     } finally {

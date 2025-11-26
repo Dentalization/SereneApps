@@ -324,6 +324,17 @@ const NearbyClinics = ({
                     <StatChip icon="clock-outline" label={clinic.openStatus || 'Jam fleksibel'} />
                     {clinic.queue ? <StatChip icon="account-group" label={`Antri: ${clinic.queue}`} /> : null}
                   </View>
+                  {clinic.distanceDiagnostics?.localDistance ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                      <MaterialCommunityIcons name="radar" size={12} color="white" />
+                      <Text style={{ color: 'white', marginLeft: 6, fontSize: normalize(11), fontWeight: '600' }}>
+                        Lokal {clinic.distanceDiagnostics.localDistance.toFixed(1)} km
+                        {typeof clinic.distanceDiagnostics.delta === 'number'
+                          ? ` · Δ ${clinic.distanceDiagnostics.delta.toFixed(2)} km`
+                          : ''}
+                      </Text>
+                    </View>
+                  ) : null}
                   
                   <View style={{ flexDirection: 'row' }}>
                     <ActionButton

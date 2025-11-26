@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { shouldSuppressToastMessage } from '../../../contexts/ToastContext';
 import { Link } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
@@ -34,7 +35,11 @@ const ClinicServices = () => {
       } catch (err) {
         console.error('Failed to load clinic services', err);
         setContextError(true);
-        setError('Failed to load assigned services');
+        if (!shouldSuppressToastMessage(err?.message || 'Failed to load clinic services')) {
+          setError('Failed to load assigned services');
+        } else {
+          setError('');
+        }
       } finally {
         setLoading(false);
       }

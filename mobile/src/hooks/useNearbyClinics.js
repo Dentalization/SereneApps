@@ -3,15 +3,16 @@ import * as Location from 'expo-location';
 import { getNearbyClinics } from '../services/clinicService';
 import resolveMediaUrl from '../utils/media';
 
-const DEFAULT_COORDS = {
-  latitude: -6.2088,   // Jakarta, Indonesia
-  longitude: 106.8456,
+const DEFAULT_COORDS = { latitude: -6.2088, longitude: 106.8456 };
+const DEFAULT_SEARCH_META = {
+  locationSource: 'unknown',
+  coordsUsed: null,
+  radiusRequested: null,
+  backendSearch: null,
+  timestamp: null,
+  fallbackUsed: false,
+  resultCount: 0,
 };
-
-// Use real location when available, fallback to Jakarta if permission denied
-const USE_MOCK_LOCATION = false;
-
-// Default fallback images for clinics
 const DEFAULT_CLINIC_IMAGES = [
   'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=800&auto=format&fit=crop',
@@ -27,10 +28,100 @@ const toAbsoluteImage = (url) => {
   return null;
 };
 
-const isValidImageUrl = (url) => typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
+const isValidImageUrl = (url) =>
+  typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
 const getValidImageUrl = (url, fallbackIndex = 0) =>
   isValidImageUrl(url) ? url : DEFAULT_CLINIC_IMAGES[fallbackIndex % DEFAULT_CLINIC_IMAGES.length];
+
+const toNumber = (value) => {
+  if (value === null || value === undefined) return null;
+  const parsed = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const pickNested = (obj = {}, path = '') => {
+  if (!path) return undefined;
+  return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+};
+
+const pickCoord = (raw = {}, paths = []) => {
+  for (const path of paths) {
+    const value = pickNested(raw, path);
+    const parsed = toNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+};
+
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  if (
+    [lat1, lon1, lat2, lon2].some(
+      (coord) => coord === null || coord === undefined || !Number.isFinite(coord)
+    )
+  ) {
+    return null;
+  }
+  const R = 6371;
+  const toRad = (deg) => deg * (Math.PI / 180);
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 100) / 100;
+};
+
+const attachDistanceDiagnostics = (items, originCoords, backendSearch) => {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => {
+    const latitude = pickCoord(item, [
+      'branch_latitude',
+      'latitude',
+      'location.latitude',
+      'clinic_latitude',
+    ]);
+    const longitude = pickCoord(item, [
+      'branch_longitude',
+      'longitude',
+      'location.longitude',
+      'clinic_longitude',
+    ]);
+
+    const localDistance =
+      originCoords && typeof originCoords.latitude === 'number'
+        ? haversineDistance(originCoords.latitude, originCoords.longitude, latitude, longitude)
+        : null;
+    const backendDistance =
+      typeof item.distanceKm === 'number'
+        ? item.distanceKm
+        : toNumber(item.distance ?? item.distance_km);
+
+    const delta =
+      localDistance !== null && backendDistance !== null
+        ? Math.abs(localDistance - backendDistance)
+        : null;
+
+    return {
+      ...item,
+      distanceKm: backendDistance ?? localDistance,
+      distanceDiagnostics: {
+        backendDistance,
+        localDistance,
+        delta,
+        backendCenter: backendSearch
+          ? {
+              latitude: toNumber(backendSearch.latitude),
+              longitude: toNumber(backendSearch.longitude),
+              radius: backendSearch.radius,
+            }
+          : null,
+      },
+    };
+  });
+};
 
 const formatAddress = (clinic) => {
   const address = clinic?.address;
@@ -46,12 +137,7 @@ const formatAddress = (clinic) => {
       .join(', ');
   }
 
-  return [
-    clinic.streetAddress,
-    clinic.district || clinic.area,
-    clinic.city,
-    clinic.province,
-  ]
+  return [clinic.streetAddress, clinic.district || clinic.area, clinic.city, clinic.province]
     .filter(Boolean)
     .join(', ');
 };
@@ -133,6 +219,7 @@ export const useNearbyClinics = ({
   const [coords, setCoords] = useState(null);
   const [usedMockData, setUsedMockData] = useState(false);
   const [usedDefaultLocation, setUsedDefaultLocation] = useState(false);
+  const [searchMeta, setSearchMeta] = useState(DEFAULT_SEARCH_META);
 
   const fetchWithCoords = useCallback(
     async (currentCoords, options = {}) => {
@@ -151,7 +238,7 @@ export const useNearbyClinics = ({
         'attempt:',
         attempt,
         'defaultFallback:',
-        isDefaultAttempt,
+        isDefaultAttempt
       );
 
       const response = await getNearbyClinics({
@@ -165,9 +252,10 @@ export const useNearbyClinics = ({
 
       const items = response?.clinics || [];
       const normalized = items.map((clinic, index) => normalizeClinic(clinic, index));
+      const enhanced = attachDistanceDiagnostics(normalized, currentCoords, response?.search);
 
       const allowedDistance = strictRadius ? radius : effectiveRadius;
-      const acceptableClinics = normalized.filter((clinic) => {
+      const acceptableClinics = enhanced.filter((clinic) => {
         if (clinic.distanceKm == null) {
           return !strictRadius;
         }
@@ -198,26 +286,38 @@ export const useNearbyClinics = ({
           return;
         }
 
-        console.log('⚠️ [useNearbyClinics] No clinics found after fallback attempts');
+        console.log('ℹ️ [useNearbyClinics] Still no clinics found after fallback/default attempts');
         setClinics([]);
         setUsedMockData(false);
-        setError('Tidak ada klinik di sekitar lokasi ini.');
+        setSearchMeta({
+          locationSource: isDefaultAttempt ? 'default' : 'gps',
+          coordsUsed: currentCoords,
+          radiusRequested: radius,
+          backendSearch: response?.search || null,
+          timestamp: new Date().toISOString(),
+          fallbackUsed: Boolean(isDefaultAttempt),
+          resultCount: 0,
+        });
         return;
       }
 
-      const sorted = acceptableClinics.sort((a, b) => {
-        const distA = a.distanceKm ?? Number.POSITIVE_INFINITY;
-        const distB = b.distanceKm ?? Number.POSITIVE_INFINITY;
-        return distA - distB;
-      });
-
-      const limitedClinics = sorted.slice(0, limit);
-      console.log('🏥 [useNearbyClinics] Setting clinics:', limitedClinics.length);
-      setClinics(limitedClinics);
+      setClinics(acceptableClinics);
       setUsedMockData(false);
-      setError(null);
+      if (isDefaultAttempt) {
+        setUsedDefaultLocation(true);
+      }
+
+      setSearchMeta({
+        locationSource: isDefaultAttempt ? 'default' : 'gps',
+        coordsUsed: currentCoords,
+        radiusRequested: effectiveRadius,
+        backendSearch: response?.search || null,
+        timestamp: new Date().toISOString(),
+        fallbackUsed: Boolean(isDefaultAttempt),
+        resultCount: acceptableClinics.length,
+      });
     },
-    [allowRadiusExpansion, fallbackToDefault, limit, maxRadiusMultiplier, radius, strictRadius],
+    [allowRadiusExpansion, fallbackToDefault, limit, maxRadiusMultiplier, radius, strictRadius]
   );
 
   const requestLocationAndFetch = useCallback(async () => {
@@ -228,60 +328,42 @@ export const useNearbyClinics = ({
       console.log('📍 [useNearbyClinics] Requesting location permission...');
       const { status } = await Location.requestForegroundPermissionsAsync();
       setPermissionStatus(status);
-      console.log('📍 [useNearbyClinics] Permission status:', status);
 
-      let coordinates = null;
-
-      // Use mock Jakarta location for development since all clinics are in Jakarta
-      if (USE_MOCK_LOCATION) {
-        console.log('📍 [useNearbyClinics] Using mock Jakarta coordinates for development');
-        coordinates = DEFAULT_COORDS;
-        setUsedDefaultLocation(true);
-      } else if (status === 'granted') {
+      let positionCoords = null;
+      if (status === 'granted') {
         try {
-          console.log('📍 [useNearbyClinics] Getting current position...');
           const position = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
-          
-          // Check if coordinates are valid (not simulator default or outside Indonesia)
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
-          
-          // Indonesia roughly: latitude -11 to 6, longitude 95 to 141
           const isValidIndonesia = lat >= -11 && lat <= 6 && lon >= 95 && lon <= 141;
-          
           if (isValidIndonesia) {
-            coordinates = position.coords;
-            console.log('✅ [useNearbyClinics] Got valid Indonesia coordinates');
+            positionCoords = position.coords;
             setUsedDefaultLocation(false);
           } else {
-            console.log('ℹ️ [useNearbyClinics] GPS location is outside Indonesia (simulator detected)');
-            console.log('ℹ️ [useNearbyClinics] Received GPS: lat=' + lat + ', lon=' + lon);
-            console.log('📍 [useNearbyClinics] Using Jakarta default for better results');
-            coordinates = DEFAULT_COORDS;
+            positionCoords = DEFAULT_COORDS;
             setUsedDefaultLocation(true);
           }
-        } catch (positionError) {
-          console.log('🔍 [useNearbyClinics] Failed to get position:', positionError.message);
-          console.log('📍 [useNearbyClinics] Falling back to Jakarta coordinates');
-          coordinates = DEFAULT_COORDS;
+        } catch (locationError) {
+          console.log('📍 [useNearbyClinics] Failed to read GPS:', locationError.message);
+          positionCoords = DEFAULT_COORDS;
           setUsedDefaultLocation(true);
         }
       } else {
-        console.log('📍 [useNearbyClinics] Permission denied, using default coordinates');
-        coordinates = DEFAULT_COORDS;
+        positionCoords = DEFAULT_COORDS;
         setUsedDefaultLocation(true);
       }
 
-      setCoords(coordinates);
-      await fetchWithCoords(coordinates);
+      setCoords(positionCoords);
+      await fetchWithCoords(positionCoords);
     } catch (err) {
-      console.log('🔍 [useNearbyClinics] Failed to load nearby clinics:', err.message);
+      console.log('🏥 [useNearbyClinics] Failed to load nearby clinics:', err.message);
       const errorMessage = err.message || 'Tidak dapat memuat klinik terdekat.';
       setError(errorMessage);
       setClinics([]);
       setUsedMockData(false);
+      setSearchMeta(DEFAULT_SEARCH_META);
     } finally {
       setLoading(false);
     }
@@ -298,7 +380,7 @@ export const useNearbyClinics = ({
     try {
       await fetchWithCoords(coords);
     } catch (err) {
-      console.log('🔍 [useNearbyClinics] Failed to refresh clinics:', err.message);
+      console.log('🏥 [useNearbyClinics] Failed to refresh:', err.message);
       const errorMessage = err.message || 'Tidak dapat menyegarkan daftar klinik.';
       setError(errorMessage);
       setClinics([]);
@@ -324,6 +406,7 @@ export const useNearbyClinics = ({
     location: coords,
     usedMockData,
     usedDefaultLocation,
+    searchMeta,
   };
 };
 

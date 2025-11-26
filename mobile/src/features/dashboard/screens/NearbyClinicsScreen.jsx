@@ -19,6 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'; // Pastikan 
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
 import NearbyClinics from '../components/nearbyClinics';
 
+const formatCoords = (coords) =>
+  coords ? `${coords.latitude?.toFixed?.(3)}, ${coords.longitude?.toFixed?.(3)}` : 'Tidak tersedia';
+
 const NearbyClinicsScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -32,11 +35,32 @@ const NearbyClinicsScreen = () => {
     requestLocation,
     usedMockData,
     usedDefaultLocation,
+    searchMeta,
   } = useNearbyClinics({ radius, limit: 40 });
 
   const clinics = useMemo(() => {
     return fetchedClinics.filter((clinic) => (clinic.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius);
   }, [fetchedClinics, radius]);
+
+  const distanceSummary = useMemo(() => {
+    const deltas = clinics
+      .map((clinic) => clinic.distanceDiagnostics?.delta)
+      .filter((delta) => typeof delta === 'number');
+    if (!deltas.length) return null;
+    const avg = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
+    const max = Math.max(...deltas);
+    return { avg, max };
+  }, [clinics]);
+
+  const coordsLabel = formatCoords(searchMeta?.coordsUsed);
+  const backendRadius = searchMeta?.backendSearch?.radius ?? radius;
+  const backendCenterLabel =
+    searchMeta?.backendSearch?.latitude !== undefined
+      ? formatCoords({
+          latitude: Number(searchMeta.backendSearch.latitude),
+          longitude: Number(searchMeta.backendSearch.longitude),
+        })
+      : null;
 
   const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id || clinic.branchId });
   const handleBook = (clinic) =>
@@ -90,6 +114,49 @@ const NearbyClinicsScreen = () => {
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
       >
+        <View
+          style={{
+            borderRadius: 18,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: '#BFDBFE',
+            backgroundColor: '#EFF6FF',
+            marginBottom: 18,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <MaterialCommunityIcons name="crosshairs-gps" size={16} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 8, color: '#0F172A', fontWeight: '600', fontSize: 12, flex: 1 }}>
+              {(usedDefaultLocation || searchMeta?.locationSource === 'default')
+                ? 'Menampilkan klinik populer di area default'
+                : 'Menampilkan klinik sesuai lokasi Anda'}
+            </Text>
+          </View>
+          <Text style={{ color: '#475569', fontSize: 11 }}>
+            Radius perangkat {radius} km · radius server {backendRadius} km
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 11 }}>
+            Koordinat dipakai: {coordsLabel}
+            {backendCenterLabel ? ` · pusat server ${backendCenterLabel}` : ''}
+          </Text>
+          {distanceSummary ? (
+            <Text style={{ color: '#059669', fontSize: 11 }}>
+              Akurasi jarak Δ rata-rata {distanceSummary.avg.toFixed(2)} km · maks {distanceSummary.max.toFixed(2)} km
+            </Text>
+          ) : null}
+          {error ? (
+            <TouchableOpacity
+              onPress={requestLocation}
+              style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}
+            >
+              <MaterialCommunityIcons name="alert-circle" size={16} color="#DC2626" />
+              <Text style={{ marginLeft: 6, color: '#DC2626', fontWeight: '600', fontSize: 12 }}>
+                {error} · Ketuk untuk coba ulang
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         <NearbyClinics
           clinics={clinics}
           title={`Klinik Terdekat`}

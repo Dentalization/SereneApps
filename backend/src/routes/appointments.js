@@ -132,7 +132,7 @@ function serializeBranch(branch) {
   if (!branch) return null;
   return {
     id: branch.id?.toString?.() ?? branch.id,
-    name: branch.name || null,
+    name: branch.branchName ?? branch.name ?? null,
     city: branch.city || null,
     address: branch.streetAddress ?? branch.street_address ?? null,
     clinicProfileId: branch.clinicProfileId?.toString?.() ?? branch.clinic_profile_id?.toString?.() ?? null
@@ -422,7 +422,7 @@ router.post(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -510,7 +510,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -623,7 +623,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -787,7 +787,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -850,7 +850,7 @@ router.get(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -919,7 +919,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -1000,7 +1000,7 @@ router.patch(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
@@ -1177,7 +1177,7 @@ router.get(
           clinicBranch: {
             select: {
               id: true,
-              name: true,
+              branchName: true,
               city: true,
               streetAddress: true,
               clinicProfileId: true
