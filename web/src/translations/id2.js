@@ -470,6 +470,33 @@ export default {
     },
   },
   clinic: {
+    sidebar: {
+      publicProfile: 'Profil Publik',
+      descriptions: {
+        publicProfile: 'Layanan, Galeri & Fasilitas'
+      }
+    },
+    publicProfile: {
+      badge: 'Profil Publik',
+      title: 'Profil Publik Klinik',
+      subtitle: 'Kelola tampilan klinik Anda di aplikasi mobile Serene.',
+      actions: {
+        preview: 'Pratinjau tampilan mobile',
+        refresh: 'Segarkan konten'
+      },
+      tabs: {
+        services: 'Layanan & Harga',
+        gallery: 'Galeri & Foto',
+        highlights: 'Keunggulan',
+        facilities: 'Fasilitas'
+      },
+      tabDescriptions: {
+        services: 'Perbarui layanan, harga, dan ketersediaan yang terlihat oleh pasien.',
+        gallery: 'Atur hero image dan foto galeri.',
+        highlights: 'Promosikan keunggulan dan pengalaman unik klinik.',
+        facilities: 'Tampilkan fasilitas dan peralatan yang tersedia.'
+      }
+    },
     staff: {
       // Existing translations
       badge: 'Manajemen Staff',

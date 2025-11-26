@@ -613,7 +613,9 @@ export const getClinicById = async (req, res, next) => {
 
       // Fetch dentists for this clinic
       try {
-        console.log('🔍 Fetching dentists for clinic_profile_id:', row.clinic_profile_id, 'type:', typeof row.clinic_profile_id);
+        const clinicProfileId = Number(row.clinic_profile_id);
+        const branchId = Number(row.branch_id);
+        console.log('🔍 Fetching dentists for clinic_profile_id:', clinicProfileId, 'branch_id:', branchId);
         const dentistsQuery = `
           SELECT 
             dp.id,
@@ -630,11 +632,12 @@ export const getClinicById = async (req, res, next) => {
           WHERE cs.clinic_profile_id = $1 
             AND cs.role = 'dentist'
             AND cs.is_active = true
+            AND cs.assigned_branch_id = $2
           ORDER BY dp.years_of_experience DESC
           LIMIT 5
         `;
-        const dentistsResult = await query(dentistsQuery, [parseInt(row.clinic_profile_id)]);
-        console.log('✅ Found', dentistsResult.rows.length, 'dentists');
+        const dentistsResult = await query(dentistsQuery, [clinicProfileId, branchId]);
+        console.log('✅ Found', dentistsResult.rows.length, 'dentists for branch', branchId);
         clinicData.doctors = dentistsResult.rows.map(doc => ({
           id: doc.id?.toString(),
           userId: doc.user_id,

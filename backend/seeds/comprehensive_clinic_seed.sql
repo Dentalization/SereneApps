@@ -9,6 +9,42 @@
 BEGIN;
 
 -- ============================================
+-- STEP 0: Ensure Core Admin Users Exist
+-- ============================================
+
+DO $$
+DECLARE
+  admin_roles TEXT[] := ARRAY[
+    'super_admin',
+    'business_manager',
+    'platform_manager',
+    'compliance_officer',
+    'customer_success_manager',
+    'finance_manager',
+    'ai_engineer',
+    'technical_support'
+  ];
+  role TEXT;
+  counter INT := 1;
+  admin_email TEXT;
+BEGIN
+  FOREACH role IN ARRAY admin_roles LOOP
+    admin_email := role || '@sereneai.com';
+    IF NOT EXISTS (SELECT 1 FROM users u WHERE u.email = admin_email) THEN
+      INSERT INTO users (name, email, password_hash, roles, phone_number)
+      VALUES (
+        INITCAP(REPLACE(role, '_', ' ')) || ' Admin',
+        admin_email,
+        '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi',
+        ARRAY[role, 'admin'],
+        '+62 811-000' || LPAD(counter::TEXT, 4, '0')
+      );
+      counter := counter + 1;
+    END IF;
+  END LOOP;
+END $$;
+
+-- ============================================
 -- STEP 1: Create Users for Clinic Owners & Staff
 -- ============================================
 
@@ -157,7 +193,7 @@ BEGIN
       owner_user_id,
       clinic_names[clinic_num] || ' - PT Dental Care Indonesia ' || clinic_num,
       clinic_names[clinic_num],
-      CASE WHEN clinic_num % 3 = 0 THEN 'hospital' WHEN clinic_num % 3 = 1 THEN 'clinic' ELSE 'practice' END,
+      CASE WHEN clinic_num % 3 = 0 THEN 'rsgm' ELSE 'klinik_gigi' END,
       'Jl. Jendral Sudirman No. ' || (100 + clinic_num * 10),
       CASE 
         WHEN clinic_num <= 2 THEN 'Jakarta Selatan'
@@ -187,7 +223,7 @@ BEGIN
       'Asia/Jakarta',
       '{"monday": "08:00-20:00", "tuesday": "08:00-20:00", "wednesday": "08:00-20:00", "thursday": "08:00-20:00", "friday": "08:00-20:00", "saturday": "09:00-17:00", "sunday": "Closed"}'::jsonb,
       (SELECT name FROM users WHERE id = owner_user_id),
-      'Director',
+      'owner',
       (SELECT email FROM users WHERE id = owner_user_id),
       '+62 821-' || LPAD(clinic_num::TEXT, 4, '0') || '-0001',
       nik_num,
@@ -201,7 +237,7 @@ BEGIN
       true,
       true,
       true,
-      'active'
+      'verified'
     );
   END LOOP;
 END $$;
@@ -327,6 +363,18 @@ DECLARE
   branch_id BIGINT;
   specialties TEXT[] := ARRAY['General Dentistry', 'Orthodontics', 'Periodontics', 'Endodontics', 'Prosthodontics', 'Oral Surgery', 'Pediatric Dentistry', 'Cosmetic Dentistry', 'Implantology', 'Oral Medicine'];
   license_prefixes TEXT[] := ARRAY['LIC', 'STR', 'REG', 'DDS', 'DMD', 'BDS', 'MDS', 'DIP', 'CERT', 'SPEC'];
+  avatar_urls TEXT[] := ARRAY[
+    'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1525134479668-1bee5c7c6845?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1502764613149-7f1d229e230f?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=400&q=80'
+  ];
 BEGIN
   FOR clinic_num IN 1..10 LOOP
     -- Get clinic_id
@@ -336,6 +384,10 @@ BEGIN
       -- Get dentist user
       SELECT id INTO dentist_user_id FROM users 
       WHERE email = 'dentist' || dentist_num || '.clinic' || clinic_num || '@dentists.com';
+      
+      UPDATE users
+      SET avatar_url = avatar_urls[((dentist_num - 1) % array_length(avatar_urls, 1)) + 1]
+      WHERE id = dentist_user_id;
       
       -- Get a branch for this dentist (distribute across branches)
       SELECT id INTO branch_id FROM clinic_branches 
@@ -351,12 +403,13 @@ BEGIN
         consultation_types, services_offered, consultation_fee,
         accepts_insurance, accepts_bpjs, emergency_availability,
         is_verified, 
+        avatar_url,
         latitude, longitude, district, province, postal_code, city
       )
       VALUES (
         dentist_user_id,
         clinic_id,
-        'clinic_employed',
+        'clinic',
         false,
         'dr.',
         license_prefixes[dentist_num] || '-' || LPAD((clinic_num * 10000 + dentist_num)::TEXT, 8, '0'),
@@ -376,6 +429,7 @@ BEGIN
         true,
         CASE WHEN dentist_num <= 3 THEN true ELSE false END,
         true,
+        avatar_urls[((dentist_num - 1) % array_length(avatar_urls, 1)) + 1],
         (SELECT latitude FROM clinic_branches WHERE id = branch_id),
         (SELECT longitude FROM clinic_branches WHERE id = branch_id),
         (SELECT district FROM clinic_branches WHERE id = branch_id),
@@ -383,7 +437,153 @@ BEGIN
         (SELECT postal_code FROM clinic_branches WHERE id = branch_id),
         (SELECT city FROM clinic_branches WHERE id = branch_id)
       );
+
+      INSERT INTO clinic_staff (
+        user_id, clinic_profile_id, assigned_branch_id, role, is_active
+      ) VALUES (
+        dentist_user_id, clinic_id, branch_id, 'dentist', true
+      )
+      ON CONFLICT (user_id) DO UPDATE
+        SET clinic_profile_id = EXCLUDED.clinic_profile_id,
+            assigned_branch_id = EXCLUDED.assigned_branch_id,
+            role = 'dentist',
+            is_active = true;
     END LOOP;
+  END LOOP;
+END $$;
+
+-- ============================================
+-- STEP 5B: Create Independent Dentists with Personal Services
+-- ============================================
+
+DO $$
+DECLARE
+  idx INT;
+  new_user_id BIGINT;
+  profile_id BIGINT;
+  full_name TEXT;
+  specialization TEXT;
+  is_general BOOLEAN;
+  independent_first_names TEXT[] := ARRAY['Adrian', 'Nadia', 'Bintang', 'Chandra', 'Dewi', 'Fajar', 'Gracia', 'Hendra', 'Intan', 'Johan'];
+  independent_last_names  TEXT[] := ARRAY['Santoso', 'Wijaya', 'Mahendra', 'Lestari', 'Mahani', 'Prasetyo', 'Gunawan', 'Halim', 'Utami', 'Saputra'];
+  specialties             TEXT[] := ARRAY['General Dentistry', 'Cosmetic Dentistry', 'Orthodontics', 'Pediatric Dentistry', 'Implantology', 'Endodontics', 'Periodontics', 'Oral Surgery', 'Prosthodontics', 'Digital Dentistry'];
+  districts               TEXT[] := ARRAY['Menteng', 'Kemang', 'Pondok Indah', 'Kelapa Gading', 'BSD City', 'Tebet', 'Kebayoran Baru', 'Pluit', 'Bintaro', 'Cilandak'];
+  independent_avatars     TEXT[] := ARRAY[
+    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1521577452071-a99cc9b5e086?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1547425260-76bcadfb4f2c?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=400&q=80',
+    'https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=400&q=80'
+  ];
+  base_lat DECIMAL := -6.2000;
+  base_lon DECIMAL := 106.8200;
+BEGIN
+  FOR idx IN 1..array_length(independent_first_names, 1) LOOP
+    full_name := 'dr. ' || independent_first_names[idx] || ' ' || independent_last_names[idx];
+    specialization := specialties[idx];
+    is_general := LOWER(specialization) LIKE '%general%';
+
+    INSERT INTO users (name, email, password_hash, roles, phone_number, avatar_url)
+    VALUES (
+      full_name,
+      'independent' || idx || '@dentists.id',
+      '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi',
+      ARRAY['dentist'],
+      '+62 812-' || LPAD((7000 + idx)::TEXT, 4, '0') || '-' || LPAD((2000 + idx)::TEXT, 4, '0'),
+      independent_avatars[((idx - 1) % array_length(independent_avatars, 1)) + 1]
+    )
+    RETURNING id INTO new_user_id;
+
+    INSERT INTO dentist_profiles (
+      user_id, clinic_id, dentist_type, is_clinic_owner,
+      title, license_number, license_issuing_body, license_expiry_date,
+      registration_number, primary_specialization, education_qualification,
+      years_of_experience, clinic_name, clinic_address, clinic_working_hours,
+      consultation_types, services_offered, consultation_fee,
+      accepts_insurance, accepts_bpjs, emergency_availability,
+      is_verified,
+      avatar_url,
+      latitude, longitude, district, province, postal_code, city
+    )
+    VALUES (
+      new_user_id,
+      NULL,
+      'independent',
+      true,
+      'drg.',
+      'IND-' || LPAD((idx * 12345)::TEXT, 8, '0'),
+      'Kementerian Kesehatan RI',
+      CURRENT_DATE + INTERVAL '4 years',
+      'STR-' || LPAD((idx * 98765)::TEXT, 9, '0'),
+      specialization,
+      'DDS - Universitas Indonesia' || CASE WHEN NOT is_general THEN ' | Sp. ' || specialization ELSE '' END,
+      7 + idx,
+      full_name || ' Independent Dental Studio',
+      'Jl. ' || districts[idx] || ' No. ' || (40 + idx * 3) || ', Jakarta',
+      '{"monday": "09:00-18:00", "tuesday": "09:00-18:00", "wednesday": "09:00-18:00", "thursday": "09:00-18:00", "friday": "09:00-18:00", "saturday": "09:00-14:00", "sunday": "Closed"}',
+      ARRAY['in-person', 'teleconsultation', 'home-visit'],
+      ARRAY['Comprehensive Checkup', specialization || ' Care', 'Smile Makeover'],
+      200000 + (idx * 15000),
+      true,
+      CASE WHEN idx % 2 = 0 THEN true ELSE false END,
+      CASE WHEN idx % 3 = 0 THEN true ELSE false END,
+      true,
+      independent_avatars[((idx - 1) % array_length(independent_avatars, 1)) + 1],
+      base_lat + (idx * 0.012),
+      base_lon - (idx * 0.008),
+      districts[idx],
+      'DKI Jakarta',
+      '1' || LPAD((3300 + idx * 11)::TEXT, 4, '0'),
+      'Jakarta'
+    )
+    RETURNING id INTO profile_id;
+
+    INSERT INTO dentist_services (
+      dentist_profile_id, name, description, price, category,
+      specialty, duration_minutes, managed_by, can_edit, is_active
+    )
+    VALUES
+      (
+        profile_id,
+        'Comprehensive Dental Checkup',
+        'Pemeriksaan menyeluruh, pembersihan ringan, dan rencana perawatan personal.',
+        250000 + (idx * 10000),
+        'general',
+        NULL,
+        40,
+        'dentist',
+        true,
+        true
+      ),
+      (
+        profile_id,
+        specialization || ' Signature Care',
+        'Perawatan fokus pada bidang ' || LOWER(specialization) || ' dengan teknologi terbaru.',
+        600000 + (idx * 15000),
+        CASE WHEN is_general THEN 'general' ELSE 'specialist' END,
+        CASE WHEN is_general THEN NULL ELSE specialization END,
+        60,
+        'dentist',
+        true,
+        true
+      ),
+      (
+        profile_id,
+        'Home-Care Follow Up',
+        'Kontrol lanjutan dan edukasi perawatan mandiri untuk pasien.',
+        300000 + (idx * 12000),
+        'general',
+        NULL,
+        35,
+        'dentist',
+        true,
+        true
+      );
   END LOOP;
 END $$;
 
@@ -453,9 +653,9 @@ BEGIN
   LOOP
     -- Assign general services to all dentists
     FOR service_record IN 
-      SELECT id, base_price FROM clinic_services 
-      WHERE clinic_branch_id = dentist_record.branch_id
-      AND category = 'general'
+      SELECT id, base_price FROM clinic_services cs
+      WHERE cs.clinic_branch_id = dentist_record.branch_id
+      AND cs.category = 'general'
       LIMIT 6
     LOOP
       INSERT INTO service_dentist_assignments (
@@ -472,10 +672,10 @@ BEGIN
     
     -- Assign specialty services to matching specialists
     FOR service_record IN 
-      SELECT id, base_price FROM clinic_services 
-      WHERE clinic_branch_id = dentist_record.branch_id
-      AND category = 'specialist'
-      AND specialty = dentist_record.primary_specialization
+      SELECT id, base_price FROM clinic_services cs
+      WHERE cs.clinic_branch_id = dentist_record.branch_id
+      AND cs.category = 'specialist'
+      AND cs.specialty = dentist_record.primary_specialization
       LIMIT 3
     LOOP
       INSERT INTO service_dentist_assignments (

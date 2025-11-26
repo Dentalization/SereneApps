@@ -33,6 +33,8 @@ const formatDate = (value) => {
   });
 };
 
+const ALL_STAFF_ID = 'all-staff';
+
 const ClinicDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -44,7 +46,7 @@ const ClinicDetail = () => {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(!fallbackClinic);
   const [error, setError] = useState(null);
-  const [selectedBranchId, setSelectedBranchId] = useState(null);
+  const [selectedBranchId, setSelectedBranchId] = useState(ALL_STAFF_ID);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyAction, setVerifyAction] = useState(null); // 'verify' or 'reject'
@@ -240,26 +242,29 @@ const ClinicDetail = () => {
 
   useEffect(() => {
     if (!branchList.length) {
-      setSelectedBranchId(null);
+      setSelectedBranchId(ALL_STAFF_ID);
       return;
     }
     setSelectedBranchId((prev) => {
+      if (prev === ALL_STAFF_ID) {
+        return prev;
+      }
       if (prev && branchList.some((branch) => (branch.id?.toString?.() ?? branch.id) === prev)) {
         return prev;
       }
       const defaultBranch = branchList.find((b) => b.isMainBranch) || branchList[0];
       const branchId = defaultBranch?.id?.toString?.() ?? defaultBranch?.id;
-      return branchId ? branchId.toString() : null;
+      return branchId ? branchId.toString() : ALL_STAFF_ID;
     });
   }, [branchList]);
 
   const selectedBranch = useMemo(() => {
-    if (!branchList.length || !selectedBranchId) return null;
+    if (!branchList.length || !selectedBranchId || selectedBranchId === ALL_STAFF_ID) return null;
     return branchList.find((branch) => (branch.id?.toString?.() ?? branch.id) === selectedBranchId) || null;
   }, [branchList, selectedBranchId]);
 
   const staffForSelectedBranch = useMemo(() => {
-    if (!selectedBranchId) return staff;
+    if (!selectedBranchId || selectedBranchId === ALL_STAFF_ID) return staff;
     return staffByBranch[selectedBranchId] || [];
   }, [staff, selectedBranchId, staffByBranch]);
 
@@ -681,7 +686,14 @@ const ClinicDetail = () => {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h2 className="text-lg font-semibold text-primary">{t('admin.clinicDetail.staffRosterTitle')}</h2>
-                      {selectedBranch ? (
+                      {selectedBranchId === ALL_STAFF_ID ? (
+                        <p className="text-xs text-secondary">
+                          {t('admin.clinicDetail.staffRosterAllSubtitle', {
+                            count: totalStaff,
+                            branches: branchList.length
+                          }) || `All staff across ${branchList.length} branches`}
+                        </p>
+                      ) : selectedBranch ? (
                         <p className="text-xs text-secondary">
                           {t('admin.clinicDetail.staffRosterSubtitle', {
                             branch: selectedBranch.branchName || t('admin.clinicDetail.unnamedBranchLabel')
@@ -692,33 +704,48 @@ const ClinicDetail = () => {
                       )}
                     </div>
                   </div>
-                  {branchList.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {branchList.map((branch) => {
-                        const branchId = branch.id?.toString?.() ?? branch.id ?? branch.branchName;
-                        const isActive = selectedBranchId === branchId;
-                        const count = staffByBranch[branchId]?.length || 0;
-                        return (
-                          <button
-                            key={`staff-tab-${branchId}`}
-                            onClick={() => setSelectedBranchId(branchId)}
-                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                              isActive
-                                ? 'border-transparent bg-primary text-white shadow-sm'
-                                : 'border-border/50 bg-muted/20 text-secondary hover:border-primary/40 hover:text-primary'
-                            }`}
-                          >
-                            <span>{branch.branchName || t('admin.clinicDetail.unnamedBranchLabel')}</span>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-medium">
-                              <AppIcon name="Users" size={11} />
-                              {count}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  {selectedBranch ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      key="staff-tab-all"
+                      onClick={() => setSelectedBranchId(ALL_STAFF_ID)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        selectedBranchId === ALL_STAFF_ID
+                          ? 'border-transparent bg-primary text-white shadow-sm'
+                          : 'border-border/50 bg-muted/20 text-secondary hover:border-primary/40 hover:text-primary'
+                      }`}
+                    >
+                      <span>{t('admin.clinicDetail.allStaffLabel') || 'All Staff'}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                        <AppIcon name="Users" size={11} />
+                        {totalStaff}
+                      </span>
+                    </button>
+                    {branchList.length
+                      ? branchList.map((branch) => {
+                          const branchId = branch.id?.toString?.() ?? branch.id ?? branch.branchName;
+                          const isActive = selectedBranchId === branchId;
+                          const count = staffByBranch[branchId]?.length || 0;
+                          return (
+                            <button
+                              key={`staff-tab-${branchId}`}
+                              onClick={() => setSelectedBranchId(branchId)}
+                              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                isActive
+                                  ? 'border-transparent bg-primary text-white shadow-sm'
+                                  : 'border-border/50 bg-muted/20 text-secondary hover:border-primary/40 hover:text-primary'
+                              }`}
+                            >
+                              <span>{branch.branchName || t('admin.clinicDetail.unnamedBranchLabel')}</span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-medium">
+                                <AppIcon name="Users" size={11} />
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })
+                      : null}
+                  </div>
+                  {selectedBranchId === ALL_STAFF_ID || selectedBranch ? (
                     <StaffList staff={staffForSelectedBranch} />
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border/60 bg-muted/10 p-6 text-center text-sm text-secondary">

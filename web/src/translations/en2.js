@@ -470,6 +470,33 @@ export default {
     },
   },
   clinic: {
+    sidebar: {
+      publicProfile: 'Public Profile',
+      descriptions: {
+        publicProfile: 'Services, Gallery & Facilities'
+      }
+    },
+    publicProfile: {
+      badge: 'Public Profile',
+      title: 'Clinic Public Profile',
+      subtitle: 'Manage how your clinic appears to patients in the Serene mobile app.',
+      actions: {
+        preview: 'Preview mobile view',
+        refresh: 'Refresh content'
+      },
+      tabs: {
+        services: 'Services & Pricing',
+        gallery: 'Gallery & Photos',
+        highlights: 'Highlights',
+        facilities: 'Facilities'
+      },
+      tabDescriptions: {
+        services: 'Update services, pricing, and availability shown to patients.',
+        gallery: 'Organize hero images and gallery photos.',
+        highlights: 'Promote unique experiences and treatment strengths.',
+        facilities: 'Showcase amenities and equipment available at the clinic.'
+      }
+    },
     staff: {
       // Existing translations
       badge: 'Staff Management',

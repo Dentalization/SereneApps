@@ -25,6 +25,8 @@ const normalize = (size) => {
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 const formatDistance = (km) =>
   typeof km === 'number' ? `${Number(km).toFixed(1)} km` : km || '—';
+const formatCoords = (coords) =>
+  coords ? `${coords.latitude?.toFixed?.(3)}, ${coords.longitude?.toFixed?.(3)}` : 'Tidak tersedia';
 
 const NearbyDentistsScreen = () => {
   const theme = useTheme();
@@ -44,6 +46,7 @@ const NearbyDentistsScreen = () => {
     requestLocation,
     usedMockData,
     usedDefaultLocation,
+    searchMeta,
   } = useNearbyDentists({ radius, limit: 40, type: dentistType });
 
   const dentists = useMemo(() => {
@@ -51,6 +54,26 @@ const NearbyDentistsScreen = () => {
       .filter((d) => (d.distanceKm ?? Number.MAX_SAFE_INTEGER) <= radius)
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   }, [fetchedDentists, radius]);
+
+  const distanceSummary = useMemo(() => {
+    const deltas = dentists
+      .map((d) => d.distanceDiagnostics?.delta)
+      .filter((delta) => typeof delta === 'number');
+    if (!deltas.length) return null;
+    const avg = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
+    const max = Math.max(...deltas);
+    return { avg, max };
+  }, [dentists]);
+
+  const coordsLabel = formatCoords(searchMeta?.coordsUsed);
+  const backendRadius = searchMeta?.backendSearch?.radius ?? radius;
+  const backendCenterLabel =
+    searchMeta?.backendSearch?.latitude !== undefined
+      ? formatCoords({
+          latitude: Number(searchMeta.backendSearch.latitude),
+          longitude: Number(searchMeta.backendSearch.longitude),
+        })
+      : null;
 
   const buildParams = (dentist) => ({
     clinicContext: dentist?.clinicContext,
@@ -142,7 +165,7 @@ const NearbyDentistsScreen = () => {
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
             <MaterialCommunityIcons name='crosshairs-gps' size={normalize(16)} color={theme.colors.primary} />
             <Text style={{ marginLeft: 8, fontWeight: '600', color: '#0F172A', fontSize: normalize(12), flex: 1 }}>
-              {usedDefaultLocation
+              {(usedDefaultLocation || searchMeta?.locationSource === 'default')
                 ? 'Menampilkan dokter populer di area default'
                 : 'Menampilkan dokter sesuai lokasi Anda'}
             </Text>
@@ -155,9 +178,20 @@ const NearbyDentistsScreen = () => {
               </Text>
             </TouchableOpacity>
           ) : (
-            <Text style={{ color: '#475569', fontSize: normalize(11) }}>
-              Radius {radius} km · {usedMockData ? 'data contoh' : 'data real-time'}
-            </Text>
+            <>
+              <Text style={{ color: '#475569', fontSize: normalize(11) }}>
+                Radius perangkat {radius} km · radius server {backendRadius} km
+              </Text>
+              <Text style={{ color: '#64748B', fontSize: normalize(11) }}>
+                Koordinat dipakai: {coordsLabel}
+                {backendCenterLabel ? ` · pusat server ${backendCenterLabel}` : ''}
+              </Text>
+              {distanceSummary ? (
+                <Text style={{ color: '#059669', fontSize: normalize(11) }}>
+                  Akurasi jarak Δ rata-rata {distanceSummary.avg.toFixed(2)} km · maks {distanceSummary.max.toFixed(2)} km
+                </Text>
+              ) : null}
+            </>
           )}
         </View>
 
@@ -204,6 +238,17 @@ const NearbyDentistsScreen = () => {
                     </Text>
                   </View>
                 </View>
+                {dentist.distanceDiagnostics?.localDistance ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <MaterialCommunityIcons name='radar' size={normalize(12)} color='#2563EB' />
+                    <Text style={{ marginLeft: 6, color: '#2563EB', fontSize: normalize(11), fontWeight: '600' }}>
+                      Lokal {dentist.distanceDiagnostics.localDistance.toFixed(1)} km
+                      {typeof dentist.distanceDiagnostics.delta === 'number'
+                        ? ` · Δ ${dentist.distanceDiagnostics.delta.toFixed(2)} km`
+                        : ''}
+                    </Text>
+                  </View>
+                ) : null}
                 <Text style={{ fontSize: normalize(12), fontWeight: '600', color: theme.colors.primary }}>{dentist.specialty}</Text>
                 <Text style={{ fontSize: normalize(11), color: '#64748B', marginTop: 2 }} numberOfLines={1}>{dentist.clinic}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>

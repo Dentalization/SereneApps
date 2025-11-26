@@ -279,7 +279,7 @@ const DentistDetailScreen = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: 48,
+            paddingTop: insets.top + 2,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,
             borderBottomRightRadius: 32,

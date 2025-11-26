@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { shouldSuppressToastMessage } from '../contexts/ToastContext';
 import { createPortal } from 'react-dom';
 
 const STATUS_CONFIG = {
@@ -67,7 +68,7 @@ const Toast = ({ visible, message, onDismiss, status = 'info', duration = 5000 }
     return () => clearTimeout(timer);
   }, [visible, onDismiss, duration]);
 
-  if (!isVisible) return null;
+  if (!isVisible || shouldSuppressToastMessage(message)) return null;
 
   const toastContent = (
     <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
