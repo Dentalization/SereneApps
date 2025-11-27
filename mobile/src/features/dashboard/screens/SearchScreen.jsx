@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { 
   View, 
   ScrollView, 
@@ -11,7 +11,7 @@ import {
   PixelRatio 
 } from 'react-native';
 import { Text, useTheme, ActivityIndicator } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -100,6 +100,21 @@ const QUICK_SUGGESTIONS = [
 
 const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
 const API_BASE = API_BASE_URL.replace(/\/$/, '');
+const FROSTED_TAB_BAR_STYLE = {
+  position: 'absolute',
+  left: 16,
+  right: 16,
+  bottom: Platform.OS === 'ios' ? 24 : 16,
+  backgroundColor: 'transparent',
+  borderRadius: 32,
+  height: Platform.OS === 'ios' ? 80 : 70,
+  paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+  paddingTop: 10,
+  paddingHorizontal: 24,
+  borderTopWidth: 0,
+  elevation: 0,
+  overflow: 'hidden',
+};
 
 const delay = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -246,6 +261,46 @@ const SearchScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
+  // --- HIDE TAB BAR & NAVBAR ---
+  useLayoutEffect(() => {
+    // Sembunyikan header bawaan navigator
+    navigation.setOptions({
+      headerShown: false,
+    });
+
+    // Sembunyikan Tab Bar bawah
+    const parent = navigation.getParent();
+    if (parent) {
+      parent.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+    }
+
+    return () => {
+      // Kembalikan Tab Bar style ke custom TabNavigator saat keluar dari screen ini
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: {
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: Platform.OS === 'ios' ? 24 : 16,
+            backgroundColor: 'transparent',
+            borderRadius: 32,
+            height: Platform.OS === 'ios' ? 80 : 70,
+            paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+            paddingTop: 10,
+            paddingHorizontal: 24,
+            borderTopWidth: 0,
+            elevation: 0,
+            overflow: 'hidden',
+          },
+        });
+      }
+    };
+  }, [navigation]);
+  // -----------------------------
+
   const [query, setQuery] = useState('');
   const [dentistResults, setDentistResults] = useState([]);
   const [clinicResults, setClinicResults] = useState([]);
@@ -266,6 +321,22 @@ const SearchScreen = () => {
     services: [],
     specializations: [],
   });
+  const hasQuery = query.trim().length > 0;
+
+  useFocusEffect(
+    useCallback(() => {
+      const parent = navigation.getParent();
+      parent?.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+      return () => {
+        parent?.setOptions({
+          tabBarStyle: FROSTED_TAB_BAR_STYLE,
+        });
+      };
+    }, [navigation])
+  );
+
   const latestQueryRef = useRef('');
 
   const ensureDirectory = useCallback(async () => {
@@ -545,12 +616,12 @@ const SearchScreen = () => {
 
   const emptyState = useMemo(
     () =>
-      !query.trim() &&
+      !hasQuery &&
       !dentistResults.length &&
       !clinicResults.length &&
       !serviceResults.length &&
       !searching,
-    [query, dentistResults.length, clinicResults.length, serviceResults.length, searching]
+    [hasQuery, dentistResults.length, clinicResults.length, serviceResults.length, searching]
   );
 
   const tabs = useMemo(
@@ -661,293 +732,69 @@ const SearchScreen = () => {
         contentContainerStyle={{ padding: normalize(20), paddingBottom: normalize(120) }}
         keyboardShouldPersistTaps="handled"
       >
-
-
-        {shouldShowSpecializations && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(18), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Spesialis sesuai pencarian
-            </Text>
-            {specializationResults.map((spec) => (
-              <View
-                key={spec.label}
-                style={{
-                  backgroundColor: '#fff',
-                  borderRadius: normalize(20),
-                  padding: normalize(16),
-                  marginBottom: normalize(16),
-                  borderWidth: 1,
-                  borderColor: 'rgba(226,232,240,0.8)',
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => setQuery(spec.label)}
-                  style={{ flexDirection: 'row', alignItems: 'center', marginBottom: normalize(12) }}
-                  activeOpacity={0.8}
-                >
-                  <View
-                    style={{
-                      width: normalize(44),
-                      height: normalize(44),
-                      borderRadius: normalize(16),
-                      backgroundColor: '#E0F2FE',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: normalize(12),
-                    }}
-                  >
-                    <MaterialCommunityIcons name="stethoscope" size={normalize(22)} color="#0284C7" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
-                      {spec.label}
-                    </Text>
-                    <Text style={{ color: '#94A3B8', fontSize: normalize(13) }}>{spec.count} dokter tersedia</Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={normalize(22)} color="#94A3B8" />
-                </TouchableOpacity>
-                {spec.dentists.map((dentist) => (
-                  <TouchableOpacity
-                    key={`${spec.label}-${dentist.id}`}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(8) }}
-                    onPress={() => handleDentistPress(dentist)}
-                  >
-                    <Image
-                      source={{ uri: dentist.avatar }}
-                      style={{ width: normalize(38), height: normalize(38), borderRadius: normalize(19), marginRight: normalize(12) }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(14) }}>{dentist.name}</Text>
-                      <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{dentist.clinic?.name}</Text>
-                    </View>
-                    <MaterialCommunityIcons name="chevron-right" size={normalize(20)} color="#CBD5F5" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {shouldShowServices && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(18), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Layanan sesuai pencarian
-            </Text>
-            {serviceResults.map((service) => (
-              <View
-                key={service.label}
-                style={{
-                  backgroundColor: '#fff',
-                  padding: normalize(16),
-                  borderRadius: normalize(20),
-                  marginBottom: normalize(16),
-                  shadowColor: '#0F172A',
-                  shadowOpacity: 0.04,
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowRadius: 16,
-                  elevation: 4,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => setQuery(service.label)}
-                  style={{ flexDirection: 'row', alignItems: 'center' }}
-                >
-                  <View
-                    style={{
-                      width: normalize(44),
-                      height: normalize(44),
-                      borderRadius: normalize(16),
-                      backgroundColor: '#FCE7F3',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: normalize(12),
-                    }}
-                  >
-                    <MaterialCommunityIcons name="tooth" size={normalize(22)} color="#DB2777" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
-                      {service.label}
-                    </Text>
-                    <Text style={{ color: '#94A3B8', fontSize: normalize(13) }}>
-                      {service.count} dokter menyediakannya
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={normalize(22)} color="#94A3B8" />
-                </TouchableOpacity>
-                {service.dentists.length > 0 && (
-                  <View style={{ marginTop: normalize(12) }}>
-                    <Text style={{ fontWeight: '600', color: '#0F172A', marginBottom: normalize(6), fontSize: normalize(13) }}>
-                      Rekomendasi dokter
-                    </Text>
-                    {service.dentists.map((dentist) => (
-                      <TouchableOpacity
-                        key={`${service.label}-${dentist.id}`}
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(8) }}
-                        onPress={() => handleDentistPress(dentist)}
-                      >
-                        <Image
-                          source={{ uri: dentist.avatar }}
-                          style={{ width: normalize(38), height: normalize(38), borderRadius: normalize(19), marginRight: normalize(12) }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(14) }}>{dentist.name}</Text>
-                          <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{dentist.clinic?.name}</Text>
-                        </View>
-                        <MaterialCommunityIcons name="arrow-top-right" size={normalize(18)} color="#A855F7" />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {service.clinics.length > 0 && (
-                  <View style={{ marginTop: normalize(10) }}>
-                    <Text style={{ fontWeight: '600', color: '#0F172A', marginBottom: normalize(6), fontSize: normalize(13) }}>
-                      Klinik pilihan
-                    </Text>
-                    {service.clinics.map((clinic) => (
-                      <TouchableOpacity
-                        key={`${service.label}-${clinic.id || clinic.name}`}
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(6) }}
-                        onPress={() => handleClinicPress(clinic)}
-                      >
-                        <View
-                          style={{
-                            width: normalize(32),
-                            height: normalize(32),
-                            borderRadius: normalize(10),
-                            backgroundColor: '#EEF2FF',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: normalize(10),
-                          }}
-                        >
-                          <MaterialCommunityIcons
-                            name="office-building-marker"
-                            size={normalize(18)}
-                            color={theme.colors.primary}
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(13) }}>{clinic.name}</Text>
-                          <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{clinic.address}</Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-right" size={normalize(18)} color="#CBD5F5" />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {directoryReady && catalog.specializations.length > 0 && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Spesialisasi populer
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {catalog.specializations.map((item) => (
-                <TouchableOpacity
-                  key={item.label}
-                  onPress={() => setQuery(item.label)}
-                  style={{
-                    paddingHorizontal: normalize(16),
-                    paddingVertical: normalize(8),
-                    backgroundColor: '#E0E7FF',
-                    borderRadius: normalize(18),
-                    marginRight: normalize(10),
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name="medical-bag"
-                    size={normalize(16)}
-                    color={theme.colors.primary}
-                  />
-                  <Text style={{ marginLeft: normalize(6), color: theme.colors.primary, fontWeight: '600', fontSize: normalize(13) }}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {directoryReady && catalog.services.length > 0 && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Layanan favorit pasien
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {catalog.services.map((item) => (
-                <TouchableOpacity
-                  key={item.label}
-                  onPress={() => setQuery(item.label)}
-                  style={{
-                    paddingHorizontal: normalize(16),
-                    paddingVertical: normalize(8),
-                    backgroundColor: '#FDF2F8',
-                    borderRadius: normalize(18),
-                    marginRight: normalize(10),
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MaterialCommunityIcons name="tooth-outline" size={normalize(16)} color="#DB2777" />
-                  <Text style={{ marginLeft: normalize(6), color: '#DB2777', fontWeight: '600', fontSize: normalize(13) }}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {searching && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: normalize(16) }}>
-            <ActivityIndicator color={theme.colors.primary} size="small" />
-            <Text style={{ marginLeft: normalize(8), color: '#475569', fontSize: normalize(14) }}>Mencari hasil terbaik...</Text>
-          </View>
-        )}
-
-        {!emptyState && (
+        {hasQuery && (
           <View
             style={{
-              flexDirection: 'row',
-              backgroundColor: '#ECEAFF',
-              borderRadius: normalize(18),
-              padding: normalize(4),
-              marginBottom: normalize(16),
+              borderRadius: normalize(14),
+              padding: normalize(8),
+              marginBottom: normalize(12),
+              backgroundColor: '#F3F4F6',
+              borderWidth: 0,
+              flexDirection: 'column',
             }}
           >
-            {tabs.map((tab) => {
-              const active = selectedTab === tab.id;
-              return (
-                <TouchableOpacity
-                  key={tab.id}
-                  onPress={() => setSelectedTab(tab.id)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: normalize(8),
-                    borderRadius: normalize(14),
-                    backgroundColor: active ? '#FFFFFF' : 'transparent',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
+            <Text
+              style={{
+                fontSize: normalize(13),
+                fontWeight: '600',
+                color: '#6366F1',
+                marginBottom: normalize(8),
+                marginLeft: normalize(4),
+              }}
+            >
+              Filter hasil pencarian
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: 'transparent',
+                borderRadius: normalize(10),
+                padding: 0,
+                gap: normalize(6),
+              }}
+            >
+              {tabs.map((tab) => {
+                const active = selectedTab === tab.id;
+                return (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => setSelectedTab(tab.id)}
                     style={{
-                      fontSize: normalize(13),
-                      fontWeight: '600',
-                      color: active ? theme.colors.primary : '#6366F1',
+                      flex: 1,
+                      paddingVertical: normalize(7),
+                      borderRadius: normalize(8),
+                      backgroundColor: active ? '#fff' : 'transparent',
+                      alignItems: 'center',
+                      borderWidth: active ? 1 : 0,
+                      borderColor: active ? theme.colors.primary : 'transparent',
+                      shadowColor: 'transparent',
                     }}
+                    activeOpacity={0.85}
                   >
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                    <Text
+                      style={{
+                        fontSize: normalize(13),
+                        fontWeight: active ? '700' : '600',
+                        color: active ? theme.colors.primary : '#6366F1',
+                        letterSpacing: 0.2,
+                      }}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 
@@ -1195,6 +1042,256 @@ const SearchScreen = () => {
                 )}
               </View>
             ))}
+          </View>
+        )}
+
+
+        {shouldShowSpecializations && (
+          <View style={{ marginBottom: normalize(24) }}>
+            <Text style={{ fontSize: normalize(18), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
+              Spesialis sesuai pencarian
+            </Text>
+            {specializationResults.map((spec) => (
+              <View
+                key={spec.label}
+                style={{
+                  backgroundColor: '#fff',
+                  borderRadius: normalize(20),
+                  padding: normalize(16),
+                  marginBottom: normalize(16),
+                  borderWidth: 1,
+                  borderColor: 'rgba(226,232,240,0.8)',
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => setQuery(spec.label)}
+                  style={{ flexDirection: 'row', alignItems: 'center', marginBottom: normalize(12) }}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={{
+                      width: normalize(44),
+                      height: normalize(44),
+                      borderRadius: normalize(16),
+                      backgroundColor: '#E0F2FE',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: normalize(12),
+                    }}
+                  >
+                    <MaterialCommunityIcons name="stethoscope" size={normalize(22)} color="#0284C7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
+                      {spec.label}
+                    </Text>
+                    <Text style={{ color: '#94A3B8', fontSize: normalize(13) }}>{spec.count} dokter tersedia</Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={normalize(22)} color="#94A3B8" />
+                </TouchableOpacity>
+                {spec.dentists.map((dentist) => (
+                  <TouchableOpacity
+                    key={`${spec.label}-${dentist.id}`}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(8) }}
+                    onPress={() => handleDentistPress(dentist)}
+                  >
+                    <Image
+                      source={{ uri: dentist.avatar }}
+                      style={{ width: normalize(38), height: normalize(38), borderRadius: normalize(19), marginRight: normalize(12) }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(14) }}>{dentist.name}</Text>
+                      <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{dentist.clinic?.name}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={normalize(20)} color="#CBD5F5" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {shouldShowServices && (
+          <View style={{ marginBottom: normalize(24) }}>
+            <Text style={{ fontSize: normalize(18), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
+              Layanan sesuai pencarian
+            </Text>
+            {serviceResults.map((service) => (
+              <View
+                key={service.label}
+                style={{
+                  backgroundColor: '#fff',
+                  padding: normalize(16),
+                  borderRadius: normalize(20),
+                  marginBottom: normalize(16),
+                  shadowColor: '#0F172A',
+                  shadowOpacity: 0.04,
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowRadius: 16,
+                  elevation: 4,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => setQuery(service.label)}
+                  style={{ flexDirection: 'row', alignItems: 'center' }}
+                >
+                  <View
+                    style={{
+                      width: normalize(44),
+                      height: normalize(44),
+                      borderRadius: normalize(16),
+                      backgroundColor: '#FCE7F3',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: normalize(12),
+                    }}
+                  >
+                    <MaterialCommunityIcons name="tooth" size={normalize(22)} color="#DB2777" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
+                      {service.label}
+                    </Text>
+                    <Text style={{ color: '#94A3B8', fontSize: normalize(13) }}>
+                      {service.count} dokter menyediakannya
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={normalize(22)} color="#94A3B8" />
+                </TouchableOpacity>
+                {service.dentists.length > 0 && (
+                  <View style={{ marginTop: normalize(12) }}>
+                    <Text style={{ fontWeight: '600', color: '#0F172A', marginBottom: normalize(6), fontSize: normalize(13) }}>
+                      Rekomendasi dokter
+                    </Text>
+                    {service.dentists.map((dentist) => (
+                      <TouchableOpacity
+                        key={`${service.label}-${dentist.id}`}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(8) }}
+                        onPress={() => handleDentistPress(dentist)}
+                      >
+                        <Image
+                          source={{ uri: dentist.avatar }}
+                          style={{ width: normalize(38), height: normalize(38), borderRadius: normalize(19), marginRight: normalize(12) }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(14) }}>{dentist.name}</Text>
+                          <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{dentist.clinic?.name}</Text>
+                        </View>
+                        <MaterialCommunityIcons name="arrow-top-right" size={normalize(18)} color="#A855F7" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {service.clinics.length > 0 && (
+                  <View style={{ marginTop: normalize(10) }}>
+                    <Text style={{ fontWeight: '600', color: '#0F172A', marginBottom: normalize(6), fontSize: normalize(13) }}>
+                      Klinik pilihan
+                    </Text>
+                    {service.clinics.map((clinic) => (
+                      <TouchableOpacity
+                        key={`${service.label}-${clinic.id || clinic.name}`}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: normalize(6) }}
+                        onPress={() => handleClinicPress(clinic)}
+                      >
+                        <View
+                          style={{
+                            width: normalize(32),
+                            height: normalize(32),
+                            borderRadius: normalize(10),
+                            backgroundColor: '#EEF2FF',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: normalize(10),
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="office-building-marker"
+                            size={normalize(18)}
+                            color={theme.colors.primary}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: normalize(13) }}>{clinic.name}</Text>
+                          <Text style={{ color: '#94A3B8', fontSize: normalize(12) }}>{clinic.address}</Text>
+                        </View>
+                        <MaterialCommunityIcons name="chevron-right" size={normalize(18)} color="#CBD5F5" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {!hasQuery && directoryReady && catalog.specializations.length > 0 && (
+          <View style={{ marginBottom: normalize(24) }}>
+            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
+              Spesialisasi populer
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {catalog.specializations.map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  onPress={() => setQuery(item.label)}
+                  style={{
+                    paddingHorizontal: normalize(16),
+                    paddingVertical: normalize(8),
+                    backgroundColor: '#E0E7FF',
+                    borderRadius: normalize(18),
+                    marginRight: normalize(10),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="medical-bag"
+                    size={normalize(16)}
+                    color={theme.colors.primary}
+                  />
+                  <Text style={{ marginLeft: normalize(6), color: theme.colors.primary, fontWeight: '600', fontSize: normalize(13) }}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {!hasQuery && directoryReady && catalog.services.length > 0 && (
+          <View style={{ marginBottom: normalize(24) }}>
+            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
+              Layanan favorit pasien
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {catalog.services.map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  onPress={() => setQuery(item.label)}
+                  style={{
+                    paddingHorizontal: normalize(16),
+                    paddingVertical: normalize(8),
+                    backgroundColor: '#FDF2F8',
+                    borderRadius: normalize(18),
+                    marginRight: normalize(10),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="tooth-outline" size={normalize(16)} color="#DB2777" />
+                  <Text style={{ marginLeft: normalize(6), color: '#DB2777', fontWeight: '600', fontSize: normalize(13) }}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {searching && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: normalize(16) }}>
+            <ActivityIndicator color={theme.colors.primary} size="small" />
+            <Text style={{ marginLeft: normalize(8), color: '#475569', fontSize: normalize(14) }}>Mencari hasil terbaik...</Text>
           </View>
         )}
 

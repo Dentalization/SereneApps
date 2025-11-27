@@ -68,6 +68,8 @@ const HIDDEN_TAB_ROUTES = new Set([
   'Analysis',
   'Result',
   'History',
+  'Search',
+  'SearchScreen',
 ]);
 
 const TabNavigator = () => {
