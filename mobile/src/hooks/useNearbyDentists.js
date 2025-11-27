@@ -129,6 +129,23 @@ const resolveAvatar = (path, seed = 'dentist') => {
   return `${API_BASE}/${normalized}`;
 };
 
+const pickAvatarPath = (source) => {
+  if (!source) return null;
+  if (typeof source === 'string') return source;
+  return (
+    source?.avatarUrl ||
+    source?.avatar_url ||
+    source?.avatar ||
+    source?.image ||
+    source?.imageUrl ||
+    source?.photo ||
+    source?.photo_url ||
+    source?.profilePicture ||
+    source?.profile_picture ||
+    null
+  );
+};
+
 const extractClinicContext = (dentist) => {
   const profileId =
     dentist?.clinicProfileId ||
@@ -165,6 +182,7 @@ const normalizeDentist = (dentist) => {
       ? dentist.distanceKm
       : null;
 
+  const avatarPath = pickAvatarPath(dentist);
   return {
     id: dentist?.id?.toString?.() || dentist?.userId?.toString?.() || `dentist-${dentist?.name}`,
     name: dentist?.name || dentist?.fullname || 'Dokter Gigi',
@@ -174,7 +192,7 @@ const normalizeDentist = (dentist) => {
     rating: Number((dentist?.rating || fallbackRating).toFixed(1)),
     reviews: dentist?.reviewCount || dentist?.reviews || 0,
     price: dentist?.consultationFee || dentist?.price || 0,
-    image: resolveAvatar(dentist?.avatarUrl || dentist?.image, dentist?.id),
+    image: resolveAvatar(avatarPath, dentist?.id || dentist?.userId),
     distanceKm: distance,
     distanceText:
       typeof distance === 'number' ? `${distance.toFixed(1)} km` : dentist?.distanceText || '—',

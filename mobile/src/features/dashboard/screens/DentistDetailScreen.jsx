@@ -4,6 +4,9 @@ import { Text, useTheme, Chip, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+// 1. IMPORT PENTING DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { getDentistById } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
@@ -67,6 +70,9 @@ const DentistDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   
+  // 2. DEFINISI INSETS (WAJIB ADA)
+  const insets = useSafeAreaInsets();
+  
   const [dentist, setDentist] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -74,6 +80,8 @@ const DentistDetailScreen = () => {
   const { toast, showToast, hideToast } = useToast();
 
   const dentistId = route.params?.dentistId || route.params?.dentist?.id;
+  const routeClinicContext =
+    route.params?.clinicContext || route.params?.dentist?.clinicContext || null;
 
   useEffect(() => {
     const fetchDentistDetail = async () => {
@@ -105,6 +113,33 @@ const DentistDetailScreen = () => {
             workingHours = null;
           }
         }
+
+        const primaryClinic =
+          Array.isArray(dentistData.clinics) && dentistData.clinics.length > 0
+            ? dentistData.clinics.find((c) => c.is_active) || dentistData.clinics[0]
+            : null;
+        const fallbackClinicContext = dentistData.clinic_id
+          ? {
+              profileId: dentistData.clinic_id?.toString?.() || null,
+              branchId: null,
+              name: dentistData.clinic_name,
+              address: dentistData.clinic_address,
+            }
+          : null;
+        const computedClinicContext =
+          routeClinicContext ||
+          (primaryClinic
+            ? {
+                profileId: primaryClinic.id?.toString?.() || null,
+                branchId:
+                  primaryClinic.assigned_branch_id ||
+                  primaryClinic.branch_id ||
+                  primaryClinic.branchId ||
+                  null,
+                name: primaryClinic.branch_name || primaryClinic.name || dentistData.clinic_name,
+                address: primaryClinic.branch_address || primaryClinic.address || dentistData.clinic_address,
+              }
+            : fallbackClinicContext);
 
         // Map backend data to component format
         const mappedDentist = {
@@ -149,6 +184,7 @@ const DentistDetailScreen = () => {
           registrationNumber: dentistData.registration_number,
           patientsHelped: Math.floor(Math.random() * 1000) + 500, // TODO: Add to backend
           responseTime: '2 jam', // TODO: Add to backend
+          clinicContext: computedClinicContext,
         };
 
         setDentist(mappedDentist);
@@ -163,24 +199,35 @@ const DentistDetailScreen = () => {
     };
 
     fetchDentistDetail();
-  }, [dentistId]);
+  }, [dentistId, routeClinicContext]);
 
   const distanceText =
     route.params?.dentist?.distance ??
     (typeof route.params?.dentist?.distanceKm === 'number' ? `${route.params.dentist.distanceKm.toFixed(1)} km` : null);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(360);
+  const activeClinicContext = dentist?.clinicContext || routeClinicContext || null;
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id },
+      params: {
+        dentistId: dentist?.id,
+        clinicContext: activeClinicContext,
+        clinicId: activeClinicContext?.profileId,
+        clinicBranchId: activeClinicContext?.branchId,
+      },
     });
 
   const handleMessage = () =>
     navigation.navigate('AppointmentTab', {
       screen: 'BookingSlot',
-      params: { dentistId: dentist?.id },
+      params: {
+        dentistId: dentist?.id,
+        clinicContext: activeClinicContext,
+        clinicId: activeClinicContext?.profileId,
+        clinicBranchId: activeClinicContext?.branchId,
+      },
     });
 
   const handleCall = () => {
@@ -268,7 +315,8 @@ const DentistDetailScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle='light-content' backgroundColor={theme.colors.primary} />
+      {/* 3. Update StatusBar agar transparan dan konten naik ke notch */}
+      <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
       <View
         onLayout={handleHeaderLayout}
@@ -279,6 +327,7 @@ const DentistDetailScreen = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
+            // 4. PENGGUNAAN INSETS SEKARANG SUDAH BENAR
             paddingTop: insets.top + 2,
             paddingBottom: 32,
             borderBottomLeftRadius: 32,

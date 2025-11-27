@@ -39,6 +39,18 @@ const resolveAvatar = (path, seed = 'dentist') => {
   return `${API_BASE}/${normalized}`;
 };
 
+const pickDoctorAvatar = (source = {}) =>
+  source?.avatarUrl ||
+  source?.avatar_url ||
+  source?.avatar ||
+  source?.image ||
+  source?.imageUrl ||
+  source?.photo ||
+  source?.photo_url ||
+  source?.profilePicture ||
+  source?.profile_picture ||
+  null;
+
 const StatPill = ({ icon, label, value }) => (
   <View
     style={{
@@ -156,7 +168,7 @@ const ClinicDetailScreen = () => {
             id: doctor.id || doctor.userId,
             userId: doctor.userId,
             name: doctor.name,
-            avatar: resolveAvatar(doctor.avatar, doctor.id || doctor.userId),
+            avatar: resolveAvatar(pickDoctorAvatar(doctor), doctor.id || doctor.userId),
             specialty: doctor.specialty,
             experience: doctor.experience,
             rating: parseFloat(doctor.rating) || 0,
