@@ -154,7 +154,7 @@ const DentistDetailScreen = () => {
           name: dentistData.name,
           specialty: dentistData.specialization,
           title: dentistData.title,
-          image: resolveAvatar(dentistData.avatar_url, dentistData.id),
+          image: resolveAvatar(dentistData.avatarUrl || dentistData.avatar_url, dentistData.id),
           rating: 4.8, // TODO: Get from reviews table
           reviews: 0, // TODO: Get from reviews table
           experience: `${dentistData.years_of_experience || 0} tahun`,

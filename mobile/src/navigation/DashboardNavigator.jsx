@@ -14,6 +14,7 @@ import ClinicDetailScreen from '../features/dashboard/screens/ClinicDetailScreen
 import DentistDirectoryScreen from '../features/dashboard/screens/DentistDirectoryScreen';
 import DentistSpecialtyScreen from '../features/dashboard/screens/DentistSpecialtyScreen';
 import DentistDetailScreen from '../features/dashboard/screens/DentistDetailScreen';
+import SearchScreen from '../features/dashboard/screens/SearchScreen';
 
 const Stack = createStackNavigator();
 
@@ -34,6 +35,7 @@ const DashboardNavigator = () => {
       <Stack.Screen name="DentistDirectory" component={DentistDirectoryScreen} />
       <Stack.Screen name="DentistSpecialty" component={DentistSpecialtyScreen} />
       <Stack.Screen name="DentistDetail" component={DentistDetailScreen} />
+      <Stack.Screen name="Search" component={SearchScreen} />
     </Stack.Navigator>
   );
 };

@@ -51,6 +51,18 @@ const resolveAvatar = (path, fallbackSeed) => {
   return `${API_BASE}/${normalized}`;
 };
 
+const pickAvatarPath = (source = {}) =>
+  source?.avatarUrl ||
+  source?.avatar_url ||
+  source?.avatar ||
+  source?.image ||
+  source?.imageUrl ||
+  source?.photo ||
+  source?.photo_url ||
+  source?.profilePicture ||
+  source?.profile_picture ||
+  null;
+
 const extractClinicContext = (dentist = {}) => {
   const profileId =
     dentist?.clinicProfileId ||
@@ -86,7 +98,7 @@ const mapDentist = (dentist) => {
     rating: Number(baseRating.toFixed(1)),
     reviews: dentist.reviewCount || 0,
     price: dentist.consultationFee || 0,
-    image: resolveAvatar(dentist.avatarUrl || dentist.image, dentist.id),
+    image: resolveAvatar(pickAvatarPath(dentist), dentist.id),
     consultationTypes: dentist.consultationTypes,
     clinicContext,
     raw: dentist,

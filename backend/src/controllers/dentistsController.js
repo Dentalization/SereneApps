@@ -324,7 +324,9 @@ export const getDentistById = async (req, res, next) => {
         dp.is_verified,
         dp.verification_date,
         dp.created_at,
-        dp.updated_at
+        dp.updated_at,
+        dp.clinic_id,
+        dp.dentist_type
       FROM dentist_profiles dp
       JOIN users u ON dp.user_id = u.id
       WHERE dp.id = $1

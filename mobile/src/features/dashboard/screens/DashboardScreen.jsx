@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, ScrollView, RefreshControl, TouchableOpacity, TextInput, Animated, StatusBar, Linking, Platform } from 'react-native';
+import { View, ScrollView, RefreshControl, TouchableOpacity, Animated, StatusBar, Linking, Platform } from 'react-native';
 import { Text, Avatar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +29,7 @@ const DashboardScreen = () => {
   
   // Get avatar from user (users.avatar_url in database) and resolve to full URL
   const avatarUrl = resolveMediaUrl(user?.avatar_url || null);
-  const [refreshing, setRefreshing] = useState(false); const [searchText, setSearchText] = useState(''); const [selectedCategory, setSelectedCategory] = useState('all');
+  const [refreshing, setRefreshing] = useState(false); const [selectedCategory, setSelectedCategory] = useState('all');
   const scrollY = useRef(new Animated.Value(0)).current; const [fadeAnim] = useState(new Animated.Value(0)); const [isScrolled, _setIsScrolled] = useState(false); const lastScrollFlag = useRef(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
 
@@ -142,6 +142,7 @@ const DashboardScreen = () => {
     navigation.navigate('NearbyDentists', { maxDistanceKm: 8 });
   const handleSeeAllClinics = () =>
     navigation.navigate('NearbyClinics', { maxDistanceKm: 6 });
+  const handleOpenSearch = () => navigation.navigate('Search');
 
   return (
     <View style={{ flex:1, backgroundColor:'#F8FAFC' }}>
@@ -180,10 +181,16 @@ const DashboardScreen = () => {
           </View>
 
           <View style={{ flexDirection:'row', marginBottom:16, alignItems:'center' }}>
-            <View style={{ flex:1, flexDirection:'row', alignItems:'center', backgroundColor:'white', borderRadius:20, paddingHorizontal:16, paddingVertical:10, marginRight:12 }}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={handleOpenSearch}
+              style={{ flex:1, flexDirection:'row', alignItems:'center', backgroundColor:'white', borderRadius:20, paddingHorizontal:16, paddingVertical:10, marginRight:12 }}
+            >
               <MaterialCommunityIcons name="magnify" size={20} color="#9CA3AF" />
-              <TextInput style={{ flex:1, fontSize:14, color:'#333', marginLeft:8 }} placeholder="Cari dokter atau apapun..." value={searchText} onChangeText={setSearchText} placeholderTextColor="#9CA3AF" />
-            </View>
+              <Text style={{ flex:1, fontSize:14, color:'#64748B', marginLeft:8 }}>
+                Cari dokter atau klinik terdekat...
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity style={{ width:44, height:44, backgroundColor:'rgba(255,255,255,0.2)', borderRadius:22, justifyContent:'center', alignItems:'center' }}><MaterialCommunityIcons name="tune-variant" size={20} color="white" /></TouchableOpacity>
           </View>
 
