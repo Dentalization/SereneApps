@@ -3,7 +3,6 @@ import { View, ScrollView, TouchableOpacity, Image, StatusBar, RefreshControl, D
 import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-// 1. IMPORT PENTING
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import useNearbyDentists from '../../../hooks/useNearbyDentists';

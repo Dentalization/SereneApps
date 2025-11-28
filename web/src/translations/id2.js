@@ -1,4 +1,7 @@
 export default {
+  common: {
+    notifications: 'Notifikasi',
+  },
   admin: {
     // Navigation labels
     nav: {
@@ -666,6 +669,108 @@ export default {
         contentPerformance: 'Performa Konten',
         campaignROI: 'ROI Kampanye'
       }
+    }
+  },
+  notifications: {
+    common: {
+      notifications: 'Notifikasi',
+      markAllRead: 'Tandai semua dibaca',
+      markAsRead: 'Tandai dibaca',
+      settings: 'Pengaturan notifikasi',
+      preferences: 'Preferensi notifikasi',
+      focusMode: 'Mode fokus',
+      new: 'Baru',
+      priority: 'Prioritas',
+      emptyTitle: 'Tidak ada notifikasi',
+      emptyDescription: 'Semua aman. Kami akan memberi tahu saat ada update baru.',
+      updatedAt: 'Diperbarui {{time}}',
+      asOf: 'Hingga {{time}}',
+      updatesCount: '{{count}} update',
+      notificationsCount: '{{count}} notifikasi'
+    },
+    filters: {
+      all: 'Semua',
+      network: 'Jaringan',
+      billing: 'Pendapatan & Tagihan',
+      ai: 'Platform AI',
+      support: 'Dukungan',
+      compliance: 'Kepatuhan',
+      analytics: 'Analitik',
+      partnership: 'Kemitraan',
+      schedule: 'Jadwal & Antrean',
+      patient: 'Pasien',
+      operations: 'Operasional',
+      marketing: 'Experience',
+      appointments: 'Jadwal',
+      teledentistry: 'Teledentistry',
+      clinical: 'Klinis',
+      business: 'Keuangan',
+      security: 'Keamanan'
+    },
+    admin: {
+      title: 'Pusat Kontrol Admin',
+      subtitle: 'Pantau onboarding, sinyal pendapatan, dan alert kepatuhan secara real-time.',
+      stats: {
+        totalLabel: 'Total sinyal',
+        totalDescription: 'Seluruh touchpoint admin',
+        unreadLabel: 'Notifikasi belum dibaca',
+        unreadMeta: 'Butuh review',
+        unreadDescription: '{{count}} perlu aksi dalam 4 jam',
+        criticalLabel: 'Workflow kritis',
+        criticalMeta: 'Prioritas tinggi',
+        criticalDescription: 'Diekalasi ke tim ops & compliance'
+      },
+      sections: {
+        insights: 'Sinyal',
+        escalations: 'Eskalasi',
+        playbooks: 'Playbook'
+      },
+      labels: {
+        escalated: 'Diekalasi'
+      }
+    },
+    clinic: {
+      title: 'Pusat Notifikasi Klinik',
+      subtitle: 'Sinyal antrean, pasien, dan operasional untuk seluruh cabang.',
+      stats: {
+        totalLabel: 'Update hari ini',
+        totalDescription: 'Gabungan jadwal, pasien, dan billing',
+        unreadLabel: 'Belum dibaca',
+        unreadMeta: 'Butuh perhatian',
+        unreadDescription: 'Termasuk antrean & klaim prioritas',
+        opsLabel: 'Tugas operasional',
+        opsMeta: 'Ops & inventory',
+        opsDescription: 'Pastikan sterilisasi dan stok aman'
+      },
+      sections: {
+        insights: 'INSIGHT',
+        alerts: 'Alert Operasional',
+        playbooks: 'PLAYBOOK'
+      },
+      emptyTitle: 'Tidak ada update',
+      emptyDescription: 'Area ini aman. Sistem akan memberi tahu saat ada perubahan.'
+    },
+    dentist: {
+      title: 'Pusat Notifikasi Dokter Gigi',
+      subtitle: 'Sinkronkan jadwal, konsultasi virtual, dan insight klinis di satu tempat.',
+      stats: {
+        totalLabel: 'Total sinyal',
+        totalMeta: '24 jam terakhir',
+        totalDescription: 'Termasuk jadwal & klinis',
+        unreadLabel: 'Belum dibaca',
+        unreadMeta: 'Perlu aksi',
+        unreadDescription: 'Teledentistry & alert AI',
+        clinicalLabel: 'Tugas klinis',
+        clinicalMeta: 'Perlu review',
+        clinicalDescription: 'Kasus lab, insight AI, consent'
+      },
+      sections: {
+        insights: 'INSIGHT',
+        alerts: 'Focus Items',
+        playbooks: 'PLAYBOOK'
+      },
+      emptyTitle: 'Tidak ada notifikasi',
+      emptyDescription: 'Semua aman. Kami akan memberi tahu jika ada update baru.'
     }
   },
   settings: {

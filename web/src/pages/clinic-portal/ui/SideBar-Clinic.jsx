@@ -6,6 +6,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { resolveMediaUrl } from '../../../utils/media';
+import { getClinicNotificationsForRoles } from './clinicNotificationsData';
 
 const FLAG_SRC = {
   en: '/assets/images/ukflag.png',
@@ -23,7 +24,7 @@ const ClinicSideBar = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-
+  
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
 
@@ -118,7 +119,7 @@ const ClinicSideBar = () => {
       icon: 'UserCog', 
       path: '/clinic-portal/staff', 
       description: t('clinic.sidebar.descriptions.staff') || 'Staff Management & Roles',
-      roles: ['manager', 'owner'] // Only manager & owner can manage staff
+      roles: ['manager', 'owner'] 
     },
     { 
       id: 'branches', 
@@ -126,7 +127,7 @@ const ClinicSideBar = () => {
       icon: 'Building2', 
       path: '/clinic-portal/branches', 
       description: t('clinic.sidebar.descriptions.branches') || 'Multi-Branch Operations & Revenue',
-      roles: ['manager', 'owner'] // Only manager & owner can manage branches
+      roles: ['manager', 'owner'] 
     },
     { 
       id: 'public-profile', 
@@ -134,7 +135,7 @@ const ClinicSideBar = () => {
       icon: 'Store', 
       path: '/clinic-portal/public-profile', 
       description: t('clinic.sidebar.descriptions.publicProfile') || 'Services, Gallery & Facilities',
-      roles: ['manager', 'owner', 'admin'] // Only manager, owner & admin can manage public profile
+      roles: ['manager', 'owner', 'admin'] 
     },
     { 
       id: 'settings',
@@ -146,20 +147,27 @@ const ClinicSideBar = () => {
     },
   ];
 
-  // Filter menu items based on user role(s)
   const filteredMenuItems = menuItems.filter(item => 
     item.roles.some(role => userRoles.has(role))
   );
 
   const handleNavigation = (path) => navigate(path);
+
+  const roleBasedNotifications = useMemo(() => {
+    const rolesArray = Array.from(userRoles);
+    const isManagerial = rolesArray.includes('owner') || rolesArray.includes('manager');
+    return getClinicNotificationsForRoles(rolesArray, { includeAll: isManagerial });
+  }, [userRoles]);
+  const unreadNotifications = useMemo(
+    () => roleBasedNotifications.filter((item) => !item.read).length,
+    [roleBasedNotifications]
+  );
   const handleLogout = async () => { 
     try { 
       await logout(); 
-      // Use window.location for immediate redirect after logout
       window.location.href = '/login';
     } catch (e) { 
       console.error('Logout error:', e); 
-      // Still redirect even if logout API fails
       window.location.href = '/login';
     } 
   };
@@ -168,6 +176,26 @@ const ClinicSideBar = () => {
     path === '/clinic-portal' 
       ? location.pathname === '/clinic-portal' || location.pathname === '/clinic-portal/'
       : location.pathname.startsWith(path)
+  );
+
+  // --- KOMPONEN TOMBOL NOTIFIKASI ---
+  const NotificationButton = ({ collapsed }) => (
+    <button
+      onClick={() => handleNavigation('/clinic-portal/notifications')}
+      className={`relative group p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 transition-all duration-200 ${collapsed ? 'mt-2' : 'mr-1'}`}
+      title={t('common.notifications') || 'Notifications'}
+    >
+      {/* Icon Bell */}
+      <Icon name="Bell" size={collapsed ? 20 : 18} />
+      
+      {/* Badge Merah (Jika ada notif) */}
+      {unreadNotifications > 0 && (
+        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-surface-elevated"></span>
+        </span>
+      )}
+    </button>
   );
 
   return (
@@ -190,12 +218,18 @@ const ClinicSideBar = () => {
                     className={isCollapsed ? 'w-12 h-12 object-contain' : 'w-16 h-16 object-contain'} 
                   />
                   {isCollapsed && (
-                    <button 
-                      onClick={() => setIsCollapsed(false)} 
-                      className="mt-1 p-1 rounded text-muted hover:bg-accent hover:bg-opacity-15"
-                    >
-                      <Icon name="ChevronRight" size={16} />
-                    </button>
+                    <>
+                      <button 
+                        onClick={() => setIsCollapsed(false)} 
+                        className="mt-1 p-1 rounded text-muted hover:bg-accent hover:bg-opacity-15"
+                      >
+                        <Icon name="ChevronRight" size={16} />
+                      </button>
+                      
+                      {/* LOKASI ICONS NOTIF SAAT COLLAPSED */}
+                      <div className="my-1 w-8 border-t border-primary/20"></div>
+                      <NotificationButton collapsed={true} />
+                    </>
                   )}
                 </div>
                 {!isCollapsed && (
@@ -205,13 +239,19 @@ const ClinicSideBar = () => {
                   </div>
                 )}
               </div>
+
+              {/* LOKASI ICONS NOTIF SAAT EXPANDED */}
               {!isCollapsed && (
-                <button 
-                  onClick={() => setIsCollapsed(true)} 
-                  className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15"
-                >
-                  <Icon name="ChevronLeft" size={18} />
-                </button>
+                <div className="flex items-center">
+                  <NotificationButton collapsed={false} />
+                  
+                  <button 
+                    onClick={() => setIsCollapsed(true)} 
+                    className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 ml-1"
+                  >
+                    <Icon name="ChevronLeft" size={18} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
