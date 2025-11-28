@@ -43,6 +43,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.0.1",
     "framer-motion": "^10.16.4",
+    "jquery": "^3.7.1",
     "lucide-react": "^0.484.0",
     "multer": "^2.0.2",
     "ogl": "^1.0.11",
