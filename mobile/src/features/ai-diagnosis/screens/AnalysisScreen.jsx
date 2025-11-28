@@ -1,12 +1,28 @@
 import React from 'react';
-import { View, StyleSheet, StatusBar } from 'react-native';
+import { View, StyleSheet, StatusBar, Dimensions, Platform, PixelRatio } from 'react-native';
 import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// --- UTILS RESPONSIVE ---
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = SCREEN_WIDTH / 375; // Base width iPhone 11/Pro
+
+const normalize = (size) => {
+  const newSize = size * scale;
+  if (Platform.OS === 'ios') {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+  } else {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 1;
+  }
+};
+// -------------------------
 
 const AnalysisScreen = ({ route, navigation }) => {
   const theme = useTheme();
-  const { images } = route.params;
+  const insets = useSafeAreaInsets();
+  const { images } = route.params || {}; // Handle if params undefined
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState('Memproses gambar...');
 
@@ -50,21 +66,30 @@ const AnalysisScreen = ({ route, navigation }) => {
   const gradient = theme.gradients?.primary || [theme.colors.primary, '#7F1DFF'];
 
   return (
-    <LinearGradient colors={gradient} style={styles.container} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-      <StatusBar barStyle="light-content" backgroundColor={gradient[0]} />
+    <LinearGradient 
+      colors={gradient} 
+      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]} 
+      start={{ x: 0, y: 0 }} 
+      end={{ x: 1, y: 1 }}
+    >
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <View style={styles.content}>
-        <MaterialCommunityIcons name="brain" size={80} color="#FFFFFF" />
+        <MaterialCommunityIcons name="brain" size={normalize(80)} color="#FFFFFF" />
+        
         <Text variant="headlineSmall" style={styles.title}>
           Menganalisis...
         </Text>
+        
         <Text variant="bodyLarge" style={styles.status}>
           {status}
         </Text>
+        
         <ProgressBar
           progress={progress}
           color="#FFFFFF"
           style={styles.progressBar}
         />
+        
         <Text variant="bodySmall" style={styles.progressText}>
           {Math.round(progress * 100)}%
         </Text>
@@ -81,25 +106,30 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 16,
+    paddingHorizontal: normalize(32),
+    gap: normalize(16),
   },
   title: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+    fontSize: normalize(24),
+    marginTop: normalize(8),
   },
   status: {
     color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
+    fontSize: normalize(16),
   },
   progressBar: {
     width: '100%',
-    height: 8,
-    borderRadius: 4,
+    height: normalize(8),
+    borderRadius: normalize(4),
     backgroundColor: 'rgba(255,255,255,0.3)',
+    marginTop: normalize(8),
   },
   progressText: {
     color: 'rgba(255,255,255,0.8)',
+    fontSize: normalize(12),
   },
 });
 

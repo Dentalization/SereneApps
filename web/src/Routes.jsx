@@ -23,6 +23,8 @@ import DentistPracticeServices from './pages/dentist-portal/practice/MyServices'
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
 import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
 import ClinicServicesView from './pages/dentist-portal/profile/ClinicServices';
+import PatientEMRList from './pages/dentist-portal/patient-emr';
+import ElectronicMedicalRecordScreen from './pages/dentist-portal/patient-emr/ElectronicMedicalRecordScreen';
 import NotificationScreenDentist from './pages/dentist-portal/ui/NotificationScreenDentist';
 import ProtectedRoute from 'components/auth/ProtectedRoute';
 import GetTheApp from './pages/get-the-app';
@@ -93,10 +95,11 @@ const Routes = () => {
           <Route path="/dentist-portal/practice/earnings" element={<DentistPracticeEarnings />} />
           <Route path="/dentist-portal/profile/services" element={<ClinicServicesView />} />
           <Route path="/dentist-portal/profile/schedule" element={<DentistSchedule />} />
-          <Route path="/dentist-portal/profile/patients" element={<PatientManagement />} />
+          <Route path="/dentist-portal/profile/patients" element={<PatientEMRList />} />
           <Route path="/dentist-portal/profile" element={<Navigate to="/dentist-portal/profile/services" replace />} />
           {/* Keep compatibility with existing sidebar link */}
           <Route path="/dentist-portal/appointments" element={<DentistSchedule />} />
+          <Route path="/dentist-portal/patient-emr/:patientId" element={<ElectronicMedicalRecordScreen />} />
         </Route>
 
         <Route element={<ProtectedRoute allow={["patient"]} />}>

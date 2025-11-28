@@ -4,7 +4,21 @@ import { Text, Button, Chip, useTheme, Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+// 1. IMPORT DITAMBAHKAN
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import { Dimensions, Platform, PixelRatio } from 'react-native';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = SCREEN_WIDTH / 375;
+const normalize = (size) => {
+  const newSize = size * scale;
+  if (Platform.OS === 'ios') {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+  } else {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 1;
+  }
+};
 
 const FEATURES = [
   {
@@ -45,6 +59,9 @@ const TRUST_POINTS = [
 
 const AIHomeScreen = ({ navigation }) => {
   const theme = useTheme();
+  // 2. DEFINISI INSETS DITAMBAHKAN
+  const insets = useSafeAreaInsets();
+  
   const gradient = theme.gradients?.primary || [theme.colors.primary, '#7F1DFF'];
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(260);
 
@@ -58,7 +75,14 @@ const AIHomeScreen = ({ navigation }) => {
           colors={gradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: insets.top + 2, paddingHorizontal: 20, paddingBottom: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 }}
+          style={{ 
+            // 3. PENGGUNAAN INSETS SEKARANG SUDAH AMAN
+            paddingTop: insets.top + 2, 
+            paddingHorizontal: 20, 
+            paddingBottom: 20, 
+            borderBottomLeftRadius: 24, 
+            borderBottomRightRadius: 24 
+          }}
         >
           {/* Top row: title + history icon */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -70,7 +94,7 @@ const AIHomeScreen = ({ navigation }) => {
               mode="text"
               onPress={() => navigation.navigate('History')}
               compact
-              style={{ minWidth: 40, paddingHorizontal: 0 }}
+              style={{ minWidth: 40, paddingHorizontal: 8, marginRight: 2 }}
               contentStyle={{ margin: 0 }}
             >
               <MaterialCommunityIcons name="history" size={24} color="#FFFFFF" />
@@ -117,7 +141,7 @@ const AIHomeScreen = ({ navigation }) => {
       {/* Scroll content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: headerHeight + 12, paddingBottom: 60 }}
+        contentContainerStyle={{ paddingTop: headerHeight + 12, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Features */}
@@ -211,10 +235,10 @@ const AIHomeScreen = ({ navigation }) => {
         </View>
 
         {/* Disclaimer */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 0 }}>
-          <View style={{ borderRadius: 18, padding: 16, backgroundColor: '#FEF3C7', flexDirection: 'row', alignItems: 'flex-start' }}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#F97316" />
-            <Text style={{ flex: 1, marginLeft: 10, color: '#78350F' }}>
+        <View style={{ paddingHorizontal: normalize(20), marginBottom: 0 }}>
+          <View style={{ borderRadius: normalize(18), padding: normalize(16), backgroundColor: '#FEF3C7', flexDirection: 'row', alignItems: 'flex-start' }}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={normalize(22)} color="#F97316" />
+            <Text style={{ flex: 1, marginLeft: normalize(10), color: '#78350F', fontSize: normalize(13) }}>
               Hasil AI bukan pengganti diagnosis dokter. Bagikan hasil kepada dokter gigi untuk rencana perawatan yang tepat.
             </Text>
           </View>

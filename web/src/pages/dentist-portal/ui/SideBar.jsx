@@ -139,10 +139,10 @@ const SideBar = () => {
     },
     {
       id: 'clinic-patients',
-      label: 'My Patients',
+      label: 'Electronic Medical Records',
       icon: 'UserCircle2',
       path: '/dentist-portal/profile/patients',
-      description: 'Assigned patients',
+      description: 'Assigned Electronic Medical Records patients',
     },
   ];
 
