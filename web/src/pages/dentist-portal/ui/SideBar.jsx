@@ -9,8 +9,8 @@ import { resolveMediaUrl } from '../../../utils/media';
 import { getDentistServicesContext } from '../../../services/dentistPortalService';
 
 const FLAG_SRC = {
-  en: '/assets/images/ukflag.png', // place file in /public/assets/images/ukflag.png
-  id: '/assets/images/idflag.jpg', // place file in /public/assets/images/idflag.jpg
+  en: '/assets/images/ukflag.png',
+  id: '/assets/images/idflag.jpg',
 };
 
 const SideBar = () => {
@@ -25,6 +25,9 @@ const SideBar = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const [dentistContext, setDentistContext] = useState({ loading: true, dentistType: null });
+  
+  // State dummy untuk notifikasi
+  const [unreadNotifications, setUnreadNotifications] = useState(2);
 
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
@@ -161,6 +164,23 @@ const SideBar = () => {
   const handleLogout = async () => { try { await logout(); navigate('/login'); } catch (e) { console.error(e); } };
   const isActive = (path) => (path === '/dentist-portal' ? location.pathname === '/dentist-portal' : location.pathname.startsWith(path));
 
+  // --- KOMPONEN TOMBOL NOTIFIKASI ---
+  const NotificationButton = ({ collapsed }) => (
+    <button
+      onClick={() => handleNavigation('/dentist-portal/notifications')}
+      className={`relative group p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 transition-all duration-200 ${collapsed ? 'mt-2' : 'mr-1'}`}
+      title={t('common.notifications') || 'Notifications'}
+    >
+      <Icon name="Bell" size={collapsed ? 20 : 18} />
+      {unreadNotifications > 0 && (
+        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-surface-elevated"></span>
+        </span>
+      )}
+    </button>
+  );
+
   return (
     <>
       <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
@@ -177,9 +197,15 @@ const SideBar = () => {
                 <div className="flex flex-col items-center">
                   <AppImage src="/icon.png" alt="SereneAI Logo" className={isCollapsed ? 'w-12 h-12 object-contain' : 'w-16 h-16 object-contain'} />
                   {isCollapsed && (
-                    <button onClick={() => setIsCollapsed(false)} className="mt-1 p-1 rounded text-muted hover:bg-accent hover:bg-opacity-15">
-                      <Icon name="ChevronRight" size={16} />
-                    </button>
+                    <>
+                      <button onClick={() => setIsCollapsed(false)} className="mt-1 p-1 rounded text-muted hover:bg-accent hover:bg-opacity-15">
+                        <Icon name="ChevronRight" size={16} />
+                      </button>
+
+                      {/* NOTIFIKASI (COLLAPSED) */}
+                      <div className="my-1 w-8 border-t border-primary/20"></div>
+                      <NotificationButton collapsed={true} />
+                    </>
                   )}
                 </div>
                 {!isCollapsed && (
@@ -189,10 +215,15 @@ const SideBar = () => {
                   </div>
                 )}
               </div>
+              
+              {/* NOTIFIKASI (EXPANDED) */}
               {!isCollapsed && (
-                <button onClick={() => setIsCollapsed(true)} className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15">
-                  <Icon name="ChevronLeft" size={18} />
-                </button>
+                <div className="flex items-center">
+                  <NotificationButton collapsed={false} />
+                  <button onClick={() => setIsCollapsed(true)} className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 ml-1">
+                    <Icon name="ChevronLeft" size={18} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -269,13 +300,11 @@ const SideBar = () => {
             {/* Language Switcher */}
             <div className="relative group">
               {!isCollapsed ? (
-                /* Expanded view - Toggle switch like screenshot */
                 <button
                   onClick={() => changeLanguage(language === 'en' ? 'id' : 'en')}
                   className="relative w-full h-10 rounded-full bg-gray-200 dark:bg-gray-700 transition-all duration-300 ease-in-out hover:bg-gray-300 dark:hover:bg-gray-600"
                   title={`Switch to ${language === 'en' ? 'Bahasa Indonesia' : 'English'}`}
                 >
-                  {/* Background labels */}
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-600 dark:text-gray-400">
                     EN
                   </span>
@@ -283,7 +312,6 @@ const SideBar = () => {
                     ID
                   </span>
                   
-                  {/* Moving toggle with flag - SHOWS THE LANGUAGE TO SWITCH TO */}
                   <div
                     className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${
                       language === 'en' ? 'right-1' : 'left-1'
@@ -297,7 +325,6 @@ const SideBar = () => {
                   </div>
                 </button>
               ) : (
-                /* Collapsed view - Simple flag button showing language to switch to */
                 <button
                   onClick={() => changeLanguage(language === 'en' ? 'id' : 'en')}
                   className="w-full flex items-center justify-center p-2.5 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary transition-all duration-200"
@@ -355,7 +382,7 @@ const SideBar = () => {
                       {user ? formatNameWithTitle(user.name, user.profile?.title) : 'Loading...'}
                     </p>
                     <p className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
-                      {user?.profile?.primary_specialization || (user?.roles?.includes('dentist') ? 'Dokter Gigi' : '')}
+                      {user?.profile?.primary_specialization || 'Dentist'}
                     </p>
                   </div>
                 )}
@@ -381,7 +408,7 @@ const SideBar = () => {
                           {user ? formatNameWithTitle(user.name, user.profile?.title) : 'Memuat data...'}
                         </p>
                         <p className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
-                          {user?.profile?.primary_specialization || 'Dokter Gigi'}
+                          {user?.profile?.primary_specialization || 'Dentist'}
                         </p>
                       </div>
                     </div>
@@ -396,7 +423,7 @@ const SideBar = () => {
                       <Icon name="UserCog" size={18} className="mr-3 text-muted" />
                       <div>
                         <div className="font-medium text-sm text-primary">{t('sidebar.settings')}</div>
-                        <div className="text-xs text-secondary">Manage your profile & credentials</div>
+                        <div className="text-xs text-secondary">Manage profile & credentials</div>
                       </div>
                     </button>
 
@@ -410,7 +437,7 @@ const SideBar = () => {
                       <Icon name="LogOut" size={18} className="mr-3" />
                       <div>
                         <div className="font-medium text-sm">{t('sidebar.logout')}</div>
-                        <div className="text-xs opacity-70">Sign out from your account</div>
+                        <div className="text-xs opacity-70">Sign out from account</div>
                       </div>
                     </button>
                   </div>

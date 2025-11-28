@@ -1,4 +1,7 @@
 export default {
+  common: {
+    notifications: 'Notifications',
+  },
   admin: {
     // Navigation labels
     nav: {
@@ -666,6 +669,107 @@ export default {
         contentPerformance: 'Content Performance',
         campaignROI: 'Campaign ROI'
       }
+    }
+  },
+  notifications: {
+    common: {
+      markAllRead: 'Mark all read',
+      markAsRead: 'Mark as read',
+      settings: 'Notification settings',
+      preferences: 'Notification preferences',
+      focusMode: 'Focus mode',
+      new: 'NEW',
+      priority: 'Priority',
+      emptyTitle: 'No notifications',
+      emptyDescription: 'Everything looks calm. We will notify you when new updates arrive.',
+      updatedAt: 'Updated {{time}}',
+      asOf: 'As of {{time}}',
+      updatesCount: '{{count}} updates',
+      notificationsCount: '{{count}} notifications'
+    },
+    filters: {
+      all: 'All',
+      network: 'Network',
+      billing: 'Revenue & Billing',
+      ai: 'AI Platform',
+      support: 'Support',
+      compliance: 'Compliance',
+      analytics: 'Analytics',
+      partnership: 'Partnerships',
+      schedule: 'Schedule & Queue',
+      patient: 'Patients',
+      operations: 'Operations',
+      marketing: 'Experience',
+      appointments: 'Appointments',
+      teledentistry: 'Virtual Care',
+      clinical: 'Clinical Work',
+      business: 'Business',
+      security: 'Security'
+    },
+    admin: {
+      title: 'Admin Control Center',
+      subtitle: 'Monitor onboarding, revenue signals, and compliance alerts in real time.',
+      stats: {
+        totalLabel: 'Total signals',
+        totalDescription: 'Across all admin touchpoints',
+        unreadLabel: 'Unread alerts',
+        unreadMeta: 'Needs review',
+        unreadDescription: '{{count}} require action in the next 4h',
+        criticalLabel: 'Critical workflows',
+        criticalMeta: 'High severity',
+        criticalDescription: 'Escalated to ops & compliance'
+      },
+      sections: {
+        insights: 'Signals',
+        escalations: 'Escalations',
+        playbooks: 'Playbooks'
+      },
+      labels: {
+        escalated: 'Escalated'
+      }
+    },
+    clinic: {
+      title: 'Clinic Notification Hub',
+      subtitle: 'Real-time queue, patient, and operations signals for your branches.',
+      stats: {
+        totalLabel: "Today's updates",
+        totalDescription: 'Combined schedule, patient, and billing updates',
+        unreadLabel: 'Unread alerts',
+        unreadMeta: 'Need attention',
+        unreadDescription: 'Includes queue & insurance priorities',
+        opsLabel: 'Operational tasks',
+        opsMeta: 'Ops & inventory',
+        opsDescription: 'Keep sterilization and stock healthy'
+      },
+      sections: {
+        insights: 'INSIGHT',
+        alerts: 'Operational Alerts',
+        playbooks: 'PLAYBOOK'
+      },
+      emptyTitle: 'No updates',
+      emptyDescription: 'All clear in this area. The system will notify you when something changes.'
+    },
+    dentist: {
+      title: 'Dentist Notification Center',
+      subtitle: 'Sync schedules, virtual consults, and clinical insights in one place.',
+      stats: {
+        totalLabel: 'Total signals',
+        totalMeta: 'Past 24 hours',
+        totalDescription: 'Includes schedule and clinical alerts',
+        unreadLabel: 'Unread',
+        unreadMeta: 'Need action',
+        unreadDescription: 'Teleconsult + AI alerts',
+        clinicalLabel: 'Clinical tasks',
+        clinicalMeta: 'Need review',
+        clinicalDescription: 'Lab cases, AI insights, consent'
+      },
+      sections: {
+        insights: 'INSIGHT',
+        alerts: 'Focus Items',
+        playbooks: 'PLAYBOOK'
+      },
+      emptyTitle: 'No notifications',
+      emptyDescription: 'Everything looks good. We will notify you when new updates arrive.'
     }
   },
   settings: {

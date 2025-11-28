@@ -23,6 +23,7 @@ import DentistPracticeServices from './pages/dentist-portal/practice/MyServices'
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
 import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
 import ClinicServicesView from './pages/dentist-portal/profile/ClinicServices';
+import NotificationScreenDentist from './pages/dentist-portal/ui/NotificationScreenDentist';
 import ProtectedRoute from 'components/auth/ProtectedRoute';
 import GetTheApp from './pages/get-the-app';
 import PatientAppointments from './pages/patient-portal/appointments';
@@ -40,6 +41,7 @@ import {
 } from './pages/clinic-portal';
 import StaffManagement from './pages/clinic-portal/staff';
 import BranchManagement from './pages/clinic-portal/branches';
+import NotificationScreenClinic from './pages/clinic-portal/ui/NotificationScreenClinic';
 
 // Admin Portal Imports
 import AdminDashboard from './pages/admin-portal/home';
@@ -55,6 +57,7 @@ import ComplianceSecurity from './pages/admin-portal/compliance-security';
 import Partnership from './pages/admin-portal/partnership';
 import ContentManagement from './pages/admin-portal/content-management';
 import AdminProfile from './pages/admin-portal/admin-profile';
+import NotificationScreenAdmin from './pages/admin-portal/ui/NotificationScreenAdmin';
 
 const Routes = () => {
   return (
@@ -80,6 +83,7 @@ const Routes = () => {
           <Route path="/dentist-portal/home" element={<DentistHome />} />
           <Route path="/dentist-portal/patient" element={<PatientManagement />} />
           <Route path="/dentist-portal/teledentistry" element={<Teledentistry />} />
+          <Route path="/dentist-portal/notifications" element={<NotificationScreenDentist />} />
           <Route path="/dentist-portal/schedule" element={<DentistSchedule />} />
           <Route path="/dentist-portal/dentist-settings" element={<DentistSettings />} />
           <Route path="/dentist-portal/reports" element={<Reports />} />
@@ -104,6 +108,7 @@ const Routes = () => {
           <Route path="/clinic-portal" element={<Navigate to="/clinic-portal/home" replace />} />
           <Route path="/clinic-portal/home" element={<ClinicDashboard />} />
           <Route path="/clinic-portal/schedule" element={<ClinicSchedule />} />
+          <Route path="/clinic-portal/notifications" element={<NotificationScreenClinic />} />
           <Route path="/clinic-portal/patients" element={<ClinicPatients />} />
           <Route path="/clinic-portal/billing" element={<ClinicBilling />} />
           <Route path="/clinic-portal/inventory" element={<ClinicInventory />} />
@@ -121,6 +126,7 @@ const Routes = () => {
         {/* Admin Portal Routes - Protected for admin roles */}
   <Route element={<ProtectedRoute allow={["admin", "super_admin", "business_manager", "platform_manager", "finance_manager", "customer_success", "customer_success_manager", "technical_support", "ai_engineer", "compliance_officer"]} />}>
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/notifications" element={<NotificationScreenAdmin />} />
           <Route path="/admin/clinic-management" element={<ClinicManagement />} />
           <Route path="/admin/clinic-management/create" element={<CreateClinic />} />
           <Route path="/admin/clinic-management/:id" element={<ClinicDetail />} />
