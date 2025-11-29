@@ -48,7 +48,7 @@ const buildInitialForm = (prefilledPatient, visitType) => ({
     : {}),
 });
 
-const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-clinic' }) => {
+const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-clinic', isSubmitting = false }) => {
   const initialState = useMemo(
     () => buildInitialForm(prefilledPatient, defaultVisitType),
     [prefilledPatient, defaultVisitType]
@@ -378,17 +378,19 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
           onClick={() => {
             setForm(buildInitialForm(prefilledPatient, defaultVisitType));
           }}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-secondary hover:text-primary"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-secondary hover:text-primary disabled:opacity-50"
         >
           <Icon name="RotateCcw" size={16} />
           Reset
         </button>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2 text-sm font-semibold text-white shadow-sm"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
         >
           <Icon name="Save" size={16} />
-          Save EMR
+          {isSubmitting ? 'Saving...' : 'Save EMR'}
         </button>
       </div>
     </form>

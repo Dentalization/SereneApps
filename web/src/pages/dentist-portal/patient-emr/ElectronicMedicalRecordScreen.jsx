@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { getPatientEmrById, PATIENT_EMR_DATA } from './data';
 import AdvancedOdontogram from './components/AdvancedOdontogram';
+import { fetchEmrById } from '../../../services/emrService';
+import { formatDateLabel, formatDateTimeLabel } from './utils';
 
 const TABS = [
   { id: 'soap', label: 'SOAP & Medical' },
@@ -14,11 +16,51 @@ const TABS = [
 const ElectronicMedicalRecordScreen = () => {
   const navigate = useNavigate();
   const { patientId } = useParams();
-  const patient = useMemo(
-    () => getPatientEmrById(patientId) || PATIENT_EMR_DATA[0],
-    [patientId]
-  );
+  const [patient, setPatient] = useState(() => getPatientEmrById(patientId) || null);
   const [activeTab, setActiveTab] = useState('soap');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchEmrById(patientId);
+        if (!active) return;
+        setPatient(data);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch EMR detail', err);
+        if (!active) return;
+        setError('Unable to load EMR from server. Showing cached data if available.');
+        setPatient((prev) => prev || getPatientEmrById(patientId) || null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [patientId]);
+
+  if (loading && !patient) {
+    return (
+      <div className="flex min-h-screen bg-background theme-transition">
+        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+          <SideBar />
+        </div>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center space-y-2">
+            <Icon name="Loader2" size={32} className="mx-auto animate-spin text-accent" />
+            <p className="text-sm text-secondary">Loading EMR...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!patient) {
     return (
       <div className="flex min-h-screen bg-background theme-transition">
@@ -106,14 +148,14 @@ const ElectronicMedicalRecordScreen = () => {
           </div>
           <div className="text-right space-y-1">
             <p className="text-xs uppercase tracking-[0.3em] text-secondary">Last Visit</p>
-            <p className="text-lg font-semibold text-primary">{patient.lastVisit}</p>
-            <p className="text-xs text-secondary">{patient.lastUpdated}</p>
+            <p className="text-lg font-semibold text-primary">{formatDateLabel(patient.lastVisit)}</p>
+            <p className="text-xs text-secondary">{formatDateTimeLabel(patient.lastUpdated)}</p>
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-3 mt-6 text-sm">
           {renderField('Age', patient.age ? `${patient.age} yrs` : '-')}
           {renderField('Gender', patient.gender)}
-          {renderField('Date of Birth', patient.dob)}
+          {renderField('Date of Birth', formatDateLabel(patient.dob))}
         </div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-rose-200/40 bg-rose-50/30 dark:bg-rose-500/5 p-4">
@@ -332,7 +374,7 @@ const ElectronicMedicalRecordScreen = () => {
           <div className="rounded-2xl border border-primary/15 bg-background/60 p-4">
             <p className="text-xs uppercase tracking-[0.3em] text-secondary">Doctor Signature</p>
             <p className="text-sm font-semibold text-primary mt-1">{patient.doctorSignature || 'Pending'}</p>
-            <p className="text-xs text-secondary mt-1">{patient.lastUpdated}</p>
+            <p className="text-xs text-secondary mt-1">{formatDateTimeLabel(patient.lastUpdated)}</p>
           </div>
         </div>
       </section>
@@ -376,6 +418,12 @@ const ElectronicMedicalRecordScreen = () => {
               </button>
             </div>
           </div>
+
+          {error && (
+            <div className="rounded-2xl border border-rose-200/40 bg-rose-500/5 p-4 text-sm text-rose-600">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-3 border-b border-border/40">
             {TABS.map((tab) => (

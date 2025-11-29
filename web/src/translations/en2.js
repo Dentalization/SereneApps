@@ -1,7 +1,4 @@
 export default {
-  common: {
-    notifications: 'Notifications',
-  },
   admin: {
     // Navigation labels
     nav: {
@@ -673,6 +670,7 @@ export default {
   },
   notifications: {
     common: {
+      notifications: 'Notifications',
       markAllRead: 'Mark all read',
       markAsRead: 'Mark as read',
       settings: 'Notification settings',

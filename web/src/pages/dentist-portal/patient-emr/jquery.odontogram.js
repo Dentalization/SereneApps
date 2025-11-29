@@ -2,40 +2,73 @@ import $ from 'jquery';
 
 const jqInstance = typeof window !== 'undefined' && window.jQuery ? window.jQuery : $;
 
-// CONSTANTA untuk MODE Odontogram
-var ODONTOGRAM_MODE_HAPUS = 100; // HAPUS
-var ODONTOGRAM_MODE_DEFAULT = 0; // Do Nothing
-var ODONTOGRAM_MODE_AMF = 1; // Hitam = TAMBALAN AMALGAM
-var ODONTOGRAM_MODE_COF = 2; // Hijau Diarsir = TAMBALAN COMPOSITE
-var ODONTOGRAM_MODE_FIS = 3; // UNGU = pit dan fissure sealant
-var ODONTOGRAM_MODE_NVT = 4; // SEGITIGA DIBAWAH (seperti Akar) = gigi non-vital
-var ODONTOGRAM_MODE_RCT = 5; // SEGITIGA DIBAWAH (seperti Akar) filled = Perawatan Saluran Akar
-var ODONTOGRAM_MODE_NON = 6; // gigi tidak ada, tidak diketahui ada atau tidak ada. (non)
-var ODONTOGRAM_MODE_UNE = 7; // Un-Erupted (une)
-var ODONTOGRAM_MODE_PRE = 8; // Partial-Erupt (pre) 
-var ODONTOGRAM_MODE_ANO = 9; // Anomali (ano), Pegshaped, micro, fusi, etc
-var ODONTOGRAM_MODE_CARIES = 10; // Caries = Tambalan sementara (car)
-var ODONTOGRAM_MODE_CFR = 11; // fracture (cfr) (Tanda '#' di tengah" gigi)
-var ODONTOGRAM_MODE_FMC = 12; // Full metal crown pada gigi vital (fmc)
-var ODONTOGRAM_MODE_POC = 13; // Porcelain crown pada gigi vital (poc)
-var ODONTOGRAM_MODE_RRX = 14; // Sisa Akar (rrx)
-var ODONTOGRAM_MODE_MIS = 15; // Gigi hilang (mis)
-var ODONTOGRAM_MODE_IPX = 16; // Implant + Porcelain crown (ipx - poc)
-var ODONTOGRAM_MODE_FRM_ACR = 17; // Partial Denture/ Full Denture
-var ODONTOGRAM_MODE_BRIDGE = 18; // BRIDGE
-var ODONTOGRAM_MODE_ARROW_TOP_LEFT = 19; // TOP-LEFT ARROW
-var ODONTOGRAM_MODE_ARROW_TOP_RIGHT = 20; // TOP-RIGHT ARROW
-var ODONTOGRAM_MODE_ARROW_TOP_TURN_LEFT = 21; // TOP-TURN-LEFT ARROW
-var ODONTOGRAM_MODE_ARROW_TOP_TURN_RIGHT = 22; // TOP-TURN-RIGHT ARROW
-var ODONTOGRAM_MODE_ARROW_BOTTOM_LEFT = 23; // BOTTOM-LEFT ARROW
-var ODONTOGRAM_MODE_ARROW_BOTTOM_RIGHT = 24; // BOTTOM-RIGHT ARROW
-var ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_LEFT = 25; // BOTTOM-TURN-LEFT ARROW
-var ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_RIGHT = 26; // BOTTOM-TURN-RIGHT ARROW
+export const ODONTOGRAM_MODE_HAPUS = 100; // HAPUS
+export const ODONTOGRAM_MODE_DEFAULT = 0; // Do Nothing
+export const ODONTOGRAM_MODE_AMF = 1; // Hitam = TAMBALAN AMALGAM
+export const ODONTOGRAM_MODE_COF = 2; // Hijau Diarsir = TAMBALAN COMPOSITE
+export const ODONTOGRAM_MODE_FIS = 3; // UNGU = pit dan fissure sealant
+export const ODONTOGRAM_MODE_NVT = 4; // SEGITIGA DIBAWAH (seperti Akar) = gigi non-vital
+export const ODONTOGRAM_MODE_RCT = 5; // SEGITIGA DIBAWAH (seperti Akar) filled = Perawatan Saluran Akar
+export const ODONTOGRAM_MODE_NON = 6; // gigi tidak ada, tidak diketahui ada atau tidak ada. (non)
+export const ODONTOGRAM_MODE_UNE = 7; // Un-Erupted (une)
+export const ODONTOGRAM_MODE_PRE = 8; // Partial-Erupt (pre) 
+export const ODONTOGRAM_MODE_ANO = 9; // Anomali (ano), Pegshaped, micro, fusi, etc
+export const ODONTOGRAM_MODE_CARIES = 10; // Caries = Tambalan sementara (car)
+export const ODONTOGRAM_MODE_CFR = 11; // fracture (cfr)
+export const ODONTOGRAM_MODE_FMC = 12; // Full metal crown pada gigi vital (fmc)
+export const ODONTOGRAM_MODE_POC = 13; // Porcelain crown pada gigi vital (poc)
+export const ODONTOGRAM_MODE_RRX = 14; // Sisa Akar (rrx)
+export const ODONTOGRAM_MODE_MIS = 15; // Gigi hilang (mis)
+export const ODONTOGRAM_MODE_IPX = 16; // Implant + Porcelain crown (ipx - poc)
+export const ODONTOGRAM_MODE_FRM_ACR = 17; // Partial Denture/ Full Denture
+export const ODONTOGRAM_MODE_BRIDGE = 18; // BRIDGE
+export const ODONTOGRAM_MODE_ARROW_TOP_LEFT = 19; // TOP-LEFT ARROW
+export const ODONTOGRAM_MODE_ARROW_TOP_RIGHT = 20; // TOP-RIGHT ARROW
+export const ODONTOGRAM_MODE_ARROW_TOP_TURN_LEFT = 21; // TOP-TURN-LEFT ARROW
+export const ODONTOGRAM_MODE_ARROW_TOP_TURN_RIGHT = 22; // TOP-TURN-RIGHT ARROW
+export const ODONTOGRAM_MODE_ARROW_BOTTOM_LEFT = 23; // BOTTOM-LEFT ARROW
+export const ODONTOGRAM_MODE_ARROW_BOTTOM_RIGHT = 24; // BOTTOM-RIGHT ARROW
+export const ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_LEFT = 25; // BOTTOM-TURN-LEFT ARROW
+export const ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_RIGHT = 26; // BOTTOM-TURN-RIGHT ARROW
+
+if (typeof window !== 'undefined') {
+  Object.assign(window, {
+    ODONTOGRAM_MODE_HAPUS,
+    ODONTOGRAM_MODE_DEFAULT,
+    ODONTOGRAM_MODE_AMF,
+    ODONTOGRAM_MODE_COF,
+    ODONTOGRAM_MODE_FIS,
+    ODONTOGRAM_MODE_NVT,
+    ODONTOGRAM_MODE_RCT,
+    ODONTOGRAM_MODE_NON,
+    ODONTOGRAM_MODE_UNE,
+    ODONTOGRAM_MODE_PRE,
+    ODONTOGRAM_MODE_ANO,
+    ODONTOGRAM_MODE_CARIES,
+    ODONTOGRAM_MODE_CFR,
+    ODONTOGRAM_MODE_FMC,
+    ODONTOGRAM_MODE_POC,
+    ODONTOGRAM_MODE_RRX,
+    ODONTOGRAM_MODE_MIS,
+    ODONTOGRAM_MODE_IPX,
+    ODONTOGRAM_MODE_FRM_ACR,
+    ODONTOGRAM_MODE_BRIDGE,
+    ODONTOGRAM_MODE_ARROW_TOP_LEFT,
+    ODONTOGRAM_MODE_ARROW_TOP_RIGHT,
+    ODONTOGRAM_MODE_ARROW_TOP_TURN_LEFT,
+    ODONTOGRAM_MODE_ARROW_TOP_TURN_RIGHT,
+    ODONTOGRAM_MODE_ARROW_BOTTOM_LEFT,
+    ODONTOGRAM_MODE_ARROW_BOTTOM_RIGHT,
+    ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_LEFT,
+    ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_RIGHT,
+  });
+}
 
 
 
-// Create closure.
-(function ($) {
+let pluginRegistered = false;
+
+const registerOdontogram = ($) => {
     // Class Polygon
     function Polygon(vertices, options) {
         this.name = 'Polygon';
@@ -1751,39 +1784,65 @@ var ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_RIGHT = 26; // BOTTOM-TURN-RIGHT ARROW
     }
 
     Odontogram.prototype.setGeometryByPos = function (data) {
-        let geometry = {};
-        for (d of data) {
-            if (!d.code || !d.pos) continue;
-            if (d.pos.includes('-')) {
-                [pos, sub] = d.pos.split('-');
-                const t = this.search('num', pos);
-                let s;
-                if (sub == 'L') s = t[1].left
-                else if (sub == 'R') s = t[1].right
-                else if (sub == 'B') s = t[1].bottom
-                else if (sub == 'T') s = t[1].top
-                else if (sub == 'M') s = t[1].middle
+        const geometry = {};
+        const entries = Array.isArray(data) ? data : [];
+        for (const entry of entries) {
+            const code = entry?.code;
+            const pos = entry?.pos;
+            if (!code || !pos) continue;
 
-                if (['1', '2', '3'].some(a => pos.endsWith(a)) && sub == 'M') continue
+            if (pos.includes('-')) {
+                const [toothPos, subRaw] = pos.split('-');
+                const sub = (subRaw || '').toUpperCase();
+                const searchResult = this.search('num', toothPos);
+                if (!searchResult) continue;
+                const [key, tooth] = searchResult;
+                let segment = null;
 
-                if (!geometry[t[0]]) geometry[t[0]] = []
+                switch (sub) {
+                    case 'L':
+                        segment = tooth.left;
+                        break;
+                    case 'R':
+                        segment = tooth.right;
+                        break;
+                    case 'B':
+                        segment = tooth.bottom;
+                        break;
+                    case 'T':
+                        segment = tooth.top;
+                        break;
+                    case 'M':
+                        segment = tooth.middle;
+                        break;
+                    default:
+                        break;
+                }
 
-                geometry[t[0]].push({
-                    name: d.code,
-                    pos: d.pos,
-                    vertices: [s.bl, s.br, s.tr, s.tl]
-                })
+                if (!segment) continue;
+                if (['1', '2', '3'].some((suffix) => toothPos.endsWith(suffix)) && sub === 'M') {
+                    continue;
+                }
+
+                if (!geometry[key]) geometry[key] = [];
+                geometry[key].push({
+                    name: code,
+                    pos,
+                    vertices: [segment.bl, segment.br, segment.tr, segment.tl],
+                });
             } else {
-                const t = this.search('num', d.pos);
-                if (!geometry[t[0]]) geometry[t[0]] = []
-                geometry[t[0]].push({
-                    name: d.code,
-                    pos: d.pos,
+                const searchResult = this.search('num', pos);
+                if (!searchResult) continue;
+                const [key, tooth] = searchResult;
+                if (!geometry[key]) geometry[key] = [];
+                geometry[key].push({
+                    name: code,
+                    pos,
                     vertices: [
-                        { x: t[1].x1, y: t[1].y1 },
-                        { x: t[1].x2, y: t[1].y2 }
-                    ]
-                })
+                        { x: tooth.x1, y: tooth.y1 },
+                        { x: tooth.x2, y: tooth.y2 },
+                    ],
+                });
             }
         }
         this.setGeometry(geometry);
@@ -2535,7 +2594,18 @@ var ODONTOGRAM_MODE_ARROW_BOTTOM_TURN_RIGHT = 26; // BOTTOM-TURN-RIGHT ARROW
         width: "800px",
         height: "480px"
     }
+};
 
-})(jqInstance);
+export const ensureOdontogramReady = () => {
+    if (pluginRegistered) return jqInstance;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+    registerOdontogram(jqInstance);
+    pluginRegistered = true;
+    return jqInstance;
+};
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    ensureOdontogramReady();
+}
 
 export default jqInstance;
