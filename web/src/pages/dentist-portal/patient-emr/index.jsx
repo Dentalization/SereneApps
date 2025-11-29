@@ -1,15 +1,49 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { PATIENT_EMR_DATA } from './data';
 import AddNewEMR from './components/AddNewEMR';
+import { fetchEmrList, createEmrRecord } from '../../../services/emrService';
+import { formatDateLabel } from './utils';
 
 const PatientEMRList = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [patients, setPatients] = useState(PATIENT_EMR_DATA);
+  const [patients, setPatients] = useState([]);
   const [showAddEmr, setShowAddEmr] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const remote = await fetchEmrList();
+        if (!active) return;
+        if (Array.isArray(remote)) {
+          setPatients(remote);
+        } else {
+          setPatients(PATIENT_EMR_DATA);
+        }
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load EMR list', err);
+        if (active) {
+          setError('Unable to load EMR records. Showing cached data.');
+          setPatients((prev) => (prev.length ? prev : PATIENT_EMR_DATA));
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const splitLines = (text) =>
     text
@@ -32,7 +66,27 @@ const PatientEMRList = () => {
     return age;
   };
 
-  const handleAddEmr = (formData) => {
+  const buildDocuments = (formData) => {
+    if (formData.consentFile) {
+      return [
+        {
+          type: 'Informed Consent',
+          name: formData.consentFile.name,
+        },
+      ];
+    }
+    if (formData.visitType === 'teledentistry') {
+      return [
+        {
+          type: 'Digital Consent',
+          name: 'Sent via SereneAI',
+        },
+      ];
+    }
+    return [];
+  };
+
+  const buildEmrPayload = (formData) => {
     const treatmentPlan = splitLines(formData.plan);
     const proceduresList = splitLines(formData.procedures).map((procedure) => ({
       label: procedure,
@@ -44,30 +98,20 @@ const PatientEMRList = () => {
       dosage: '',
     }));
     const kieNotes = splitLines(formData.kie);
+    const now = new Date();
+    const isoTimestamp = now.toISOString();
+    const visitDate = formData.dateOfVisit || formData.lastVisit || isoTimestamp.slice(0, 10);
 
-    const documents = [];
-    if (formData.consentFile) {
-      documents.push({
-        type: 'Informed Consent',
-        name: formData.consentFile.name,
-      });
-    } else if (formData.visitType === 'teledentistry') {
-      documents.push({
-        type: 'Digital Consent',
-        name: 'Sent via SereneAI',
-      });
-    }
-
-    const newPatient = {
-      id: `pt-${Date.now()}`,
+    return {
       rmNumber: formData.rmNumber || `RM-${Date.now()}`,
       nik: formData.nik,
       name: formData.patientName,
+      patientName: formData.patientName,
       gender: formData.gender || 'N/A',
       dob: formData.dob,
       age: calculateAge(formData.dob),
-      lastVisit: new Date().toISOString().slice(0, 10),
-      lastUpdated: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+      lastVisit: visitDate,
+      lastUpdated: isoTimestamp,
       alerts: {
         allergies: splitLines(formData.allergies),
         systemic: splitLines(formData.systemic),
@@ -98,8 +142,8 @@ const PatientEMRList = () => {
         medications,
         kie: kieNotes,
       },
-      odontogramMarks: formData.odontogramMarks || [],
-      documents,
+      odontogramMarks: Array.isArray(formData.odontogramMarks) ? formData.odontogramMarks : [],
+      documents: buildDocuments(formData),
       consent: {
         status:
           formData.visitType === 'in-clinic'
@@ -111,9 +155,25 @@ const PatientEMRList = () => {
       },
       doctorSignature: 'Pending Signature',
     };
+  };
 
-    setPatients((prev) => [newPatient, ...prev]);
-    setShowAddEmr(false);
+  const handleAddEmr = async (formData) => {
+    const recordPayload = buildEmrPayload(formData);
+    const fallbackRecord = { ...recordPayload, id: `emr-local-${Date.now()}` };
+
+    setSaving(true);
+    try {
+      const saved = await createEmrRecord(recordPayload);
+      setPatients((prev) => [saved || fallbackRecord, ...prev]);
+      setShowAddEmr(false);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to save EMR', err);
+      setPatients((prev) => [fallbackRecord, ...prev]);
+      setError('Failed to save EMR to server. Displaying local draft.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filteredPatients = useMemo(() => {
@@ -152,10 +212,11 @@ const PatientEMRList = () => {
                 </div>
                 <button
                   onClick={() => setShowAddEmr((prev) => !prev)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-primary hover:border-accent hover:text-accent"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-primary hover:border-accent hover:text-accent disabled:opacity-50"
                 >
                   <Icon name="Plus" size={16} />
-                  {showAddEmr ? 'Close Form' : 'Add New EMR'}
+                  {saving ? 'Saving...' : showAddEmr ? 'Close Form' : 'Add New EMR'}
                 </button>
               </div>
             </div>
@@ -163,12 +224,33 @@ const PatientEMRList = () => {
               <div className="rounded-3xl border border-border/40 bg-surface p-5 shadow-sm">
                 <AddNewEMR
                   onSubmit={(data) => handleAddEmr(data)}
+                  isSubmitting={saving}
                 />
               </div>
             )}
           </section>
 
-          <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {error && (
+            <div className="rounded-2xl border border-rose-200/40 bg-rose-500/5 p-4 text-sm text-rose-600">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-3xl border border-border/40 bg-surface p-5 shadow-sm animate-pulse space-y-4"
+                >
+                  <div className="h-4 w-24 bg-primary/10 rounded" />
+                  <div className="h-5 w-32 bg-primary/10 rounded" />
+                  <div className="h-16 bg-primary/5 rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {filteredPatients.map((patient) => (
               <article
                 key={patient.id}
@@ -179,7 +261,9 @@ const PatientEMRList = () => {
                     <p className="text-xs uppercase tracking-[0.3em] text-secondary">RM Number</p>
                     <p className="text-sm font-semibold text-primary">{patient.rmNumber}</p>
                   </div>
-                  <span className="text-xs text-secondary">Last visit {patient.lastVisit}</span>
+                  <span className="text-xs text-secondary">
+                    Last visit {formatDateLabel(patient.lastVisit)}
+                  </span>
                 </div>
                 <div className="mt-4 space-y-1">
                   <h3 className="text-lg font-semibold text-primary">{patient.name}</h3>
@@ -234,6 +318,7 @@ const PatientEMRList = () => {
               </div>
             )}
           </section>
+          )}
         </div>
       </div>
     </div>
