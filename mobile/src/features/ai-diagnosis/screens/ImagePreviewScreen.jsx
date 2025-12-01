@@ -60,6 +60,43 @@ const ImagePreviewScreen = ({ route, navigation }) => {
     });
   };
 
+  const handleChatFirst = async () => {
+    if (!images.length || isCreatingSession) return;
+
+    setIsCreatingSession(true);
+    try {
+      // Create session for chat first
+      const sessionResponse = await createSession({
+        imageCount: images.length,
+        timestamp: new Date().toISOString(),
+        mode: 'pre-analysis',
+      });
+
+      const newSessionId =
+        (sessionResponse && sessionResponse.sessionId) ||
+        (sessionResponse && sessionResponse.data && sessionResponse.data.id) ||
+        (sessionResponse &&
+          sessionResponse.data &&
+          sessionResponse.data.session_id);
+
+      if (sessionResponse && sessionResponse.success && newSessionId) {
+        // Navigate to chat with images attached, but don't send yet
+        navigation.navigate('Chat', {
+          sessionId: newSessionId,
+          pendingImages: images,
+          mode: 'pre-analysis',
+        });
+        return;
+      }
+
+      showToast('Gagal membuat session. Coba lagi.', 'error');
+    } catch (error) {
+      showToast('Terjadi kesalahan saat memulai chat', 'error');
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!images.length || isCreatingSession) return;
 
@@ -284,7 +321,22 @@ const ImagePreviewScreen = ({ route, navigation }) => {
         )}
 
         <View style={styles.infoSection}>
-          <Text style={styles.infoTitle}>Checklist sebelum analisis</Text>
+          <Text style={styles.infoTitle}>Pilih cara analisis</Text>
+          <Chip
+            icon="message-text"
+            style={[styles.infoChip, { backgroundColor: '#EEF2FF' }]}
+            textStyle={{ fontSize: normalize(12) }}
+          >
+            💬 Chat dulu - Jelaskan kondisi untuk hasil lebih akurat
+          </Chip>
+          <Chip
+            icon="brain"
+            style={[styles.infoChip, { backgroundColor: '#F0F4FF' }]}
+            textStyle={{ fontSize: normalize(12) }}
+          >
+            ⚡ Analisis langsung - Cepat, AI akan analisis dari foto saja
+          </Chip>
+          <Text style={[styles.infoTitle, { marginTop: normalize(16) }]}>Checklist kualitas foto</Text>
           <Chip
             icon="check"
             style={styles.infoChip}
@@ -297,14 +349,7 @@ const ImagePreviewScreen = ({ route, navigation }) => {
             style={styles.infoChip}
             textStyle={{ fontSize: normalize(12) }}
           >
-            Minimal 3 foto dengan sudut berbeda
-          </Chip>
-          <Chip
-            icon="check"
-            style={styles.infoChip}
-            textStyle={{ fontSize: normalize(12) }}
-          >
-            Tidak ada filter atau efek
+            Pencahayaan baik, tidak blur
           </Chip>
         </View>
       </ScrollView>
@@ -316,13 +361,23 @@ const ImagePreviewScreen = ({ route, navigation }) => {
         ]}
       >
         <Button
-          mode="outlined"
-          style={{ flex: 1, marginRight: normalize(12) }}
+          mode="text"
           onPress={handleRetake}
-          labelStyle={{ fontSize: normalize(14) }}
+          labelStyle={{ fontSize: normalize(12) }}
           disabled={isCreatingSession}
         >
           Ambil ulang
+        </Button>
+        <Button
+          mode="outlined"
+          icon="message-text-outline"
+          style={{ flex: 1, marginHorizontal: normalize(8) }}
+          onPress={handleChatFirst}
+          disabled={!images.length || isCreatingSession}
+          loading={isCreatingSession}
+          labelStyle={{ fontSize: normalize(14) }}
+        >
+          Chat dulu
         </Button>
         <Button
           mode="contained"
@@ -333,7 +388,7 @@ const ImagePreviewScreen = ({ route, navigation }) => {
           loading={isCreatingSession}
           labelStyle={{ fontSize: normalize(14) }}
         >
-          {isCreatingSession ? 'Memulai...' : 'Analisis sekarang'}
+          Analisis
         </Button>
       </View>
 

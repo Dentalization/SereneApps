@@ -6,6 +6,7 @@ import ImagePreviewScreen from '../features/ai-diagnosis/screens/ImagePreviewScr
 import AnalysisScreen from '../features/ai-diagnosis/screens/AnalysisScreen';
 import ResultScreen from '../features/ai-diagnosis/screens/ResultScreen';
 import HistoryScreen from '../features/ai-diagnosis/screens/HistoryScreen';
+import ChatScreen from '../features/ai-diagnosis/screens/ChatScreen';
 
 const Stack = createStackNavigator();
 
@@ -46,6 +47,14 @@ const AINavigator = () => {
         name="History"
         component={HistoryScreen}
         options={{ title: 'Riwayat Diagnosis' }}
+      />
+      <Stack.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{ 
+          title: 'Chat dengan AI',
+          headerShown: false,
+        }}
       />
     </Stack.Navigator>
   );
