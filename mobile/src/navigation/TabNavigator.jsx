@@ -68,6 +68,7 @@ const HIDDEN_TAB_ROUTES = new Set([
   'Analysis',
   'Result',
   'History',
+  'Chat',
   'Search',
   'SearchScreen',
 ]);

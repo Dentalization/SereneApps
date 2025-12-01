@@ -51,6 +51,22 @@ const ResultScreen = ({ route, navigation }) => {
       };
     }
 
+    if (__DEV__) {
+      console.log('📊 ResultScreen received analysisData:', JSON.stringify(analysisData, null, 2));
+    }
+
+    // Extract annotated image from multiple possible locations
+    const annotatedImage = 
+      analysisData.annotated_image_base64 || 
+      analysisData.annotatedImage ||
+      (analysisData.visual_findings && analysisData.visual_findings.annotated_image_base64) ||
+      (analysisData.data && analysisData.data.annotated_image_base64) ||
+      null;
+
+    if (__DEV__) {
+      console.log('🖼️ Annotated image found:', annotatedImage ? `Yes (${annotatedImage.substring(0, 30)}...)` : 'No');
+    }
+
     // Extract findings with marks [1], [2], etc.
     const findings = analysisData.findings || [];
     
@@ -79,7 +95,7 @@ const ResultScreen = ({ route, navigation }) => {
         mark: f.mark || `[${idx + 1}]`,
       })),
       recommendations: analysisData.recommendations || [],
-      annotatedImage: analysisData.annotated_image_base64 || null,
+      annotatedImage: annotatedImage,
       summary: analysisData.summary || analysisData.overall_assessment,
     };
   };
@@ -114,10 +130,27 @@ const ResultScreen = ({ route, navigation }) => {
           style={[styles.hero, { paddingTop: insets.top + normalize(10) }]}
         >
           <View style={styles.heroTopRow}>
-            <Button mode="text" textColor="#FFFFFF" icon="arrow-left" onPress={() => navigation.goBack()} labelStyle={{ fontSize: normalize(14) }}>
+            <Button mode="text" textColor="#FFFFFF" icon="arrow-left" onPress={() => navigation.navigate('AIHome')} labelStyle={{ fontSize: normalize(14) }}>
               Kembali
             </Button>
-            <IconButtonGhost icon="share-variant" onPress={() => {}} />
+            <View style={{ flexDirection: 'row' }}>
+              <IconButtonGhost 
+                icon="message-text-outline" 
+                onPress={() => {
+                  if (__DEV__) {
+                    console.log('📤 Navigating to Chat with:', {
+                      sessionId,
+                      hasAnalysisData: !!analysisData,
+                      hasAnnotatedImage: !!(analysisData?.annotated_image_base64),
+                      hasImages: !!images,
+                      imageCount: images?.length || 0,
+                    });
+                  }
+                  navigation.navigate('Chat', { sessionId, analysisData, images });
+                }} 
+              />
+              <IconButtonGhost icon="share-variant" onPress={() => {}} />
+            </View>
           </View>
           <View style={{ alignItems: 'flex-start', marginTop: normalize(10) }}>
             <Text style={styles.heroLabel}>Hasil Diagnosis AI</Text>
@@ -256,19 +289,39 @@ const ResultScreen = ({ route, navigation }) => {
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + normalize(20) }]}>
         <Button
+          mode="outlined"
+          icon="robot-outline"
+          onPress={() => {
+            if (__DEV__) {
+              console.log('📤 Navigating to Chat (bottom button) with:', {
+                sessionId,
+                hasAnalysisData: !!analysisData,
+                hasAnnotatedImage: !!(analysisData?.annotated_image_base64),
+                hasImages: !!images,
+                imageCount: images?.length || 0,
+              });
+            }
+            navigation.navigate('Chat', { sessionId, analysisData, images });
+          }}
+          labelStyle={{ fontSize: normalize(14) }}
+          style={{ marginRight: normalize(8) }}
+        >
+          Tanya AI
+        </Button>
+        <Button
           mode="contained"
           icon="calendar-plus"
           style={{ flex: 1 }}
           onPress={handleBookAppointment}
           labelStyle={{ fontSize: normalize(14) }}
         >
-          Buat janji konsultasi
+          Buat janji
         </Button>
         <Button
-          mode="outlined"
-          style={{ flex: 1, marginLeft: normalize(12) }}
+          mode="text"
           onPress={() => navigation.navigate('AIHome')}
-          labelStyle={{ fontSize: normalize(14) }}
+          labelStyle={{ fontSize: normalize(12) }}
+          style={{ marginLeft: normalize(8) }}
         >
           Scan lagi
         </Button>

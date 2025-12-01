@@ -237,7 +237,7 @@ export const getSessionMessages = async (sessionId) => {
  * ============================
  */
 
-// Analyze image with full AI analysis (YOLO + Gemini)
+// Analyze image with full AI analysis (using /chat/upload endpoint for flexibility)
 export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual', role = 'patient' }) => {
   // Mock mode
   if (ENABLE_MOCK) {
@@ -266,46 +266,51 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
   }
 
   try {
-    // Create FormData
+    // Use /chat/upload endpoint instead of /images/analyze
+    // This endpoint is more flexible with data structure
     const formData = new FormData();
     
-    // Add first image (API accepts single image for now)
-    const imageUri = Array.isArray(imageUris) ? imageUris[0] : imageUris;
-    const filename = imageUri.split('/').pop();
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
-    
-    formData.append('image', {
-      uri: imageUri,
-      name: filename,
-      type: type,
-    });
-    
-    // Add optional parameters
-    if (sessionId) {
-      formData.append('session_id', sessionId);
-    }
+    // Add analysis request message
+    formData.append('message', 'Tolong analisis kondisi gigi saya dari foto yang saya upload. Berikan diagnosis lengkap, temuan, dan rekomendasi perawatan.');
+    formData.append('session_id', sessionId);
+    formData.append('role', role);
     formData.append('language', language);
-    if (role) {
-      formData.append('role', role);
-    }
-    formData.append('include_annotated', 'true');
+    
+    // Add images (support multiple images)
+    const imageArray = Array.isArray(imageUris) ? imageUris : [imageUris];
+    imageArray.forEach((imageUri, index) => {
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      formData.append('images', {
+        uri: imageUri,
+        name: filename,
+        type: type,
+      });
+    });
 
-    const response = await aiClient.post('/images/analyze', formData, {
+    const response = await aiClient.post('/chat/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: API_CONFIG.AI_TIMEOUT, // 60 seconds for AI processing
+      timeout: API_CONFIG.AI_TIMEOUT,
     });
+
+    // Extract data from chat response
+    const replyContent = response.data.reply || response.data.content || '';
+    const visualFindings = response.data.visual_findings || {};
+    const annotatedImage = visualFindings.annotated_image_base64 || response.data.annotated_image || null;
 
     return {
       success: true,
       data: response.data,
-      findings: response.data.findings || '',
-      imageQuality: response.data.image_quality || {},
-      recommendations: response.data.recommendations || [],
-      annotatedImage: response.data.annotated_image || response.data.annotated_image_base64 || null,
-      detections: response.data.detections || [],
+      findings: replyContent,
+      imageQuality: visualFindings.image_quality || {},
+      recommendations: visualFindings.recommendations || [],
+      annotatedImage: annotatedImage,
+      detections: visualFindings.detections || [],
+      messageId: response.data.message_id || null,
     };
   } catch (error) {
     return {

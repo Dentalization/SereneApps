@@ -1,5 +1,13 @@
 import React from 'react';
-import { View, StyleSheet, StatusBar, Dimensions, Platform, PixelRatio, Alert } from 'react-native';
+import { 
+  View, 
+  StyleSheet, 
+  StatusBar, 
+  Dimensions, 
+  Platform, 
+  PixelRatio, 
+  Alert 
+} from 'react-native';
 import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,14 +35,16 @@ const AnalysisScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
-  const { images, sessionId } = route.params || {};
+  const params = route && route.params ? route.params : {};
+  const images = params.images;
+  const sessionId = params.sessionId;
+
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState('Memproses gambar...');
   const analysisRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!images || !sessionId || analysisRef.current) return;
-    
     analysisRef.current = true;
     performAnalysis();
   }, [images, sessionId]);
@@ -44,12 +54,12 @@ const AnalysisScreen = ({ route, navigation }) => {
       // Stage 1: Prepare images
       setProgress(0.2);
       setStatus('Memproses gambar...');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
       // Stage 2: Upload and detect
       setProgress(0.4);
       setStatus('Mendeteksi area gigi...');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
       // Stage 3: Call AI API
       setProgress(0.6);
@@ -57,7 +67,7 @@ const AnalysisScreen = ({ route, navigation }) => {
 
       const analysisResponse = await analyzeImage({
         sessionId,
-        imageUris: images.map(img => img.uri),
+        imageUris: images.map((img) => img.uri),
         language: 'id',
         role: 'patient',
       });
@@ -65,13 +75,13 @@ const AnalysisScreen = ({ route, navigation }) => {
       // Stage 4: Process results
       setProgress(0.8);
       setStatus('Menghitung tingkat risiko...');
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       // Stage 5: Complete
       setProgress(1.0);
       setStatus('Selesai!');
 
-      if (analysisResponse.success && analysisResponse.data) {
+      if (analysisResponse && analysisResponse.success && analysisResponse.data) {
         // Navigate to results with API data
         setTimeout(() => {
           navigation.replace('Result', {
@@ -82,21 +92,30 @@ const AnalysisScreen = ({ route, navigation }) => {
         }, 500);
       } else {
         // Handle API error
-        const errorMessage = analysisResponse.error?.message || analysisResponse.error || 'Terjadi kesalahan saat menganalisis gambar.';
-        const isServerError = 
-          errorMessage.includes('504') || 
-          errorMessage.includes('500') ||
-          errorMessage.includes('timeout') || 
-          errorMessage.includes('Gateway') ||
-          errorMessage.includes('ECONNABORTED');
-        
+        var rawError =
+          (analysisResponse &&
+            analysisResponse.error &&
+            analysisResponse.error.message) ||
+          (analysisResponse && analysisResponse.error) ||
+          'Terjadi kesalahan saat menganalisis gambar.';
+
+        var errorMessage =
+          typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
+
+        var isServerError =
+          errorMessage.indexOf('504') !== -1 ||
+          errorMessage.indexOf('500') !== -1 ||
+          errorMessage.toLowerCase().indexOf('timeout') !== -1 ||
+          errorMessage.toLowerCase().indexOf('gateway') !== -1 ||
+          errorMessage.indexOf('ECONNABORTED') !== -1;
+
         if (isServerError) {
           showToast(
             'Server AI sedang bermasalah. Tim kami sedang memperbaikinya.',
             'error'
           );
         }
-        
+
         setTimeout(() => {
           Alert.alert(
             '⚠️ Server Sedang Bermasalah',
@@ -119,21 +138,22 @@ const AnalysisScreen = ({ route, navigation }) => {
         }, 500);
       }
     } catch (error) {
-      const errorMsg = error?.message || String(error);
-      const isServerError = 
-        errorMsg.includes('504') || 
-        errorMsg.includes('500') ||
-        errorMsg.includes('timeout') || 
-        errorMsg.includes('ECONNABORTED') ||
-        errorMsg.includes('Network Error');
-      
+      var errorMsg =
+        (error && error.message) || (error ? String(error) : 'Unknown error');
+      var isServerError =
+        errorMsg.indexOf('504') !== -1 ||
+        errorMsg.indexOf('500') !== -1 ||
+        errorMsg.toLowerCase().indexOf('timeout') !== -1 ||
+        errorMsg.indexOf('ECONNABORTED') !== -1 ||
+        errorMsg.indexOf('Network Error') !== -1;
+
       if (isServerError) {
         showToast(
           'Server tidak merespons. Kemungkinan server sedang down.',
           'error'
         );
       }
-      
+
       Alert.alert(
         '⚠️ Server Tidak Dapat Diakses',
         'Server AI diagnosis tidak merespons sama sekali. Server kemungkinan sedang DOWN atau tidak aktif.\n\nSilakan hubungi tim backend/DevOps untuk mengecek status server production di api.dentalization.id',
@@ -155,38 +175,57 @@ const AnalysisScreen = ({ route, navigation }) => {
     }
   };
 
-  const gradient = theme.gradients?.primary || [theme.colors.primary, '#7F1DFF'];
+  const gradient =
+    (theme.gradients && theme.gradients.primary) || [
+      theme.colors.primary,
+      '#7F1DFF',
+    ];
 
   return (
-    <LinearGradient 
-      colors={gradient} 
-      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]} 
-      start={{ x: 0, y: 0 }} 
+    <LinearGradient
+      colors={gradient}
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+      start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <View style={styles.content}>
-        <MaterialCommunityIcons name="brain" size={normalize(80)} color="#FFFFFF" />
-        
+        {/* Ikon gigi yang sedang dianalisis */}
+        <View style={styles.iconWrapper}>
+          <View style={styles.iconCircle}>
+            <MaterialCommunityIcons
+              name="tooth-outline"
+              size={normalize(52)}
+              color="#FFFFFF"
+            />
+            <View style={styles.iconBadge}>
+              <MaterialCommunityIcons
+                name="magnify-scan"
+                size={normalize(20)}
+                color="#4F46E5"
+              />
+            </View>
+          </View>
+        </View>
+
         <Text variant="headlineSmall" style={styles.title}>
-          Menganalisis...
+          Menganalisis gigi...
         </Text>
-        
+
         <Text variant="bodyLarge" style={styles.status}>
           {status}
         </Text>
-        
-        <ProgressBar
-          progress={progress}
-          color="#FFFFFF"
-          style={styles.progressBar}
-        />
-        
+
+        <ProgressBar progress={progress} color="#FFFFFF" style={styles.progressBar} />
+
         <Text variant="bodySmall" style={styles.progressText}>
           {Math.round(progress * 100)}%
         </Text>
       </View>
-      
+
       <ValidationToast
         visible={toast.visible}
         message={toast.message}
@@ -207,6 +246,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: normalize(32),
     gap: normalize(16),
+  },
+  iconWrapper: {
+    marginBottom: normalize(8),
+  },
+  iconCircle: {
+    width: normalize(110),
+    height: normalize(110),
+    borderRadius: normalize(55),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  iconBadge: {
+    position: 'absolute',
+    bottom: normalize(8),
+    right: normalize(10),
+    width: normalize(32),
+    height: normalize(32),
+    borderRadius: normalize(16),
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
   },
   title: {
     color: '#FFFFFF',
