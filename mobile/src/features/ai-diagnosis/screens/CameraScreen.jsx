@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Dimensions, Platform, PixelRatio } from 'react-native';
-import { Text, IconButton, useTheme } from 'react-native-paper';
-import { Camera } from 'expo-camera';
+import { Text, IconButton, Button, useTheme } from 'react-native-paper';
+import { CameraView, CameraType, FlashMode, useCameraPermissions } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,69 +23,92 @@ const normalize = (size) => {
 const CameraScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const [hasPermission, setHasPermission] = React.useState(null);
-  const [type, setType] = React.useState(null); 
-  const [flash, setFlash] = React.useState(Camera.Constants?.FlashMode?.off ?? 0);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [facing, setFacing] = React.useState('back');
+  const [flash, setFlash] = React.useState('off');
   const cameraRef = React.useRef(null);
-
 
   React.useEffect(() => {
     (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      if (status === 'granted') {
-        setHasPermission(true);
-        const backType = Camera.Constants?.Type?.back;
-        setType(backType); 
+      if (!permission) {
+        console.log('🎥 Requesting camera permissions...');
+        const result = await requestPermission();
+        console.log('🎥 Camera permission status:', result.status);
       } else {
-        setHasPermission(false);
+        console.log('🎥 Camera permission already granted');
       }
     })();
-  }, []);
+  }, [permission, requestPermission]);
 
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
+        console.log('📸 Taking picture...');
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
-          skipProcessing: false,
         });
+        console.log('✅ Picture taken:', photo.uri);
         navigation.navigate('ImagePreview', { images: [photo] });
       } catch (e) {
-        console.warn('Failed to take picture', e);
+        console.error('❌ Failed to take picture:', e);
+        alert('Gagal mengambil foto. Silakan coba lagi.');
       }
+    } else {
+      console.warn('⚠️ Camera ref is null');
     }
   };
 
   const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-      selectionLimit: 5, 
-    });
+    try {
+      console.log('🖼️ Opening gallery...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 5, 
+      });
 
-    if (!result.canceled) {
-      navigation.navigate('ImagePreview', { images: result.assets });
+      console.log('Gallery result:', result);
+      
+      if (!result.canceled) {
+        console.log('✅ Images selected:', result.assets.length);
+        navigation.navigate('ImagePreview', { images: result.assets });
+      }
+    } catch (error) {
+      console.error('❌ Gallery picker error:', error);
+      alert('Gagal membuka galeri. Silakan coba lagi.');
     }
   };
 
   const toggleFlash = () => {
-    const off = Camera.Constants?.FlashMode?.off;
-    const on = Camera.Constants?.FlashMode?.on;
-    setFlash((prev) => (prev === off ? on : off));
+    setFlash(current => (current === 'off' ? 'on' : 'off'));
   };
 
   const toggleCamera = () => {
-    const back = Camera.Constants?.Type?.back;
-    const front = Camera.Constants?.Type?.front;
-    setType((prev) => (prev === back ? front : back));
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
   };
 
-  if (hasPermission === null || type == null) {
-    return <View style={styles.container} />;
+  if (!permission) {
+    // Loading permissions
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <MaterialCommunityIcons
+          name="camera"
+          size={normalize(64)}
+          color={theme.colors.primary}
+        />
+        <Text
+          variant="titleMedium"
+          style={{ marginTop: normalize(16), color: theme.colors.onBackground }}
+        >
+          Memuat kamera...
+        </Text>
+      </View>
+    );
   }
 
-  if (hasPermission === false) {
+  if (!permission.granted) {
+    // Permission not granted
     return (
       <View
         style={[
@@ -110,20 +133,28 @@ const CameraScreen = ({ navigation }) => {
           style={{
             color: theme.colors.onSurfaceVariant,
             textAlign: 'center',
+            paddingHorizontal: normalize(24),
           }}
         >
           SereneAI membutuhkan akses kamera untuk mengambil foto gigi Anda
         </Text>
+        <Button
+          mode="contained"
+          onPress={requestPermission}
+          style={{ marginTop: normalize(20) }}
+        >
+          Berikan Akses
+        </Button>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Camera
+      <CameraView
         style={styles.camera}
-        type={type}
-        flashMode={flash}
+        facing={facing}
+        flash={flash}
         ref={cameraRef}
       >
         {/* Top Bar - Menggunakan Insets untuk padding atas */}
@@ -135,7 +166,7 @@ const CameraScreen = ({ navigation }) => {
             onPress={() => navigation.goBack()}
           />
           <IconButton
-            icon={flash === Camera.Constants.FlashMode.off ? 'flash-off' : 'flash'}
+            icon={flash === 'off' ? 'flash-off' : 'flash'}
             iconColor="#FFFFFF"
             size={normalize(28)}
             onPress={toggleFlash}
@@ -168,7 +199,7 @@ const CameraScreen = ({ navigation }) => {
             onPress={toggleCamera}
           />
         </View>
-      </Camera>
+      </CameraView>
     </View>
   );
 };

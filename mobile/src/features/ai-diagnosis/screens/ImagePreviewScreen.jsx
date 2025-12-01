@@ -1,11 +1,24 @@
 import React from 'react';
-import { View, ScrollView, StatusBar, Image, Dimensions, StyleSheet, Platform, PixelRatio } from 'react-native';
+import {
+  View,
+  ScrollView,
+  StatusBar,
+  Image,
+  Dimensions,
+  StyleSheet,
+  Platform,
+  PixelRatio,
+  Alert,
+} from 'react-native';
 import { Text, Button, IconButton, useTheme, Chip } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import useToast from '../../../hooks/useToast';
+import ValidationToast from '../../settings/components/ValidationToast';
+import { createSession } from '../../../services/aiDiagnosisService';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -22,11 +35,13 @@ const normalize = (size) => {
 // -------------------------
 
 const ImagePreviewScreen = ({ route, navigation }) => {
-  const initialImages = route.params?.images || [];
+  const initialImages = (route && route.params && route.params.images) || [];
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { toast, showToast, hideToast } = useToast();
   const [images, setImages] = React.useState(initialImages);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [isCreatingSession, setIsCreatingSession] = React.useState(false);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(260);
 
   React.useEffect(() => {
@@ -45,9 +60,112 @@ const ImagePreviewScreen = ({ route, navigation }) => {
     });
   };
 
-  const handleAnalyze = () => {
-    if (!images.length) return;
-    navigation.navigate('Analysis', { images });
+  const handleAnalyze = async () => {
+    if (!images.length || isCreatingSession) return;
+
+    setIsCreatingSession(true);
+    try {
+      // Create analysis session
+      const sessionResponse = await createSession({
+        imageCount: images.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      // console.log('createSession response:', sessionResponse);
+
+      const newSessionId =
+        (sessionResponse && sessionResponse.sessionId) ||
+        (sessionResponse && sessionResponse.data && sessionResponse.data.id) ||
+        (sessionResponse &&
+          sessionResponse.data &&
+          sessionResponse.data.session_id);
+
+      if (sessionResponse && sessionResponse.success && newSessionId) {
+        // Navigate to analysis with session and images
+        navigation.navigate('Analysis', {
+          images,
+          sessionId: newSessionId,
+        });
+        return;
+      }
+
+      // --- Pastikan errorMsg selalu string ---
+      var rawError =
+        (sessionResponse &&
+          sessionResponse.error &&
+          sessionResponse.error.message) ||
+        (sessionResponse && sessionResponse.error) ||
+        '';
+
+      var errorMsg =
+        typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
+
+      var lowerMsg = String(errorMsg || '').toLowerCase();
+
+      var isServerError =
+        lowerMsg.indexOf('504') !== -1 ||
+        lowerMsg.indexOf('500') !== -1 ||
+        lowerMsg.indexOf('timeout') !== -1 ||
+        lowerMsg.indexOf('gateway') !== -1;
+
+      if (isServerError) {
+        showToast(
+          'Server sedang bermasalah. Tim kami sedang memperbaikinya. Silakan coba lagi nanti.',
+          'error',
+        );
+        setTimeout(() => {
+          Alert.alert(
+            '⚠️ Server Sedang Bermasalah',
+            'Sistem AI diagnosis sedang mengalami gangguan teknis. Tim kami sedang memperbaikinya.\n\nSilakan coba lagi dalam beberapa saat.',
+            [
+              { text: 'Kembali', style: 'cancel', onPress: () => navigation.goBack() },
+              { text: 'Coba Lagi', onPress: () => handleAnalyze() },
+            ],
+          );
+        }, 500);
+      } else {
+        showToast(
+          'Tidak dapat memulai analisis. Periksa koneksi internet Anda.',
+          'error',
+        );
+      }
+    } catch (error) {
+      // console.log('createSession error:', error);
+
+      var msg =
+        typeof (error && error.message) === 'string'
+          ? error.message
+          : JSON.stringify(error || '');
+
+      var lowerMsg = String(msg || '').toLowerCase();
+
+      var isServerError =
+        lowerMsg.indexOf('504') !== -1 ||
+        lowerMsg.indexOf('500') !== -1 ||
+        lowerMsg.indexOf('timeout') !== -1 ||
+        (error && error.code === 'ECONNABORTED');
+
+      if (isServerError) {
+        showToast('Server sedang bermasalah. Silakan coba lagi nanti.', 'error');
+        setTimeout(() => {
+          Alert.alert(
+            '⚠️ Server Sedang Bermasalah',
+            'Sistem AI diagnosis sedang mengalami gangguan teknis. Tim kami sedang memperbaikinya.\n\nSilakan coba lagi dalam beberapa saat.',
+            [
+              { text: 'Kembali', style: 'cancel', onPress: () => navigation.goBack() },
+              { text: 'Coba Lagi', onPress: () => handleAnalyze() },
+            ],
+          );
+        }, 500);
+      } else {
+        showToast(
+          'Gagal memulai analisis. Periksa koneksi internet Anda.',
+          'error',
+        );
+      }
+    } finally {
+      setIsCreatingSession(false);
+    }
   };
 
   const handleRetake = () => {
@@ -55,64 +173,102 @@ const ImagePreviewScreen = ({ route, navigation }) => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#050914' }}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <View onLayout={handleHeaderLayout} style={styles.anchorWrapper}>
-        <LinearGradient 
-          colors={['#0B1121', '#1D1B3A']} 
-          start={{ x: 0, y: 0 }} 
-          end={{ x: 1, y: 1 }} 
+        <LinearGradient
+          colors={['#FFFFFF', '#F0F4FF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={[styles.hero, { paddingTop: insets.top + normalize(10) }]}
         >
           <View style={styles.heroTopRow}>
-            <IconButton icon="arrow-left" size={normalize(24)} iconColor="#FFFFFF" onPress={() => navigation.goBack()} />
+            <IconButton
+              icon="arrow-left"
+              size={normalize(24)}
+              iconColor="#1F2937"
+              onPress={() => navigation.goBack()}
+            />
             <Text style={styles.heroTitle}>Tinjau Foto</Text>
-            <IconButton icon="information-outline" size={normalize(24)} iconColor="#FFFFFF" onPress={() => {}} />
+            <IconButton
+              icon="information-outline"
+              size={normalize(24)}
+              iconColor="#1F2937"
+              onPress={() => {}}
+            />
           </View>
           <Text style={styles.heroSubtitle}>
             Pastikan foto tajam dan area gigi terlihat jelas sebelum analisis.
           </Text>
           <View style={styles.heroMeta}>
-              <View style={styles.metaItem}>
-                <Text style={styles.metaValue}>{images.length}</Text>
-                <Text style={styles.metaLabel}>Foto dipilih</Text>
-              </View>
-              <View style={styles.metaDivider} />
-              <View style={styles.metaItem}>
-                <MaterialCommunityIcons name="shield-check" size={normalize(20)} color="#34D399" />
-                <Text style={[styles.metaLabel, { marginTop: normalize(6) }]}>Data terenkripsi</Text>
-              </View>
+            <View style={styles.metaItem}>
+              <Text style={styles.metaValue}>{images.length}</Text>
+              <Text style={styles.metaLabel}>Foto dipilih</Text>
+            </View>
+            <View style={styles.metaDivider} />
+            <View style={styles.metaItem}>
+              <MaterialCommunityIcons
+                name="shield-check"
+                size={normalize(20)}
+                color="#10B981"
+              />
+              <Text style={[styles.metaLabel, { marginTop: normalize(6) }]}>
+                Data terenkripsi
+              </Text>
+            </View>
           </View>
         </LinearGradient>
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingTop: headerHeight + normalize(10), paddingBottom: normalize(140) }}
+        contentContainerStyle={{
+          paddingTop: headerHeight + normalize(10),
+          paddingBottom: normalize(140),
+        }}
         showsVerticalScrollIndicator={false}
       >
         {images[selectedIndex] && (
           <View style={styles.imageCard}>
-            <Image source={{ uri: images[selectedIndex].uri }} style={styles.mainImage} resizeMode="cover" />
+            <Image
+              source={{ uri: images[selectedIndex].uri }}
+              style={styles.mainImage}
+              resizeMode="cover"
+            />
             <View style={styles.imageOverlay}>
               <View style={styles.overlayBadge}>
-                <MaterialCommunityIcons name="brightness-6" size={normalize(16)} color="#FFFFFF" />
+                <MaterialCommunityIcons
+                  name="brightness-6"
+                  size={normalize(16)}
+                  color="#FFFFFF"
+                />
                 <Text style={styles.overlayText}>Pencahayaan baik</Text>
               </View>
               <Text style={styles.overlayFilename} numberOfLines={1}>
-                {images[selectedIndex]?.fileName || 'Foto yang diambil'}
+                {images[selectedIndex].fileName || 'Foto yang diambil'}
               </Text>
             </View>
           </View>
         )}
 
         {images.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnailList}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.thumbnailList}
+          >
             {images.map((image, index) => (
-              <View key={`${image.uri}-${index}`} style={styles.thumbnailWrapper}>
+              <View key={image.uri + '-' + index} style={styles.thumbnailWrapper}>
                 <Image
                   source={{ uri: image.uri }}
-                  style={[styles.thumbnail, selectedIndex === index && styles.thumbnailActive]}
+                  style={[
+                    styles.thumbnail,
+                    selectedIndex === index && styles.thumbnailActive,
+                  ]}
                   onTouchEnd={() => setSelectedIndex(index)}
                 />
                 <IconButton
@@ -129,26 +285,64 @@ const ImagePreviewScreen = ({ route, navigation }) => {
 
         <View style={styles.infoSection}>
           <Text style={styles.infoTitle}>Checklist sebelum analisis</Text>
-          <Chip icon="check" style={styles.infoChip} textStyle={{fontSize: normalize(12)}}>
+          <Chip
+            icon="check"
+            style={styles.infoChip}
+            textStyle={{ fontSize: normalize(12) }}
+          >
             Area gigi depan dan samping terlihat
           </Chip>
-          <Chip icon="check" style={styles.infoChip} textStyle={{fontSize: normalize(12)}}>
+          <Chip
+            icon="check"
+            style={styles.infoChip}
+            textStyle={{ fontSize: normalize(12) }}
+          >
             Minimal 3 foto dengan sudut berbeda
           </Chip>
-          <Chip icon="check" style={styles.infoChip} textStyle={{fontSize: normalize(12)}}>
+          <Chip
+            icon="check"
+            style={styles.infoChip}
+            textStyle={{ fontSize: normalize(12) }}
+          >
             Tidak ada filter atau efek
           </Chip>
         </View>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + normalize(20) }]}>
-        <Button mode="outlined" style={{ flex: 1, marginRight: normalize(12) }} onPress={handleRetake} labelStyle={{fontSize: normalize(14)}}>
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: insets.bottom + normalize(20) },
+        ]}
+      >
+        <Button
+          mode="outlined"
+          style={{ flex: 1, marginRight: normalize(12) }}
+          onPress={handleRetake}
+          labelStyle={{ fontSize: normalize(14) }}
+          disabled={isCreatingSession}
+        >
           Ambil ulang
         </Button>
-        <Button mode="contained" icon="brain" style={{ flex: 1 }} onPress={handleAnalyze} disabled={!images.length} labelStyle={{fontSize: normalize(14)}}>
-          Analisis sekarang
+        <Button
+          mode="contained"
+          icon="brain"
+          style={{ flex: 1 }}
+          onPress={handleAnalyze}
+          disabled={!images.length || isCreatingSession}
+          loading={isCreatingSession}
+          labelStyle={{ fontSize: normalize(14) }}
+        >
+          {isCreatingSession ? 'Memulai...' : 'Analisis sekarang'}
         </Button>
       </View>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };
@@ -174,12 +368,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   heroTitle: {
-    color: '#FFFFFF',
+    color: '#1F2937',
     fontSize: normalize(18),
     fontWeight: '700',
   },
   heroSubtitle: {
-    color: 'rgba(255,255,255,0.8)',
+    color: '#6B7280',
     marginTop: normalize(12),
     lineHeight: normalize(20),
     fontSize: normalize(14),
@@ -187,38 +381,44 @@ const styles = StyleSheet.create({
   heroMeta: {
     flexDirection: 'row',
     marginTop: normalize(20),
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#FFFFFF',
     borderRadius: normalize(16),
     padding: normalize(16),
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
   },
   metaItem: {
     flex: 1,
   },
   metaValue: {
-    color: '#FFFFFF',
+    color: '#7C3AED',
     fontSize: normalize(20),
     fontWeight: '700',
   },
   metaLabel: {
-    color: 'rgba(255,255,255,0.8)',
+    color: '#6B7280',
     fontSize: normalize(12),
   },
   metaDivider: {
     width: 1,
     height: normalize(32),
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: '#E5E7EB',
     marginHorizontal: normalize(12),
   },
   imageCard: {
     marginHorizontal: normalize(20),
     borderRadius: normalize(28),
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: normalize(14) },
-    shadowRadius: normalize(24),
-    elevation: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 4,
   },
   mainImage: {
     width: SCREEN_WIDTH - normalize(40),
@@ -281,15 +481,15 @@ const styles = StyleSheet.create({
     paddingTop: normalize(12),
   },
   infoTitle: {
-    color: '#E2E8F0',
+    color: '#1F2937',
     fontWeight: '700',
     marginBottom: normalize(10),
     fontSize: normalize(14),
   },
   infoChip: {
     marginBottom: normalize(10),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#F0F4FF',
+    borderColor: '#E0E7FF',
   },
   bottomBar: {
     position: 'absolute',
@@ -298,9 +498,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     padding: normalize(20),
-    backgroundColor: 'rgba(5,9,20,0.95)',
-    borderTopLeftRadius: normalize(24),
-    borderTopRightRadius: normalize(24),
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: -2 },
+    shadowRadius: 8,
+    elevation: 4,
   },
 });
 

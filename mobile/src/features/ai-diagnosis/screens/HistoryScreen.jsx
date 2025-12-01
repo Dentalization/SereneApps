@@ -5,17 +5,19 @@ import {
   StatusBar, 
   Dimensions, 
   Platform, 
-  PixelRatio 
+  PixelRatio,
+  RefreshControl,
+  Alert,
 } from 'react-native';
-import { Text, Button, Chip, useTheme } from 'react-native-paper';
+import { Text, Button, Chip, useTheme, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-// 1. IMPORT PENTING
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import EmptyState from '../../../components/shared/EmptyState';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import { listSessions, getSession, deleteSession } from '../../../services/aiDiagnosisService';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -35,12 +37,126 @@ const HistoryScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
-  // 2. DEFINISI INSETS
   const insets = useSafeAreaInsets();
   
-  const historyItems = route.params?.history ?? [];
-  const completedThisMonth = historyItems.filter((item) => item.status === 'completed').length;
+  const [historyItems, setHistoryItems] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(220);
+
+  // Fetch sessions on mount and when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchSessions();
+    }, [])
+  );
+
+  const fetchSessions = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      const response = await listSessions();
+      
+      if (response.success && response.data?.sessions) {
+        // Parse sessions into history items
+        const items = response.data.sessions.map(session => {
+          const sessionIdentifier = session.session_id || session.id;
+          const createdDate = new Date(session.created_at);
+          const formattedDate = createdDate.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          });
+
+          // Count findings from session messages
+          const messageCount = session.message_count || 0;
+          const findingsText = messageCount > 0 
+            ? `${messageCount} pesan dalam sesi`
+            : 'Belum ada analisis';
+
+          return {
+            id: sessionIdentifier,
+            title: `Scan ${formattedDate}`,
+            date: formattedDate,
+            status: messageCount > 0 ? 'completed' : 'draft',
+            findings: findingsText,
+            sessionId: sessionIdentifier,
+            createdAt: session.created_at,
+          };
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        setHistoryItems(items);
+      } else {
+        setHistoryItems([]);
+      }
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      Alert.alert(
+        'Gagal Memuat Riwayat',
+        'Tidak dapat memuat riwayat diagnosis. Periksa koneksi internet Anda.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchSessions(true);
+  };
+
+  const handleViewDetails = async (item) => {
+    try {
+      // Fetch full session details
+      const response = await getSession(item.sessionId);
+      
+      if (response.success && response.data) {
+        // Navigate to result screen with session data
+        // For now, just show session details or navigate to a detail view
+        navigation.navigate('AIHome'); // Can be updated to a session detail screen
+      } else {
+        Alert.alert('Gagal', 'Tidak dapat memuat detail sesi.');
+      }
+    } catch (error) {
+      console.error('Error fetching session details:', error);
+      Alert.alert('Terjadi Kesalahan', 'Gagal memuat detail sesi.');
+    }
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    Alert.alert(
+      'Hapus Riwayat',
+      'Apakah Anda yakin ingin menghapus riwayat ini?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Hapus',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await deleteSession(sessionId);
+              if (response.success) {
+                // Refresh list
+                fetchSessions();
+              } else {
+                Alert.alert('Gagal', 'Tidak dapat menghapus riwayat.');
+              }
+            } catch (error) {
+              console.error('Error deleting session:', error);
+              Alert.alert('Terjadi Kesalahan', 'Gagal menghapus riwayat.');
+            }
+          },
+        },
+      ]
+    );
+  };
+  
+  const completedThisMonth = historyItems.filter((item) => item.status === 'completed').length;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -114,8 +230,23 @@ const HistoryScreen = () => {
       <ScrollView
         contentContainerStyle={{ paddingTop: headerHeight + normalize(12), paddingBottom: normalize(60), paddingHorizontal: normalize(20) }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+          />
+        }
       >
-        {historyItems.length === 0 ? (
+        {isLoading ? (
+          <View style={{ paddingVertical: normalize(40), alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={{ marginTop: normalize(12), color: '#64748B', fontSize: normalize(14) }}>
+              Memuat riwayat...
+            </Text>
+          </View>
+        ) : historyItems.length === 0 ? (
           <EmptyState
             icon="history"
             title="Belum ada riwayat"
@@ -160,14 +291,19 @@ const HistoryScreen = () => {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: normalize(10) }}>
                 <Button
                   mode="text"
-                  onPress={() => item.result && navigation.navigate('Result', { result: item.result })}
-                  disabled={!item.result}
+                  onPress={() => handleViewDetails(item)}
                   labelStyle={{ fontSize: normalize(13) }}
                 >
                   Lihat detail
                 </Button>
-                <Button mode="outlined" compact icon="share-variant" labelStyle={{ fontSize: normalize(13) }}>
-                  Bagikan
+                <Button 
+                  mode="outlined" 
+                  compact 
+                  icon="delete-outline" 
+                  labelStyle={{ fontSize: normalize(13) }}
+                  onPress={() => handleDeleteSession(item.sessionId)}
+                >
+                  Hapus
                 </Button>
               </View>
             </View>

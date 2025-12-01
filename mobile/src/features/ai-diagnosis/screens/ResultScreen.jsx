@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, StatusBar, StyleSheet, Dimensions, Platform, PixelRatio } from 'react-native';
+import { View, ScrollView, StatusBar, StyleSheet, Dimensions, Platform, PixelRatio, Image } from 'react-native';
 import { Text, Card, Button, useTheme, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
@@ -34,10 +34,57 @@ const RISK_GRADIENTS = {
 const ResultScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { result } = route.params;
+  const { sessionId, analysisData, images } = route.params;
   const { authLevel } = useSelector((state) => state.auth);
   const [showAuthGuard, setShowAuthGuard] = React.useState(false);
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(320);
+
+  // Parse analysis data from API
+  const parseAnalysisData = () => {
+    if (!analysisData) {
+      return {
+        riskLevel: 'low',
+        confidence: 0.5,
+        findings: [],
+        recommendations: [],
+        annotatedImage: null,
+      };
+    }
+
+    // Extract findings with marks [1], [2], etc.
+    const findings = analysisData.findings || [];
+    
+    // Determine risk level based on findings
+    let riskLevel = 'low';
+    if (findings.some(f => f.severity === 'high' || f.severity === 'critical')) {
+      riskLevel = 'high';
+    } else if (findings.some(f => f.severity === 'medium')) {
+      riskLevel = 'medium';
+    }
+
+    // Calculate average confidence
+    const avgConfidence = findings.length > 0
+      ? findings.reduce((sum, f) => sum + (f.confidence || 0), 0) / findings.length
+      : 0.5;
+
+    return {
+      riskLevel,
+      confidence: avgConfidence,
+      findings: findings.map((f, idx) => ({
+        id: f.id || idx + 1,
+        name: f.condition || f.name || 'Kondisi tidak diketahui',
+        severity: f.severity || 'low',
+        confidence: f.confidence || 0.5,
+        location: f.location || f.area,
+        mark: f.mark || `[${idx + 1}]`,
+      })),
+      recommendations: analysisData.recommendations || [],
+      annotatedImage: analysisData.annotated_image_base64 || null,
+      summary: analysisData.summary || analysisData.overall_assessment,
+    };
+  };
+
+  const result = parseAnalysisData();
 
   const handleBookAppointment = () => {
     if (authLevel === AUTH_LEVELS.GUEST) {
@@ -51,8 +98,8 @@ const ResultScreen = ({ route, navigation }) => {
 
   const stats = [
     { label: 'Keyakinan analisis', value: `${Math.round(result.confidence * 100)}%` },
-    { label: 'Gigi terdampak', value: result.affectedTeeth.length },
-    { label: 'Kondisi terdeteksi', value: result.conditions.length },
+    { label: 'Temuan', value: result.findings.length },
+    { label: 'Rekomendasi', value: result.recommendations.length || 1 },
   ];
 
   return (
@@ -102,48 +149,105 @@ const ResultScreen = ({ route, navigation }) => {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text style={styles.cardTitle}>Gigi terdampak</Text>
-            <View style={styles.chipGroup}>
-              {result.affectedTeeth.map((tooth) => (
-                <Chip key={tooth} style={styles.chip} textStyle={{ fontSize: normalize(12) }}>
-                  #{tooth}
-                </Chip>
-              ))}
-            </View>
-          </Card.Content>
-        </Card>
+        {/* Annotated Image */}
+        {result.annotatedImage && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.cardTitle}>Gambar dengan Anotasi</Text>
+              <Text style={{ color: '#475569', marginBottom: normalize(12), fontSize: normalize(12) }}>
+                Area yang ditandai menunjukkan temuan AI
+              </Text>
+              <Image
+                source={{ uri: `data:image/jpeg;base64,${result.annotatedImage}` }}
+                style={styles.annotatedImage}
+                resizeMode="contain"
+              />
+            </Card.Content>
+          </Card>
+        )}
 
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text style={styles.cardTitle}>Kondisi yang terdeteksi</Text>
-            {result.conditions.map((condition, index) => (
-              <View key={condition.name} style={[styles.conditionItem, index < result.conditions.length - 1 && styles.conditionDivider]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: normalize(14) }}>{condition.name}</Text>
-                  <RiskBadge level={condition.severity} size="small" />
+        {/* Summary */}
+        {result.summary && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.cardTitle}>Ringkasan Diagnosis</Text>
+              <Text style={{ color: '#475569', lineHeight: normalize(22), fontSize: normalize(14) }}>
+                {result.summary}
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* Findings */}
+        {result.findings.length > 0 && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.cardTitle}>Temuan yang Terdeteksi</Text>
+              {result.findings.map((finding, index) => (
+                <View 
+                  key={finding.id} 
+                  style={[
+                    styles.conditionItem, 
+                    index < result.findings.length - 1 && styles.conditionDivider
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: normalize(14) }}>
+                          {finding.mark} {finding.name}
+                        </Text>
+                      </View>
+                      {finding.location && (
+                        <Text style={{ color: '#64748B', marginTop: normalize(2), fontSize: normalize(12) }}>
+                          Lokasi: {finding.location}
+                        </Text>
+                      )}
+                    </View>
+                    <RiskBadge level={finding.severity} size="small" />
+                  </View>
+                  <Text style={{ color: '#475569', marginTop: normalize(4), fontSize: normalize(12) }}>
+                    Keyakinan {Math.round(finding.confidence * 100)}%
+                  </Text>
                 </View>
-                <Text style={{ color: '#475569', marginTop: normalize(4), fontSize: normalize(12) }}>Keyakinan {Math.round(condition.confidence * 100)}%</Text>
-              </View>
-            ))}
-          </Card.Content>
-        </Card>
+              ))}
+            </Card.Content>
+          </Card>
+        )}
 
+        {/* Recommendations */}
         <Card style={styles.card}>
           <Card.Content>
             <Text style={styles.cardTitle}>Rekomendasi</Text>
-            <Text style={{ color: '#475569', lineHeight: normalize(22), fontSize: normalize(14) }}>
-              Mohon jadwalkan konsultasi dalam 7 hari untuk pemeriksaan manual. Dokter dapat
-              mengevaluasi kondisi gusi, melakukan scaling, ataupun tindakan lanjutan sesuai hasil
-              fisik.
-            </Text>
+            {result.recommendations.length > 0 ? (
+              result.recommendations.map((rec, idx) => (
+                <View key={idx} style={{ marginBottom: normalize(12) }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                    <MaterialCommunityIcons 
+                      name="checkbox-marked-circle" 
+                      size={normalize(18)} 
+                      color="#34D399" 
+                      style={{ marginRight: normalize(8), marginTop: normalize(2) }}
+                    />
+                    <Text style={{ color: '#475569', lineHeight: normalize(22), fontSize: normalize(14), flex: 1 }}>
+                      {rec}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: '#475569', lineHeight: normalize(22), fontSize: normalize(14) }}>
+                Mohon jadwalkan konsultasi dalam 7 hari untuk pemeriksaan manual. Dokter dapat
+                mengevaluasi kondisi gusi, melakukan scaling, ataupun tindakan lanjutan sesuai hasil
+                fisik.
+              </Text>
+            )}
             <View style={styles.recommendationChips}>
               <Chip icon="calendar-clock" style={styles.recommendationChip} textStyle={{ fontSize: normalize(12) }}>
                 Kontrol berkala
               </Chip>
               <Chip icon="tooth-outline" style={styles.recommendationChip} textStyle={{ fontSize: normalize(12) }}>
-                Pembersihan profesional
+                Pemeriksaan profesional
               </Chip>
             </View>
           </Card.Content>
@@ -304,6 +408,12 @@ const styles = StyleSheet.create({
     marginTop: normalize(16),
   },
   recommendationChip: {
+    backgroundColor: '#F1F5F9',
+  },
+  annotatedImage: {
+    width: '100%',
+    height: SCREEN_WIDTH - normalize(80),
+    borderRadius: normalize(16),
     backgroundColor: '#F1F5F9',
   },
   bottomBar: {
