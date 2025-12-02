@@ -111,21 +111,10 @@ const HistoryScreen = () => {
   };
 
   const handleViewDetails = async (item) => {
-    try {
-      // Fetch full session details
-      const response = await getSession(item.sessionId);
-      
-      if (response.success && response.data) {
-        // Navigate to result screen with session data
-        // For now, just show session details or navigate to a detail view
-        navigation.navigate('AIHome'); // Can be updated to a session detail screen
-      } else {
-        Alert.alert('Gagal', 'Tidak dapat memuat detail sesi.');
-      }
-    } catch (error) {
-      console.error('Error fetching session details:', error);
-      Alert.alert('Terjadi Kesalahan', 'Gagal memuat detail sesi.');
-    }
+    // Navigate to detail history screen
+    navigation.navigate('DetailHistory', {
+      sessionId: item.sessionId,
+    });
   };
 
   const handleDeleteSession = async (sessionId) => {
