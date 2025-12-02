@@ -398,7 +398,10 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
   try {
     const formData = new FormData();
     
-    formData.append('message', message);
+    // Ensure message is always a valid string
+    const messageText = typeof message === 'string' && message.trim() ? message.trim() : 'Ini foto gigi saya.';
+    
+    formData.append('message', messageText);
     formData.append('session_id', sessionId);
     formData.append('role', 'patient');
     formData.append('language', 'bilingual');

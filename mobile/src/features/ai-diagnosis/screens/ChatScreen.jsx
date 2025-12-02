@@ -176,16 +176,21 @@ const ChatScreen = ({ route, navigation }) => {
       return;
     }
 
+    // Get message text with fallback
+    const messageText = inputText.trim() || (selectedImages.length > 0 ? 'Ini foto gigi saya.' : '');
+    
+    // Don't send if both are empty
+    if (!messageText && selectedImages.length === 0) return;
+
     const userMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputText,
+      content: messageText,
       images: selectedImages.length > 0 ? selectedImages : undefined,
       timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const messageText = inputText.trim() || 'Ini foto gigi saya.';
     setInputText('');
     const imagesToSend = [...selectedImages];
     setSelectedImages([]);
@@ -363,7 +368,7 @@ const ChatScreen = ({ route, navigation }) => {
               styles.messageText,
               message.role === 'user' ? styles.userText : styles.aiText,
             ]}>
-              {message.content}
+              {message.content.replace(/\*\*/g, '').replace(/\*/g, '•')}
             </Text>
             
             {message.hasAnalysisOption && (
