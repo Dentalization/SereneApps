@@ -71,7 +71,7 @@ export const API_CONFIG = {
   
   // Timeouts
   TIMEOUT: 30000, // 30 seconds
-  AI_TIMEOUT: 180000, // 180 seconds (3 minutes) for AI processing - increased for cloud API
+  AI_TIMEOUT: 240000, // 240 seconds (4 minutes) for AI processing - increased for cloud API with cold start
 };
 
 // Export individual configs for convenience

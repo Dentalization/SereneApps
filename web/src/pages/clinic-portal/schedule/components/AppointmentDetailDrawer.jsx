@@ -3,6 +3,29 @@ import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 
+// Inject animation keyframes (only once)
+if (typeof document !== 'undefined' && !document.getElementById('modal-animations')) {
+  const style = document.createElement('style');
+  style.id = 'modal-animations';
+  style.textContent = `
+    @keyframes modalSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes backdropFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onAction }) => {
   if (!isOpen || !appointment) return null;
 
@@ -69,14 +92,18 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onAction }) => 
   const channelInfo = getChannelInfo(appointment.channel);
 
   return (
-    <ModalPortal>
+    <ModalPortal disableScroll={false}>
+      {/* Backdrop - Fixed position, always centered in viewport */}
       <div
         className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
         onClick={onClose}
+        style={{ animation: 'backdropFadeIn 0.2s ease-out' }}
       >
+        {/* Modal Content - Centered in viewport, scrollable content */}
         <div
           className="relative w-full max-w-3xl max-h-[90vh] bg-surface-elevated rounded-3xl border border-primary/20 shadow-2xl overflow-y-auto flex flex-col"
           onClick={(e) => e.stopPropagation()}
+          style={{ animation: 'modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
           {/* Header */}
           <div className="p-6 border-b border-primary/20 bg-surface rounded-t-3xl theme-transition">

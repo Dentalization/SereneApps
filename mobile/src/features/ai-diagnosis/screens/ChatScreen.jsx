@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { sendChatMessage, sendChatWithImages } from '../../../services/aiDiagnosisService';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
+import { compressImages } from '../../../utils/imageCompression';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -195,14 +196,52 @@ const ChatScreen = ({ route, navigation }) => {
     const imagesToSend = [...selectedImages];
     setSelectedImages([]);
     setIsSending(true);
+    
+    // Show analysis in progress message for images
+    if (imagesToSend.length > 0) {
+      const processingMessage = {
+        id: 'processing_' + Date.now(),
+        role: 'system',
+        content: '🔄 Mengompres gambar untuk upload lebih cepat...',
+        timestamp: new Date().toISOString(),
+        isProcessing: true,
+      };
+      setMessages(prev => [...prev, processingMessage]);
+    }
 
     try {
       let response;
+      let compressedImages = imagesToSend;
+      
+      // Compress images before upload
+      if (imagesToSend.length > 0) {
+        try {
+          const compressionResults = await compressImages(imagesToSend, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+          });
+          compressedImages = compressionResults.map(r => r.uri);
+          
+          // Update processing message
+          setMessages(prev => prev.map(msg => 
+            msg.isProcessing 
+              ? { ...msg, content: '🔄 Sedang mengirim gambar ke AI untuk analisis...' }
+              : msg
+          ));
+        } catch (compressionError) {
+          console.warn('⚠️ Image compression failed, using original:', compressionError);
+          // Continue with original images if compression fails
+        }
+      }
       
       // Use appropriate endpoint based on whether images are included
-      if (imagesToSend.length > 0) {
+      if (compressedImages.length > 0) {
         // Use /chat/upload for images (multipart) - always provide valid message text
-        response = await sendChatWithImages(messageText, sessionId, imagesToSend);
+        response = await sendChatWithImages(messageText, sessionId, compressedImages);
+        
+        // Remove processing message after getting response
+        setMessages(prev => prev.filter(msg => !msg.isProcessing));
         
         // If this is pre-analysis mode, offer to proceed with analysis
         if (mode === 'pre-analysis' && response.success) {
@@ -239,7 +278,25 @@ const ChatScreen = ({ route, navigation }) => {
       }
 
       if (!response.success) {
-        showToast('Gagal mengirim pesan. Coba lagi.', 'error');
+        // Remove processing message
+        setMessages(prev => prev.filter(msg => !msg.isProcessing));
+        
+        // Show specific error message from service
+        const errorMsg = response.error || 'Gagal mengirim pesan. Coba lagi.';
+        showToast(errorMsg, 'error');
+        
+        // If 504 timeout, show retry suggestion with more context
+        if (response.statusCode === 504) {
+          const systemMessage = {
+            id: Date.now().toString() + '_system',
+            role: 'system',
+            content: compressedImages.length > 0 
+              ? '⚠️ Server AI sedang memproses banyak request. Mohon tunggu 2-3 menit sebelum mencoba lagi.\n\nℹ️ Gambar sudah dikompres untuk mempercepat proses.'
+              : '⚠️ Server sedang sibuk. Mohon tunggu 1-2 menit sebelum mengirim pesan lagi.',
+            timestamp: new Date().toISOString(),
+          };
+          setMessages(prev => [...prev, systemMessage]);
+        }
       }
       
       // Auto scroll to bottom
@@ -247,7 +304,20 @@ const ChatScreen = ({ route, navigation }) => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     } catch (error) {
-      showToast('Terjadi kesalahan saat mengirim pesan', 'error');
+      // Remove processing message
+      setMessages(prev => prev.filter(msg => !msg.isProcessing));
+      
+      const errorMsg = error.message || 'Terjadi kesalahan saat mengirim pesan';
+      showToast(errorMsg, 'error');
+      
+      // Add error message to chat
+      const errorMessage = {
+        id: Date.now().toString() + '_error',
+        role: 'system',
+        content: '❌ Pesan gagal terkirim. Coba lagi dalam beberapa saat.',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsSending(false);
     }
@@ -319,7 +389,9 @@ const ChatScreen = ({ route, navigation }) => {
             key={message.id}
             style={[
               styles.messageBubble,
-              message.role === 'user' ? styles.userBubble : styles.aiBubble,
+              message.role === 'user' ? styles.userBubble : 
+              message.role === 'system' ? styles.systemBubble :
+              styles.aiBubble,
             ]}
           >
             {message.role === 'assistant' && (
@@ -327,6 +399,14 @@ const ChatScreen = ({ route, navigation }) => {
                 name="robot-outline"
                 size={normalize(20)}
                 color="#7C3AED"
+                style={styles.aiIcon}
+              />
+            )}
+            {message.role === 'system' && (
+              <MaterialCommunityIcons
+                name="information-outline"
+                size={normalize(18)}
+                color="#F59E0B"
                 style={styles.aiIcon}
               />
             )}
@@ -366,7 +446,9 @@ const ChatScreen = ({ route, navigation }) => {
             
             <Text style={[
               styles.messageText,
-              message.role === 'user' ? styles.userText : styles.aiText,
+              message.role === 'user' ? styles.userText : 
+              message.role === 'system' ? styles.systemText :
+              styles.aiText,
             ]}>
               {message.content.replace(/\*\*/g, '').replace(/\*/g, '•')}
             </Text>
@@ -521,6 +603,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  systemBubble: {
+    alignSelf: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: normalize(16),
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    maxWidth: '85%',
+  },
   aiIcon: {
     marginBottom: normalize(6),
   },
@@ -533,6 +623,12 @@ const styles = StyleSheet.create({
   },
   aiText: {
     color: '#1F2937',
+  },
+  systemText: {
+    color: '#92400E',
+    fontSize: normalize(13),
+    fontWeight: '500',
+    textAlign: 'center',
   },
   messageTime: {
     fontSize: normalize(10),

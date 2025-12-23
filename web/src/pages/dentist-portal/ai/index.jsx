@@ -1,10 +1,26 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import Icon from '../../../components/AppIcon';
 import SideBar from '../ui/SideBar';
 
 const MIN_BOOT_MS = 900;
+
+// Severity color mapping
+const SEVERITY_COLORS = {
+  minimal: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  mild: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  moderate: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  severe: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+};
+
+// Confidence badge colors
+const CONFIDENCE_COLORS = {
+  low: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  medium: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+  high: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
+};
 
 const AIAnalysisPage = () => {
   const { t } = useLanguage();
@@ -21,15 +37,32 @@ const AIAnalysisPage = () => {
   const [systemHealth, setSystemHealth] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [showSessionHistory, setShowSessionHistory] = useState(false);
+  const [userPreferences, setUserPreferences] = useState({ role: 'dentist', language: 'bilingual' });
+  const [annotatedImageModal, setAnnotatedImageModal] = useState(null);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
 
   // Refs
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const bootstrapTimerRef = useRef(null);
 
-  // API configuration - using production Serene AI API
+  // API configuration - DeepDental API
   const API_BASE_URL = import.meta.env.VITE_SERENE_AI_API_BASE_URL || 'https://api.dentalization.id';
   const API_VERSION = import.meta.env.VITE_SERENE_AI_API_VERSION || 'v1';
+  const API_KEY = import.meta.env.VITE_DEEPDENTAL_API_KEY || '';
+
+  // Common headers for all API calls
+  const getHeaders = useCallback((contentType = 'application/json') => {
+    const headers = {
+      'X-API-Key': API_KEY,
+    };
+    if (contentType) {
+      headers['Content-Type'] = contentType;
+    }
+    return headers;
+  }, [API_KEY]);
 
   // Initialize session on component mount
   useEffect(() => {
@@ -37,7 +70,12 @@ const AIAnalysisPage = () => {
     const start = Date.now();
     const initialize = async () => {
       try {
-        await Promise.all([checkSystemHealth(), createSession()]);
+        await Promise.all([
+          checkSystemHealth(),
+          createSession(),
+          fetchUserPreferences(),
+          fetchSessionHistory(),
+        ]);
       } finally {
         const finalize = () => {
           if (isMounted) {
@@ -73,6 +111,110 @@ const AIAnalysisPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Fetch user preferences from API
+  const fetchUserPreferences = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/users/me`, {
+        headers: getHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserPreferences({
+          role: data.default_role || 'dentist',
+          language: data.language_preference || 'bilingual',
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user preferences:', error);
+    }
+  };
+
+  // Update user preferences
+  const updateUserPreferences = async (prefs) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/users/me/preferences`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          default_role: prefs.role,
+          language_preference: prefs.language,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserPreferences({
+          role: data.default_role,
+          language: data.language_preference,
+        });
+      }
+    } catch (error) {
+      console.error('Error updating preferences:', error);
+    }
+  };
+
+  // Fetch session history
+  const fetchSessionHistory = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/sessions?page=1&per_page=10`, {
+        headers: getHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSessionHistory(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Error fetching session history:', error);
+    }
+  };
+
+  // Load a previous session
+  const loadSession = async (session) => {
+    try {
+      setSessionId(session.id);
+      setShowSessionHistory(false);
+      
+      // Fetch messages for this session
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/sessions/${session.id}/messages`, {
+        headers: getHeaders(),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const formattedMessages = data.messages.map(msg => ({
+          id: msg.id,
+          type: msg.role === 'user' ? 'user' : 'ai',
+          content: msg.content,
+          timestamp: msg.created_at,
+          images: msg.images,
+          sources: msg.sources,
+          visualFindings: msg.visual_findings,
+        }));
+        setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error('Error loading session:', error);
+    }
+  };
+
+  // Delete a session
+  const deleteSession = async (sessionIdToDelete) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/sessions/${sessionIdToDelete}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      
+      if (response.ok) {
+        setSessionHistory(prev => prev.filter(s => s.id !== sessionIdToDelete));
+        if (sessionId === sessionIdToDelete) {
+          await createSession();
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+    }
+  };
+
   // Check system health
   const checkSystemHealth = async () => {
     try {
@@ -81,23 +223,30 @@ const AIAnalysisPage = () => {
       const data = await response.json();
       setSystemHealth(data);
       
-      if (data.status === 'success') {
+      if (data.status === 'healthy') {
         const systemMessage = {
           id: Date.now(),
           type: 'system',
-          content: '🤖 Serene AI is online and ready to help with your dental analysis!',
+          content: '🤖 DeepDental AI siap membantu diagnosis dental Anda!',
           timestamp: new Date().toISOString(),
         };
         setMessages(prev => [...prev, systemMessage]);
         
-        if (data.dependencies && !data.dependencies.agent) {
-          const warningMessage = {
-            id: Date.now() + 1,
-            type: 'system',
-            content: '⚠️ AI Agent is offline - some features may be limited.',
-            timestamp: new Date().toISOString(),
-          };
-          setMessages(prev => [...prev, warningMessage]);
+        // Check component status
+        if (data.components) {
+          const offlineComponents = Object.entries(data.components)
+            .filter(([, comp]) => comp.status !== 'up')
+            .map(([name]) => name);
+          
+          if (offlineComponents.length > 0) {
+            const warningMessage = {
+              id: Date.now() + 1,
+              type: 'system',
+              content: `⚠️ Beberapa komponen offline: ${offlineComponents.join(', ')}`,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, warningMessage]);
+          }
         }
       }
     } catch (error) {
@@ -106,7 +255,7 @@ const AIAnalysisPage = () => {
       const errorMessage = {
         id: Date.now(),
         type: 'system',
-        content: `⚠️ Unable to connect to Serene AI backend. Please check if the server is running.`,
+        content: `⚠️ Tidak dapat terhubung ke DeepDental AI. Silakan periksa koneksi.`,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -118,19 +267,23 @@ const AIAnalysisPage = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/sessions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
+        body: JSON.stringify({
+          role: userPreferences.role,
+          language: userPreferences.language,
+          metadata: {
+            clinic_id: user?.clinicId,
+            dentist_name: user?.name,
+          },
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        if (data.status === 'success') {
-          setSessionId(data.session.id);
-          console.log('Session created:', data.session.id);
-        } else {
-          throw new Error(data.message || 'Failed to create session');
-        }
+        setSessionId(data.id);
+        console.log('Session created:', data.id);
+        // Refresh session history
+        await fetchSessionHistory();
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -139,46 +292,128 @@ const AIAnalysisPage = () => {
     }
   };
 
-  // Upload image to AI service
+  // Convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+    });
+  };
+
+  // Upload image and get base64
   const uploadImage = async (file) => {
     try {
       setIsUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/images`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.status !== 'success') {
-        throw new Error(data.message || 'Upload failed');
-      }
-
+      
+      const base64Data = await fileToBase64(file);
+      
       const imageData = {
-        id: data.image.id,
+        id: `img_${Date.now()}`,
         name: file.name,
         url: URL.createObjectURL(file),
+        base64: base64Data,
         uploadTime: new Date().toISOString(),
+        file: file,
       };
 
       setUploadedImages(prev => [imageData, ...prev]);
       setSelectedImage(imageData);
       return imageData;
     } catch (error) {
-      console.error('Error uploading image:', error);
+      console.error('Error processing image:', error);
       return null;
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Send message to AI agent
+  // Analyze image only (without chat) - POST /api/v1/images/analyze
+  const analyzeImage = async (imageData, context = '') => {
+    try {
+      setIsAnalyzingImage(true);
+      
+      const formData = new FormData();
+      formData.append('image', imageData.file);
+      formData.append('context', context);
+      formData.append('role', userPreferences.role);
+      formData.append('include_annotated', 'true');
+
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/images/analyze`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+      return null;
+    } finally {
+      setIsAnalyzingImage(false);
+    }
+  };
+
+  // Quick detect only (YOLO) - POST /api/v1/images/detect
+  const detectImage = async (imageData) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', imageData.file);
+      formData.append('include_annotated', 'true');
+
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/images/detect`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch (error) {
+      console.error('Error detecting:', error);
+      return null;
+    }
+  };
+
+  // Query knowledge base - POST /api/v1/knowledge/query
+  const queryKnowledge = async (question) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/knowledge/query`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          question,
+          role: userPreferences.role,
+          k: 4,
+        }),
+      });
+
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch (error) {
+      console.error('Error querying knowledge:', error);
+      return null;
+    }
+  };
+
+  // Send message to AI - POST /api/v1/chat
   const sendMessage = async (message, image = null) => {
     if (!sessionId || (!message.trim() && !image)) return;
 
@@ -195,49 +430,113 @@ const AIAnalysisPage = () => {
       };
       setMessages(prev => [...prev, userMessage]);
 
+      // Build request body according to API spec
       const requestBody = {
         message: message,
-        ...(image?.id && { image_id: image.id }),
+        session_id: sessionId,
+        role: userPreferences.role,
+        language: userPreferences.language,
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/chat?session_id=${sessionId}`, {
+      // Add images if present (base64 encoded)
+      if (image?.base64) {
+        requestBody.images = [{
+          data: image.base64,
+          filename: image.name,
+        }];
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
         body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('💬 Chat response data:', data);
+        console.log('💬 Chat response:', data);
         
-        if (data.status === 'success') {
-          // Add AI response to chat
-          const aiMessage = {
-            id: Date.now() + 1,
-            type: 'ai',
-            content: data.assistant_message?.content || data.message,
-            timestamp: new Date().toISOString(),
-            analysis: data.analysis,
-            resources: data.resources || [],
-          };
-          setMessages(prev => [...prev, aiMessage]);
-        } else {
-          throw new Error(data.message || 'Chat request failed');
-        }
+        // Build AI message with all response data
+        const aiMessage = {
+          id: data.message_id || Date.now() + 1,
+          type: 'ai',
+          content: data.content,
+          timestamp: new Date().toISOString(),
+          sources: data.sources || [],
+          visualFindings: data.visual_findings,
+          suggestedQuestions: data.suggested_questions || [],
+        };
+        setMessages(prev => [...prev, aiMessage]);
       } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
       }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {
         id: Date.now() + 1,
         type: 'error',
-        content: t('ai.analysisError'),
+        content: `❌ ${error.message || t('ai.analysisError')}`,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Send message with file upload - POST /api/v1/chat/upload
+  const sendMessageWithUpload = async (message, imageFile) => {
+    if (!sessionId) return;
+
+    try {
+      setIsLoading(true);
+      
+      const formData = new FormData();
+      formData.append('message', message);
+      formData.append('session_id', sessionId);
+      formData.append('role', userPreferences.role);
+      formData.append('language', userPreferences.language);
+      if (imageFile) {
+        formData.append('images', imageFile);
+      }
+
+      // Add user message to chat
+      const userMessage = {
+        id: Date.now(),
+        type: 'user',
+        content: message,
+        timestamp: new Date().toISOString(),
+        image: imageFile ? { name: imageFile.name, url: URL.createObjectURL(imageFile) } : null,
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      const response = await fetch(`${API_BASE_URL}/api/${API_VERSION}/chat/upload`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        const aiMessage = {
+          id: data.message_id || Date.now() + 1,
+          type: 'ai',
+          content: data.content,
+          timestamp: new Date().toISOString(),
+          sources: data.sources || [],
+          visualFindings: data.visual_findings,
+          suggestedQuestions: data.suggested_questions || [],
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Error sending message with upload:', error);
     } finally {
       setIsLoading(false);
     }
@@ -250,6 +549,49 @@ const AIAnalysisPage = () => {
       sendMessage(inputMessage, selectedImage);
       setInputMessage('');
       setSelectedImage(null);
+    }
+  };
+
+  // Handle suggested question click
+  const handleSuggestedQuestion = (question) => {
+    setInputMessage(question);
+  };
+
+  // Handle quick image analysis
+  const handleQuickAnalysis = async () => {
+    if (!selectedImage) return;
+    
+    const result = await analyzeImage(selectedImage, 'Full dental analysis');
+    if (result) {
+      const analysisMessage = {
+        id: Date.now(),
+        type: 'ai',
+        content: 'Berikut hasil analisis gambar dental:',
+        timestamp: new Date().toISOString(),
+        visualFindings: result,
+        suggestedQuestions: result.suggested_questions || [],
+      };
+      setMessages(prev => [...prev, analysisMessage]);
+    }
+  };
+
+  // Handle quick detect (YOLO only)
+  const handleQuickDetect = async () => {
+    if (!selectedImage) return;
+    
+    const result = await detectImage(selectedImage);
+    if (result) {
+      const detectMessage = {
+        id: Date.now(),
+        type: 'ai',
+        content: `Deteksi selesai dalam ${result.processing_time_ms}ms. Ditemukan ${result.detections?.length || 0} temuan.`,
+        timestamp: new Date().toISOString(),
+        visualFindings: {
+          detections: result.detections,
+          annotated_image_base64: result.annotated_image_base64,
+        },
+      };
+      setMessages(prev => [...prev, detectMessage]);
     }
   };
 
@@ -283,29 +625,49 @@ const AIAnalysisPage = () => {
   // Quick action buttons for common analysis requests
   const quickActions = [
     {
-      label: t('ai.analyzeImage'),
+      label: t('ai.analyzeImage') || 'Analyze Image',
       icon: 'Search',
-      message: t('ai.analyzeImageMessage'),
+      message: t('ai.analyzeImageMessage') || 'Please analyze this dental image and identify any pathologies.',
+      action: 'chat',
     },
     {
-      label: t('ai.identifyConditions'),
+      label: t('ai.identifyConditions') || 'Identify Conditions',
       icon: 'Eye',
-      message: t('ai.identifyConditionsMessage'),
+      message: t('ai.identifyConditionsMessage') || 'What dental conditions can you identify in this image?',
+      action: 'chat',
     },
     {
-      label: t('ai.treatmentRecommendations'),
+      label: t('ai.treatmentRecommendations') || 'Treatment Plan',
       icon: 'Stethoscope',
-      message: t('ai.treatmentMessage'),
+      message: t('ai.treatmentMessage') || 'Based on your findings, what treatment options would you recommend?',
+      action: 'chat',
     },
     {
-      label: t('ai.riskAssessmentAction'),
+      label: t('ai.riskAssessmentAction') || 'Risk Assessment',
       icon: 'AlertTriangle',
-      message: t('ai.riskMessage'),
+      message: t('ai.riskMessage') || 'Please assess the risk level and urgency of treatment needed.',
+      action: 'chat',
+    },
+    {
+      label: 'Quick Detect',
+      icon: 'Zap',
+      message: '',
+      action: 'detect',
+    },
+    {
+      label: 'Full Analysis',
+      icon: 'Microscope',
+      message: '',
+      action: 'analyze',
     },
   ];
 
-  const handleQuickAction = (action) => {
-    if (selectedImage) {
+  const handleQuickAction = async (action) => {
+    if (action.action === 'detect' && selectedImage) {
+      await handleQuickDetect();
+    } else if (action.action === 'analyze' && selectedImage) {
+      await handleQuickAnalysis();
+    } else if (selectedImage) {
       sendMessage(action.message, selectedImage);
       setInputMessage('');
       setSelectedImage(null);
@@ -365,6 +727,215 @@ const AIAnalysisPage = () => {
     setUploadedImages([]);
     setSelectedImage(null);
     await createSession();
+  };
+
+  // Render Visual Findings Component
+  const VisualFindingsCard = ({ findings }) => {
+    if (!findings) return null;
+
+    return (
+      <div className="mt-4 space-y-4">
+        {/* Image Quality Badge */}
+        {findings.image_quality && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-secondary">Image Quality:</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+              findings.image_quality === 'good' ? 'bg-emerald-100 text-emerald-700' :
+              findings.image_quality === 'fair' ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {findings.image_quality}
+            </span>
+          </div>
+        )}
+
+        {/* Concern Level */}
+        {findings.concern_level && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-secondary">Concern Level:</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SEVERITY_COLORS[findings.concern_level] || SEVERITY_COLORS.moderate}`}>
+              {findings.concern_level}
+            </span>
+          </div>
+        )}
+
+        {/* Annotated Image */}
+        {findings.annotated_image_base64 && (
+          <div className="mt-3">
+            <p className="text-xs font-medium text-secondary mb-2">Annotated Image:</p>
+            <button
+              type="button"
+              onClick={() => setAnnotatedImageModal(findings.annotated_image_base64)}
+              className="relative group"
+            >
+              <img
+                src={`data:image/png;base64,${findings.annotated_image_base64}`}
+                alt="Annotated dental analysis"
+                className="max-w-full h-auto rounded-xl border border-primary/20 cursor-pointer hover:border-accent transition-colors"
+                style={{ maxHeight: '300px' }}
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-xl flex items-center justify-center transition-all">
+                <Icon name="Maximize2" size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </button>
+          </div>
+        )}
+
+        {/* Detections */}
+        {findings.detections && findings.detections.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs font-medium text-secondary mb-2">Detections ({findings.detections.length}):</p>
+            <div className="space-y-2">
+              {findings.detections.map((detection, idx) => (
+                <div key={idx} className="flex items-center gap-3 p-2 rounded-lg bg-surface border border-primary/10">
+                  <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center">
+                    {detection.mark_id || idx + 1}
+                  </span>
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-primary capitalize">{detection.label}</span>
+                    <span className="text-xs text-secondary ml-2">
+                      ({(detection.confidence * 100).toFixed(1)}% confidence)
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Detailed Findings */}
+        {findings.findings && findings.findings.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs font-medium text-secondary mb-2">Detailed Findings:</p>
+            <div className="space-y-3">
+              {findings.findings.map((finding, idx) => (
+                <div key={idx} className="p-3 rounded-xl bg-surface border border-primary/10">
+                  <div className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {finding.mark_id || idx + 1}
+                    </span>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-primary">{finding.location}</span>
+                        {finding.severity && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SEVERITY_COLORS[finding.severity]}`}>
+                            {finding.severity}
+                          </span>
+                        )}
+                        {finding.confidence && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CONFIDENCE_COLORS[finding.confidence]}`}>
+                            {finding.confidence} confidence
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-secondary">{finding.description}</p>
+                      {finding.differentials && finding.differentials.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted">Differentials:</span>
+                          {finding.differentials.map((diff, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-surface-elevated border border-primary/10 text-secondary">
+                              {diff}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recommendations */}
+        {findings.recommendations && findings.recommendations.length > 0 && (
+          <div className="mt-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-2">
+              <Icon name="Lightbulb" size={14} />
+              Recommendations
+            </p>
+            <ul className="space-y-1">
+              {findings.recommendations.map((rec, idx) => (
+                <li key={idx} className="text-sm text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                  <span className="text-blue-500">•</span>
+                  {rec}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Limitations */}
+        {findings.limitations && (
+          <div className="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+              <Icon name="AlertCircle" size={12} />
+              {findings.limitations}
+            </p>
+          </div>
+        )}
+
+        {/* Processing Time */}
+        {findings.processing_time_ms && (
+          <p className="text-xs text-muted">
+            Processing time: {findings.processing_time_ms}ms
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Render Sources/Citations Component
+  const SourcesCitations = ({ sources }) => {
+    if (!sources || sources.length === 0) return null;
+
+    return (
+      <div className="mt-4 p-3 rounded-xl bg-surface-elevated border border-primary/10">
+        <p className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+          <Icon name="BookOpen" size={14} className="text-accent" />
+          Sources & Citations
+        </p>
+        <div className="space-y-2">
+          {sources.map((source, idx) => (
+            <div key={idx} className="flex items-start gap-2 text-xs">
+              <span className="w-5 h-5 rounded-full bg-accent/10 text-accent text-xs font-bold flex items-center justify-center flex-shrink-0">
+                {source.citation_number || idx + 1}
+              </span>
+              <div className="flex-1">
+                <p className="font-medium text-primary">{source.source}</p>
+                {source.page && <p className="text-muted">Page {source.page}</p>}
+                {source.excerpt && (
+                  <p className="text-secondary italic mt-1 line-clamp-2">"{source.excerpt}"</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Suggested Questions Component
+  const SuggestedQuestions = ({ questions, onSelect }) => {
+    if (!questions || questions.length === 0) return null;
+
+    return (
+      <div className="mt-4">
+        <p className="text-xs font-medium text-secondary mb-2">Suggested follow-up questions:</p>
+        <div className="flex flex-wrap gap-2">
+          {questions.map((question, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onSelect(question)}
+              className="px-3 py-1.5 text-xs rounded-full bg-accent/10 text-accent hover:bg-accent/20 transition-colors border border-accent/20"
+            >
+              {question}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   if (bootstrapping) {
@@ -514,6 +1085,101 @@ const AIAnalysisPage = () => {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-background via-surface to-background theme-transition">
+      {/* Annotated Image Modal */}
+      {annotatedImageModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setAnnotatedImageModal(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] overflow-auto">
+            <button
+              type="button"
+              onClick={() => setAnnotatedImageModal(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            >
+              <Icon name="X" size={24} />
+            </button>
+            <img
+              src={`data:image/png;base64,${annotatedImageModal}`}
+              alt="Annotated dental analysis (full size)"
+              className="max-w-full h-auto rounded-lg"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Session History Modal */}
+      {showSessionHistory && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setShowSessionHistory(false)}
+        >
+          <div 
+            className="bg-surface-elevated rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-primary/15 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-primary">Session History</h2>
+              <button
+                type="button"
+                onClick={() => setShowSessionHistory(false)}
+                className="p-2 rounded-lg text-muted hover:text-primary hover:bg-accent/10 transition-colors"
+              >
+                <Icon name="X" size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {sessionHistory.length === 0 ? (
+                <p className="text-sm text-secondary text-center py-8">No previous sessions found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sessionHistory.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                        session.id === sessionId
+                          ? 'border-accent bg-accent/10'
+                          : 'border-primary/15 hover:border-accent/40 hover:bg-accent/5'
+                      }`}
+                      onClick={() => loadSession(session)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-primary">
+                            Session {session.id.slice(0, 8)}...
+                          </p>
+                          <p className="text-xs text-secondary">
+                            {session.message_count} messages • {formatRelativeTime(session.created_at)}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent">
+                              {session.role}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-surface border border-primary/10 text-secondary">
+                              {session.language}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSession(session.id);
+                          }}
+                          className="p-2 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <Icon name="Trash2" size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <SideBar />
       </div>
@@ -523,37 +1189,52 @@ const AIAnalysisPage = () => {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-[0.24em] text-muted">
-                {t('ai.workspaceBadge') || 'AI Workspace'}
+                {t('ai.workspaceBadge') || 'DeepDental AI • CDSS'}
               </p>
               <h1 className="text-3xl font-semibold text-primary theme-transition">
                 {t('ai.title')}
               </h1>
               <p className="text-sm text-secondary max-w-2xl">
-                {t('ai.subtitle') || 'Collaborate with Serene AI to interpret diagnostics, craft treatment plans, and keep every patient session documented.'}
+                {t('ai.subtitle') || 'AI-powered dental diagnosis assistant dengan computer vision dan clinical decision support.'}
               </p>
-              <p className="text-xs text-muted">
-                Session owner:&nbsp;
-                <span className="font-semibold text-primary">
-                  {user?.name || 'Your team'}
+              <div className="flex items-center gap-4 text-xs text-muted">
+                <span>
+                  Session: <span className="font-mono text-primary">{sessionId?.slice(0, 8) || '—'}...</span>
                 </span>
-              </p>
+                <span>•</span>
+                <span>
+                  Role: <span className="font-semibold text-accent capitalize">{userPreferences.role}</span>
+                </span>
+                <span>•</span>
+                <span>
+                  {user?.name || 'Dentist'}
+                </span>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSessionHistory(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:border-accent/40 hover:text-accent transition-colors duration-200"
+              >
+                <Icon name="History" size={16} />
+                <span>History</span>
+              </button>
               <button
                 type="button"
                 onClick={checkSystemHealth}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:border-accent/40 hover:text-accent transition-colors duration-200"
               >
                 <Icon name="Activity" size={16} />
-                <span>{t('ai.checkHealth') || 'Run health check'}</span>
+                <span>{t('ai.checkHealth') || 'Health Check'}</span>
               </button>
               <button
                 type="button"
                 onClick={handleNewSession}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-colors duration-200"
               >
-                <Icon name="RotateCcw" size={16} />
-                <span>{t('ai.newSession') || 'Start new session'}</span>
+                <Icon name="Plus" size={16} />
+                <span>{t('ai.newSession') || 'New Session'}</span>
               </button>
             </div>
           </div>
@@ -563,14 +1244,15 @@ const AIAnalysisPage = () => {
           <div className="px-6 py-6 space-y-6">
             <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
               <aside className="space-y-6">
+                {/* Quick Actions Panel */}
                 <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        Quick prompts
+                        Quick Actions
                       </h2>
                       <p className="text-xs text-secondary">
-                        Use structured starters to guide the copilot.
+                        {selectedImage ? 'Select action for attached image' : 'Structured prompts for analysis'}
                       </p>
                     </div>
                     <div className="p-2 rounded-lg bg-accent/10 text-accent">
@@ -578,12 +1260,13 @@ const AIAnalysisPage = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {quickActions.map((action, index) => (
+                    {quickActions.filter(a => a.action === 'chat').map((action, index) => (
                       <button
                         key={index}
                         type="button"
                         onClick={() => handleQuickAction(action)}
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-primary/15 text-left bg-surface hover:border-accent/40 hover:bg-accent/5 transition-all duration-200"
+                        disabled={isLoading}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-primary/15 text-left bg-surface hover:border-accent/40 hover:bg-accent/5 transition-all duration-200 disabled:opacity-50"
                       >
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-accent/10 text-accent">
@@ -597,14 +1280,48 @@ const AIAnalysisPage = () => {
                   </div>
                 </div>
 
+                {/* Knowledge Query Panel */}
                 <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        Uploaded assets
+                        Knowledge Base
                       </h2>
                       <p className="text-xs text-secondary">
-                        Select an image to attach with your next prompt.
+                        Query dental knowledge directly
+                      </p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                      <Icon name="BookOpen" size={16} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {[
+                      { q: 'What are treatment options for periapical abscess?', label: 'Periapical Abscess' },
+                      { q: 'Differential diagnosis for tooth sensitivity', label: 'Tooth Sensitivity' },
+                      { q: 'Best practices for root canal treatment', label: 'RCT Protocol' },
+                    ].map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setInputMessage(item.q)}
+                        className="w-full text-left px-3 py-2 rounded-lg border border-primary/10 bg-surface hover:border-blue-400/40 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs text-secondary hover:text-primary"
+                      >
+                        📚 {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Uploaded Assets Panel */}
+                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
+                        Uploaded Images
+                      </h2>
+                      <p className="text-xs text-secondary">
+                        {uploadedImages.length} image{uploadedImages.length !== 1 ? 's' : ''} ready
                       </p>
                     </div>
                     <button
@@ -669,18 +1386,18 @@ const AIAnalysisPage = () => {
                 <div className="px-6 py-4 border-b border-primary/15 flex items-center justify-between">
                   <div>
                     <h2 className="text-sm font-semibold text-primary uppercase tracking-wide">
-                      Clinical copilot thread
+                      DeepDental CDSS
                     </h2>
                     <p className="text-xs text-secondary">
-                      {messages.length} exchanges • {uploadedImages.length} assets shared
+                      {messages.length} messages • {uploadedImages.length} images • Role: {userPreferences.role}
                     </p>
                   </div>
                   <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    systemHealth?.status === 'success'
+                    systemHealth?.status === 'healthy'
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                       : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                   }`}>
-                    {systemHealth?.status === 'success' ? (t('ai.connected') || 'Online') : (t('ai.disconnected') || 'Limited')}
+                    {systemHealth?.status === 'healthy' ? 'Online' : 'Limited'}
                   </div>
                 </div>
 
@@ -767,29 +1484,22 @@ const AIAnalysisPage = () => {
                           {message.content}
                         </p>
 
-                        {message.analysis && (
-                          <div className="mt-3 p-3 bg-surface-elevated border border-primary/15 rounded-lg">
-                            <h4 className="text-xs font-semibold text-primary uppercase tracking-wide mb-2">
-                              {t('ai.analysisResults')}:
-                            </h4>
-                            <pre className="text-xs text-secondary whitespace-pre-wrap">
-                              {JSON.stringify(message.analysis, null, 2)}
-                            </pre>
-                          </div>
+                        {/* Visual Findings */}
+                        {message.visualFindings && (
+                          <VisualFindingsCard findings={message.visualFindings} />
                         )}
 
-                        {message.resources && message.resources.length > 0 && (
-                          <div className="mt-3 p-3 bg-surface-elevated border border-primary/15 rounded-lg space-y-2">
-                            <h4 className="text-xs font-semibold text-primary uppercase tracking-wide">
-                              Generated resources
-                            </h4>
-                            {message.resources.map((resource, idx) => (
-                              <div key={idx} className="flex items-center gap-2 text-xs text-secondary">
-                                <Icon name="FileText" size={14} className="text-accent" />
-                                <span>Resource #{idx + 1}</span>
-                              </div>
-                            ))}
-                          </div>
+                        {/* Sources & Citations */}
+                        {message.sources && message.sources.length > 0 && (
+                          <SourcesCitations sources={message.sources} />
+                        )}
+
+                        {/* Suggested Questions */}
+                        {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
+                          <SuggestedQuestions 
+                            questions={message.suggestedQuestions} 
+                            onSelect={handleSuggestedQuestion}
+                          />
                         )}
 
                         <div className="text-[11px] uppercase tracking-wide mt-3 opacity-70">
@@ -805,7 +1515,18 @@ const AIAnalysisPage = () => {
                         <div className="animate-spin">
                           <Icon name="Loader2" size={16} className="text-accent" />
                         </div>
-                        <span>{t('ai.thinking')}</span>
+                        <span>{t('ai.thinking') || 'Analyzing...'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {isAnalyzingImage && (
+                    <div className="flex justify-start">
+                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface border border-primary/10 text-sm text-muted">
+                        <div className="animate-spin">
+                          <Icon name="Scan" size={16} className="text-accent" />
+                        </div>
+                        <span>Running YOLO detection...</span>
                       </div>
                     </div>
                   )}
@@ -816,7 +1537,7 @@ const AIAnalysisPage = () => {
                         <div className="animate-spin">
                           <Icon name="Upload" size={16} className="text-accent" />
                         </div>
-                        <span>Uploading asset…</span>
+                        <span>Processing image...</span>
                       </div>
                     </div>
                   )}
@@ -826,22 +1547,53 @@ const AIAnalysisPage = () => {
 
                 <div className="border-t border-primary/15 px-6 py-5 bg-surface">
                   {selectedImage && (
-                    <div className="mb-4 p-3 rounded-xl border border-primary/15 bg-surface-elevated flex items-center gap-3">
-                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-accent/10 flex items-center justify-center">
-                        <img src={selectedImage.url} alt={selectedImage.name} className="w-full h-full object-cover" />
+                    <div className="mb-4 p-3 rounded-xl border border-accent/30 bg-accent/5">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-accent/10 flex items-center justify-center">
+                          <img src={selectedImage.url} alt={selectedImage.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-primary truncate">{selectedImage.name}</p>
+                          <p className="text-xs text-secondary">Image ready for analysis</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedImage(null)}
+                          className="p-2 rounded-lg text-muted hover:text-primary hover:bg-accent/10 transition-colors duration-200"
+                          aria-label="Remove selected image"
+                        >
+                          <Icon name="X" size={16} />
+                        </button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-primary truncate">{selectedImage.name}</p>
-                        <p className="text-xs text-secondary">Attached for the next prompt</p>
+                      {/* Quick Analysis Actions */}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleQuickDetect}
+                          disabled={isAnalyzingImage || isLoading}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Icon name="Zap" size={12} />
+                          Quick Detect
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickAnalysis}
+                          disabled={isAnalyzingImage || isLoading}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Icon name="Microscope" size={12} />
+                          Full Analysis
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInputMessage('Analyze this dental image and identify all visible pathologies with severity assessment.')}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1.5"
+                        >
+                          <Icon name="MessageSquare" size={12} />
+                          Chat Analysis
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedImage(null)}
-                        className="p-2 rounded-lg text-muted hover:text-primary hover:bg-accent/10 transition-colors duration-200"
-                        aria-label="Remove selected image"
-                      >
-                        <Icon name="X" size={16} />
-                      </button>
                     </div>
                   )}
 
@@ -855,7 +1607,7 @@ const AIAnalysisPage = () => {
                       <Icon name={isUploading ? 'Loader2' : 'Paperclip'} size={18} className={isUploading ? 'animate-spin' : ''} />
                     </button>
 
-                    <div className="flex-1 relative">
+                    <div className="flex-1">
                       <textarea
                         value={inputMessage}
                         onChange={(e) => setInputMessage(e.target.value)}
@@ -865,26 +1617,14 @@ const AIAnalysisPage = () => {
                             handleSubmit(e);
                           }
                         }}
-                        placeholder={t('ai.inputPlaceholder')}
+                        placeholder={selectedImage 
+                          ? "Describe what you want to analyze in this image..." 
+                          : (t('ai.inputPlaceholder') || "Ask about dental conditions, treatment options, or upload an image...")}
                         className="w-full px-4 py-3 rounded-xl border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent resize-none max-h-32 min-h-[3rem]"
                         disabled={isLoading}
                         rows={1}
                         style={{ height: 'auto' }}
                       />
-                      {selectedImage && (
-                        <div className="absolute -top-12 left-0 right-0 flex flex-wrap gap-1 p-2 bg-surface border border-primary/20 rounded-lg shadow-lg">
-                          {quickActions.map((action, index) => (
-                            <button
-                              key={index}
-                              type="button"
-                              onClick={() => setInputMessage(action.message)}
-                              className="px-2 py-1 text-xs bg-surface-elevated border border-primary/20 rounded-md hover:border-accent/40 hover:bg-accent/5 transition-all duration-200"
-                            >
-                              {action.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
 
                     <button
@@ -908,43 +1648,76 @@ const AIAnalysisPage = () => {
               </section>
 
               <aside className="space-y-6">
+                {/* System Status */}
                 <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        System status
+                        DeepDental API
                       </h2>
                       <p className="text-xs text-secondary">
-                        Monitor backend services powering Serene AI.
+                        v{systemHealth?.version || '1.0.0'}
                       </p>
                     </div>
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        systemHealth?.status === 'success'
+                        systemHealth?.status === 'healthy'
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                           : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                       }`}
                     >
-                      {systemHealth?.status === 'success' ? (t('ai.connected') || 'Operational') : (t('ai.disconnected') || 'Attention needed')}
+                      {systemHealth?.status === 'healthy' ? 'Healthy' : 'Degraded'}
                     </span>
                   </div>
-                  <p className="text-xs text-secondary leading-relaxed">
-                    {systemHealth?.message || 'Core inference, agent orchestration, and storage services run in secure mode.'}
-                  </p>
-                  {systemHealth?.dependencies && (
-                    <div className="mt-4 space-y-2 text-xs">
-                      {Object.entries(systemHealth.dependencies).map(([service, status]) => (
-                        <div key={service} className="flex items-center justify-between bg-surface px-3 py-2 rounded-lg border border-primary/15">
-                          <span className="font-medium text-primary capitalize">{service}</span>
-                          <span className={`text-[11px] uppercase tracking-wide ${
-                            status ? 'text-emerald-500' : 'text-amber-500'
+                  
+                  {/* Component Status */}
+                  {systemHealth?.components && (
+                    <div className="space-y-2 text-xs">
+                      {Object.entries(systemHealth.components).map(([component, info]) => (
+                        <div key={component} className="flex items-center justify-between bg-surface px-3 py-2 rounded-lg border border-primary/15">
+                          <span className="font-medium text-primary capitalize">{component}</span>
+                          <span className={`text-[11px] uppercase tracking-wide flex items-center gap-1 ${
+                            info?.status === 'up' ? 'text-emerald-500' : 'text-red-500'
                           }`}>
-                            {status ? 'active' : 'offline'}
+                            <span className={`w-1.5 h-1.5 rounded-full ${info?.status === 'up' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                            {info?.status === 'up' ? 'online' : 'offline'}
                           </span>
                         </div>
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* User Preferences */}
+                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-primary mb-4">
+                    AI Preferences
+                  </h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Role</label>
+                      <select
+                        value={userPreferences.role}
+                        onChange={(e) => updateUserPreferences({ ...userPreferences, role: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="dentist">Dentist (Professional)</option>
+                        <option value="patient">Patient (Simplified)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Language</label>
+                      <select
+                        value={userPreferences.language}
+                        onChange={(e) => updateUserPreferences({ ...userPreferences, language: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="bilingual">Bilingual (ID/EN)</option>
+                        <option value="id">Bahasa Indonesia</option>
+                        <option value="en">English</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">

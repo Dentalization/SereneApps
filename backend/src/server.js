@@ -14,6 +14,7 @@ import patientRouter from './routes/patient.js';
 import adminProfileRouter from './routes/admin-profile.js';
 import adminDentistsRouter from './routes/admin-dentists.js';
 import adminRouter from './routes/admin.js';
+import adminDashboardRouter from './routes/admin-dashboard.js';
 import appointmentsRouter from './routes/appointments.js';
 import paymentsRouter from './routes/payments.js';
 import paymentWebhooksRouter from './routes/payment-webhooks.js';
@@ -124,6 +125,7 @@ app.use(`${prefix}/chat`, chatRouter);
 app.use(`${prefix}/admin`, adminProfileRouter);
 app.use(`${prefix}/admin`, adminDentistsRouter);
 app.use(`${prefix}/admin`, adminRouter);
+app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 
 // Global error handler (must be last middleware)
 app.use(errorHandler);

@@ -9,6 +9,12 @@ console.log('🤖 AI DIAGNOSIS SERVICE - REAL API MODE');
 console.log('   API URL:', AI_URL);
 console.log('   API Key:', AI_API_KEY ? `${AI_API_KEY.substring(0, 15)}...` : 'NOT SET');
 
+// Request queue to prevent overwhelming the server
+let requestQueue = [];
+let isProcessingQueue = false;
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
+
 // Create axios instance
 const aiClient = axios.create({
   baseURL: AI_URL,
@@ -17,6 +23,66 @@ const aiClient = axios.create({
     'X-API-Key': AI_API_KEY,
   },
 });
+
+// Retry configuration
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 2000; // 2 seconds
+const RETRY_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+
+// Longer timeout for image analysis (first upload often slower due to cold start)
+const IMAGE_ANALYSIS_TIMEOUT = 240000; // 4 minutes for image analysis
+
+// Sleep utility
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Request with retry logic
+const requestWithRetry = async (config, retries = MAX_RETRIES) => {
+  const startTime = Date.now();
+  
+  try {
+    // Rate limiting - wait if last request was too recent
+    const timeSinceLastRequest = Date.now() - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await sleep(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+    }
+    lastRequestTime = Date.now();
+    
+    if (__DEV__) {
+      console.log(`⏱️  Request timeout: ${config.timeout ? `${config.timeout / 1000}s` : 'default'}`);
+    }
+    
+    const response = await aiClient.request(config);
+    
+    const duration = Date.now() - startTime;
+    if (__DEV__) {
+      console.log(`✅ Request completed in ${(duration / 1000).toFixed(2)}s`);
+    }
+    
+    return response;
+  } catch (error) {
+    const status = error.response?.status;
+    const duration = Date.now() - startTime;
+    const shouldRetry = RETRY_STATUS_CODES.includes(status) && retries > 0;
+    
+    if (__DEV__) {
+      console.log(`❌ Request failed after ${(duration / 1000).toFixed(2)}s - Status: ${status || 'Network Error'}`);
+    }
+    
+    if (shouldRetry) {
+      const retryNumber = MAX_RETRIES - retries + 1;
+      const retryDelay = RETRY_DELAY * retryNumber;
+      
+      if (__DEV__) {
+        console.log(`🔄 Retry ${retryNumber}/${MAX_RETRIES} in ${retryDelay / 1000}s... (Status: ${status})`);
+      }
+      
+      await sleep(retryDelay); // Exponential backoff
+      return requestWithRetry(config, retries - 1);
+    }
+    
+    throw error;
+  }
+};
 
 // Request interceptor for logging
 aiClient.interceptors.request.use(
@@ -218,12 +284,38 @@ export const deleteSession = async (sessionId) => {
 export const getSessionMessages = async (sessionId) => {
   try {
     const response = await aiClient.get(`/sessions/${sessionId}/messages`);
+    
+    if (__DEV__) {
+      console.log('📨 getSessionMessages API Response:', {
+        status: response.status,
+        hasData: !!response.data,
+        dataKeys: response.data ? Object.keys(response.data) : [],
+        messagesCount: response.data?.messages?.length || 0,
+      });
+      // Log first message structure if available
+      if (response.data?.messages?.[0]) {
+        const firstMsg = response.data.messages[0];
+        console.log('📨 First message from API:', {
+          id: firstMsg.id,
+          role: firstMsg.role,
+          hasContent: !!firstMsg.content,
+          hasImages: !!firstMsg.images,
+          imagesLength: firstMsg.images?.length,
+          hasMetadata: !!firstMsg.metadata,
+          allKeys: Object.keys(firstMsg),
+        });
+      }
+    }
+    
     return {
       success: true,
       data: response.data,
-      messages: response.data.messages || [],
+      messages: response.data.messages || response.data || [],
     };
   } catch (error) {
+    if (__DEV__) {
+      console.log('❌ getSessionMessages error:', error.response?.data || error.message);
+    }
     return {
       success: false,
       error: error.response?.data || error.message,
@@ -367,16 +459,21 @@ export const detectOnly = async (imageUri, confidenceThreshold = 0.25) => {
 // Send chat message (text only)
 export const sendChatMessage = async (message, sessionId, images = []) => {
   try {
-    const response = await aiClient.post('/chat', {
-      message,
-      session_id: sessionId,
-      role: 'patient',
-      language: 'bilingual',
-      images: images.map(img => ({
-        data: img.base64,
-        filename: img.filename || 'image.jpg',
-      })),
+    const response = await requestWithRetry({
+      method: 'post',
+      url: '/chat',
+      data: {
+        message,
+        session_id: sessionId,
+        role: 'patient',
+        language: 'bilingual',
+        images: images.map(img => ({
+          data: img.base64,
+          filename: img.filename || 'image.jpg',
+        })),
+      },
     });
+    
     const replyContent = response.data.reply ?? response.data.content ?? '';
 
     return {
@@ -386,9 +483,22 @@ export const sendChatMessage = async (message, sessionId, images = []) => {
       messageId: response.data.message_id || null,
     };
   } catch (error) {
+    const status = error.response?.status;
+    let errorMessage = error.response?.data?.detail || error.message;
+    
+    // User-friendly error messages
+    if (status === 504) {
+      errorMessage = 'Server sedang sibuk. Mohon tunggu sebentar dan coba lagi.';
+    } else if (status === 429) {
+      errorMessage = 'Terlalu banyak permintaan. Mohon tunggu sebentar.';
+    } else if (!error.response) {
+      errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+    }
+    
     return {
       success: false,
-      error: error.response?.data || error.message,
+      error: errorMessage,
+      statusCode: status,
     };
   }
 };
@@ -419,12 +529,16 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
       });
     });
 
-    const response = await aiClient.post('/chat/upload', formData, {
+    const response = await requestWithRetry({
+      method: 'post',
+      url: '/chat/upload',
+      data: formData,
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: API_CONFIG.AI_TIMEOUT,
+      timeout: IMAGE_ANALYSIS_TIMEOUT, // Use longer timeout for image upload
     });
+    
     const replyContent = response.data.reply ?? response.data.content ?? '';
     const hasAnnotatedImage =
       response.data.has_annotated_image ??
@@ -438,9 +552,24 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
       hasAnnotatedImage,
     };
   } catch (error) {
+    const status = error.response?.status;
+    let errorMessage = error.response?.data?.detail || error.message;
+    
+    // User-friendly error messages for image upload
+    if (status === 504) {
+      errorMessage = 'Proses analisis memakan waktu lebih lama. Coba kirim ulang atau tunggu beberapa saat.';
+    } else if (status === 413) {
+      errorMessage = 'Ukuran gambar terlalu besar. Coba gunakan gambar dengan ukuran lebih kecil.';
+    } else if (status === 429) {
+      errorMessage = 'Terlalu banyak permintaan. Mohon tunggu sebentar.';
+    } else if (!error.response) {
+      errorMessage = 'Tidak dapat mengirim gambar. Periksa koneksi internet Anda.';
+    }
+    
     return {
       success: false,
-      error: error.response?.data || error.message,
+      error: errorMessage,
+      statusCode: status,
     };
   }
 };

@@ -3,7 +3,8 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { authHttp } from '../../../../utils/httpClient';
 import Button from '../../../../components/ui/Button';
 import Input from '../../../../components/ui/Input';
-import Select from '../../../../components/ui/Select';
+// Pastikan path import ModalPortal ini sesuai dengan struktur project Anda
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
 
 const ServicesManagement = () => {
@@ -57,8 +58,6 @@ const ServicesManagement = () => {
       setServices(response.data.services || []);
     } catch (error) {
       console.error('❌ Error fetching services:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error status:', error.response?.status);
       showMessage('error', `Failed to load services: ${error.response?.data?.error || error.message}`);
     } finally {
       setIsLoading(false);
@@ -84,7 +83,6 @@ const ServicesManagement = () => {
         isActive: service.is_active,
         isAvailableForAllDentists: service.is_available_for_all_dentists,
       });
-      // Set formatted price for display
       setDisplayPrice(normalizedPrice ? formatNumber(normalizedPrice) : '');
     } else {
       setEditingService(null);
@@ -176,19 +174,16 @@ const ServicesManagement = () => {
     }).format(value);
   };
 
-  // Format number dengan separator ribuan
   const formatNumber = (num) => {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   };
 
-  // Handle price input dengan format Rp. X.XXX.XXX
   const handlePriceChange = (e) => {
-    const value = e.target.value.replace(/[^0-9]/g, ''); // Remove non-numeric
+    const value = e.target.value.replace(/[^0-9]/g, '');
     setFormData({ ...formData, basePrice: value });
     setDisplayPrice(value ? formatNumber(value) : '');
   };
 
-  // Handle duration dengan validasi
   const handleDurationChange = (e) => {
     const value = e.target.value.replace(/[^0-9]/g, '');
     setFormData({ ...formData, durationMinutes: value ? parseInt(value) : '' });
@@ -275,136 +270,153 @@ const ServicesManagement = () => {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog wrapped in Portal */}
       {showDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <form onSubmit={handleSubmit}>
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-xl font-semibold text-foreground">
-                  {editingService ? 'Edit Service' : 'Add Service'}
-                </h3>
-              </div>
+        <ModalPortal>
+          {/* Wrapper Utama Fixed - Menempel ke Viewport */}
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            
+            {/* Backdrop Layer - Klik untuk tutup */}
+            <div 
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+              onClick={handleCloseDialog}
+            />
 
-              <div className="p-6 space-y-4">
-                <Input
-                  label="Service Name"
-                  value={formData.serviceName}
-                  onChange={(e) => setFormData({ ...formData, serviceName: e.target.value })}
-                  required
-                  placeholder="e.g., Teeth Cleaning, Orthodontic Consultation"
-                />
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Description</label>
-                  <textarea
-                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    placeholder="Describe the service..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Category</label>
-                    <select
-                      className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    >
-                      <option value="general">General</option>
-                      <option value="specialist">Specialist</option>
-                    </select>
+            {/* Content Container - Relative agar di atas backdrop */}
+            <div 
+              className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl flex flex-col max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()} // Mencegah klik di form menutup modal
+            >
+              {/* Scrollable Content Area */}
+              <div className="overflow-y-auto">
+                <form onSubmit={handleSubmit}>
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-10">
+                    <h3 className="text-xl font-semibold text-foreground">
+                      {editingService ? 'Edit Service' : 'Add Service'}
+                    </h3>
                   </div>
 
-                  {formData.category === 'specialist' && (
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">Specialty</label>
-                      <select
-                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                        value={formData.specialty}
-                        onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                      >
-                        <option value="">Select Specialty</option>
-                        {specialties.map((specialty) => (
-                          <option key={specialty} value={specialty}>{specialty}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                  <div className="p-6 space-y-4">
                     <Input
-                      label="Base Price (IDR)*"
-                      type="text"
-                      value={displayPrice}
-                      onChange={handlePriceChange}
+                      label="Service Name"
+                      value={formData.serviceName}
+                      onChange={(e) => setFormData({ ...formData, serviceName: e.target.value })}
                       required
-                      placeholder="0"
-                      className="font-mono"
+                      placeholder="e.g., Teeth Cleaning, Orthodontic Consultation"
                     />
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Format: Rp. {displayPrice || '0'}
+
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">Description</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        rows={3}
+                        placeholder="Describe the service..."
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">Category</label>
+                        <select
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
+                          value={formData.category}
+                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        >
+                          <option value="general">General</option>
+                          <option value="specialist">Specialist</option>
+                        </select>
+                      </div>
+
+                      {formData.category === 'specialist' && (
+                        <div>
+                          <label className="block text-sm font-medium text-foreground mb-2">Specialty</label>
+                          <select
+                            className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
+                            value={formData.specialty}
+                            onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                          >
+                            <option value="">Select Specialty</option>
+                            {specialties.map((specialty) => (
+                              <option key={specialty} value={specialty}>{specialty}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Input
+                          label="Base Price (IDR)*"
+                          type="text"
+                          value={displayPrice}
+                          onChange={handlePriceChange}
+                          required
+                          placeholder="0"
+                          className="font-mono"
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Format: Rp. {displayPrice || '0'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          Duration (minutes) <span className="text-destructive">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formData.durationMinutes}
+                          onChange={handleDurationChange}
+                          required
+                          placeholder="30"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Rekomendasi kelipatan 15 menit (15, 30, 45, 60...)
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isActive}
+                          onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                          className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
+                        />
+                        <span className="text-sm font-medium text-foreground">Active</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isAvailableForAllDentists}
+                          onChange={(e) => setFormData({ ...formData, isAvailableForAllDentists: e.target.checked })}
+                          className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
+                        />
+                        <span className="text-sm font-medium text-foreground">Available for all dentists</span>
+                      </label>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Duration (minutes) <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.durationMinutes}
-                      onChange={handleDurationChange}
-                      required
-                      placeholder="30"
-                      className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                    />
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Rekomendasi kelipatan 15 menit (15, 30, 45, 60...)
-                    </div>
+                  <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-white dark:bg-gray-800 sticky bottom-0">
+                    <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">
+                      {editingService ? 'Update' : 'Add'} Service
+                    </Button>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
-                    />
-                    <span className="text-sm font-medium text-foreground">Active</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.isAvailableForAllDentists}
-                      onChange={(e) => setFormData({ ...formData, isAvailableForAllDentists: e.target.checked })}
-                      className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
-                    />
-                    <span className="text-sm font-medium text-foreground">Available for all dentists</span>
-                  </label>
-                </div>
+                </form>
               </div>
-
-              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {editingService ? 'Update' : 'Add'} Service
-                </Button>
-              </div>
-            </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );
