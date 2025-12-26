@@ -42,6 +42,7 @@ const AIAnalysisPage = () => {
   const [userPreferences, setUserPreferences] = useState({ role: 'dentist', language: 'bilingual' });
   const [annotatedImageModal, setAnnotatedImageModal] = useState(null);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false); // Settings sidebar toggle
 
   // Refs
   const messagesEndRef = useRef(null);
@@ -939,144 +940,17 @@ const AIAnalysisPage = () => {
   };
 
   if (bootstrapping) {
-    const promptSkeletons = Array.from({ length: 4 });
-    const assetSkeletons = Array.from({ length: 4 });
-    const messageSkeletons = Array.from({ length: 5 });
-    const statsSkeletons = Array.from({ length: 4 });
-    const knowledgeSkeletons = Array.from({ length: 3 });
-
     return (
-      <div className="flex min-h-screen bg-gradient-to-br from-background via-surface to-background theme-transition dentist-skeleton">
+      <div className="flex min-h-screen bg-background theme-transition">
         <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
           <SideBar />
         </div>
-
-        <div className="flex-1 min-w-0 flex flex-col">
-          <header className="px-6 py-6 border-b border-primary/20 bg-surface-elevated skeleton-surface">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-3">
-                <div className="h-3 w-32 rounded bg-accent/10 animate-pulse"></div>
-                <div className="h-7 w-72 rounded-lg bg-accent/20 animate-pulse"></div>
-                <div className="h-4 w-96 max-w-full rounded bg-accent/10 animate-pulse"></div>
-                <div className="h-3 w-48 rounded bg-accent/10 animate-pulse"></div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <div className="h-10 w-40 rounded-xl bg-accent/10 animate-pulse"></div>
-                <div className="h-10 w-44 rounded-xl bg-accent/20 animate-pulse"></div>
-              </div>
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center animate-pulse">
+              <Icon name="Brain" size={24} className="text-accent" />
             </div>
-          </header>
-
-          <div className="flex-1 overflow-y-auto px-6 py-6">
-            <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
-              <aside className="space-y-6">
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 skeleton-surface">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-4 w-32 rounded bg-accent/10 animate-pulse"></div>
-                    <div className="h-8 w-8 rounded-xl bg-accent/10 animate-pulse"></div>
-                  </div>
-                  <div className="space-y-2">
-                    {promptSkeletons.map((_, idx) => (
-                      <div key={idx} className="h-12 rounded-xl border border-primary/15 bg-surface animate-pulse"></div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 skeleton-surface">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-4 w-32 rounded bg-accent/10 animate-pulse"></div>
-                    <div className="h-8 w-8 rounded-xl bg-accent/10 animate-pulse"></div>
-                  </div>
-                  <div className="space-y-3">
-                    {assetSkeletons.slice(0, 3).map((_, idx) => (
-                      <div key={idx} className="h-16 rounded-xl border border-primary/15 bg-surface animate-pulse"></div>
-                    ))}
-                    <div className="h-12 rounded-2xl border border-dashed border-primary/20 bg-surface animate-pulse"></div>
-                  </div>
-                </div>
-              </aside>
-
-              <section className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg skeleton-surface flex flex-col min-h-[520px]">
-                <div className="px-6 py-4 border-b border-primary/15 flex items-center justify-between">
-                  <div className="space-y-2">
-                    <div className="h-4 w-40 rounded bg-accent/10 animate-pulse"></div>
-                    <div className="h-3 w-32 rounded bg-accent/10 animate-pulse"></div>
-                  </div>
-                  <div className="h-6 w-24 rounded-full bg-accent/10 animate-pulse"></div>
-                </div>
-
-                <div className="flex-1 overflow-hidden px-6 py-6 space-y-4">
-                  {messageSkeletons.map((_, idx) => (
-                    <div key={idx} className={`flex ${idx % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
-                      <div className="w-full max-w-2xl p-4 rounded-2xl border border-primary/15 bg-surface animate-pulse">
-                        <div className="space-y-2">
-                          <div className="h-4 w-5/6 rounded bg-accent/10"></div>
-                          <div className="h-4 w-2/3 rounded bg-accent/10"></div>
-                          <div className="h-4 w-1/2 rounded bg-accent/10"></div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex justify-start">
-                    <div className="h-8 w-40 rounded-full bg-accent/10 animate-pulse"></div>
-                  </div>
-                </div>
-
-                <div className="border-t border-primary/15 px-6 py-5 bg-surface">
-                  <div className="mb-4 p-3 rounded-xl border border-primary/15 bg-surface-elevated flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-lg bg-accent/10 animate-pulse"></div>
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <div className="h-4 w-32 rounded bg-accent/10 animate-pulse"></div>
-                      <div className="h-3 w-24 rounded bg-accent/10 animate-pulse"></div>
-                    </div>
-                    <div className="h-8 w-8 rounded-lg bg-accent/10 animate-pulse"></div>
-                  </div>
-                  <div className="flex items-end gap-3">
-                    <div className="h-12 w-12 rounded-xl border border-primary/20 bg-surface animate-pulse"></div>
-                    <div className="flex-1 h-12 rounded-xl border border-primary/20 bg-surface animate-pulse"></div>
-                    <div className="h-12 w-12 rounded-xl bg-accent/20 animate-pulse"></div>
-                  </div>
-                </div>
-              </section>
-
-              <aside className="space-y-6">
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 skeleton-surface">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-4 w-32 rounded bg-accent/10 animate-pulse"></div>
-                    <div className="h-6 w-20 rounded-full bg-accent/10 animate-pulse"></div>
-                  </div>
-                  <div className="space-y-3">
-                    {Array.from({ length: 3 }).map((_, idx) => (
-                      <div key={idx} className="h-12 rounded-xl border border-primary/15 bg-surface animate-pulse"></div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 skeleton-surface">
-                  <div className="h-4 w-32 rounded bg-accent/10 animate-pulse mb-4"></div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {statsSkeletons.map((_, idx) => (
-                      <div key={idx} className="h-16 rounded-2xl border border-primary/15 bg-surface animate-pulse"></div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 skeleton-surface">
-                  <div className="h-4 w-32 rounded bg-accent/10 animate-pulse mb-4"></div>
-                  <div className="space-y-3">
-                    {knowledgeSkeletons.map((_, idx) => (
-                      <div key={idx} className="flex items-center gap-3 rounded-xl border border-primary/15 bg-surface px-3 py-3">
-                        <div className="w-10 h-10 rounded-lg bg-accent/10 animate-pulse"></div>
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 w-32 rounded bg-accent/10 animate-pulse"></div>
-                          <div className="h-3 w-48 rounded bg-accent/10 animate-pulse"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </aside>
-            </div>
+            <p className="text-sm text-secondary animate-pulse">Initializing DeepDental AI...</p>
           </div>
         </div>
       </div>
@@ -1084,7 +958,7 @@ const AIAnalysisPage = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-background via-surface to-background theme-transition">
+    <div className="flex min-h-screen bg-background theme-transition">
       {/* Annotated Image Modal */}
       {annotatedImageModal && (
         <div 
@@ -1101,7 +975,7 @@ const AIAnalysisPage = () => {
             </button>
             <img
               src={`data:image/png;base64,${annotatedImageModal}`}
-              alt="Annotated dental analysis (full size)"
+              alt="Annotated dental analysis"
               className="max-w-full h-auto rounded-lg"
             />
           </div>
@@ -1115,50 +989,42 @@ const AIAnalysisPage = () => {
           onClick={() => setShowSessionHistory(false)}
         >
           <div 
-            className="bg-surface-elevated rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden"
+            className="bg-surface-elevated rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b border-primary/15 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-primary">Session History</h2>
+            <div className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
+              <h2 className="text-base font-medium text-primary">Session History</h2>
               <button
                 type="button"
                 onClick={() => setShowSessionHistory(false)}
-                className="p-2 rounded-lg text-muted hover:text-primary hover:bg-accent/10 transition-colors"
+                className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface transition-colors"
               >
-                <Icon name="X" size={20} />
+                <Icon name="X" size={18} />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
+            <div className="p-3 overflow-y-auto max-h-[60vh]">
               {sessionHistory.length === 0 ? (
-                <p className="text-sm text-secondary text-center py-8">No previous sessions found.</p>
+                <p className="text-sm text-secondary text-center py-8">No previous sessions</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {sessionHistory.map((session) => (
                     <div
                       key={session.id}
-                      className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl transition-all cursor-pointer ${
                         session.id === sessionId
-                          ? 'border-accent bg-accent/10'
-                          : 'border-primary/15 hover:border-accent/40 hover:bg-accent/5'
+                          ? 'bg-accent/10'
+                          : 'hover:bg-surface'
                       }`}
                       onClick={() => loadSession(session)}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-primary">
-                            Session {session.id.slice(0, 8)}...
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-primary truncate">
+                            Session {session.id.slice(0, 8)}
                           </p>
                           <p className="text-xs text-secondary">
                             {session.message_count} messages • {formatRelativeTime(session.created_at)}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent">
-                              {session.role}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-xs bg-surface border border-primary/10 text-secondary">
-                              {session.language}
-                            </span>
-                          </div>
                         </div>
                         <button
                           type="button"
@@ -1166,9 +1032,9 @@ const AIAnalysisPage = () => {
                             e.stopPropagation();
                             deleteSession(session.id);
                           }}
-                          className="p-2 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                         >
-                          <Icon name="Trash2" size={16} />
+                          <Icon name="Trash2" size={14} />
                         </button>
                       </div>
                     </div>
@@ -1180,584 +1046,416 @@ const AIAnalysisPage = () => {
         </div>
       )}
 
+      {/* Settings Sidebar (slide-in) */}
+      {showSidebar && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/30"
+          onClick={() => setShowSidebar(false)}
+        >
+          <div 
+            className="absolute right-0 top-0 h-full w-80 bg-surface-elevated shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-primary/10 flex items-center justify-between">
+              <h2 className="text-base font-medium text-primary">Settings</h2>
+              <button
+                type="button"
+                onClick={() => setShowSidebar(false)}
+                className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface transition-colors"
+              >
+                <Icon name="X" size={18} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-6">
+              {/* AI Preferences */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-3">Preferences</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Role</label>
+                    <select
+                      value={userPreferences.role}
+                      onChange={(e) => updateUserPreferences({ ...userPreferences, role: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      <option value="dentist">Dentist (Professional)</option>
+                      <option value="patient">Patient (Simplified)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Language</label>
+                    <select
+                      value={userPreferences.language}
+                      onChange={(e) => updateUserPreferences({ ...userPreferences, language: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      <option value="bilingual">Bilingual (ID/EN)</option>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* System Status */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-3">System Status</h3>
+                <div className="p-3 rounded-xl bg-surface border border-primary/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-primary">DeepDental API</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      systemHealth?.status === 'healthy'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    }`}>
+                      {systemHealth?.status === 'healthy' ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-secondary">v{systemHealth?.version || '1.0.0'}</p>
+                </div>
+              </div>
+
+              {/* Session Metrics */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-3">Session</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {sessionStats.map((stat) => (
+                    <div key={stat.label} className="p-3 rounded-xl bg-surface border border-primary/10">
+                      <p className="text-xs text-secondary">{stat.label}</p>
+                      <p className="text-lg font-semibold text-primary">{stat.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Uploaded Images */}
+              {uploadedImages.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-3">
+                    Uploaded Images ({uploadedImages.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {uploadedImages.map((image) => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedImage(image);
+                          setShowSidebar(false);
+                        }}
+                        className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all ${
+                          selectedImage?.id === image.id
+                            ? 'bg-accent/10 border border-accent/30'
+                            : 'hover:bg-surface border border-transparent'
+                        }`}
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface flex-shrink-0">
+                          <img src={image.url} alt={image.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="text-sm font-medium text-primary truncate">{image.name}</p>
+                          <p className="text-xs text-secondary">{formatRelativeTime(image.uploadTime)}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Sidebar */}
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <SideBar />
       </div>
 
+      {/* Main Content - Gemini-like Chat UI */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="px-6 py-6 border-b border-primary/20 bg-surface-elevated theme-transition">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.24em] text-muted">
-                {t('ai.workspaceBadge') || 'DeepDental AI • CDSS'}
-              </p>
-              <h1 className="text-3xl font-semibold text-primary theme-transition">
-                {t('ai.title')}
-              </h1>
-              <p className="text-sm text-secondary max-w-2xl">
-                {t('ai.subtitle') || 'AI-powered dental diagnosis assistant dengan computer vision dan clinical decision support.'}
-              </p>
-              <div className="flex items-center gap-4 text-xs text-muted">
-                <span>
-                  Session: <span className="font-mono text-primary">{sessionId?.slice(0, 8) || '—'}...</span>
-                </span>
-                <span>•</span>
-                <span>
-                  Role: <span className="font-semibold text-accent capitalize">{userPreferences.role}</span>
-                </span>
-                <span>•</span>
-                <span>
-                  {user?.name || 'Dentist'}
-                </span>
-              </div>
+        {/* Minimal Header */}
+        <header className="px-4 py-3 border-b border-primary/10 bg-surface-elevated/50 backdrop-blur-sm flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center">
+              <Icon name="Brain" size={16} className="text-white" />
             </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setShowSessionHistory(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:border-accent/40 hover:text-accent transition-colors duration-200"
-              >
-                <Icon name="History" size={16} />
-                <span>History</span>
-              </button>
-              <button
-                type="button"
-                onClick={checkSystemHealth}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:border-accent/40 hover:text-accent transition-colors duration-200"
-              >
-                <Icon name="Activity" size={16} />
-                <span>{t('ai.checkHealth') || 'Health Check'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleNewSession}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-colors duration-200"
-              >
-                <Icon name="Plus" size={16} />
-                <span>{t('ai.newSession') || 'New Session'}</span>
-              </button>
+            <div>
+              <h1 className="text-sm font-semibold text-primary">DeepDental AI</h1>
+              <p className="text-xs text-secondary">
+                {sessionId ? `Session ${sessionId.slice(0, 6)}` : 'New chat'}
+              </p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSessionHistory(true)}
+              className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+              title="History"
+            >
+              <Icon name="History" size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={handleNewSession}
+              className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+              title="New chat"
+            >
+              <Icon name="Plus" size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSidebar(true)}
+              className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+              title="Settings"
+            >
+              <Icon name="Settings" size={18} />
+            </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-6 py-6 space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
-              <aside className="space-y-6">
-                {/* Quick Actions Panel */}
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        Quick Actions
-                      </h2>
-                      <p className="text-xs text-secondary">
-                        {selectedImage ? 'Select action for attached image' : 'Structured prompts for analysis'}
-                      </p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-accent/10 text-accent">
-                      <Icon name="Sparkles" size={16} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {quickActions.filter(a => a.action === 'chat').map((action, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => handleQuickAction(action)}
-                        disabled={isLoading}
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-primary/15 text-left bg-surface hover:border-accent/40 hover:bg-accent/5 transition-all duration-200 disabled:opacity-50"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-accent/10 text-accent">
-                            <Icon name={action.icon} size={16} />
-                          </div>
-                          <span className="text-sm font-medium text-primary">{action.label}</span>
-                        </div>
-                        <Icon name="ArrowUpRight" size={16} className="text-muted" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        {/* Chat Container */}
+        <div 
+          className="flex-1 overflow-y-auto"
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          {isDragOver && (
+            <div className="absolute inset-0 z-30 bg-accent/10 border-2 border-dashed border-accent flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <Icon name="Upload" size={32} className="text-accent mx-auto" />
+                <p className="text-sm font-medium text-accent">Drop image here</p>
+              </div>
+            </div>
+          )}
 
-                {/* Knowledge Query Panel */}
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        Knowledge Base
-                      </h2>
-                      <p className="text-xs text-secondary">
-                        Query dental knowledge directly
-                      </p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
-                      <Icon name="BookOpen" size={16} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { q: 'What are treatment options for periapical abscess?', label: 'Periapical Abscess' },
-                      { q: 'Differential diagnosis for tooth sensitivity', label: 'Tooth Sensitivity' },
-                      { q: 'Best practices for root canal treatment', label: 'RCT Protocol' },
-                    ].map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setInputMessage(item.q)}
-                        className="w-full text-left px-3 py-2 rounded-lg border border-primary/10 bg-surface hover:border-blue-400/40 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-xs text-secondary hover:text-primary"
-                      >
-                        📚 {item.label}
-                      </button>
-                    ))}
-                  </div>
+          <div className="max-w-3xl mx-auto px-4">
+            {/* Welcome State */}
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] py-8">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/10 flex items-center justify-center mb-6">
+                  <Icon name="Stethoscope" size={32} className="text-accent" />
                 </div>
-
-                {/* Uploaded Assets Panel */}
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        Uploaded Images
-                      </h2>
-                      <p className="text-xs text-secondary">
-                        {uploadedImages.length} image{uploadedImages.length !== 1 ? 's' : ''} ready
-                      </p>
-                    </div>
+                <h2 className="text-2xl font-semibold text-primary mb-2">
+                  {t('ai.welcomeMessage') || 'Hello, how can I help?'}
+                </h2>
+                <p className="text-sm text-secondary text-center max-w-md mb-8">
+                  {t('ai.welcomeSubtitle') || 'Upload dental images for AI analysis, or ask questions about dental conditions and treatments.'}
+                </p>
+                
+                {/* Quick Action Chips */}
+                <div className="flex flex-wrap justify-center gap-2 max-w-xl">
+                  {quickActions.slice(0, 4).map((action, index) => (
                     <button
+                      key={index}
+                      onClick={() => handleQuickAction(action)}
                       type="button"
-                      onClick={openFilePicker}
-                      className="p-2 rounded-lg border border-primary/15 text-muted hover:text-primary hover:border-accent/40 transition-colors duration-200"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-primary/15 bg-surface hover:bg-accent/5 hover:border-accent/30 transition-all text-sm text-primary"
                     >
-                      <Icon name="Upload" size={16} />
+                      <Icon name={action.icon} size={16} className="text-accent" />
+                      {action.label}
                     </button>
-                  </div>
-
-                  {uploadedImages.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-primary/20 bg-surface p-4 text-center text-xs text-muted">
-                      Drag intraoral imaging or CBCT slices here to jumpstart AI analysis.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {uploadedImages.slice(0, 6).map((image) => (
-                        <button
-                          key={image.id}
-                          type="button"
-                          onClick={() => setSelectedImage(image)}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl border transition-all duration-200 ${
-                            selectedImage?.id === image.id
-                              ? 'border-accent bg-accent/10 text-accent'
-                              : 'border-primary/15 hover:border-accent/40 hover:bg-accent/5'
-                          }`}
-                        >
-                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-accent/10 flex items-center justify-center">
-                            <img src={image.url} alt={image.name} className="w-full h-full object-cover" />
-                          </div>
-                          <div className="flex-1 min-w-0 text-left">
-                            <p className="text-sm font-medium truncate">{image.name}</p>
-                            <p className="text-xs text-muted">
-                              Uploaded {formatRelativeTime(image.uploadTime)}
-                            </p>
-                          </div>
-                          <Icon name="ChevronRight" size={16} className="text-muted" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </aside>
-
-              <section
-                className="relative bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg theme-transition flex flex-col min-h-[520px]"
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-              >
-                {isDragOver && (
-                  <div className="absolute inset-0 z-30 bg-accent/10 border-2 border-dashed border-accent rounded-3xl flex items-center justify-center">
-                    <div className="text-center space-y-2">
-                      <Icon name="Upload" size={36} className="text-accent mx-auto" />
-                      <p className="text-sm font-medium text-accent">{t('ai.dragDropText')}</p>
-                      <p className="text-xs text-accent/80">Release to attach imaging to this session</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="px-6 py-4 border-b border-primary/15 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-primary uppercase tracking-wide">
-                      DeepDental CDSS
-                    </h2>
-                    <p className="text-xs text-secondary">
-                      {messages.length} messages • {uploadedImages.length} images • Role: {userPreferences.role}
-                    </p>
-                  </div>
-                  <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    systemHealth?.status === 'healthy'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                  }`}>
-                    {systemHealth?.status === 'healthy' ? 'Online' : 'Limited'}
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-                  {messages.length === 0 && (
-                    <div className="rounded-3xl border border-dashed border-primary/20 bg-surface p-8 text-center space-y-4">
-                      <div className="w-14 h-14 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto">
-                        <Icon name="MessageCircle" size={24} className="text-accent" />
-                      </div>
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-semibold text-primary">
-                          {t('ai.welcomeMessage')}
-                        </h3>
-                        <p className="text-sm text-secondary max-w-lg mx-auto">
-                          {t('ai.welcomeSubtitle')}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto">
-                        {quickActions.map((action, index) => (
-                          <button
-                            key={index}
-                            onClick={() => handleQuickAction(action)}
-                            type="button"
-                            className="p-3 rounded-xl border border-primary/15 bg-surface hover:border-accent/40 hover:bg-accent/5 transition-all duration-200"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-accent/10 text-accent">
-                                <Icon name={action.icon} size={16} />
-                              </div>
-                              <span className="text-sm font-medium text-primary">{action.label}</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.type === 'user'
-                          ? 'justify-end'
-                          : message.type === 'system'
-                          ? 'justify-center'
-                          : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-2xl rounded-2xl px-5 py-4 shadow-sm ${
-                          message.type === 'user'
-                            ? 'bg-accent text-white'
-                            : message.type === 'error'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                            : message.type === 'system'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 text-center'
-                            : 'bg-surface border border-primary/10 text-primary'
-                        }`}
-                      >
-                        {message.type !== 'user' && message.type !== 'system' && (
-                          <div className="flex items-center gap-2 mb-2 text-accent">
-                            <Icon name="Brain" size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wide">
-                              {t('ai.chatTitle')}
-                            </span>
-                          </div>
-                        )}
-
-                        {message.image && (
-                          <div className="mb-3">
-                            <img
-                              src={message.image.url}
-                              alt={message.image.name}
-                              className="max-w-full h-auto rounded-xl border border-white/20"
-                              style={{ maxHeight: '320px' }}
-                            />
-                            <div className="text-xs opacity-80 mt-1">
-                              📷 {message.image.name}
-                            </div>
-                          </div>
-                        )}
-
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
-
-                        {/* Visual Findings */}
-                        {message.visualFindings && (
-                          <VisualFindingsCard findings={message.visualFindings} />
-                        )}
-
-                        {/* Sources & Citations */}
-                        {message.sources && message.sources.length > 0 && (
-                          <SourcesCitations sources={message.sources} />
-                        )}
-
-                        {/* Suggested Questions */}
-                        {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
-                          <SuggestedQuestions 
-                            questions={message.suggestedQuestions} 
-                            onSelect={handleSuggestedQuestion}
-                          />
-                        )}
-
-                        <div className="text-[11px] uppercase tracking-wide mt-3 opacity-70">
-                          {new Date(message.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
                   ))}
-
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface border border-primary/10 text-sm text-muted">
-                        <div className="animate-spin">
-                          <Icon name="Loader2" size={16} className="text-accent" />
-                        </div>
-                        <span>{t('ai.thinking') || 'Analyzing...'}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {isAnalyzingImage && (
-                    <div className="flex justify-start">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface border border-primary/10 text-sm text-muted">
-                        <div className="animate-spin">
-                          <Icon name="Scan" size={16} className="text-accent" />
-                        </div>
-                        <span>Running YOLO detection...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {isUploading && (
-                    <div className="flex justify-start">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface border border-primary/10 text-sm text-muted">
-                        <div className="animate-spin">
-                          <Icon name="Upload" size={16} className="text-accent" />
-                        </div>
-                        <span>Processing image...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
                 </div>
+              </div>
+            )}
 
-                <div className="border-t border-primary/15 px-6 py-5 bg-surface">
-                  {selectedImage && (
-                    <div className="mb-4 p-3 rounded-xl border border-accent/30 bg-accent/5">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-accent/10 flex items-center justify-center">
-                          <img src={selectedImage.url} alt={selectedImage.name} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-primary truncate">{selectedImage.name}</p>
-                          <p className="text-xs text-secondary">Image ready for analysis</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedImage(null)}
-                          className="p-2 rounded-lg text-muted hover:text-primary hover:bg-accent/10 transition-colors duration-200"
-                          aria-label="Remove selected image"
-                        >
-                          <Icon name="X" size={16} />
-                        </button>
-                      </div>
-                      {/* Quick Analysis Actions */}
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleQuickDetect}
-                          disabled={isAnalyzingImage || isLoading}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                          <Icon name="Zap" size={12} />
-                          Quick Detect
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleQuickAnalysis}
-                          disabled={isAnalyzingImage || isLoading}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                          <Icon name="Microscope" size={12} />
-                          Full Analysis
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setInputMessage('Analyze this dental image and identify all visible pathologies with severity assessment.')}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1.5"
-                        >
-                          <Icon name="MessageSquare" size={12} />
-                          Chat Analysis
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSubmit} className="flex items-end gap-3">
-                    <button
-                      type="button"
-                      onClick={openFilePicker}
-                      disabled={isUploading}
-                      className="flex-shrink-0 p-3 rounded-xl border border-primary/20 bg-surface text-accent hover:border-accent/40 hover:bg-accent/5 transition-colors duration-200 disabled:opacity-50"
-                    >
-                      <Icon name={isUploading ? 'Loader2' : 'Paperclip'} size={18} className={isUploading ? 'animate-spin' : ''} />
-                    </button>
-
-                    <div className="flex-1">
-                      <textarea
-                        value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmit(e);
-                          }
-                        }}
-                        placeholder={selectedImage 
-                          ? "Describe what you want to analyze in this image..." 
-                          : (t('ai.inputPlaceholder') || "Ask about dental conditions, treatment options, or upload an image...")}
-                        className="w-full px-4 py-3 rounded-xl border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent resize-none max-h-32 min-h-[3rem]"
-                        disabled={isLoading}
-                        rows={1}
-                        style={{ height: 'auto' }}
+            {/* Messages */}
+            <div className="py-6 space-y-6">
+              {messages.map((message) => (
+                <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex gap-3 max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse' : ''}`}>
+                    {/* Avatar */}
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                      message.type === 'user'
+                        ? 'bg-accent text-white'
+                        : message.type === 'error'
+                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30'
+                        : 'bg-gradient-to-br from-accent/20 to-emerald-500/20'
+                    }`}>
+                      <Icon 
+                        name={message.type === 'user' ? 'User' : message.type === 'error' ? 'AlertCircle' : 'Brain'} 
+                        size={16} 
+                        className={message.type === 'assistant' ? 'text-accent' : ''}
                       />
                     </div>
+                    
+                    {/* Content */}
+                    <div className="space-y-2">
+                      {message.image && (
+                        <div className={`rounded-2xl overflow-hidden ${message.type === 'user' ? 'max-w-xs' : ''}`}>
+                          <img
+                            src={message.image.url}
+                            alt={message.image.name}
+                            className="max-w-full h-auto"
+                            style={{ maxHeight: '200px' }}
+                          />
+                        </div>
+                      )}
+                      
+                      <div className={`rounded-2xl px-4 py-3 ${
+                        message.type === 'user'
+                          ? 'bg-accent text-white'
+                          : message.type === 'error'
+                          ? 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+                          : message.type === 'system'
+                          ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300'
+                          : 'bg-surface'
+                      }`}>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      </div>
 
-                    <button
-                      type="submit"
-                      disabled={isLoading || (!inputMessage.trim() && !selectedImage)}
-                      className="flex-shrink-0 p-3 rounded-xl bg-accent text-white hover:bg-accent-hover transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Icon name="Send" size={18} />
-                    </button>
-                  </form>
+                      {/* Visual Findings */}
+                      {message.visualFindings && (
+                        <div className="bg-surface rounded-2xl overflow-hidden">
+                          <VisualFindingsCard findings={message.visualFindings} />
+                        </div>
+                      )}
 
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleFileSelect(e.target.files)}
-                  />
-                </div>
-              </section>
+                      {/* Sources */}
+                      {message.sources && message.sources.length > 0 && (
+                        <SourcesCitations sources={message.sources} />
+                      )}
 
-              <aside className="space-y-6">
-                {/* System Status */}
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-                        DeepDental API
-                      </h2>
-                      <p className="text-xs text-secondary">
-                        v{systemHealth?.version || '1.0.0'}
+                      {/* Suggested Questions */}
+                      {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
+                        <SuggestedQuestions 
+                          questions={message.suggestedQuestions} 
+                          onSelect={handleSuggestedQuestion}
+                        />
+                      )}
+
+                      <p className="text-[10px] text-secondary">
+                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        systemHealth?.status === 'healthy'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      }`}
-                    >
-                      {systemHealth?.status === 'healthy' ? 'Healthy' : 'Degraded'}
-                    </span>
-                  </div>
-                  
-                  {/* Component Status */}
-                  {systemHealth?.components && (
-                    <div className="space-y-2 text-xs">
-                      {Object.entries(systemHealth.components).map(([component, info]) => (
-                        <div key={component} className="flex items-center justify-between bg-surface px-3 py-2 rounded-lg border border-primary/15">
-                          <span className="font-medium text-primary capitalize">{component}</span>
-                          <span className={`text-[11px] uppercase tracking-wide flex items-center gap-1 ${
-                            info?.status === 'up' ? 'text-emerald-500' : 'text-red-500'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${info?.status === 'up' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                            {info?.status === 'up' ? 'online' : 'offline'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* User Preferences */}
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-primary mb-4">
-                    AI Preferences
-                  </h2>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs text-secondary mb-1 block">Role</label>
-                      <select
-                        value={userPreferences.role}
-                        onChange={(e) => updateUserPreferences({ ...userPreferences, role: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                      >
-                        <option value="dentist">Dentist (Professional)</option>
-                        <option value="patient">Patient (Simplified)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-secondary mb-1 block">Language</label>
-                      <select
-                        value={userPreferences.language}
-                        onChange={(e) => updateUserPreferences({ ...userPreferences, language: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border border-primary/15 bg-surface text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                      >
-                        <option value="bilingual">Bilingual (ID/EN)</option>
-                        <option value="id">Bahasa Indonesia</option>
-                        <option value="en">English</option>
-                      </select>
-                    </div>
                   </div>
                 </div>
+              ))}
 
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-primary mb-4">
-                    Session metrics
-                  </h2>
-                  <div className="grid grid-cols-2 gap-3">
-                    {sessionStats.map((stat) => (
-                      <div key={stat.label} className="rounded-2xl border border-primary/15 bg-surface px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-wide text-secondary mb-1">
-                          {stat.label}
-                        </p>
-                        <p className="text-lg font-semibold text-primary">{stat.value}</p>
+              {/* Loading States */}
+              {(isLoading || isAnalyzingImage || isUploading) && (
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-accent/20 to-emerald-500/20 flex items-center justify-center">
+                    <Icon name="Brain" size={16} className="text-accent" />
+                  </div>
+                  <div className="bg-surface rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm text-secondary">
+                      <div className="flex gap-1">
+                        <span className="w-2 h-2 bg-accent/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                        <span className="w-2 h-2 bg-accent/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                        <span className="w-2 h-2 bg-accent/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                       </div>
-                    ))}
+                      <span>
+                        {isAnalyzingImage ? 'Analyzing image...' : isUploading ? 'Processing...' : 'Thinking...'}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="bg-surface-elevated border border-primary/15 rounded-3xl shadow-theme-lg p-5 theme-transition">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-primary mb-4">
-                    Best practices
-                  </h2>
-                  <div className="space-y-3">
-                    {knowledgeHighlights.map((item) => (
-                      <div key={item.title} className="flex items-start gap-3 rounded-xl border border-primary/15 bg-surface px-3 py-3">
-                        <div className="p-2 rounded-lg bg-accent/10 text-accent mt-0.5">
-                          <Icon name={item.icon} size={16} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-primary">{item.title}</p>
-                          <p className="text-xs text-secondary leading-relaxed">
-                            {item.description}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </aside>
+              <div ref={messagesEndRef} />
             </div>
+          </div>
+        </div>
+
+        {/* Input Area - Fixed at bottom */}
+        <div className="border-t border-primary/10 bg-surface-elevated/80 backdrop-blur-sm">
+          <div className="max-w-3xl mx-auto p-4">
+            {/* Selected Image Preview */}
+            {selectedImage && (
+              <div className="mb-3 flex items-center gap-3 p-2 rounded-xl bg-surface border border-primary/10">
+                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                  <img src={selectedImage.url} alt={selectedImage.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-primary truncate">{selectedImage.name}</p>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={handleQuickDetect}
+                      disabled={isAnalyzingImage}
+                      className="text-xs text-amber-600 hover:underline disabled:opacity-50"
+                    >
+                      Quick detect
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleQuickAnalysis}
+                      disabled={isAnalyzingImage}
+                      className="text-xs text-emerald-600 hover:underline disabled:opacity-50"
+                    >
+                      Full analysis
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImage(null)}
+                  className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface transition-colors"
+                >
+                  <Icon name="X" size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Input Form */}
+            <form onSubmit={handleSubmit} className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={openFilePicker}
+                disabled={isUploading}
+                className="flex-shrink-0 p-3 rounded-xl text-secondary hover:text-primary hover:bg-surface transition-colors disabled:opacity-50"
+              >
+                <Icon name={isUploading ? 'Loader2' : 'Paperclip'} size={20} className={isUploading ? 'animate-spin' : ''} />
+              </button>
+
+              <div className="flex-1 relative">
+                <textarea
+                  value={inputMessage}
+                  onChange={(e) => {
+                    setInputMessage(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
+                  placeholder={selectedImage 
+                    ? "Describe what to analyze..." 
+                    : "Ask anything about dental health..."}
+                  className="w-full px-4 py-3 pr-12 rounded-2xl border border-primary/15 bg-surface text-primary placeholder:text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none text-sm"
+                  disabled={isLoading}
+                  rows={1}
+                  style={{ minHeight: '48px', maxHeight: '160px' }}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || (!inputMessage.trim() && !selectedImage)}
+                  className="absolute right-2 bottom-2 p-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Icon name="ArrowUp" size={16} />
+                </button>
+              </div>
+            </form>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleFileSelect(e.target.files)}
+            />
+
+            <p className="text-[10px] text-center text-secondary mt-2">
+              DeepDental AI can make mistakes. Verify important information.
+            </p>
           </div>
         </div>
       </div>
