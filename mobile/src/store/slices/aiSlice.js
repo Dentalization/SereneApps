@@ -1,10 +1,28 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { saveAIAnalysis } from '../../services/aiAnalysisSyncService';
+
+// Async thunk to save analysis to backend
+export const syncAnalysisToBackend = createAsyncThunk(
+  'ai/syncToBackend',
+  async (analysisResult, { rejectWithValue }) => {
+    try {
+      const response = await saveAIAnalysis(analysisResult);
+      return response;
+    } catch (error) {
+      // Don't fail the whole analysis if sync fails
+      console.warn('Failed to sync AI analysis to backend:', error.message);
+      return rejectWithValue(error.message);
+    }
+  }
+);
 
 const initialState = {
   history: [], // Array of AI diagnosis results
   currentAnalysis: null,
   isAnalyzing: false,
+  isSyncing: false,
   error: null,
+  syncError: null,
 };
 
 const aiSlice = createSlice({
@@ -50,6 +68,24 @@ const aiSlice = createSlice({
     loadHistory: (state, action) => {
       state.history = action.payload;
     },
+    clearSyncError: (state) => {
+      state.syncError = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(syncAnalysisToBackend.pending, (state) => {
+        state.isSyncing = true;
+        state.syncError = null;
+      })
+      .addCase(syncAnalysisToBackend.fulfilled, (state) => {
+        state.isSyncing = false;
+        state.syncError = null;
+      })
+      .addCase(syncAnalysisToBackend.rejected, (state, action) => {
+        state.isSyncing = false;
+        state.syncError = action.payload;
+      });
   },
 });
 
@@ -61,6 +97,7 @@ export const {
   deleteHistoryItem,
   clearHistory,
   loadHistory,
+  clearSyncError,
 } = aiSlice.actions;
 
 export default aiSlice.reducer;

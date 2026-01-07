@@ -24,6 +24,8 @@ import chatRouter from './routes/chat.js';
 import clinicServicesRouter from './routes/clinicServices.js';
 import clinicProfileRouter from './routes/clinicProfile.js';
 import dentistServicesRouter from './routes/dentistServices.js';
+import dentistPortalRouter from './routes/dentist-portal.js';
+import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
 import { verify } from './utils/tokens.js';
 import { registerChatGateway } from './sockets/chat.js';
@@ -113,6 +115,8 @@ app.use(`${prefix}/clinic`, clinicRouter);
 app.use(`${prefix}/clinic`, clinicServicesRouter); // Clinic services management
 app.use(`${prefix}/clinic`, clinicProfileRouter); // Clinic profile (gallery, highlights, facilities)
 app.use(`${prefix}/dentist`, dentistServicesRouter); // Dentist portal services
+app.use(`${prefix}/dentist-portal`, dentistPortalRouter); // Dentist portal patient management
+app.use(`${prefix}/ai-analysis`, aiAnalysisRouter); // AI dental analysis results
 app.use(`${prefix}/emr`, emrRouter);
 app.use(`${prefix}/clinics`, clinicsRouter);
 app.use(`${prefix}/dentists`, dentistsRouter);

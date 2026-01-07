@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AI_URL, AI_API_KEY, API_CONFIG } from '../config/api.config';
 
 // MOCK MODE DISABLED - Using real DeepDental API
@@ -97,6 +98,24 @@ aiClient.interceptors.request.use(
   }
 );
 
+/**
+ * Get current Serene user ID from AsyncStorage
+ * This is used to associate AI sessions with the logged-in user
+ */
+const getSereneUserId = async () => {
+  try {
+    const userStr = await AsyncStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user?.id?.toString() || null;
+    }
+    return null;
+  } catch (error) {
+    console.warn('Failed to get Serene user ID:', error);
+    return null;
+  }
+};
+
 // Response interceptor for logging
 aiClient.interceptors.response.use(
   (response) => {
@@ -160,11 +179,19 @@ export const createSession = async (metadata = {}) => {
   }
 
   try {
+    // Get current Serene user ID to associate session with user
+    const sereneUserId = await getSereneUserId();
+    
+    if (__DEV__) {
+      console.log('📝 Creating session for Serene user:', sereneUserId || 'anonymous');
+    }
+    
     const response = await aiClient.post('/sessions', {
       role: 'patient',
       language: 'bilingual',
       metadata: {
         source: 'mobile_app',
+        serene_user_id: sereneUserId, // Associate with Serene user
         ...metadata,
       },
     });
@@ -240,14 +267,36 @@ export const listSessions = async (page = 1, perPage = 20) => {
   }
 
   try {
+    // Get current Serene user ID to filter sessions
+    const sereneUserId = await getSereneUserId();
+    
+    if (__DEV__) {
+      console.log('📋 Listing sessions for Serene user:', sereneUserId || 'anonymous');
+    }
+    
     const response = await aiClient.get('/sessions', {
-      params: { page, per_page: perPage },
+      params: { page, per_page: perPage * 5 }, // Fetch more to filter client-side
     });
-    const normalizedSessions = (response.data.sessions || []).map((session) => ({
+    
+    // Filter sessions by serene_user_id in metadata
+    const allSessions = response.data.sessions || [];
+    const userSessions = sereneUserId 
+      ? allSessions.filter(session => {
+          const sessionSereneUserId = session.metadata?.serene_user_id;
+          return sessionSereneUserId === sereneUserId;
+        })
+      : allSessions; // If no user logged in, show all (shouldn't happen normally)
+    
+    if (__DEV__) {
+      console.log(`📋 Found ${allSessions.length} total sessions, ${userSessions.length} for current user`);
+    }
+    
+    const normalizedSessions = userSessions.map((session) => ({
       ...session,
       session_id: session.session_id || session.id,
       id: session.id || session.session_id,
     }));
+    
     return {
       success: true,
       data: {
@@ -255,7 +304,7 @@ export const listSessions = async (page = 1, perPage = 20) => {
         sessions: normalizedSessions,
       },
       sessions: normalizedSessions,
-      total: response.data.total || 0,
+      total: normalizedSessions.length,
     };
   } catch (error) {
     return {

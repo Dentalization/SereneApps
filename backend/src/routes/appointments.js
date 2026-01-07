@@ -128,6 +128,23 @@ function serializeUserSlim(user) {
   };
 }
 
+function serializeDentistWithProfile(user, dentistProfile) {
+  if (!user) return null;
+  return {
+    id: user.id?.toString?.() ?? user.id,
+    name: user.name || null,
+    email: user.email || null,
+    phone: user.phone_number ?? user.phoneNumber ?? null,
+    avatar: user.avatar_url ?? user.avatarUrl ?? null,
+    title: dentistProfile?.title || null,
+    specialization: dentistProfile?.primarySpecialization || dentistProfile?.primary_specialization || 'Dokter Gigi Umum',
+    dentistType: dentistProfile?.dentistType || dentistProfile?.dentist_type || 'clinic',
+    clinicName: dentistProfile?.clinicName || dentistProfile?.clinic_name || null,
+    clinicAddress: dentistProfile?.clinicAddress || dentistProfile?.clinic_address || null,
+    consultationFee: dentistProfile?.consultationFee || dentistProfile?.consultation_fee || null
+  };
+}
+
 function serializeBranch(branch) {
   if (!branch) return null;
   return {
@@ -154,8 +171,19 @@ function serializeHistory(entries = []) {
 }
 
 function serializeAppointment(appointment) {
+  // Generate booking code from appointment id
+  const bookingCode = `SRN-${String(appointment.id).padStart(6, '0')}`;
+  
+  // Get latest payment intent for payment status
+  const latestPayment = appointment.paymentIntents?.[0] || null;
+  
+  // Get appointment type from metadata or determine from videoRoomRef
+  const metadata = appointment.metadata || {};
+  const appointmentType = metadata.appointmentType || (appointment.videoRoomRef ? 'virtual' : 'onsite');
+  
   return {
     id: appointment.id.toString(),
+    bookingCode,
     dentistId: appointment.dentistId?.toString?.() ?? appointment.dentist_id?.toString?.() ?? null,
     patientId: appointment.patientId?.toString?.() ?? appointment.patient_id?.toString?.() ?? null,
     clinicBranchId: appointment.clinicBranchId
@@ -166,6 +194,7 @@ function serializeAppointment(appointment) {
     startsAt: toIsoString(appointment.startsAt ?? appointment.starts_at),
     endsAt: toIsoString(appointment.endsAt ?? appointment.ends_at),
     status: appointment.status,
+    appointmentType, // 'virtual' or 'onsite'
     reason: appointment.reason,
     notes: appointment.notes,
     cancellationReason: appointment.cancellationReason ?? appointment.cancellation_reason ?? null,
@@ -177,9 +206,16 @@ function serializeAppointment(appointment) {
     createdAt: toIsoString(appointment.createdAt ?? appointment.created_at),
     updatedAt: toIsoString(appointment.updatedAt ?? appointment.updated_at),
     patient: serializeUserSlim(appointment.patient),
-    dentist: serializeUserSlim(appointment.dentist),
+    dentist: serializeDentistWithProfile(appointment.dentist, appointment.dentistProfile),
     clinicBranch: serializeBranch(appointment.clinicBranch),
-    statusHistory: appointment.statusHistory ? serializeHistory(appointment.statusHistory) : undefined
+    statusHistory: appointment.statusHistory ? serializeHistory(appointment.statusHistory) : undefined,
+    payment: latestPayment ? {
+      id: latestPayment.id?.toString?.() ?? null,
+      amount: latestPayment.amount,
+      status: latestPayment.status,
+      provider: latestPayment.provider || null,
+      createdAt: toIsoString(latestPayment.createdAt)
+    } : null
   };
 }
 
@@ -224,16 +260,25 @@ router.get('/availability', authenticateToken, async (req, res) => {
       return sendError(res, 400, 'date_required', 'Parameter tanggal wajib diisi (YYYY-MM-DD).');
     }
 
-    const dentistId = toBigInt(dentistIdRaw, 'dentistId');
+    // dentistIdRaw from mobile is the DentistProfile.id
+    const dentistProfileId = toBigInt(dentistIdRaw, 'dentistId');
     const date = ensureIsoDate(dateRaw);
 
-    const dentistProfile = await prisma.dentistProfile.findFirst({
-      where: { userId: dentistId },
+    // First lookup dentist profile by id to get userId and working hours
+    const dentistProfile = await prisma.dentistProfile.findUnique({
+      where: { id: dentistProfileId },
       select: {
+        userId: true,
         clinicWorkingHours: true,
         clinic_working_hours: true
       }
     });
+    
+    if (!dentistProfile) {
+      return sendError(res, 404, 'dentist_not_found', 'Dokter gigi tidak ditemukan.');
+    }
+    
+    const dentistId = dentistProfile.userId;
 
     const workingWindow = getWorkingWindow(date, dentistProfile);
     if (!workingWindow.isOpen) {
@@ -298,7 +343,8 @@ router.post(
       start,
       end,
       reason,
-      notes
+      notes,
+      appointmentType // 'virtual' or 'onsite'
     } = req.body || {};
 
     try {
@@ -309,8 +355,22 @@ router.post(
       return sendError(res, 400, 'time_required', 'Waktu mulai dan selesai janji temu wajib diisi.');
     }
 
-      const dentistId = toBigInt(dentistIdRaw, 'dentistId');
+      // dentistIdRaw from mobile is the DentistProfile.id, we need to get the User.id
+      const dentistProfileId = toBigInt(dentistIdRaw, 'dentistId');
       const clinicBranchId = clinicBranchIdRaw ? toBigInt(clinicBranchIdRaw, 'clinicBranchId') : null;
+      
+      // Look up the dentist profile to get the actual user_id
+      const dentistProfile = await prisma.dentistProfile.findUnique({
+        where: { id: dentistProfileId },
+        select: { userId: true }
+      });
+      
+      if (!dentistProfile) {
+        return sendError(res, 404, 'dentist_not_found', 'Dokter gigi tidak ditemukan.');
+      }
+      
+      const dentistId = dentistProfile.userId;
+      
       if (dentistId === patientId) {
         return sendError(res, 400, 'self_booking_not_allowed', 'Pasien tidak dapat membuat janji dengan dirinya sendiri.');
       }
@@ -331,7 +391,8 @@ router.post(
 
       let createdAppointment;
       await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1)', dentistId.toString());
+        // Use dentistId as bigint for advisory lock
+        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1::bigint)', dentistId);
 
         const overlapping = await tx.appointment.findFirst({
           where: {
@@ -358,7 +419,10 @@ router.post(
             endsAt,
             status: 'scheduled',
             reason: reason || null,
-            notes: notes || null
+            notes: notes || null,
+            metadata: {
+              appointmentType: appointmentType || 'onsite' // 'virtual' or 'onsite'
+            }
           }
         });
 
@@ -376,7 +440,8 @@ router.post(
         });
       });
 
-      const dentistProfile = await prisma.dentistProfile.findFirst({
+      // Fetch dentist profile details for response (use different variable name)
+      const dentistProfileDetails = await prisma.dentistProfile.findFirst({
         where: { userId: dentistId },
         select: {
           title: true,
@@ -440,11 +505,11 @@ router.post(
               email: dentistUser.email,
               phone: dentistUser.phone_number,
               avatar: dentistUser.avatar_url,
-              title: dentistProfile?.title || null,
-              specialization: dentistProfile?.primarySpecialization || null,
-              clinicName: dentistProfile?.clinicName || null,
-              clinicAddress: dentistProfile?.clinicAddress || null,
-              consultationFee: dentistProfile?.consultationFee || null
+              title: dentistProfileDetails?.title || null,
+              specialization: dentistProfileDetails?.primarySpecialization || null,
+              clinicName: dentistProfileDetails?.clinicName || null,
+              clinicAddress: dentistProfileDetails?.clinicAddress || null,
+              consultationFee: dentistProfileDetails?.consultationFee || null
             }
           : null
       };
@@ -544,7 +609,8 @@ router.patch(
 
       let updatedAppointment;
       await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1)', appointment.dentistId.toString());
+        // Use dentistId as bigint for advisory lock
+        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1::bigint)', appointment.dentistId);
 
         const overlapping = await tx.appointment.findFirst({
           where: {
@@ -1171,7 +1237,18 @@ router.get(
               name: true,
               email: true,
               phone_number: true,
-              avatar_url: true
+              avatar_url: true,
+              dentistProfile: {
+                take: 1,
+                select: {
+                  title: true,
+                  primarySpecialization: true,
+                  dentist_type: true,
+                  clinicName: true,
+                  clinicAddress: true,
+                  consultationFee: true
+                }
+              }
             }
           },
           clinicBranch: {
@@ -1181,6 +1258,17 @@ router.get(
               city: true,
               streetAddress: true,
               clinicProfileId: true
+            }
+          },
+          paymentIntents: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              amount: true,
+              status: true,
+              provider: true,
+              createdAt: true
             }
           },
           statusHistory: includeHistory
@@ -1194,7 +1282,13 @@ router.get(
         take: limit
       });
 
-      const serialized = appointments.map(serializeAppointment);
+      // Map dentistProfile from nested dentist relation (it's an array, take first)
+      const appointmentsWithProfile = appointments.map(apt => ({
+        ...apt,
+        dentistProfile: apt.dentist?.dentistProfile?.[0] || null
+      }));
+
+      const serialized = appointmentsWithProfile.map(serializeAppointment);
       const summary = serialized.reduce(
         (acc, item) => {
           acc.total += 1;

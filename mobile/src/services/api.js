@@ -84,9 +84,12 @@ api.interceptors.request.use(
       const token = await AsyncStorage.getItem('accessToken');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.log('[API] Token attached to request:', config.url, `(token: ${token.substring(0, 30)}...)`);
+      } else {
+        console.log('[API] No token found for request:', config.url);
       }
     } catch (error) {
-      console.error('Error getting token:', error);
+      console.error('[API] Error getting token:', error);
     }
     return config;
   },
@@ -100,26 +103,38 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
+    const errorMsg = error.response?.data?.error || '';
 
-    // If 401 and not already retried, try to refresh token
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle token expiration - both 401 and 403 with "Invalid or expired token"
+    const isTokenExpired = 
+      status === 401 || 
+      (status === 403 && errorMsg.includes('expired'));
+
+    if (isTokenExpired && !originalRequest._retry) {
       originalRequest._retry = true;
+      console.log('[API] Token expired, attempting refresh...');
 
       try {
         const refreshToken = await AsyncStorage.getItem('refreshToken');
         if (refreshToken) {
+          console.log('[API] Refreshing token...');
           const response = await axios.post(`${API_BASE_URL}/${API_VERSION}/auth/refresh`, {
             refreshToken,
           });
 
           const { accessToken } = response.data;
           await AsyncStorage.setItem('accessToken', accessToken);
+          console.log('[API] Token refreshed successfully');
 
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return api(originalRequest);
+        } else {
+          console.log('[API] No refresh token available');
         }
       } catch (refreshError) {
         // Refresh failed, logout user
+        console.log('[API] Token refresh failed, clearing tokens');
         await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
         return Promise.reject(refreshError);
       }

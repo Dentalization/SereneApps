@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
-import { sendChatMessage, sendChatWithImages } from '../../../services/aiDiagnosisService';
+import { sendChatMessage, sendChatWithImages, getSessionMessages } from '../../../services/aiDiagnosisService';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
 import { compressImages } from '../../../utils/imageCompression';
@@ -47,7 +47,82 @@ const ChatScreen = ({ route, navigation }) => {
   const [inputText, setInputText] = React.useState('');
   const [selectedImages, setSelectedImages] = React.useState([]);
   const [isSending, setIsSending] = React.useState(false);
+  const [hasProvidedContext, setHasProvidedContext] = React.useState(false); // Track if analysis context sent
+  const [isLoadingHistory, setIsLoadingHistory] = React.useState(false);
   const scrollViewRef = React.useRef(null);
+  
+  // Build analysis context string for AI
+  const analysisContextRef = React.useRef(null);
+  
+  // Load session history from server to check if AI already has context
+  React.useEffect(() => {
+    const loadSessionHistory = async () => {
+      if (!sessionId || mode === 'pre-analysis') return;
+      
+      setIsLoadingHistory(true);
+      try {
+        const historyResponse = await getSessionMessages(sessionId);
+        
+        if (historyResponse.success && historyResponse.messages && historyResponse.messages.length > 0) {
+          // Check if session already has messages with images
+          const hasImageInHistory = historyResponse.messages.some(msg => 
+            (msg.images && msg.images.length > 0) || 
+            msg.has_images ||
+            (msg.metadata && msg.metadata.has_images)
+          );
+          
+          if (hasImageInHistory) {
+            // AI already has image context from this session
+            setHasProvidedContext(true);
+            if (__DEV__) {
+              console.log('✅ Session already has image context from server history');
+            }
+          }
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('⚠️ Could not load session history:', error);
+        }
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+    
+    loadSessionHistory();
+  }, [sessionId, mode]);
+  
+  React.useEffect(() => {
+    if (analysisData && mode !== 'pre-analysis') {
+      // Build context string to send with first chat message
+      let context = '[KONTEKS: User sudah melakukan analisis AI sebelumnya dengan hasil berikut]\n';
+      
+      if (analysisData.riskLevel || analysisData.risk_level) {
+        context += `Tingkat Risiko: ${analysisData.riskLevel || analysisData.risk_level}\n`;
+      }
+      
+      if (analysisData.summary || analysisData.overall_assessment) {
+        context += `Ringkasan: ${analysisData.summary || analysisData.overall_assessment}\n`;
+      }
+      
+      if (analysisData.findings && Array.isArray(analysisData.findings) && analysisData.findings.length > 0) {
+        context += 'Temuan: ';
+        const findingNames = analysisData.findings.map(f => f.name || f.condition || f).join(', ');
+        context += findingNames + '\n';
+      }
+      
+      if (analysisData.recommendations && Array.isArray(analysisData.recommendations) && analysisData.recommendations.length > 0) {
+        context += 'Rekomendasi sebelumnya: ';
+        context += analysisData.recommendations.slice(0, 3).join('; ') + '\n';
+      }
+      
+      context += '[END KONTEKS]\n\n';
+      analysisContextRef.current = context;
+      
+      if (__DEV__) {
+        console.log('📝 Analysis context built for chat:', context);
+      }
+    }
+  }, [analysisData, mode]);
 
   React.useEffect(() => {
     // Add initial AI message from analysis
@@ -178,15 +253,25 @@ const ChatScreen = ({ route, navigation }) => {
     }
 
     // Get message text with fallback
-    const messageText = inputText.trim() || (selectedImages.length > 0 ? 'Ini foto gigi saya.' : '');
+    let messageText = inputText.trim() || (selectedImages.length > 0 ? 'Ini foto gigi saya.' : '');
     
     // Don't send if both are empty
     if (!messageText && selectedImages.length === 0) return;
+    
+    // Prepend analysis context on first message if coming from ResultScreen
+    // This tells AI that user already did analysis before chatting
+    if (!hasProvidedContext && analysisContextRef.current && analysisData && mode !== 'pre-analysis') {
+      messageText = analysisContextRef.current + 'Pertanyaan user: ' + messageText;
+      setHasProvidedContext(true);
+      if (__DEV__) {
+        console.log('📨 Sending first message with analysis context');
+      }
+    }
 
     const userMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: messageText,
+      content: inputText.trim() || (selectedImages.length > 0 ? 'Ini foto gigi saya.' : ''), // Display original message
       images: selectedImages.length > 0 ? selectedImages : undefined,
       timestamp: new Date().toISOString(),
     };
@@ -240,6 +325,11 @@ const ChatScreen = ({ route, navigation }) => {
         // Use /chat/upload for images (multipart) - always provide valid message text
         response = await sendChatWithImages(messageText, sessionId, compressedImages);
         
+        // Mark that we've provided context (images contain visual context)
+        if (!hasProvidedContext) {
+          setHasProvidedContext(true);
+        }
+        
         // Remove processing message after getting response
         setMessages(prev => prev.filter(msg => !msg.isProcessing));
         
@@ -264,7 +354,17 @@ const ChatScreen = ({ route, navigation }) => {
         }
       } else {
         // Use /chat for text only (JSON)
-        response = await sendChatMessage(messageText, sessionId);
+        // If we have analysis context and haven't sent it yet, prepend to message
+        let messageToSend = messageText;
+        if (analysisContextRef.current && !hasProvidedContext && mode !== 'pre-analysis') {
+          messageToSend = analysisContextRef.current + 'Pertanyaan user: ' + messageText;
+          setHasProvidedContext(true);
+          if (__DEV__) {
+            console.log('📤 Sending message with analysis context');
+          }
+        }
+        
+        response = await sendChatMessage(messageToSend, sessionId);
         
         if (response.success) {
           const aiMessage = {
