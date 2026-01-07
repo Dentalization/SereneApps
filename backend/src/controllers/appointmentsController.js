@@ -17,12 +17,12 @@ export const createAppointment = async (req, res, next) => {
       notes
     } = req.body;
 
-    // Validate required fields
-    if (!dentist_id || !clinic_id || !date || !time) {
+    // Validate required fields - clinic_id is optional for independent dentists
+    if (!dentist_id || !date || !time) {
       throw new APIError(
         ERROR_CODES.VALIDATION_ERROR.code,
         'VALIDATION_ERROR',
-        'dentist_id, clinic_id, date, and time are required'
+        'dentist_id, date, and time are required'
       );
     }
 
@@ -33,24 +33,75 @@ export const createAppointment = async (req, res, next) => {
     const starts_at = new Date(`${date}T${time}:00Z`);
     const ends_at = new Date(starts_at.getTime() + duration * 60000);
 
-    // Check if dentist exists and works at the clinic
-    const dentistCheckQuery = `
-      SELECT cs.id, cp.operating_hours
-      FROM clinic_staff cs
-      JOIN clinic_profiles cp ON cp.id = cs.clinic_profile_id
-      WHERE cs.user_id = $1 
-        AND cs.clinic_profile_id = $2
-        AND cs.is_active = true
-    `;
-    const dentistCheck = await query(dentistCheckQuery, [dentist_id, clinic_id]);
+    let dentistName = null;
+    let dentistType = 'clinic';
+    let operatingHours = null;
+    let effectiveClinicId = clinic_id;
 
-    if (dentistCheck.rows.length === 0) {
+    // First, check if this is an independent dentist
+    const dentistProfileQuery = `
+      SELECT dp.*, u.name as dentist_name
+      FROM dentist_profiles dp
+      JOIN users u ON u.id = dp.user_id
+      WHERE dp.user_id = $1
+    `;
+    const dentistProfile = await query(dentistProfileQuery, [dentist_id]);
+
+    if (dentistProfile.rows.length === 0) {
       throw new APIError(
-        ERROR_CODES.APPOINTMENT_INVALID_SLOT.code,
-        'APPOINTMENT_INVALID_SLOT',
-        'Dokter gigi tidak tersedia di klinik ini',
-        'Pilih dokter gigi dan klinik yang valid'
+        ERROR_CODES.RESOURCE_NOT_FOUND.code,
+        'RESOURCE_NOT_FOUND',
+        'Dokter gigi tidak ditemukan'
       );
+    }
+
+    const profile = dentistProfile.rows[0];
+    dentistName = profile.dentist_name;
+    dentistType = profile.dentist_type || 'clinic';
+
+    // Handle based on dentist type
+    if (dentistType === 'independent') {
+      // Independent dentist - no clinic required
+      effectiveClinicId = null;
+      
+      // Parse working hours from dentist profile
+      try {
+        operatingHours = typeof profile.clinic_working_hours === 'string' 
+          ? JSON.parse(profile.clinic_working_hours) 
+          : profile.clinic_working_hours;
+      } catch (e) {
+        operatingHours = null;
+      }
+    } else {
+      // Clinic dentist - verify they work at the clinic
+      if (!clinic_id) {
+        throw new APIError(
+          ERROR_CODES.VALIDATION_ERROR.code,
+          'VALIDATION_ERROR',
+          'clinic_id diperlukan untuk dokter klinik'
+        );
+      }
+
+      const dentistCheckQuery = `
+        SELECT cs.id, cp.operating_hours
+        FROM clinic_staff cs
+        JOIN clinic_profiles cp ON cp.id = cs.clinic_profile_id
+        WHERE cs.user_id = $1 
+          AND cs.clinic_profile_id = $2
+          AND cs.is_active = true
+      `;
+      const dentistCheck = await query(dentistCheckQuery, [dentist_id, clinic_id]);
+
+      if (dentistCheck.rows.length === 0) {
+        throw new APIError(
+          ERROR_CODES.APPOINTMENT_INVALID_SLOT.code,
+          'APPOINTMENT_INVALID_SLOT',
+          'Dokter gigi tidak tersedia di klinik ini',
+          'Pilih dokter gigi dan klinik yang valid'
+        );
+      }
+
+      operatingHours = dentistCheck.rows[0].operating_hours;
     }
 
     // Check if slot is available (no overlapping appointments)
@@ -58,16 +109,15 @@ export const createAppointment = async (req, res, next) => {
       SELECT id
       FROM appointments
       WHERE dentist_id = $1
-        AND clinic_branch_id = $2
         AND status NOT IN ('cancelled', 'rejected')
         AND (
-          (starts_at <= $3 AND ends_at > $3) OR
-          (starts_at < $4 AND ends_at >= $4) OR
-          (starts_at >= $3 AND ends_at <= $4)
+          (starts_at <= $2 AND ends_at > $2) OR
+          (starts_at < $3 AND ends_at >= $3) OR
+          (starts_at >= $2 AND ends_at <= $3)
         )
       LIMIT 1
     `;
-    const overlapCheck = await query(overlapQuery, [dentist_id, clinic_id, starts_at, ends_at]);
+    const overlapCheck = await query(overlapQuery, [dentist_id, starts_at, ends_at]);
 
     if (overlapCheck.rows.length > 0) {
       throw new APIError(
@@ -78,18 +128,19 @@ export const createAppointment = async (req, res, next) => {
       );
     }
 
-    // Check if clinic is open at the requested time
-    const operatingHours = dentistCheck.rows[0].operating_hours;
-    const dayOfWeek = starts_at.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    const dayHours = operatingHours[dayOfWeek];
+    // Check if dentist/clinic is open at the requested time (only if hours are defined)
+    if (operatingHours) {
+      const dayOfWeek = starts_at.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const dayHours = operatingHours[dayOfWeek];
 
-    if (!dayHours || dayHours.isOpen === false) {
-      throw new APIError(
-        ERROR_CODES.APPOINTMENT_INVALID_SLOT.code,
-        'APPOINTMENT_INVALID_SLOT',
-        `Klinik tutup pada hari ${dayOfWeek}`,
-        'Pilih hari lain saat klinik buka'
-      );
+      if (dayHours && (dayHours === 'Closed' || dayHours.isOpen === false)) {
+        throw new APIError(
+          ERROR_CODES.APPOINTMENT_INVALID_SLOT.code,
+          'APPOINTMENT_INVALID_SLOT',
+          `Dokter tidak tersedia pada hari ${dayOfWeek}`,
+          'Pilih hari lain'
+        );
+      }
     }
 
     // Create appointment
@@ -105,7 +156,7 @@ export const createAppointment = async (req, res, next) => {
     const result = await query(insertQuery, [
       dentist_id,
       patient_id,
-      clinic_id,
+      effectiveClinicId, // null for independent dentists
       starts_at,
       ends_at,
       'scheduled',
@@ -115,23 +166,45 @@ export const createAppointment = async (req, res, next) => {
 
     const appointment = result.rows[0];
 
-    // Get appointment details with dentist and clinic info
-    const detailsQuery = `
-      SELECT 
-        a.*,
-        u_dentist.name as dentist_name,
-        u_dentist.email as dentist_email,
-        dp.title as dentist_title,
-        dp.primary_specialization,
-        cp.brand_name as clinic_name,
-        cp.street_address as clinic_address,
-        cp.phone as clinic_phone
-      FROM appointments a
-      JOIN users u_dentist ON u_dentist.id = a.dentist_id
-      JOIN dentist_profiles dp ON dp.user_id = a.dentist_id
-      JOIN clinic_profiles cp ON cp.id = a.clinic_branch_id
-      WHERE a.id = $1
-    `;
+    // Get appointment details with dentist info (and clinic if available)
+    let detailsQuery;
+    if (effectiveClinicId) {
+      detailsQuery = `
+        SELECT 
+          a.*,
+          u_dentist.name as dentist_name,
+          u_dentist.email as dentist_email,
+          dp.title as dentist_title,
+          dp.primary_specialization,
+          dp.dentist_type,
+          cp.brand_name as clinic_name,
+          cp.street_address as clinic_address,
+          cp.phone as clinic_phone
+        FROM appointments a
+        JOIN users u_dentist ON u_dentist.id = a.dentist_id
+        JOIN dentist_profiles dp ON dp.user_id = a.dentist_id
+        LEFT JOIN clinic_profiles cp ON cp.id = a.clinic_branch_id
+        WHERE a.id = $1
+      `;
+    } else {
+      // Independent dentist - use dentist profile address
+      detailsQuery = `
+        SELECT 
+          a.*,
+          u_dentist.name as dentist_name,
+          u_dentist.email as dentist_email,
+          dp.title as dentist_title,
+          dp.primary_specialization,
+          dp.dentist_type,
+          dp.clinic_name as clinic_name,
+          dp.clinic_address as clinic_address,
+          dp.phone_number as clinic_phone
+        FROM appointments a
+        JOIN users u_dentist ON u_dentist.id = a.dentist_id
+        JOIN dentist_profiles dp ON dp.user_id = a.dentist_id
+        WHERE a.id = $1
+      `;
+    }
     const appointmentDetails = await query(detailsQuery, [appointment.id]);
 
     res.status(201).json({

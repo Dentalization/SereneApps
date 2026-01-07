@@ -107,45 +107,130 @@ const formatImageUri = (data, mime = 'image/jpeg') => {
 
 const resolveImageUri = (image) => {
   if (!image) return null;
-  if (typeof image === 'string') {
-    return formatImageUri(image);
+  
+  if (__DEV__) {
+    console.log('🔍 resolveImageUri input:', {
+      type: typeof image,
+      isString: typeof image === 'string',
+      preview: typeof image === 'string' ? image.substring(0, 50) : JSON.stringify(image).substring(0, 100),
+      keys: typeof image === 'object' && image ? Object.keys(image) : [],
+    });
   }
-  if (image.url) return image.url;
-  if (image.uri) return image.uri;
-  if (image.data) return formatImageUri(image.data, image.mime_type);
-  if (image.base64) return formatImageUri(image.base64, image.mime_type);
-  if (image.annotated_image_base64) return formatImageUri(image.annotated_image_base64, image.mime_type);
+  
+  if (typeof image === 'string') {
+    const result = formatImageUri(image);
+    if (__DEV__ && result) {
+      console.log('  → Resolved string to:', result.substring(0, 60));
+    }
+    return result;
+  }
+  // Check various possible URL/URI fields
+  if (image.url) {
+    if (__DEV__) console.log('  → Using image.url:', image.url.substring(0, 60));
+    return image.url;
+  }
+  if (image.uri) {
+    if (__DEV__) console.log('  → Using image.uri:', image.uri.substring(0, 60));
+    return image.uri;
+  }
+  if (image.src) {
+    if (__DEV__) console.log('  → Using image.src:', image.src.substring(0, 60));
+    return image.src;
+  }
+  if (image.source) {
+    const result = typeof image.source === 'string' ? image.source : image.source?.uri;
+    if (__DEV__ && result) console.log('  → Using image.source:', result.substring(0, 60));
+    return result;
+  }
+  // Check base64 data fields
+  if (image.data) {
+    const result = formatImageUri(image.data, image.mime_type || image.mimeType);
+    if (__DEV__ && result) console.log('  → Using image.data, converted to data URI');
+    return result;
+  }
+  if (image.base64) {
+    const result = formatImageUri(image.base64, image.mime_type || image.mimeType);
+    if (__DEV__ && result) console.log('  → Using image.base64, converted to data URI');
+    return result;
+  }
+  if (image.image_data) {
+    const result = formatImageUri(image.image_data, image.mime_type || image.mimeType);
+    if (__DEV__ && result) console.log('  → Using image.image_data, converted to data URI');
+    return result;
+  }
+  if (image.annotated_image_base64) {
+    const result = formatImageUri(image.annotated_image_base64, image.mime_type);
+    if (__DEV__ && result) console.log('  → Using image.annotated_image_base64');
+    return result;
+  }
+  
+  if (__DEV__) {
+    console.log('  → Could not resolve image, returning null');
+  }
   return null;
 };
 
 const getMessageImages = (message) => {
   const images = [];
+  const seenUris = new Set();
+  
   const imageBuckets = [
     message?.images,
+    message?.image_urls,
+    message?.uploaded_images,
+    message?.file_urls,
+    message?.files,
     message?.metadata?.images,
+    message?.metadata?.image_urls,
+    message?.metadata?.uploaded_images,
     message?.metadata?.attachments,
+    message?.metadata?.files,
     message?.metadata?.analysis?.images,
     message?.attachments,
     message?.content_json?.images,
+    message?.content_json?.image_urls,
     message?.content_json?.attachments,
     message?.analysis?.images,
     message?.payload?.images,
     message?.payload?.attachments,
   ];
+  
   imageBuckets.forEach((bucket) => {
     if (Array.isArray(bucket)) {
       bucket.forEach((img, idx) => {
         const uri = resolveImageUri(img);
-        if (uri) {
+        if (uri && !seenUris.has(uri)) {
+          seenUris.add(uri);
           images.push({ uri, id: `${message.id || message.created_at || 'img'}-${images.length}-${idx}`, type: 'upload' });
         }
       });
+    } else if (bucket && typeof bucket === 'string') {
+      // Single image URL as string
+      const uri = resolveImageUri(bucket);
+      if (uri && !seenUris.has(uri)) {
+        seenUris.add(uri);
+        images.push({ uri, id: `${message.id || message.created_at || 'img'}-${images.length}`, type: 'upload' });
+      }
     }
   });
+  
+  // Check for single image field
+  const singleImageUri = resolveImageUri(message?.image || message?.metadata?.image || message?.image_url || message?.metadata?.image_url);
+  if (singleImageUri && !seenUris.has(singleImageUri)) {
+    seenUris.add(singleImageUri);
+    images.push({ uri: singleImageUri, id: `${message.id || message.created_at || 'img'}-single`, type: 'upload' });
+  }
+  
   const annotatedUri = resolveImageUri(
-    message?.visual_findings?.annotated_image_base64 || message?.annotated_image_base64
+    message?.visual_findings?.annotated_image_base64 || 
+    message?.annotated_image_base64 ||
+    message?.annotated_image ||
+    message?.metadata?.annotated_image_base64 ||
+    message?.metadata?.annotated_image ||
+    message?.metadata?.visual_findings?.annotated_image_base64
   );
-  if (annotatedUri) {
+  if (annotatedUri && !seenUris.has(annotatedUri)) {
+    seenUris.add(annotatedUri);
     images.push({
       uri: annotatedUri,
       id: `${message.id || message.created_at || 'annotated'}-annotated`,
@@ -159,6 +244,46 @@ const formatMessageContent = (text = '') =>
   stripMarkdown(text)
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+// Component for images with fallback when loading fails
+const ImageWithFallback = ({ uri, style, resizeMode = 'cover' }) => {
+  const [hasError, setHasError] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  
+  if (!uri || hasError) {
+    return (
+      <View style={[style, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#E2E8F0' }]}>
+        <MaterialCommunityIcons name="image-off-outline" size={normalize(24)} color="#94A3B8" />
+        <Text style={{ fontSize: normalize(9), color: '#94A3B8', marginTop: normalize(4), textAlign: 'center' }}>
+          Gambar{'\n'}tidak tersedia
+        </Text>
+      </View>
+    );
+  }
+  
+  return (
+    <View style={styles.patientImageContainer}>
+      <Image
+        source={{ uri }}
+        style={style}
+        resizeMode={resizeMode}
+        onError={(error) => {
+          if (__DEV__) {
+            console.log('❌ Image load error:', error.nativeEvent?.error);
+            console.log('   URI preview:', uri?.substring(0, 100));
+          }
+          setHasError(true);
+        }}
+        onLoad={() => {
+          if (__DEV__) {
+            console.log('✅ Image loaded successfully');
+          }
+          setIsLoading(false);
+        }}
+      />
+    </View>
+  );
+};
 
 const DetailHistoryScreen = ({ route, navigation }) => {
   const theme = useTheme();
@@ -180,23 +305,96 @@ const DetailHistoryScreen = ({ route, navigation }) => {
   // --- SAFE TO USE HOOKS HERE (BEFORE RETURN) ---
   
   // FIX: Moved useMemo here, BEFORE the if(isLoading) check
+  // Enhanced to extract images from multiple possible locations
   const patientImages = React.useMemo(() => {
     if (!sessionData?.messages) return [];
     const collected = [];
+    
+    if (__DEV__) {
+      console.log('🔍 patientImages - Processing messages:', sessionData.messages.length);
+    }
+    
     sessionData.messages.forEach((message, messageIndex) => {
-      if (message.role === 'user' && Array.isArray(message.images)) {
-        message.images.forEach((img, idx) => {
-          const uri = resolveImageUri(img);
-          if (uri) {
-            collected.push({
-              uri,
-              id: `${message.id || messageIndex}-${idx}`,
-              timestamp: message.created_at,
+      if (message.role === 'user') {
+        if (__DEV__) {
+          console.log(`🔍 User message ${messageIndex}:`, {
+            hasImages: !!message.images,
+            imagesLength: message.images?.length,
+            hasImageUrls: !!message.image_urls,
+            hasMetadata: !!message.metadata,
+            metadataKeys: message.metadata ? Object.keys(message.metadata) : [],
+            allKeys: Object.keys(message),
+          });
+        }
+        
+        // Check all possible image locations
+        const imageSources = [
+          message.images,
+          message.image_urls,
+          message.uploaded_images,
+          message.file_urls,
+          message.files,
+          message.metadata?.images,
+          message.metadata?.image_urls,
+          message.metadata?.uploaded_images,
+          message.metadata?.attachments,
+          message.metadata?.files,
+          message.attachments,
+          message.content_json?.images,
+          message.content_json?.attachments,
+        ];
+        
+        imageSources.forEach((source, sourceIdx) => {
+          if (Array.isArray(source) && source.length > 0) {
+            if (__DEV__) {
+              console.log(`  Found images in source ${sourceIdx}:`, source.length);
+            }
+            source.forEach((img, idx) => {
+              const uri = resolveImageUri(img);
+              if (uri) {
+                // Avoid duplicates
+                const isDuplicate = collected.some(existing => existing.uri === uri);
+                if (!isDuplicate) {
+                  collected.push({
+                    uri,
+                    id: `${message.id || messageIndex}-${idx}-${collected.length}`,
+                    timestamp: message.created_at,
+                  });
+                }
+              }
             });
           }
         });
+        
+        // Also check if there's a single image field
+        const singleImageUri = resolveImageUri(message.image || message.metadata?.image || message.image_url || message.metadata?.image_url);
+        if (singleImageUri && !collected.some(existing => existing.uri === singleImageUri)) {
+          collected.push({
+            uri: singleImageUri,
+            id: `${message.id || messageIndex}-single`,
+            timestamp: message.created_at,
+          });
+        }
       }
     });
+    
+    if (__DEV__) {
+      console.log('📷 Patient images collected:', collected.length);
+      if (collected.length > 0) {
+        collected.forEach((img, idx) => {
+          console.log(`  Image ${idx}:`, {
+            id: img.id,
+            uriType: typeof img.uri,
+            uriStartsWith: img.uri?.substring(0, 50),
+            isDataUri: img.uri?.startsWith('data:'),
+            isHttpUrl: img.uri?.startsWith('http'),
+            isFileUri: img.uri?.startsWith('file://'),
+            uriLength: img.uri?.length,
+          });
+        });
+      }
+    }
+    
     return collected;
   }, [sessionData]);
 
@@ -232,24 +430,87 @@ const DetailHistoryScreen = ({ route, navigation }) => {
 
         if (__DEV__) {
           console.log('📋 Raw messages extracted:', rawMessages.length);
+          // Debug: Log first message structure to understand API format
+          if (rawMessages.length > 0) {
+            const firstMsg = rawMessages[0];
+            console.log('🔍 First message structure:', {
+              id: firstMsg.id,
+              role: firstMsg.role,
+              hasContent: !!firstMsg.content,
+              contentPreview: firstMsg.content?.substring(0, 50),
+              hasImages: !!firstMsg.images,
+              imagesType: typeof firstMsg.images,
+              imagesIsArray: Array.isArray(firstMsg.images),
+              imagesLength: Array.isArray(firstMsg.images) ? firstMsg.images.length : 'N/A',
+              hasMetadata: !!firstMsg.metadata,
+              metadataKeys: firstMsg.metadata ? Object.keys(firstMsg.metadata) : [],
+              hasAttachments: !!firstMsg.attachments,
+              hasImage_urls: !!firstMsg.image_urls,
+              hasUploaded_images: !!firstMsg.uploaded_images,
+              allKeys: Object.keys(firstMsg),
+            });
+            // Also log raw first message for debugging
+            console.log('🔍 First message RAW:', JSON.stringify(firstMsg, null, 2).substring(0, 2000));
+          }
         }
 
         const sessionMessages = rawMessages.map((msg) => {
-          const parsedMetadata = safeParseJson(msg.metadata) || msg.metadata;
-          const parsedContentJson = safeParseJson(msg.content_json) || msg.content_json;
+          const parsedMetadata = safeParseJson(msg.metadata) || msg.metadata || {};
+          const parsedContentJson = safeParseJson(msg.content_json) || msg.content_json || {};
           const parsedAnalysis =
             safeParseJson(msg.analysis) ||
             safeParseJson(parsedMetadata?.analysis) ||
             safeParseJson(parsedContentJson?.analysis) ||
             msg.analysis;
+          
+          // Parse images from various possible locations (more comprehensive)
+          const parsedImages = 
+            safeParseJson(msg.images) || 
+            msg.images ||
+            safeParseJson(msg.image_urls) || 
+            msg.image_urls ||
+            safeParseJson(msg.uploaded_images) || 
+            msg.uploaded_images ||
+            safeParseJson(msg.file_urls) || 
+            msg.file_urls ||
+            safeParseJson(parsedMetadata?.images) || 
+            parsedMetadata?.images ||
+            safeParseJson(parsedMetadata?.image_urls) || 
+            parsedMetadata?.image_urls ||
+            safeParseJson(parsedMetadata?.uploaded_images) || 
+            parsedMetadata?.uploaded_images ||
+            safeParseJson(parsedContentJson?.images) ||
+            parsedContentJson?.images ||
+            [];
+          
+          // Parse attachments
+          const parsedAttachments =
+            safeParseJson(msg.attachments) ||
+            msg.attachments ||
+            safeParseJson(msg.files) ||
+            msg.files ||
+            safeParseJson(parsedMetadata?.attachments) ||
+            parsedMetadata?.attachments ||
+            safeParseJson(parsedMetadata?.files) ||
+            parsedMetadata?.files ||
+            [];
 
           return {
             ...msg,
             metadata: parsedMetadata,
             content_json: parsedContentJson,
             analysis: parsedAnalysis,
+            images: Array.isArray(parsedImages) ? parsedImages : (parsedImages ? [parsedImages] : []),
+            attachments: Array.isArray(parsedAttachments) ? parsedAttachments : (parsedAttachments ? [parsedAttachments] : []),
           };
         });
+
+        if (__DEV__) {
+          console.log('📋 Parsed messages:', sessionMessages.length);
+          sessionMessages.forEach((msg, idx) => {
+            console.log(`  Message ${idx}: role=${msg.role}, content=${msg.content?.substring(0, 30)}..., images=${msg.images?.length || 0}`);
+          });
+        }
 
         if (!messagesResponse?.success) {
           showToast('Tidak dapat memuat riwayat chat, hanya menampilkan ringkasan.', 'warning');
@@ -768,25 +1029,7 @@ Buatkan laporan profesional yang dapat dibagikan ke dokter gigi.`;
               </View>
             </View>
 
-            {/* Annotated Image */}
-            {patientImages.length > 0 && (
-              <Card style={styles.card}>
-                <Card.Content>
-                  <Text style={styles.cardTitle}>Foto Asli Pasien ({patientImages.length})</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: normalize(8) }}>
-                    {patientImages.map((img) => (
-                      <Image
-                        key={img.id}
-                        source={{ uri: img.uri }}
-                        style={styles.patientImage}
-                        resizeMode="cover"
-                      />
-                    ))}
-                  </ScrollView>
-                </Card.Content>
-              </Card>
-            )}
-
+            {/* Visualisasi Area - Annotated Image from AI */}
             {result.annotatedImage && (
               <Card style={styles.card}>
                 <Card.Content style={{ padding: normalize(12) }}>
@@ -895,9 +1138,27 @@ Buatkan laporan profesional yang dapat dibagikan ke dokter gigi.`;
           <Card style={styles.card}>
             <Card.Content>
               <Text style={styles.cardTitle}>Percakapan dengan AI</Text>
+              
+              {/* Show annotated image at top if available */}
+              {result.annotatedImage && (
+                <View style={styles.chatAnnotatedImageContainer}>
+                  <Text style={styles.chatAnnotatedLabel}>Hasil Analisis AI</Text>
+                  <Image
+                    source={{ uri: result.annotatedImage }}
+                    style={styles.chatAnnotatedImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+              
               {sessionData?.messages && sessionData.messages.length > 0 ? (
                 sessionData.messages.map((message, index) => {
-                  const messageImages = getMessageImages(message);
+                  // For user messages, check if they had images attached (indicated by content mentioning foto/gambar)
+                  const hadImages = message.role === 'user' && 
+                    (message.content?.toLowerCase().includes('foto') || 
+                     message.content?.toLowerCase().includes('gambar') ||
+                     message.content?.toLowerCase().includes('upload'));
+                  
                   return (
                   <View
                     key={index}
@@ -914,6 +1175,15 @@ Buatkan laporan profesional yang dapat dibagikan ke dokter gigi.`;
                         style={{ marginBottom: normalize(6) }}
                       />
                     )}
+                    
+                    {/* User message icon for messages with images */}
+                    {message.role === 'user' && hadImages && (
+                      <View style={styles.userImageIndicator}>
+                        <MaterialCommunityIcons name="image" size={normalize(14)} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.userImageIndicatorText}>Foto terlampir</Text>
+                      </View>
+                    )}
+                    
                     {message.content ? (
                       <Text
                         style={[
@@ -924,22 +1194,6 @@ Buatkan laporan profesional yang dapat dibagikan ke dokter gigi.`;
                         {formatMessageContent(message.content)}
                       </Text>
                     ) : null}
-
-                    {messageImages.length > 0 && (
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={{ marginTop: message.content ? normalize(10) : 0 }}
-                      >
-                        {messageImages.map((img) => (
-                          <Image
-                            key={img.id}
-                            source={{ uri: img.uri }}
-                            style={styles.messageImage}
-                          />
-                        ))}
-                      </ScrollView>
-                    )}
 
                     <Text style={[
                       styles.messageTime,
@@ -1144,6 +1398,25 @@ const styles = StyleSheet.create({
     marginRight: normalize(10),
     backgroundColor: '#E2E8F0',
   },
+  patientImageContainer: {
+    marginRight: normalize(10),
+  },
+  noImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: normalize(24),
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(12),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+  },
+  noImageText: {
+    color: '#94A3B8',
+    fontSize: normalize(12),
+    marginTop: normalize(8),
+    textAlign: 'center',
+  },
   findingRow: {
     flexDirection: 'row', 
     alignItems: 'flex-start'
@@ -1181,7 +1454,7 @@ const styles = StyleSheet.create({
   },
   userBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#3B82F6',
     borderBottomRightRadius: normalize(4),
   },
   aiBubble: {
@@ -1218,6 +1491,43 @@ const styles = StyleSheet.create({
   },
   aiTimeText: {
     color: '#9CA3AF',
+  },
+  chatAnnotatedImageContainer: {
+    marginBottom: normalize(16),
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(12),
+    padding: normalize(12),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  chatAnnotatedLabel: {
+    fontSize: normalize(12),
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: normalize(8),
+    textAlign: 'center',
+  },
+  chatAnnotatedImage: {
+    width: '100%',
+    height: normalize(200),
+    borderRadius: normalize(10),
+    backgroundColor: '#E2E8F0',
+  },
+  userImageIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: normalize(6),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: normalize(8),
+    paddingVertical: normalize(4),
+    borderRadius: normalize(6),
+    alignSelf: 'flex-start',
+  },
+  userImageIndicatorText: {
+    fontSize: normalize(11),
+    color: 'rgba(255,255,255,0.9)',
+    marginLeft: normalize(4),
+    fontWeight: '500',
   },
 });
 

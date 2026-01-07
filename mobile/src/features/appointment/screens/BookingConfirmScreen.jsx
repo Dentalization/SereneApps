@@ -30,7 +30,16 @@ const BookingConfirmScreen = () => {
   const dateLabel = summaryDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const handleConfirm = () => {
-    navigation.navigate('AppointmentList');
+    navigation.navigate('Payment', {
+      dentist,
+      slot,
+      date: selectedDate,
+      type,
+      notes,
+      reminder,
+      fee,
+      paymentMethod: payment,
+    });
   };
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
@@ -38,17 +47,17 @@ const BookingConfirmScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle='light-content' backgroundColor='#7C3AED' />
+      <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
       <View
         onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10, paddingTop: insets.top }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
       >
         <LinearGradient
           colors={['#7C3AED', '#A855F7']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
+          style={{ paddingTop: insets.top + 10, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity
@@ -58,27 +67,32 @@ const BookingConfirmScreen = () => {
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Langkah 2/2</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Langkah 2/3</Text>
               <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Konfirmasi jadwal</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => {
-                const targetClinicId = dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId || dentist?.clinic?.id;
-                if (targetClinicId) {
-                  navigation.navigate('ClinicDetail', {
-                    clinicId: targetClinicId,
-                    clinic: {
-                      id: targetClinicId,
-                      name: dentist?.clinicContext?.name || dentist?.clinic?.name,
-                      address: dentist?.clinicContext?.address || dentist?.clinic?.address,
-                    },
-                  });
-                }
-              }}
-              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <MaterialCommunityIcons name='information-outline' size={22} color='white' />
-            </TouchableOpacity>
+            {/* Show clinic info button only if dentist has a clinic (not independent) */}
+            {(dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId || dentist?.clinic?.id) ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const targetClinicId = dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId || dentist?.clinic?.id;
+                  if (targetClinicId) {
+                    navigation.navigate('ClinicDetail', {
+                      clinicId: targetClinicId,
+                      clinic: {
+                        id: targetClinicId,
+                        name: dentist?.clinicContext?.name || dentist?.clinic?.name,
+                        address: dentist?.clinicContext?.address || dentist?.clinic?.address,
+                      },
+                    });
+                  }
+                }}
+                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <MaterialCommunityIcons name='information-outline' size={22} color='white' />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 48 }} />
+            )}
           </View>
           <View style={{ marginTop: 20 }}>
             <Text style={{ color: 'rgba(255,255,255,0.8)' }}>Periksa kembali detail pemesanan sebelum konfirmasi.</Text>
@@ -138,7 +152,7 @@ const BookingConfirmScreen = () => {
               {[
                 { key: 'card', label: 'Kartu' },
                 { key: 'va', label: 'Virtual Account (VA)' },
-                { key: 'cash', label: 'Bayar di klinik' },
+                { key: 'cash', label: dentist?.dentistType === 'independent' ? 'Bayar langsung' : 'Bayar di klinik' },
               ].map((option) => (
                 <Chip
                   key={option.key}
@@ -167,8 +181,8 @@ const BookingConfirmScreen = () => {
       </ScrollView>
 
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
-        <Button mode='contained' icon='check' onPress={handleConfirm}>
-          Konfirmasi Janji Temu
+        <Button mode='contained' icon='arrow-right' onPress={handleConfirm}>
+          Lanjut ke Pembayaran
         </Button>
       </View>
     </View>
@@ -177,9 +191,10 @@ const BookingConfirmScreen = () => {
 
 const ProgressIndicator = ({ current }) => (
   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-    {['Pilih slot', 'Konfirmasi', 'Selesai'].map((label, index) => {
+    {['Pilih slot', 'Konfirmasi', 'Bayar'].map((label, index) => {
       const step = index + 1;
       const active = step <= current;
+      const completed = step < current;
       return (
         <View key={label} style={{ alignItems: 'center', flex: 1 }}>
           <LinearGradient
@@ -192,7 +207,11 @@ const ProgressIndicator = ({ current }) => (
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: active ? '#78350F' : '#E5E7EB', fontWeight: '700' }}>{step}</Text>
+            {completed ? (
+              <MaterialCommunityIcons name="check" size={18} color="#78350F" />
+            ) : (
+              <Text style={{ color: active ? '#78350F' : '#E5E7EB', fontWeight: '700' }}>{step}</Text>
+            )}
           </LinearGradient>
           <Text style={{ marginTop: 6, fontSize: 12, color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>{label}</Text>
         </View>
@@ -201,32 +220,44 @@ const ProgressIndicator = ({ current }) => (
   </View>
 );
 
-const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => (
-  <LinearGradient
-    colors={['#EEF2FF', '#FFFFFF']}
-    style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
-  >
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-      <View>
-        <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dateLabel}</Text>
-        <Text style={{ color: '#5F6B7C' }}>{timeLabel} WIB</Text>
+const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
+  // For independent dentists, use their practice name/address
+  const isIndependent = dentist?.dentistType === 'independent' || !dentist?.clinicContext?.profileId;
+  const locationName = clinic?.name || 
+                       dentist?.clinicContext?.name || 
+                       dentist?.clinicName || 
+                       (isIndependent ? 'Praktik Mandiri' : 'Lokasi belum ditentukan');
+  
+  return (
+    <LinearGradient
+      colors={['#EEF2FF', '#FFFFFF']}
+      style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+        <View>
+          <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dateLabel}</Text>
+          <Text style={{ color: '#5F6B7C' }}>{timeLabel} WIB</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ color: '#94A3B8' }}>{type === 'virtual' ? 'Virtual visit' : 'Tatap muka'}</Text>
+          <Text style={{ marginTop: 4, fontWeight: '700', color: '#0F172A' }}>{locationName}</Text>
+          {isIndependent && (
+            <Text style={{ fontSize: 10, color: '#7C3AED', marginTop: 2 }}>Dokter Mandiri</Text>
+          )}
+        </View>
       </View>
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={{ color: '#94A3B8' }}>{type === 'virtual' ? 'Virtual visit' : 'Tatap muka'}</Text>
-        <Text style={{ marginTop: 4, fontWeight: '700', color: '#0F172A' }}>{clinic?.name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ width: 52, height: 52, borderRadius: 20, backgroundColor: 'rgba(124,58,237,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+          <MaterialCommunityIcons name='account-heart' size={26} color='#7C3AED' />
+        </View>
+        <View>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>{dentist?.name}</Text>
+          <Text style={{ color: '#5F6B7C' }}>{dentist?.specialty}</Text>
+        </View>
       </View>
-    </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <View style={{ width: 52, height: 52, borderRadius: 20, backgroundColor: 'rgba(124,58,237,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-        <MaterialCommunityIcons name='account-heart' size={26} color='#7C3AED' />
-      </View>
-      <View>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>{dentist?.name}</Text>
-        <Text style={{ color: '#5F6B7C' }}>{dentist?.specialty}</Text>
-      </View>
-    </View>
-  </LinearGradient>
-);
+    </LinearGradient>
+  );
+};
 
 const Section = ({ title, children }) => (
   <View style={{ marginBottom: 24 }}>

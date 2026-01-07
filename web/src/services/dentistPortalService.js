@@ -1,5 +1,50 @@
 import { authHttp } from '../utils/httpClient';
 
+// ==========================================
+// PATIENT MANAGEMENT
+// ==========================================
+
+/**
+ * Get all patients who have booked appointments with this dentist
+ */
+export async function getDentistPatients(params = {}) {
+  const { search, status, sortBy, sortOrder, limit, offset } = params;
+  const queryParams = new URLSearchParams();
+  
+  if (search) queryParams.append('search', search);
+  if (status) queryParams.append('status', status);
+  if (sortBy) queryParams.append('sortBy', sortBy);
+  if (sortOrder) queryParams.append('sortOrder', sortOrder);
+  if (limit) queryParams.append('limit', limit.toString());
+  if (offset) queryParams.append('offset', offset.toString());
+  
+  const queryString = queryParams.toString();
+  const url = `/dentist-portal/patients${queryString ? `?${queryString}` : ''}`;
+  
+  const { data } = await authHttp.get(url);
+  return data;
+}
+
+/**
+ * Get single patient details with appointments and AI results
+ */
+export async function getPatientDetails(patientId) {
+  const { data } = await authHttp.get(`/dentist-portal/patients/${patientId}`);
+  return data.patient;
+}
+
+/**
+ * Get all AI analysis results for a specific patient
+ */
+export async function getPatientAIResults(patientId) {
+  const { data } = await authHttp.get(`/dentist-portal/patients/${patientId}/ai-results`);
+  return data;
+}
+
+// ==========================================
+// SERVICES MANAGEMENT
+// ==========================================
+
 export async function getDentistServicesContext() {
   const { data } = await authHttp.get('/dentist/services/context');
   return data;

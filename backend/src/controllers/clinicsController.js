@@ -198,11 +198,11 @@ export const getNearbyClinics = async (req, res, next) => {
           cp.timezone,
           ${distanceFormula} AS distance_km,
           stats.dentist_count,
-          gallery.hero_image,
-          gallery.cover_image,
-          gallery.gallery_images,
-          highlights.highlights,
-          facilities.facilities
+          NULL AS hero_image,
+          NULL AS cover_image,
+          NULL AS gallery_images,
+          NULL AS highlights,
+          NULL AS facilities
         FROM clinic_branches cb
         JOIN clinic_profiles cp ON cb.clinic_profile_id = cp.id
         LEFT JOIN LATERAL (
@@ -212,39 +212,6 @@ export const getNearbyClinics = async (req, res, next) => {
             AND cs.role = 'dentist'
             AND cs.is_active = true
         ) stats ON true
-        LEFT JOIN LATERAL (
-          SELECT 
-            MAX(CASE WHEN image_type = 'hero' THEN image_url END) AS hero_image,
-            MAX(CASE WHEN image_type = 'cover' THEN image_url END) AS cover_image,
-            array_agg(image_url ORDER BY display_order) AS gallery_images
-          FROM (
-            SELECT image_url, image_type, display_order
-            FROM clinic_gallery
-            WHERE clinic_branch_id = cb.id AND is_active = true
-            ORDER BY display_order
-            LIMIT 8
-          ) g
-        ) gallery ON true
-        LEFT JOIN LATERAL (
-          SELECT array_agg(highlight_text ORDER BY display_order) AS highlights
-          FROM (
-            SELECT highlight_text, display_order
-            FROM clinic_highlights
-            WHERE clinic_branch_id = cb.id AND is_active = true
-            ORDER BY display_order
-            LIMIT 4
-          ) h
-        ) highlights ON true
-        LEFT JOIN LATERAL (
-          SELECT array_agg(json_build_object('name', facility_name, 'description', description, 'icon', icon) ORDER BY display_order) AS facilities
-          FROM (
-            SELECT facility_name, description, icon, display_order
-            FROM clinic_facilities
-            WHERE clinic_branch_id = cb.id AND is_active = true
-            ORDER BY display_order
-            LIMIT 4
-          ) f
-        ) facilities ON true
         WHERE cb.latitude BETWEEN $1 AND $2
           AND cb.longitude BETWEEN $3 AND $4
           AND cb.is_active = true

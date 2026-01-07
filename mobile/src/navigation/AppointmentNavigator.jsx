@@ -1,11 +1,15 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import AppointmentListScreen from '../features/appointment/screens/AppointmentListScreen';
+import DetailAppointmentScreen from '../features/appointment/screens/DetailAppointmentScreen';
 import ClinicSearchScreen from '../features/appointment/screens/ClinicSearchScreen';
 import ClinicDetailScreen from '../features/appointment/screens/ClinicDetailScreen';
 import DentistDetailScreen from '../features/appointment/screens/DentistDetailScreen';
 import BookingSlotScreen from '../features/appointment/screens/BookingSlotScreen';
 import BookingConfirmScreen from '../features/appointment/screens/BookingConfirmScreen';
+import PaymentScreen from '../features/appointment/screens/PaymentScreen';
+import BookingSuccessScreen from '../features/appointment/screens/BookingSuccessScreen';
+import BookingFailedScreen from '../features/appointment/screens/BookingFailedScreen';
 
 const Stack = createStackNavigator();
 
@@ -21,6 +25,11 @@ const AppointmentNavigator = () => {
         name="AppointmentList"
         component={AppointmentListScreen}
         options={{ title: 'Janji Temu' }}
+      />
+      <Stack.Screen
+        name="DetailAppointment"
+        component={DetailAppointmentScreen}
+        options={{ title: 'Detail Janji Temu' }}
       />
       <Stack.Screen
         name="ClinicSearch"
@@ -46,6 +55,21 @@ const AppointmentNavigator = () => {
         name="BookingConfirm"
         component={BookingConfirmScreen}
         options={{ title: 'Konfirmasi Booking' }}
+      />
+      <Stack.Screen
+        name="Payment"
+        component={PaymentScreen}
+        options={{ title: 'Pembayaran' }}
+      />
+      <Stack.Screen
+        name="BookingSuccess"
+        component={BookingSuccessScreen}
+        options={{ title: 'Booking Berhasil', gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="BookingFailed"
+        component={BookingFailedScreen}
+        options={{ title: 'Booking Gagal', gestureEnabled: false }}
       />
     </Stack.Navigator>
   );

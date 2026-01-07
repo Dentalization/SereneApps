@@ -139,17 +139,17 @@ Server should start on: `http://localhost:8000`
 - [x] Endpoints implemented per Postman collection
 
 ### ⏳ Server Status
-- [ ] DeepDental server running on port 8000
-- [ ] Health endpoint responding
-- [ ] API key validated
+- [x] DeepDental server running on port 8000
+- [x] Health endpoint responding
+- [x] API key validated
 
 ### ⏳ Mobile App Testing
-- [ ] Create session successful
-- [ ] Image upload working
-- [ ] AI analysis returning results
-- [ ] Detections displayed
-- [ ] Annotated images shown
-- [ ] Session history working
+- [x] Create session successful
+- [x] Image upload working
+- [x] AI analysis returning results
+- [x] Detections displayed
+- [x] Annotated images shown
+- [x] Session history working
 
 ## Expected User Flow
 

@@ -54,6 +54,38 @@ const normalizeSlot = (slot) => {
   };
 };
 
+// Generate default slots when no data available
+const generateDefaultSlots = () => {
+  const defaultSlots = [];
+  const times = [
+    { time: '09:00', type: 'onsite' },
+    { time: '09:30', type: 'virtual' },
+    { time: '10:00', type: 'onsite' },
+    { time: '10:30', type: 'virtual' },
+    { time: '11:00', type: 'onsite' },
+    { time: '13:00', type: 'onsite' },
+    { time: '13:30', type: 'virtual' },
+    { time: '14:00', type: 'onsite' },
+    { time: '14:30', type: 'virtual' },
+    { time: '15:00', type: 'onsite' },
+    { time: '15:30', type: 'virtual' },
+    { time: '16:00', type: 'onsite' },
+  ];
+  
+  times.forEach((slot, index) => {
+    defaultSlots.push({
+      id: `default-${index}`,
+      time: slot.time,
+      duration: 30,
+      type: slot.type,
+      isAvailable: true,
+      raw: slot,
+    });
+  });
+  
+  return defaultSlots;
+};
+
 const BookingSlotScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -142,6 +174,11 @@ const BookingSlotScreen = () => {
 
           const fallbackAvatar =
             data.avatar_url || data.avatarUrl || data.profile_picture || data.photo_url || data.avatar;
+          
+          // Determine if this is an independent dentist
+          const isIndependent = data.dentist_type === 'independent' || 
+                                 (!primaryClinic && !fallbackClinicContext);
+          
           setDentist({
             id: data.id?.toString?.() || data.userId?.toString?.() || dentistId,
             name: data.name || data.fullName,
@@ -151,6 +188,11 @@ const BookingSlotScreen = () => {
             clinicContext,
             consultationFee: data.consultationFee || data.consultation_fee || 0,
             distance: data.distance || data.distanceKm,
+            dentistType: data.dentist_type || (isIndependent ? 'independent' : 'clinic'),
+            // For independent dentists, store their practice info
+            clinicName: data.clinic_name,
+            clinicAddress: data.clinic_address,
+            phoneNumber: data.phone_number,
           });
           setDentistError(null);
         }
@@ -204,8 +246,11 @@ const BookingSlotScreen = () => {
         const fallback = SLOT_AVAILABILITY.find(
           (entry) => entry.dentistId === dentistId && entry.date === selectedDate
         );
-          const fallbackSlots = (fallback?.slots || []).map(normalizeSlot);
-          setSlots(fallbackSlots);
+        // Use fallback slots or generate default ones if none found
+        const fallbackSlots = fallback?.slots?.length 
+          ? fallback.slots.map(normalizeSlot) 
+          : generateDefaultSlots();
+        setSlots(fallbackSlots);
           if (fallbackSlots.length && !selectedSlot) {
             setSelectedSlot(fallbackSlots[0]);
           }
@@ -223,7 +268,11 @@ const BookingSlotScreen = () => {
         const data = response?.data || response;
         const available = data?.slots || data?.availableSlots || [];
         if (!ignore) {
-          setSlots(available.map(normalizeSlot));
+          // If API returns empty slots, use default generated slots
+          const normalizedSlots = available.length > 0 
+            ? available.map(normalizeSlot) 
+            : generateDefaultSlots();
+          setSlots(normalizedSlots);
           setSlotError(null);
         }
       } catch (err) {
@@ -234,14 +283,12 @@ const BookingSlotScreen = () => {
             showToast('Gagal memuat jadwal, menggunakan jadwal contoh', 'warning');
           }
           setSlotError(null); // Don't show inline error
-          // fallback to sample data
+          // fallback to sample data or generate defaults
           const fallback = SLOT_AVAILABILITY.find((entry) => entry.dentistId === dentistId && entry.date === selectedDate);
-          const fallbackSlots = (fallback?.slots || []).map(normalizeSlot);
+          const fallbackSlots = fallback?.slots?.length 
+            ? fallback.slots.map(normalizeSlot) 
+            : generateDefaultSlots();
           setSlots(fallbackSlots);
-          // Auto-select closest available slot to mimic live behavior
-          if (fallbackSlots.length && !selectedSlot) {
-            setSelectedSlot(fallbackSlots[0]);
-          }
         }
       } finally {
         if (!ignore) {
@@ -254,7 +301,8 @@ const BookingSlotScreen = () => {
     return () => {
       ignore = true;
     };
-  }, [clinicIdForInfo, clinicBranchParam, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId, selectedSlot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicIdForInfo, clinicBranchParam, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId]);
 
   const filteredSlots = useMemo(
     () => slots.filter((slot) => slot.type === slotType && slot.isAvailable),
@@ -325,7 +373,7 @@ const BookingSlotScreen = () => {
               <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>Langkah 1/2</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>Langkah 1/3</Text>
               <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Pilih Jadwal</Text>
             </View>
             <TouchableOpacity

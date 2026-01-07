@@ -11,10 +11,9 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   
-  /* GPU acceleration for smooth transitions */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000px;
+  /* REMOVED: transform, backface-visibility, perspective */
+  /* These CSS properties create a new containing block for position: fixed elements */
+  /* causing modals to position relative to body instead of viewport */
 }
 
 /* Base theme-aware styling */
@@ -34,9 +33,9 @@ body {
 #root {
   background-color: var(--color-background);
   
-  /* Enable hardware acceleration */
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
+  /* REMOVED: transform property */
+  /* transform creates a new containing block for position: fixed children */
+  /* will-change: transform; also removed as it has similar effect */
 }
 
 * {

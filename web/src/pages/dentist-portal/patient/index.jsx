@@ -1,8 +1,9 @@
 // /src/pages/dentist-portal/patient/PatientManagement.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { getDentistPatients, getPatientDetails } from '../../../services/dentistPortalService';
 
 // Components
 import AddPatient from './components/AddPatient';
@@ -16,7 +17,7 @@ import PatientProfile from './components/PatientProfile';
 import PatientTreatmentPlan from './components/PatientTreatmentPlan';
 import EnhancedHeader from './components/EnhancedHeader.jsx';
 
-const MIN_LOADING_MS = 900;
+const MIN_LOADING_MS = 500;
 
 const PatientManagement = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -25,59 +26,77 @@ const PatientManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [patients, setPatients] = useState([]);
+  const [summary, setSummary] = useState({
+    total: 0,
+    byStatus: {},
+    withAiResults: 0
+  });
   const { t } = useLanguage();
 
-  // --- Mock data (dipersingkat dari versi kamu) ---
-  const [patients, setPatients] = useState([
-    {
-      id: 1,
-      patientId: 'PT001',
-      name: 'Sarah Johnson',
-      age: 28,
-      gender: 'female',
-      phone: '+62-812-3456-7890',
-      email: 'sarah.j@email.com',
-      status: 'active',
-      lastVisit: '2024-03-10',
-      nextAppointment: '2024-03-20',
-      aiResults: [{ id: 'ai-001' }],
-      appointments: [],
-      billing: { totalBalance: 1500000, paidAmount: 900000, pendingAmount: 600000 }
-    },
-    {
-      id: 2,
-      patientId: 'PT002',
-      name: 'John Doe',
-      age: 35,
-      gender: 'male',
-      phone: '+62-813-7890-1234',
-      email: 'john.doe@email.com',
-      status: 'active',
-      lastVisit: '2024-02-28',
-      nextAppointment: '2024-03-25',
-      appointments: [],
-      billing: { totalBalance: 2500000, paidAmount: 1000000, pendingAmount: 1500000 }
-    },
-    {
-      id: 3,
-      patientId: 'PT003',
-      name: 'Maria Garcia',
-      age: 42,
-      gender: 'female',
-      phone: '+62-814-5678-9012',
-      email: 'maria.garcia@email.com',
-      status: 'active',
-      lastVisit: '2024-03-05',
-      nextAppointment: null,
-      appointments: [],
-      billing: { totalBalance: 800000, paidAmount: 800000, pendingAmount: 0 }
+  // Fetch patients from API
+  const fetchPatients = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = {};
+      if (searchTerm) params.search = searchTerm;
+      if (filterStatus && filterStatus !== 'all') params.status = filterStatus;
+      
+      const response = await getDentistPatients(params);
+      
+      // Transform API data to match component expectations
+      const transformedPatients = (response.patients || []).map(p => ({
+        id: p.id,
+        patientId: `PT${p.id.padStart(3, '0')}`,
+        name: p.name || 'Unknown',
+        phone: p.phone,
+        email: p.email,
+        avatar: p.avatar,
+        status: p.status || 'inactive',
+        lastVisit: p.lastVisit ? p.lastVisit.split('T')[0] : null,
+        nextAppointment: p.nextAppointment ? p.nextAppointment.split('T')[0] : null,
+        aiResults: p.aiResults || [],
+        appointmentCount: p.appointmentCount || 0,
+        appointments: [],
+        billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
+      }));
+      
+      setPatients(transformedPatients);
+      setSummary(response.summary || {
+        total: transformedPatients.length,
+        byStatus: {},
+        withAiResults: transformedPatients.filter(p => p.aiResults.length > 0).length
+      });
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+      setError('Gagal memuat daftar pasien');
+      setPatients([]);
+    } finally {
+      // Ensure minimum loading time for smooth UX
+      setTimeout(() => setLoading(false), MIN_LOADING_MS);
     }
-  ]);
+  }, [searchTerm, filterStatus]);
+
+  // Initial fetch and refetch on search/filter change
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchPatients();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // --- Handlers ---
   const handleAddPatient = (patientData) => {
     const newPatient = {
-      id: patients.length + 1,
+      id: (patients.length + 1).toString(),
       patientId: `PT${String(patients.length + 1).padStart(3, '0')}`,
       ...patientData,
       status: 'new',
@@ -90,7 +109,22 @@ const PatientManagement = () => {
     setSelectedPatient(newPatient);
   };
 
-  const handlePatientSelect = (patient) => setSelectedPatient(patient);
+  const handlePatientSelect = async (patient) => {
+    try {
+      // Fetch full patient details including appointments and AI results
+      const fullPatient = await getPatientDetails(patient.id);
+      setSelectedPatient({
+        ...patient,
+        ...fullPatient,
+        appointments: fullPatient.appointments || [],
+        aiResults: fullPatient.aiResults || []
+      });
+    } catch (err) {
+      console.error('Error fetching patient details:', err);
+      // Still select with basic data
+      setSelectedPatient(patient);
+    }
+  };
 
   // appointments / billing / comms (stub)
   const handleScheduleNew = () => console.log('Schedule new appointment for:', selectedPatient?.name);
@@ -105,11 +139,6 @@ const PatientManagement = () => {
   const handleCreatePlan = (planData) => console.log('Create treatment plan:', planData);
   const handleUpdatePlan = (planId, updatedPlan) => console.log('Update treatment plan:', planId, updatedPlan);
   const handleCompleteTreatment = (treatmentId) => console.log('Complete treatment:', treatmentId);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
-    return () => clearTimeout(timer);
-  }, []);
 
   const statusBadge = (status) => {
     switch (status) {
@@ -198,10 +227,10 @@ const PatientManagement = () => {
       <main className="flex-1 p-6">
         <div className="max-w-7xl mx-auto">
           <EnhancedHeader
-            totalPatients={patients.length}
-            activePatients={patients.filter((p) => p.status === 'active').length}
+            totalPatients={summary.total}
+            activePatients={summary.byStatus?.active || 0}
             scheduledAppointments={patients.filter((p) => p.nextAppointment).length}
-            aiAnalyzedPatients={patients.filter((p) => p.aiResults?.length > 0).length}
+            aiAnalyzedPatients={summary.withAiResults || 0}
             onAddPatient={() => setShowAddPatient(true)}
           />
 

@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, ScrollView, RefreshControl, TouchableOpacity, Animated, StatusBar, Linking, Platform } from 'react-native';
 import { Text, Avatar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getInitials } from '../../../utils/formatters';
 import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
+import { getAppointments } from '../../../services/appointmentService';
 
 // --- interop shims: tahan semua variasi export (default / named / CJS) ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
@@ -38,8 +39,73 @@ const DashboardScreen = () => {
   const onHeaderLayout = (e) => { const h = Math.round(e.nativeEvent.layout.height); if (h && h !== headerHRef.current) { headerHRef.current = h; setHeaderH(h); } };
   const SECTION_GAP = 24, FEATURED_TOP_MARGIN = 16, paddingTop = Math.max(headerH + SECTION_GAP - FEATURED_TOP_MARGIN, 0);
 
-  const onRefresh = React.useCallback(() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1500); }, []);
-  useEffect(() => { Animated.timing(fadeAnim,{toValue:1,duration:800,useNativeDriver:true}).start(); setUpcomingAppointments([]); }, []);
+  // Fetch upcoming appointments from API
+  const fetchUpcomingAppointments = useCallback(async () => {
+    try {
+      const response = await getAppointments({ 
+        limit: 10, 
+        status: 'scheduled,confirmed' 
+      });
+      
+      if (response?.data && Array.isArray(response.data)) {
+        // Transform API data to match FeaturedDoctors format
+        const transformed = response.data.map(apt => ({
+          id: apt.id,
+          bookingCode: apt.bookingCode || `SRN-${String(apt.id).padStart(6, '0')}`,
+          startsAt: apt.startsAt,
+          endsAt: apt.endsAt,
+          status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
+          type: apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
+          reason: apt.reason || 'Konsultasi gigi',
+          videoRoomRef: apt.videoRoomRef,
+          dentist: {
+            id: apt.dentistId,
+            name: apt.dentist?.name || 'Dokter Gigi',
+            title: apt.dentist?.title || null,
+            specialty: apt.dentist?.specialization || 'Dokter Gigi Umum',
+            dentistType: apt.dentist?.dentistType || 'clinic',
+            avatar: apt.dentist?.avatar || null,
+          },
+          clinic: {
+            id: apt.clinicBranchId,
+            name: apt.dentist?.dentistType === 'independent' 
+              ? (apt.dentist?.clinicName || 'Praktik Mandiri')
+              : (apt.clinicBranch?.branchName || apt.clinicBranch?.name || 'Klinik'),
+          },
+          payment: apt.payment ? {
+            id: apt.payment.id,
+            amount: apt.payment.amount,
+            status: apt.payment.status,
+          } : null,
+        }));
+        
+        setUpcomingAppointments(transformed);
+        console.log('[Dashboard] Fetched', transformed.length, 'upcoming appointments');
+      } else {
+        setUpcomingAppointments([]);
+      }
+    } catch (err) {
+      console.log('[Dashboard] Error fetching appointments:', err.message);
+      setUpcomingAppointments([]);
+    }
+  }, []);
+
+  const onRefresh = React.useCallback(() => { 
+    setRefreshing(true); 
+    fetchUpcomingAppointments().finally(() => setRefreshing(false));
+  }, [fetchUpcomingAppointments]);
+  
+  useEffect(() => { 
+    Animated.timing(fadeAnim,{toValue:1,duration:800,useNativeDriver:true}).start(); 
+    fetchUpcomingAppointments();
+  }, [fetchUpcomingAppointments]);
+
+  // Refetch when screen is focused (e.g. after booking)
+  useFocusEffect(
+    useCallback(() => {
+      fetchUpcomingAppointments();
+    }, [fetchUpcomingAppointments])
+  );
 
   const categories = [
     { id:'all', label:'Semua', icon:'check-circle' },
@@ -112,6 +178,30 @@ const DashboardScreen = () => {
     clinicId: d?.clinicContext?.profileId,
     clinicBranchId: d?.clinicContext?.branchId,
   });
+  
+  // For FeaturedDoctors (appointments carousel) - navigate to detail
+  const handleAppointmentPress = (apt) =>
+    navigation.navigate('AppointmentTab', {
+      screen: 'DetailAppointment',
+      params: { appointmentId: apt.appointmentId || apt.id },
+    });
+  const handleAppointmentAction = (apt) => {
+    // If canJoin is true, this means it's a virtual appointment within 30 minutes
+    // Navigate to VideoCall if videoRoomId exists, otherwise go to detail
+    if (apt.canJoin && apt.fullAppointment?.videoRoomId) {
+      navigation.navigate('VideoCall', {
+        roomId: apt.fullAppointment.videoRoomId,
+        appointmentId: apt.appointmentId || apt.id,
+      });
+    } else {
+      navigation.navigate('AppointmentTab', {
+        screen: 'DetailAppointment',
+        params: { appointmentId: apt.appointmentId || apt.id },
+      });
+    }
+  };
+  
+  // For NearbyDentists - navigate to dentist detail
   const handleDoctorPress = (d) =>
     navigation.navigate('DentistDetail', {
       dentistId: d.id,
@@ -216,7 +306,7 @@ const DashboardScreen = () => {
         keyboardShouldPersistTaps="handled"
       >
         
-        <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleDoctorPress} onJoinCall={handleJoinCall} />
+        <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleAppointmentPress} onJoinCall={handleAppointmentAction} />
         <QuickActions actions={quickActions} />
         <NearbyClinics
           onClinicPress={handleClinicPress}
