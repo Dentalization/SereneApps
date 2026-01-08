@@ -359,10 +359,10 @@ router.post(
       const dentistProfileId = toBigInt(dentistIdRaw, 'dentistId');
       const clinicBranchId = clinicBranchIdRaw ? toBigInt(clinicBranchIdRaw, 'clinicBranchId') : null;
       
-      // Look up the dentist profile to get the actual user_id
+      // Look up the dentist profile to get the actual user_id and practice type
       const dentistProfile = await prisma.dentistProfile.findUnique({
         where: { id: dentistProfileId },
-        select: { userId: true }
+        select: { userId: true, dentist_type: true, clinic_id: true }
       });
       
       if (!dentistProfile) {
@@ -370,9 +370,49 @@ router.post(
       }
       
       const dentistId = dentistProfile.userId;
+      const dentistType = dentistProfile.dentist_type || 'clinic';
       
       if (dentistId === patientId) {
         return sendError(res, 400, 'self_booking_not_allowed', 'Pasien tidak dapat membuat janji dengan dirinya sendiri.');
+      }
+
+      // Resolve clinic branch to avoid writing inconsistent foreign keys
+      let resolvedClinicBranchId = null;
+      if (dentistType !== 'independent') {
+        // First, treat incoming value as a branch id
+        if (clinicBranchId) {
+          const branchById = await prisma.clinicBranch.findUnique({
+            where: { id: clinicBranchId },
+            select: { id: true, clinicProfileId: true, isActive: true, isMainBranch: true }
+          });
+          if (branchById && branchById.isActive) {
+            resolvedClinicBranchId = branchById.id;
+          } else {
+            // If not a branch id, try interpreting as clinic_profile_id
+            const branchByProfile = await prisma.clinicBranch.findFirst({
+              where: { clinicProfileId: clinicBranchId, isActive: true },
+              orderBy: [{ isMainBranch: 'desc' }, { id: 'asc' }]
+            });
+            if (branchByProfile) {
+              resolvedClinicBranchId = branchByProfile.id;
+            }
+          }
+        }
+
+        // Fallback to dentist profile's clinic if no branch provided or resolved
+        if (!resolvedClinicBranchId && dentistProfile.clinic_id) {
+          const branchFromProfile = await prisma.clinicBranch.findFirst({
+            where: { clinicProfileId: dentistProfile.clinic_id, isActive: true },
+            orderBy: [{ isMainBranch: 'desc' }, { id: 'asc' }]
+          });
+          if (branchFromProfile) {
+            resolvedClinicBranchId = branchFromProfile.id;
+          }
+        }
+
+        if (!resolvedClinicBranchId) {
+          return sendError(res, 400, 'clinic_branch_required', 'Cabang klinik diperlukan untuk janji temu dokter klinik.');
+        }
       }
 
       const startsAt = new Date(start);
@@ -414,7 +454,7 @@ router.post(
           data: {
             dentistId,
             patientId,
-            clinicBranchId,
+            clinicBranchId: resolvedClinicBranchId,
             startsAt,
             endsAt,
             status: 'scheduled',

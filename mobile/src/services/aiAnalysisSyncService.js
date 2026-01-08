@@ -12,28 +12,98 @@ import api from './api';
  */
 export const saveAIAnalysis = async (analysisResult) => {
   try {
+    // Normalize and sanitize payload to avoid 500s from oversized or invalid fields
+    const rawDetections = Array.isArray(analysisResult.detections) ? analysisResult.detections : [];
+    const detections = rawDetections.map((d) => ({
+      label: d.label || d.name || d.type || d.condition || 'Temuan',
+      confidence: typeof d.confidence === 'number' ? d.confidence : (typeof d.probability === 'number' ? d.probability / 100 : 0),
+      area: d.area || d.location || d.bbox || null,
+      description: d.description || d.details || d.notes || null,
+      details: d.details || d.explanation || null,
+      severity: d.severity || null,
+    }));
+
+    const rawRecommendations = Array.isArray(analysisResult.recommendations) ? analysisResult.recommendations : [];
+    const recommendations = rawRecommendations.map((r) => ({
+      title: r.title || r.name || r.action || 'Rekomendasi',
+      description: r.description || r.text || r.details || r.recommendation || '',
+      priority: r.priority || r.importance || 'normal',
+      urgency: r.urgency || r.timeframe || 'normal',
+    }));
+
+    // Extract confidence from multiple possible sources
+    const confidenceScoreRaw = analysisResult.confidence_score || analysisResult.confidenceScore || analysisResult.confidence;
+    let confidenceScore = null;
+    if (typeof confidenceScoreRaw === 'number') {
+      // If 0-1 range, convert to percentage
+      confidenceScore = confidenceScoreRaw <= 1 ? Math.round(confidenceScoreRaw * 100) : confidenceScoreRaw;
+    } else if (detections.length > 0) {
+      // Calculate average confidence from detections
+      const avgConfidence = detections.reduce((sum, d) => sum + (d.confidence || 0), 0) / detections.length;
+      confidenceScore = avgConfidence <= 1 ? Math.round(avgConfidence * 100) : avgConfidence;
+    }
+
+    // Large base64 annotated image can blow up payload; cap length
+    const annotatedRaw = analysisResult.annotatedImageUrl || analysisResult.annotated_image_url || null;
+    const annotatedImageUrl = typeof annotatedRaw === 'string' && annotatedRaw.length > 300000 ? null : annotatedRaw;
+
+    const rawSession = analysisResult.session_id || analysisResult.sessionId || analysisResult.id;
+    const sessionIdSafe = typeof rawSession === 'string' ? rawSession.slice(0, 255) : String(rawSession || '').slice(0, 255);
+
+    // Extract findings and summary from multiple sources
+    const findings = analysisResult.findings || 
+                    analysisResult.reply || 
+                    analysisResult.content || 
+                    (detections.length > 0 ? detections.map(d => d.label).join(', ') : null);
+    
+    const summary = analysisResult.summary || 
+                   analysisResult.overall_summary || 
+                   analysisResult.diagnosis_summary || 
+                   null;
+    
+    const overallAssessment = analysisResult.overall_assessment || 
+                             analysisResult.overallAssessment || 
+                             analysisResult.assessment || 
+                             analysisResult.conclusion || 
+                             null;
+    
+    // Determine risk level from multiple sources
+    let riskLevel = analysisResult.risk_level || analysisResult.riskLevel || null;
+    if (!riskLevel && detections.length > 0) {
+      // Infer risk from detections severity
+      const severities = detections.map(d => d.severity).filter(Boolean);
+      if (severities.includes('high') || severities.includes('severe')) riskLevel = 'high';
+      else if (severities.includes('medium') || severities.includes('moderate')) riskLevel = 'medium';
+      else if (severities.includes('low') || severities.includes('mild')) riskLevel = 'low';
+    }
+    riskLevel = riskLevel || 'unknown';
+
     const payload = {
-      sessionId: analysisResult.session_id || analysisResult.sessionId || analysisResult.id,
+      sessionId: sessionIdSafe,
       imageUrl: analysisResult.imageUrl || analysisResult.image_url || null,
-      annotatedImageUrl: analysisResult.annotatedImageUrl || analysisResult.annotated_image_url || null,
-      findings: analysisResult.findings || null,
-      summary: analysisResult.summary || null,
-      overallAssessment: analysisResult.overall_assessment || analysisResult.overallAssessment || null,
-      riskLevel: analysisResult.risk_level || analysisResult.riskLevel || null,
-      confidenceScore: analysisResult.confidence_score || analysisResult.confidenceScore || null,
-      detections: analysisResult.detections || [],
-      recommendations: analysisResult.recommendations || [],
+      annotatedImageUrl,
+      findings,
+      summary,
+      overallAssessment,
+      riskLevel,
+      confidenceScore,
+      detections,
+      recommendations,
       metadata: {
         source: 'mobile_app',
         analyzedAt: analysisResult.timestamp || new Date().toISOString(),
-        originalId: analysisResult.id
-      }
+        originalId: analysisResult.id,
+        detectionCount: detections.length,
+        recommendationCount: recommendations.length,
+      },
     };
 
     const response = await api.post('/ai-analysis', payload);
     return response.data;
   } catch (error) {
-    console.error('Error saving AI analysis:', error);
+    const status = error.response?.status;
+    const data = error.response?.data;
+    console.error('Error saving AI analysis:', status, data || error.message);
     throw error;
   }
 };

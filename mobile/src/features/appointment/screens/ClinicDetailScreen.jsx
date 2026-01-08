@@ -480,20 +480,27 @@ const ClinicDetailScreen = () => {
             onLayout={(e) => handleSectionLayout('keunggulan', e)}
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {(clinic.highlights || []).map((item) => (
-                <View
-                  key={item}
-                  style={{
-                    backgroundColor: clinic.badgeColor || '#EEF2FF',
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 18,
-                    marginRight: 12,
-                  }}
-                >
-                  <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>{item}</Text>
-                </View>
-              ))}
+              {(clinic.highlights || []).map((item, idx) => {
+                // Handle highlights with structure { highlight_text, icon }
+                const highlightText = item?.highlight_text;
+                
+                if (!highlightText) return null;
+                
+                return (
+                  <View
+                    key={`highlight-${item?.id || idx}`}
+                    style={{
+                      backgroundColor: clinic.badgeColor || '#EEF2FF',
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 18,
+                      marginRight: 12,
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>{highlightText}</Text>
+                  </View>
+                );
+              })}
             </ScrollView>
           </Section>
 
@@ -503,7 +510,7 @@ const ClinicDetailScreen = () => {
           >
             {(clinic.services || []).map((service) => (
               <View
-                key={service.name}
+                key={service.id || service.name}
                 style={{
                   backgroundColor: 'white',
                   borderRadius: 20,
@@ -525,7 +532,7 @@ const ClinicDetailScreen = () => {
                     <Text style={{ color: '#94A3B8', marginTop: 4 }}>{service.description}</Text>
                   </View>
                   <Text style={{ fontWeight: '700', color: theme.colors.primary }}>
-                    {formatCurrency(service.price)}
+                    {formatCurrency(parseFloat(service.price || service.base_price || 0))}
                   </Text>
                 </View>
               </View>
@@ -602,13 +609,15 @@ const ClinicDetailScreen = () => {
               }}
             >
               {(clinic.facilities || []).map((facility, index) => {
-                // Handle both object format {name, description, icon} and string format
-                const facilityName = typeof facility === 'string' ? facility : facility?.name || facility;
-                const facilityDesc = typeof facility === 'object' ? facility?.description : null;
+                // Handle facilities with structure { facility_name, description, icon }
+                const facilityName = facility?.facility_name;
+                const facilityDesc = facility?.description;
+                
+                if (!facilityName) return null;
                 
                 return (
                   <View
-                    key={`facility-${index}`}
+                    key={`facility-${facility?.id || index}`}
                     style={{
                       flexDirection: 'row',
                       marginBottom: 12,
@@ -650,16 +659,15 @@ const ClinicDetailScreen = () => {
             onLayout={(e) => handleSectionLayout('galeri', e)}
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {(clinic.gallery || []).map((image, idx) => {
-                // Replace invalid Unsplash URLs with valid fallback
-                let imageUrl = image;
-                if (image && image.includes('photo-160000')) {
-                  imageUrl = `https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800&auto=format&fit=crop&q=80&random=${idx}`;
-                }
+              {(clinic.gallery || []).map((item, idx) => {
+                // Handle gallery items with structure { image_url, image_type, caption }
+                const imageUrl = item?.image_url;
+                
+                if (!imageUrl) return null;
                 
                 return (
                   <Image
-                    key={`${image}-${idx}`}
+                    key={`gallery-${item?.id || idx}`}
                     source={{ uri: imageUrl }}
                     style={{ width: 220, height: 140, borderRadius: 20, marginRight: 14 }}
                   />

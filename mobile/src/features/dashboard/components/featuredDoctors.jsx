@@ -66,7 +66,7 @@ const FeaturedDoctors = ({ appointments = [], onDoctorPress, onJoinCall }) => {
         price: a.payment?.amount || 0,
         paymentStatus: a.payment?.status || null,
         statusText: statusInfo.text,
-        canJoin: statusInfo.canJoin && a.type === 'virtual',
+        canJoin: statusInfo.canJoin && (a.metadata?.appointmentType === 'virtual' || a.type === 'virtual'),
         nextSlot: formatAppointmentTime(a.startsAt),
         image: a.dentist?.avatar || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop',
         verified: true,
@@ -74,7 +74,7 @@ const FeaturedDoctors = ({ appointments = [], onDoctorPress, onJoinCall }) => {
         startsAt: a.startsAt,
         clinicName: a.clinic?.name || (a.dentist?.dentistType === 'independent' ? 'Praktik Mandiri' : ''),
         reason: a.reason || 'Konsultasi gigi',
-        type: a.type || 'onsite',
+        type: a.metadata?.appointmentType || a.type || 'onsite',
         // Pass full appointment for navigation
         fullAppointment: a,
       };

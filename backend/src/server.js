@@ -85,7 +85,9 @@ registerChatGateway(io);
 startNotificationWorker();
 
 app.use(cors(corsOptions));
-app.use(express.json());
+// Increase JSON body size limit to handle AI analysis payloads safely
+// Default 100kb was causing PayloadTooLargeError for annotated images metadata
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

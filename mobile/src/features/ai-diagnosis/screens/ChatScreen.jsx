@@ -19,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
 import { sendChatMessage, sendChatWithImages, getSessionMessages } from '../../../services/aiDiagnosisService';
+import { useDispatch } from 'react-redux';
+import { syncAnalysisToBackend } from '../../../store/slices/aiSlice';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
 import { compressImages } from '../../../utils/imageCompression';
@@ -42,6 +44,7 @@ const ChatScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
   const { sessionId, analysisData, images, pendingImages, mode } = route.params || {};
+  const dispatch = useDispatch();
   
   const [messages, setMessages] = React.useState([]);
   const [inputText, setInputText] = React.useState('');
@@ -351,6 +354,30 @@ const ChatScreen = ({ route, navigation }) => {
             timestamp: new Date().toISOString(),
           };
           setMessages(prev => [...prev, aiMessage]);
+
+          // Background sync of image-based analysis (visual findings) to backend
+          try {
+            const vf = response.data?.visual_findings || {};
+            if (vf && (vf.detections || vf.annotated_image_base64 || vf.summary || vf.overall_assessment)) {
+              const analysisPayload = {
+                id: response.messageId || Date.now().toString(),
+                session_id: sessionId,
+                findings: response.reply || '',
+                summary: vf.summary || vf.overall_summary || '',
+                overall_assessment: vf.overall_assessment || '',
+                risk_level: vf.risk_level || 'unknown',
+                confidence_score: typeof vf.confidence === 'number' ? Math.round(vf.confidence * 100) : vf.confidence_score || null,
+                detections: vf.detections || [],
+                recommendations: vf.recommendations || [],
+                image_url: compressedImages?.[0] || null,
+                annotated_image_url: vf.annotated_image_base64 ? `data:image/jpeg;base64,${vf.annotated_image_base64}` : null,
+                timestamp: new Date().toISOString(),
+              };
+              dispatch(syncAnalysisToBackend(analysisPayload));
+            }
+          } catch (syncErr) {
+            if (__DEV__) console.warn('Chat sync skipped:', syncErr?.message);
+          }
         }
       } else {
         // Use /chat for text only (JSON)

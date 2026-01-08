@@ -1,5 +1,6 @@
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+// Use legacy API to avoid deprecated getInfoAsync warning until new File/Directory API is adopted
+import * as FileSystem from 'expo-file-system/legacy';
 
 /**
  * Compress image to reduce file size and speed up upload

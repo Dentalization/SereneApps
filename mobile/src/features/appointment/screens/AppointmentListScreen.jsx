@@ -59,7 +59,7 @@ const AppointmentListScreen = () => {
           startsAt: apt.startsAt,
           endsAt: apt.endsAt,
           status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
-          type: apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
+          type: apt.metadata?.appointmentType || apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
           reason: apt.reason || 'Konsultasi gigi',
           videoRoomRef: apt.videoRoomRef,
           dentist: {

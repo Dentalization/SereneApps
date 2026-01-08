@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import EmptyState from '../../../components/shared/EmptyState';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
-import { listSessions, getSession, deleteSession } from '../../../services/aiDiagnosisService';
+import { listSessions, getSession, deleteSession, getSessionMessages } from '../../../services/aiDiagnosisService';
+import { saveAIAnalysis } from '../../../services/aiAnalysisSyncService';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -90,6 +91,44 @@ const HistoryScreen = () => {
         }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         setHistoryItems(items);
+
+        // Auto-sync latest analysis to backend for dentist portal visibility
+        try {
+          const latest = items[0];
+          if (latest) {
+            const msgRes = await getSessionMessages(latest.sessionId);
+            if (msgRes.success && msgRes.messages && msgRes.messages.length) {
+              // Find the latest AI reply with visual findings
+              const lastMsg = [...msgRes.messages].reverse().find(m => m.role !== 'user');
+              const vf = lastMsg?.visual_findings || lastMsg?.metadata?.visual_findings || {};
+
+              const detections = vf.detections || [];
+              const recommendations = vf.recommendations || [];
+              const annotatedBase64 = vf.annotated_image_base64 || null;
+
+              const analysisPayload = {
+                id: lastMsg?.id || latest.sessionId,
+                session_id: latest.sessionId,
+                findings: lastMsg?.content || lastMsg?.reply || '',
+                summary: vf.summary || vf.overall_summary || '',
+                overall_assessment: vf.overall_assessment || '',
+                risk_level: vf.risk_level || 'unknown',
+                confidence_score: typeof vf.confidence === 'number' ? Math.round(vf.confidence * 100) : vf.confidence_score || null,
+                detections,
+                recommendations,
+                // Best-effort image mapping
+                image_url: lastMsg?.images?.[0]?.url || null,
+                annotated_image_url: annotatedBase64 ? `data:image/jpeg;base64,${annotatedBase64}` : null,
+                timestamp: latest.createdAt,
+              };
+
+              await saveAIAnalysis(analysisPayload);
+            }
+          }
+        } catch (syncErr) {
+          // Non-blocking: log only
+          console.warn('AI analysis sync skipped:', syncErr?.message);
+        }
       } else {
         setHistoryItems([]);
       }

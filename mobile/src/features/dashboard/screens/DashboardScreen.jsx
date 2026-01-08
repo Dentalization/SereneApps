@@ -55,7 +55,7 @@ const DashboardScreen = () => {
           startsAt: apt.startsAt,
           endsAt: apt.endsAt,
           status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
-          type: apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
+          type: apt.metadata?.appointmentType || apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
           reason: apt.reason || 'Konsultasi gigi',
           videoRoomRef: apt.videoRoomRef,
           dentist: {
@@ -81,6 +81,9 @@ const DashboardScreen = () => {
         
         setUpcomingAppointments(transformed);
         console.log('[Dashboard] Fetched', transformed.length, 'upcoming appointments');
+        if (transformed.length > 0) {
+          console.log('[Dashboard] First appointment type:', transformed[0].type, 'videoRoomRef:', transformed[0].videoRoomRef);
+        }
       } else {
         setUpcomingAppointments([]);
       }
@@ -180,11 +183,17 @@ const DashboardScreen = () => {
   });
   
   // For FeaturedDoctors (appointments carousel) - navigate to detail
-  const handleAppointmentPress = (apt) =>
+  const handleAppointmentPress = (apt) => {
+    console.log('[Dashboard] handleAppointmentPress called with:', {
+      appointmentId: apt.appointmentId,
+      id: apt.id,
+      bookingCode: apt.bookingCode,
+    });
     navigation.navigate('AppointmentTab', {
       screen: 'DetailAppointment',
       params: { appointmentId: apt.appointmentId || apt.id },
     });
+  };
   const handleAppointmentAction = (apt) => {
     // If canJoin is true, this means it's a virtual appointment within 30 minutes
     // Navigate to VideoCall if videoRoomId exists, otherwise go to detail
