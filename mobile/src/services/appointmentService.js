@@ -12,6 +12,7 @@ import api from './api';
  * @param {string} data.date - Date in YYYY-MM-DD format
  * @param {string} data.time - Time in HH:mm format
  * @param {number} data.duration - Duration in minutes (default: 60)
+ * @param {string} data.type - Appointment type: 'virtual' or 'onsite'
  * @param {string} data.reason - Reason for appointment
  * @param {string} data.notes - Additional notes
  * @returns {Promise<Object>} Created appointment data
@@ -22,6 +23,7 @@ export const createAppointment = async ({
   date,
   time,
   duration = 60,
+  type = 'onsite',
   reason = 'Konsultasi gigi',
   notes = '',
 }) => {
@@ -36,6 +38,7 @@ export const createAppointment = async ({
       clinicBranchId: clinic_id,
       start: startDateTime.toISOString(),
       end: endDateTime.toISOString(),
+      appointmentType: type, // 'virtual' or 'onsite'
       reason,
       notes,
     };
@@ -147,9 +150,11 @@ export const getCompletedAppointments = async () => {
  */
 export const getAppointmentById = async (id) => {
   try {
-    console.log('[AppointmentService] Fetching appointment:', id);
+    console.log('[AppointmentService] Fetching appointment:', id, 'Type:', typeof id);
     const response = await api.get(`/appointments/${id}`);
-    return response.data;
+    console.log('[AppointmentService] Fetched appointment successfully:', response.data?.appointment?.id);
+    // Backend returns { appointment: {...} }
+    return { data: response.data.appointment };
   } catch (error) {
     console.error('[AppointmentService] Fetch appointment error:', error.response?.data || error.message);
     throw error;
@@ -166,7 +171,9 @@ export const cancelAppointment = async (id, reason = '') => {
   try {
     console.log('[AppointmentService] Cancelling appointment:', id);
     const response = await api.patch(`/appointments/${id}/cancel`, { reason });
-    return response.data;
+    console.log('[AppointmentService] Appointment cancelled successfully:', response.data?.appointment?.id);
+    // Backend returns { appointment: {...} }
+    return { data: response.data.appointment };
   } catch (error) {
     console.error('[AppointmentService] Cancel appointment error:', error.response?.data || error.message);
     throw error;

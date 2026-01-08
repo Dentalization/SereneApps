@@ -14,6 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { analyzeImage } from '../../../services/aiDiagnosisService';
+import { useDispatch } from 'react-redux';
+import { syncAnalysisToBackend } from '../../../store/slices/aiSlice';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
 
@@ -35,6 +37,7 @@ const AnalysisScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
+  const dispatch = useDispatch();
   const params = route && route.params ? route.params : {};
   const images = params.images;
   const sessionId = params.sessionId;
@@ -82,6 +85,28 @@ const AnalysisScreen = ({ route, navigation }) => {
       setStatus('Selesai!');
 
       if (analysisResponse && analysisResponse.success && analysisResponse.data) {
+        // Background sync to backend (idempotent by sessionId)
+        try {
+          const vf = analysisResponse.data.visual_findings || {};
+          const analysisPayload = {
+            id: analysisResponse.data.message_id || sessionId,
+            session_id: sessionId,
+            findings: analysisResponse.data.reply || analysisResponse.data.content || '',
+            summary: vf.summary || vf.overall_summary || '',
+            overall_assessment: vf.overall_assessment || '',
+            risk_level: vf.risk_level || 'unknown',
+            confidence_score: typeof vf.confidence === 'number' ? Math.round(vf.confidence * 100) : vf.confidence_score || null,
+            detections: vf.detections || [],
+            recommendations: vf.recommendations || [],
+            image_url: analysisResponse.data.images?.[0]?.url || null,
+            annotated_image_url: vf.annotated_image_base64 ? `data:image/jpeg;base64,${vf.annotated_image_base64}` : null,
+            timestamp: new Date().toISOString(),
+          };
+          dispatch(syncAnalysisToBackend(analysisPayload));
+        } catch (syncErr) {
+          // non-blocking
+          if (__DEV__) console.warn('Sync to backend skipped:', syncErr?.message);
+        }
         // Navigate to results with API data
         setTimeout(() => {
           navigation.replace('Result', {

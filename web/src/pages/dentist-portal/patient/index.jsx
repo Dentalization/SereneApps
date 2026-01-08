@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { getDentistPatients, getPatientDetails } from '../../../services/dentistPortalService';
+import { getDentistPatients, getPatientDetails, getPatientAIResults } from '../../../services/dentistPortalService';
 
 // Components
 import AddPatient from './components/AddPatient';
@@ -35,6 +35,107 @@ const PatientManagement = () => {
   });
   const { t } = useLanguage();
 
+  // Normalize backend AI results to UI-friendly shape expected by PatientAIResult
+  const transformAIResults = useCallback((results = []) => {
+    return (results || []).map((r) => {
+      const detections = Array.isArray(r.detections) ? r.detections : [];
+      
+      // Build diagnosis from detections or create summary item
+      const diagnosis = detections.length > 0
+        ? detections.map((d) => {
+            // Calculate confidence: handle 0-1 range or percentage
+            let confidence = 0;
+            if (typeof d.confidence === 'number') {
+              confidence = d.confidence <= 1 ? Math.round(d.confidence * 100) : d.confidence;
+            } else if (typeof d.probability === 'number') {
+              confidence = d.probability <= 1 ? Math.round(d.probability * 100) : d.probability;
+            }
+            
+            return {
+              condition: d.label || d.name || d.condition || 'Temuan Dental',
+              description: d.description || d.details || r.summary || r.overallAssessment || 'Analisis dental',
+              probability: confidence || Number(r.confidenceScore || 0),
+              details: d.details || r.findings || null,
+              severity: d.severity || null,
+            };
+          })
+        : (r.summary || r.overallAssessment || r.findings)
+        ? [
+            {
+              condition: r.overallAssessment ? 'Penilaian Keseluruhan' : 'Ringkasan Analisis',
+              description: r.summary || r.overallAssessment || r.findings || 'Analisis gigi dilakukan',
+              probability: Number(r.confidenceScore || 0),
+              details: r.findings || null,
+              severity: null,
+            },
+          ]
+        : [];
+
+      // Extract symptoms from detections if not provided
+      const symptoms = Array.isArray(r.symptoms) && r.symptoms.length > 0
+        ? r.symptoms
+        : detections.map((d, idx) => ({
+            name: d.label || d.name || `Temuan ${idx + 1}`,
+            severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
+            description: d.description || null,
+          }));
+      
+      // Process recommendations with proper structure
+      const recommendations = Array.isArray(r.recommendations) 
+        ? r.recommendations.map((rec, idx) => ({
+            title: rec.title || rec.name || `Rekomendasi ${idx + 1}`,
+            description: rec.description || rec.text || rec.recommendation || '',
+            priority: rec.priority || rec.importance || 'normal',
+            urgency: rec.urgency || rec.timeframe || 'normal',
+          }))
+        : [];
+      
+      const images = [
+        ...(r.imageUrl
+          ? [{ url: r.imageUrl, type: 'original', description: 'Gambar asli' }]
+          : []),
+        ...(r.annotatedImageUrl
+          ? [{ url: r.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' }]
+          : []),
+      ];
+
+      // Calculate proper confidence score
+      let confidence = Number(r.confidenceScore || 0);
+      if (confidence <= 1) confidence = Math.round(confidence * 100);
+
+      return {
+        id: r.id?.toString?.() || r.id,
+        date: (r.createdAt || '').split('T')[0] || r.createdAt || new Date().toISOString().split('T')[0],
+        type: r.overallAssessment || r.summary ? 'Analisis Dental AI' : 'Deteksi AI',
+        confidence,
+        riskLevel: r.riskLevel || 'unknown',
+        diagnosis,
+        symptoms,
+        recommendations,
+        images,
+      };
+    });
+  }, []);
+
+  // Fetch AI results with small retry to handle eventual consistency
+  const getAIResultsWithRetry = useCallback(async (patientId, attempts = 2, delayMs = 1000) => {
+    for (let i = 0; i <= attempts; i++) {
+      try {
+        const aiRes = await getPatientAIResults(patientId);
+        const list = aiRes?.aiResults || aiRes || [];
+        if (Array.isArray(list) && list.length > 0) {
+          return list;
+        }
+      } catch (e) {
+        console.warn('getPatientAIResults attempt failed:', e?.message);
+      }
+      if (i < attempts) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    return [];
+  }, []);
+
   // Fetch patients from API
   const fetchPatients = useCallback(async () => {
     try {
@@ -58,7 +159,7 @@ const PatientManagement = () => {
         status: p.status || 'inactive',
         lastVisit: p.lastVisit ? p.lastVisit.split('T')[0] : null,
         nextAppointment: p.nextAppointment ? p.nextAppointment.split('T')[0] : null,
-        aiResults: p.aiResults || [],
+        aiResults: transformAIResults(p.aiResults || []),
         appointmentCount: p.appointmentCount || 0,
         appointments: [],
         billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
@@ -67,7 +168,10 @@ const PatientManagement = () => {
       setPatients(transformedPatients);
       setSummary(response.summary || {
         total: transformedPatients.length,
-        byStatus: {},
+        byStatus: transformedPatients.reduce((acc, pt) => {
+          acc[pt.status] = (acc[pt.status] || 0) + 1;
+          return acc;
+        }, {}),
         withAiResults: transformedPatients.filter(p => p.aiResults.length > 0).length
       });
     } catch (err) {
@@ -113,16 +217,25 @@ const PatientManagement = () => {
     try {
       // Fetch full patient details including appointments and AI results
       const fullPatient = await getPatientDetails(patient.id);
+      let transformed = transformAIResults(fullPatient.aiResults || []);
+      // Fallback: fetch AI results endpoint explicitly if none returned
+      if (!transformed.length) {
+        const raw = await getAIResultsWithRetry(patient.id, 2, 1000);
+        transformed = transformAIResults(raw);
+      }
       setSelectedPatient({
         ...patient,
         ...fullPatient,
         appointments: fullPatient.appointments || [],
-        aiResults: fullPatient.aiResults || []
+        aiResults: transformed
       });
     } catch (err) {
       console.error('Error fetching patient details:', err);
       // Still select with basic data
-      setSelectedPatient(patient);
+      setSelectedPatient({
+        ...patient,
+        aiResults: transformAIResults(patient.aiResults || []),
+      });
     }
   };
 

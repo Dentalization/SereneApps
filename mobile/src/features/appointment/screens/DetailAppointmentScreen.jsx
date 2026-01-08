@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Text, Button, useTheme, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppointmentById, cancelAppointment } from '../../../services/appointmentService';
 
@@ -29,16 +29,29 @@ const DetailAppointmentScreen = () => {
 
   // Fetch appointment details
   const fetchAppointment = useCallback(async (showLoading = true) => {
-    if (!appointmentId) return;
+    if (!appointmentId) {
+      console.log('[DetailAppointment] No appointmentId provided');
+      return;
+    }
     
     try {
+      console.log('[DetailAppointment] Fetching appointment with ID:', appointmentId, 'Type:', typeof appointmentId);
       if (showLoading) setLoading(true);
       const response = await getAppointmentById(appointmentId);
+      console.log('[DetailAppointment] Response received:', response?.data ? 'Success' : 'No data', 'ID:', response?.data?.id);
       if (response?.data) {
+        console.log('[DetailAppointment] Appointment data:', {
+          id: response.data.id,
+          type: response.data.appointmentType,
+          metadataType: response.data.metadata?.appointmentType,
+          videoRoomRef: response.data.videoRoomRef,
+        });
         setAppointment(response.data);
       }
     } catch (err) {
       console.error('[DetailAppointment] Error fetching:', err);
+      console.error('[DetailAppointment] Error response data:', err.response?.data);
+      console.error('[DetailAppointment] Error status:', err.response?.status);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -50,6 +63,15 @@ const DetailAppointmentScreen = () => {
       fetchAppointment();
     }
   }, [fetchAppointment, passedAppointment, appointmentId]);
+
+  // Refetch when screen is focused (e.g. after booking or cancellation)
+  useFocusEffect(
+    useCallback(() => {
+      if (appointmentId) {
+        fetchAppointment(false);
+      }
+    }, [appointmentId, fetchAppointment])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -144,11 +166,18 @@ const DetailAppointmentScreen = () => {
           onPress: async () => {
             try {
               setCancelling(true);
-              await cancelAppointment(appointment?.id);
-              Alert.alert('Berhasil', 'Janji temu telah dibatalkan.');
-              navigation.goBack();
+              const response = await cancelAppointment(appointment?.id);
+              // Update local state immediately
+              if (response?.data) {
+                setAppointment(response.data);
+              }
+              Alert.alert('Berhasil', 'Janji temu telah dibatalkan.', [
+                { text: 'OK', onPress: () => navigation.goBack() }
+              ]);
             } catch (err) {
-              Alert.alert('Gagal', err.message || 'Gagal membatalkan janji temu.');
+              console.error('[DetailAppointment] Cancel error:', err);
+              const errorMsg = err.response?.data?.error?.message || err.message || 'Gagal membatalkan janji temu.';
+              Alert.alert('Gagal', errorMsg);
             } finally {
               setCancelling(false);
             }
@@ -205,7 +234,9 @@ const DetailAppointmentScreen = () => {
   const statusInfo = getStatusInfo(appointment?.status);
   const paymentInfo = getPaymentInfo(payment);
   const isUpcoming = ['scheduled', 'confirmed', 'upcoming'].includes(appointment?.status);
-  const isVirtual = appointment?.type === 'virtual' || !!appointment?.videoRoomRef;
+  const isCancellable = ['scheduled', 'confirmed'].includes(appointment?.status);
+  const appointmentType = appointment?.metadata?.appointmentType || appointment?.appointmentType || appointment?.type;
+  const isVirtual = appointmentType === 'virtual' || !!appointment?.videoRoomRef;
 
   if (loading) {
     return (
@@ -620,7 +651,7 @@ const DetailAppointmentScreen = () => {
       </ScrollView>
 
       {/* Bottom Actions */}
-      {isUpcoming && (
+      {isCancellable && (
         <View style={{
           position: 'absolute',
           bottom: 0,

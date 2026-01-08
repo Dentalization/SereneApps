@@ -150,9 +150,9 @@ const PaymentScreen = () => {
         date: dateStr,
         time: timeStr,
         duration: 60,
+        type: type, // 'virtual' or 'onsite'
         reason: notes || 'Konsultasi Gigi',
         notes: notes,
-        appointmentType: type, // 'virtual' or 'onsite'
       });
 
       console.log('[Payment] Appointment created:', response);
