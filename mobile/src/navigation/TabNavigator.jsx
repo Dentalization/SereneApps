@@ -74,6 +74,7 @@ const HIDDEN_TAB_ROUTES = new Set([
   'Camera',
   'ImagePreview',
   'Analysis',
+  'ServerUnavailable',
   'Result',
   'History',
   'Chat',

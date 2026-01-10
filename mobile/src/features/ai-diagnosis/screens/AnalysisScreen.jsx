@@ -5,8 +5,7 @@ import {
   StatusBar, 
   Dimensions, 
   Platform, 
-  PixelRatio, 
-  Alert 
+  PixelRatio 
 } from 'react-native';
 import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -45,6 +44,15 @@ const AnalysisScreen = ({ route, navigation }) => {
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState('Memproses gambar...');
   const analysisRef = React.useRef(false);
+
+  const isModelUnavailableError = (msg = '') => {
+    const lower = String(msg || '').toLowerCase();
+    return (
+      lower.includes('google-generativeai') ||
+      lower.includes('location is not supported') ||
+      lower.includes('orchestrator_error')
+    );
+  };
 
   React.useEffect(() => {
     if (!images || !sessionId || analysisRef.current) return;
@@ -117,22 +125,23 @@ const AnalysisScreen = ({ route, navigation }) => {
         }, 500);
       } else {
         // Handle API error
-        var rawError =
+        const rawError =
           (analysisResponse &&
             analysisResponse.error &&
             analysisResponse.error.message) ||
           (analysisResponse && analysisResponse.error) ||
           'Terjadi kesalahan saat menganalisis gambar.';
 
-        var errorMessage =
+        const errorMessage =
           typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
 
-        var isServerError =
+        const isServerError =
           errorMessage.indexOf('504') !== -1 ||
           errorMessage.indexOf('500') !== -1 ||
           errorMessage.toLowerCase().indexOf('timeout') !== -1 ||
           errorMessage.toLowerCase().indexOf('gateway') !== -1 ||
-          errorMessage.indexOf('ECONNABORTED') !== -1;
+          errorMessage.indexOf('ECONNABORTED') !== -1 ||
+          isModelUnavailableError(errorMessage);
 
         if (isServerError) {
           showToast(
@@ -141,36 +150,22 @@ const AnalysisScreen = ({ route, navigation }) => {
           );
         }
 
-        setTimeout(() => {
-          Alert.alert(
-            '⚠️ Server Sedang Bermasalah',
-            'Server AI diagnosis sedang mengalami gangguan teknis dan tidak dapat diakses saat ini.\n\nKemungkinan penyebab:\n• Server sedang maintenance\n• Server overload atau down\n• Koneksi ke server terputus\n\nTim kami sedang memperbaikinya. Silakan coba lagi nanti.',
-            [
-              {
-                text: 'Kembali',
-                onPress: () => navigation.navigate('AIHome'),
-                style: 'cancel',
-              },
-              {
-                text: 'Coba lagi',
-                onPress: () => {
-                  analysisRef.current = false;
-                  performAnalysis();
-                },
-              },
-            ]
-          );
-        }, 500);
+        navigation.replace('ServerUnavailable', {
+          origin: 'analysis',
+          retryParams: { images, sessionId },
+          errorDetail: errorMessage,
+        });
       }
     } catch (error) {
-      var errorMsg =
+      const errorMsg =
         (error && error.message) || (error ? String(error) : 'Unknown error');
-      var isServerError =
+      const isServerError =
         errorMsg.indexOf('504') !== -1 ||
         errorMsg.indexOf('500') !== -1 ||
         errorMsg.toLowerCase().indexOf('timeout') !== -1 ||
         errorMsg.indexOf('ECONNABORTED') !== -1 ||
-        errorMsg.indexOf('Network Error') !== -1;
+        errorMsg.indexOf('Network Error') !== -1 ||
+        isModelUnavailableError(errorMsg);
 
       if (isServerError) {
         showToast(
@@ -179,24 +174,11 @@ const AnalysisScreen = ({ route, navigation }) => {
         );
       }
 
-      Alert.alert(
-        '⚠️ Server Tidak Dapat Diakses',
-        'Server AI diagnosis tidak merespons sama sekali. Server kemungkinan sedang DOWN atau tidak aktif.\n\nSilakan hubungi tim backend/DevOps untuk mengecek status server production di api.dentalization.id',
-        [
-          {
-            text: 'Kembali ke Home',
-            onPress: () => navigation.navigate('AIHome'),
-            style: 'cancel',
-          },
-          {
-            text: 'Coba lagi',
-            onPress: () => {
-              analysisRef.current = false;
-              performAnalysis();
-            },
-          },
-        ]
-      );
+      navigation.replace('ServerUnavailable', {
+        origin: 'analysis',
+        retryParams: { images, sessionId },
+        errorDetail: errorMsg,
+      });
     }
   };
 

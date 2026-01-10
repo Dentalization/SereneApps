@@ -432,9 +432,7 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
     });
 
     const response = await aiClient.post('/chat/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      // Let axios set multipart boundaries automatically
       timeout: API_CONFIG.AI_TIMEOUT,
     });
 
@@ -454,6 +452,13 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
       messageId: response.data.message_id || null,
     };
   } catch (error) {
+    if (__DEV__) {
+      console.log('❌ analyzeImage /chat/upload error payload:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+    }
     return {
       success: false,
       error: error.response?.data || error.message,
@@ -582,9 +587,6 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
       method: 'post',
       url: '/chat/upload',
       data: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       timeout: IMAGE_ANALYSIS_TIMEOUT, // Use longer timeout for image upload
     });
     
@@ -603,6 +605,14 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
   } catch (error) {
     const status = error.response?.status;
     let errorMessage = error.response?.data?.detail || error.message;
+
+    if (__DEV__) {
+      console.log('❌ sendChatWithImages error payload:', {
+        status,
+        data: error.response?.data,
+        message: error.message,
+      });
+    }
     
     // User-friendly error messages for image upload
     if (status === 504) {

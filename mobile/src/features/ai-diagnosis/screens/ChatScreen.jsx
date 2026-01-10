@@ -23,7 +23,7 @@ import { useDispatch } from 'react-redux';
 import { syncAnalysisToBackend } from '../../../store/slices/aiSlice';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
-import { compressImages } from '../../../utils/imageCompression';
+import { compressImages, needsCompression } from '../../../utils/imageCompression';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -56,6 +56,15 @@ const ChatScreen = ({ route, navigation }) => {
   
   // Build analysis context string for AI
   const analysisContextRef = React.useRef(null);
+
+  const isModelUnavailableError = (msg = '') => {
+    const lower = String(msg || '').toLowerCase();
+    return (
+      lower.includes('google-generativeai') ||
+      lower.includes('location is not supported') ||
+      lower.includes('orchestrator_error')
+    );
+  };
   
   // Load session history from server to check if AI already has context
   React.useEffect(() => {
@@ -304,12 +313,44 @@ const ChatScreen = ({ route, navigation }) => {
       // Compress images before upload
       if (imagesToSend.length > 0) {
         try {
-          const compressionResults = await compressImages(imagesToSend, {
-            maxWidth: 1920,
-            maxHeight: 1920,
-            quality: 0.8,
-          });
-          compressedImages = compressionResults.map(r => r.uri);
+          // Only compress images that are larger than 600KB to avoid growing tiny files
+          const compressibleIndexes = await Promise.all(
+            imagesToSend.map(async (uri) => await needsCompression(uri, 600 * 1024))
+          );
+
+          const imagesNeedingWork = imagesToSend.filter((_, idx) => compressibleIndexes[idx]);
+          const imagesKeepAsIs = imagesToSend.filter((_, idx) => !compressibleIndexes[idx]);
+
+          if (imagesNeedingWork.length > 0) {
+            const compressionResults = await compressImages(imagesNeedingWork, {
+              maxWidth: 1280,
+              maxHeight: 1280,
+              quality: 0.7,
+            });
+
+            // If compression makes an image bigger (rare), fall back to the original uri
+            const normalizedCompressed = compressionResults.map((res, idx) => {
+              const originalUri = imagesNeedingWork[idx];
+              if (res.originalSize && res.size && res.size > res.originalSize) {
+                if (__DEV__) {
+                  console.log('⚠️ Compression increased size, keeping original for', originalUri);
+                }
+                return originalUri;
+              }
+              return res.uri;
+            });
+
+            // Rebuild in original order
+            compressedImages = imagesToSend.map((uri) => {
+              const workIndex = imagesNeedingWork.indexOf(uri);
+              if (workIndex !== -1) {
+                return normalizedCompressed[workIndex];
+              }
+              return uri; // kept as-is
+            });
+          } else {
+            compressedImages = imagesToSend; // All were already small
+          }
           
           // Update processing message
           setMessages(prev => prev.map(msg => 
@@ -320,6 +361,7 @@ const ChatScreen = ({ route, navigation }) => {
         } catch (compressionError) {
           console.warn('⚠️ Image compression failed, using original:', compressionError);
           // Continue with original images if compression fails
+          compressedImages = imagesToSend;
         }
       }
       
@@ -408,8 +450,17 @@ const ChatScreen = ({ route, navigation }) => {
         // Remove processing message
         setMessages(prev => prev.filter(msg => !msg.isProcessing));
         
-        // Show specific error message from service
         const errorMsg = response.error || 'Gagal mengirim pesan. Coba lagi.';
+
+        if (isModelUnavailableError(errorMsg)) {
+          navigation.navigate('ServerUnavailable', {
+            origin: 'chat',
+            retryParams: { sessionId, images: pendingImages || images || [] },
+            errorDetail: errorMsg,
+          });
+          return;
+        }
+
         showToast(errorMsg, 'error');
         
         // If 504 timeout, show retry suggestion with more context
@@ -435,6 +486,16 @@ const ChatScreen = ({ route, navigation }) => {
       setMessages(prev => prev.filter(msg => !msg.isProcessing));
       
       const errorMsg = error.message || 'Terjadi kesalahan saat mengirim pesan';
+
+      if (isModelUnavailableError(errorMsg)) {
+        navigation.navigate('ServerUnavailable', {
+          origin: 'chat',
+          retryParams: { sessionId, images: pendingImages || images || [] },
+          errorDetail: errorMsg,
+        });
+        setIsSending(false);
+        return;
+      }
       showToast(errorMsg, 'error');
       
       // Add error message to chat

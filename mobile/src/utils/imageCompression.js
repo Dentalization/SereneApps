@@ -1,4 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Image } from 'react-native';
 // Use legacy API to avoid deprecated getInfoAsync warning until new File/Directory API is adopted
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -21,14 +22,42 @@ export const compressImage = async (uri, options = {}) => {
     const fileInfo = await FileSystem.getInfoAsync(uri);
     const originalSize = fileInfo.size || 0;
 
+    // Get original dimensions to avoid upscaling small images
+    const getDimensions = () => new Promise(resolve => {
+      Image.getSize(
+        uri,
+        (width, height) => resolve({ width, height }),
+        () => resolve({ width: null, height: null })
+      );
+    });
+
+    const { width: originalWidth, height: originalHeight } = await getDimensions();
+    const hasDimensions = Boolean(originalWidth && originalHeight);
+    const widthRatio = hasDimensions ? maxWidth / originalWidth : 1;
+    const heightRatio = hasDimensions ? maxHeight / originalHeight : 1;
+    const scaleRatio = hasDimensions ? Math.min(widthRatio, heightRatio, 1) : 1; // Never upscale
+    const shouldResize = hasDimensions && scaleRatio < 1;
+
+    const resizeAction = shouldResize
+      ? [{
+          resize: {
+            width: Math.round(originalWidth * scaleRatio),
+            height: Math.round(originalHeight * scaleRatio),
+          },
+        }]
+      : [];
+
     if (__DEV__) {
       console.log(`📸 Original image: ${(originalSize / 1024).toFixed(2)} KB`);
+      if (hasDimensions) {
+        console.log(`📏 Original dimensions: ${originalWidth}x${originalHeight}`);
+      }
     }
 
     // Compress and resize
     const manipResult = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: maxWidth, height: maxHeight } }],
+      resizeAction,
       { compress: quality, format }
     );
 
@@ -37,8 +66,15 @@ export const compressImage = async (uri, options = {}) => {
     const compressedSize = compressedInfo.size || 0;
 
     if (__DEV__) {
-      const reduction = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
-      console.log(`✅ Compressed image: ${(compressedSize / 1024).toFixed(2)} KB (${reduction}% smaller)`);
+      if (originalSize > 0) {
+        const reduction = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+        const trend = reduction >= 0 ? 'smaller' : 'larger';
+        console.log(
+          `✅ Compressed image: ${(compressedSize / 1024).toFixed(2)} KB (${reduction}% ${trend})`
+        );
+      } else {
+        console.log(`✅ Compressed image: ${(compressedSize / 1024).toFixed(2)} KB`);
+      }
     }
 
     return {
@@ -69,8 +105,17 @@ export const compressImages = async (uris, options = {}) => {
   if (__DEV__) {
     const totalOriginal = results.reduce((sum, r) => sum + r.originalSize, 0);
     const totalCompressed = results.reduce((sum, r) => sum + r.size, 0);
-    const totalReduction = ((totalOriginal - totalCompressed) / totalOriginal * 100).toFixed(1);
-    console.log(`📦 Total compression: ${(totalOriginal / 1024).toFixed(2)} KB → ${(totalCompressed / 1024).toFixed(2)} KB (${totalReduction}% smaller)`);
+    if (totalOriginal > 0) {
+      const totalReduction = ((totalOriginal - totalCompressed) / totalOriginal * 100).toFixed(1);
+      const trend = totalReduction >= 0 ? 'smaller' : 'larger';
+      console.log(
+        `📦 Total compression: ${(totalOriginal / 1024).toFixed(2)} KB → ${(totalCompressed / 1024).toFixed(2)} KB (${totalReduction}% ${trend})`
+      );
+    } else {
+      console.log(
+        `📦 Total compression: ${(totalCompressed / 1024).toFixed(2)} KB (original size unavailable)`
+      );
+    }
   }
   
   return results;

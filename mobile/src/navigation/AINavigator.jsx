@@ -8,6 +8,7 @@ import ResultScreen from '../features/ai-diagnosis/screens/ResultScreen';
 import HistoryScreen from '../features/ai-diagnosis/screens/HistoryScreen';
 import DetailHistoryScreen from '../features/ai-diagnosis/screens/DetailHistoryScreen';
 import ChatScreen from '../features/ai-diagnosis/screens/ChatScreen';
+import ServerUnavailableScreen from '../features/ai-diagnosis/screens/ServerUnavailableScreen';
 
 const Stack = createStackNavigator();
 
@@ -38,6 +39,11 @@ const AINavigator = () => {
         name="Analysis"
         component={AnalysisScreen}
         options={{ title: 'Menganalisis...', headerShown: false }}
+      />
+      <Stack.Screen
+        name="ServerUnavailable"
+        component={ServerUnavailableScreen}
+        options={{ title: 'Server Bermasalah', headerShown: false }}
       />
       <Stack.Screen
         name="Result"
