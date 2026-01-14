@@ -10,28 +10,67 @@ import { PrismaClient } from '../generated/prisma/index.js';
 const router = express.Router();
 const prisma = new PrismaClient();
 
-function sendError(res, status, code, message, extras = {}) {
+/* -------------------------------------------------- */
+/* Helpers                                            */
+/* -------------------------------------------------- */
+
+function sendError(res, status, code, message) {
   return res.status(status).json({
-    error: {
-      code,
-      message,
-      ...extras
-    }
+    error: { code, message }
   });
 }
 
 function toBigInt(value, fieldName) {
   try {
     return BigInt(value);
-  } catch (err) {
+  } catch {
     throw new Error(`INVALID_${fieldName?.toUpperCase() || 'ID'}`);
   }
 }
 
 /**
- * POST /v1/ai-analysis
- * Save AI analysis result from mobile app
+ * Convert empty string / undefined to null
  */
+function sanitizeValue(value) {
+  return value === '' || value === undefined ? null : value;
+}
+
+/**
+ * Parse JSON safely
+ */
+function parseJsonField(value) {
+  if (value === null || value === undefined || value === '') return undefined;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * FINAL Prisma-safe JSON sanitizer
+ * - removes undefined
+ * - removes NaN / Infinity
+ * - removes BigInt
+ * - guarantees valid JSON
+ */
+function sanitizeJson(value, fallback) {
+  try {
+    if (value === null || value === undefined) return fallback;
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return fallback;
+  }
+}
+
+/* -------------------------------------------------- */
+/* POST /v1/ai-analysis                               */
+/* -------------------------------------------------- */
+
 router.post(
   '/',
   authenticateToken,
@@ -39,6 +78,7 @@ router.post(
   async (req, res) => {
     try {
       const userId = toBigInt(req.user.id, 'userId');
+
       const {
         sessionId,
         imageUrl,
@@ -57,29 +97,35 @@ router.post(
         return sendError(res, 400, 'session_id_required', 'Session ID wajib diisi.');
       }
 
-      // Check if this session already exists
       const existing = await prisma.aIAnalysisResult.findFirst({
-        where: {
-          userId,
-          sessionId
-        }
+        where: { userId, sessionId }
       });
 
+      /* ---------------- UPDATE ---------------- */
+
       if (existing) {
-        // Update existing record
+        const safeDetections = sanitizeJson(parseJsonField(detections), []);
+        const safeRecommendations = sanitizeJson(parseJsonField(recommendations), []);
+        const safeMetadata = sanitizeJson(parseJsonField(metadata), {});
+
         const updated = await prisma.aIAnalysisResult.update({
           where: { id: existing.id },
           data: {
-            imageUrl: imageUrl || existing.imageUrl,
-            annotatedImageUrl: annotatedImageUrl || existing.annotatedImageUrl,
-            findings: findings || existing.findings,
-            summary: summary || existing.summary,
-            overallAssessment: overallAssessment || existing.overallAssessment,
-            riskLevel: riskLevel || existing.riskLevel,
-            confidenceScore: confidenceScore !== undefined ? confidenceScore : existing.confidenceScore,
-            detections: detections || existing.detections,
-            recommendations: recommendations || existing.recommendations,
-            metadata: metadata || existing.metadata
+            imageUrl: sanitizeValue(imageUrl) ?? existing.imageUrl,
+            annotatedImageUrl: sanitizeValue(annotatedImageUrl) ?? existing.annotatedImageUrl,
+            findings: sanitizeValue(findings) ?? existing.findings,
+            summary: sanitizeValue(summary) ?? existing.summary,
+            overallAssessment: sanitizeValue(overallAssessment) ?? existing.overallAssessment,
+            riskLevel: sanitizeValue(riskLevel) ?? existing.riskLevel,
+            confidenceScore:
+              confidenceScore !== undefined && confidenceScore !== ''
+                ? confidenceScore
+                : existing.confidenceScore,
+
+            // 🔥 NEVER NULL JSON
+            detections: Array.isArray(safeDetections) ? safeDetections : [],
+            recommendations: Array.isArray(safeRecommendations) ? safeRecommendations : [],
+            metadata: typeof safeMetadata === 'object' && safeMetadata !== null ? safeMetadata : {}
           }
         });
 
@@ -95,22 +141,34 @@ router.post(
         });
       }
 
-      // Create new record
+      /* ---------------- CREATE ---------------- */
+
+      const safeDetections = sanitizeJson(parseJsonField(detections), []);
+      const safeRecommendations = sanitizeJson(parseJsonField(recommendations), []);
+      const safeMetadata = sanitizeJson(parseJsonField(metadata), {});
+
+      const dataToInsert = {
+        userId,
+        sessionId,
+        imageUrl: sanitizeValue(imageUrl),
+        annotatedImageUrl: sanitizeValue(annotatedImageUrl),
+        findings: sanitizeValue(findings),
+        summary: sanitizeValue(summary),
+        overallAssessment: sanitizeValue(overallAssessment),
+        riskLevel: sanitizeValue(riskLevel),
+        confidenceScore:
+          confidenceScore !== undefined && confidenceScore !== ''
+            ? confidenceScore
+            : null,
+
+        // 🔥 CRITICAL: JSON CAN NEVER BE NULL
+        detections: Array.isArray(safeDetections) ? safeDetections : [],
+        recommendations: Array.isArray(safeRecommendations) ? safeRecommendations : [],
+        metadata: typeof safeMetadata === 'object' && safeMetadata !== null ? safeMetadata : {}
+      };
+
       const aiAnalysis = await prisma.aIAnalysisResult.create({
-        data: {
-          userId,
-          sessionId,
-          imageUrl: imageUrl || null,
-          annotatedImageUrl: annotatedImageUrl || null,
-          findings: findings || null,
-          summary: summary || null,
-          overallAssessment: overallAssessment || null,
-          riskLevel: riskLevel || null,
-          confidenceScore: confidenceScore !== undefined ? confidenceScore : null,
-          detections: detections || [],
-          recommendations: recommendations || [],
-          metadata: metadata || {}
-        }
+        data: dataToInsert
       });
 
       return res.status(201).json({
@@ -122,6 +180,7 @@ router.post(
         },
         message: 'AI analysis result saved'
       });
+
     } catch (error) {
       console.error('Error saving AI analysis:', error);
       return sendError(res, 500, 'save_failed', 'Gagal menyimpan hasil AI analysis.');
@@ -129,10 +188,10 @@ router.post(
   }
 );
 
-/**
- * GET /v1/ai-analysis
- * Get user's AI analysis history
- */
+/* -------------------------------------------------- */
+/* GET /v1/ai-analysis                                */
+/* -------------------------------------------------- */
+
 router.get(
   '/',
   authenticateToken,
@@ -145,8 +204,8 @@ router.get(
       const aiResults = await prisma.aIAnalysisResult.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit, 10),
-        skip: parseInt(offset, 10)
+        take: Number(limit),
+        skip: Number(offset)
       });
 
       const total = await prisma.aIAnalysisResult.count({
@@ -154,35 +213,34 @@ router.get(
       });
 
       return res.json({
-        aiResults: aiResults.map(result => ({
-          id: result.id.toString(),
-          sessionId: result.sessionId,
-          imageUrl: result.imageUrl,
-          annotatedImageUrl: result.annotatedImageUrl,
-          findings: result.findings,
-          summary: result.summary,
-          overallAssessment: result.overallAssessment,
-          riskLevel: result.riskLevel,
-          confidenceScore: result.confidenceScore,
-          detections: result.detections || [],
-          recommendations: result.recommendations || [],
-          createdAt: result.createdAt?.toISOString() || null
+        aiResults: aiResults.map(r => ({
+          id: r.id.toString(),
+          sessionId: r.sessionId,
+          imageUrl: r.imageUrl,
+          annotatedImageUrl: r.annotatedImageUrl,
+          findings: r.findings,
+          summary: r.summary,
+          overallAssessment: r.overallAssessment,
+          riskLevel: r.riskLevel,
+          confidenceScore: r.confidenceScore,
+          detections: r.detections || [],
+          recommendations: r.recommendations || [],
+          createdAt: r.createdAt.toISOString()
         })),
         total,
-        limit: parseInt(limit, 10),
-        offset: parseInt(offset, 10)
+        limit: Number(limit),
+        offset: Number(offset)
       });
-    } catch (error) {
-      console.error('Error fetching AI analysis history:', error);
+    } catch {
       return sendError(res, 500, 'fetch_failed', 'Gagal memuat riwayat AI analysis.');
     }
   }
 );
 
-/**
- * GET /v1/ai-analysis/latest
- * Get user's latest AI analysis result
- */
+/* -------------------------------------------------- */
+/* GET /v1/ai-analysis/latest                         */
+/* -------------------------------------------------- */
+
 router.get(
   '/latest',
   authenticateToken,
@@ -196,37 +254,34 @@ router.get(
         orderBy: { createdAt: 'desc' }
       });
 
-      if (!latest) {
-        return res.json({ aiAnalysis: null });
-      }
-
       return res.json({
-        aiAnalysis: {
-          id: latest.id.toString(),
-          sessionId: latest.sessionId,
-          imageUrl: latest.imageUrl,
-          annotatedImageUrl: latest.annotatedImageUrl,
-          findings: latest.findings,
-          summary: latest.summary,
-          overallAssessment: latest.overallAssessment,
-          riskLevel: latest.riskLevel,
-          confidenceScore: latest.confidenceScore,
-          detections: latest.detections || [],
-          recommendations: latest.recommendations || [],
-          createdAt: latest.createdAt?.toISOString() || null
-        }
+        aiAnalysis: latest
+          ? {
+              id: latest.id.toString(),
+              sessionId: latest.sessionId,
+              imageUrl: latest.imageUrl,
+              annotatedImageUrl: latest.annotatedImageUrl,
+              findings: latest.findings,
+              summary: latest.summary,
+              overallAssessment: latest.overallAssessment,
+              riskLevel: latest.riskLevel,
+              confidenceScore: latest.confidenceScore,
+              detections: latest.detections || [],
+              recommendations: latest.recommendations || [],
+              createdAt: latest.createdAt.toISOString()
+            }
+          : null
       });
-    } catch (error) {
-      console.error('Error fetching latest AI analysis:', error);
+    } catch {
       return sendError(res, 500, 'fetch_failed', 'Gagal memuat AI analysis terbaru.');
     }
   }
 );
 
-/**
- * GET /v1/ai-analysis/:id
- * Get specific AI analysis result
- */
+/* -------------------------------------------------- */
+/* GET /v1/ai-analysis/:id                            */
+/* -------------------------------------------------- */
+
 router.get(
   '/:id',
   authenticateToken,
@@ -236,10 +291,7 @@ router.get(
       const analysisId = toBigInt(req.params.id, 'analysisId');
 
       const result = await prisma.aIAnalysisResult.findFirst({
-        where: {
-          id: analysisId,
-          userId
-        }
+        where: { id: analysisId, userId }
       });
 
       if (!result) {
@@ -259,20 +311,19 @@ router.get(
           confidenceScore: result.confidenceScore,
           detections: result.detections || [],
           recommendations: result.recommendations || [],
-          createdAt: result.createdAt?.toISOString() || null
+          createdAt: result.createdAt.toISOString()
         }
       });
-    } catch (error) {
-      console.error('Error fetching AI analysis:', error);
+    } catch {
       return sendError(res, 500, 'fetch_failed', 'Gagal memuat AI analysis.');
     }
   }
 );
 
-/**
- * DELETE /v1/ai-analysis/:id
- * Delete AI analysis result
- */
+/* -------------------------------------------------- */
+/* DELETE /v1/ai-analysis/:id                         */
+/* -------------------------------------------------- */
+
 router.delete(
   '/:id',
   authenticateToken,
@@ -283,10 +334,7 @@ router.delete(
       const analysisId = toBigInt(req.params.id, 'analysisId');
 
       const result = await prisma.aIAnalysisResult.findFirst({
-        where: {
-          id: analysisId,
-          userId
-        }
+        where: { id: analysisId, userId }
       });
 
       if (!result) {
@@ -298,8 +346,7 @@ router.delete(
       });
 
       return res.json({ message: 'AI analysis result deleted' });
-    } catch (error) {
-      console.error('Error deleting AI analysis:', error);
+    } catch {
       return sendError(res, 500, 'delete_failed', 'Gagal menghapus AI analysis.');
     }
   }

@@ -146,7 +146,15 @@ const PatientManagement = () => {
       if (searchTerm) params.search = searchTerm;
       if (filterStatus && filterStatus !== 'all') params.status = filterStatus;
       
+      console.log('🔍 Fetching dentist patients with params:', params);
+      
       const response = await getDentistPatients(params);
+      
+      console.log('✅ Received response:', {
+        totalPatients: response.patients?.length || 0,
+        summary: response.summary,
+        firstPatient: response.patients?.[0]
+      });
       
       // Transform API data to match component expectations
       const transformedPatients = (response.patients || []).map(p => ({
@@ -165,6 +173,8 @@ const PatientManagement = () => {
         billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
       }));
       
+      console.log('📋 Transformed patients:', transformedPatients.length);
+      
       setPatients(transformedPatients);
       setSummary(response.summary || {
         total: transformedPatients.length,
@@ -175,14 +185,31 @@ const PatientManagement = () => {
         withAiResults: transformedPatients.filter(p => p.aiResults.length > 0).length
       });
     } catch (err) {
-      console.error('Error fetching patients:', err);
-      setError('Gagal memuat daftar pasien');
+      console.error('❌ Error fetching patients:', err);
+      console.error('Error details:', {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data
+      });
+      
+      let errorMessage = 'Gagal memuat daftar pasien';
+      
+      if (err.response?.status === 401) {
+        errorMessage = 'Sesi Anda telah berakhir. Silakan login kembali.';
+      } else if (err.response?.status === 403) {
+        errorMessage = 'Anda tidak memiliki akses untuk melihat data pasien.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      setError(errorMessage);
       setPatients([]);
     } finally {
       // Ensure minimum loading time for smooth UX
       setTimeout(() => setLoading(false), MIN_LOADING_MS);
     }
-  }, [searchTerm, filterStatus]);
+  }, [searchTerm, filterStatus, transformAIResults]);
 
   // Initial fetch and refetch on search/filter change
   useEffect(() => {
@@ -213,7 +240,7 @@ const PatientManagement = () => {
     setSelectedPatient(newPatient);
   };
 
-  const handlePatientSelect = async (patient) => {
+  const handlePatientSelect = useCallback(async (patient) => {
     try {
       // Fetch full patient details including appointments and AI results
       const fullPatient = await getPatientDetails(patient.id);
@@ -237,7 +264,23 @@ const PatientManagement = () => {
         aiResults: transformAIResults(patient.aiResults || []),
       });
     }
-  };
+  }, [transformAIResults, getAIResultsWithRetry]);
+
+  useEffect(() => {
+    if (!patients.length) {
+      if (selectedPatient) {
+        setSelectedPatient(null);
+      }
+      return;
+    }
+
+    const currentExists = selectedPatient && patients.some((p) => p.id === selectedPatient.id);
+    if (currentExists) return;
+
+    handlePatientSelect(patients[0]).catch((err) => {
+      console.error('Failed to auto-select patient:', err);
+    });
+  }, [patients, selectedPatient, handlePatientSelect]);
 
   // appointments / billing / comms (stub)
   const handleScheduleNew = () => console.log('Schedule new appointment for:', selectedPatient?.name);
@@ -346,6 +389,31 @@ const PatientManagement = () => {
             aiAnalyzedPatients={summary.withAiResults || 0}
             onAddPatient={() => setShowAddPatient(true)}
           />
+
+          {/* Error Alert */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center">
+                  <Icon name="AlertCircle" size={20} className="text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-red-900 dark:text-red-100 mb-1">
+                    Error Memuat Data
+                  </h4>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    {error}
+                  </p>
+                  <button
+                    onClick={fetchPatients}
+                    className="mt-2 text-sm font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                  >
+                    Coba Lagi
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Patient List */}
