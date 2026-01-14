@@ -31,11 +31,11 @@ model User {
   notificationDevices                              NotificationDevice[]
   notificationJobs                                 NotificationJob[]
   notificationPreferences                          NotificationPreference[]
-  notifications                                    notifications[]
+  notifications                                    Notification[]
   patientProfile                                   PatientProfile?
   paymentIntents                                   PaymentIntent[]
   refreshTokens                                    RefreshToken[]
-  user_devices                                     user_devices[]
+  user_devices                                     UserDevice[]
   aiAnalysisResults                                AIAnalysisResult[]
 
   @@index([clinic_id], map: "idx_users_clinic_id")
@@ -455,7 +455,7 @@ model OTPVerification {
   @@index([identifier])
 }
 
-model clinics {
+model Clinic {
   id              BigInt   @id @default(autoincrement())
   name            String
   address         String
@@ -479,9 +479,10 @@ model clinics {
 
   @@index([city, district], map: "idx_clinic_city")
   @@index([latitude, longitude], map: "idx_clinic_location")
+  @@map("clinics")
 }
 
-model notifications {
+model Notification {
   id         BigInt    @id @default(autoincrement())
   user_id    BigInt
   type       String    @db.VarChar(50)
@@ -491,13 +492,14 @@ model notifications {
   is_read    Boolean   @default(false)
   read_at    DateTime? @db.Timestamptz(6)
   created_at DateTime  @default(now()) @db.Timestamptz(6)
-  users      User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id, created_at(sort: Desc)], map: "idx_notifications_user_created")
   @@index([user_id, is_read], map: "idx_notifications_user_read")
+  @@map("notifications")
 }
 
-model user_devices {
+model UserDevice {
   id             BigInt    @id @default(autoincrement())
   user_id        BigInt
   device_token   String
@@ -511,28 +513,29 @@ model user_devices {
 
   @@unique([user_id, device_token], map: "uniq_user_device_token")
   @@index([user_id, is_active], map: "idx_user_devices_user_active")
+  @@map("user_devices")
 }
 
 // AI Analysis Results - stores dental AI diagnosis results from mobile app
 model AIAnalysisResult {
   id                BigInt   @id @default(autoincrement())
   userId            BigInt   @map("user_id")
-  sessionId         String   @map("session_id") @db.VarChar(255) // DeepDental session ID
+  sessionId         String   @map("session_id") @db.VarChar(255)
   imageUrl          String?  @map("image_url")
   annotatedImageUrl String?  @map("annotated_image_url")
   findings          String?  @db.Text
   summary           String?  @db.Text
   overallAssessment String?  @map("overall_assessment") @db.Text
-  riskLevel         String?  @map("risk_level") @db.VarChar(50) // low, moderate, high
+  riskLevel         String?  @map("risk_level") @db.VarChar(50)
   confidenceScore   Float?   @map("confidence_score")
-  detections        Json?    @default("[]") // Array of detected issues with labels, confidence, area
-  recommendations   Json?    @default("[]") // Array of recommendations
-  metadata          Json?    @default("{}")
+
+  detections        Json
+  recommendations   Json
+  metadata          Json
+
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, createdAt(sort: Desc)], map: "idx_ai_analysis_user_created")
-  @@index([sessionId], map: "idx_ai_analysis_session")
   @@map("ai_analysis_results")
 }
