@@ -948,6 +948,7 @@ export default {
         risk: 'Tingkat Risiko'
       },
       tabs: {
+        summary: 'Ringkasan',
         diagnosis: 'Diagnosa',
         symptoms: 'Gejala',
         recommendations: 'Rekomendasi',
@@ -963,6 +964,13 @@ export default {
       },
       recommendations: {
         title: 'Rekomendasi AI'
+      },
+      summary: {
+        title: 'Ringkasan Analisis',
+        analysisDate: 'Tanggal Analisis',
+        confidence: 'Tingkat Keyakinan',
+        risk: 'Tingkat Risiko',
+        empty: 'Belum ada ringkasan untuk analisis ini'
       },
       images: {
         title: 'Gambar Analisis',

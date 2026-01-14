@@ -4,6 +4,9 @@ import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { getDentistPatients, getPatientDetails, getPatientAIResults } from '../../../services/dentistPortalService';
+import { parseIndonesianAnalysis } from '../../../utils/indonesianAnalysisParser';
+import { cleanMarkdownFormatting, normalizeAIExplanation } from '../../../utils/textFormatting';
+import { stripDiagnosisIntro, deriveSummaryFromNarrative, normalizeAIText } from '../../../utils/aiTextHelpers';
 
 // Components
 import AddPatient from './components/AddPatient';
@@ -37,58 +40,178 @@ const PatientManagement = () => {
 
   // Normalize backend AI results to UI-friendly shape expected by PatientAIResult
   const transformAIResults = useCallback((results = []) => {
-    return (results || []).map((r) => {
-      const detections = Array.isArray(r.detections) ? r.detections : [];
-      
-      // Build diagnosis from detections or create summary item
-      const diagnosis = detections.length > 0
-        ? detections.map((d) => {
-            // Calculate confidence: handle 0-1 range or percentage
-            let confidence = 0;
-            if (typeof d.confidence === 'number') {
-              confidence = d.confidence <= 1 ? Math.round(d.confidence * 100) : d.confidence;
-            } else if (typeof d.probability === 'number') {
-              confidence = d.probability <= 1 ? Math.round(d.probability * 100) : d.probability;
-            }
-            
-            return {
-              condition: d.label || d.name || d.condition || 'Temuan Dental',
-              description: d.description || d.details || r.summary || r.overallAssessment || 'Analisis dental',
-              probability: confidence || Number(r.confidenceScore || 0),
-              details: d.details || r.findings || null,
-              severity: d.severity || null,
-            };
-          })
-        : (r.summary || r.overallAssessment || r.findings)
-        ? [
-            {
-              condition: r.overallAssessment ? 'Penilaian Keseluruhan' : 'Ringkasan Analisis',
-              description: r.summary || r.overallAssessment || r.findings || 'Analisis gigi dilakukan',
-              probability: Number(r.confidenceScore || 0),
-              details: r.findings || null,
-              severity: null,
-            },
-          ]
-        : [];
+    const normalizeConfidence = (val) => {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'string') {
+        const parsed = parseFloat(val);
+        if (Number.isNaN(parsed)) return 0;
+        return val.includes('%') || parsed > 1 ? parsed : parsed * 100;
+      }
+      if (typeof val === 'number') {
+        return val > 1 ? val : val * 100;
+      }
+      return 0;
+    };
 
-      // Extract symptoms from detections if not provided
-      const symptoms = Array.isArray(r.symptoms) && r.symptoms.length > 0
-        ? r.symptoms
-        : detections.map((d, idx) => ({
-            name: d.label || d.name || `Temuan ${idx + 1}`,
-            severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
-            description: d.description || null,
+    // Mobile-like summary: take first 1–2 sentences, clean markdown, max ~220 chars
+      const getShortSummary = (r, normalized) => {
+        const candidate = normalized?.summary || deriveSummaryFromNarrative(
+          [r.summary, r.overallAssessment, r.description, r.details]
+            .filter((x) => typeof x === 'string' && x.trim())
+            .join(' ')
+        );
+
+        if (!candidate) return 'Analisis dental';
+
+        const sanitized = stripDiagnosisIntro(cleanMarkdownFormatting(candidate));
+        const clipped = sanitized.length > 220 ? `${sanitized.slice(0, 220).trim()}...` : sanitized;
+        return clipped;
+      };
+
+    return (results || []).map((r) => {
+      const normalized = normalizeAIExplanation(r);
+      const detections = Array.isArray(r.detections) ? r.detections : [];
+
+      const summaryCandidates = [normalized?.summary, r.summary, r.overallAssessment, r.findings].filter((x) => typeof x === 'string' && x.trim());
+      const summaryCandidate = summaryCandidates.length ? summaryCandidates[0] : '';
+      let sanitizedSummary = stripDiagnosisIntro(summaryCandidate) || summaryCandidate;
+
+      // Build diagnosis - SHORT summary for card display
+      const shortSummary = getShortSummary(r, normalized);
+
+      // Confidence: try normalized then fallbacks
+      const fieldOrder = [
+        normalized?.confidence,
+        r.confidenceScore,
+        r.confidence,
+        r.accuracy,
+        r.score,
+        r.probability,
+        detections[0]?.confidence,
+        detections[0]?.probability,
+      ];
+      let probability = 0;
+      for (const candidate of fieldOrder) {
+        const c = normalizeConfidence(candidate);
+        if (c > 0) {
+          probability = Math.round(c);
+          break;
+        }
+      }
+
+      // Last resort: scan all numeric fields for a confidence-looking value
+      if (probability === 0 && r && typeof r === 'object') {
+        const numericFallback = Object.values(r)
+          .map((v) => normalizeConfidence(v))
+          .filter((v) => v > 0 && v <= 100)
+          .sort((a, b) => b - a);
+        if (numericFallback.length > 0) {
+          probability = Math.round(numericFallback[0]);
+        }
+      }
+
+      // If still 0, hide probability instead of showing 0%
+      const probabilitySafe = probability > 0 ? probability : null;
+
+        // Full explanation with proper formatting (no truncation)
+        const detailCandidates = [
+          normalized?.explanation,
+          r.details,
+          r.analysis,
+          r.findings,
+          r.overallAssessment,
+          r.summary,
+        ]
+          .filter((x) => typeof x === 'string' && x.trim())
+          .map((item) => cleanMarkdownFormatting(item));
+        const detailSource = detailCandidates.join('\n\n');
+        const fullDetails = detailSource ? stripDiagnosisIntro(detailSource) : null;
+
+        const summarySections = Array.isArray(normalized?.sections) ? normalized.sections : [];
+
+        const normalizedText = normalizeAIText(detailSource || summaryCandidate || '');
+        const normalizedSummary = normalizedText.summary || summaryCandidate || '';
+        sanitizedSummary = stripDiagnosisIntro(cleanMarkdownFormatting(normalizedSummary)) || normalizedSummary;
+
+        // Build structured diagnoses from detections/sections; fallback to a single item.
+        let diagnosis = [];
+
+        if (detections.length > 0) {
+          diagnosis = detections.map((d, idx) => {
+            const diagProb = normalizeConfidence(d.confidence || d.probability) || probabilitySafe;
+            const diagSeverity = d.severity || (diagProb && diagProb >= 70 ? 'medium' : 'low');
+
+            return {
+              condition: d.label || d.name || `Temuan ${idx + 1}`,
+              description: d.description || d.notes || shortSummary,
+              probability: diagProb,
+              severity: diagSeverity,
+              details: stripDiagnosisIntro(d.description || ''),
+              sections: [],
+            };
+          });
+        } else if (normalizedText.diagnosis.length > 0) {
+          diagnosis = normalizedText.diagnosis.map((d, idx) => {
+            const diagProb = d.probability != null ? Math.max(0, Math.min(100, Math.round(d.probability))) : probabilitySafe;
+            return {
+              condition: d.condition || `Kondisi ${idx + 1}`,
+              description: d.shortExplanation || shortSummary,
+              probability: diagProb,
+              severity: null,
+              details: d.shortExplanation || null,
+              sections: [],
+            };
+          });
+        } else if (summarySections.length > 0) {
+          diagnosis = summarySections.map((section, idx) => ({
+            condition: section.title || `Kondisi ${idx + 1}`,
+            description: deriveSummaryFromNarrative(section.content || shortSummary),
+            probability: probabilitySafe,
+            severity: null,
+            details: stripDiagnosisIntro(section.content || ''),
+            sections: [],
           }));
+        } else {
+          diagnosis = [{
+            condition: 'Kondisi Gigi',
+            description: shortSummary,
+            probability: probabilitySafe,
+            severity: null,
+            details: fullDetails,
+            sections: [],
+          }];
+        }
+
+      // Parse symptoms and recommendations from summary text
+      const fullText = [sanitizedSummary, r.findings, r.overallAssessment].filter(Boolean).join(' ');
+      const parsed = parseIndonesianAnalysis(fullText);
       
-      // Process recommendations with proper structure
-      const recommendations = Array.isArray(r.recommendations) 
-        ? r.recommendations.map((rec, idx) => ({
-            title: rec.title || rec.name || `Rekomendasi ${idx + 1}`,
-            description: rec.description || rec.text || rec.recommendation || '',
-            priority: rec.priority || rec.importance || 'normal',
-            urgency: rec.urgency || rec.timeframe || 'normal',
-          }))
-        : [];
+      // Extract symptoms
+      let symptoms = [];
+      if (Array.isArray(r.symptoms) && r.symptoms.length > 0) {
+        symptoms = r.symptoms;
+      } else if (parsed.symptoms.length > 0) {
+        symptoms = parsed.symptoms;
+      } else if (detections.length > 0) {
+        symptoms = detections.map((d, idx) => ({
+          name: d.label || d.name || `Temuan ${idx + 1}`,
+          severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
+          description: d.description || null,
+        }));
+      }
+      
+      // Process recommendations
+      let recommendations = [];
+      if (Array.isArray(r.recommendations) && r.recommendations.length > 0) {
+        recommendations = r.recommendations.map((rec, idx) => ({
+          title: rec.title || rec.name || `Rekomendasi ${idx + 1}`,
+          description: rec.description || rec.text || rec.recommendation || '',
+          priority: rec.priority || rec.importance || 'normal',
+          urgency: rec.urgency || rec.timeframe || 'normal',
+        }));
+      } else if (parsed.recommendations.length > 0) {
+        recommendations = parsed.recommendations;
+      }
       
       const images = [
         ...(r.imageUrl
@@ -99,20 +222,21 @@ const PatientManagement = () => {
           : []),
       ];
 
-      // Calculate proper confidence score
-      let confidence = Number(r.confidenceScore || 0);
-      if (confidence <= 1) confidence = Math.round(confidence * 100);
-
       return {
         id: r.id?.toString?.() || r.id,
         date: (r.createdAt || '').split('T')[0] || r.createdAt || new Date().toISOString().split('T')[0],
         type: r.overallAssessment || r.summary ? 'Analisis Dental AI' : 'Deteksi AI',
-        confidence,
+        confidence: normalized?.confidence || Number(r.confidenceScore || 0),
         riskLevel: r.riskLevel || 'unknown',
         diagnosis,
         symptoms,
         recommendations,
         images,
+        summarySections,
+        // Raw data untuk summary renderer
+        summary: sanitizedSummary,
+        findings: r.findings,
+        overallAssessment: r.overallAssessment,
       };
     });
   }, []);
@@ -124,6 +248,11 @@ const PatientManagement = () => {
         const aiRes = await getPatientAIResults(patientId);
         const list = aiRes?.aiResults || aiRes || [];
         if (Array.isArray(list) && list.length > 0) {
+          console.log('📊 Raw API Response (first result):', list[0]);
+          console.log('📋 All fields in API response:', {
+            keys: Object.keys(list[0]),
+            fullObject: list[0]
+          });
           return list;
         }
       } catch (e) {
@@ -250,17 +379,61 @@ const PatientManagement = () => {
         const raw = await getAIResultsWithRetry(patient.id, 2, 1000);
         transformed = transformAIResults(raw);
       }
-      setSelectedPatient({
+      
+      // Normalize medicalDetails to medicalHistory format expected by components
+      let medicalHistory = null;
+      if (fullPatient.medicalDetails) {
+        medicalHistory = {
+          allergies: Array.isArray(fullPatient.medicalDetails.allergies) ? fullPatient.medicalDetails.allergies : [],
+          // Prefer 'conditions' over 'chronicConditions' for backwards compatibility
+          conditions: Array.isArray(fullPatient.medicalDetails.conditions) ? fullPatient.medicalDetails.conditions : 
+                     Array.isArray(fullPatient.medicalDetails.chronicConditions) ? fullPatient.medicalDetails.chronicConditions : [],
+          medications: Array.isArray(fullPatient.medicalDetails.medications) ? fullPatient.medicalDetails.medications : [],
+          surgeries: Array.isArray(fullPatient.medicalDetails.surgeries) ? fullPatient.medicalDetails.surgeries : [],
+          familyHistory: typeof fullPatient.medicalDetails.familyHistory === 'object' && fullPatient.medicalDetails.familyHistory !== null 
+            ? fullPatient.medicalDetails.familyHistory 
+            : {},
+        };
+        // Add any other fields from medicalDetails for extensibility
+        const excludeKeys = ['allergies', 'chronicConditions', 'conditions', 'medications', 'surgeries', 'familyHistory'];
+        for (const [key, value] of Object.entries(fullPatient.medicalDetails)) {
+          if (!excludeKeys.includes(key)) {
+            medicalHistory[key] = value;
+          }
+        }
+      }
+      
+      // Normalize field names from backend to component expectations
+      const normalizedPatient = {
         ...patient,
         ...fullPatient,
+        birthDate: fullPatient.dateOfBirth || fullPatient.birthDate,
+        medicalHistory: medicalHistory || {
+          allergies: [],
+          conditions: [],
+          medications: [],
+          surgeries: [],
+          familyHistory: {},
+          emergencyContact: {}
+        },
         appointments: fullPatient.appointments || [],
         aiResults: transformed
-      });
+      };
+      
+      setSelectedPatient(normalizedPatient);
     } catch (err) {
       console.error('Error fetching patient details:', err);
       // Still select with basic data
       setSelectedPatient({
         ...patient,
+        medicalHistory: {
+          allergies: [],
+          conditions: [],
+          medications: [],
+          surgeries: [],
+          familyHistory: {},
+          emergencyContact: {}
+        },
         aiResults: transformAIResults(patient.aiResults || []),
       });
     }

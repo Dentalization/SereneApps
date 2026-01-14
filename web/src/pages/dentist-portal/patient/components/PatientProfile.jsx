@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { resolvePatientAvatar } from '../../../../utils/mediaHelpers';
 
 // Helper function moved outside component to avoid re-creation
 const calculateAge = (birthDate, fallbackAge, unknownLabel) => {
@@ -16,6 +17,11 @@ const PatientProfile = ({ patient, onClose }) => {
   const { t, language } = useLanguage();
   const locale = language === 'id' ? 'id-ID' : 'en-US';
   
+  const initials = (name = '') =>
+    name.trim().split(/\s+/).map((segment) => segment[0]).join('').slice(0, 2).toUpperCase() || 'N/A';
+
+  const patientAvatar = resolvePatientAvatar(patient);
+  const hasAvatar = Boolean(patientAvatar);
   // Early return BEFORE any hooks
   if (!patient) {
     return (
@@ -95,8 +101,18 @@ const PatientProfile = ({ patient, onClose }) => {
 
         {/* Patient Avatar and Basic Info */}
         <div className="flex items-center gap-6 mb-6 pr-12">
-          <div className="w-24 h-24 bg-gradient-to-br from-brand-primary to-brand-accent rounded-full flex items-center justify-center text-white text-2xl font-bold">
-            {patient.name ? patient.name.split(' ').map(n => n[0]).join('').slice(0, 2) : 'N/A'}
+          <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border border-primary/10 bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center">
+            {hasAvatar ? (
+              <img
+                src={patientAvatar}
+                alt={patient.name || 'Patient avatar'}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-white text-2xl font-bold">
+                {initials(patient.name)}
+              </span>
+            )}
           </div>
 
           <div className="flex-1 min-w-0">

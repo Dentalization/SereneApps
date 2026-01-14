@@ -945,6 +945,7 @@ export default {
         risk: 'Risk Level'
       },
       tabs: {
+        summary: 'Summary',
         diagnosis: 'Diagnosis',
         symptoms: 'Symptoms',
         recommendations: 'Recommendations',
@@ -960,6 +961,13 @@ export default {
       },
       recommendations: {
         title: 'AI Recommendations'
+      },
+      summary: {
+        title: 'Analysis Summary',
+        analysisDate: 'Analysis Date',
+        confidence: 'Confidence Level',
+        risk: 'Risk Level',
+        empty: 'No summary available for this analysis'
       },
       images: {
         title: 'Analysis Images',
