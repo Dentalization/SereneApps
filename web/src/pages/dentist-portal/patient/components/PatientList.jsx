@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { resolvePatientAvatar } from '../../../../utils/mediaHelpers';
 
 const PatientList = ({
   patients = [],
@@ -195,6 +196,8 @@ const PatientList = ({
           <ul className="space-y-4 p-4">
             {sortedPatients.map((p) => {
               const isSelected = selectedPatient?.id === p.id;
+              const patientAvatar = resolvePatientAvatar(p);
+              const hasAvatar = Boolean(patientAvatar);
               return (
                 <li key={p.id}>
                   {/* Main Card - hanya avatar, nama, ID, age, gender, phone */}
@@ -207,8 +210,20 @@ const PatientList = ({
                     }`}
                   >
                     <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center bg-gradient-to-br ${avatarBg(p.name)} shadow-lg`}>
-                        {initials(p.name)}
+                      <div
+                        className={`w-12 h-12 rounded-2xl shadow-lg flex items-center justify-center font-bold text-sm text-white overflow-hidden ${
+                          hasAvatar ? 'bg-surface' : `bg-gradient-to-br ${avatarBg(p.name)}`
+                        }`}
+                      >
+                        {hasAvatar ? (
+                          <img
+                            src={patientAvatar}
+                            alt={`${p.name || 'Patient'} avatar`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          initials(p.name)
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">

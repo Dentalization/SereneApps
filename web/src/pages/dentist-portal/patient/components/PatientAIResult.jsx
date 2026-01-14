@@ -1,6 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import AnalysisSummaryRenderer from './AnalysisSummaryRenderer';
+import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
+
+const getResultTimestamp = (result) => {
+  const dateValue = result?.date || result?.createdAt || result?.recordedAt || result?.timestamp;
+  const parsed = new Date(dateValue).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const PatientAIResult = ({ patient }) => {
   const { t } = useLanguage();
@@ -21,8 +29,45 @@ const PatientAIResult = ({ patient }) => {
     );
   }
 
-  const [selectedResult, setSelectedResult] = useState(patient.aiResults[0]);
-  const [expandedSection, setExpandedSection] = useState('diagnosis');
+  const sortedResults = useMemo(() => {
+    if (!patient.aiResults?.length) return [];
+    return [...patient.aiResults].sort((a, b) => getResultTimestamp(b) - getResultTimestamp(a));
+  }, [patient.aiResults]);
+
+  const [selectedResult, setSelectedResult] = useState(sortedResults[0] || null);
+  const [expandedSection, setExpandedSection] = useState('summary');
+
+  useEffect(() => {
+    if (!sortedResults.length) {
+      setSelectedResult(null);
+      return;
+    }
+    setSelectedResult((prev) => {
+      if (prev && sortedResults.some((result) => result.id === prev.id)) {
+        return prev;
+      }
+      return sortedResults[0];
+    });
+  }, [sortedResults]);
+
+  const handleResultChange = (event) => {
+    const next = sortedResults.find((result) => result.id === event.target.value);
+    if (next) {
+      setSelectedResult(next);
+    }
+  };
+
+  const summaryText = useMemo(() => {
+    const narrative = selectedResult?.summary || selectedResult?.overallAssessment || selectedResult?.diagnosis?.[0]?.description || '';
+    const filtered = stripDiagnosisIntro(narrative);
+    return filtered?.trim() || narrative?.trim() || null;
+  }, [selectedResult]);
+
+  const summarySections = selectedResult?.summarySections || selectedResult?.diagnosis?.[0]?.sections || [];
+  const hasSummaryHighlights = Boolean(summaryText || summarySections.length);
+  const galleryImages = selectedResult?.images || [];
+  const summaryImage = galleryImages[0] || null;
+  const renderedResultSummary = (stripDiagnosisIntro(selectedResult?.summary || '') || selectedResult?.summary || '').trim() || null;
 
   const getRiskColor = (risk) => {
     switch (risk?.toLowerCase()) {
@@ -77,11 +122,11 @@ const PatientAIResult = ({ patient }) => {
               {t('dentistPatient.ai.controls.select')}
             </label>
             <select
-              value={selectedResult.id}
-              onChange={(e) => setSelectedResult(patient.aiResults.find(r => r.id === e.target.value))}
+              value={selectedResult?.id || ''}
+              onChange={handleResultChange}
               className="w-full px-3 py-2 border border-primary/10 rounded-md bg-background text-primary focus:ring-2 focus:ring-brand-primary focus:border-transparent transition-colors"
             >
-              {patient.aiResults.map((result) => (
+              {sortedResults.map((result) => (
                 <option key={result.id} value={result.id}>
                   {result.date} - {result.type}
                 </option>
@@ -97,7 +142,7 @@ const PatientAIResult = ({ patient }) => {
               <div className="w-2 h-2 bg-brand-primary rounded-full"></div>
               <span className="text-sm font-medium text-text-primary">{t('dentistPatient.ai.summary.analysisDate')}</span>
             </div>
-            <p className="text-primary font-semibold">{selectedResult.date}</p>
+            <p className="text-primary font-semibold">{selectedResult?.date ?? '-'}</p>
           </div>
 
           <div className="bg-surface rounded-lg p-4">
@@ -105,8 +150,8 @@ const PatientAIResult = ({ patient }) => {
               <div className="w-2 h-2 bg-brand-accent rounded-full"></div>
               <span className="text-sm font-medium text-text-primary">{t('dentistPatient.ai.summary.confidence')}</span>
             </div>
-            <p className={`font-semibold ${getConfidenceColor(selectedResult.confidence)}`}>
-              {selectedResult.confidence}%
+            <p className={`font-semibold ${getConfidenceColor(selectedResult?.confidence ?? 0)}`}>
+              {selectedResult?.confidence != null ? `${selectedResult.confidence}%` : '–'}
             </p>
           </div>
 
@@ -115,8 +160,8 @@ const PatientAIResult = ({ patient }) => {
               <div className="w-2 h-2 bg-trust-green rounded-full"></div>
               <span className="text-sm font-medium text-text-primary">{t('dentistPatient.ai.summary.risk')}</span>
             </div>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getRiskColor(selectedResult.riskLevel)}`}>
-              {getRiskLabel(selectedResult.riskLevel)}
+            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getRiskColor(selectedResult?.riskLevel)}`}>
+              {getRiskLabel(selectedResult?.riskLevel)}
             </span>
           </div>
         </div>
@@ -128,6 +173,7 @@ const PatientAIResult = ({ patient }) => {
         <div className="border-b border-primary/10">
           <div className="flex">
             {[
+              { id: 'summary', label: t('dentistPatient.ai.tabs.summary'), icon: '📝' },
               { id: 'diagnosis', label: t('dentistPatient.ai.tabs.diagnosis'), icon: '🔍' },
               { id: 'symptoms', label: t('dentistPatient.ai.tabs.symptoms'), icon: '📋' },
               { id: 'recommendations', label: t('dentistPatient.ai.tabs.recommendations'), icon: '💡' },
@@ -151,32 +197,122 @@ const PatientAIResult = ({ patient }) => {
 
         {/* Tab Content */}
         <div className="p-6">
+          {expandedSection === 'summary' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-primary mb-4">{t('dentistPatient.ai.summary.title')}</h3>
+              
+              {/* Annotated Image Card */}
+              {summaryImage && (
+                <div className="relative rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                      <span className="text-sm font-semibold text-slate-700">
+                        Visualisasi Area Gigi
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      AI Annotated
+                    </span>
+                  </div>
+
+                  {/* Image Container */}
+                  <div className="relative bg-slate-100">
+                    <div className="aspect-video flex items-center justify-center">
+                      <img
+                        src={summaryImage.url}
+                        alt={summaryImage.description || 'Annotated dental image'}
+                        className="max-h-[420px] w-full object-contain"
+                      />
+                    </div>
+
+                    {/* Subtle Gradient Overlay */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-100/90 to-transparent" />
+                  </div>
+
+                  {/* Description */}
+                  {summaryImage.description && (
+                    <div className="px-4 py-3 bg-slate-50 border-t">
+                      <p className="text-sm leading-relaxed text-slate-600">
+                        {summaryImage.description}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+
+              {/* SHORT SUMMARY - Show in card (only when there is content) */}
+              {hasSummaryHighlights && (
+                <div className="bg-surface rounded-lg p-5 border border-primary/10 space-y-3">
+                  {summaryText && (
+                    <p className="text-primary leading-relaxed">
+                      {summaryText}
+                    </p>
+                  )}
+
+                  {summarySections.length > 0 && (
+                    <div className="space-y-2">
+                      {summarySections.slice(0, 2).map((section, idx) => (
+                        <div key={idx} className="pt-2 border-t border-primary/10">
+                          <h4 className="text-sm font-semibold text-primary mb-1">{section.title}</h4>
+                          <p className="text-sm text-secondary leading-relaxed line-clamp-3">
+                            {section.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {expandedSection === 'diagnosis' && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-primary mb-4">{t('dentistPatient.ai.diagnosis.title')}</h3>
               
-              {selectedResult.diagnosis?.map((diag, index) => (
-                <div key={index} className="bg-surface rounded-lg p-4 border border-primary/10">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-semibold text-primary">{diag.condition}</h4>
-                      <p className="text-sm text-secondary">{diag.description}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-medium ${getConfidenceColor(diag.probability)}`}>
-                        {diag.probability}%
+              {selectedResult.diagnosis?.map((diag, index) => {
+                const summaryToRender = renderedResultSummary || diag.details || diag.description || null;
+                const shouldRenderAnalysis = Boolean(
+                  summaryToRender || selectedResult?.findings || selectedResult?.overallAssessment
+                );
+
+                return (
+                  <div key={index} className="bg-surface rounded-lg p-4 border border-primary/10">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-primary">{diag.condition}</h4>
+                        <p className="text-sm text-secondary">{diag.description}</p>
                       </div>
-                      <div className="text-xs text-secondary">{t('dentistPatient.ai.diagnosis.probability')}</div>
+                      <div className="text-right">
+                        <div className={`text-sm font-medium ${getConfidenceColor(diag.probability || 0)}`}>
+                          {diag.probability != null ? `${diag.probability}%` : '–'}
+                        </div>
+                        <div className="text-xs text-secondary">{t('dentistPatient.ai.diagnosis.probability')}</div>
+                      </div>
                     </div>
+                    {/* Add severity if available */}
+                    {diag.severity && (
+                      <div className="mt-3 p-3 bg-muted/30 rounded-md">
+                        <p className="text-sm text-primary">{t('dentistPatient.ai.diagnosis.severity', { severity: getSeverityLabel(diag.severity) })}</p>
+                      </div>
+                    )}
+                    
+                    {shouldRenderAnalysis && (
+                      <div className="mt-4 p-4 bg-muted/10 rounded-md border border-primary/10 text-justify">
+                        <AnalysisSummaryRenderer 
+                          summary={summaryToRender}
+                          findings={selectedResult?.findings}
+                          overallAssessment={selectedResult?.overallAssessment}
+                        />
+                      </div>
+                    )}
                   </div>
-                  
-                  {diag.details && (
-                    <div className="mt-3 p-3 bg-muted/30 rounded-md">
-                      <p className="text-sm text-primary">{diag.details}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -239,9 +375,9 @@ const PatientAIResult = ({ patient }) => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-primary mb-4">{t('dentistPatient.ai.images.title')}</h3>
               
-              {selectedResult.images && selectedResult.images.length > 0 ? (
+              {galleryImages.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {selectedResult.images.map((image, index) => (
+                  {galleryImages.map((image, index) => (
                     <div key={index} className="bg-surface rounded-lg border border-primary/10 overflow-hidden">
                       <div className="aspect-video bg-muted flex items-center justify-center">
                         <img 
@@ -275,7 +411,7 @@ const PatientAIResult = ({ patient }) => {
         <div className="border-t border-primary/10 px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="text-sm text-secondary">
-              {t('dentistPatient.ai.footer.performedOn', { date: selectedResult.date })}
+              {t('dentistPatient.ai.footer.performedOn', { date: selectedResult?.date ?? '-' })}
             </div>
             <div className="flex space-x-2">
               <Button variant="outline" size="sm">
