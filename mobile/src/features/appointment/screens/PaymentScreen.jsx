@@ -71,9 +71,14 @@ const PaymentScreen = () => {
   const slot = route.params?.slot;
   const selectedDate = route.params?.date;
   const type = route.params?.type || 'onsite';
+  const service = route.params?.service || null;
   const notes = route.params?.notes || '';
   const reminder = route.params?.reminder || 30;
-  const fee = route.params?.fee || slot?.raw?.fee || dentist?.consultationFee || 350000;
+  const fee = (service?.price != null ? service.price : null)
+    ?? route.params?.fee
+    ?? slot?.raw?.fee
+    ?? dentist?.consultationFee
+    ?? 350000;
   const paymentMethodFromConfirm = route.params?.paymentMethod || 'card';
 
   const [selectedCategory, setSelectedCategory] = useState(paymentMethodFromConfirm);
@@ -149,10 +154,17 @@ const PaymentScreen = () => {
         clinic_id: clinicId || null, // null for independent dentists
         date: dateStr,
         time: timeStr,
-        duration: 60,
+        duration: service?.durationMinutes || service?.duration || 60,
         type: type, // 'virtual' or 'onsite'
-        reason: notes || 'Konsultasi Gigi',
+        reason: service?.name || notes || 'Konsultasi Gigi',
         notes: notes,
+        metadata: {
+          serviceId: service?.id || null,
+          serviceName: service?.name || null,
+          servicePrice: service?.price ?? null,
+          serviceDurationMinutes: service?.durationMinutes || service?.duration || null,
+          paymentMethod: selectedPayment,
+        },
       });
 
       console.log('[Payment] Appointment created:', response);
@@ -182,6 +194,7 @@ const PaymentScreen = () => {
         slot,
         date: selectedDate,
         type,
+        service,
         notes,
         reminder,
         fee: totalFee,

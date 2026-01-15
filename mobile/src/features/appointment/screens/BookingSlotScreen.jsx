@@ -6,10 +6,10 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getDentistById, getDentistAvailableSlots } from '../../../services/dentistService';
+import { getClinicById } from '../../../services/clinicService';
 import { DENTISTS, SLOT_AVAILABILITY } from '../data/appointments';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
-// 1. Pastikan import ini ada
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getUpcomingDates = (days = 5) => {
@@ -121,13 +121,16 @@ const BookingSlotScreen = () => {
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotError, setSlotError] = useState(null);
 
+  const [services, setServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [selectedService, setSelectedService] = useState(null);
+
   const { toast, showToast, hideToast } = useToast();
   
-  // 2. Panggil Hook Insets
   const insets = useSafeAreaInsets();
-
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
+  // 1. Load Dentist Detail
   useEffect(() => {
     let ignore = false;
     const fetchDentistDetail = async () => {
@@ -143,7 +146,6 @@ const BookingSlotScreen = () => {
         console.log('🦷 [BookingSlot] Fetched dentist data:', JSON.stringify(data, null, 2).substring(0, 500));
         
         if (!ignore && data) {
-          // Get primary clinic (first active clinic or first clinic)
           const primaryClinic = Array.isArray(data.clinics) && data.clinics.length > 0
             ? data.clinics.find(c => c.is_active) || data.clinics[0]
             : null;
@@ -175,7 +177,6 @@ const BookingSlotScreen = () => {
           const fallbackAvatar =
             data.avatar_url || data.avatarUrl || data.profile_picture || data.photo_url || data.avatar;
           
-          // Determine if this is an independent dentist
           const isIndependent = data.dentist_type === 'independent' || 
                                  (!primaryClinic && !fallbackClinicContext);
           
@@ -189,7 +190,6 @@ const BookingSlotScreen = () => {
             consultationFee: data.consultationFee || data.consultation_fee || 0,
             distance: data.distance || data.distanceKm,
             dentistType: data.dentist_type || (isIndependent ? 'independent' : 'clinic'),
-            // For independent dentists, store their practice info
             clinicName: data.clinic_name,
             clinicAddress: data.clinic_address,
             phoneNumber: data.phone_number,
@@ -215,12 +215,58 @@ const BookingSlotScreen = () => {
     };
   }, [dentistId, isLiveDentistId, initialDentist]);
 
+  // 2. Load Services
+  useEffect(() => {
+    let ignore = false;
+    const loadServices = async () => {
+      const clinicProfileRef =
+        clinicIdForInfo || dentist?.clinicContext?.profileId || dentist?.clinics?.[0]?.id;
+      const isLiveClinicRef = clinicProfileRef && /^\d+$/.test(clinicProfileRef.toString());
+      if (!clinicProfileRef || !isLiveClinicRef) {
+        setServices([]);
+        setSelectedService(null);
+        return;
+      }
+      try {
+        setServicesLoading(true);
+        const clinic = await getClinicById(clinicProfileRef);
+        const mapped = (clinic?.services || []).map((s) => ({
+          id: s.id || s.serviceId,
+          name: s.name,
+          description: s.description,
+          price: s.price ?? s.base_price ?? 0,
+          durationMinutes: s.duration_minutes ?? s.durationMinutes ?? 60,
+          category: s.category,
+        })).filter((s) => s.price !== null && s.price !== undefined);
+        if (!ignore) {
+          setServices(mapped);
+          if (slotType === 'onsite' && mapped.length > 0) {
+            setSelectedService(mapped[0]);
+          }
+        }
+      } catch (err) {
+        console.log('🔍 [BookingSlot] Failed to load services:', err.message);
+        if (!ignore) {
+          setServices([]);
+          setSelectedService(null);
+        }
+      } finally {
+        if (!ignore) setServicesLoading(false);
+      }
+    };
+
+    loadServices();
+    return () => { ignore = true; };
+  }, [clinicIdForInfo, dentist?.clinicContext?.profileId, slotType]);
+
+  // 3. Load Slots (Consolidated Logic)
   useEffect(() => {
     let ignore = false;
     const loadSlots = async () => {
       setSlotsLoading(true);
       setSlotError(null);
       setSelectedSlot(null);
+      
       const clinicProfileRef =
         clinicIdForInfo ||
         dentist?.clinicContext?.profileId ||
@@ -240,26 +286,29 @@ const BookingSlotScreen = () => {
         'clinicContext.branchId': dentist?.clinicContext?.branchId,
       });
       
+      // Fallback if no valid clinic ID for live dentist
       if (!clinicProfileRef || !isLiveClinicRef) {
-        // Silently use fallback without user-facing warning
         console.log('📍 [BookingSlot] Using fallback slots (clinic ID not available)');
         const fallback = SLOT_AVAILABILITY.find(
           (entry) => entry.dentistId === dentistId && entry.date === selectedDate
         );
-        // Use fallback slots or generate default ones if none found
         const fallbackSlots = fallback?.slots?.length 
           ? fallback.slots.map(normalizeSlot) 
           : generateDefaultSlots();
-        setSlots(fallbackSlots);
+        
+        if (!ignore) {
+          setSlots(fallbackSlots);
           if (fallbackSlots.length && !selectedSlot) {
             setSelectedSlot(fallbackSlots[0]);
           }
-        setSlotError(null); // Don't show error to user
-        setSlotsLoading(false);
+          setSlotError(null);
+          setSlotsLoading(false);
+        }
         return;
       }
+
       try {
-        if (!isLiveDentistId || !isLiveClinicRef) {
+        if (!isLiveDentistId) {
           throw new Error('Using fallback data for demo dentist');
         }
         console.log('🌐 [BookingSlot] Calling API getDentistAvailableSlots...');
@@ -267,8 +316,8 @@ const BookingSlotScreen = () => {
         console.log('✅ [BookingSlot] Got slots response:', response);
         const data = response?.data || response;
         const available = data?.slots || data?.availableSlots || [];
+        
         if (!ignore) {
-          // If API returns empty slots, use default generated slots
           const normalizedSlots = available.length > 0 
             ? available.map(normalizeSlot) 
             : generateDefaultSlots();
@@ -278,12 +327,10 @@ const BookingSlotScreen = () => {
       } catch (err) {
         console.log('🔍 [BookingSlot] Failed to fetch slots:', err.message);
         if (!ignore) {
-          // Show toast for real API errors, not for fallback scenarios
           if (isLiveDentistId) {
             showToast('Gagal memuat jadwal, menggunakan jadwal contoh', 'warning');
           }
-          setSlotError(null); // Don't show inline error
-          // fallback to sample data or generate defaults
+          setSlotError(null);
           const fallback = SLOT_AVAILABILITY.find((entry) => entry.dentistId === dentistId && entry.date === selectedDate);
           const fallbackSlots = fallback?.slots?.length 
             ? fallback.slots.map(normalizeSlot) 
@@ -301,8 +348,7 @@ const BookingSlotScreen = () => {
     return () => {
       ignore = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicIdForInfo, clinicBranchParam, dentist?.clinicContext?.profileId, dentistId, selectedDate, isLiveDentistId]);
+  }, [dentistId, selectedDate, clinicIdForInfo, dentist?.clinicContext?.profileId, isLiveDentistId]); // Closed correctly
 
   const filteredSlots = useMemo(
     () => slots.filter((slot) => slot.type === slotType && slot.isAvailable),
@@ -326,17 +372,21 @@ const BookingSlotScreen = () => {
 
   const handleContinue = () => {
     if (!selectedSlot) return;
+    if (slotType === 'onsite' && services.length > 0 && !selectedService) {
+      setSelectedService(services[0]);
+    }
     navigation.navigate('BookingConfirm', {
       dentist,
       slot: selectedSlot,
       date: selectedDate,
       type: slotType,
+      service: slotType === 'virtual' ? null : selectedService,
+      fee: slotType === 'virtual' ? (dentist?.consultationFee || selectedSlot?.raw?.fee || 0) : selectedService?.price,
     });
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      {/* 3. Update StatusBar agar transparan & konten bisa naik ke notch */}
       <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
       <View 
@@ -348,7 +398,6 @@ const BookingSlotScreen = () => {
           right: 0, 
           zIndex: 10, 
           elevation: 10, 
-          // 4. HAPUS paddingTop: insets.top di sini agar background naik mentok ke atas
         }}
       >
         <LinearGradient
@@ -356,7 +405,6 @@ const BookingSlotScreen = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ 
-            // 5. PINDAHKAN padding insets ke sini. Tambah sedikit (+ 10) agar konten tidak terlalu mepet.
             paddingTop: insets.top + 10, 
             paddingHorizontal: 20, 
             paddingBottom: 32, 
@@ -486,6 +534,11 @@ const BookingSlotScreen = () => {
                 onPress={() => {
                   setSlotType(option.key);
                   setSelectedSlot(null);
+                  if (option.key === 'virtual') {
+                    setSelectedService(null);
+                  } else if (services.length > 0) {
+                    setSelectedService(services[0]);
+                  }
                 }}
                 style={{
                   paddingHorizontal: 18,
@@ -505,6 +558,47 @@ const BookingSlotScreen = () => {
             ))}
           </ScrollView>
         </View>
+
+        {slotType === 'onsite' && (
+          <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 }}>
+              Pilih layanan
+            </Text>
+            {servicesLoading ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                <ActivityIndicator animating color={theme.colors.primary} />
+                <Text style={{ marginLeft: 8, color: '#475569' }}>Memuat layanan klinik...</Text>
+              </View>
+            ) : services.length === 0 ? (
+              <Text style={{ color: '#94A3B8' }}>Klinik belum menambahkan layanan.</Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {services.map((svc) => {
+                  const active = selectedService?.id === svc.id;
+                  return (
+                    <TouchableOpacity
+                      key={svc.id || svc.name}
+                      onPress={() => setSelectedService(svc)}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 14,
+                        marginRight: 12,
+                        backgroundColor: active ? '#EEF2FF' : 'white',
+                        borderWidth: 1,
+                        borderColor: active ? '#7C3AED' : '#E2E8F0',
+                      }}
+                    >
+                      <Text style={{ fontWeight: '700', color: active ? '#7C3AED' : '#0F172A' }}>{svc.name}</Text>
+                      <Text style={{ color: '#475569', marginTop: 4 }}>Rp {svc.price?.toLocaleString('id-ID')}</Text>
+                      <Text style={{ color: '#94A3B8', fontSize: 12 }}>{svc.durationMinutes || 60} menit</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        )}
 
         <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
           {slotError ? (

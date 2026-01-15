@@ -75,12 +75,12 @@ const DailyCalendar = ({
     locationId: 'LOC-UTAMA',
     granularity: 15,
     clinicHours: {
-      monday: { start: '09:00', end: '17:00' },
-      tuesday: { start: '09:00', end: '17:00' },
-      wednesday: { start: '09:00', end: '17:00' },
-      thursday: { start: '09:00', end: '17:00' },
-      friday: { start: '09:00', end: '17:00' },
-      saturday: { start: '09:00', end: '14:00' },
+      monday: { start: '08:00', end: '20:00' },
+      tuesday: { start: '08:00', end: '20:00' },
+      wednesday: { start: '08:00', end: '20:00' },
+      thursday: { start: '08:00', end: '20:00' },
+      friday: { start: '08:00', end: '20:00' },
+      saturday: { start: '09:00', end: '17:00' },
       sunday: null
     },
     buffers: { pre: 5, post: 5 }
@@ -154,8 +154,13 @@ const DailyCalendar = ({
   const getSlotStatus = useCallback((slotTime) => {
     const slotEnd = addMinutes(slotTime, cfg.granularity);
 
-    // Find overlapping items within this slot
+    // Find overlapping items within this slot (exclude cancelled/rejected)
     const overlapping = (appointments || []).filter(apt => {
+      // Skip cancelled, rejected, or no-show appointments
+      if (apt.status === 'cancelled' || apt.rawStatus === 'cancelled' || 
+          apt.status === 'rejected' || apt.status === 'no-show') {
+        return false;
+      }
       const aptStart = new Date(apt.start);
       const aptEnd = new Date(apt.end);
       return aptStart < slotEnd && aptEnd > slotTime;
@@ -715,12 +720,15 @@ const DailyCalendar = ({
                       <div className="absolute bottom-0 left-0 h-1 bg-orange-300 animate-pulse w-full" />
                     </div>
                   ) : (
-                    <div className="w-full">
+                    <div 
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('🗓️ [DailyCalendar] Appointment clicked:', slotStatus.item);
+                        onAppointmentClick?.(slotStatus.item);
+                      }}
+                    >
                       <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAppointmentClick?.(slotStatus.item);
-                        }}
                         className={`p-3 rounded-xl border-l-4 transition-all hover:shadow-md cursor-pointer relative ${slotStatus.color}`}
                       >
                         <div className="flex items-center justify-between">

@@ -403,6 +403,17 @@ const PatientManagement = () => {
         }
       }
       
+      // CRITICAL FIX: Normalize appointments - map snake_case consultation_type to camelCase
+      const normalizedAppointments = (fullPatient.appointments || []).map(apt => ({
+        ...apt,
+        consultationType: apt.consultationType || apt.consultation_type || 'onsite',
+        // Ensure date fields exist
+        date: apt.date || apt.startsAt || apt.starts_at,
+        time: apt.time || apt.startsAt || apt.starts_at
+      }));
+      
+      console.log('[PatientSelect] ✅ Normalized', normalizedAppointments.length, 'appointments');
+      
       // Normalize field names from backend to component expectations
       const normalizedPatient = {
         ...patient,
@@ -416,7 +427,7 @@ const PatientManagement = () => {
           familyHistory: {},
           emergencyContact: {}
         },
-        appointments: fullPatient.appointments || [],
+        appointments: normalizedAppointments,
         aiResults: transformed
       };
       

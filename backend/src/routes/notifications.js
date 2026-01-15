@@ -109,4 +109,57 @@ router.get('/settings', authenticateToken, getNotificationSettings);
 // Update notification settings
 router.patch('/settings', authenticateToken, updateNotificationSettings);
 
+// Send appointment reminder to patient
+router.post('/send-appointment-reminder', authenticateToken, async (req, res) => {
+  try {
+    const { appointmentId, patientId } = req.body;
+    
+    if (!appointmentId || !patientId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'appointmentId and patientId are required' 
+      });
+    }
+
+    // Create in-app notification for patient
+    const insertQuery = `
+      INSERT INTO notifications (
+        user_id, 
+        type, 
+        title, 
+        message, 
+        data,
+        is_read
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `;
+
+    const { query: dbQuery } = await import('../db.js');
+    const result = await dbQuery(insertQuery, [
+      patientId,
+      'appointment_reminder',
+      '⏰ Appointment Reminder',
+      'You have an upcoming appointment. Please don\'t forget to attend!',
+      JSON.stringify({ appointmentId }),
+      false
+    ]);
+
+    console.log('✅ Appointment reminder sent to patient:', patientId);
+
+    res.json({
+      success: true,
+      message: 'Reminder sent successfully',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error sending appointment reminder:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send reminder',
+      message: error.message 
+    });
+  }
+});
+
 export default router;

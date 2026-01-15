@@ -13,10 +13,11 @@ export const createAppointment = async (req, res, next) => {
       date,
       time,
       duration = 60,
+      type = 'onsite', // 'virtual' or 'onsite'
       reason,
-      notes
+      notes,
+      metadata = null
     } = req.body;
-
     // Validate required fields - clinic_id is optional for independent dentists
     if (!dentist_id || !date || !time) {
       throw new APIError(
@@ -147,9 +148,9 @@ export const createAppointment = async (req, res, next) => {
     const insertQuery = `
       INSERT INTO appointments (
         dentist_id, patient_id, clinic_branch_id, 
-        starts_at, ends_at, status, reason, notes
+        starts_at, ends_at, status, consultation_type, reason, notes, metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
@@ -160,11 +161,32 @@ export const createAppointment = async (req, res, next) => {
       starts_at,
       ends_at,
       'scheduled',
+      type === 'virtual' ? 'virtual' : 'onsite',
       reason,
-      notes
+      notes,
+      metadata && Object.keys(metadata).length > 0 ? metadata : null
     ]);
 
     const appointment = result.rows[0];
+
+    // Create initial status history record
+    const statusHistoryQuery = `
+      INSERT INTO appointment_status_history (
+        appointment_id, previous_status, new_status, changed_by, changed_by_role, reason, notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `;
+    
+    await query(statusHistoryQuery, [
+      appointment.id,
+      null, // no previous status for new appointment
+      'scheduled',
+      patient_id,
+      'patient',
+      'Appointment created by patient',
+      notes || null
+    ]);
 
     // Get appointment details with dentist info (and clinic if available)
     let detailsQuery;
@@ -226,10 +248,14 @@ export const getAppointments = async (req, res, next) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      // Frontend (web dentist portal) sends from/to and includeHistory=false
+      limit = 100,
       status = '',
       startDate = '',
       endDate = '',
+      from = '',
+      to = '',
+      includeHistory = 'true',
       sortOrder = 'desc'
     } = req.query;
 
@@ -260,16 +286,29 @@ export const getAppointments = async (req, res, next) => {
       paramIndex++;
     }
 
-    // Filter by date range
-    if (startDate) {
+    // Normalize date filters (support both legacy startDate/endDate and new from/to)
+    const startFilter = startDate || from;
+    const endFilter = endDate || to;
+
+    // If includeHistory is false, default to upcoming only and drop cancelled
+    const hideHistory = String(includeHistory).toLowerCase() === 'false';
+    if (hideHistory) {
+      conditions.push(`a.status NOT IN ('cancelled')`);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const defaultStart = today;
+      const effectiveStart = startFilter ? new Date(startFilter) : defaultStart;
       conditions.push(`a.starts_at >= $${paramIndex}`);
-      params.push(new Date(startDate));
+      params.push(effectiveStart);
+      paramIndex++;
+    } else if (startFilter) {
+      conditions.push(`a.starts_at >= $${paramIndex}`);
+      params.push(new Date(startFilter));
       paramIndex++;
     }
 
-    if (endDate) {
+    if (endFilter) {
       conditions.push(`a.starts_at <= $${paramIndex}`);
-      params.push(new Date(endDate));
+      params.push(new Date(endFilter));
       paramIndex++;
     }
 
@@ -284,7 +323,7 @@ export const getAppointments = async (req, res, next) => {
     const countResult = await query(countQuery, params);
     const total = parseInt(countResult.rows[0].total);
 
-    // Get appointments
+    // Get appointments (support independent dentists with NULL clinic_branch_id)
     const appointmentsQuery = `
       SELECT 
         a.*,
@@ -305,7 +344,7 @@ export const getAppointments = async (req, res, next) => {
       JOIN dentist_profiles dp ON dp.user_id = a.dentist_id
       JOIN users u_patient ON u_patient.id = a.patient_id
       LEFT JOIN patient_profiles pp ON pp.user_id = a.patient_id
-      JOIN clinic_profiles cp ON cp.id = a.clinic_branch_id
+      LEFT JOIN clinic_profiles cp ON cp.id = a.clinic_branch_id
       ${whereClause}
       ORDER BY a.starts_at ${sortOrder.toUpperCase()}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -641,13 +680,34 @@ export const cancelAppointment = async (req, res, next) => {
     `;
 
     const result = await query(updateQuery, [cancellation_reason, cancellation_fee, id]);
+    const updatedAppointment = result.rows[0];
+
+    // Create status history record for cancellation
+    const statusHistoryQuery = `
+      INSERT INTO appointment_status_history (
+        appointment_id, previous_status, new_status, changed_by, changed_by_role, reason, notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `;
+
+    const previousStatus = appointment.status;
+    await query(statusHistoryQuery, [
+      id,
+      previousStatus,
+      'cancelled',
+      user_id,
+      user_role,
+      cancellation_reason || 'Cancelled by ' + user_role,
+      cancellation_fee > 0 ? `Cancellation fee applied: ${cancellation_fee}` : null
+    ]);
 
     res.json({
       success: true,
       message: 'Appointment cancelled successfully',
       messageEn: 'Appointment cancelled successfully',
       data: {
-        ...result.rows[0],
+        ...updatedAppointment,
         cancellation_fee_applied: cancellation_fee > 0,
         cancellation_fee_amount: cancellation_fee
       }

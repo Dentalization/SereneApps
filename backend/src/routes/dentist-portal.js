@@ -1,6 +1,6 @@
 /**
  * Dentist Portal Routes
- * Protected routes for dentist to manage their patients and appointments
+ * CLEANED VERSION (No Duplicates)
  */
 
 import express from 'express';
@@ -10,14 +10,10 @@ import { PrismaClient } from '../generated/prisma/index.js';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// --- Helper Functions ---
+
 function sendError(res, status, code, message, extras = {}) {
-  return res.status(status).json({
-    error: {
-      code,
-      message,
-      ...extras
-    }
-  });
+  return res.status(status).json({ error: { code, message, ...extras } });
 }
 
 function toBigInt(value, fieldName) {
@@ -28,36 +24,34 @@ function toBigInt(value, fieldName) {
   }
 }
 
-/**
- * Serialize patient data with AI results
- */
+function serializeScheduleEntry(entry) {
+  if (!entry) return null;
+  return {
+    id: entry.id?.toString(),
+    type: entry.type,
+    status: entry.status,
+    startAt: entry.startAt?.toISOString(),
+    endAt: entry.endAt?.toISOString(),
+    patientName: entry.patientName,
+    patientPhone: entry.patientPhone,
+    notes: entry.notes,
+    metadata: entry.metadata || {},
+    createdAt: entry.createdAt?.toISOString(),
+    updatedAt: entry.updatedAt?.toISOString()
+  };
+}
+
 function serializePatient(user, appointments = [], aiResults = []) {
-  // Calculate last visit and next appointment
   const now = new Date();
   const pastAppointments = appointments.filter(a => new Date(a.startsAt) < now);
   const futureAppointments = appointments.filter(a => new Date(a.startsAt) >= now);
-  
-  const lastVisit = pastAppointments.length > 0 
-    ? pastAppointments.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt))[0]
-    : null;
-  
-  const nextAppointment = futureAppointments.length > 0
-    ? futureAppointments.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0]
-    : null;
+  const lastVisit = pastAppointments.length > 0 ? pastAppointments.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt))[0] : null;
+  const nextAppointment = futureAppointments.length > 0 ? futureAppointments.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0] : null;
 
-  // Calculate overall status based on appointments and AI results
   let status = 'inactive';
-  if (futureAppointments.length > 0) {
-    status = 'active';
-  } else if (pastAppointments.length > 0) {
-    status = 'completed';
-  }
-
-  // Check for any critical AI results
-  const hasHighRisk = aiResults.some(r => r.riskLevel === 'high');
-  if (hasHighRisk) {
-    status = 'needs_attention';
-  }
+  if (futureAppointments.length > 0) status = 'active';
+  else if (pastAppointments.length > 0) status = 'completed';
+  if (aiResults.some(r => r.riskLevel === 'high')) status = 'needs_attention';
 
   return {
     id: user.id.toString(),
@@ -86,10 +80,9 @@ function serializePatient(user, appointments = [], aiResults = []) {
   };
 }
 
-/**
- * GET /v1/dentist-portal/patients
- * Get all patients who have booked appointments with this dentist
- */
+// --- Routes ---
+
+// GET /v1/dentist-portal/patients
 router.get(
   '/patients',
   authenticateToken,
@@ -99,11 +92,8 @@ router.get(
       const dentistId = toBigInt(req.user.id, 'dentistId');
       const { search, status, sortBy = 'lastVisit', sortOrder = 'desc', limit = 50, offset = 0 } = req.query;
 
-      // Get all unique patients from appointments with this dentist
       const appointments = await prisma.appointment.findMany({
-        where: {
-          dentistId
-        },
+        where: { dentistId },
         include: {
           patient: {
             select: {
@@ -118,66 +108,49 @@ router.get(
         orderBy: { startsAt: 'desc' }
       });
 
-      // Group appointments by patient
       const patientMap = new Map();
       for (const appointment of appointments) {
         if (!appointment.patient) continue;
-        
-        const patientId = appointment.patient.id.toString();
-        if (!patientMap.has(patientId)) {
-          patientMap.set(patientId, {
-            user: appointment.patient,
-            appointments: []
-          });
+        const patientIdStr = appointment.patient.id.toString();
+        if (!patientMap.has(patientIdStr)) {
+          patientMap.set(patientIdStr, { user: appointment.patient, appointments: [] });
         }
-        patientMap.get(patientId).appointments.push(appointment);
+        patientMap.get(patientIdStr).appointments.push(appointment);
       }
 
-      // Get AI analysis results for all patients
       const patientIds = Array.from(patientMap.keys()).map(id => BigInt(id));
-      const aiResults = await prisma.aIAnalysisResult.findMany({
-        where: {
-          userId: { in: patientIds }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      const aiResults = patientIds.length
+        ? await prisma.aIAnalysisResult.findMany({ where: { userId: { in: patientIds } }, orderBy: { createdAt: 'desc' } })
+        : [];
 
-      // Group AI results by user
       const aiResultsByUser = new Map();
       for (const result of aiResults) {
-        const userId = result.userId.toString();
-        if (!aiResultsByUser.has(userId)) {
-          aiResultsByUser.set(userId, []);
-        }
-        aiResultsByUser.get(userId).push(result);
+        const uid = result.userId.toString();
+        if (!aiResultsByUser.has(uid)) aiResultsByUser.set(uid, []);
+        aiResultsByUser.get(uid).push(result);
       }
 
-      // Serialize patients
       let patients = Array.from(patientMap.values()).map(({ user, appointments }) => {
-        const userIdStr = user.id.toString();
-        const patientAiResults = aiResultsByUser.get(userIdStr) || [];
-        return serializePatient(user, appointments, patientAiResults);
+        const patientAi = aiResultsByUser.get(user.id.toString()) || [];
+        return serializePatient(user, appointments, patientAi);
       });
 
-      // Apply search filter
       if (search) {
-        const searchLower = search.toLowerCase();
-        patients = patients.filter(p => 
-          (p.name && p.name.toLowerCase().includes(searchLower)) ||
-          (p.email && p.email.toLowerCase().includes(searchLower)) ||
+        const q = search.toLowerCase();
+        patients = patients.filter(p =>
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.email && p.email.toLowerCase().includes(q)) ||
           (p.phone && p.phone.includes(search))
         );
       }
 
-      // Apply status filter
       if (status) {
         patients = patients.filter(p => p.status === status);
       }
 
-      // Apply sorting
       patients.sort((a, b) => {
-        let aVal, bVal;
-        
+        let aVal;
+        let bVal;
         switch (sortBy) {
           case 'name':
             aVal = a.name || '';
@@ -192,15 +165,9 @@ router.get(
             aVal = a.lastVisit ? new Date(a.lastVisit) : new Date(0);
             bVal = b.lastVisit ? new Date(b.lastVisit) : new Date(0);
         }
-
-        if (sortOrder === 'asc') {
-          return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-        } else {
-          return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
-        }
+        return sortOrder === 'asc' ? (aVal > bVal ? 1 : aVal < bVal ? -1 : 0) : (aVal < bVal ? 1 : aVal > bVal ? -1 : 0);
       });
 
-      // Calculate summary
       const summary = {
         total: patients.length,
         byStatus: patients.reduce((acc, p) => {
@@ -210,11 +177,7 @@ router.get(
         withAiResults: patients.filter(p => p.aiResults.length > 0).length
       };
 
-      // Apply pagination
-      const paginatedPatients = patients.slice(
-        parseInt(offset, 10),
-        parseInt(offset, 10) + parseInt(limit, 10)
-      );
+      const paginatedPatients = patients.slice(parseInt(offset, 10), parseInt(offset, 10) + parseInt(limit, 10));
 
       return res.json({
         patients: paginatedPatients,
@@ -233,10 +196,7 @@ router.get(
   }
 );
 
-/**
- * GET /v1/dentist-portal/patients/:patientId
- * Get single patient details with all appointments and AI results
- */
+// GET /v1/dentist-portal/patients/:patientId
 router.get(
   '/patients/:patientId',
   authenticateToken,
@@ -246,21 +206,11 @@ router.get(
       const dentistId = toBigInt(req.user.id, 'dentistId');
       const patientId = toBigInt(req.params.patientId, 'patientId');
 
-      // Verify patient has appointments with this dentist
       const appointments = await prisma.appointment.findMany({
-        where: {
-          dentistId,
-          patientId
-        },
+        where: { dentistId, patientId },
         include: {
           patient: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone_number: true,
-              avatar_url: true
-            }
+            select: { id: true, name: true, email: true, phone_number: true, avatar_url: true }
           }
         },
         orderBy: { startsAt: 'desc' }
@@ -271,41 +221,40 @@ router.get(
       }
 
       const patient = appointments[0].patient;
-
-      // Get AI analysis results for this patient
       const aiResults = await prisma.aIAnalysisResult.findMany({
-        where: {
-          userId: patientId
-        },
+        where: { userId: patientId },
         orderBy: { createdAt: 'desc' },
-        take: 10 // Limit to last 10 results
+        take: 10
       });
 
-      // Get patient profile
-      const patientProfile = await prisma.patientProfile.findUnique({
-        where: { userId: patientId }
-      });
+      const patientProfile = await prisma.patientProfile.findUnique({ where: { userId: patientId } });
 
       const serializedPatient = serializePatient(patient, appointments, aiResults);
-      
-      // Add extended details
       serializedPatient.appointments = appointments.map(a => ({
         id: a.id.toString(),
         startsAt: a.startsAt?.toISOString(),
         endsAt: a.endsAt?.toISOString(),
+        date: a.startsAt?.toISOString().split('T')[0], // For patient portal compatibility
         status: a.status,
+        rawStatus: a.status,
+        consultation_type: a.consultation_type || 'onsite',
+        type: a.consultation_type || 'onsite',
+        channel: a.consultation_type === 'virtual' ? 'tele' : 'clinic',
         reason: a.reason,
-        notes: a.notes
+        notes: a.notes,
+        metadata: a.metadata || {}
       }));
 
       if (patientProfile) {
         serializedPatient.dateOfBirth = patientProfile.dateOfBirth?.toISOString().split('T')[0] || null;
         serializedPatient.gender = patientProfile.gender;
-        serializedPatient.insurance = patientProfile.insuranceProvider ? {
-          provider: patientProfile.insuranceProvider,
-          number: patientProfile.insuranceNumber,
-          memberId: patientProfile.insuranceMemberId
-        } : null;
+        serializedPatient.insurance = patientProfile.insuranceProvider
+          ? {
+              provider: patientProfile.insuranceProvider,
+              number: patientProfile.insuranceNumber,
+              memberId: patientProfile.insuranceMemberId
+            }
+          : null;
         serializedPatient.emergencyContact = patientProfile.emergencyContact;
         serializedPatient.medicalDetails = patientProfile.medicalDetails;
       }
@@ -318,10 +267,91 @@ router.get(
   }
 );
 
-/**
- * GET /v1/dentist-portal/patients/:patientId/ai-results
- * Get all AI analysis results for a specific patient
- */
+// GET /v1/dentist-portal/schedule
+router.get(
+  '/schedule',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const from = req.query.from ? new Date(req.query.from) : new Date();
+      const to = req.query.to ? new Date(req.query.to) : new Date(Date.now() + 30 * 86400000);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        return sendError(res, 400, 'invalid_date', 'Format tanggal tidak valid.');
+      }
+
+      const entries = await prisma.dentistScheduleEntry.findMany({
+        where: {
+          dentistId,
+          startAt: {
+            gte: from,
+            lt: to
+          }
+        },
+        orderBy: { startAt: 'asc' }
+      });
+
+      return res.json({ entries: entries.map(serializeScheduleEntry) });
+    } catch (error) {
+      console.error('Error fetching schedule entries:', error);
+      return sendError(res, 500, 'schedule_fetch_failed', 'Gagal memuat jadwal.');
+    }
+  }
+);
+
+// POST /v1/dentist-portal/schedule
+router.post(
+  '/schedule',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const { type, status, start, end, notes, metadata, patientName, patientPhone } = req.body || {};
+
+      if (!type || !start || !end) {
+        return sendError(res, 400, 'missing_data', 'Tipe dan rentang waktu wajib diisi.');
+      }
+
+      const startAt = new Date(start);
+      const endAt = new Date(end);
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+        return sendError(res, 400, 'invalid_time', 'Waktu mulai atau selesai tidak valid.');
+      }
+
+      let parsedMetadata = metadata;
+      if (typeof metadata === 'string') {
+        try {
+          parsedMetadata = JSON.parse(metadata);
+        } catch (err) {
+          parsedMetadata = {};
+        }
+      }
+
+      const entry = await prisma.dentistScheduleEntry.create({
+        data: {
+          dentistId,
+          type,
+          status: status || (type === 'hold_slot' ? 'hold' : 'blocked'),
+          startAt,
+          endAt,
+          notes: notes || null,
+          patientName: patientName || null,
+          patientPhone: patientPhone || null,
+          metadata: parsedMetadata || {}
+        }
+      });
+
+      return res.json({ entry: serializeScheduleEntry(entry) });
+    } catch (error) {
+      console.error('Error creating schedule entry:', error);
+      return sendError(res, 500, 'schedule_create_failed', 'Gagal menyimpan jadwal.');
+    }
+  }
+);
+
+// GET /v1/dentist-portal/patients/:patientId/ai-results
 router.get(
   '/patients/:patientId/ai-results',
   authenticateToken,
@@ -331,12 +361,8 @@ router.get(
       const dentistId = toBigInt(req.user.id, 'dentistId');
       const patientId = toBigInt(req.params.patientId, 'patientId');
 
-      // Verify patient has appointments with this dentist (security check)
       const hasAppointment = await prisma.appointment.findFirst({
-        where: {
-          dentistId,
-          patientId
-        },
+        where: { dentistId, patientId },
         select: { id: true }
       });
 
@@ -344,11 +370,8 @@ router.get(
         return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
       }
 
-      // Get all AI analysis results for this patient
       const aiResults = await prisma.aIAnalysisResult.findMany({
-        where: {
-          userId: patientId
-        },
+        where: { userId: patientId },
         orderBy: { createdAt: 'desc' }
       });
 

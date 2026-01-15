@@ -18,9 +18,14 @@ const BookingConfirmScreen = () => {
   const dentist = route.params?.dentist || appointmentFromList?.dentist || getDentistById('dentist-001');
   const selectedDate = route.params?.date || appointmentFromList?.startsAt;
   const type = route.params?.type || appointmentFromList?.type || 'onsite';
+  const service = route.params?.service || null;
   const slot = route.params?.slot || appointmentFromList?.slot;
   const slotTime = slot?.time || new Date(selectedDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  const fee = slot?.raw?.fee || appointmentFromList?.billing?.fee || dentist?.consultationFee || 350000;
+  const fee = (service?.price != null ? service.price : null)
+    ?? slot?.raw?.fee
+    ?? appointmentFromList?.billing?.fee
+    ?? dentist?.consultationFee
+    ?? 350000;
 
   const [notes, setNotes] = useState('');
   const [reminder, setReminder] = useState(30);
@@ -35,6 +40,7 @@ const BookingConfirmScreen = () => {
       slot,
       date: selectedDate,
       type,
+      service,
       notes,
       reminder,
       fee,

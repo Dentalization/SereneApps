@@ -74,3 +74,13 @@ export async function getClinicDentistServices() {
   const { data } = await authHttp.get('/dentist/clinic/services');
   return data;
 }
+
+export async function fetchDentistScheduleEntries(params = {}) {
+  const { data } = await authHttp.get('/dentist-portal/schedule', { params });
+  return data.entries || [];
+}
+
+export async function persistDentistScheduleEntry(payload) {
+  const { data } = await authHttp.post('/dentist-portal/schedule', payload);
+  return data.entry;
+}
