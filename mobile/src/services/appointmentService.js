@@ -26,6 +26,7 @@ export const createAppointment = async ({
   type = 'onsite',
   reason = 'Konsultasi gigi',
   notes = '',
+  metadata = null,
 }) => {
   try {
     // Build ISO datetime strings for start and end
@@ -41,6 +42,7 @@ export const createAppointment = async ({
       appointmentType: type, // 'virtual' or 'onsite'
       reason,
       notes,
+      metadata,
     };
 
     console.log('[AppointmentService] Creating appointment:', payload);

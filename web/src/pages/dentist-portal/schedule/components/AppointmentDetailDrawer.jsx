@@ -59,7 +59,22 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onRe
   const formatDate = (d) => new Date(d).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const status = getStatusConfig(appointment.status);
-  const channel = getChannelConfig(appointment.channel);
+  
+  // CRITICAL FIX: Normalize consultation type from multiple possible fields
+  // Backend sends: consultation_type (snake_case)
+  // Frontend expects: consultationType (camelCase)
+  // Also check metadata and appointmentType fields
+  const consultationType = 
+    appointment.consultationType || 
+    appointment.consultation_type || 
+    appointment.metadata?.appointmentType || 
+    appointment.appointmentType || 
+    'onsite';
+  
+  // Normalize to 'tele' or 'clinic' channel
+  const isVirtual = ['virtual', 'teleconsultation', 'online', 'teledentistry'].includes(consultationType?.toLowerCase());
+  const derivedChannel = appointment.channel || (isVirtual ? 'tele' : 'clinic');
+  const channel = getChannelConfig(derivedChannel);
 
   const InfoCard = ({ icon, title, children }) => (
     <div className="p-4 rounded-xl bg-surface border border-primary/10">

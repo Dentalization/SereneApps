@@ -55,15 +55,15 @@ const MultiCalendar = ({
       return converted;
     }
     
-    // Fallback to default schedule
+    // Fallback to default schedule (updated to match clinic operating hours 08:00-20:00)
     return {
       0: null, // Sunday - closed by default
-      1: { start: '09:00', end: '17:00' }, // Monday
-      2: { start: '09:00', end: '17:00' }, // Tuesday
-      3: { start: '09:00', end: '17:00' }, // Wednesday
-      4: { start: '09:00', end: '17:00' }, // Thursday
-      5: { start: '09:00', end: '17:00' }, // Friday
-      6: { start: '09:00', end: '14:00' }  // Saturday - shorter hours
+      1: { start: '08:00', end: '20:00' }, // Monday
+      2: { start: '08:00', end: '20:00' }, // Tuesday
+      3: { start: '08:00', end: '20:00' }, // Wednesday
+      4: { start: '08:00', end: '20:00' }, // Thursday
+      5: { start: '08:00', end: '20:00' }, // Friday
+      6: { start: '09:00', end: '17:00' }  // Saturday - shorter hours
     };
   }, [clinicWorkingHours]);
 
@@ -210,9 +210,14 @@ const MultiCalendar = ({
     }
   }, [currentDate, viewMode]);
 
-  // Get appointments for a specific date
+  // Get appointments for a specific date (exclude cancelled/rejected)
   const getAppointmentsForDate = useCallback((date) => {
     return appointments.filter(apt => {
+      // Skip cancelled, rejected, or no-show appointments
+      if (apt.status === 'cancelled' || apt.rawStatus === 'cancelled' || 
+          apt.status === 'rejected' || apt.status === 'no-show') {
+        return false;
+      }
       const aptDate = new Date(apt.start);
       return isSameDay(aptDate, date);
     });

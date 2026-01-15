@@ -7,6 +7,7 @@ import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { getDentistProfileApi } from '../../../services/authService';
 import { fetchAppointments } from '../../../services/appointmentService';
+import { fetchDentistScheduleEntries, persistDentistScheduleEntry } from '../../../services/dentistPortalService';
 
 // Import components
 import DailyCalendar from './components/DailyCalendar';
@@ -108,7 +109,8 @@ const DentistSchedule = () => {
 
   const mapAppointment = useCallback((appointment) => {
     if (!appointment) return null;
-    const channel = appointment.metadata?.channel || (appointment.videoRoomRef ? 'tele' : 'clinic');
+    const rawChannel = appointment.consultationType || appointment.metadata?.channel || (appointment.videoRoomRef ? 'virtual' : 'onsite');
+    const channel = rawChannel === 'virtual' || rawChannel === 'tele' ? 'tele' : 'clinic';
     const startIso = appointment.startsAt || appointment.starts_at;
     const endIso = appointment.endsAt || appointment.ends_at;
     return {
@@ -147,6 +149,44 @@ const DentistSchedule = () => {
     };
   }, [mapStatusToDisplay, t, user?.name]);
 
+const mapScheduleEntry = useCallback((entry) => {
+  if (!entry) return null;
+  const providerName = user?.name || t('dentistSchedule.labels.unknownDentist');
+  const locationMeta = entry.metadata?.location;
+  return {
+    id: `schedule-${entry.id}`,
+    status: entry.status === 'hold' ? 'hold' : 'blocked',
+    rawStatus: entry.status,
+    channel: entry.metadata?.channel || 'clinic',
+    type: entry.metadata?.type || entry.type,
+    start: entry.startAt,
+    end: entry.endAt,
+    patient: entry.patientName
+      ? {
+          id: null,
+          name: entry.patientName,
+          contact: { wa: entry.patientPhone || null }
+        }
+      : null,
+    provider: {
+      id: user?.id,
+      name: providerName
+    },
+    location: locationMeta
+      ? {
+          id: locationMeta.id,
+          name: locationMeta.name,
+          city: locationMeta.city
+        }
+      : null,
+    reason: entry.notes,
+    metadata: entry.metadata || {},
+    risk: entry.metadata?.risk ?? 0,
+    depositRequired: entry.metadata?.depositRequired ?? false,
+    tele: null
+  };
+}, [t, user]);
+
   const finishInitialLoading = useCallback(() => {
     if (!initialLoadRef.current) {
       setLoading(false);
@@ -171,17 +211,27 @@ const DentistSchedule = () => {
     setRefreshing(true);
     try {
       const now = new Date();
-      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const to = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString();
-      const response = await fetchAppointments({
-        view: 'dentist',
-        from,
-        to,
-        includeHistory: false
-      });
-      const mapped = (response?.appointments || []).map(mapAppointment).filter(Boolean);
-      setData(mapped);
-      setSummary(response?.summary || { total: mapped.length, byStatus: {} });
+      // Start from today
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      from.setHours(0, 0, 0, 0);
+      // End 30 days from now (ensures full day inclusion)
+      const to = new Date(from);
+      to.setDate(to.getDate() + 30);
+      to.setHours(23, 59, 59, 999);
+      const [appointmentResponse, scheduleResponse] = await Promise.all([
+        fetchAppointments({
+          view: 'dentist',
+          from: from.toISOString(),
+          to: to.toISOString(),
+          includeHistory: false
+        }),
+        fetchDentistScheduleEntries({ from: from.toISOString(), to: to.toISOString() })
+      ]);
+      const mapped = (appointmentResponse?.appointments || []).map(mapAppointment).filter(Boolean);
+      const scheduleEntries = (scheduleResponse || []).map(mapScheduleEntry).filter(Boolean);
+      const combined = [...mapped, ...scheduleEntries].sort((a, b) => new Date(a.start) - new Date(b.start));
+      setData(combined);
+      setSummary(appointmentResponse?.summary || { total: mapped.length, byStatus: {} });
       setLastSyncedAt(new Date());
     } catch (error) {
       console.error('Error loading appointments:', error);
@@ -189,7 +239,7 @@ const DentistSchedule = () => {
       setRefreshing(false);
       finishInitialLoading();
     }
-  }, [finishInitialLoading, mapAppointment]);
+  }, [finishInitialLoading, mapAppointment, mapScheduleEntry]);
 
   const summaryCounts = useMemo(() => ({
     total: summary?.total || 0,
@@ -246,7 +296,7 @@ const DentistSchedule = () => {
       loadAppointments();
     }, 60000);
     return () => clearInterval(interval);
-  }, [loadAppointments]);
+  }, [loadAppointments, persistDentistScheduleEntry]);
 
   useEffect(() => {
     return () => {
@@ -259,6 +309,8 @@ const DentistSchedule = () => {
 
   const filtered = useMemo(() => {
     return data.filter((a) => {
+      // Explicitly exclude cancelled and rejected appointments from calendar views
+      if (a.status === 'cancelled' || a.rawStatus === 'cancelled' || a.status === 'rejected') return false;
       if (filters.provider !== 'all' && a.provider?.id !== filters.provider) return false;
       if (filters.location !== 'all' && a.location?.id !== filters.location) return false;
       if (filters.channel !== 'all' && a.channel !== filters.channel) return false;
@@ -304,56 +356,67 @@ const DentistSchedule = () => {
     setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: newStatus } : x)));
   };
 
-  // Handle schedule actions from DailyCalendar
-  const handleScheduleAction = (action) => {
-    console.log('Schedule action received:', action);
-    
-    // Handle direct block addition from modal
-    if (action.type === 'add_block' && action.block) {
-      setData(prev => [...prev, action.block]);
-      console.log('Block added successfully:', action.block);
-      return;
+  // Handle appointment cancellation with refresh
+  const handleCancelAppointment = useCallback(async (appointment) => {
+    try {
+      // Update local state immediately
+      setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: 'cancelled', rawStatus: 'cancelled' } : x)));
+      // Close the drawer
+      setIsDetailDrawerOpen(false);
+      setSelectedAppointment(null);
+      // Refresh from backend after a short delay to ensure DB is updated
+      setTimeout(() => loadAppointments(), 500);
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
     }
-    
-    // Handle JSON action schema
+  }, [loadAppointments]);
+
+  // Handle schedule actions from DailyCalendar
+  const handleScheduleAction = useCallback(async (action) => {
+    console.log('Schedule action received:', action);
+
+    if (!action) return;
+
+    let persisted = false;
     if (action.actions && action.actions.length > 0) {
-      const actionPayload = action.actions[0];
-      
-      if (actionPayload.type === 'create_block') {
-        // Add new block to data
-        const newBlock = {
-          id: `block-${Date.now()}`,
-          type: actionPayload.payload.type || actionPayload.payload.reason || 'meeting',
-          status: 'blocked',
-          start: actionPayload.payload.start,
-          end: actionPayload.payload.end,
-          reason: actionPayload.payload.reason,
-          notes: actionPayload.payload.notes,
-          metadata: actionPayload.payload.metadata
+      for (const actionPayload of action.actions) {
+        const payload = actionPayload.payload || {};
+        if (!payload.start || !payload.end) continue;
+
+        const metadata = {
+          ...(payload.metadata || {})
         };
-        
-        setData(prev => [...prev, newBlock]);
-        console.log('Block added successfully:', newBlock);
-      } else if (actionPayload.type === 'hold_slot') {
-        // Add new hold to data
-        const newHold = {
-          id: `hold-${Date.now()}`,
-          status: 'hold',
-          start: actionPayload.payload.start,
-          end: actionPayload.payload.end,
-          expires_at: actionPayload.payload.expires_at,
-          type: actionPayload.payload.appointment_type,
-          priority: actionPayload.payload.priority,
-          channel: actionPayload.payload.channel,
-          reason: actionPayload.payload.reason,
-          patient_temp: actionPayload.payload.patient_temp
+        if (actionPayload.type === 'hold_slot') {
+          metadata.appointment_type = payload.appointment_type;
+          metadata.priority = payload.priority;
+          metadata.channel = payload.channel;
+          metadata.buffers = payload.buffers;
+        }
+
+        const entryPayload = {
+          type: payload.type || actionPayload.type || 'blocked',
+          status: payload.status || (actionPayload.type === 'hold_slot' ? 'hold' : 'blocked'),
+          start: payload.start,
+          end: payload.end,
+          notes: payload.notes || payload.reason,
+          metadata,
+          patientName: payload.patient_temp?.name || payload.patientName,
+          patientPhone: payload.patient_temp?.phone || payload.patientPhone
         };
-        
-        setData(prev => [...prev, newHold]);
-        console.log('Hold slot created successfully:', newHold);
+
+        try {
+          await persistDentistScheduleEntry(entryPayload);
+          persisted = true;
+        } catch (error) {
+          console.error('Failed to persist schedule entry', error);
+        }
       }
     }
-  };
+
+    if (persisted || action.type === 'add_block') {
+      await loadAppointments();
+    }
+  }, [loadAppointments]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -520,7 +583,7 @@ const DentistSchedule = () => {
         }}
         onConfirm={handleConfirm}
         onReschedule={handleReschedule}
-        onCancel={(a) => setData((prev) => prev.map((x) => (x.id === a.id ? { ...x, status: 'cancelled' } : x)))}
+        onCancel={handleCancelAppointment}
         onStartVideo={handleStartVideo}
       />
     </div>

@@ -9,10 +9,19 @@ export async function recordStatusChange(tx, {
   metadata
 }) {
   if (!tx || !appointmentId || !newStatus) {
+    console.error('[recordStatusChange] Invalid parameters:', { tx: !!tx, appointmentId, newStatus });
     throw new Error('Invalid parameters for status history logging');
   }
 
-  await tx.appointmentStatusHistory.create({
+  console.log('[recordStatusChange] Creating status history:', {
+    appointmentId: appointmentId.toString(),
+    previousStatus,
+    newStatus,
+    changedBy: changedBy?.toString(),
+    changedByRole
+  });
+
+  const result = await tx.appointmentStatusHistory.create({
     data: {
       appointmentId: BigInt(appointmentId),
       previousStatus: previousStatus || null,
@@ -24,4 +33,7 @@ export async function recordStatusChange(tx, {
       metadata: metadata || {}
     }
   });
+  
+  console.log('[recordStatusChange] ✅ Status history created:', { id: result.id.toString() });
+  return result;
 }

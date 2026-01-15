@@ -6,7 +6,16 @@ import { recordStatusChange } from '../services/appointments/audit.js';
 import { emitAppointmentEvent } from '../services/communications.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  log: ['query', 'error', 'warn']
+});
+
+// Verify database connection on startup
+prisma.$connect().then(() => {
+  console.log('✅ [Appointments Router] Prisma connected to database');
+}).catch((error) => {
+  console.error('❌ [Appointments Router] Prisma connection error:', error);
+});
 
 const DEFAULT_TIMEZONE = 'Asia/Jakarta';
 const DEFAULT_TZ_OFFSET = '+07:00';
@@ -177,9 +186,13 @@ function serializeAppointment(appointment) {
   // Get latest payment intent for payment status
   const latestPayment = appointment.paymentIntents?.[0] || null;
   
-  // Get appointment type from metadata or determine from videoRoomRef
+  // CRITICAL FIX: Read consultation_type column first, fallback to metadata
   const metadata = appointment.metadata || {};
-  const appointmentType = metadata.appointmentType || (appointment.videoRoomRef ? 'virtual' : 'onsite');
+  const appointmentType = 
+    appointment.consultation_type || 
+    appointment.consultationType || 
+    metadata.appointmentType || 
+    (appointment.videoRoomRef ? 'virtual' : 'onsite');
   
   return {
     id: appointment.id.toString(),
@@ -194,7 +207,8 @@ function serializeAppointment(appointment) {
     startsAt: toIsoString(appointment.startsAt ?? appointment.starts_at),
     endsAt: toIsoString(appointment.endsAt ?? appointment.ends_at),
     status: appointment.status,
-    appointmentType, // 'virtual' or 'onsite'
+    appointmentType, // 'virtual' or 'onsite' - from consultation_type column
+    consultationType: appointmentType, // Also include as consultationType for frontend compatibility
     reason: appointment.reason,
     notes: appointment.notes,
     cancellationReason: appointment.cancellationReason ?? appointment.cancellation_reason ?? null,
@@ -347,11 +361,24 @@ router.post(
       appointmentType // 'virtual' or 'onsite'
     } = req.body || {};
 
+    console.log('[APPOINTMENT POST] Request received:', {
+      patientId: patientId.toString(),
+      dentistIdRaw,
+      clinicBranchIdRaw,
+      start,
+      end,
+      reason,
+      appointmentType,
+      timestamp: new Date().toISOString()
+    });
+
     try {
     if (!dentistIdRaw) {
+      console.log('[APPOINTMENT POST] Error: Missing dentistIdRaw');
       return sendError(res, 400, 'dentist_id_required', 'Pilih dokter gigi yang tersedia sebelum membuat janji temu.');
     }
     if (!start || !end) {
+      console.log('[APPOINTMENT POST] Error: Missing start/end time');
       return sendError(res, 400, 'time_required', 'Waktu mulai dan selesai janji temu wajib diisi.');
     }
 
@@ -426,13 +453,25 @@ router.post(
 
       const now = new Date();
       if (startsAt < now) {
+        console.log('[APPOINTMENT POST] Error: Trying to book in the past', { startsAt, now });
         return sendError(res, 400, 'cannot_book_past', 'Janji temu tidak bisa dijadwalkan pada waktu yang sudah lewat.');
       }
 
+      console.log('[APPOINTMENT POST] Validation passed:', {
+        dentistId: dentistId.toString(),
+        patientId: patientId.toString(),
+        resolvedClinicBranchId: resolvedClinicBranchId?.toString() || null,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        dentistType
+      });
+
       let createdAppointment;
       await prisma.$transaction(async (tx) => {
+        console.log('[APPOINTMENT POST] Transaction started');
         // Use dentistId as bigint for advisory lock
         await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1::bigint)', dentistId);
+        console.log('[APPOINTMENT POST] Advisory lock acquired');
 
         const overlapping = await tx.appointment.findFirst({
           where: {
@@ -445,10 +484,18 @@ router.post(
         });
 
         if (overlapping) {
+          console.log('[APPOINTMENT POST] Error: Slot conflict detected', { overlapping });
           const slotError = new Error('SLOT_TAKEN');
           slotError.code = 'slot_taken';
           throw slotError;
         }
+
+        console.log('[APPOINTMENT POST] No conflicts, creating appointment');
+        // Map appointmentType/type to consultation_type column (accept virtual aliases)
+        const inputType = (appointmentType || req.body?.type || '').toLowerCase();
+        const consultationType = ['virtual', 'teleconsultation', 'online'].includes(inputType)
+          ? 'virtual'
+          : 'onsite';
 
         createdAppointment = await tx.appointment.create({
           data: {
@@ -458,15 +505,23 @@ router.post(
             startsAt,
             endsAt,
             status: 'scheduled',
+            consultationType, // ✅ Store in column for web display
             reason: reason || null,
             notes: notes || null,
             metadata: {
-              appointmentType: appointmentType || 'onsite' // 'virtual' or 'onsite'
+              appointmentType: inputType || 'onsite' // Also keep in metadata
             }
           }
         });
+        console.log('[APPOINTMENT POST] Appointment created IN TRANSACTION:', { 
+          id: createdAppointment.id.toString(),
+          dentistId: createdAppointment.dentistId.toString(),
+          patientId: createdAppointment.patientId.toString(),
+          startsAt: createdAppointment.startsAt,
+          status: createdAppointment.status
+        });
 
-        await recordStatusChange(tx, {
+        const statusChangeResult = await recordStatusChange(tx, {
           appointmentId: createdAppointment.id,
           previousStatus: null,
           newStatus: 'scheduled',
@@ -478,7 +533,28 @@ router.post(
             createdBy: patientId.toString()
           }
         });
+        console.log('[APPOINTMENT POST] Status history recorded IN TRANSACTION');
+        
+        // Verify appointment exists within transaction
+        const verifyInTx = await tx.appointment.findUnique({
+          where: { id: createdAppointment.id },
+          select: { id: true, status: true }
+        });
+        console.log('[APPOINTMENT POST] Verified in transaction:', verifyInTx);
       });
+      console.log('[APPOINTMENT POST] ✅ Transaction committed successfully, appointment ID:', createdAppointment.id.toString());
+      
+      // CRITICAL: Verify appointment actually exists in DB after transaction commit
+      const verifyPostCommit = await prisma.appointment.findUnique({
+        where: { id: createdAppointment.id },
+        select: { id: true, status: true, startsAt: true, patientId: true, dentistId: true }
+      });
+      console.log('[APPOINTMENT POST] 🔍 POST-COMMIT VERIFICATION:', verifyPostCommit);
+      
+      if (!verifyPostCommit) {
+        console.error('[APPOINTMENT POST] ❌ CRITICAL: Appointment ID', createdAppointment.id.toString(), 'does not exist after transaction commit!');
+        throw new Error('PHANTOM_APPOINTMENT: Transaction committed but data missing from database');
+      }
 
       // Fetch dentist profile details for response (use different variable name)
       const dentistProfileDetails = await prisma.dentistProfile.findFirst({
@@ -554,15 +630,37 @@ router.post(
           : null
       };
 
+      console.log('[APPOINTMENT POST] SUCCESS - Appointment created and responding:', {
+        appointmentId: fullAppointment.id.toString(),
+        patientId: fullAppointment.patientId.toString(),
+        dentistId: fullAppointment.dentistId.toString(),
+        startsAt: fullAppointment.startsAt,
+        endsAt: fullAppointment.endsAt,
+        status: fullAppointment.status,
+        responseStructure: {
+          hasAppointmentKey: !!responsePayload.appointment,
+          appointmentId: responsePayload.appointment?.id,
+          hasDentistKey: !!responsePayload.dentist
+        }
+      });
+
       return res.status(201).json(responsePayload);
     } catch (error) {
+      console.error('[APPOINTMENT POST] Error caught:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       if (error.code === 'slot_taken' || error.message === 'SLOT_TAKEN') {
+        console.log('[APPOINTMENT POST] Returning 409: Slot taken');
         return sendError(res, 409, 'slot_taken', 'Waktu yang dipilih baru saja terisi. Silakan pilih slot lain.');
       }
       if (error.message && error.message.startsWith('INVALID_')) {
+        console.log('[APPOINTMENT POST] Returning 400: Invalid payload');
         return sendError(res, 400, 'invalid_payload', 'Data permintaan tidak valid. Periksa kembali formulir Anda.');
       }
-      console.error('Error creating appointment:', error);
+      console.error('[APPOINTMENT POST] Unexpected error creating appointment:', error);
       return sendError(res, 500, 'create_appointment_failed', 'Terjadi kesalahan saat membuat janji temu. Coba lagi nanti.');
     }
   }
