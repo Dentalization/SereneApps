@@ -366,10 +366,10 @@
   - Test file URL returned
 
 - [ ] **Video Token Generation**
-  - Test Agora token generated
-  - Test token includes channel name
+  - Test Twilio token generated
+  - Test token includes room name
   - Test token has 1-hour expiry
-  - Test token includes user role
+  - Test token includes user identity
 
 - [ ] **Socket.IO Events**
   - Test 'message' event emitted on send

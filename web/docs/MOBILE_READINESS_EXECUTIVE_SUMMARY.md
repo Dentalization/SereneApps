@@ -88,7 +88,7 @@
 - ✅ Patient registration endpoint
 - ✅ Appointment booking with conflict detection
 - ✅ Payment creation (mock mode)
-- ✅ Chat & Video (Socket.IO + Agora)
+- ✅ Chat & Video (Socket.IO + Twilio Video)
 - ✅ Notification system (needs production keys)
 
 ### Web Portals (100% Ready)

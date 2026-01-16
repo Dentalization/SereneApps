@@ -1,5 +1,5 @@
 import { PrismaClient } from '../generated/prisma/index.js';
-import { buildAgoraToken } from './agora.js';
+import { buildTwilioVideoToken } from './twilioVideo.js';
 import { queueNotificationEvent } from './notifications/index.js';
 
 const prisma = new PrismaClient();
@@ -334,7 +334,7 @@ export async function listChatRoomsForUser(userId) {
   });
 }
 
-export async function generateVideoAccessToken({ appointmentId, userId, role = 'publisher', expireSeconds = 3600 }) {
+export async function generateVideoAccessToken({ appointmentId, userId, expireSeconds = 3600 }) {
   const apptId = BigInt(appointmentId);
   const userBigInt = BigInt(userId);
 
@@ -350,14 +350,14 @@ export async function generateVideoAccessToken({ appointmentId, userId, role = '
   }
 
   const { channelName } = await ensureVideoChannel({ appointmentId: apptId });
-  const token = buildAgoraToken({
-    channelName,
-    uid: userBigInt.toString(),
-    role,
+  const token = buildTwilioVideoToken({
+    roomName: channelName,
+    identity: userBigInt.toString(),
     expireSeconds
   });
 
   return {
+    roomName: channelName,
     channelName,
     token,
     expireSeconds

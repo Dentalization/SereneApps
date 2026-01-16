@@ -57,7 +57,7 @@
 | Profile Management | ✅ Basic dentist profile fetch/update (`getDentistProfileApi`) with document upload | ✅ Clinic profile CRUD, branch & staff tooling (`backend/src/routes/clinic.js:204`) | ⚠️ Admin profile password update uses `password` field not `password_hash` (`backend/src/routes/admin-profile.js:220`) | Dentist/clinic profiles exist but no unified schema doc. |
 | Scheduling & Appointments | 🚧 UI uses `mockAppointments` (`src/pages/dentist-portal/schedule/index.jsx:39`) | 🚧 Clinic calendar components fed with placeholder data | ❌ No appointment routes/services in backend | Need full CRUD, status machine, conflict detection, and audit logs. |
 | Payments/Billing | 🚧 Dashboard cards assume static metrics | 🚧 Reports tab displays mocked KPI data | ❌ No payment gateway integration or tables | Prepare payment intent workflow, ledger updates, refunds API. |
-| Chat & Video (Teledentistry) | 🚧 Dentist portal now uses live Socket.IO chat + Agora video | 🚧 Clinic portal UI still pending migration | 🚧 `/communications` API + room provisioning shipped; need attachment retention & push hooks | Wire clinic/mobile clients, harden upload lifecycle, add call quality telemetry. |
+| Chat & Video (Teledentistry) | 🚧 Dentist portal now uses live Socket.IO chat + Twilio Video | 🚧 Clinic portal UI still pending migration | 🚧 `/communications` API + room provisioning shipped; need attachment retention & push hooks | Wire clinic/mobile clients, harden upload lifecycle, add call quality telemetry. |
 | Notifications | 🚧 Toasts/local banners only | 🚧 | ✅ Event dispatcher (FCM push, SendGrid email, Twilio SMS) with retries & preferences | Mobile/web must surface opt-in UI and register devices via `/notifications` API. |
 | Staff & Role Management | ✅ Staff CRUD, role updates, branch assignment | ✅ Branch CRUD & clinic verification tools | ⚠️ Permissions via free-form JSON, no central policy | Align RBAC, prevent privilege escalation, add audit trail. |
 | Reporting & Analytics | 🚧 KPI cards w/ static data | 🚧 | ❌ | Requires analytics service or scheduled jobs (Snowflake/BigQuery etc.). |
@@ -69,7 +69,7 @@ Legend: ✅ production-ready, ⚠️ functional but needs hardening, 🚧 UI pla
 
 - **Appointments**: lifecycle APIs (book/reschedule/cancel) + audit logging shipped; need mobile UX + reminder scheduler.
 - **Payments**: zero gateway integration, no state transitions for `pending_payment` / retries. 
-- **Chat/Video**: Socket.IO + Agora services online; clinic/mobile UIs, push/presence QA, and storage policies still queued.
+- **Chat/Video**: Socket.IO + Twilio Video services online; clinic/mobile UIs, push/presence QA, and storage policies still queued.
 - **Patient Role**: database + auth flows lack `patient` role, profile schema, & permission checks.
 - **API Contracts**: no OpenAPI/Swagger; inconsistent naming (Prisma vs raw SQL). Hard to share with mobile.
 - **Notifications**: dispatcher + queue deployed; need client UX, provider secrets, and reminder scheduling.
@@ -152,7 +152,7 @@ Translate each story into paired tickets for backend, web (source of truth), and
 ## 7. Documentation & Onboarding
 
 - Update setup scripts (`docker-compose`, `.env.example`) so mobile engineers can run backend/services locally.
-- Publish realtime/payments env checklist (AGORA_APP_ID/AGORA_APP_CERTIFICATE, MIDTRANS keys, frontend `VITE_AGORA_APP_ID` + optional `VITE_FILE_BASE_URL`) so web/mobile stay in sync.
+- Publish realtime/payments env checklist (TWILIO_VIDEO_API_KEY_SID/TWILIO_VIDEO_API_KEY_SECRET, MIDTRANS keys, optional `VITE_FILE_BASE_URL`) so web/mobile stay in sync.
 - Document notification secrets (SENDGRID_API_KEY/FROM, TWILIO_* creds, FCM service account, APNS keys) + client registration flow.
 - Write playbooks: API usage guide, booking/payment sequence diagrams, chat/video token lifecycle, payment reconciliation.
 - Produce QA matrix covering patient/dentist/admin journeys and share staging datasets for regression.

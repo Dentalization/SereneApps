@@ -90,9 +90,9 @@ FIREBASE_PROJECT_ID=your_firebase_project_id
 FIREBASE_PRIVATE_KEY=your_firebase_private_key
 FIREBASE_CLIENT_EMAIL=your_firebase_client_email
 
-# Agora (optional - for video calls)
-AGORA_APP_ID=your_agora_app_id
-AGORA_APP_CERTIFICATE=your_agora_app_certificate
+# Twilio Video (optional - for teleconsult tokens)
+TWILIO_VIDEO_API_KEY_SID=your_twilio_video_api_key_sid
+TWILIO_VIDEO_API_KEY_SECRET=your_twilio_video_api_key_secret
 ```
 
 ---

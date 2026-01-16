@@ -304,8 +304,8 @@ router.post(
       if (error.message === 'APPOINTMENT_NOT_FOUND') {
         return res.status(404).json({ error: 'appointment not found' });
       }
-      if (error.message === 'AGORA_CONFIG_MISSING') {
-        return res.status(500).json({ error: 'Agora configuration missing on server' });
+      if (error.message === 'TWILIO_VIDEO_CONFIG_MISSING') {
+        return res.status(500).json({ error: 'Twilio video configuration missing on server' });
       }
       return res.status(500).json({ error: 'Failed to generate video token' });
     }

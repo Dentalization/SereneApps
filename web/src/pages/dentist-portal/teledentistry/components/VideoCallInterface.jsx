@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
-import { useAgoraClient } from '../../../../hooks/useAgoraClient';
+import { useTwilioVideoClient } from '../../../../hooks/useTwilioVideoClient';
 
 const VideoCallInterface = ({ conversation, videoSession, onEndCall }) => {
   const localVideoRef = useRef(null);
@@ -17,19 +17,23 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall }) => {
     videoEnabled,
     toggleAudio,
     toggleVideo
-  } = useAgoraClient();
+  } = useTwilioVideoClient();
 
   useEffect(() => {
     let durationTimer;
     if (videoSession) {
+      const roomName = videoSession?.roomName ?? videoSession?.channelName;
+      if (!roomName) {
+        console.error('Video session missing room name');
+        return;
+      }
       join({
-        channelName: videoSession.channelName,
+        roomName,
         token: videoSession.token,
-        uid: videoSession.uid,
         localVideoEl: localVideoRef.current,
         remoteVideoEl: remoteVideoRef.current
       }).catch((error) => {
-        console.error('Failed to join Agora channel:', error);
+        console.error('Failed to join Twilio room:', error);
       });
       durationTimer = setInterval(() => {
         setCallDuration((prev) => prev + 1);
