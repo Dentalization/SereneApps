@@ -44,11 +44,17 @@ async function httpJson(url, options = {}) {
 
 async function main() {
   console.log('🚀 Starting patient journey integration test');
-  if (!process.env.AGORA_APP_ID) {
-    process.env.AGORA_APP_ID = 'test-agora-app-id';
+  if (!process.env.TWILIO_ACCOUNT_SID) {
+    process.env.TWILIO_ACCOUNT_SID = 'test-twilio-account';
   }
-  if (!process.env.AGORA_APP_CERTIFICATE) {
-    process.env.AGORA_APP_CERTIFICATE = 'test-agora-cert';
+  if (!process.env.TWILIO_AUTH_TOKEN) {
+    process.env.TWILIO_AUTH_TOKEN = 'test-twilio-token';
+  }
+  if (!process.env.TWILIO_VIDEO_API_KEY_SID) {
+    process.env.TWILIO_VIDEO_API_KEY_SID = 'test-twilio-video-key';
+  }
+  if (!process.env.TWILIO_VIDEO_API_KEY_SECRET) {
+    process.env.TWILIO_VIDEO_API_KEY_SECRET = 'test-twilio-video-secret';
   }
 
   const patientEmail = randomEmail();

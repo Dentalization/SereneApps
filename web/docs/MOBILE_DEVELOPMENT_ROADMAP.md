@@ -405,7 +405,7 @@
 │   └─ Offline message queue            │
 │                                        │
 │ □ Video Call                   (8h)   │
-│   ├─ Agora SDK integration            │
+│   ├─ Twilio Video SDK integration     │
 │   ├─ Get video token from API         │
 │   ├─ Video call UI                    │
 │   ├─ Mute/unmute controls             │
@@ -602,7 +602,7 @@ TOTAL:  48 hours
 |------|-------------|--------|------------|
 | Payment provider delays | 40% | HIGH | Setup mock mode fallback, contact Midtrans early |
 | Staging downtime | 30% | MEDIUM | Use Railway/Heroku with 99.9% SLA, setup monitoring |
-| Agora video issues | 25% | HIGH | Test early in Week 6, have backup (Jitsi/Whereby) |
+| Twilio video issues | 25% | HIGH | Test early in Week 6, have backup (Jitsi/Whereby) |
 | Mobile build failures | 20% | MEDIUM | Setup CI/CD early, test on real devices |
 
 ### MEDIUM RISK

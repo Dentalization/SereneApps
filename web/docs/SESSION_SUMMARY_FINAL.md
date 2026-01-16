@@ -193,7 +193,8 @@
 - SENDGRID_API_KEY (for emails)
 - SENDGRID_FROM_EMAIL
 - FIREBASE_PROJECT_ID (for push notifications)
-- AGORA_APP_ID (for video calls)
+- TWILIO_VIDEO_API_KEY_SID (for Twilio Video room tokens)
+- TWILIO_VIDEO_API_KEY_SECRET
 
 **Deployment Steps:**
 1. Create Railway account

@@ -106,7 +106,7 @@ Sebelum fokus ke **mobile patient app**, dokumen ini memverifikasi kesiapan **ba
 | **Send Message** | ✅ READY | `POST /v1/communications/appointments/:id/chat/messages` |
 | **Upload Attachment** | ✅ READY | `POST /v1/communications/appointments/:id/chat/attachments` |
 | **File Storage** | 🟡 PARTIAL | Local uploads/ folder, needs S3/cloud storage for production |
-| **Video Token Generation** | ✅ READY | `POST /v1/communications/appointments/:id/video/token` with Agora |
+| **Video Token Generation** | ✅ READY | `POST /v1/communications/appointments/:id/video/token` with Twilio Video |
 | **Presence System** | 🟡 PARTIAL | Basic online/offline, needs typing indicators |
 | **Read Receipts** | 🔴 BLOCKED | **NOT IMPLEMENTED** - Important UX |
 | **Push on New Message** | 🟡 PARTIAL | Notification system ready, need to wire chat events |
