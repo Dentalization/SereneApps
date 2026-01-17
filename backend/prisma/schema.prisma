@@ -9,35 +9,36 @@ datasource db {
 }
 
 model User {
-  id                                               BigInt                     @id @default(autoincrement())
-  name                                             String
-  email                                            String                     @unique
-  password_hash                                    String
-  roles                                            String[]                   @default([])
-  createdAt                                        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  phone_number                                     String?
-  about                                            String?
-  avatar_url                                       String?
-  lastLoginAt                                      DateTime?                  @map("last_login_at") @db.Timestamptz(6)
-  clinic_id                                        BigInt?
-  appointmentStatusHistory                         AppointmentStatusHistory[]
-  dentistAppointments                              Appointment[]              @relation("DentistAppointments")
-  patientAppointments                              Appointment[]              @relation("PatientAppointments")
-  chatMessages                                     ChatMessage[]
-  chatRoomMemberships                              ChatRoomMember[]
-  clinicProfile                                    ClinicProfile[]
-  clinicStaff                                      ClinicStaff?
-  dentistProfile                                   DentistProfile[]
-  notificationDevices                              NotificationDevice[]
-  notificationJobs                                 NotificationJob[]
-  notificationPreferences                          NotificationPreference[]
-  notifications                                    Notification[]
-  patientProfile                                   PatientProfile?
-  dentistScheduleEntries                           DentistScheduleEntry[]   @relation("DentistScheduleEntries")
-  paymentIntents                                   PaymentIntent[]
-  refreshTokens                                    RefreshToken[]
-  user_devices                                     UserDevice[]
-  aiAnalysisResults                                AIAnalysisResult[]
+  id                                                             BigInt                     @id @default(autoincrement())
+  name                                                           String
+  email                                                          String                     @unique
+  password_hash                                                  String
+  roles                                                          String[]                   @default([])
+  createdAt                                                      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  phone_number                                                   String?
+  about                                                          String?
+  avatar_url                                                     String?
+  clinic_id                                                      BigInt?
+  lastLoginAt                                                    DateTime?                  @map("last_login_at") @db.Timestamptz(6)
+  aiAnalysisResults                                              AIAnalysisResult[]
+  appointmentStatusHistory                                       AppointmentStatusHistory[]
+  dentistAppointments                                            Appointment[]              @relation("DentistAppointments")
+  patientAppointments                                            Appointment[]              @relation("PatientAppointments")
+  chatMessages                                                   ChatMessage[]
+  chatRoomMemberships                                            ChatRoomMember[]
+  clinicProfile                                                  ClinicProfile[]
+  clinicStaff                                                    ClinicStaff?
+  dentist_emr_records_dentist_emr_records_dentist_idTousers      dentist_emr_records[]      @relation("dentist_emr_records_dentist_idTousers")
+  dentist_emr_records_dentist_emr_records_patient_user_idTousers dentist_emr_records[]      @relation("dentist_emr_records_patient_user_idTousers")
+  dentistProfile                                                 DentistProfile[]
+  notificationDevices                                            NotificationDevice[]
+  notificationJobs                                               NotificationJob[]
+  notificationPreferences                                        NotificationPreference[]
+  notifications                                                  Notification[]
+  patientProfile                                                 PatientProfile?
+  paymentIntents                                                 PaymentIntent[]
+  refreshTokens                                                  RefreshToken[]
+  user_devices                                                   UserDevice[]
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -56,44 +57,46 @@ model RefreshToken {
 }
 
 model DentistProfile {
-  id                     BigInt    @id @default(autoincrement())
-  userId                 BigInt    @map("user_id")
-  title                  String
-  licenseNumber          String    @unique @map("license_number")
-  licenseIssuingBody     String    @map("license_issuing_body")
-  licenseExpiryDate      DateTime  @map("license_expiry_date") @db.Date
-  registrationNumber     String    @unique @map("registration_number")
-  primarySpecialization  String    @map("primary_specialization")
-  educationQualification String    @map("education_qualification")
-  yearsOfExperience      Int       @map("years_of_experience")
-  clinicName             String    @map("clinic_name")
-  clinicAddress          String    @map("clinic_address")
-  clinicWorkingHours     String    @map("clinic_working_hours")
-  consultationTypes      String[]  @default([]) @map("consultation_types")
-  servicesOffered        String[]  @default([]) @map("services_offered")
-  consultationFee        Int?      @map("consultation_fee")
-  acceptsInsurance       Boolean   @default(false) @map("accepts_insurance")
-  acceptsBpjs            Boolean   @default(false) @map("accepts_bpjs")
-  emergencyAvailability  Boolean   @default(false) @map("emergency_availability")
-  isVerified             Boolean   @default(false) @map("is_verified")
-  verificationDate       DateTime? @map("verification_date") @db.Timestamptz(6)
-  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sipFilePath            String?   @map("sip_file_path")
-  strFilePath            String?   @map("str_file_path")
-  ijazahFilePaths        String[]  @default([]) @map("ijazah_file_paths")
-  certificationFilePaths String[]  @default([]) @map("certification_file_paths")
-  avatar_url             String?
-  latitude               Decimal?  @db.Decimal(10, 8)
-  longitude              Decimal?  @db.Decimal(11, 8)
-  district               String?
-  province               String?
-  postal_code            String?
-  dentist_type           String    @default("independent")
-  city                   String?
-  clinic_id              BigInt?
-  is_clinic_owner        Boolean?  @default(false)
-  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                          BigInt                        @id @default(autoincrement())
+  userId                      BigInt                        @map("user_id")
+  title                       String
+  licenseNumber               String                        @unique @map("license_number")
+  licenseIssuingBody          String                        @map("license_issuing_body")
+  licenseExpiryDate           DateTime                      @map("license_expiry_date") @db.Date
+  registrationNumber          String                        @unique @map("registration_number")
+  primarySpecialization       String                        @map("primary_specialization")
+  educationQualification      String                        @map("education_qualification")
+  yearsOfExperience           Int                           @map("years_of_experience")
+  clinicName                  String                        @map("clinic_name")
+  clinicAddress               String                        @map("clinic_address")
+  clinicWorkingHours          String                        @map("clinic_working_hours")
+  consultationTypes           String[]                      @default([]) @map("consultation_types")
+  servicesOffered             String[]                      @default([]) @map("services_offered")
+  consultationFee             Int?                          @map("consultation_fee")
+  acceptsInsurance            Boolean                       @default(false) @map("accepts_insurance")
+  acceptsBpjs                 Boolean                       @default(false) @map("accepts_bpjs")
+  emergencyAvailability       Boolean                       @default(false) @map("emergency_availability")
+  isVerified                  Boolean                       @default(false) @map("is_verified")
+  verificationDate            DateTime?                     @map("verification_date") @db.Timestamptz(6)
+  createdAt                   DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sipFilePath                 String?                       @map("sip_file_path")
+  strFilePath                 String?                       @map("str_file_path")
+  ijazahFilePaths             String[]                      @default([]) @map("ijazah_file_paths")
+  certificationFilePaths      String[]                      @default([]) @map("certification_file_paths")
+  avatar_url                  String?
+  latitude                    Decimal?                      @db.Decimal(10, 8)
+  longitude                   Decimal?                      @db.Decimal(11, 8)
+  city                        String?
+  district                    String?
+  province                    String?
+  postal_code                 String?
+  dentist_type                String                        @default("independent")
+  clinic_id                   BigInt?
+  is_clinic_owner             Boolean?                      @default(false)
+  user                        User                          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dentist_services            dentist_services[]
+  service_dentist_assignments service_dentist_assignments[]
 
   @@index([licenseNumber], map: "idx_dentist_profiles_license_number")
   @@index([registrationNumber], map: "idx_dentist_profiles_registration_number")
@@ -107,47 +110,47 @@ model DentistProfile {
 }
 
 model ClinicProfile {
-  id                                     BigInt         @id @default(autoincrement())
-  userId                                 BigInt         @map("user_id")
-  legalName                              String         @map("legal_name") @db.VarChar
-  brandName                              String?        @map("brand_name") @db.VarChar
-  facilityType                           String         @map("facility_type") @db.VarChar
-  streetAddress                          String         @map("street_address") @db.VarChar
-  city                                   String         @db.VarChar
-  province                               String         @db.VarChar
-  postalCode                             String         @map("postal_code") @db.VarChar
-  phone                                  String         @db.VarChar
-  email                                  String         @db.VarChar
-  timezone                               String         @default("Asia/Jakarta") @db.VarChar
-  operatingHours                         Json           @map("operating_hours")
-  ownerName                              String         @map("owner_name") @db.VarChar
-  ownerPosition                          String         @map("owner_position") @db.VarChar
-  ownerEmail                             String         @map("owner_email") @db.VarChar
-  ownerWhatsapp                          String         @map("owner_whatsapp") @db.VarChar
-  ownerNik                               String         @unique @map("owner_nik") @db.VarChar
-  ktpFilePath                            String         @map("ktp_file_path") @db.VarChar
-  ktpSelfieFilePath                      String?        @map("ktp_selfie_file_path") @db.VarChar
-  nibNumber                              String         @unique @map("nib_number") @db.VarChar
-  nibFilePath                            String         @map("nib_file_path") @db.VarChar
-  npwpNumber                             String         @unique @map("npwp_number") @db.VarChar
-  npwpFilePath                           String         @map("npwp_file_path") @db.VarChar
-  operationalLicenseFilePath             String         @map("operational_license_file_path") @db.VarChar
-  additionalLicenseFilePaths             String[]       @default([]) @map("additional_license_file_paths")
-  termsAccepted                          Boolean        @default(false) @map("terms_accepted")
-  privacyAccepted                        Boolean        @default(false) @map("privacy_accepted")
-  dataProtectionContact                  String?        @map("data_protection_contact") @db.VarChar
-  isVerified                             Boolean        @default(false) @map("is_verified")
-  verificationDate                       DateTime?      @map("verification_date") @db.Timestamptz(6)
-  verificationNotes                      String?        @map("verification_notes")
-  status                                 String         @default("pending") @db.VarChar
-  createdAt                              DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                              DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  latitude                               Decimal?       @db.Decimal(10, 8)
-  longitude                              Decimal?       @db.Decimal(11, 8)
-  district                               String?
-  branches                               ClinicBranch[]
-  user                                   User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  staff                                  ClinicStaff[]
+  id                         BigInt         @id @default(autoincrement())
+  userId                     BigInt         @map("user_id")
+  legalName                  String         @map("legal_name") @db.VarChar
+  brandName                  String?        @map("brand_name") @db.VarChar
+  facilityType               String         @map("facility_type") @db.VarChar
+  streetAddress              String         @map("street_address") @db.VarChar
+  city                       String         @db.VarChar
+  province                   String         @db.VarChar
+  postalCode                 String         @map("postal_code") @db.VarChar
+  phone                      String         @db.VarChar
+  email                      String         @db.VarChar
+  timezone                   String         @default("Asia/Jakarta") @db.VarChar
+  operatingHours             Json           @map("operating_hours")
+  ownerName                  String         @map("owner_name") @db.VarChar
+  ownerPosition              String         @map("owner_position") @db.VarChar
+  ownerEmail                 String         @map("owner_email") @db.VarChar
+  ownerWhatsapp              String         @map("owner_whatsapp") @db.VarChar
+  ownerNik                   String         @unique @map("owner_nik") @db.VarChar
+  ktpFilePath                String         @map("ktp_file_path") @db.VarChar
+  ktpSelfieFilePath          String?        @map("ktp_selfie_file_path") @db.VarChar
+  nibNumber                  String         @unique @map("nib_number") @db.VarChar
+  nibFilePath                String         @map("nib_file_path") @db.VarChar
+  npwpNumber                 String         @unique @map("npwp_number") @db.VarChar
+  npwpFilePath               String         @map("npwp_file_path") @db.VarChar
+  operationalLicenseFilePath String         @map("operational_license_file_path") @db.VarChar
+  additionalLicenseFilePaths String[]       @default([]) @map("additional_license_file_paths")
+  termsAccepted              Boolean        @default(false) @map("terms_accepted")
+  privacyAccepted            Boolean        @default(false) @map("privacy_accepted")
+  dataProtectionContact      String?        @map("data_protection_contact") @db.VarChar
+  isVerified                 Boolean        @default(false) @map("is_verified")
+  verificationDate           DateTime?      @map("verification_date") @db.Timestamptz(6)
+  verificationNotes          String?        @map("verification_notes")
+  status                     String         @default("pending") @db.VarChar
+  createdAt                  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  latitude                   Decimal?       @db.Decimal(10, 8)
+  longitude                  Decimal?       @db.Decimal(11, 8)
+  district                   String?
+  branches                   ClinicBranch[]
+  user                       User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff                      ClinicStaff[]
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
   @@index([nibNumber], map: "idx_clinic_profiles_nib")
@@ -161,28 +164,32 @@ model ClinicProfile {
 }
 
 model ClinicBranch {
-  id                  BigInt        @id @default(autoincrement())
-  clinicProfileId     BigInt        @map("clinic_profile_id")
-  branchName          String        @map("branch_name") @db.VarChar
-  branchCode          String?       @map("branch_code") @db.VarChar
-  isMainBranch        Boolean       @default(false) @map("is_main_branch")
-  streetAddress       String        @map("street_address") @db.VarChar
-  city                String        @db.VarChar
-  province            String        @db.VarChar
-  postalCode          String        @map("postal_code") @db.VarChar
-  phone               String?       @db.VarChar
-  treatmentRoomsCount Int           @map("treatment_rooms_count")
-  hasSterlization     Boolean       @default(false) @map("has_sterilization")
-  hasRadiography      Boolean       @default(false) @map("has_radiography")
-  operatingHours      Json?         @map("operating_hours")
-  isActive            Boolean       @default(true) @map("is_active")
-  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  latitude            Decimal?      @db.Decimal(10, 8)
-  longitude           Decimal?      @db.Decimal(11, 8)
+  id                  BigInt              @id @default(autoincrement())
+  clinicProfileId     BigInt              @map("clinic_profile_id")
+  branchName          String              @map("branch_name") @db.VarChar
+  branchCode          String?             @map("branch_code") @db.VarChar
+  isMainBranch        Boolean             @default(false) @map("is_main_branch")
+  streetAddress       String              @map("street_address") @db.VarChar
+  city                String              @db.VarChar
+  province            String              @db.VarChar
+  postalCode          String              @map("postal_code") @db.VarChar
+  phone               String?             @db.VarChar
+  treatmentRoomsCount Int                 @map("treatment_rooms_count")
+  hasSterlization     Boolean             @default(false) @map("has_sterilization")
+  hasRadiography      Boolean             @default(false) @map("has_radiography")
+  operatingHours      Json?               @map("operating_hours")
+  isActive            Boolean             @default(true) @map("is_active")
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  latitude            Decimal?            @db.Decimal(10, 8)
+  longitude           Decimal?            @db.Decimal(11, 8)
   district            String?
   appointments        Appointment[]
-  clinicProfile       ClinicProfile @relation(fields: [clinicProfileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clinicProfile       ClinicProfile       @relation(fields: [clinicProfileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clinic_facilities   clinic_facilities[]
+  clinic_gallery      clinic_gallery[]
+  clinic_highlights   clinic_highlights[]
+  clinic_services     clinic_services[]
   clinicStaff         ClinicStaff[]
 
   @@unique([clinicProfileId, branchCode])
@@ -249,7 +256,6 @@ model Appointment {
   startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
   endsAt             DateTime                   @map("ends_at") @db.Timestamptz(6)
   status             String                     @default("scheduled") @db.VarChar
-  consultationType   String                     @default("onsite") @map("consultation_type") @db.VarChar
   reason             String?
   notes              String?
   createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -261,6 +267,7 @@ model Appointment {
   cancellationFee    Int?                       @map("cancellation_fee")
   rescheduledFromId  BigInt?                    @map("rescheduled_from_id")
   metadata           Json?                      @default("{}")
+  consultationType   String?                    @default("onsite") @map("consultation_type") @db.VarChar
   statusHistory      AppointmentStatusHistory[]
   clinicBranch       ClinicBranch?              @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
   dentist            User                       @relation("DentistAppointments", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -275,26 +282,6 @@ model Appointment {
   @@index([status], map: "idx_appointments_status")
   @@index([commStatus], map: "idx_appointments_comm_status")
   @@map("appointments")
-}
-
-model DentistScheduleEntry {
-  id           BigInt   @id @default(autoincrement())
-  dentistId    BigInt   @map("dentist_id")
-  type         String   @db.VarChar
-  status       String   @default("blocked") @db.VarChar
-  startAt      DateTime @map("start_at") @db.Timestamptz(6)
-  endAt        DateTime @map("end_at") @db.Timestamptz(6)
-  patientName  String?  @map("patient_name")
-  patientPhone String?  @map("patient_phone")
-  notes        String?
-  metadata     Json?    @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  dentist User @relation("DentistScheduleEntries", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([dentistId, startAt], map: "idx_schedule_entries_dentist_time")
-  @@map("dentist_schedule_entries")
 }
 
 model AppointmentStatusHistory {
@@ -538,26 +525,151 @@ model UserDevice {
   @@map("user_devices")
 }
 
-// AI Analysis Results - stores dental AI diagnosis results from mobile app
 model AIAnalysisResult {
   id                BigInt   @id @default(autoincrement())
   userId            BigInt   @map("user_id")
   sessionId         String   @map("session_id") @db.VarChar(255)
   imageUrl          String?  @map("image_url")
   annotatedImageUrl String?  @map("annotated_image_url")
-  findings          String?  @db.Text
-  summary           String?  @db.Text
-  overallAssessment String?  @map("overall_assessment") @db.Text
+  findings          String?
+  summary           String?
+  overallAssessment String?  @map("overall_assessment")
   riskLevel         String?  @map("risk_level") @db.VarChar(50)
   confidenceScore   Float?   @map("confidence_score")
-
-  detections        Json
-  recommendations   Json
-  metadata          Json
-
+  detections        Json?    @default("[]")
+  recommendations   Json?    @default("[]")
+  metadata          Json?    @default("{}")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([sessionId], map: "idx_ai_analysis_session")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_ai_analysis_user_created")
   @@map("ai_analysis_results")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model clinic_facilities {
+  id               BigInt       @id @default(autoincrement())
+  clinic_branch_id BigInt
+  facility_name    String       @db.VarChar(255)
+  description      String?
+  icon             String?      @db.VarChar(100)
+  display_order    Int?         @default(0)
+  is_active        Boolean?     @default(true)
+  created_at       DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?    @default(now()) @db.Timestamp(6)
+  clinic_branches  ClinicBranch @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([clinic_branch_id], map: "idx_clinic_facilities_branch")
+  @@index([display_order], map: "idx_clinic_facilities_order")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model clinic_gallery {
+  id               BigInt       @id @default(autoincrement())
+  clinic_branch_id BigInt
+  image_url        String
+  image_type       String       @default("general") @db.VarChar(50)
+  caption          String?
+  display_order    Int?         @default(0)
+  is_active        Boolean?     @default(true)
+  created_at       DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?    @default(now()) @db.Timestamp(6)
+  clinic_branches  ClinicBranch @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([clinic_branch_id], map: "idx_clinic_gallery_branch")
+  @@index([display_order], map: "idx_clinic_gallery_order")
+  @@index([image_type], map: "idx_clinic_gallery_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model clinic_highlights {
+  id               BigInt       @id @default(autoincrement())
+  clinic_branch_id BigInt
+  highlight_text   String       @db.VarChar(255)
+  icon             String?      @db.VarChar(100)
+  display_order    Int?         @default(0)
+  is_active        Boolean?     @default(true)
+  created_at       DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?    @default(now()) @db.Timestamp(6)
+  clinic_branches  ClinicBranch @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([clinic_branch_id], map: "idx_clinic_highlights_branch")
+  @@index([display_order], map: "idx_clinic_highlights_order")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model clinic_services {
+  id                            BigInt                        @id @default(autoincrement())
+  clinic_branch_id              BigInt
+  name                          String                        @db.VarChar(255)
+  description                   String?
+  base_price                    Decimal                       @db.Decimal(10, 2)
+  category                      String                        @default("general") @db.VarChar(50)
+  specialty                     String?                       @db.VarChar(100)
+  duration_minutes              Int?                          @default(30)
+  is_active                     Boolean?                      @default(true)
+  is_available_for_all_dentists Boolean?                      @default(true)
+  created_at                    DateTime?                     @default(now()) @db.Timestamp(6)
+  updated_at                    DateTime?                     @default(now()) @db.Timestamp(6)
+  clinic_branches               ClinicBranch                  @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  service_dentist_assignments   service_dentist_assignments[]
+
+  @@index([is_active], map: "idx_clinic_services_active")
+  @@index([clinic_branch_id], map: "idx_clinic_services_branch")
+  @@index([category], map: "idx_clinic_services_category")
+}
+
+model dentist_emr_records {
+  id                                               String   @id @db.VarChar(64)
+  dentist_id                                       BigInt
+  patient_user_id                                  BigInt?
+  payload                                          Json     @default("{}")
+  created_at                                       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime @default(now()) @db.Timestamptz(6)
+  users_dentist_emr_records_dentist_idTousers      User     @relation("dentist_emr_records_dentist_idTousers", fields: [dentist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_dentist_emr_records_patient_user_idTousers User?    @relation("dentist_emr_records_patient_user_idTousers", fields: [patient_user_id], references: [id], onUpdate: NoAction)
+
+  @@index([dentist_id, updated_at(sort: Desc)], map: "idx_dentist_emr_records_dentist")
+  @@index([patient_user_id], map: "idx_dentist_emr_records_patient")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model dentist_services {
+  id                 BigInt         @id @default(autoincrement())
+  dentist_profile_id BigInt
+  name               String         @db.VarChar(255)
+  description        String?
+  price              Decimal        @db.Decimal(10, 2)
+  category           String         @default("specialist") @db.VarChar(50)
+  specialty          String?        @db.VarChar(100)
+  duration_minutes   Int?           @default(30)
+  managed_by         String         @default("dentist") @db.VarChar(20)
+  can_edit           Boolean?       @default(true)
+  is_active          Boolean?       @default(true)
+  created_at         DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?      @default(now()) @db.Timestamp(6)
+  dentist_profiles   DentistProfile @relation(fields: [dentist_profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([is_active], map: "idx_dentist_services_active")
+  @@index([category], map: "idx_dentist_services_category")
+  @@index([dentist_profile_id], map: "idx_dentist_services_dentist")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model service_dentist_assignments {
+  id                 BigInt          @id @default(autoincrement())
+  clinic_service_id  BigInt
+  dentist_profile_id BigInt
+  custom_price       Decimal?        @db.Decimal(10, 2)
+  is_available       Boolean?        @default(true)
+  created_at         DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?       @default(now()) @db.Timestamp(6)
+  clinic_services    clinic_services @relation(fields: [clinic_service_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dentist_profiles   DentistProfile  @relation(fields: [dentist_profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([clinic_service_id, dentist_profile_id])
+  @@index([clinic_service_id], map: "idx_service_assignments_clinic_service")
+  @@index([dentist_profile_id], map: "idx_service_assignments_dentist")
 }

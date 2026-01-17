@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AI_URL, AI_API_KEY, API_CONFIG } from '../config/api.config';
 
@@ -35,6 +36,27 @@ const IMAGE_ANALYSIS_TIMEOUT = 240000; // 4 minutes for image analysis
 
 // Sleep utility
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Compress image to reduce payload size and avoid 413 errors
+const compressImage = async (imageUri) => {
+  try {
+    if (__DEV__) console.log(`📦 Compressing image: ${imageUri}`);
+    
+    // Single pass compression: resize to 800x600 @ 0.6 quality
+    // This typically produces 30-50KB images suitable for upload
+    const manipResult = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [{ resize: { width: 800 } }], // Maintain aspect ratio
+      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    
+    if (__DEV__) console.log(`✅ Image compressed to 800w @ 0.6 quality`);
+    return manipResult.uri;
+  } catch (error) {
+    console.error('❌ Image compression failed:', error.message);
+    return imageUri; // Fallback: use original
+  }
+};
 
 // Request with retry logic
 const requestWithRetry = async (config, retries = MAX_RETRIES) => {
@@ -407,6 +429,11 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
   }
 
   try {
+    // Fail fast if API key missing to avoid silent network errors
+    if (!AI_API_KEY || AI_API_KEY === 'dd_live_your_api_key_here') {
+      throw new Error('AI API key not configured. Set EXPO_PUBLIC_AI_KEY / AI_API_KEY.');
+    }
+
     // Use /chat/upload endpoint instead of /images/analyze
     // This endpoint is more flexible with data structure
     const formData = new FormData();
@@ -417,23 +444,33 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
     formData.append('role', role);
     formData.append('language', language);
     
-    // Add images (support multiple images)
+    // Add images (support multiple images) - compress first
     const imageArray = Array.isArray(imageUris) ? imageUris : [imageUris];
-    imageArray.forEach((imageUri, index) => {
+    
+    for (const imageUri of imageArray) {
+      if (__DEV__) console.log('📸 Processing image for upload:', imageUri);
+      
+      // Compress image to stay under 413 limit
+      const compressedUri = await compressImage(imageUri);
+      
       const filename = imageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
       
       formData.append('images', {
-        uri: imageUri,
+        uri: compressedUri,
         name: filename,
         type: type,
       });
-    });
+    }
 
     const response = await aiClient.post('/chat/upload', formData, {
       // Let axios set multipart boundaries automatically
       timeout: API_CONFIG.AI_TIMEOUT,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        Accept: 'application/json',
+      },
     });
 
     // Extract data from chat response

@@ -997,7 +997,16 @@ export default {
       footer: {
         performedOn: 'AI analysis performed on {{date}}',
         export: 'Export Report',
-        share: 'Share with Patient'
+        share: 'Share with Patient',
+        askAI: 'Ask AI',
+        closeChat: 'Close Chat'
+      },
+      chat: {
+        title: 'Ask AI About This Result',
+        empty: 'No chat history for this analysis.',
+        placeholder: 'Ask AI about this result...',
+        send: 'Send',
+        loading: 'Loading...'
       }
     },
     appointments: {
