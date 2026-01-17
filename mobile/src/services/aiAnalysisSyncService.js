@@ -1,6 +1,7 @@
 /**
  * AI Analysis Sync Service
  * Syncs AI diagnosis results from mobile to backend
+ * UPDATED: Removed Base64 size limit to fix missing images on Web Dashboard
  */
 
 import api from './api';
@@ -43,9 +44,11 @@ export const saveAIAnalysis = async (analysisResult) => {
       confidenceScore = avgConfidence <= 1 ? Math.round(avgConfidence * 100) : avgConfidence;
     }
 
-    // Large base64 annotated image can blow up payload; cap length
+    // --- FIX: IMAGE SIZE LIMIT REMOVED ---
+    // Previously capped at 300k chars, causing missing images on web.
+    // Now allowing full base64 string to pass through.
     const annotatedRaw = analysisResult.annotatedImageUrl || analysisResult.annotated_image_url || null;
-    const annotatedImageUrl = typeof annotatedRaw === 'string' && annotatedRaw.length > 300000 ? null : annotatedRaw;
+    const annotatedImageUrl = annotatedRaw; 
 
     const rawSession = analysisResult.session_id || analysisResult.sessionId || analysisResult.id;
     const sessionIdSafe = typeof rawSession === 'string' ? rawSession.slice(0, 255) : String(rawSession || '').slice(0, 255);
@@ -81,7 +84,7 @@ export const saveAIAnalysis = async (analysisResult) => {
     const payload = {
       sessionId: sessionIdSafe,
       imageUrl: analysisResult.imageUrl || analysisResult.image_url || null,
-      annotatedImageUrl,
+      annotatedImageUrl, // Now contains the full base64 string
       findings,
       summary,
       overallAssessment,
@@ -98,12 +101,20 @@ export const saveAIAnalysis = async (analysisResult) => {
       },
     };
 
+    // console.log('📤 Syncing Analysis Payload Size:', JSON.stringify(payload).length); // Uncomment to debug size
+
     const response = await api.post('/ai-analysis', payload);
     return response.data;
   } catch (error) {
     const status = error.response?.status;
     const data = error.response?.data;
     console.error('Error saving AI analysis:', status, data || error.message);
+    
+    // If payload is too large (413), we might want to log it specifically
+    if (status === 413) {
+        console.error('⚠️ Payload Too Large: The annotated image might be too big for the server configuration.');
+    }
+    
     throw error;
   }
 };
