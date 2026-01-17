@@ -1000,7 +1000,16 @@ export default {
       footer: {
         performedOn: 'Analisis AI dilakukan pada {{date}}',
         export: 'Ekspor Laporan',
-        share: 'Bagikan ke Pasien'
+        share: 'Bagikan ke Pasien',
+        askAI: 'Tanya AI',
+        closeChat: 'Tutup Chat'
+      },
+      chat: {
+        title: 'Tanya AI tentang Hasil Ini',
+        empty: 'Belum ada riwayat chat untuk analisis ini.',
+        placeholder: 'Tanya AI tentang hasil ini...',
+        send: 'Kirim',
+        loading: 'Loading...'
       }
     },
     appointments: {

@@ -1,3 +1,8 @@
+/**
+ * AI Text Helpers & Normalization
+ * STABLE VERSION: Combines strict Regex parsing with formatting fixes.
+ */
+
 const SUMMARY_INTRO_REGEX = /^Tentu,\s*mari\s*kita\s*bahas\s*lebih\s*lanjut\s*mengenai\s*kondisi\s*gigi\s*Anda\s*berdasarkan\s*informasi\s*yang\s*saya\s*miliki\s*dan\s*hasil\s*analisis\s*awal\.?\s*/i;
 
 // Heuristic patterns for deterministic parsing (Indonesian dental domain)
@@ -19,6 +24,8 @@ const STOP_WORDS_SUMMARY = [
   'Nyeri',
   'Sensitivitas',
   'Infeksi',
+  'Diagnosa',
+  'Analisis'
 ];
 
 const CONDITION_KEYWORDS = [
@@ -28,25 +35,40 @@ const CONDITION_KEYWORDS = [
   'Diskolorasi',
   'Infeksi',
   'Radang',
+  'Gingivitis',
+  'Periodontitis',
+  'Abses'
 ];
 
-const sentenceSplit = (text = '') => text
-  .replace(/\r/g, ' ')
-  .replace(/\s+/g, ' ')
-  .replace(/[\n•\-]\s*/g, '. ')
-  .split(/(?<=[.!?])\s+/)
-  .map((s) => s.trim())
-  .filter(Boolean);
+/**
+ * 1. INJECT LINE BREAKS (Crucial for Raw API Text)
+ * Fixes responses that arrive as a single text block without newlines.
+ */
+export const injectLineBreaks = (text) => {
+  if (!text) return '';
+  let processed = String(text);
+  // Inject line breaks before semantic headers
+  processed = processed.replace(/([.!?])\s*(Mengenai|Ketika|Perawatan|Rekomendasi|Penyebab|Tujuan|Masalah|Analisis|Kesimpulan|Diagnosa)/gi, '$1\n\n$2');
+  // Split before numbered lists
+  processed = processed.replace(/([.!?])\s+(\d+\.)/g, '$1\n$2');
+  // Split before bullet points
+  processed = processed.replace(/([.!?])\s+([*-] )/g, '$1\n$2');
+  return processed;
+};
 
 const cleanBoilerplate = (text = '') => text
   .replace(/^Tentu,\s*mari\s*kita\s*bahas[^.]*\.\s*/i, '')
   .replace(/Seperti yang saya sebutkan sebelumnya,?\s*/gi, '')
   .trim();
 
-const cleanText = (text = '') => cleanBoilerplate(text)
-  .replace(/\s+/g, ' ')
-  .replace(/\[.*?\]/g, '')
-  .trim();
+const cleanText = (text = '') => {
+  // Apply line breaks first, then clean
+  const formatted = injectLineBreaks(text || '');
+  return cleanBoilerplate(formatted)
+    .replace(/\s+/g, ' ')
+    .replace(/\[.*?\]/g, '')
+    .trim();
+};
 
 const dedupeSentences = (sentences = []) => {
   const seen = new Set();
@@ -65,6 +87,7 @@ const clip = (text = '', max = 220) => {
 
 const containsStopWord = (sentence = '') => STOP_WORDS_SUMMARY.some((word) => sentence.toLowerCase().startsWith(word.toLowerCase()));
 
+// --- EXPORT 1: Strip Intro ---
 export const stripDiagnosisIntro = (text = '') => {
   if (typeof text !== 'string') return '';
   return text.replace(SUMMARY_INTRO_REGEX, '').trim();
@@ -72,7 +95,6 @@ export const stripDiagnosisIntro = (text = '') => {
 
 /**
  * Take a verbose AI narrative and extract a short 1–2 sentence summary
- * after removing the boilerplate intro.
  */
 export const deriveSummaryFromNarrative = (text = '') => {
   if (!text) return '';
@@ -83,15 +105,13 @@ export const deriveSummaryFromNarrative = (text = '') => {
   return cleaned.length > 200 ? `${cleaned.slice(0, 200).trim()}...` : cleaned;
 };
 
-// Strict sentence splitter for summary/diagnosis extraction
+// Strict sentence splitter
 const splitSentencesStrict = (text = '') => text
   .split(/(?<=[.!?])\s+/)
   .map((s) => s.trim())
   .filter(Boolean);
 
-/**
- * Deterministically extract a concise Summary (max 2 sentences, no treatment/education, stops on stop words).
- */
+// --- EXPORT 2: Extract Summary ---
 export const extractSummary = (rawText = '') => {
   if (!rawText) return '';
 
@@ -100,24 +120,20 @@ export const extractSummary = (rawText = '') => {
   const picked = [];
 
   for (const s of sentences) {
-    if (containsStopWord(s)) break; // stop when narrative shifts to treatment/implication
-    if (RECO_REGEX.test(s)) continue; // skip recommendations
-    if (EDU_REGEX.test(s)) continue; // skip education/analogies
-    if (s.startsWith('Mengenai ')) continue; // avoid repeating section headers in summary
-
-    // Skip definisi edukatif "adalah ... yang disebabkan"
+    if (containsStopWord(s)) break;
+    if (RECO_REGEX.test(s)) continue;
+    if (EDU_REGEX.test(s)) continue;
+    if (s.startsWith('Mengenai ')) continue;
     if (s.includes('adalah') && s.includes('yang disebabkan')) continue;
 
     picked.push(clip(s, 220));
-    if (picked.length >= 2) break; // hard cap 2 sentences
+    if (picked.length >= 2) break;
   }
 
   return picked.join(' ') || 'Analisis singkat tidak tersedia.';
 };
 
-/**
- * Deterministically extract structured diagnoses (condition + optional location/probability + short explanation ≤2 sentences).
- */
+// --- EXPORT 3: Extract Diagnosis ---
 export const extractDiagnosis = (rawText = '') => {
   if (!rawText) return [];
 
@@ -159,7 +175,62 @@ export const extractDiagnosis = (rawText = '') => {
   return items.map(({ __key, ...rest }) => rest);
 };
 
+// --- EXPORT 4: Extract Sections (For UI Tabs) ---
+export const extractSections = (rawText = '') => {
+  // Ensure line breaks exist
+  const cleaned = injectLineBreaks(rawText);
+  const lines = cleaned.split('\n');
+  const sections = [];
+  let currentSection = null;
+  let currentContent = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Header detection: "**Title:**" or "Title:"
+    const headerMatch = trimmed.match(/^(\**?[^:]+?\**?):\s*(.*)$/);
+    
+    if (headerMatch && headerMatch[1].length < 60 && headerMatch[1].length > 3) {
+      if (currentSection) {
+        sections.push({
+          title: currentSection.replace(/\*\*/g, ''),
+          content: currentContent.join(' ').trim()
+        });
+      }
+      currentSection = headerMatch[1].trim();
+      currentContent = headerMatch[2] ? [headerMatch[2].trim()] : [];
+    } else if (currentSection) {
+      currentContent.push(trimmed);
+    }
+  }
+
+  if (currentSection) {
+    sections.push({
+      title: currentSection.replace(/\*\*/g, ''),
+      content: currentContent.join(' ').trim()
+    });
+  }
+  return sections;
+};
+
+// --- EXPORT 5: Main Normalizer ---
 export const normalizeAIText = (rawText = '') => ({
   summary: extractSummary(rawText),
   diagnosis: extractDiagnosis(rawText),
+  sections: extractSections(rawText)
 });
+
+// Alias for compatibility
+export const normalizeAIExplanation = normalizeAIText;
+
+// Default export
+export default {
+  injectLineBreaks,
+  stripDiagnosisIntro,
+  extractSummary,
+  extractDiagnosis,
+  extractSections,
+  normalizeAIText,
+  normalizeAIExplanation
+};

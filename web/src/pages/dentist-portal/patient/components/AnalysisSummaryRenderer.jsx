@@ -1,13 +1,41 @@
 import React from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
-import { cleanMarkdownFormatting, extractAnalysisTopics, parseTextWithLists } from '../../../../utils/textFormatting';
+import { extractAnalysisTopics, parseTextWithLists } from '../../../../utils/textFormatting';
 import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
 
 /**
- * Component to render formatted analysis summary
- * Handles both structured (with topics) and unstructured text
+ * Helper to render text with Bold formatting (**text**)
+ * UPDATED: Uses split index logic for robust parsing
  */
+const RichText = ({ text }) => {
+  if (!text) return null;
+  
+  // Split by bold markers. Capturing group () keeps the delimiters in the array.
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  
+  return (
+    <>
+      {parts.map((part, i) => {
+        // In a split with capture groups, odd indices are always the matches
+        if (i % 2 === 1) {
+          const content = part.slice(2, -2); // Remove the ** asterisks
+          return (
+            <strong key={i} className="font-bold text-slate-900">
+              {content}
+            </strong>
+          );
+        }
+        // Even indices are the normal text
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+};
+
+// ... (Sisa kode AnalysisSummaryRenderer sama seperti sebelumnya) ...
+
 const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
+  // (Simpan kode AnalysisSummaryRenderer yang lama, cukup ganti RichText di atas)
   const { t } = useLanguage();
   
   const cleanInput = (value) => {
@@ -32,18 +60,16 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
     );
   }
 
-  // Try to extract structured topics (pattern like "**Topic:** content")
   const topics = extractAnalysisTopics(textContent);
   
   if (topics.length > 0) {
     return (
       <div className="space-y-6">
         {topics.map((topic, topicIndex) => (
-          <div key={topicIndex} className="space-y-4">
-            <h4 className="text-base font-semibold text-primary border-b border-primary/20 pb-2">
-              {topic.title}
+          <div key={topicIndex} className="bg-surface/50 rounded-lg p-1">
+            <h4 className="text-base font-bold text-primary border-b border-primary/10 pb-2 mb-3">
+              <RichText text={topic.title} />
             </h4>
-            
             <StructuredContent content={topic.content} />
           </div>
         ))}
@@ -51,12 +77,10 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
     );
   }
 
-  // Otherwise, render as unstructured paragraphs
-  const cleaned = cleanMarkdownFormatting(textContent);
-  const sections = parseTextWithLists(cleaned);
+  const sections = parseTextWithLists(textContent);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {sections.map((section, idx) => (
         <StructuredContent key={idx} content={[section]} />
       ))}
@@ -64,14 +88,8 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
   );
 };
 
-/**
- * Helper component to render structured content (paragraphs and lists)
- */
 const StructuredContent = ({ content }) => {
-  if (!Array.isArray(content)) {
-    // Single section
-    content = [content];
-  }
+  if (!Array.isArray(content)) content = [content];
 
   return (
     <>
@@ -80,35 +98,34 @@ const StructuredContent = ({ content }) => {
 
         if (section.type === 'header') {
           return (
-            <h5 key={idx} className="text-sm font-semibold text-primary border-b border-primary/20 pb-2 mt-4">
-              {cleanMarkdownFormatting(section.content)}
+            <h5 key={idx} className="text-sm font-bold text-primary mt-4 mb-2">
+              <RichText text={section.content} />
             </h5>
           );
         }
 
         if (section.type === 'paragraph') {
           return (
-            <p key={idx} className="text-sm text-primary leading-relaxed text-justify whitespace-pre-wrap">
-              {cleanMarkdownFormatting(section.content)}
+            <p key={idx} className="text-sm text-primary leading-[1.8] text-justify mb-3 last:mb-0">
+              <RichText text={section.content} />
             </p>
           );
         }
 
         if (section.type === 'list') {
           return (
-            <ul key={idx} className="space-y-2 ml-0">
+            <ul key={idx} className="space-y-2 mb-3 pl-1">
               {section.content.map((item, itemIdx) => (
                 <li key={itemIdx} className="text-sm text-primary flex items-start gap-3">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-brand-primary/20 text-brand-primary text-xs font-bold mt-0.5 flex-shrink-0">
-                    •
+                  <span className="mt-2 w-1.5 h-1.5 bg-primary/60 rounded-full flex-shrink-0" />
+                  <span className="leading-[1.7] text-justify">
+                    <RichText text={item} />
                   </span>
-                  <span className="leading-relaxed">{cleanMarkdownFormatting(item)}</span>
                 </li>
               ))}
             </ul>
           );
         }
-
         return null;
       })}
     </>

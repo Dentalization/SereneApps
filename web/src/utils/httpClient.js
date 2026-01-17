@@ -2,9 +2,11 @@ import axios from 'axios';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth/tokenStorage';
 
 // AI API Configuration (for AI services)
-const aiBase = import.meta.env.VITE_SERENE_AI_API_BASE_URL || '';
-const aiVersion = import.meta.env.VITE_SERENE_AI_API_VERSION || '';
-const aiBaseURL = [aiBase?.replace(/\/$/, ''), aiVersion?.replace(/^\//, '')].filter(Boolean).join('/');
+// Provide sensible defaults so UI works even when VITE env vars are not set.
+// Must construct path as: BASE/api/VERSION (e.g., https://api.dentalization.id/api/v1)
+const aiBase = import.meta.env.VITE_SERENE_AI_API_BASE_URL || 'https://api.dentalization.id';
+const aiVersion = import.meta.env.VITE_SERENE_AI_API_VERSION || 'v1';
+const aiBaseURL = [aiBase?.replace(/\/$/, ''), 'api', aiVersion?.replace(/^\//, '')].filter(Boolean).join('/');
 
 // Auth API Configuration (for authentication)
 const authBase = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
@@ -17,7 +19,33 @@ const version = authVersion;
 const baseURL = authBaseURL;
 
 export const http = axios.create({ baseURL });
+// Include DeepDental API key header when available so UI requests are authenticated.
+const deepDentalKey = import.meta.env.VITE_DEEPDENTAL_API_KEY || import.meta.env.VITE_SERENE_AI_API_KEY || '';
 export const aiHttp = axios.create({ baseURL: aiBaseURL });
+
+// Add interceptor to aiHttp to always include API key (even if env var loaded late) and log requests
+aiHttp.interceptors.request.use((config) => {
+  const key = import.meta.env.VITE_DEEPDENTAL_API_KEY || import.meta.env.VITE_SERENE_AI_API_KEY || deepDentalKey || '';
+  if (key) {
+    config.headers = config.headers || {};
+    config.headers['X-API-Key'] = key;
+  }
+  console.log(`🔄 [aiHttp] ${config.method?.toUpperCase()} ${config.url}`, { key: key ? '✓' : '✗' });
+  return config;
+});
+
+// Log all aiHttp responses and errors
+aiHttp.interceptors.response.use(
+  (res) => {
+    console.log(`✅ [aiHttp] Response ${res.status}`, res.data);
+    return res;
+  },
+  (err) => {
+    console.error(`❌ [aiHttp] Error ${err.response?.status || 'network'}`, err.response?.data || err.message);
+    return Promise.reject(err);
+  }
+);
+
 export const authHttp = axios.create({ baseURL: authBaseURL });
 
 let isRefreshing = false;

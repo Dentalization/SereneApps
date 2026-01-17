@@ -399,4 +399,48 @@ router.get(
   }
 );
 
+// POST /v1/dentist-portal/patients/:patientId/ai-results/:resultId/session
+router.post(
+  '/patients/:patientId/ai-results/:resultId/session',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const resultId = toBigInt(req.params.resultId, 'resultId');
+
+      const { sessionId } = req.body || {};
+      if (!sessionId) {
+        return sendError(res, 400, 'session_id_required', 'Session ID wajib diisi.');
+      }
+
+      // Verify dentist has access to this patient
+      const hasAppointment = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true }
+      });
+
+      if (!hasAppointment) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
+      }
+
+      const existing = await prisma.aIAnalysisResult.findFirst({ where: { id: resultId, userId: patientId } });
+      if (!existing) {
+        return sendError(res, 404, 'not_found', 'AI analysis result tidak ditemukan.');
+      }
+
+      await prisma.aIAnalysisResult.update({
+        where: { id: resultId },
+        data: { sessionId }
+      });
+
+      return res.json({ message: 'Session ID tersimpan', sessionId });
+    } catch (error) {
+      console.error('Error persisting AI sessionId:', error);
+      return sendError(res, 500, 'save_failed', 'Gagal menyimpan sessionId.');
+    }
+  }
+);
+
 export default router;

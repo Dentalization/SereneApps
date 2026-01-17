@@ -1,54 +1,81 @@
-// Test normalizeAIExplanation function with REAL API TEXT (NO NEWLINES!)
+/**
+ * AI Text Normalization Utilities
+ * Handles raw API responses (often without newlines) and structures them.
+ */
 
-console.log('🔴 REAL API TEXT TEST (NO NEWLINES)\n');
-console.log('📝 Input text length:', testRealAPIText.length);
-console.log('📝 Has newlines?', testRealAPIText.includes('\n') ? 'YES ✅' : 'NO ❌');
-console.log('');
-console.log('🔴 REAL API TEXT TEST (NO NEWLINES)\n');
-console.log('📝 Input text length:', testRealAPIText.length);
-console.log('📝 Has newlines?', testRealAPIText.includes('\n') ? 'YES ✅' : 'NO ❌');
-console.log('');
+/**
+ * CRITICAL: Injects line breaks at semantic boundaries.
+ * This fixes API responses that come as one giant string.
+ */
+export function injectLineBreaks(text) {
+  if (!text) return '';
+  let processed = text;
 
-// Function to inject line breaks at semantic boundaries (CRITICAL!)
-function injectLineBreaks(text) {
-  // Inject line breaks before semantic headers
-  let processed = text.replace(/([.!?])\s+(Mengenai|Ketika|Perawatan|Rekomendasi|Penyebab|Tujuan|Masalah)/gi, '$1\n\n$2');
-  // Also split before numbered lists
+  // 1. Inject line breaks before semantic headers (Indonesian Context)
+  // Looks for sentence endings (.!?) followed by Keywords like "Mengenai", "Perawatan", etc.
+  processed = processed.replace(/([.!?])\s+(Mengenai|Ketika|Perawatan|Rekomendasi|Penyebab|Tujuan|Masalah|Analisis|Kesimpulan)/gi, '$1\n\n$2');
+
+  // 2. Split before numbered lists (e.g. "text. 1. Item") -> "text.\n1. Item"
   processed = processed.replace(/([.!?])\s+(\d+\.)/g, '$1\n$2');
+
+  // 3. Split before bullet points if they are stuck to previous text
+  processed = processed.replace(/([.!?])\s+([*-] )/g, '$1\n$2');
+
   return processed;
 }
 
-// Function to extract summary (IMPROVED - skip generic placeholders)
-function extractSummary(text) {
+/**
+ * Smart Summary Extractor
+ * Skips generic intros like "Analisis:" and finds the first meaningful sentence.
+ */
+export function extractSummary(text) {
   if (!text) return '';
+  
+  // Clean markdown for analysis
   const cleaned = text.replace(/\*\*/g, '').replace(/\*/g, '');
+  
+  // Split into sentences using punctuation
   const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
+  
   if (sentences && sentences.length > 0) {
-    // Get first meaningful sentence (not just "Analysis" or empty)
+    // Find first meaningful sentence
     for (const sent of sentences) {
       const trimmed = sent.trim();
+      
+      // Filter out short labels or generic headers
       if (trimmed.length > 20 && 
           !trimmed.toLowerCase().includes('analysis') &&
           !trimmed.toLowerCase().includes('analisis dental')) {
+        
         let summary = trimmed;
+        
+        // Truncate if too long (approx 15-20 words)
         if (summary.length > 150) {
           const words = summary.split(' ');
-          summary = words.slice(0, 15).join(' ').trim() + '...';
+          summary = words.slice(0, 20).join(' ').trim() + '...';
         }
         return summary;
       }
     }
   }
+  
+  // Fallback if no specific sentence found
   return cleaned.substring(0, 147).trim() + '...';
 }
 
-// Function to extract sections (REFINED LINE-BASED with injected breaks)
-function extractSections(text) {
-  // CRITICAL: Inject line breaks FIRST
+/**
+ * Section Extractor
+ * Parses text into {title, content} blocks based on colons (e.g. "**Diagnosa:** ...")
+ */
+export function extractSections(text) {
+  if (!text) return [];
+
+  // CRITICAL: Inject line breaks FIRST so we can split by newline
   const withBreaks = injectLineBreaks(text);
   
   const sections = [];
   const lines = withBreaks.split('\n');
+  
   let currentSection = null;
   let currentContent = [];
   
@@ -57,15 +84,18 @@ function extractSections(text) {
     if (!trimmed) continue;
     
     // Check if this line is a section header (ends with colon)
-    const headerMatch = trimmed.match(/^([^:]+?):\s*(.*)$/);
+    // Regex allows for bold markers like "**Diagnosa:**"
+    const headerMatch = trimmed.match(/^(\**?[^:]+?\**?):\s*(.*)$/);
     
+    // Validate header length to avoid false positives on long sentences
     if (headerMatch && headerMatch[1].length < 100 && headerMatch[1].length > 3) {
-      // Save previous section
+      
+      // Save previous section if it exists
       if (currentSection && currentContent.length > 0) {
         const content = currentContent.join(' ').trim();
-        if (content.length > 20) {
+        if (content.length > 10) { // Only save meaningful sections
           sections.push({
-            title: currentSection,
+            title: currentSection.replace(/\*/g, ''), // Clean asterisks from title
             content: content,
           });
         }
@@ -73,19 +103,21 @@ function extractSections(text) {
       
       // Start new section
       currentSection = headerMatch[1].trim();
+      // If there is content on the same line after the colon, add it
       currentContent = headerMatch[2] ? [headerMatch[2].trim()] : [];
-    } else if (currentSection) {
-      // Add line to current section content
+    } 
+    else if (currentSection) {
+      // It's a continuation of the previous section
       currentContent.push(trimmed);
     }
   }
   
-  // Save final section
+  // Save the final section found
   if (currentSection && currentContent.length > 0) {
     const content = currentContent.join(' ').trim();
-    if (content.length > 20) {
+    if (content.length > 10) {
       sections.push({
-        title: currentSection,
+        title: currentSection.replace(/\*/g, ''),
         content: content,
       });
     }
@@ -94,45 +126,26 @@ function extractSections(text) {
   return sections;
 }
 
-// Test with REAL API text (no newlines!)
-console.log('🧪 Testing with REAL API text (no newlines)\n');
+/**
+ * Main Normalization Function
+ * Use this in your React components
+ */
+export function normalizeAIResponse(rawText) {
+  if (!rawText) return null;
 
-const withBreaks = injectLineBreaks(testRealAPIText);
-console.log('📝 After injecting line breaks:');
-console.log('   Has newlines now?', withBreaks.includes('\n') ? 'YES ✅' : 'NO ❌');
-console.log('   Line count:', withBreaks.split('\n').length);
-console.log('');
+  const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText);
 
-const summary = extractSummary(testRealAPIText);
-console.log('✅ Extracted Summary:');
-console.log(`   "${summary}"`);
-console.log(`   Length: ${summary.length} chars`);
-console.log('');
+  return {
+    raw: text,
+    summary: extractSummary(text),
+    sections: extractSections(text)
+  };
+}
 
-const sections = extractSections(testRealAPIText);
-console.log(`✅ Extracted Sections: ${sections.length}`);
-sections.forEach((section, idx) => {
-  console.log(`\n   ${idx + 1}. "${section.title}"`);
-  console.log(`      Content preview: ${section.content.substring(0, 80)}...`);
-  console.log(`      Content length: ${section.content.length} chars`);
-});
-
-console.log('\n📊 Result Structure:');
-console.log(JSON.stringify({
-  summary: summary,
-  summaryLength: summary.length,
-  sections: sections.map(s => ({
-    title: s.title,
-    contentLength: s.content.length
-  }))
-}, null, 2));
-
-console.log('\n✅ Expected Output:');
-console.log('   ✅ Summary: Actual first meaningful sentence (NOT "Analisis dental")');
-console.log('   ✅ Line breaks: Injected at semantic boundaries');
-console.log('   ✅ Sections: Multiple sections detected and organized');
-console.log('   ✅ Content: Each section has meaningful content');
-console.log('\n🎯 Fix Verified:');
-console.log('   1. Text without newlines: HANDLED ✅');
-console.log('   2. Summary extraction: ACTUAL first sentence ✅');
-console.log('   3. Section detection: Semantic headers found ✅');
+/**
+ * Helper to strip "Diagnosis:" prefixes (Legacy support)
+ */
+export function stripDiagnosisIntro(text) {
+  if (!text) return '';
+  return text.replace(/^(Diagnosa|Diagnosis|Analisis|Temuan):\s*/i, '');
+}
