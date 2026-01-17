@@ -4,38 +4,39 @@ import { extractAnalysisTopics, parseTextWithLists } from '../../../../utils/tex
 import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
 
 /**
- * Helper to render text with Bold formatting (**text**)
- * UPDATED: Uses split index logic for robust parsing
+ * Helper: Merender teks dengan format Bold (**teks**)
+ * Menggunakan regex split untuk memisahkan teks biasa dan teks bold.
  */
 const RichText = ({ text }) => {
   if (!text) return null;
-  
-  // Split by bold markers. Capturing group () keeps the delimiters in the array.
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  
+  const safeText = String(text);
+
+  // Split berdasarkan pola **...**
+  // Capture group () membuat delimiter tetap ada di hasil array
+  const parts = safeText.split(/(\*\*.*?\*\*)/g);
+
   return (
     <>
       {parts.map((part, i) => {
-        // In a split with capture groups, odd indices are always the matches
-        if (i % 2 === 1) {
-          const content = part.slice(2, -2); // Remove the ** asterisks
+        // Cek apakah bagian ini diawali dan diakhiri **
+        if (part.startsWith('**') && part.endsWith('**')) {
+          // Hapus tanda ** dan render bold
           return (
-            <strong key={i} className="font-bold text-slate-900">
-              {content}
+            <strong key={i} className="font-bold text-primary-dark">
+              {part.slice(2, -2)}
             </strong>
           );
         }
-        // Even indices are the normal text
+        // Render teks biasa
         return <span key={i}>{part}</span>;
       })}
     </>
   );
 };
 
-// ... (Sisa kode AnalysisSummaryRenderer sama seperti sebelumnya) ...
+// ... (Sisa kode AnalysisSummaryRenderer sama, pastikan menggunakan <RichText /> di dalam StructuredContent)
 
 const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
-  // (Simpan kode AnalysisSummaryRenderer yang lama, cukup ganti RichText di atas)
   const { t } = useLanguage();
   
   const cleanInput = (value) => {
@@ -44,10 +45,7 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
       const joined = value.filter(Boolean).join('\n');
       return stripDiagnosisIntro(joined);
     }
-    if (typeof value !== 'string') {
-      return stripDiagnosisIntro(String(value));
-    }
-    return stripDiagnosisIntro(value);
+    return stripDiagnosisIntro(String(value));
   };
 
   const textContent = cleanInput(overallAssessment) || cleanInput(summary) || cleanInput(findings);
