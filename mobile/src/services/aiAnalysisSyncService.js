@@ -101,10 +101,35 @@ export const saveAIAnalysis = async (analysisResult) => {
       },
     };
 
-    // console.log('📤 Syncing Analysis Payload Size:', JSON.stringify(payload).length); // Uncomment to debug size
+    // Defensive: avoid sending extremely large payloads that may break the server
+    try {
+      const payloadSize = JSON.stringify(payload).length;
+      if (payloadSize > 200000) {
+        // mark and remove annotated image to keep payload small
+        payload.metadata.annotatedImageTooLarge = true;
+        payload.annotatedImageUrl = null;
+        console.warn('AI analysis payload large, stripping annotatedImageUrl before send:', payloadSize);
+      }
 
-    const response = await api.post('/ai-analysis', payload);
-    return response.data;
+      const response = await api.post('/ai-analysis', payload);
+      return response.data;
+    } catch (postError) {
+      const status = postError.response?.status;
+      // If server error (5xx) and we originally included annotated image, retry without it
+      if ((status >= 500 || status === undefined) && annotatedImageUrl) {
+        try {
+          const fallback = { ...payload };
+          fallback.annotatedImageUrl = null;
+          fallback.metadata = { ...(fallback.metadata || {}), retriedWithoutImage: true };
+          console.warn('Retrying AI analysis save without annotatedImageUrl due to server error');
+          const retryResp = await api.post('/ai-analysis', fallback);
+          return retryResp.data;
+        } catch (retryErr) {
+          throw retryErr;
+        }
+      }
+      throw postError;
+    }
   } catch (error) {
     const status = error.response?.status;
     const data = error.response?.data;

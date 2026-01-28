@@ -374,6 +374,7 @@ router.get(
         where: { userId: patientId },
         orderBy: { createdAt: 'desc' }
       });
+      console.log(`[Dentist] Fetched ${aiResults.length} AI results for patient ${patientId}`);
 
       return res.json({
         aiResults: aiResults.map(result => ({
@@ -439,6 +440,263 @@ router.post(
     } catch (error) {
       console.error('Error persisting AI sessionId:', error);
       return sendError(res, 500, 'save_failed', 'Gagal menyimpan sessionId.');
+    }
+  }
+);
+
+// GET /v1/dentist-portal/patients/:patientId/ai-results/poll?waitMs=1000
+// Polling endpoint for eventual consistency - waits for AI results to appear
+router.get(
+  '/patients/:patientId/ai-results/poll',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const waitMs = parseInt(req.query.waitMs || '1000', 10);
+      const maxWait = Math.min(waitMs, 3000); // Cap at 3s
+
+      const hasAppointment = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true }
+      });
+
+      if (!hasAppointment) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
+      }
+
+      // Retry up to maxWait ms with 200ms intervals
+      let aiResults = [];
+      const startTime = Date.now();
+      const interval = 200;
+
+      while (Date.now() - startTime < maxWait) {
+        aiResults = await prisma.aIAnalysisResult.findMany({
+          where: { userId: patientId },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (aiResults.length > 0) break;
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[Dentist Poll] Found ${aiResults.length} results for patient ${patientId} after ${elapsed}ms`);
+
+      return res.json({
+        aiResults: aiResults.map(result => ({
+          id: result.id.toString(),
+          sessionId: result.sessionId,
+          imageUrl: result.imageUrl,
+          annotatedImageUrl: result.annotatedImageUrl,
+          findings: result.findings,
+          summary: result.summary,
+          overallAssessment: result.overallAssessment,
+          riskLevel: result.riskLevel,
+          confidenceScore: result.confidenceScore,
+          detections: result.detections || [],
+          recommendations: result.recommendations || [],
+          createdAt: result.createdAt?.toISOString() || null
+        })),
+        total: aiResults.length,
+        polled: elapsed
+      });
+    } catch (error) {
+      console.error('Error polling patient AI results:', error);
+      return sendError(res, 500, 'poll_failed', 'Gagal polling hasil AI diagnosis pasien.');
+    }
+  }
+);
+
+// ============================================================================
+// AI CHAT MESSAGE PERSISTENCE ENDPOINTS
+// ============================================================================
+
+// GET /v1/dentist-portal/patients/:patientId/ai-results/:resultId/messages
+// Retrieve AI chat message history for a specific AI result
+router.get(
+  '/patients/:patientId/ai-results/:resultId/messages',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const resultId = toBigInt(req.params.resultId, 'resultId');
+      const limit = parseInt(req.query.limit || '100', 10);
+
+      // Verify dentist has access to this patient
+      const hasAppointment = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true }
+      });
+
+      if (!hasAppointment) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
+      }
+
+      // Verify AI result belongs to patient
+      const aiResult = await prisma.aIAnalysisResult.findFirst({
+        where: { id: resultId, userId: patientId },
+        select: { id: true }
+      });
+
+      if (!aiResult) {
+        return sendError(res, 404, 'not_found', 'AI analysis result tidak ditemukan.');
+      }
+
+      // Fetch chat messages
+      const messages = await prisma.aIChatMessage.findMany({
+        where: { aiResultId: resultId },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          role: true,
+          content: true,
+          metadata: true,
+          createdAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar_url: true
+            }
+          }
+        }
+      });
+
+      console.log(`[AI Chat] Fetched ${messages.length} messages for AI result ${resultId}`);
+
+      return res.json({
+        messages: messages.map(msg => ({
+          id: msg.id.toString(),
+          role: msg.role,
+          content: msg.content,
+          metadata: msg.metadata || {},
+          createdAt: msg.createdAt.toISOString(),
+          user: {
+            id: msg.user.id.toString(),
+            name: msg.user.name,
+            avatar: msg.user.avatar_url
+          }
+        })),
+        total: messages.length
+      });
+    } catch (error) {
+      console.error('Error fetching AI chat messages:', error);
+      return sendError(res, 500, 'fetch_failed', 'Gagal memuat riwayat chat AI.');
+    }
+  }
+);
+
+// POST /v1/dentist-portal/patients/:patientId/ai-results/:resultId/messages
+// Save a new AI chat message
+router.post(
+  '/patients/:patientId/ai-results/:resultId/messages',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const resultId = toBigInt(req.params.resultId, 'resultId');
+
+      const { role, content, metadata } = req.body || {};
+
+      // Validation
+      if (!role || !content) {
+        return sendError(res, 400, 'invalid_input', 'Role dan content wajib diisi.');
+      }
+
+      if (!['user', 'ai', 'dentist'].includes(role)) {
+        return sendError(res, 400, 'invalid_role', 'Role harus salah satu dari: user, ai, dentist.');
+      }
+
+      if (typeof content !== 'string' || content.trim().length === 0) {
+        return sendError(res, 400, 'invalid_content', 'Content tidak boleh kosong.');
+      }
+
+      // Verify dentist has access to this patient
+      const hasAppointment = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true }
+      });
+
+      if (!hasAppointment) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
+      }
+
+      // Verify AI result belongs to patient
+      const aiResult = await prisma.aIAnalysisResult.findFirst({
+        where: { id: resultId, userId: patientId },
+        select: { id: true }
+      });
+
+      if (!aiResult) {
+        return sendError(res, 404, 'not_found', 'AI analysis result tidak ditemukan.');
+      }
+
+      // Check for duplicate message (within last 5 seconds)
+      const fiveSecondsAgo = new Date(Date.now() - 5000);
+      const recentDuplicate = await prisma.aIChatMessage.findFirst({
+        where: {
+          aiResultId: resultId,
+          userId: dentistId,
+          role,
+          content: content.trim(),
+          createdAt: { gte: fiveSecondsAgo }
+        }
+      });
+
+      if (recentDuplicate) {
+        console.log(`[AI Chat] Duplicate message detected, returning existing message ID ${recentDuplicate.id}`);
+        return res.status(200).json({
+          message: 'Duplicate message ignored',
+          isDuplicate: true
+        });
+      }
+
+      // Save message
+      const message = await prisma.aIChatMessage.create({
+        data: {
+          aiResultId: resultId,
+          userId: dentistId,
+          role,
+          content: content.trim(),
+          metadata: metadata || {}
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar_url: true
+            }
+          }
+        }
+      });
+
+      console.log(`[AI Chat] Saved message ID ${message.id} for AI result ${resultId}, role: ${role}`);
+
+      return res.status(201).json({
+        message: {
+          id: message.id.toString(),
+          role: message.role,
+          content: message.content,
+          metadata: message.metadata || {},
+          createdAt: message.createdAt.toISOString(),
+          user: {
+            id: message.user.id.toString(),
+            name: message.user.name,
+            avatar: message.user.avatar_url
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error saving AI chat message:', error);
+      return sendError(res, 500, 'save_failed', 'Gagal menyimpan pesan chat AI.');
     }
   }
 );

@@ -35,16 +35,6 @@ aiHttp.interceptors.request.use((config) => {
 });
 
 // Log all aiHttp responses and errors
-aiHttp.interceptors.response.use(
-  (res) => {
-    console.log(`✅ [aiHttp] Response ${res.status}`, res.data);
-    return res;
-  },
-  (err) => {
-    console.error(`❌ [aiHttp] Error ${err.response?.status || 'network'}`, err.response?.data || err.message);
-    return Promise.reject(err);
-  }
-);
 
 export const authHttp = axios.create({ baseURL: authBaseURL });
 

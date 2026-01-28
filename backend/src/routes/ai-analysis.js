@@ -170,6 +170,7 @@ router.post(
       const aiAnalysis = await prisma.aIAnalysisResult.create({
         data: dataToInsert
       });
+      console.log(`[AI Analysis] Created result ID ${aiAnalysis.id} for user ${userId}, sessionId: ${aiAnalysis.sessionId}`);
 
       return res.status(201).json({
         aiAnalysis: {
