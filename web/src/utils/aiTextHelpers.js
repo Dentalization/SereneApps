@@ -1,6 +1,7 @@
 /**
  * AI Text Helpers & Normalization
- * STABLE VERSION: Combines strict Regex parsing with formatting fixes.
+ * STABLE HYBRID VERSION: Combines strict Regex parsing (Legacy) with new Formatting Logic.
+ * Prevents "White Blank Page" by keeping all original exports.
  */
 
 const SUMMARY_INTRO_REGEX = /^Tentu,\s*mari\s*kita\s*bahas\s*lebih\s*lanjut\s*mengenai\s*kondisi\s*gigi\s*Anda\s*berdasarkan\s*informasi\s*yang\s*saya\s*miliki\s*dan\s*hasil\s*analisis\s*awal\.?\s*/i;
@@ -13,36 +14,17 @@ const RECO_REGEX = /\b(segera periksa|kunjungi dokter|rontgen|perawatan|tambalan
 const EDU_REGEX = /\b(karies adalah|seperti yang saya sebutkan|artinya|ialah|adalah kerusakan|berfungsi untuk|ini seperti)\b/i;
 
 const STOP_WORDS_SUMMARY = [
-  'Ketika',
-  'Perawatan',
-  'Tujuan utama',
-  'Jika',
-  'Ini seperti',
-  'Penyebab',
-  'Rekomendasi',
-  'Masalah Estetika',
-  'Nyeri',
-  'Sensitivitas',
-  'Infeksi',
-  'Diagnosa',
-  'Analisis'
+  'Ketika', 'Perawatan', 'Tujuan utama', 'Jika', 'Ini seperti', 'Penyebab', 
+  'Rekomendasi', 'Masalah Estetika', 'Nyeri', 'Sensitivitas', 'Infeksi', 'Diagnosa', 'Analisis'
 ];
 
 const CONDITION_KEYWORDS = [
-  'Gigi Berlubang',
-  'Karies',
-  'Perubahan Warna',
-  'Diskolorasi',
-  'Infeksi',
-  'Radang',
-  'Gingivitis',
-  'Periodontitis',
-  'Abses'
+  'Gigi Berlubang', 'Karies', 'Perubahan Warna', 'Diskolorasi', 'Infeksi', 
+  'Radang', 'Gingivitis', 'Periodontitis', 'Abses'
 ];
 
 /**
  * 1. INJECT LINE BREAKS (Crucial for Raw API Text)
- * Fixes responses that arrive as a single text block without newlines.
  */
 export const injectLineBreaks = (text) => {
   if (!text) return '';
@@ -62,7 +44,6 @@ const cleanBoilerplate = (text = '') => text
   .trim();
 
 const cleanText = (text = '') => {
-  // Apply line breaks first, then clean
   const formatted = injectLineBreaks(text || '');
   return cleanBoilerplate(formatted)
     .replace(/\s+/g, ' ')
@@ -93,9 +74,6 @@ export const stripDiagnosisIntro = (text = '') => {
   return text.replace(SUMMARY_INTRO_REGEX, '').trim();
 };
 
-/**
- * Take a verbose AI narrative and extract a short 1–2 sentence summary
- */
 export const deriveSummaryFromNarrative = (text = '') => {
   if (!text) return '';
   const cleaned = stripDiagnosisIntro(text);
@@ -105,7 +83,6 @@ export const deriveSummaryFromNarrative = (text = '') => {
   return cleaned.length > 200 ? `${cleaned.slice(0, 200).trim()}...` : cleaned;
 };
 
-// Strict sentence splitter
 const splitSentencesStrict = (text = '') => text
   .split(/(?<=[.!?])\s+/)
   .map((s) => s.trim())
@@ -114,45 +91,34 @@ const splitSentencesStrict = (text = '') => text
 // --- EXPORT 2: Extract Summary ---
 export const extractSummary = (rawText = '') => {
   if (!rawText) return '';
-
   const cleaned = cleanText(rawText || '');
   const sentences = dedupeSentences(splitSentencesStrict(cleaned));
   const picked = [];
-
   for (const s of sentences) {
     if (containsStopWord(s)) break;
     if (RECO_REGEX.test(s)) continue;
     if (EDU_REGEX.test(s)) continue;
     if (s.startsWith('Mengenai ')) continue;
     if (s.includes('adalah') && s.includes('yang disebabkan')) continue;
-
     picked.push(clip(s, 220));
     if (picked.length >= 2) break;
   }
-
   return picked.join(' ') || 'Analisis singkat tidak tersedia.';
 };
 
 // --- EXPORT 3: Extract Diagnosis ---
 export const extractDiagnosis = (rawText = '') => {
   if (!rawText) return [];
-
   const cleaned = cleanText(rawText || '');
   const sentences = splitSentencesStrict(cleaned);
   const items = [];
-
   for (const keyword of CONDITION_KEYWORDS) {
     const related = sentences.filter((s) => s.toLowerCase().includes(keyword.toLowerCase()));
     if (related.length === 0) continue;
-
-    const explanation = related
-      .filter((s) => !RECO_REGEX.test(s))
-      .slice(0, 2)
-      .join(' ');
-
+    const explanation = related.filter((s) => !RECO_REGEX.test(s)).slice(0, 2).join(' ');
     const locationMatch = explanation.match(/gigi\s+(depan|belakang|atas|bawah).*?\d+/i) || explanation.match(LOCATION_REGEX);
     const probabilityMatch = rawText.match(/(\d{1,3})%\s*probability/i) || rawText.match(PROB_REGEX);
-
+    
     const key = `${keyword.toLowerCase()}|${locationMatch?.[0]?.toLowerCase() || ''}`;
     const existing = items.find((i) => i.__key === key);
     if (existing) {
@@ -162,7 +128,6 @@ export const extractDiagnosis = (rawText = '') => {
       }
       continue;
     }
-
     items.push({
       __key: key,
       condition: keyword,
@@ -171,32 +136,23 @@ export const extractDiagnosis = (rawText = '') => {
       shortExplanation: explanation ? clip(explanation, 220) : undefined,
     });
   }
-
   return items.map(({ __key, ...rest }) => rest);
 };
 
-// --- EXPORT 4: Extract Sections (For UI Tabs) ---
+// --- EXPORT 4: Extract Sections ---
 export const extractSections = (rawText = '') => {
-  // Ensure line breaks exist
   const cleaned = injectLineBreaks(rawText);
   const lines = cleaned.split('\n');
   const sections = [];
   let currentSection = null;
   let currentContent = [];
-
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-
-    // Header detection: "**Title:**" or "Title:"
     const headerMatch = trimmed.match(/^(\**?[^:]+?\**?):\s*(.*)$/);
-    
     if (headerMatch && headerMatch[1].length < 60 && headerMatch[1].length > 3) {
       if (currentSection) {
-        sections.push({
-          title: currentSection.replace(/\*\*/g, ''),
-          content: currentContent.join(' ').trim()
-        });
+        sections.push({ title: currentSection.replace(/\*\*/g, ''), content: currentContent.join(' ').trim() });
       }
       currentSection = headerMatch[1].trim();
       currentContent = headerMatch[2] ? [headerMatch[2].trim()] : [];
@@ -204,33 +160,78 @@ export const extractSections = (rawText = '') => {
       currentContent.push(trimmed);
     }
   }
-
   if (currentSection) {
-    sections.push({
-      title: currentSection.replace(/\*\*/g, ''),
-      content: currentContent.join(' ').trim()
-    });
+    sections.push({ title: currentSection.replace(/\*\*/g, ''), content: currentContent.join(' ').trim() });
   }
   return sections;
 };
 
-// --- EXPORT 5: Main Normalizer ---
+// --- 🔥 NEW EXPORT: Robust Markdown Parser (Fixes "Messy Format") ---
+export const parseMarkdownText = (text) => {
+  if (!text) return [];
+  
+  let processed = String(text);
+  // Fix: "text.**Header**" -> "text.\n\n**Header**"
+  processed = processed.replace(/([.!?])\s*(\*\*|##)/g, '$1\n\n$2');
+  // Fix: "text.* Item" -> "text.\n* Item"
+  processed = processed.replace(/([^\n])\s*(\* |- |\d+\. )/g, '$1\n$2');
+  
+  const lines = processed.split('\n');
+  const structured = [];
+  let currentList = null;
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+        if (currentList) { structured.push(currentList); currentList = null; }
+        return;
+    }
+
+    // A. Header
+    const isHeader = (trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length < 100) || trimmed.startsWith('##');
+    if (isHeader) {
+      if (currentList) { structured.push(currentList); currentList = null; }
+      structured.push({ type: 'header', content: trimmed.replace(/\*\*/g, '').replace(/^##\s*/, '').replace(/:$/, '') });
+    }
+    // B. List
+    else if (trimmed.match(/^(\*|-|\d+\.)\s/)) {
+      if (!currentList) currentList = { type: 'list', items: [] };
+      currentList.items.push(trimmed.replace(/^(\*|-|\d+\.)\s/, ''));
+    }
+    // C. Paragraph
+    else {
+      if (currentList) { structured.push(currentList); currentList = null; }
+      const inlineMatch = trimmed.match(/^(\*\*.*?\*\*):?\s*(.*)/);
+      if (inlineMatch) {
+         structured.push({ type: 'header_paragraph', title: inlineMatch[1].replace(/\*\*/g, ''), content: inlineMatch[2] });
+      } else {
+         structured.push({ type: 'paragraph', content: trimmed });
+      }
+    }
+  });
+  
+  if (currentList) structured.push(currentList);
+  return structured;
+};
+
+// --- Main Normalizer (Updated) ---
 export const normalizeAIText = (rawText = '') => ({
   summary: extractSummary(rawText),
   diagnosis: extractDiagnosis(rawText),
-  sections: extractSections(rawText)
+  sections: extractSections(rawText),
+  structured: parseMarkdownText(rawText) // Added for UI
 });
 
-// Alias for compatibility
 export const normalizeAIExplanation = normalizeAIText;
 
-// Default export
+// Default export (Includes EVERYTHING to stay safe)
 export default {
   injectLineBreaks,
   stripDiagnosisIntro,
   extractSummary,
   extractDiagnosis,
   extractSections,
+  parseMarkdownText,
   normalizeAIText,
   normalizeAIExplanation
 };

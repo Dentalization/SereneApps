@@ -412,7 +412,7 @@ const PatientManagement = () => {
         time: apt.time || apt.startsAt || apt.starts_at
       }));
       
-      console.log('[PatientSelect] ✅ Normalized', normalizedAppointments.length, 'appointments');
+      
       
       // Normalize field names from backend to component expectations
       const normalizedPatient = {
