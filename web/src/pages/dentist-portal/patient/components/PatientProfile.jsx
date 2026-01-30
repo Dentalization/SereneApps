@@ -22,12 +22,16 @@ const PatientProfile = ({ patient, onClose }) => {
 
   const patientAvatar = resolvePatientAvatar(patient);
   const hasAvatar = Boolean(patientAvatar);
+  
   // Early return BEFORE any hooks
   if (!patient) {
     return (
-      <div className="bg-surface border border-primary/20 rounded-2xl shadow-theme-lg p-6 theme-transition">
+      <div className="bg-surface border border-primary/10 rounded-3xl shadow-theme-lg p-12 animate-in fade-in">
         <div className="text-center py-8">
-          <p className="text-secondary">{t('dentistPatient.common.noPatientSelected')}</p>
+          <div className="w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-4 text-muted">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+          </div>
+          <p className="text-secondary font-medium">{t('dentistPatient.common.noPatientSelected')}</p>
         </div>
       </div>
     );
@@ -56,10 +60,10 @@ const PatientProfile = ({ patient, onClose }) => {
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
-      case 'active': return 'text-success bg-success/10 border-success/30';
-      case 'inactive': return 'text-secondary bg-muted border-primary/10';
-      case 'new': return 'text-brand-primary bg-brand-primary/10 border-brand-primary/30';
-      default: return 'text-secondary bg-muted border-primary/10';
+      case 'active': return 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50';
+      case 'inactive': return 'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-700/50';
+      case 'new': return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50';
+      default: return 'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-700/50';
     }
   };
 
@@ -70,69 +74,69 @@ const PatientProfile = ({ patient, onClose }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+      
       {/* Profile Header CARD */}
-      <div className="relative bg-surface-elevated border border-primary/10 rounded-xl shadow-theme-md p-6 theme-transition">
-        {/* X button: absolute top-right */}
+      <div className="relative bg-surface border border-primary/10 rounded-3xl shadow-theme-sm p-8 overflow-hidden">
+        
+        {/* Background Decoration */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-blue-50/50 to-transparent rounded-bl-full -z-0 dark:from-blue-900/20" />
+
+        {/* X button */}
         <button
           type="button"
           aria-label={labels.actions?.close || t('dentistPatient.profile.actions.close')}
           onClick={() => onClose?.()}
-          className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-surface-elevated border border-border/40 hover:bg-surface-elevated/80 focus:outline-none focus:ring-2 focus:ring-accent/40 text-secondary hover:text-primary theme-transition"
+          className="absolute top-6 right-6 z-10 p-2.5 rounded-full bg-surface-elevated border border-primary/10 shadow-sm hover:bg-surface-elevated hover:shadow-md hover:rotate-90 transition-all duration-300 text-muted hover:text-primary"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
 
-        <div className="flex items-center justify-between mb-6 pr-12">
-          <h2 className="text-xl font-semibold text-primary">{labels.title}</h2>
-        </div>
-
-        {/* Patient Avatar and Basic Info */}
-        <div className="flex items-center gap-6 mb-6 pr-12">
-          <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border border-primary/10 bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center">
-            {hasAvatar ? (
-              <img
-                src={patientAvatar}
-                alt={patient.name || 'Patient avatar'}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-white text-2xl font-bold">
-                {initials(patient.name)}
-              </span>
-            )}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-8 relative z-0">
+          {/* Avatar */}
+          <div className="relative group">
+            <div className="w-28 h-28 rounded-full p-1 bg-surface border border-primary/10 shadow-lg flex items-center justify-center overflow-hidden">
+              <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center">
+                {hasAvatar ? (
+                  <img
+                    src={patientAvatar}
+                    alt={patient.name || 'Patient avatar'}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  />
+                ) : (
+                  <span className="text-white text-3xl font-bold tracking-widest">
+                    {initials(patient.name)}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="absolute bottom-2 right-2 w-6 h-6 bg-green-500 border-4 border-surface rounded-full"></div>
           </div>
 
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-primary mb-2 truncate">{patient.name}</h1>
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <h1 className="text-3xl font-bold text-primary tracking-tight leading-tight">{patient.name}</h1>
+              <p className="text-secondary font-medium flex items-center gap-2 mt-1">
+                <span className="bg-surface-elevated text-secondary px-2 py-0.5 rounded text-xs font-mono">ID: {patient.patientId}</span>
+              </p>
+            </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-secondary">
-              <span>ID: {patient.patientId}</span>
-              <span>•</span>
-              <span>{ageValue} years old</span>
-              <span>•</span>
-              <span className="capitalize">{patient.gender}</span>
-              <span>•</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(patient.status)}`}>
-                {patient.status}
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${getStatusColor(patient.status)}`}>
+                {getStatusLabel(patient.status)}
               </span>
+              <div className="h-4 w-px bg-primary/20"></div>
+              <span className="text-secondary font-medium">{ageValue} Years Old</span>
+              <div className="h-4 w-px bg-primary/20"></div>
+              <span className="text-secondary capitalize font-medium">{patient.gender}</span>
             </div>
 
             {patient.nextAppointment && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-warning">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs font-medium mt-2">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <span>{t('dentistPatient.profile.header.nextAppointment', { date: formatDate(patient.nextAppointment) })}</span>
@@ -142,113 +146,103 @@ const PatientProfile = ({ patient, onClose }) => {
         </div>
       </div>
 
-      {/* Personal Information */}
-      <div className="bg-surface-elevated border border-primary/10 rounded-xl shadow-theme-md p-6 theme-transition">
-        <h3 className="text-lg font-semibold text-primary mb-4">{personalLabels.title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.name}</label>
-            <p className="text-primary">{patient.name}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Personal Information */}
+        <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-primary/5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            </div>
+            <h3 className="text-lg font-bold text-primary">{personalLabels.title}</h3>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.patientId}</label>
-            <p className="text-primary">{patient.patientId}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.dob}</label>
-            <p className="text-primary">{formatDate(patient.birthDate)}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.age}</label>
-            <p className="text-primary">
-              {typeof ageValue === 'number'
-                ? t('dentistPatient.profile.labels.ageDisplay', { age: ageValue })
-                : ageValue}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.gender}</label>
-            <p className="text-primary capitalize">
-              {patient.gender
-                ? t(`dentistPatient.profile.gender.${patient.gender.toLowerCase()}`)
-                : t('dentistPatient.profile.gender.unknown')}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{personalLabels.fields?.maritalStatus}</label>
-            <p className="text-primary capitalize">{patient.maritalStatus || t('dentistPatient.common.notProvided')}</p>
+          
+          <div className="space-y-5">
+            {[
+              { label: personalLabels.fields?.name, value: patient.name },
+              { label: personalLabels.fields?.patientId, value: patient.patientId },
+              { label: personalLabels.fields?.dob, value: formatDate(patient.birthDate) },
+              { label: personalLabels.fields?.age, value: typeof ageValue === 'number' ? t('dentistPatient.profile.labels.ageDisplay', { age: ageValue }) : ageValue },
+              { label: personalLabels.fields?.gender, value: patient.gender ? t(`dentistPatient.profile.gender.${patient.gender.toLowerCase()}`) : t('dentistPatient.profile.gender.unknown') },
+              { label: personalLabels.fields?.maritalStatus, value: patient.maritalStatus || t('dentistPatient.common.notProvided') }
+            ].map((item, idx) => (
+              <div key={idx} className="flex justify-between items-center group">
+                <span className="text-sm font-medium text-muted group-hover:text-secondary transition-colors">{item.label}</span>
+                <span className="text-sm font-semibold text-primary text-right">{item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* Contact Information */}
-      <div className="bg-surface-elevated border border-primary/10 rounded-xl shadow-theme-md p-6 theme-transition">
-        <h3 className="text-lg font-semibold text-primary mb-4">{contactLabels.title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{contactLabels.fields?.phone}</label>
-            <p className="text-primary">{patient.phone}</p>
+        {/* Contact Information */}
+        <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-primary/5">
+            <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+            </div>
+            <h3 className="text-lg font-bold text-primary">{contactLabels.title}</h3>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{contactLabels.fields?.email}</label>
-            <p className="text-primary">{patient.email}</p>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-text-primary mb-2">{contactLabels.fields?.address}</label>
-            <p className="text-primary">{patient.address || t('dentistPatient.common.notProvided')}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{contactLabels.fields?.preferredContact}</label>
-            <p className="text-primary capitalize">
-              {patient.preferredContact || contactLabels.defaults?.preferredContact || t('dentistPatient.profile.contact.defaultPreferred')}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">{contactLabels.fields?.occupation}</label>
-            <p className="text-primary">{patient.occupation || t('dentistPatient.common.notProvided')}</p>
+
+          <div className="space-y-5">
+            {[
+              { label: contactLabels.fields?.phone, value: patient.phone },
+              { label: contactLabels.fields?.email, value: patient.email },
+              { label: contactLabels.fields?.address, value: patient.address || t('dentistPatient.common.notProvided'), fullWidth: true },
+              { label: contactLabels.fields?.preferredContact, value: patient.preferredContact || contactLabels.defaults?.preferredContact || t('dentistPatient.profile.contact.defaultPreferred') },
+              { label: contactLabels.fields?.occupation, value: patient.occupation || t('dentistPatient.common.notProvided') }
+            ].map((item, idx) => (
+              <div key={idx} className={`flex ${item.fullWidth ? 'flex-col gap-1' : 'justify-between items-center'} group`}>
+                <span className="text-sm font-medium text-muted group-hover:text-secondary transition-colors">{item.label}</span>
+                <span className={`text-sm font-semibold text-primary ${item.fullWidth ? '' : 'text-right'}`}>{item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Medical Summary */}
-      <div className="bg-surface-elevated border border-primary/10 rounded-xl shadow-theme-md p-6 theme-transition">
-        <h3 className="text-lg font-semibold text-primary mb-4">{medicalLabels.title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-error/5 border border-error/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-error rounded-full"></div>
-              <span className="text-sm font-medium text-text-primary">{medicalLabels.summary?.allergies}</span>
+      <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8">
+        <h3 className="text-lg font-bold text-primary mb-6 flex items-center gap-2">
+          <span className="text-xl">🩺</span> {medicalLabels.title}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Allergies */}
+          <div className="bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl p-5 hover:-translate-y-1 transition-transform duration-300">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full shadow-[0_0_6px_rgba(239,68,68,0.6)]"></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-red-800/70 dark:text-red-400/80">{medicalLabels.summary?.allergies}</span>
             </div>
-            <p className="text-lg font-semibold text-primary">
+            <p className="text-3xl font-bold text-primary mb-1">
               {patient.medicalHistory?.allergies?.length || 0}
             </p>
-            <p className="text-xs text-secondary">
+            <p className="text-sm text-secondary truncate">
               {patient.medicalHistory?.allergies?.slice(0, 2).join(', ') || medicalLabels.summary?.none}
             </p>
           </div>
 
-          <div className="bg-warning/5 border border-warning/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-warning rounded-full"></div>
-              <span className="text-sm font-medium text-text-primary">{medicalLabels.summary?.conditions}</span>
+          {/* Conditions */}
+          <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl p-5 hover:-translate-y-1 transition-transform duration-300">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-1.5 h-1.5 bg-amber-500 rounded-full shadow-[0_0_6px_rgba(245,158,11,0.6)]"></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-800/70 dark:text-amber-400/80">{medicalLabels.summary?.conditions}</span>
             </div>
-            <p className="text-lg font-semibold text-primary">
+            <p className="text-3xl font-bold text-primary mb-1">
               {patient.medicalHistory?.conditions?.length || 0}
             </p>
-            <p className="text-xs text-secondary">
+            <p className="text-sm text-secondary truncate">
               {patient.medicalHistory?.conditions?.slice(0, 2).join(', ') || medicalLabels.summary?.none}
             </p>
           </div>
 
-          <div className="bg-brand-primary/5 border border-brand-primary/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-brand-primary rounded-full"></div>
-              <span className="text-sm font-medium text-text-primary">{medicalLabels.summary?.medications}</span>
+          {/* Medications */}
+          <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-5 hover:-translate-y-1 transition-transform duration-300">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_6px_rgba(59,130,246,0.6)]"></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-800/70 dark:text-blue-400/80">{medicalLabels.summary?.medications}</span>
             </div>
-            <p className="text-lg font-semibold text-primary">
+            <p className="text-3xl font-bold text-primary mb-1">
               {patient.medicalHistory?.medications?.length || 0}
             </p>
-            <p className="text-xs text-secondary">
+            <p className="text-sm text-secondary truncate">
               {patient.medicalHistory?.medications?.slice(0, 2).join(', ') || medicalLabels.summary?.none}
             </p>
           </div>
@@ -256,34 +250,41 @@ const PatientProfile = ({ patient, onClose }) => {
       </div>
 
       {/* Visit History Summary */}
-      <div className="bg-surface-elevated border border-primary/10 rounded-xl shadow-theme-md p-6 theme-transition">
-        <h3 className="text-lg font-semibold text-primary mb-4">{visitLabels.title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-primary">{patient.appointments?.length || 0}</p>
-            <p className="text-sm text-secondary">{visitLabels.totalVisits}</p>
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-5">
+          <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5v-5z"/></svg>
+        </div>
+        
+        <h3 className="text-lg font-bold mb-8 relative z-10 flex items-center gap-2">
+          {visitLabels.title}
+        </h3>
+        
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 relative z-10">
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{visitLabels.totalVisits}</p>
+            <p className="text-3xl font-bold">{patient.appointments?.length || 0}</p>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-primary">
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{visitLabels.lastVisit}</p>
+            <p className="text-xl font-semibold text-slate-200">
               {patient.lastVisit ? formatDate(patient.lastVisit) : visitLabels.none}
             </p>
-            <p className="text-sm text-secondary">{visitLabels.lastVisit}</p>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-primary">
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{visitLabels.nextAppointment}</p>
+            <p className="text-xl font-semibold text-amber-300">
               {patient.nextAppointment ? formatDate(patient.nextAppointment) : visitLabels.none}
             </p>
-            <p className="text-sm text-secondary">{visitLabels.nextAppointment}</p>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-primary">
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{visitLabels.patientSince}</p>
+            <p className="text-xl font-semibold text-slate-200">
               {patient.registrationDate
                 ? t('dentistPatient.profile.labels.patientSince', {
                     years: Math.floor((new Date().getTime() - new Date(patient.registrationDate).getTime()) / (1000 * 60 * 60 * 24 * 365))
                   })
                 : visitLabels.notAvailable || t('dentistPatient.profile.labels.notAvailable')}
             </p>
-            <p className="text-sm text-secondary">{visitLabels.patientSince}</p>
           </div>
         </div>
       </div>
