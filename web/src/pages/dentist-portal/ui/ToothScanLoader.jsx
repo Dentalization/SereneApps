@@ -1,54 +1,57 @@
 import React from 'react';
 
 const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
+  // Styles to apply the tooth image as a mask for color/gradient filling
+  const toothMaskStyle = {
+    maskImage: 'url(/tooth.png)',
+    WebkitMaskImage: 'url(/tooth.png)',
+    maskSize: 'contain',
+    WebkitMaskSize: 'contain',
+    maskRepeat: 'no-repeat',
+    WebkitMaskRepeat: 'no-repeat',
+    maskPosition: 'center',
+    WebkitMaskPosition: 'center',
+  };
+
   return (
     <div className="flex flex-col items-center justify-center p-8">
       
       {/* 3D Scanning Container */}
       <div className="relative w-32 h-32 flex items-center justify-center">
         
-        {/* --- 1. The Orbiting Rings (3D Effect) --- */}
-        <div className="absolute inset-0 rounded-full border border-slate-200 dark:border-slate-700 border-t-blue-500 dark:border-t-blue-400 animate-[spin_3s_linear_infinite]" />
-        <div className="absolute inset-4 rounded-full border border-slate-100 dark:border-slate-800 border-b-purple-500 dark:border-b-purple-400 animate-[spin_4s_linear_infinite_reverse]" />
+        {/* --- 1. The Orbiting Rings (SUPER SLOW = SERENE) --- */}
+        {/* Outer Ring: 12s duration */}
+        <div className="absolute inset-0 rounded-full border border-slate-200 dark:border-slate-800 border-t-blue-500 dark:border-t-blue-400 animate-[spin_12s_linear_infinite]" />
+        
+        {/* Middle Ring: 16s duration (Reverse) */}
+        <div className="absolute inset-4 rounded-full border border-slate-100 dark:border-slate-900 border-b-purple-500 dark:border-b-purple-400 animate-[spin_16s_linear_infinite_reverse]" />
+        
+        {/* Inner Ring (Pulse) */}
         <div className="absolute inset-8 rounded-full border-2 border-indigo-100 dark:border-indigo-900/30 animate-pulse" />
 
-        {/* --- 2. The Realistic Molar Icon --- */}
+        {/* --- 2. The Tooth Image (Using Masking) --- */}
         <div className="relative z-10 w-14 h-14">
           
-          {/* Base Tooth (Ghost/Wireframe) */}
-          <svg 
-            viewBox="0 0 24 24" 
-            fill="currentColor" 
-            className="w-full h-full text-slate-200 dark:text-slate-700 absolute top-0 left-0"
-          >
-            {/* Anatomically Accurate Molar Path */}
-            <path d="M19.31 7.5c-.77-2.3-2.92-3.5-5.31-3.5-1.5 0-2.8.6-3.8 1.6-.3.3-.8.3-1.1 0-1-1-2.3-1.6-3.8-1.6-2.39 0-4.54 1.2-5.31 3.5-.2.6-.2 1.3 0 1.9l1.5 6.8c.5 2.2 2.4 3.7 4.7 3.3 1.6-.3 2.9-1.5 3.3-3.1.2-.8 1.3-.8 1.5 0 .4 1.6 1.7 2.8 3.3 3.1 2.3.4 4.2-1.1 4.7-3.3l1.5-6.8c.2-.6.2-1.3 0-1.9z" />
-          </svg>
+          {/* Layer A: The "Ghost" Tooth (Base Layer) */}
+          <div 
+            className="w-full h-full bg-slate-300 dark:bg-slate-700 absolute top-0 left-0"
+            style={toothMaskStyle}
+          />
 
-          {/* Masked Scanned Tooth (Gradient Filled) */}
+          {/* Layer B: The "Scanned" Tooth (Active Layer) */}
           <div className="absolute inset-0 overflow-hidden animate-scan-reveal">
-             <svg 
-              viewBox="0 0 24 24" 
-              fill="url(#scanGradient)" 
-              className="w-full h-full drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
-            >
-              <defs>
-                <linearGradient id="scanGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#60a5fa" /> {/* Blue-400 */}
-                  <stop offset="100%" stopColor="#818cf8" /> {/* Indigo-400 */}
-                </linearGradient>
-              </defs>
-              {/* Same Path for the fill layer */}
-              <path d="M19.31 7.5c-.77-2.3-2.92-3.5-5.31-3.5-1.5 0-2.8.6-3.8 1.6-.3.3-.8.3-1.1 0-1-1-2.3-1.6-3.8-1.6-2.39 0-4.54 1.2-5.31 3.5-.2.6-.2 1.3 0 1.9l1.5 6.8c.5 2.2 2.4 3.7 4.7 3.3 1.6-.3 2.9-1.5 3.3-3.1.2-.8 1.3-.8 1.5 0 .4 1.6 1.7 2.8 3.3 3.1 2.3.4 4.2-1.1 4.7-3.3l1.5-6.8c.2-.6.2-1.3 0-1.9z" />
-            </svg>
+             <div 
+               className="w-full h-full bg-gradient-to-b from-blue-500 to-purple-600 drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
+               style={toothMaskStyle}
+             />
           </div>
 
-          {/* --- 3. The Laser Scanner Beam --- */}
-          <div className="absolute left-[-20%] right-[-20%] h-0.5 bg-blue-400 dark:bg-blue-300 shadow-[0_0_15px_rgba(96,165,250,1)] animate-scan-beam z-20 rounded-full opacity-90" />
+          {/* --- 3. The Laser Scanner Beam (FAST = ACTIVE SCANNING) --- */}
+          <div className="absolute left-[-10%] right-[-10%] h-0.5 bg-blue-400 dark:bg-blue-300 shadow-[0_0_15px_rgba(96,165,250,1)] animate-scan-beam z-20 rounded-full opacity-90" />
         </div>
 
         {/* Grid Background Effect */}
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-10 rounded-full animate-pulse"></div>
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-10 dark:opacity-5 rounded-full animate-pulse"></div>
       </div>
 
       {/* --- 4. Loading Text --- */}
@@ -57,6 +60,7 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
           {text}
         </h3>
         <div className="flex items-center justify-center gap-1">
+          {/* Dots animation */}
           <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
           <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
           <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" />
@@ -66,24 +70,30 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
         </p>
       </div>
 
-      {/* --- 5. Inline CSS for the Scanner Animations --- */}
+      {/* --- 5. Inline CSS for Animations --- */}
       <style>{`
         @keyframes scan-beam {
-          0% { top: 15%; opacity: 0; }
+          0% { top: 5%; opacity: 0; }
           15% { opacity: 1; }
           85% { opacity: 1; }
-          100% { top: 85%; opacity: 0; }
+          100% { top: 95%; opacity: 0; }
         }
         @keyframes scan-reveal {
           0% { clip-path: inset(0 0 100% 0); }
           50% { clip-path: inset(0 0 0 0); }
           100% { clip-path: inset(0 0 100% 0); }
         }
+        
+        /* SCANNER SPEED CONTROLS:
+           - Beam: 0.7s (Fast scanning motion)
+           - Reveal: 3s (Fills up moderately fast)
+        */
         .animate-scan-beam {
-          animation: scan-beam 2.5s ease-in-out infinite;
+          animation: scan-beam 0.7s ease-in-out infinite;
         }
+        
         .animate-scan-reveal {
-          animation: scan-reveal 5s ease-in-out infinite;
+          animation: scan-reveal 3s ease-in-out infinite;
         }
       `}</style>
     </div>
