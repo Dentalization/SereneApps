@@ -14,11 +14,18 @@ const messageVariants = {
 function renderMarkdown(text) {
   if (!text) return null;
   let html = text
+    // Bold **text**
     .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^---$/gm, '<hr class="border-current opacity-10 my-3"/>')
-    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Bullet lines: "* text" or "- text" → list items (BEFORE italic to prevent * bullets becoming <em>)
+    .replace(/^\*\s+(.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    .replace(/^-\s+(.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Numbered list: "1. text"
     .replace(/^\d+\.\s+(.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+    // Horizontal rules
+    .replace(/^---$/gm, '<hr class="border-current opacity-10 my-3"/>')
+    // Strip any remaining stray * characters
+    .replace(/\*/g, '')
+    // Line breaks
     .replace(/\n{2,}/g, '<br/><br/>')
     .replace(/\n/g, '<br/>');
   return <div className="prose-dental" dangerouslySetInnerHTML={{ __html: html }} />;

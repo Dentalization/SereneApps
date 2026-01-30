@@ -51,23 +51,6 @@ function normalizeFindings(data) {
   return findings;
 }
 
-/**
- * Try to extract JSON from an error detail string (e.g. schema validation errors)
- */
-function extractFindingsFromErrorDetail(detail) {
-  if (!detail || typeof detail !== 'string') return null;
-  const patterns = [
-    /from completion (\{[\s\S]*?\})\.\s*Got:/,
-    /(\{[\s\S]*?"image_quality"[\s\S]*?\})/,
-  ];
-  for (const pattern of patterns) {
-    const match = detail.match(pattern);
-    if (match?.[1]) {
-      try { return normalizeFindings(JSON.parse(match[1])); } catch { /* skip */ }
-    }
-  }
-  return null;
-}
 
 export default function useDentalAPI() {
   const [sessionId, setSessionId] = useState(null);
@@ -107,7 +90,7 @@ export default function useDentalAPI() {
       const r = await fetch(api('/sessions'), {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ role: 'dentist', language: 'bilingual', metadata: { source: 'deepdental_pro' } }),
+        body: JSON.stringify({ role: 'dentist', language: 'id', metadata: { source: 'deepdental_pro' } }),
       });
       const data = await r.json();
       if (data.id) {
@@ -202,77 +185,75 @@ export default function useDentalAPI() {
       let suggestedQuestions = [];
 
       if (imageFile) {
-        // ── IMAGE FLOW: Call /images/detect + /chat/upload in parallel ──
+        // ── IMAGE FLOW ──
+        // Step 1: YOLO detection (reliable, no LLM schema issues)
+        // Step 2: Text-only chat with detection context (avoids DentistVisualAnalysisSchema parse failure)
+        // NOTE: /chat/upload with images fails due to backend Pydantic schema requiring 'limitations'
+        //       field that the LLM doesn't always produce → OUTPUT_PARSING_FAILURE
 
-        // Build FormData for YOLO detection
         const detectForm = new FormData();
         detectForm.append('image', imageFile);
         detectForm.append('include_annotated', 'true');
 
-        // Build FormData for chat with upload
-        const chatForm = new FormData();
-        chatForm.append('message', message || 'Berikan analisis dental lengkap untuk gambar ini termasuk temuan klinis, diagnosis diferensial, tingkat keparahan, dan rekomendasi perawatan');
-        chatForm.append('session_id', sessionId);
-        chatForm.append('role', 'dentist');
-        chatForm.append('language', 'bilingual');
-        chatForm.append('images', imageFile);
-
-        // Fire both requests in parallel
-        const [detectRes, chatRes] = await Promise.allSettled([
-          fetch(api('/images/detect'), { method: 'POST', headers: authHeaders(), body: detectForm }),
-          fetch(api('/chat/upload'), { method: 'POST', headers: authHeaders(), body: chatForm }),
-        ]);
-
-        // ── Process YOLO detection results ──
-        if (detectRes.status === 'fulfilled' && detectRes.value.ok) {
-          const detectData = await detectRes.value.json().catch(() => ({}));
-          console.log('[DeepDental] /images/detect:', detectData.detections?.length || 0, 'detections');
-          if (detectData.detections?.length > 0 || detectData.annotated_image_base64) {
-            findings = {
-              detections: detectData.detections || [],
-              annotated_image_base64: detectData.annotated_image_base64 || null,
-              processing_time_ms: detectData.processing_time_ms,
-            };
+        let detectData = {};
+        try {
+          const detectRes = await fetch(api('/images/detect'), { method: 'POST', headers: authHeaders(), body: detectForm });
+          if (detectRes.ok) {
+            detectData = await detectRes.json().catch(() => ({}));
+            console.log('[DeepDental] /images/detect:', detectData.detections?.length || 0, 'detections');
+            if (detectData.detections?.length > 0 || detectData.annotated_image_base64) {
+              findings = {
+                detections: detectData.detections || [],
+                annotated_image_base64: detectData.annotated_image_base64 || null,
+                processing_time_ms: detectData.processing_time_ms,
+              };
+            }
+          } else {
+            console.warn('[DeepDental] /images/detect failed:', detectRes.status);
           }
-        } else {
-          console.warn('[DeepDental] /images/detect failed');
+        } catch (err) {
+          console.error('[DeepDental] /images/detect error:', err);
         }
 
-        // ── Process chat/upload results ──
-        if (chatRes.status === 'fulfilled') {
-          const chatData = await chatRes.value.json().catch(() => ({}));
-          console.log('[DeepDental] /chat/upload status:', chatRes.value.status);
+        // Step 2: Text-only chat — describe detections to LLM for full analysis
+        // This avoids the DentistVisualAnalysisSchema parse failure that occurs with image uploads
+        const detections = detectData.detections || [];
+        const detectionSummary = detections.length > 0
+          ? detections.map((d, i) => `${i + 1}. ${d.label} (confidence: ${(d.confidence * 100).toFixed(0)}%)`).join('\n')
+          : 'Tidak ada patologi terdeteksi oleh YOLO.';
 
-          // Get text content from LLM
-          textContent = chatData.content || chatData.reply || '';
+        const analysisPrompt = message
+          || `Berdasarkan hasil deteksi AI pada foto dental pasien, ditemukan ${detections.length} marker patologi:\n${detectionSummary}\n\nBerikan analisis dental lengkap dan mendetail dalam Bahasa Indonesia. Sertakan:\n1) Temuan klinis pada setiap patologi yang terdeteksi\n2) Diagnosis diferensial dengan penjelasan masing-masing\n3) Tingkat keparahan dan urgensi\n4) Rekomendasi perawatan step-by-step\n5) Prognosis\n\nJawab selengkap mungkin sebagai dokter gigi spesialis.`;
+
+        const chatForm = new FormData();
+        chatForm.append('message', analysisPrompt);
+        chatForm.append('session_id', sessionId);
+        chatForm.append('role', 'dentist');
+        chatForm.append('language', 'id');
+
+        try {
+          const chatRes = await fetch(api('/chat/upload'), { method: 'POST', headers: authHeaders(), body: chatForm });
+          const chatData = await chatRes.json().catch(() => ({}));
+          console.log('[DeepDental] text-chat status:', chatRes.status, 'content length:', (chatData.content || '').length);
+
+          textContent = chatData.content || chatData.reply || chatData.message || chatData.answer || chatData.text || '';
           sources = chatData.sources || [];
           suggestedQuestions = chatData.suggested_questions || [];
 
-          // Merge visual_findings from chat (has LLM analysis: findings, recommendations, concern_level, image_quality)
+          // Merge any visual_findings from chat response
           const chatFindings = normalizeFindings(chatData.visual_findings);
-          if (chatFindings) {
+          if (chatFindings && findings) {
             findings = {
-              // YOLO detections + annotated image (from /images/detect — more reliable)
-              detections: findings?.detections || chatFindings.detections || [],
-              annotated_image_base64: findings?.annotated_image_base64 || chatFindings.annotated_image_base64 || null,
-              // LLM analysis (from /chat/upload)
+              ...findings,
               image_quality: chatFindings.image_quality || null,
               concern_level: chatFindings.concern_level || null,
               findings: chatFindings.findings || [],
               recommendations: chatFindings.recommendations || [],
               limitations: chatFindings.limitations || null,
             };
-          } else if (findings) {
-            // Only have YOLO data, no LLM findings — keep what we have
-            findings = normalizeFindings(findings);
           }
-
-          // Try recover from error detail if still no content
-          if (!textContent && !findings) {
-            const detail = chatData.detail || chatData.message || '';
-            const recovered = extractFindingsFromErrorDetail(detail);
-            if (recovered) findings = recovered;
-          }
+        } catch (err) {
+          console.error('[DeepDental] text-chat error:', err);
         }
 
       } else {
@@ -281,7 +262,7 @@ export default function useDentalAPI() {
         formData.append('message', message);
         formData.append('session_id', sessionId);
         formData.append('role', 'dentist');
-        formData.append('language', 'bilingual');
+        formData.append('language', 'id');
 
         const chatRes = await fetch(api('/chat/upload'), {
           method: 'POST',
@@ -290,7 +271,8 @@ export default function useDentalAPI() {
         });
 
         const chatData = await chatRes.json().catch(() => ({}));
-        textContent = chatData.content || chatData.reply || '';
+        console.log('[DeepDental] text-only /chat/upload status:', chatRes.status, 'keys:', Object.keys(chatData));
+        textContent = chatData.content || chatData.reply || chatData.message || chatData.answer || chatData.text || chatData.response || '';
         findings = normalizeFindings(chatData.visual_findings);
         sources = chatData.sources || [];
         suggestedQuestions = chatData.suggested_questions || [];
@@ -304,19 +286,19 @@ export default function useDentalAPI() {
             method: 'POST',
             headers: jsonHeaders(),
             body: JSON.stringify({
-              question: `Clinical analysis and treatment for: ${labels.join(', ')}. Differential diagnosis, severity, treatment.`,
+              question: `Analisis klinis lengkap dan perawatan untuk: ${labels.join(', ')}. Sertakan diagnosis diferensial, tingkat keparahan, opsi perawatan, dan prognosis. Jawab dalam Bahasa Indonesia.`,
               role: 'dentist',
-              k: 4,
+              k: 6,
             }),
           });
           if (kbRes.ok) {
             const kbData = await kbRes.json();
             sources = [...sources, ...(kbData.sources || [])];
+            // Only use KB answer as fallback when LLM returned nothing
             if (!textContent && kbData.answer) {
               textContent = kbData.answer;
-            } else if (textContent && kbData.answer && !textContent.includes(kbData.answer.slice(0, 40))) {
-              textContent += '\n\n---\n\n' + kbData.answer;
             }
+            // Don't append KB answer to LLM text — sources/citations are shown separately
           }
         } catch { /* knowledge base is supplementary */ }
       }
