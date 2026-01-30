@@ -15,6 +15,7 @@ import { ImageLightbox } from './components/VisualFindingsCard';
 import ThinkingLoader from './components/ThinkingLoader';
 import InputBar from './components/InputBar';
 import SessionSidebar from './components/SessionSidebar';
+import ToothScanLoader from '../ui/ToothScanLoader';
 
 // ── Boot Screen ─────────────────────────────────────
 
@@ -24,30 +25,18 @@ function BootScreen() {
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center gap-6"
+        className="flex flex-col items-center"
       >
-        <motion.div
-          className="relative"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-        >
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
-            <Activity className="w-8 h-8 text-white" />
-          </div>
-          <div className="absolute -inset-4 rounded-3xl bg-indigo-500/10 animate-ping" />
-        </motion.div>
+        {/* 1. The 3D Tooth Scanner Animation */}
+        <ToothScanLoader text="Initializing Serene AI..." />
 
-        <div className="text-center">
-          <h1 className="text-xl font-bold text-primary">Serene AI</h1>
-          <p className="text-sm text-muted mt-1">Initializing AI analysis engine...</p>
-        </div>
-
-        <div className="w-48 h-1 rounded-full bg-muted/20 overflow-hidden">
+        {/* 2. Loading Progress Bar (Updated colors to match scanner) */}
+        <div className="w-48 h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mt-8">
           <motion.div
-            className="h-full rounded-full bg-indigo-500"
+            className="h-full rounded-full bg-blue-500"
             initial={{ width: '0%' }}
             animate={{ width: '100%' }}
-            transition={{ duration: 0.9, ease: 'easeInOut' }}
+            transition={{ duration: 2, ease: 'easeInOut' }}
           />
         </div>
       </motion.div>
