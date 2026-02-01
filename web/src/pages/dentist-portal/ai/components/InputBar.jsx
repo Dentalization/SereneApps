@@ -59,7 +59,7 @@ export default function InputBar({ onSend, isLoading }) {
     // 1. absolute bottom-0: Nempel di bawah parent (AIAnalysisPage container)
     // 2. z-30: Layer di atas chat bubble
     // 3. pointer-events-none: Supaya area kosong di kiri/kanan input bar bisa di-klik tembus ke chat
-    <div className="absolute bottom-0 left-0 right-0 z-30 px-4 pb-6 pt-10 flex justify-center pointer-events-none">
+    <div className="absolute bottom-0 left-0 right-0 z-30 px-8 pb-6 pt-10 flex justify-center pointer-events-none">
       
       {/* Gradient Fade: Supaya teks yang discroll ke bawah input bar terlihat memudar (estetik) */}
       <div className="absolute inset-0 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-slate-950 dark:via-slate-950/90 -z-10 h-full" />
@@ -68,7 +68,7 @@ export default function InputBar({ onSend, isLoading }) {
         layout
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-3xl pointer-events-auto relative group"
+        className="w-full max-w-5xl pointer-events-auto relative group"
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}

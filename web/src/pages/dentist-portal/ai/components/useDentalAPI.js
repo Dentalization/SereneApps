@@ -52,7 +52,7 @@ function normalizeFindings(data) {
 }
 
 
-export default function useDentalAPI() {
+export default function useDentalAPI(role = 'dentist') {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -90,7 +90,7 @@ export default function useDentalAPI() {
       const r = await fetch(api('/sessions'), {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ role: 'dentist', language: 'id', metadata: { source: 'deepdental_pro' } }),
+        body: JSON.stringify({ role, language: 'id', metadata: { source: role === 'dentist' ? 'deepdental_pro' : 'serene_patient_app' } }),
       });
       const data = await r.json();
       if (data.id) {
@@ -102,7 +102,7 @@ export default function useDentalAPI() {
       console.error('Failed to create session:', err);
     }
     return null;
-  }, []);
+  }, [role]);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -228,7 +228,7 @@ export default function useDentalAPI() {
         const chatForm = new FormData();
         chatForm.append('message', analysisPrompt);
         chatForm.append('session_id', sessionId);
-        chatForm.append('role', 'dentist');
+        chatForm.append('role', role);
         chatForm.append('language', 'id');
 
         try {
@@ -261,7 +261,7 @@ export default function useDentalAPI() {
         const formData = new FormData();
         formData.append('message', message);
         formData.append('session_id', sessionId);
-        formData.append('role', 'dentist');
+        formData.append('role', role);
         formData.append('language', 'id');
 
         const chatRes = await fetch(api('/chat/upload'), {
@@ -287,7 +287,7 @@ export default function useDentalAPI() {
             headers: jsonHeaders(),
             body: JSON.stringify({
               question: `Analisis klinis lengkap dan perawatan untuk: ${labels.join(', ')}. Sertakan diagnosis diferensial, tingkat keparahan, opsi perawatan, dan prognosis. Jawab dalam Bahasa Indonesia.`,
-              role: 'dentist',
+              role,
               k: 6,
             }),
           });
@@ -328,7 +328,7 @@ export default function useDentalAPI() {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId, addMessage]);
+  }, [sessionId, addMessage, role]);
 
   // ── New Session ─────────────────────────────────────
 

@@ -16,7 +16,7 @@ const ClinicalResearch = () => {
     <div className="min-h-screen bg-background">
       <Header />
       {/* Main Content */}
-      <main className="pt-16">
+      <main className="">
         <ResearchHero />
         <AccuracyMetrics />
         <PublishedResearch />

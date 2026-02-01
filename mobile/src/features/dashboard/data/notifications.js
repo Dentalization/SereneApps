@@ -260,10 +260,10 @@ export const SAMPLE_NOTIFICATIONS = [
     id: 'notif-system-006',
     type: 'system',
     title: 'Versi baru tersedia',
-    message: 'Perbarui aplikasi ke v2.4.1 untuk AI scan lebih cepat dan dukungan mode gelap.',
+    message: 'Perbarui aplikasi ke v1.0 untuk AI scan lebih cepat dan dukungan mode gelap.',
     timestamp: hoursAgo(20),
     read: true,
-    meta: { version: 'v2.4.1' },
+    meta: { version: 'v1.0' },
     cta: null,
   },
   {
