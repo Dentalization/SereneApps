@@ -1,5 +1,6 @@
 // src/components/ui/Header.jsx
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 import Icon from '../AppIcon'
 import Button from './Button'
@@ -17,7 +18,6 @@ const Header = () => {
   const location = useLocation()
   const { toggleTheme, isDark } = useTheme()
 
-  // Check if we're on the SereneAI page
   const isOnSereneAI = location?.pathname === '/serene-agentic'
 
   const navigationItems = [
@@ -28,128 +28,288 @@ const Header = () => {
   ]
   const moreItems = [{ name: 'Clinical Research', path: '/clinical-research', icon: 'FileText' }]
 
-  useEffect(() => { const onScroll = () => setIsScrolled(window.scrollY > 10); onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); return () => window.removeEventListener('scroll', onScroll) }, [])
-  useEffect(() => { const onDocClick = (e) => { if (!moreRef.current?.contains(e.target)) setIsMoreOpen(false) }; const onKey = (e) => { if (e.key === 'Escape') setIsMoreOpen(false) }; document.addEventListener('mousedown', onDocClick); window.addEventListener('keydown', onKey); return () => { document.removeEventListener('mousedown', onDocClick); window.removeEventListener('keydown', onKey) } }, [])
+  // --- SCROLL LISTENER (Optimized) ---
+  useEffect(() => {
+    const handleScroll = () => {
+      // Toggle "Scrolled" state after 20px
+      if (window.scrollY > 20) {
+        setIsScrolled(true)
+      } else {
+        setIsScrolled(false)
+      }
+    }
 
-  const onMoreMouseEnter = () => { clearTimeout(closeHoverTimer.current); openHoverTimer.current = setTimeout(() => setIsMoreOpen(true), 80) }
-  const onMoreMouseLeave = () => { clearTimeout(openHoverTimer.current); closeHoverTimer.current = setTimeout(() => setIsMoreOpen(false), 160) }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Handle Outside Click & Escape Key
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!moreRef.current?.contains(e.target)) setIsMoreOpen(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsMoreOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  const onMoreMouseEnter = () => {
+    clearTimeout(closeHoverTimer.current)
+    openHoverTimer.current = setTimeout(() => setIsMoreOpen(true), 80)
+  }
+  const onMoreMouseLeave = () => {
+    clearTimeout(openHoverTimer.current)
+    closeHoverTimer.current = setTimeout(() => setIsMoreOpen(false), 160)
+  }
+
   const toggleMobileMenu = () => setIsMobileMenuOpen((v) => !v)
   const closeMobileMenu = () => setIsMobileMenuOpen(false)
   const isActivePath = (p) => location?.pathname === p
 
-  return (
-    <header
-    className={`header-glass fixed inset-x-0 top-0 z-50
-      transition-[background-color,backdrop-filter,border-color,box-shadow] duration-300 theme-transition
-      ${
-        isScrolled
-          // ➜ use theme variables instead of hardcoded colors
-          ? 'bg-surface-elevated/80 backdrop-blur-md backdrop-saturate-150 border-b border-primary/10 shadow-theme-lg'
-          : 'bg-transparent border-b border-transparent shadow-none backdrop-blur-0'
-      }`}
-  >
-      <div className="w-full">
-        <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-          <Link to="/" onClick={closeMobileMenu} className="group flex items-center space-x-4 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 rounded-lg">
-            <div className="relative"><img src="./icon.png" alt="Serene AI" className="h-16 w-16 object-contain shrink-0 transform-gpu will-change-transform transition-transform duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] group-hover:scale-[1.04] group-hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:transform-none" /></div>
-            <div className="flex flex-col transform-gpu will-change-transform transition-transform duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:transform-none"><span className="text-xl font-bold text-primary tracking-tight">Serene AI</span><span className="text-xs text-text-secondary font-medium -mt-1">Dental Platform</span></div>
-          </Link>
+  return createPortal(
+    <>
+      <header
+        id="site-header"
+        role="banner"
+        tabIndex={-1}
+        className={`fixed inset-x-10 top-4 z-[999] transition-all duration-300 ease-in-out border-b rounded-[25px] backdrop-saturate-100
+        ${
+          isScrolled
+            ? 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-slate-200/50 dark:border-slate-800/50 shadow-md py-2'
+            : 'bg-transparent border-transparent py-4'
+        }`}
+      >
+      
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14">
+            
+            {/* --- LOGO --- */}
+            <Link
+              to="/"
+              onClick={closeMobileMenu}
+              className="group flex items-center gap-3 select-none focus:outline-none"
+            >
+              <img
+                src="./icon.png"
+                alt="Serene AI"
+                className="h-20 w-20 object-contain transition-transform duration-300 group-hover:scale-110"
+              />
+              <div className="flex flex-col">
+                <span className="text-xl font-bold text-slate-900 dark:text-white leading-none tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Serene AI
+                </span>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-0.5">
+                  Dental Platform
+                </span>
+              </div>
+            </Link>
 
-          {/* DESKTOP NAV — transparent links (no chip backgrounds) */}
-          <nav className="hidden lg:flex items-center space-x-1 !bg-transparent !shadow-none !border-0 p-0 m-0">
-            {navigationItems.map((item) => {
-              const active = isActivePath(item.path)
-              return (
-                <Link key={item.path} to={item.path} className={`group flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transform-gpu will-change-[transform] transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] !bg-transparent hover:!bg-transparent active:!bg-transparent !shadow-none !ring-0 !outline-none ${active ? 'text-primary' : 'text-text-primary hover:text-primary'} hover:-translate-y-0.5 active:translate-y-0 active:scale-[.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none`}>
-                  <span className="transform-gpu transition-transform duration-200 ease-out group-hover:-translate-y-0.5 motion-reduce:transform-none"><Icon name={item.icon} size={16} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span><span>{item.name}</span>
-                </Link>
-              )
-            })}
+            {/* --- DESKTOP NAVIGATION --- */}
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 rounded-full px-2 py-1 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-md">
+              {navigationItems.map((item) => {
+                const active = isActivePath(item.path)
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`relative px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 group flex items-center gap-2
+                      ${
+                        active
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
+                      }
+                    `}
+                  >
+                    <Icon 
+                      name={item.icon} 
+                      size={16} 
+                      className={`transition-colors duration-300 ${active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} 
+                    />
+                    <span>{item.name}</span>
+                  </Link>
+                )
+              })}
 
-            {/* MORE (desktop) */}
-            <div ref={moreRef} className="relative" onMouseEnter={onMoreMouseEnter} onMouseLeave={onMoreMouseLeave}>
-              <button type="button" onClick={() => setIsMoreOpen((v) => !v)} aria-haspopup="menu" aria-expanded={isMoreOpen} aria-controls="more-menu" className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transform-gpu will-change-[transform] transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] !bg-transparent hover:!bg-transparent active:!bg-transparent !shadow-none ${isMoreOpen ? 'text-primary -translate-y-0.5' : 'text-text-primary hover:text-primary hover:-translate-y-0.5'} active:translate-y-0 active:scale-[.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none`}>
-                <Icon name="MoreHorizontal" size={16} className="[fill:none] stroke-current [&_*]:[fill:none]" /><span>More</span><span className={`transform-gpu transition-transform duration-200 ease-out ${isMoreOpen ? 'rotate-180' : ''} motion-reduce:transform-none`}><Icon name="ChevronDown" size={14} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span>
-              </button>
+              {/* MORE DROPDOWN */}
+              <div
+                ref={moreRef}
+                className="relative"
+                onMouseEnter={onMoreMouseEnter}
+                onMouseLeave={onMoreMouseLeave}
+              >
+                <button
+                  className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-300 flex items-center gap-1.5
+                    ${
+                      isMoreOpen
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
+                    }
+                  `}
+                >
+                  <span>More</span>
+                  <Icon
+                    name="ChevronDown"
+                    size={14}
+                    className={`transition-transform duration-300 ${isMoreOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
 
-              {/* Improved dropdown with better contrast */}
-              <div id="more-menu" role="menu" className={`absolute top-full right-0 mt-2 z-[60] w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 backdrop-blur-xl shadow-xl transform-gpu will-change-[transform,opacity] transition-[opacity,transform] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] ${isMoreOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-1 pointer-events-none'}`}>
-                <div className="py-2">
+                {/* Dropdown Menu */}
+                <div
+                  className={`absolute top-full right-0 mt-3 w-56 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-black/40 transform transition-all duration-200 origin-top-right
+                  ${
+                    isMoreOpen
+                      ? 'opacity-100 scale-100 translate-y-0 visible'
+                      : 'opacity-0 scale-95 -translate-y-2 invisible'
+                  }`}
+                >
                   {moreItems.map((item) => {
                     const active = isActivePath(item.path)
                     return (
-                      <Link key={item.path} to={item.path} onClick={() => setIsMoreOpen(false)} role="menuitem" className={`group/item flex items-center space-x-3 px-4 py-2 text-sm font-medium rounded-md !bg-transparent !shadow-none text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transform-gpu transition-[transform,background-color,color] duration-150 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] ${active ? 'text-primary' : ''} hover:-translate-y-0.5 active:translate-y-0 motion-reduce:transition-none motion-reduce:transform-none`}>
-                        <span className="transform-gpu transition-transform duration-150 ease-out group-hover/item:-translate-y-0.5 motion-reduce:transform-none"><Icon name={item.icon} size={16} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span><span>{item.name}</span>
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setIsMoreOpen(false)}
+                        className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
+                          ${
+                            active
+                              ? 'bg-blue-5 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                          }
+                        `}
+                      >
+                        <div className={`p-1.5 rounded-lg transition-colors ${active ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 group-hover:bg-white dark:group-hover:bg-slate-600'}`}>
+                           <Icon name={item.icon} size={16} />
+                        </div>
+                        {item.name}
                       </Link>
                     )
                   })}
                 </div>
               </div>
-            </div>
-          </nav>
-
-          {/* DESKTOP CTAs */}
-          <div className="hidden lg:flex items-center space-x-3">
-            <button onClick={toggleTheme} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} className="group p-2 rounded-lg text-text-primary hover:text-primary transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none"><span className="block transform-gpu transition-transform duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] group-hover:rotate-12 motion-reduce:transform-none"><Icon name={isDark ? 'Sun' : 'Moon'} size={20} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span></button>
-            <Link to="/login">
-              <Button variant="glass" glassActive={isScrolled} iconName="LogIn" iconPosition="left" iconSize={16}>Sign In</Button>
-            </Link>
-            {isOnSereneAI ? (
-              // Show only icon when on SereneAI page
-              <Link to="/serene-agentic" className="group p-2 rounded-lg text-primary hover:text-primary/80 transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none" title="AI Analysis Active">
-                <span className="block transform-gpu transition-transform duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] group-hover:scale-110 motion-reduce:transform-none">
-                  <Icon name="Sparkles" size={20} className="[fill:none] stroke-current [&_*]:[fill:none]" />
-                </span>
-              </Link>
-            ) : (
-              // Show full button when not on SereneAI page
-              <Link to="/serene-agentic">
-                <Button variant="default" iconName="Sparkles" iconPosition="left" iconSize={16}>Try Free Analysis</Button>
-              </Link>
-            )}
-          </div>
-
-          {/* MOBILE TOGGLE */}
-          <button onClick={toggleMobileMenu} aria-label="Toggle mobile menu" className="lg:hidden p-2 rounded-lg text-text-primary hover:text-primary transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none"><Icon name={isMobileMenuOpen ? 'X' : 'Menu'} size={24} className="[fill:none] stroke-current [&_*]:[fill:none]" /></button>
-        </div>
-
-        {/* MOBILE MENU */}
-        <div className={`lg:hidden will-change-[max-height,opacity] overflow-hidden transition-[max-height,opacity] duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] ${isMobileMenuOpen ? 'max-h-screen opacity-100 visible' : 'max-h-0 opacity-0 invisible'} motion-reduce:transition-none`}>
-          <div className="px-4 py-4 border-t border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/60 backdrop-blur-md">
-            <nav className="space-y-2">
-              {navigationItems.map((item) => {
-                const active = isActivePath(item.path)
-                return (
-                  <Link key={item.path} to={item.path} onClick={closeMobileMenu} className={`group flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium bg-transparent text-text-primary transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] ${active ? 'text-primary' : 'hover:text-primary'} hover:-translate-y-0.5 active:translate-y-0 active:scale-[.99] motion-reduce:transition-none motion-reduce:transform-none`}>
-                    <span className="transform-gpu transition-transform duration-200 ease-out group-hover:-translate-y-0.5 motion-reduce:transform-none"><Icon name={item.icon} size={20} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span><span>{item.name}</span>
-                  </Link>
-                )
-              })}
-              {moreItems.map((item) => {
-                const active = isActivePath(item.path)
-                return (
-                  <Link key={item.path} to={item.path} onClick={closeMobileMenu} className={`group flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium bg-transparent text-text-primary transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] ${active ? 'text-primary' : 'hover:text-primary'} hover:-translate-y-0.5 active:translate-y-0 active:scale-[.99] motion-reduce:transition-none motion-reduce:transform-none`}>
-                    <span className="transform-gpu transition-transform duration-200 ease-out group-hover:-translate-y-0.5 motion-reduce:transform-none"><Icon name={item.icon} size={20} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span><span>{item.name}</span>
-                  </Link>
-                )
-              })}
             </nav>
 
-            <div className="mt-6 pt-4 border-t border-black/10 dark:border-white/10 space-y-3">
-              <button onClick={toggleTheme} className="group flex items-center space-x-3 px-4 py-3 w-full rounded-lg text-base font-medium text-text-primary hover:text-primary transform-gpu will-change-transform transition-[transform,color] duration-200 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none"><span className="transform-gpu transition-transform duration-300 [transition-timing-function:cubic-bezier(.2,.8,.2,1)] group-hover:rotate-12 motion-reduce:transform-none"><Icon name={isDark ? 'Sun' : 'Moon'} size={20} className="[fill:none] stroke-current [&_*]:[fill:none]" /></span><span>{isDark ? 'Light Mode' : 'Dark Mode'}</span></button>
-              <Link to="/login" onClick={closeMobileMenu}>
-                <Button variant="glass" glassActive={isScrolled} fullWidth iconName="LogIn" iconPosition="left" iconSize={18}>Sign In</Button>
+            {/* --- DESKTOP ACTIONS --- */}
+            <div className="hidden lg:flex items-center gap-3">
+              <button
+                onClick={toggleTheme}
+                aria-label="Toggle theme"
+                className="p-2.5 rounded-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+              >
+                <Icon name={isDark ? 'Sun' : 'Moon'} size={20} />
+              </button>
+
+              <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+
+              <Link to="/login">
+                <button className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+                  Sign In
+                </button>
+              </Link>
+
+              {isOnSereneAI ? (
+                <Link to="/serene-agentic">
+                   <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all">
+                      <Icon name="Sparkles" size={18} />
+                   </div>
+                </Link>
+              ) : (
+                <Link to="/serene-agentic">
+                  <Button
+                    variant="default"
+                    iconName="Sparkles"
+                    iconPosition="left"
+                    iconSize={16}
+                    className="rounded-full shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40"
+                  >
+                    Try Free Analysis
+                  </Button>
+                </Link>
+              )}
+            </div>
+
+            {/* --- MOBILE TOGGLE --- */}
+            <button
+              onClick={toggleMobileMenu}
+              className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Icon name={isMobileMenuOpen ? 'X' : 'Menu'} size={24} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* --- MOBILE MENU OVERLAY --- */}
+      <div
+        className={`fixed inset-0 z-[90] lg:hidden bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+        ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'}`}
+      >
+        <div className="flex flex-col h-full pt-24 px-6 pb-8 overflow-y-auto">
+          <nav className="flex-1 space-y-2">
+            {[...navigationItems, ...moreItems].map((item, idx) => {
+              const active = isActivePath(item.path)
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={closeMobileMenu}
+                  className={`flex items-center gap-4 p-4 rounded-2xl text-lg font-medium transition-all duration-200
+                    ${
+                      active
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'
+                    }
+                  `}
+                  style={{
+                    opacity: isMobileMenuOpen ? 1 : 0,
+                    transform: isMobileMenuOpen ? 'translateY(0)' : 'translateY(20px)',
+                    transitionDelay: `${idx * 50}ms`
+                  }}
+                >
+                  <div className={`p-2 rounded-xl ${active ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                    <Icon name={item.icon} size={24} />
+                  </div>
+                  {item.name}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="space-y-4 pt-8 border-t border-slate-200 dark:border-slate-800">
+            <button
+              onClick={toggleTheme}
+              className="w-full flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
+            >
+              <span className="flex items-center gap-3">
+                 <Icon name={isDark ? 'Moon' : 'Sun'} size={20} className={isDark ? 'text-purple-400' : 'text-amber-500'} />
+                 {isDark ? 'Dark Mode' : 'Light Mode'}
+              </span>
+              <div className={`w-12 h-7 rounded-full p-1 transition-colors ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-5' : 'translate-x-0'}`} />
+              </div>
+            </button>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Link to="/login" onClick={closeMobileMenu} className="w-full">
+                <Button variant="outline" fullWidth className="h-12 rounded-xl border-slate-200 dark:border-slate-700">Sign In</Button>
               </Link>
               {!isOnSereneAI && (
-                <Link to="/serene-agentic" onClick={closeMobileMenu}>
-                  <Button variant="default" fullWidth iconName="Sparkles" iconPosition="left" iconSize={18}>Try Free Analysis</Button>
+                <Link to="/serene-ai" onClick={closeMobileMenu} className="w-full">
+                  <Button variant="default" fullWidth className="h-12 rounded-xl shadow-lg shadow-blue-500/20">Try AI</Button>
                 </Link>
               )}
             </div>
           </div>
         </div>
       </div>
-    </header>
+    </>,
+    document.body
   )
 }
 

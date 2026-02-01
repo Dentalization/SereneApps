@@ -11,10 +11,10 @@ import MobileApps from './components/MobileApps';
 
 const ForPatientsPage = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Header />
       
-      <main className="pt-16">
+      <main className="">
         <HeroSection />
         <MobileApps />
         <SymptomChecker />
