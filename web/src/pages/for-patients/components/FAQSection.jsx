@@ -1,164 +1,177 @@
 import React, { useState } from 'react';
 import Icon from '../../../components/AppIcon';
+import Button from '../../../components/ui/Button';
 
 const FAQSection = () => {
-  const [openFAQ, setOpenFAQ] = useState(0);
+  const [openFAQ, setOpenFAQ] = useState(null);
 
   const faqs = [
     {
       id: 1,
-      category: 'AI Accuracy',
-      question: 'How accurate is Serene\'s AI dental analysis?',
-      answer: `Our AI has been trained on over 500,000 dental images and achieves 94% accuracy in detecting common dental conditions. The system has been validated through clinical trials with over 200 dental professionals and consistently matches or exceeds human diagnostic accuracy for early-stage conditions.\n\nHowever, AI analysis is designed to complement, not replace, professional dental examination. We always recommend consulting with a qualified dentist for definitive diagnosis and treatment planning.`
+      category: 'Technology',
+      question: 'How accurate is the AI diagnosis?',
+      answer: [
+        "Our models (YOLOv8 & ResNet) achieve a 94.7% accuracy rate in detecting common pathologies like caries and gingivitis.",
+        "While highly precise, this tool is designed for screening. A licensed dentist must verify all findings before treatment."
+      ]
     },
     {
       id: 2,
-      category: 'Privacy & Security',
-      question: 'Is my dental information secure and private?',
-      answer: `Absolutely. Serene is fully HIPAA compliant and uses enterprise-grade encryption to protect your data. Your dental images and personal information are:\n\n• Encrypted both in transit and at rest using AES-256 encryption\n• Stored on secure, HIPAA-compliant cloud infrastructure\n• Never shared with third parties without your explicit consent\n• Automatically deleted after 90 days unless you choose to save them\n• Accessible only to you and dental professionals you authorize\n\nWe undergo regular security audits and maintain SOC 2 Type II compliance to ensure the highest standards of data protection.`
+      category: 'Privacy',
+      question: 'Is my dental data secure?',
+      answer: [
+        "Yes. We are HIPAA and SOC-2 compliant. All images are anonymized and encrypted using AES-256 before being processed.",
+        "You own your data and can request permanent deletion at any time."
+      ]
     },
     {
       id: 3,
-      category: 'When to Seek Care',
-      question: 'When should I see a dentist after using the AI analysis?',
-      answer: `The AI provides clear recommendations based on your analysis results:\n\n**Immediate Care (within 24-48 hours):**\n• Severe pain or swelling\n• Signs of infection or abscess\n• Trauma or injury to teeth/mouth\n• Bleeding that won't stop\n\n**Prompt Care (within 1-2 weeks):**\n• Persistent sensitivity\n• Visible cavities or damage\n• Gum inflammation or recession\n• Changes in bite or tooth alignment\n\n**Routine Care (within 1-3 months):**\n• Preventive maintenance\n• Minor cosmetic concerns\n• Regular cleaning and checkup\n\nAlways trust your instincts—if something feels wrong, don't hesitate to seek professional care regardless of the AI recommendation.`
+      category: 'Medical',
+      question: 'Can this replace my dentist?',
+      answer: [
+        "No. Serene AI is a decision-support tool. It cannot perform physical exams, tactile sensing, or X-rays.",
+        "It is best used for early detection, second opinions, and tracking oral hygiene progress between visits."
+      ]
     },
     {
       id: 4,
-      category: 'Using the App',
-      question: 'How do I take the best photos for AI analysis?',
-      answer: `For optimal AI analysis results, follow these photo guidelines:\n\n**Lighting:**\n• Use natural daylight or bright white LED light\n• Avoid yellow/warm lighting or shadows\n• Position light source in front of your face\n\n**Camera Position:**\n• Hold phone 6-8 inches from your mouth\n• Keep camera parallel to your teeth\n• Use the guided overlay in our app\n\n**Photo Types Needed:**\n• Front view with lips retracted\n• Upper teeth view (bite down gently)\n• Lower teeth view\n• Side views (left and right)\n\n**Tips for Success:**\n• Clean teeth before photos\n• Use a dental mirror for hard-to-reach areas\n• Take multiple shots—our AI will select the best ones\n• Follow the in-app guidance prompts`
+      category: 'Usage',
+      question: 'What if I can\'t take a clear photo?',
+      answer: [
+        "The app includes a guided capture mode that will reject blurry or dark images automatically.",
+        "If you struggle, you can also upload existing photos from your gallery if they meet our quality standards."
+      ]
     },
     {
       id: 5,
-      category: 'Cost & Insurance',
-      question: 'Does insurance cover AI dental analysis?',
-      answer: `Currently, most insurance plans don't directly cover AI dental analysis as it's considered a screening tool rather than a diagnostic procedure. However:\n\n**Cost Savings:**\n• Early detection can prevent costly procedures\n• Average user saves $1,200 in avoided treatments\n• Free initial analysis with basic recommendations\n\n**Insurance Integration:**\n• Some progressive insurers are beginning to cover preventive AI tools\n• HSA/FSA funds can often be used for dental screening services\n• Many Serene partner dentists offer discounted rates for AI-guided visits\n\n**Affordable Options:**\n• Free basic analysis available\n• Premium features start at $9.99/month\n• Family plans available for multiple users\n• No hidden fees or surprise charges`
-    },
-    {
-      id: 6,
-      category: 'Technical Support',
-      question: 'What if the app isn\'t working properly?',
-      answer: `If you're experiencing technical issues:\n\n**Common Solutions:**\n• Ensure you have the latest app version\n• Check your internet connection\n• Clear app cache and restart\n• Allow camera and storage permissions\n\n**Camera Issues:**\n• Clean your phone's camera lens\n• Ensure adequate lighting\n• Try switching between front/back cameras\n• Restart the app if camera won't focus\n\n**Upload Problems:**\n• Check file size (max 10MB per image)\n• Ensure stable internet connection\n• Try uploading one image at a time\n\n**Get Help:**\n• In-app chat support (24/7)\n• Email: support@sereneai.com\n• Phone: 1-800-SERENE-1\n• Video tutorials in the app's help section\n\nOur support team typically responds within 15 minutes during business hours.`
+      category: 'Cost',
+      question: 'Is it covered by insurance?',
+      answer: [
+        "Teledentistry codes (D9995/D9996) may apply for remote evaluations depending on your carrier.",
+        "We provide a standard superbill that you can submit for potential reimbursement."
+      ]
     }
   ];
 
   const toggleFAQ = (index) => {
-    setOpenFAQ(openFAQ === index ? -1 : index);
+    setOpenFAQ(openFAQ === index ? null : index);
   };
 
   return (
-    <section className="py-20 bg-white">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-text-primary mb-4">
-            Frequently Asked Questions
+    <section className="py-24 bg-slate-50 dark:bg-slate-950 relative overflow-hidden">
+      
+      {/* Decor */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
+
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="HelpCircle" size={14} />
+            <span>Support</span>
+          </div>
+          <h2 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+            Frequently Asked <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+              Questions
+            </span>
           </h2>
-          <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Get answers to common questions about AI dental analysis, privacy, accuracy, and when to seek professional care.
+          <p className="text-lg text-slate-600 dark:text-slate-400">
+            Everything you need to know about AI dental screening.
           </p>
         </div>
 
         <div className="space-y-4">
-          {faqs?.map((faq, index) => (
-            <div key={faq?.id} className="bg-surface rounded-2xl shadow-brand overflow-hidden">
-              <button
-                onClick={() => toggleFAQ(index)}
-                className="w-full px-6 py-6 text-left flex items-center justify-between hover:bg-muted transition-gentle"
+          {faqs.map((faq, index) => {
+            const isOpen = openFAQ === index;
+            
+            return (
+              <div 
+                key={faq.id} 
+                className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all duration-300 ${
+                  isOpen 
+                    ? 'border-blue-500 shadow-lg' 
+                    : 'border-slate-200 dark:border-slate-800 hover:border-blue-300'
+                }`}
               >
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-                      {faq?.category}
-                    </span>
+                <button
+                  onClick={() => toggleFAQ(index)}
+                  className="w-full px-6 py-5 flex items-center justify-between text-left group"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-1">{faq.category}</div>
+                    <h3 className={`text-lg font-semibold transition-colors ${isOpen ? 'text-blue-600' : 'text-slate-900 dark:text-white group-hover:text-blue-500'}`}>
+                      {faq.question}
+                    </h3>
                   </div>
-                  <h3 className="text-lg font-semibold text-text-primary pr-4">
-                    {faq?.question}
-                  </h3>
-                </div>
-                <Icon
-                  name={openFAQ === index ? "ChevronUp" : "ChevronDown"}
-                  size={24}
-                  className="text-text-secondary flex-shrink-0"
-                />
-              </button>
+                  <div className={`p-2 rounded-full transition-all duration-300 ${isOpen ? 'bg-blue-600 text-white rotate-180' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 rotate-0'}`}>
+                    <Icon name="ChevronDown" size={20} />
+                  </div>
+                </button>
 
-              <div className={`disclosure-content ${openFAQ === index ? 'open' : ''}`}>
-                <div className="px-6 pb-6">
-                  <div className="prose prose-sm max-w-none">
-                    {faq?.answer?.split('\n\n')?.map((paragraph, pIndex) => (
-                      <div key={pIndex} className="mb-4 last:mb-0">
-                        {paragraph?.includes('**') ? (
-                          <div className="space-y-2">
-                            {paragraph?.split('\n')?.map((line, lIndex) => {
-                              if (line?.includes('**')) {
-                                const parts = line?.split('**');
-                                return (
-                                  <div key={lIndex} className="flex items-start space-x-2">
-                                    {parts?.length > 1 && (
-                                      <>
-                                        <Icon name="CheckCircle" size={16} className="text-primary mt-0.5 flex-shrink-0" />
-                                        <div>
-                                          <span className="font-semibold text-text-primary">{parts?.[1]}</span>
-                                          {parts?.[2] && <span className="text-text-secondary">{parts?.[2]}</span>}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              } else if (line?.startsWith('•')) {
-                                return (
-                                  <div key={lIndex} className="flex items-start space-x-2 ml-4">
-                                    <Icon name="ArrowRight" size={14} className="text-primary mt-1 flex-shrink-0" />
-                                    <span className="text-text-secondary">{line?.substring(2)}</span>
-                                  </div>
-                                );
-                              } else if (line?.trim()) {
-                                return (
-                                  <p key={lIndex} className="text-text-secondary">
-                                    {line}
-                                  </p>
-                                );
-                              }
-                              return null;
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-text-secondary leading-relaxed">
-                            {paragraph}
+                {/* --- SMOOTH ANIMATION CONTAINER --- */}
+                <div 
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                  }`}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    <div className="px-6 pb-6 pt-0 text-slate-600 dark:text-slate-400 leading-relaxed border-t border-dashed border-slate-100 dark:border-slate-800 mt-2">
+                      <div className="pt-4 space-y-3">
+                        {faq.answer.map((p, i) => (
+                          <p key={i} className="flex gap-3">
+                            <Icon name="Check" size={16} className="text-green-500 shrink-0 mt-1" />
+                            <span>{p}</span>
                           </p>
-                        )}
+                        ))}
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
+                {/* --- END ANIMATION CONTAINER --- */}
+
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Contact Support */}
-        <div className="mt-12 text-center">
-          <div className="bg-brand-canvas p-8 rounded-2xl">
-            <Icon name="MessageCircle" size={48} className="text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-text-primary mb-2">
-              Still have questions?
-            </h3>
-            <p className="text-text-secondary mb-6">
-              Our support team is available 24/7 to help you with any concerns about using Serene AI.
+        <div className="mt-16 text-center bg-slate-900 dark:bg-slate-800 rounded-3xl p-8 lg:p-12 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-[80px]" />
+          
+          <div className="relative z-10">
+            <h3 className="text-2xl font-bold text-white mb-4">Still have questions?</h3>
+            <p className="text-slate-400 mb-8 max-w-lg mx-auto">
+              Can't find the answer you're looking for? Please chat to our friendly team.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-gentle">
-                <Icon name="MessageCircle" size={18} />
-                <span>Start Live Chat</span>
-              </button>
-              <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-white text-text-primary rounded-lg font-medium border border-border hover:bg-muted transition-gentle">
-                <Icon name="Mail" size={18} />
-                <span>Email Support</span>
-              </button>
+            <div className="flex justify-center gap-4">
+              {/* WhatsApp / Chat Button */}
+              <a 
+                href="https://wa.me/6281287928805" 
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                <Button 
+                  className="bg-white text-slate-900 hover:bg-slate-100 border-none" 
+                  iconName="MessageCircle"
+                >
+                  Chat on WhatsApp
+                </Button>
+              </a>
+
+              {/* Email Support Button */}
+              <a href="mailto:serene.management@gmail.com">
+                <Button 
+                  variant="outline" 
+                  className="text-white border-white/20 hover:bg-white/10" 
+                  iconName="Mail"
+                >
+                  Email Support
+                </Button>
+              </a>
             </div>
           </div>
         </div>
+
       </div>
     </section>
   );

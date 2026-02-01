@@ -8,220 +8,255 @@ const EducationalContent = () => {
 
   const categories = [
     { id: 'prevention', label: 'Prevention', icon: 'Shield' },
-    { id: 'conditions', label: 'Common Conditions', icon: 'AlertCircle' },
-    { id: 'treatments', label: 'Treatments', icon: 'Wrench' },
-    { id: 'oral-care', label: 'Daily Care', icon: 'Sparkles' }
+    { id: 'conditions', label: 'Conditions', icon: 'Activity' },
+    { id: 'treatments', label: 'Treatments', icon: 'Stethoscope' },
+    { id: 'daily-care', label: 'Daily Care', icon: 'Smile' }
   ];
 
-  const educationalContent = {
+  const contentData = {
     prevention: [
       {
-        id: 1,
-        title: 'The Complete Guide to Preventing Cavities',
-        description: 'Learn evidence-based strategies to protect your teeth from decay, including proper brushing techniques, fluoride use, and dietary recommendations.',
-        image: 'https://images.pexels.com/photos/3845810/pexels-photo-3845810.jpeg?w=400&h=250&fit=crop',
-        readTime: '8 min read',
-        category: 'Prevention',
-        aiInsight: 'AI analysis shows that patients who follow these prevention protocols reduce cavity risk by 73%'
+        id: 'p1',
+        title: 'The "Spit, Don\'t Rinse" Rule',
+        description: 'Most people rinse with water after brushing, but this washes away the protective fluoride. Learn why leaving toothpaste on your teeth reduces cavity risk significantly.',
+        image: 'https://images.unsplash.com/photo-1559656914-a30970c1affd?auto=format&fit=crop&w=800&q=80',
+        readTime: '4 min read',
+        source: 'Oral Health Foundation',
+        aiInsight: 'Patients who stop rinsing after brushing show a 25% reduction in new cavity formation over 12 months.',
+        featured: true
       },
       {
-        id: 2,
-        title: 'Gum Disease Prevention: What You Need to Know',
-        description: 'Understanding the early signs of gum disease and how to prevent it through proper oral hygiene and professional care.',
-        image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=400&h=250&fit=crop',
+        id: 'p2',
+        title: 'Nutrition: Nature’s Toothbrush',
+        description: 'Crunchy vegetables like carrots and celery act as natural cleaners. Avoid sticky sweets that cling to enamel and fuel bacterial acid attacks.',
+        image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=400&q=80',
         readTime: '6 min read',
-        category: 'Prevention',
-        aiInsight: 'Our AI detects early gum inflammation 2 weeks before visible symptoms appear'
+        source: 'ADA Nutrition Guide',
+        aiInsight: 'Diets low in free sugars correlate with 50% fewer caries lesions in AI-analyzed patient cohorts.',
+        featured: false
       },
       {
-        id: 3,
-        title: 'Nutrition for Optimal Dental Health',
-        description: 'Discover which foods strengthen your teeth and which ones to limit for better oral health outcomes.',
-        image: 'https://images.pixabay.com/photo/2017/05/11/19/44/fresh-fruits-2305192_1280.jpg?w=400&h=250&fit=crop',
+        id: 'p3',
+        title: 'Sealants: The Invisible Shield',
+        description: 'Dental sealants are a thin coating painted on the chewing surfaces of teeth (usually molars) to prevent decay for many years.',
+        image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=400&q=80',
         readTime: '5 min read',
-        category: 'Prevention',
-        aiInsight: 'Patients following our nutrition guidelines show 45% improvement in enamel strength'
+        source: 'CDC Oral Health',
+        aiInsight: 'School-age children without sealants have almost 3x more cavities than children with sealants.',
+        featured: false
       }
     ],
     conditions: [
       {
-        id: 4,
-        title: 'Understanding Tooth Sensitivity',
-        description: 'Learn about the causes of tooth sensitivity and effective treatment options to reduce discomfort.',
-        image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=400&h=250&fit=crop',
+        id: 'c1',
+        title: 'Early Detection of Oral Cancer',
+        description: 'Oral cancer can appear as a white or red patch, or a small sore that doesn’t heal. Early detection drastically improves survival rates.',
+        image: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
         readTime: '7 min read',
-        category: 'Conditions',
-        aiInsight: 'AI can identify sensitivity patterns from photos with 89% accuracy'
+        source: 'Oral Cancer Foundation',
+        aiInsight: 'AI screening tools can identify suspicious lesions 2-3 years before they are visible to the naked eye.',
+        featured: true
       },
       {
-        id: 5,
-        title: 'Recognizing Signs of Oral Cancer',
-        description: 'Important information about oral cancer symptoms and the importance of regular screenings.',
-        image: 'https://images.pexels.com/photos/3845623/pexels-photo-3845623.jpeg?w=400&h=250&fit=crop',
-        readTime: '10 min read',
-        category: 'Conditions',
-        aiInsight: 'Early detection through AI screening improves treatment success rates by 60%'
+        id: 'c2',
+        title: 'Gingivitis vs. Periodontitis',
+        description: 'Gingivitis is reversible; Periodontitis involves permanent bone loss. Learn to spot the difference before it’s too late.',
+        image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80',
+        readTime: '5 min read',
+        source: 'Mayo Clinic',
+        aiInsight: 'Our scans detect gum recession as small as 0.5mm, often the first sign of progressing periodontitis.',
+        featured: false
+      },
+      {
+        id: 'c3',
+        title: 'Why Teeth Become Sensitive',
+        description: 'Sensitivity often comes from worn enamel or exposed roots. Acidic foods and aggressive brushing are common culprits.',
+        image: 'https://images.unsplash.com/photo-1609840114035-3c981b782dfe?auto=format&fit=crop&w=400&q=80',
+        readTime: '4 min read',
+        source: 'Cleveland Clinic',
+        aiInsight: 'AI analysis links 65% of sensitivity cases to identifiable enamel erosion patterns.',
+        featured: false
       }
     ],
     treatments: [
       {
-        id: 6,
-        title: 'Modern Root Canal Treatment',
-        description: 'Debunking myths about root canals and understanding the modern, comfortable treatment process.',
-        image: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=400&h=250&fit=crop',
-        readTime: '9 min read',
-        category: 'Treatments',
-        aiInsight: 'AI pre-treatment analysis reduces procedure time by 25%'
+        id: 't1',
+        title: 'The Truth About Root Canals',
+        description: 'Modern root canals are virtually painless—similar to getting a filling. They are the only way to save a deeply infected tooth from extraction.',
+        image: 'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=800&q=80',
+        readTime: '8 min read',
+        source: 'American Association of Endodontists',
+        aiInsight: 'Success rates for AI-guided endodontic treatments exceed 95% due to precise canal mapping.',
+        featured: true
       },
       {
-        id: 7,
-        title: 'Dental Implants: A Complete Guide',
-        description: 'Everything you need to know about dental implants, from candidacy to recovery.',
-        image: 'https://images.pixabay.com/photo/2020/05/30/20/52/dentist-5238152_1280.jpg?w=400&h=250&fit=crop',
-        readTime: '12 min read',
-        category: 'Treatments',
-        aiInsight: 'AI planning increases implant success rates to 98.5%'
+        id: 't2',
+        title: 'Implants: The Gold Standard',
+        description: 'Dental implants fuse with your jawbone (osseointegration) to provide permanent support for crowns and bridges.',
+        image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?auto=format&fit=crop&w=400&q=80',
+        readTime: '10 min read',
+        source: 'Journal of Implantology',
+        aiInsight: 'Implants prevent bone loss, preserving facial structure better than dentures or bridges.',
+        featured: false
       }
     ],
-    'oral-care': [
+    'daily-care': [
       {
-        id: 8,
-        title: 'Perfect Brushing Technique',
-        description: 'Master the proper brushing technique with step-by-step instructions and common mistakes to avoid.',
-        image: 'https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=250&fit=crop',
-        readTime: '4 min read',
-        category: 'Daily Care',
-        aiInsight: 'Proper technique removes 40% more plaque than standard brushing'
+        id: 'd1',
+        title: 'Mastering the 45-Degree Angle',
+        description: 'The most effective brushing technique involves angling bristles 45-degrees towards the gumline to clean the sulcus where bacteria hides.',
+        image: 'https://images.unsplash.com/photo-1559599101-f09722fb4948?auto=format&fit=crop&w=800&q=80',
+        readTime: '3 min read',
+        source: 'ADA Guidelines',
+        aiInsight: 'Patients adopting the Modified Bass Technique reduce plaque scores by an average of 40%.',
+        featured: true
       },
       {
-        id: 9,
-        title: 'Flossing: Beyond the Basics',
-        description: 'Advanced flossing techniques and alternatives for different dental situations.',
-        image: 'https://images.pexels.com/photos/3845810/pexels-photo-3845810.jpeg?w=400&h=250&fit=crop',
-        readTime: '6 min read',
-        category: 'Daily Care',
-        aiInsight: 'Daily flossing reduces gum disease risk by 85% according to our patient data'
+        id: 'd2',
+        title: 'Floss vs. Interdental Brushes',
+        description: 'While floss is great for tight contacts, interdental brushes may be more effective for larger gaps and periodontal patients.',
+        image: 'https://images.unsplash.com/photo-1621252179027-94459d27d3ee?auto=format&fit=crop&w=400&q=80',
+        readTime: '5 min read',
+        source: 'European Federation of Periodontology',
+        aiInsight: 'Daily interdental cleaning lowers the risk of severe gum disease by over 50%.',
+        featured: false
       }
     ]
   };
 
+  const activeArticles = contentData[activeCategory] || [];
+  const featuredArticle = activeArticles.find(a => a.featured) || activeArticles[0];
+  const standardArticles = activeArticles.filter(a => a.id !== featuredArticle.id);
+
   return (
-    <section className="py-20 bg-brand-canvas">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-text-primary mb-4">
-            Your Dental Health Library
+    <section className="py-24 bg-slate-50 dark:bg-slate-950 relative overflow-hidden">
+      
+      {/* Decorative Background */}
+      <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/clean-gray-paper.png')] opacity-[0.4] mix-blend-multiply dark:opacity-[0.05]" />
+      <div className="absolute top-20 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        
+        {/* Header */}
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="BookOpen" size={14} />
+            <span>Knowledge Hub</span>
+          </div>
+          <h2 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+            Evidence-Based <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">
+              Dental Education
+            </span>
           </h2>
-          <p className="text-lg text-text-secondary max-w-3xl mx-auto">
-            Access comprehensive, AI-enhanced educational content to understand your dental health better. 
-            Learn from expert insights combined with real patient data analysis.
+          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+            Demystifying dentistry with verified medical data. Learn how to protect your smile using the same protocols trusted by top clinicians.
           </p>
         </div>
 
-        {/* Category Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-12">
-          {categories?.map((category) => (
+        {/* Category Navigation */}
+        <div className="flex flex-wrap justify-center gap-3 mb-16">
+          {categories.map((cat) => (
             <button
-              key={category?.id}
-              onClick={() => setActiveCategory(category?.id)}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-full font-medium transition-gentle hover-lift ${
-                activeCategory === category?.id
-                  ? 'bg-primary text-primary-foreground shadow-brand'
-                  : 'bg-white text-text-primary hover:bg-muted hover:text-primary border border-border'
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 ${
+                activeCategory === cat.id
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-400'
               }`}
             >
-              <Icon name={category?.icon} size={18} />
-              <span>{category?.label}</span>
+              <Icon name={cat.icon} size={16} />
+              {cat.label}
             </button>
           ))}
         </div>
 
-        {/* Content Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {educationalContent?.[activeCategory]?.map((article) => (
-            <article key={article?.id} className="bg-white rounded-2xl shadow-brand hover:shadow-brand-hover transition-gentle hover-lift overflow-hidden">
-              <div className="relative">
+        {/* Featured Article (Hero Card) */}
+        {featuredArticle && (
+          <div className="mb-12 group relative rounded-[2rem] overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl hover:shadow-2xl transition-all duration-300">
+            <div className="grid lg:grid-cols-2">
+              <div className="relative h-64 lg:h-auto overflow-hidden">
                 <Image
-                  src={article?.image}
-                  alt={article?.title}
-                  className="w-full h-48 object-cover"
+                  src={featuredArticle.image}
+                  alt={featuredArticle.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
-                <div className="absolute top-4 left-4">
-                  <span className="px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
-                    {article?.category}
-                  </span>
-                </div>
-                <div className="absolute top-4 right-4">
-                  <span className="px-3 py-1 bg-white/90 text-text-primary text-xs font-medium rounded-full">
-                    {article?.readTime}
-                  </span>
+                <div className="absolute top-4 left-4 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-md">
+                  Featured
                 </div>
               </div>
-
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-text-primary mb-3 line-clamp-2">
-                  {article?.title}
-                </h3>
+              <div className="p-8 lg:p-12 flex flex-col justify-center">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-400 mb-4">
+                  <Icon name="Clock" size={14} /> {featuredArticle.readTime}
+                  <span className="mx-2">•</span>
+                  <span>Source: {featuredArticle.source}</span>
+                </div>
                 
-                <p className="text-text-secondary mb-4 line-clamp-3">
-                  {article?.description}
+                <h3 className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white mb-4">
+                  {featuredArticle.title}
+                </h3>
+                <p className="text-slate-600 dark:text-slate-400 text-lg mb-8 leading-relaxed">
+                  {featuredArticle.description}
                 </p>
 
-                {/* AI Insight */}
-                <div className="bg-brand-canvas p-3 rounded-lg mb-4 border border-primary/20">
-                  <div className="flex items-start space-x-2">
-                    <Icon name="Brain" size={16} className="text-primary mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-text-primary">
-                      <span className="font-medium text-primary">AI Insight:</span> {article?.aiInsight}
-                    </p>
-                  </div>
+                {/* AI Insight Badge */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-r-xl mb-8">
+                   <div className="flex items-start gap-3">
+                     <Icon name="Database" size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-1" />
+                     <div>
+                       <div className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase mb-1">Clinical Data Point</div>
+                       <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{featuredArticle.aiInsight}"</p>
+                     </div>
+                   </div>
                 </div>
 
-                <Button
-                  variant="outline"
-                  fullWidth
-                  iconName="ArrowRight"
-                  iconPosition="right"
-                  iconSize={16}
-                >
-                  Read Article
-                </Button>
+                <div className="mt-auto">
+                  <Button variant="default" iconName="ArrowRight" iconPosition="right">
+                    Read Full Article
+                  </Button>
+                </div>
               </div>
-            </article>
+            </div>
+          </div>
+        )}
+
+        {/* Standard Articles Grid */}
+        <div className="grid md:grid-cols-2 gap-8">
+          {standardArticles.map((article) => (
+            <div 
+              key={article.id} 
+              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col"
+            >
+              <div className="flex items-start justify-between mb-6">
+                <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600">
+                  <Icon name="FileText" size={24} />
+                </div>
+                <span className="text-xs font-medium text-slate-400">{article.readTime}</span>
+              </div>
+              
+              <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-3 line-clamp-2">
+                {article.title}
+              </h4>
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 line-clamp-3 flex-1">
+                {article.description}
+              </p>
+
+              {/* Mini Insight */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-100 dark:border-slate-800 mb-6">
+                <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400">
+                   <Icon name="Activity" size={14} className="text-green-500 shrink-0" />
+                   <span className="italic">{article.aiInsight}</span>
+                </div>
+              </div>
+
+              <button className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 transition-colors">
+                Read More <Icon name="ChevronRight" size={14} />
+              </button>
+            </div>
           ))}
         </div>
 
-        {/* CTA Section */}
-        <div className="mt-16 text-center">
-          <div className="bg-white rounded-2xl p-8 shadow-brand max-w-2xl mx-auto">
-            <Icon name="BookOpen" size={48} className="text-primary mx-auto mb-4" />
-            <h3 className="text-2xl font-bold text-text-primary mb-4">
-              Want Personalized Health Insights?
-            </h3>
-            <p className="text-text-secondary mb-6">
-              Get AI-powered analysis of your specific dental concerns with personalized educational content 
-              tailored to your oral health needs.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                variant="default"
-                iconName="Camera"
-                iconPosition="left"
-                iconSize={18}
-              >
-                Start Personal Analysis
-              </Button>
-              <Button
-                variant="outline"
-                iconName="MessageCircle"
-                iconPosition="left"
-                iconSize={18}
-              >
-                Ask Our AI Assistant
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );

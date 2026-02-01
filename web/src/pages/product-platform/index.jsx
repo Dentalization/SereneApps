@@ -1,5 +1,14 @@
 import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
+
+// Layout & UI Components
 import Header from '../../components/ui/Header';
+import Footer from '../../components/ui/Footer'; 
+import Icon from '../../components/AppIcon';
+import Button from '../../components/ui/Button';
+import LightRays from '../../components/backgrounds/LightRays';
+
+// Page Sections
 import TechOverviewSection from './components/TechOverviewSection';
 import InteractiveDemo from './components/InteractiveDemo';
 import CDSSSection from './components/CDSSSection';
@@ -7,193 +16,165 @@ import FeatureCards from './components/FeatureCards';
 import ComparisonMatrix from './components/ComparisonMatrix';
 import ResourcesSection from './components/ResourcesSection';
 import CTASection from './components/CTASection';
-import Icon from '../../components/AppIcon';
-import LightRays from '../../components/backgrounds/LightRays'; // ← add this
 
 const ProductPlatform = () => {
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  // Scroll to top on mount
+  useEffect(() => { 
+    window.scrollTo(0, 0); 
+  }, []);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans selection:bg-blue-500/30">
       <Header />
 
-      {/* Hero Section (WITH LightRays) */}
-      <section className="relative isolate overflow-hidden pt-24 pb-16 bg-gradient-to-br from-primary/5 to-secondary/5">
-        {/* Background LightRays for the whole hero */}
-        <div className="pointer-events-none absolute inset-0 z-0">
+      {/* --- HERO SECTION --- */}
+      <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-28 overflow-hidden bg-slate-900">
+        
+        {/* Dynamic Background */}
+        <div className="absolute inset-0 z-0 opacity-40 pointer-events-none">
           <LightRays
             className="absolute inset-0"
             raysOrigin="top-center"
-            raysColor="#8b5cf6"
-            raysSpeed={1.15}
-            lightSpread={100}
-            rayLength={1.1}
-            fadeDistance={1.1}
+            raysColor="#60a5fa" // Blue-400
+            raysSpeed={1.5}
+            lightSpread={120}
+            rayLength={1.2}
+            fadeDistance={1}
             saturation={1}
             followMouse
-            mouseInfluence={0.08}
-            noiseAmount={0.04}
-            distortion={0.03}
+            mouseInfluence={0.1}
           />
         </div>
 
-        {/* Hero content sits above the rays */}
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center space-x-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
-              <Icon name="Cpu" size={16} />
-              <span>AI-Powered by Serene</span>
-            </div>
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-              Advanced Dental AI
-              <span className="block text-primary">Analysis Platform</span>
-            </h1>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-              Experience the future of dental diagnostics with our comprehensive AI platform. Powered by YOLOv8 computer vision and GPT-4 reasoning, delivering clinical-grade analysis in under 10 seconds.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="inline-flex items-center justify-center px-8 py-4 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-brand">
-                <Icon name="Play" size={20} className="mr-2" />
-                Watch Platform Demo
-              </button>
-              <button className="inline-flex items-center justify-center px-8 py-4 border-2 border-primary text-primary font-semibold rounded-lg hover:bg-primary hover:text-white transition-colors">
-                <Icon name="Sparkles" size={20} className="mr-2" />
-                Try Free Analysis
-              </button>
-            </div>
+        {/* Hero Content */}
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-300 text-sm font-medium mb-8 backdrop-blur-sm animate-in fade-in slide-in-from-top-4 duration-700">
+            <Icon name="Cpu" size={14} className="text-blue-400" />
+            <span>AI-Powered Dental Intelligence v2.4</span>
           </div>
 
-          {/* Platform Preview (LightRays only inside the video area) */}
-          <div className="relative max-w-5xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full" />
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full" />
-                  <div className="w-3 h-3 bg-green-500 rounded-full" />
-                  <div className="ml-4 text-sm text-gray-600">Serene AI Platform - Live Demo</div>
+          {/* Heading */}
+          <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight mb-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-100">
+            Precision Diagnostics <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-teal-400">
+              at the Speed of Sight
+            </span>
+          </h1>
+
+          <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
+            The world's first YOLOv8-powered dental analysis platform. 
+            Detect pathologies, generate reports, and educate patients in under 2 seconds.
+          </p>
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
+            <Link to="/serene-ai">
+              <Button 
+                className="bg-blue-600 hover:bg-blue-500 text-white border-none px-8 py-4 text-lg shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:shadow-[0_0_50px_rgba(37,99,235,0.6)]"
+                iconName="Camera"
+                iconPosition="left"
+              >
+                Start Free Analysis
+              </Button>
+            </Link>
+            <Link to="/for-dentists">
+              <Button 
+                variant="outline" 
+                className="text-white border-white/20 hover:bg-white/10 px-8 py-4 text-lg backdrop-blur-md"
+                iconName="Play"
+                iconPosition="left"
+              >
+                Watch Demo
+              </Button>
+            </Link>
+          </div>
+
+          {/* 3D Dashboard Mockup Effect */}
+          <div className="relative mx-auto max-w-5xl mt-12 animate-in fade-in zoom-in-50 duration-1000 delay-500 perspective-[2000px]">
+            {/* The Floating Interface */}
+            <div className="relative rounded-2xl bg-slate-900 border border-slate-700/50 shadow-2xl overflow-hidden transform rotate-x-[15deg] hover:rotate-x-0 transition-transform duration-700 ease-out group">
+              
+              {/* Fake Browser Toolbar */}
+              <div className="bg-slate-800/80 backdrop-blur-md px-4 py-3 border-b border-slate-700 flex items-center gap-2">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                </div>
+                <div className="mx-auto text-xs text-slate-500 font-mono flex items-center gap-1">
+                  <Icon name="Lock" size={10} /> serene-platform.app
                 </div>
               </div>
 
-              {/* Video area with its own LightRays */}
-              <div className="relative aspect-video bg-gradient-to-br from-primary/10 to-secondary/10 overflow-hidden">
-                <div className="pointer-events-none absolute inset-0 z-0 opacity-90">
-                  {/* <LightRays
-                    className="absolute inset-0"
-                    raysOrigin="top-center"
-                    raysColor="#7c3aed"
-                    raysSpeed={1.0}
-                    lightSpread={0.8}
-                    rayLength={0.9}
-                    fadeDistance={0.9}
-                    saturation={1}
-                    followMouse={false}
-                    mouseInfluence={0}
-                    noiseAmount={0.03}
-                    distortion={0.02}
-                  /> */}
-                </div>
-
-                <div className="relative z-10 flex items-center justify-center h-full text-center">
-                  <div>
-                    <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Icon name="Play" size={48} className="text-primary" />
+              {/* Interface Content Placeholder */}
+              <div className="relative aspect-video bg-slate-900">
+                {/* Simulated App UI */}
+                <div className="absolute inset-0 flex">
+                  {/* Sidebar */}
+                  <div className="w-16 border-r border-slate-800 bg-slate-900/50 hidden sm:flex flex-col items-center py-6 gap-6">
+                    <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-500 flex items-center justify-center"><Icon name="LayoutGrid" size={18} /></div>
+                    <div className="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-500 flex items-center justify-center"><Icon name="Users" size={18} /></div>
+                    <div className="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-500 flex items-center justify-center"><Icon name="Settings" size={18} /></div>
+                  </div>
+                  {/* Main Area */}
+                  <div className="flex-1 p-6 flex items-center justify-center relative overflow-hidden group">
+                    {/* Background Image simulating app content */}
+                    <img 
+                      src="/assets/imagesTesting/test1.png" 
+                      alt="Platform Interface" 
+                      className="absolute inset-0 w-full h-full object-cover opacity-50 grayscale group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-700"
+                    />
+                    
+                    <div className="relative z-10 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-6 rounded-2xl text-center">
+                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/30">
+                        <Icon name="Play" size={32} className="text-white ml-1" />
+                      </div>
+                      <h3 className="text-white font-bold">Interactive Platform Tour</h3>
                     </div>
-                    <p className="text-gray-600">Interactive Platform Demo</p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Floating Stats (card has its own LightRays) */}
-            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-2xl">
-              <div className="relative overflow-hidden bg-white/85 backdrop-blur-md rounded-lg shadow-brand border border-gray-200 p-6">
-                {/* LightRays inside the stats card */}
-
-                {/* Stats content */}
-                <div className="relative z-10 grid grid-cols-3 gap-6 text-center">
+              {/* Floating Overlay Card */}
+              <div className="absolute -bottom-6 -right-6 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 hidden md:block animate-bounce-slow">
+                <div className="flex gap-4 text-center">
                   <div>
-                    <div className="text-2xl font-bold text-primary mb-1">94.7%</div>
-                    <div className="text-sm text-gray-600">Accuracy Rate</div>
+                    <div className="text-2xl font-bold text-blue-500">98.7%</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Accuracy</div>
                   </div>
+                  <div className="w-px bg-slate-200 dark:bg-slate-700" />
                   <div>
-                    <div className="text-2xl font-bold text-primary mb-1">&lt; 2s</div>
-                    <div className="text-sm text-gray-600">Analysis Time</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-primary mb-1">15+</div>
-                    <div className="text-sm text-gray-600">Conditions Detected</div>
+                    <div className="text-2xl font-bold text-green-500">&lt; 2s</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Speed</div>
                   </div>
                 </div>
               </div>
+
             </div>
-            {/* /Floating Stats */}
+            
+            {/* Glow Underneath */}
+            <div className="absolute -inset-4 bg-blue-600/20 blur-[100px] -z-10" />
           </div>
-          {/* /Platform Preview */}
+
         </div>
       </section>
 
-      {/* Main Content Sections */}
-      <TechOverviewSection />
-      <InteractiveDemo />
-      <CDSSSection />
-      <FeatureCards />
-      <ComparisonMatrix />
-      <ResourcesSection />
-      <CTASection />
+      {/* --- MAIN CONTENT STACK --- */}
+      <div className="relative z-10 bg-white dark:bg-slate-950">
+        <TechOverviewSection />
+        <InteractiveDemo />
+        <CDSSSection />
+        <FeatureCards />
+        <ComparisonMatrix />
+        <ResourcesSection />
+        <CTASection />
+      </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Icon name="Brain" size={20} color="white" />
-                </div>
-                <span className="text-xl font-bold">Serene AI</span>
-              </div>
-              <p className="text-gray-400 text-sm">
-                AI-powered dental analysis platform transforming healthcare with advanced computer vision and clinical intelligence.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Platform</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">API Documentation</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Integrations</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Security</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Clinical Studies</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Case Studies</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Whitepapers</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Support</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
-            <p>&copy; {new Date().getFullYear()} Serene AI. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      {/* --- FOOTER --- */}
+      <Footer />
+      
     </div>
   );
 };

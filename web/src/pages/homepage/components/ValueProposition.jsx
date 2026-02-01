@@ -7,194 +7,232 @@ const ValueProposition = () => {
   const patientBenefits = [
     {
       icon: "Heart",
-      title: "Reduce Dental Anxiety",
-      description: "Get clear, understandable insights about your oral health before visiting the dentist, helping you feel more prepared and confident.",
-      highlight: "87% less anxiety reported"
+      title: "Reduce Anxiety",
+      description: "Understand your oral health before the visit. Knowledge is confidence.",
+      highlight: "-87% Anxiety"
     },
     {
-      icon: "Eye",
-      title: "Early Detection",
-      description: "Catch potential issues before they become painful or expensive problems. Our AI spots concerns that might be missed during routine checks.",
-      highlight: "3x earlier detection"
-    },
-    {
-      icon: "Clock",
+      icon: "Zap",
       title: "Instant Results",
-      description: "No waiting for appointments or lab results. Get professional-grade analysis of your dental images in under 2 seconds.",
-      highlight: "Available 24/7"
+      description: "Get a professional-grade analysis in seconds, anytime, anywhere.",
+      highlight: "< 2 Seconds"
     },
     {
-      icon: "DollarSign",
+      icon: "ShieldCheck",
+      title: "Early Detection",
+      description: "Catch potential issues early to avoid painful and costly procedures.",
+      highlight: "3x Earlier"
+    },
+    {
+      icon: "Wallet",
       title: "Save Money",
-      description: "Prevent costly emergency treatments by identifying issues early. Many users save thousands on preventable dental procedures.",
-      highlight: "Average $2,400 saved"
+      description: "Prevent emergency treatments by identifying minor issues first.",
+      highlight: "$2,400+ Saved"
     }
   ];
 
   const professionalBenefits = [
     {
-      icon: "Stethoscope",
-      title: "Enhanced Diagnostics",
-      description: "AI-powered second opinion helps confirm diagnoses and catch details that might be overlooked, improving patient outcomes.",
-      highlight: "15% more accurate diagnoses"
+      icon: "Activity",
+      title: "Diagnostic Accuracy",
+      description: "AI second opinions confirm diagnoses and catch overlooked details.",
+      highlight: "+15% Accuracy"
+    },
+    {
+      icon: "Clock",
+      title: "Workflow Speed",
+      description: "Pre-analyzed images streamline consultations and reduce chair time.",
+      highlight: "30% Faster"
+    },
+    {
+      icon: "MessageCircle",
+      title: "Case Acceptance",
+      description: "Visual AI reports help patients understand and say 'yes' to treatment.",
+      highlight: "85% Acceptance"
     },
     {
       icon: "TrendingUp",
-      title: "Practice Efficiency",
-      description: "Streamline patient consultations with pre-analyzed images and detailed AI reports, reducing appointment times by 30%.",
-      highlight: "30% faster consultations"
-    },
-    {
-      icon: "Users",
-      title: "Patient Education",
-      description: "Use AI-generated visual explanations to help patients understand their conditions, leading to better treatment acceptance.",
-      highlight: "85% treatment acceptance"
-    },
-    {
-      icon: "BarChart3",
       title: "Practice Growth",
-      description: "Offer cutting-edge technology that differentiates your practice and attracts tech-savvy patients seeking modern care.",
-      highlight: "40% new patient growth"
+      description: "Attract tech-savvy patients with cutting-edge AI diagnostics.",
+      highlight: "+40% Growth"
     }
   ];
 
   return (
-    <section className="py-20 bg-gradient-to-br from-muted via-white to-brand-canvas">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="relative py-24 overflow-hidden bg-slate-50 dark:bg-slate-950">
+      
+      {/* Dynamic Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
         {/* Section Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">
-            Transforming Dental Care for Everyone
+        <div className="text-center mb-20 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium mb-6">
+            <Icon name="Sparkles" size={14} />
+            <span>Value for Everyone</span>
+          </div>
+          <h2 className="text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+            Transforming Dental Care <br className="hidden sm:block" />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+              For Patients & Professionals
+            </span>
           </h2>
-          <p className="text-lg text-text-secondary max-w-3xl mx-auto">
-            Whether you're a patient seeking peace of mind or a dental professional looking to enhance your practice, 
-            Serene AI delivers value that matters to you.
+          <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+            Whether you're seeking peace of mind or looking to modernize your practice, 
+            Serene AI delivers clinically validated value.
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-12">
-          {/* Patient Benefits */}
-          <div className="bg-white rounded-2xl p-8 lg:p-10 shadow-brand border border-border">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Icon name="Heart" size={32} color="white" />
-              </div>
-              <h3 className="text-2xl font-bold text-text-primary mb-2">For Patients</h3>
-              <p className="text-text-secondary">Take control of your oral health with confidence</p>
+        {/* Split Cards Grid */}
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-stretch mb-20">
+          
+          {/* Card 1: Patients */}
+          <div className="group relative bg-white dark:bg-slate-900 rounded-[2rem] p-8 lg:p-12 shadow-xl hover:shadow-2xl transition-all duration-500 border border-slate-200 dark:border-slate-800 hover:-translate-y-1">
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Icon name="Heart" size={120} className="text-pink-500" />
             </div>
-
-            <div className="space-y-6 mb-8">
-              {patientBenefits?.map((benefit, index) => (
-                <div key={index} className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Icon name={benefit?.icon} size={20} className="text-pink-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-lg font-semibold text-text-primary">{benefit?.title}</h4>
-                      <span className="text-xs font-medium text-pink-600 bg-pink-100 px-2 py-1 rounded-full">
-                        {benefit?.highlight}
-                      </span>
-                    </div>
-                    <p className="text-text-secondary text-sm">{benefit?.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Link to="/for-patients" className="block">
-              <Button
-                variant="default"
-                fullWidth
-                className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600"
-                iconName="ArrowRight"
-                iconPosition="right"
-                iconSize={18}
-              >
-                Explore Patient Benefits
-              </Button>
-            </Link>
-          </div>
-
-          {/* Professional Benefits */}
-          <div className="bg-white rounded-2xl p-8 lg:p-10 shadow-brand border border-border">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <Icon name="Stethoscope" size={32} color="white" />
-              </div>
-              <h3 className="text-2xl font-bold text-text-primary mb-2">For Dentists</h3>
-              <p className="text-text-secondary">Enhance your practice with AI-powered insights</p>
-            </div>
-
-            <div className="space-y-6 mb-8">
-              {professionalBenefits?.map((benefit, index) => (
-                <div key={index} className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Icon name={benefit?.icon} size={20} className="text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-lg font-semibold text-text-primary">{benefit?.title}</h4>
-                      <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
-                        {benefit?.highlight}
-                      </span>
-                    </div>
-                    <p className="text-text-secondary text-sm">{benefit?.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Link to="/for-dentists" className="block">
-              <Button
-                variant="default"
-                fullWidth
-                iconName="ArrowRight"
-                iconPosition="right"
-                iconSize={18}
-              >
-                Explore Professional Benefits
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Bottom CTA */}
-        <div className="text-center mt-16">
-          <div className="bg-white rounded-2xl p-8 lg:p-12 shadow-brand border border-border max-w-4xl mx-auto">
-            <h3 className="text-2xl lg:text-3xl font-bold text-text-primary mb-4">
-              Ready to Experience the Future of Dental Care?
-            </h3>
-            <p className="text-text-secondary mb-8 max-w-2xl mx-auto">
-              Join thousands of patients and hundreds of dental professionals who trust Serene AI 
-              for accurate, instant dental insights.
-            </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                variant="default"
-                size="lg"
-                iconName="Camera"
-                iconPosition="left"
-                iconSize={20}
-              >
-                Start Free Analysis
-              </Button>
+            <div className="relative z-10">
+              <div className="w-16 h-16 bg-pink-100 dark:bg-pink-900/30 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
+                <Icon name="User" size={32} className="text-pink-600 dark:text-pink-400" />
+              </div>
               
-              <Link to="/pricing">
+              <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">For Patients</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-10">Empower yourself with instant dental clarity.</p>
+
+              <div className="grid sm:grid-cols-2 gap-6 mb-10">
+                {patientBenefits.map((benefit, idx) => (
+                  <div key={idx} className="space-y-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon name={benefit.icon} size={18} className="text-pink-500" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20 px-2 py-0.5 rounded-full">
+                        {benefit.highlight}
+                      </span>
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white">{benefit.title}</h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-snug">{benefit.description}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Link to="/for-patients" className="block">
                 <Button
-                  variant="outline"
-                  size="lg"
-                  iconName="CreditCard"
-                  iconPosition="left"
-                  iconSize={20}
+                  className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 py-6 text-lg shadow-lg"
+                  iconName="ArrowRight"
+                  iconPosition="right"
                 >
-                  View Pricing Plans
+                  Explore Patient Features
                 </Button>
               </Link>
             </div>
           </div>
+
+          {/* Card 2: Professionals */}
+          <div className="group relative bg-slate-900 dark:bg-black rounded-[2rem] p-8 lg:p-12 shadow-xl hover:shadow-2xl transition-all duration-500 border border-slate-800 hover:-translate-y-1">
+             {/* Gradient Border Effect */}
+             <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-blue-500/20 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Icon name="Stethoscope" size={120} className="text-blue-500" />
+            </div>
+
+            <div className="relative z-10">
+              <div className="w-16 h-16 bg-blue-900/50 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300 ring-1 ring-blue-500/30">
+                <Icon name="Stethoscope" size={32} className="text-blue-400" />
+              </div>
+
+              <h3 className="text-3xl font-bold text-white mb-2">For Dentists</h3>
+              <p className="text-slate-400 mb-10">Supercharge your clinic with AI diagnostics.</p>
+
+              <div className="grid sm:grid-cols-2 gap-6 mb-10">
+                {professionalBenefits.map((benefit, idx) => (
+                  <div key={idx} className="space-y-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon name={benefit.icon} size={18} className="text-blue-400" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-blue-300 bg-blue-900/50 px-2 py-0.5 rounded-full border border-blue-500/30">
+                        {benefit.highlight}
+                      </span>
+                    </div>
+                    <h4 className="font-semibold text-white">{benefit.title}</h4>
+                    <p className="text-sm text-slate-400 leading-snug">{benefit.description}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Link to="/for-dentists" className="block">
+                <Button
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white border-none py-6 text-lg shadow-lg shadow-blue-900/50"
+                  iconName="ArrowRight"
+                  iconPosition="right"
+                >
+                  Explore Clinical Suite
+                </Button>
+              </Link>
+            </div>
+          </div>
+
         </div>
+
+        {/* Bottom CTA (Bento Grid Style) */}
+        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20" />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between p-10 lg:p-16 gap-10">
+            <div className="max-w-2xl text-center lg:text-left">
+              <h3 className="text-3xl lg:text-4xl font-bold mb-4">
+                Ready to Experience the Future?
+              </h3>
+              <p className="text-blue-100 text-lg mb-8">
+                Join thousands who trust Serene AI for accurate, instant dental insights. 
+                Start your free analysis today.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                <Link to="/serene-ai">
+                  <Button
+                    className="bg-white text-blue-600 hover:bg-blue-50 font-bold border-none px-8 py-4 h-auto text-lg shadow-xl"
+                    iconName="Camera"
+                    iconPosition="left"
+                  >
+                    Start Free Analysis
+                  </Button>
+                </Link>
+                <Link to="/pricing">
+                  <Button
+                    variant="outline"
+                    className="border-white text-white hover:bg-white/10 px-8 py-4 h-auto text-lg"
+                    iconName="CreditCard"
+                    iconPosition="left"
+                  >
+                    View Pricing
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Decorative Stat */}
+            <div className="hidden lg:block bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 transform rotate-3 hover:rotate-0 transition-transform duration-500">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
+                  <Icon name="TrendingUp" size={24} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-xs text-blue-100 uppercase tracking-wider">Growth</div>
+                  <div className="text-2xl font-bold text-white">+240%</div>
+                </div>
+              </div>
+              <div className="h-1.5 w-48 bg-black/20 rounded-full overflow-hidden">
+                <div className="h-full bg-white w-[75%] rounded-full" />
+              </div>
+              <div className="mt-2 text-xs text-blue-100">User adoption this month</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
   );

@@ -5,187 +5,186 @@ const ComparisonMatrix = () => {
   const comparisonData = [
     {
       feature: "Analysis Speed",
-      traditional: "15-30 minutes",
-      competitors: "5-10 minutes",
+      traditional: "15-30 mins",
+      competitors: "5-10 mins",
       serene: "< 2 seconds",
-      advantage: true
+      icon: "Zap",
+      highlight: true
     },
     {
-      feature: "Accuracy Rate",
-      traditional: "85-90%",
-      competitors: "88-92%",
+      feature: "Diagnostic Accuracy",
+      traditional: "85%",
+      competitors: "90%",
       serene: "94.7%",
-      advantage: true
+      icon: "Target",
+      highlight: true
     },
     {
       feature: "Conditions Detected",
-      traditional: "5-8 conditions",
-      competitors: "8-12 conditions",
-      serene: "15+ conditions",
-      advantage: true
+      traditional: "5-8",
+      competitors: "8-12",
+      serene: "15+",
+      icon: "Search",
+      highlight: true
     },
     {
-      feature: "Integration Options",
-      traditional: "Limited",
-      competitors: "Basic API",
-      serene: "Full EMR/PMS Integration",
-      advantage: true
+      feature: "Report Generation",
+      traditional: "Manual",
+      competitors: "Basic Template",
+      serene: "AI Personalized",
+      icon: "FileText",
+      highlight: true
     },
     {
-      feature: "Patient Education",
-      traditional: "Manual creation",
-      competitors: "Template-based",
-      serene: "AI-Generated & Personalized",
-      advantage: true
+      feature: "Data Encryption",
+      traditional: "Varied",
+      competitors: "Standard",
+      serene: "E2E (AES-256)",
+      icon: "Shield",
+      highlight: true
     },
     {
-      feature: "HIPAA Compliance",
-      traditional: "Manual processes",
-      competitors: "Basic compliance",
-      serene: "End-to-end encryption",
-      advantage: true
-    },
-    {
-      feature: "Cost per Analysis",
-      traditional: "$25-50",
-      competitors: "$8-15",
-      serene: "$3-7",
-      advantage: true
-    },
-    {
-      feature: "Learning Capability",
-      traditional: "Static",
-      competitors: "Limited updates",
-      serene: "Continuous learning",
-      advantage: true
-    }
-  ];
-
-  const benefits = [
-    {
-      icon: "Clock",
-      title: "10x Faster Analysis",
-      description: "Complete dental analysis in under 2 seconds compared to traditional 15-30 minute evaluations"
-    },
-    {
-      icon: "Target",
-      title: "Superior Accuracy",
-      description: "94.7% accuracy rate exceeds both traditional methods and competitor solutions"
-    },
-    {
+      feature: "Cost per Scan",
+      traditional: "$25+",
+      competitors: "$8 - $15",
+      serene: "$3 - $7",
       icon: "DollarSign",
-      title: "Cost Effective",
-      description: "Up to 85% cost reduction per analysis while maintaining clinical-grade quality"
-    },
-    {
-      icon: "Zap",
-      title: "Real-time Results",
-      description: "Instant analysis enables immediate patient consultation and treatment planning"
+      highlight: true
     }
   ];
 
   return (
-    <section className="py-16 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Why Choose Serene AI?
+    <section className="py-24 bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      
+      {/* Background Decor */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-[120px]" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        {/* Header */}
+        <div className="text-center mb-16 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="BarChart2" size={14} />
+            <span>Competitive Analysis</span>
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+            Why <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Serene AI</span> Wins
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            See how our AI-powered platform outperforms traditional diagnostic methods and competitor solutions across key metrics.
+          
+          <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+            See how our deep learning architecture outperforms legacy methods and current market competitors.
           </p>
         </div>
 
-        {/* Comparison Table */}
-        <div className="bg-white rounded-2xl shadow-brand border border-gray-200 overflow-hidden mb-12">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="font-semibold text-gray-900">Feature</div>
-              <div className="font-semibold text-gray-700 text-center">Traditional Methods</div>
-              <div className="font-semibold text-gray-700 text-center">Competitors</div>
-              <div className="font-semibold text-primary text-center">Serene AI</div>
+        {/* Matrix Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden mb-20">
+          
+          {/* Table Header */}
+          <div className="grid grid-cols-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 p-6">
+            <div className="col-span-1 font-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider flex items-center">Feature</div>
+            <div className="col-span-1 text-center font-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider">Traditional</div>
+            <div className="col-span-1 text-center font-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider">Competitors</div>
+            <div className="col-span-1 text-center font-bold text-blue-600 dark:text-blue-400 uppercase text-xs tracking-wider flex justify-center items-center gap-2">
+              <Icon name="Zap" size={14} /> Serene AI
             </div>
           </div>
-          
-          <div className="divide-y divide-gray-200">
-            {comparisonData?.map((row, index) => (
-              <div key={index} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                <div className="grid grid-cols-4 gap-4 items-center">
-                  <div className="font-medium text-gray-900">{row?.feature}</div>
-                  <div className="text-center text-gray-600 text-sm">{row?.traditional}</div>
-                  <div className="text-center text-gray-600 text-sm">{row?.competitors}</div>
-                  <div className="text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <span className="font-semibold text-primary text-sm">{row?.serene}</span>
-                      {row?.advantage && (
-                        <Icon name="CheckCircle" size={16} className="text-green-600" />
-                      )}
-                    </div>
+
+          {/* Table Body */}
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {comparisonData.map((row, idx) => (
+              <div key={idx} className="grid grid-cols-4 p-6 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors items-center group">
+                
+                {/* Feature Name */}
+                <div className="col-span-1 flex items-center gap-3 font-semibold text-slate-700 dark:text-slate-200">
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                    <Icon name={row.icon} size={16} />
+                  </div>
+                  <span className="hidden sm:inline">{row.feature}</span>
+                </div>
+
+                {/* Traditional */}
+                <div className="col-span-1 text-center text-slate-500 dark:text-slate-400 text-sm">
+                  {row.traditional}
+                </div>
+
+                {/* Competitors */}
+                <div className="col-span-1 text-center text-slate-500 dark:text-slate-400 text-sm">
+                  {row.competitors}
+                </div>
+
+                {/* Serene AI */}
+                <div className="col-span-1 text-center relative">
+                  {/* Highlight Background */}
+                  <div className="absolute inset-y-[-24px] inset-x-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl -z-10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  
+                  <div className="font-bold text-blue-600 dark:text-blue-400 flex items-center justify-center gap-2">
+                    {row.serene}
+                    <Icon name="CheckCircle" size={16} className="text-blue-500 fill-current" />
                   </div>
                 </div>
+
               </div>
             ))}
           </div>
         </div>
 
-        {/* Key Benefits */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {benefits?.map((benefit, index) => (
-            <div key={index} className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 text-center hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Icon name={benefit?.icon} size={32} className="text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">{benefit?.title}</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">{benefit?.description}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* ROI Calculator Teaser */}
-        <div className="mt-16 bg-gradient-to-br from-primary to-secondary rounded-2xl p-8 text-white">
-          <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div>
-              <h3 className="text-2xl font-bold mb-4">Calculate Your ROI</h3>
-              <p className="text-primary-foreground/90 mb-6">
-                See how much time and money you can save by switching to Serene AI. Our ROI calculator shows potential savings based on your practice size and current workflow.
-              </p>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-white/20 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold">85%</div>
-                  <div className="text-sm text-primary-foreground/80">Cost Reduction</div>
-                </div>
-                <div className="bg-white/20 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold">10x</div>
-                  <div className="text-sm text-primary-foreground/80">Faster Analysis</div>
-                </div>
-              </div>
-            </div>
+        {/* ROI Calculator Section */}
+        <div className="relative rounded-[2.5rem] bg-slate-900 overflow-hidden text-white p-10 lg:p-16 shadow-2xl">
+          {/* Decor */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-green-500/10 rounded-full blur-[100px]" />
+          
+          <div className="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
             
-            <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-              <h4 className="font-semibold mb-4">Quick ROI Estimate</h4>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Monthly Analyses:</span>
-                  <span className="font-semibold">500 cases</span>
+            {/* Text Content */}
+            <div>
+              <h3 className="text-3xl font-bold mb-4">Calculate Your ROI</h3>
+              <p className="text-slate-400 mb-8 leading-relaxed">
+                See exactly how much time and operational cost you can save by switching to an automated workflow.
+                Based on an average clinic processing 500 scans/month.
+              </p>
+              
+              <div className="flex gap-4">
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
+                  <div className="text-3xl font-bold text-green-400 mb-1">85%</div>
+                  <div className="text-xs text-slate-400 uppercase tracking-wider">Cost Reduction</div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Current Cost:</span>
-                  <span className="font-semibold">$12,500</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Serene AI Cost:</span>
-                  <span className="font-semibold">$2,500</span>
-                </div>
-                <div className="border-t border-white/20 pt-4">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold">Monthly Savings:</span>
-                    <span className="font-bold text-xl text-green-300">$10,000</span>
-                  </div>
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
+                  <div className="text-3xl font-bold text-blue-400 mb-1">10x</div>
+                  <div className="text-xs text-slate-400 uppercase tracking-wider">Faster Output</div>
                 </div>
               </div>
             </div>
+
+            {/* Simulated Calculator Card */}
+            <div className="bg-white text-slate-900 rounded-2xl p-8 shadow-2xl">
+              <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                <span className="font-bold text-lg">Monthly Savings Estimate</span>
+                <Icon name="Calculator" className="text-slate-400" />
+              </div>
+              
+              <div className="space-y-4 mb-6">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Manual Analysis Cost</span>
+                  <span className="font-mono text-red-500 line-through">$12,500</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Serene AI Cost</span>
+                  <span className="font-mono text-green-600 font-bold">$2,500</span>
+                </div>
+              </div>
+
+              <div className="bg-green-50 rounded-xl p-4 flex justify-between items-center">
+                <span className="text-green-800 font-medium">Net Savings</span>
+                <span className="text-2xl font-bold text-green-600">$10,000</span>
+              </div>
+            </div>
+
           </div>
         </div>
+
       </div>
     </section>
   );

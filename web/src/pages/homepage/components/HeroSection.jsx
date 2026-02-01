@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
-import Image from '../../../components/AppImage';
 import Button from '../../../components/ui/Button';
 
-/** Zero-dependency rotating words */
+/** Zero-dependency rotating words component */
 function RotatingWords({ words, interval = 3000 }) {
   const [i, setI] = useState(0);
-  const [phase, setPhase] = useState('in'); // 'in' | 'out'
+  const [phase, setPhase] = useState('in');
   const timeoutRef = useRef(null);
   const intervalRef = useRef(null);
 
@@ -22,7 +21,7 @@ function RotatingWords({ words, interval = 3000 }) {
       timeoutRef.current = setTimeout(() => {
         setI((x) => (x + 1) % words.length);
         setPhase('in');
-      }, 220); // keep in sync with transition duration
+      }, 220);
     };
     intervalRef.current = setInterval(tick, interval);
     return () => {
@@ -33,7 +32,6 @@ function RotatingWords({ words, interval = 3000 }) {
 
   return (
     <span className="relative inline-flex align-baseline">
-      {/* spacer locks layout to the longest phrase so width won't jump */}
       <span aria-hidden="true" className="invisible whitespace-nowrap">
         {longest}
       </span>
@@ -55,231 +53,233 @@ const HeroSection = () => {
 
   const rotatingTexts = [
     'you can trust',
-    'will assist you', // fixed grammar
+    'will assist you',
   ];
 
+  // Using Local Images from /public/assets/imagesTesting/
   const demoImages = [
     {
-      src: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=400&h=300&fit=crop',
-      alt: 'Dental X-ray showing healthy teeth structure',
-      analysis:
-        'Healthy dental structure detected with no visible cavities or abnormalities.',
+      id: 1,
+      src: '/assets/imagesTesting/test1.png', 
+      alt: 'Dental Analysis Case 1',
+      analysis: 'Healthy dental structure. No bone loss detected.',
     },
     {
-      src: 'https://images.pexels.com/photos/6812540/pexels-photo-6812540.jpeg?w=400&h=300&fit=crop',
-      alt: 'Close-up of dental examination',
-      analysis:
-        'Minor plaque buildup detected. Recommend professional cleaning within 2 weeks.',
+      id: 2,
+      src: '/assets/imagesTesting/test2.png', 
+      alt: 'Dental Analysis Case 2',
+      analysis: 'Enamel looks intact. Minor staining observed on lower incisors.',
     },
     {
-      src: 'https://images.pixabay.com/photo/2020/05/18/16/17/teeth-5187256_1280.jpg?w=400&h=300&fit=crop',
-      alt: 'Dental model showing tooth alignment',
-      analysis:
-        'Slight misalignment detected. Consider orthodontic consultation for optimal results.',
+      id: 3,
+      src: '/assets/imagesTesting/test3.png', 
+      alt: 'Dental Analysis Case 3',
+      analysis: 'Potential cavity detected in upper right molar (Sector 3).',
+    },
+    {
+      id: 4,
+      src: '/assets/imagesTesting/test4.png', 
+      alt: 'Dental Analysis Case 4',
+      analysis: 'Gum inflammation detected. Periodontal assessment recommended.',
     },
   ];
 
   useEffect(() => {
+    // Auto-rotate images every 5 seconds
     const id = setInterval(
       () => setCurrentImageIndex((i) => (i + 1) % demoImages.length),
-      4000
+      5000 
     );
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [demoImages.length]);
 
   const handleAnalysisDemo = () => {
     setIsAnalyzing(true);
-    setTimeout(() => setIsAnalyzing(false), 2000);
+    setTimeout(() => setIsAnalyzing(false), 2500);
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* 1) Soft blobs (under any effects) */}
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-slate-900">
+      
+      {/* Background Decor */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.03]">
-        <div className="absolute top-20 left-20 w-32 h-32 bg-primary rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-20 w-40 h-40 bg-accent rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-secondary rounded-full blur-3xl" />
+        <div className="absolute top-20 left-20 w-32 h-32 bg-blue-500 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-20 w-40 h-40 bg-purple-500 rounded-full blur-3xl" />
       </div>
 
-      {/* 2) Aurora placeholder (top 10% height) */}
-      <div className="absolute top-0 left-0 right-0 h-1/10 z-[1] pointer-events-none">
-        {/* <Aurora
-          colorStops={['#6366F1', '#A855F7', '#EC4899']}
-          blend={0.4}
-          amplitude={1.2}
-          speed={0.8}
-        /> */}
-      </div>
-
-      {/* 3) Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left */}
+          
+          {/* LEFT CONTENT */}
           <div className="text-center lg:text-left space-y-8">
             <div className="space-y-4">
-              <div className="inline-flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-brand">
-                <div className="w-2 h-2 bg-trust-green rounded-full animate-pulse" />
-                <span className="text-sm font-medium text-text-secondary">
+              <div className="inline-flex items-center space-x-2 bg-blue-50 dark:bg-blue-900/20 backdrop-blur-sm rounded-full px-4 py-2 border border-blue-100 dark:border-blue-800">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-sm font-medium text-slate-600 dark:text-blue-200">
                   Trusted by 50,000+ patients
                 </span>
               </div>
 
-              <h1 className="text-hero text-text-primary font-bold leading-tight">
+              <h1 className="text-5xl lg:text-6xl font-bold text-slate-900 dark:text-white leading-tight">
                 AI-powered dental insights{' '}
                 <RotatingWords words={rotatingTexts} interval={3000} />
               </h1>
 
-              <p className="text-value-prop text-text-secondary max-w-2xl mx-auto lg:mx-0">
+              <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto lg:mx-0">
                 Get professional-grade dental analysis in seconds. Our YOLOv8
-                computer vision technology, powered by Serene, provides accurate
-                insights to help you make informed decisions about your oral
-                health.
+                computer vision technology provides accurate insights to help you make informed decisions.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button
-                variant="default"
-                size="lg"
-                iconName="Camera"
-                iconPosition="left"
-                iconSize={20}
-                onClick={handleAnalysisDemo}
-              >
-                Try Free Analysis
-              </Button>
+              {/* Primary CTA - Goes to App */}
+              <Link to="/serene-ai">
+                <Button
+                  variant="default"
+                  size="lg"
+                  iconName="Camera"
+                  iconPosition="left"
+                  className="shadow-lg shadow-blue-500/30 w-full sm:w-auto"
+                >
+                  Try Free Analysis
+                </Button>
+              </Link>
+              
+              {/* Secondary CTA */}
               <Link to="/for-dentists">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="hover-lift"
                   iconName="Stethoscope"
                   iconPosition="left"
-                  iconSize={20}
+                  className="w-full sm:w-auto"
                 >
                   See Clinical Demo
                 </Button>
               </Link>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 pt-4">
-              <div className="flex items-center space-x-2">
-                <Icon name="Shield" size={20} className="text-trust-green" />
-                <span className="text-sm font-medium text-text-secondary">
-                  HIPAA Compliant
-                </span>
+            {/* Badges */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 pt-4 text-sm font-medium text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <Icon name="Shield" size={18} className="text-green-500" />
+                HIPAA Compliant
               </div>
-              <div className="flex items-center space-x-2">
-                <Icon name="Award" size={20} className="text-accent" />
-                <span className="text-sm font-medium text-text-secondary">
-                  FDA Registered
-                </span>
+              <div className="flex items-center gap-2">
+                <Icon name="Award" size={18} className="text-purple-500" />
+                FDA Registered
               </div>
-              <div className="flex items-center space-x-2">
-                <Icon name="Users" size={20} className="text-primary" />
-                <span className="text-sm font-medium text-text-secondary">
-                  100,000+ Analyses
-                </span>
+              <div className="flex items-center gap-2">
+                <Icon name="Users" size={18} className="text-blue-500" />
+                100k+ Analyses
               </div>
             </div>
           </div>
 
-          {/* Right */}
-          <div className="relative">
-            <div className="bg-white rounded-2xl shadow-brand-hover p-8 border border-border">
+          {/* RIGHT CONTENT (DEMO VISUAL) */}
+          <div className="relative mx-auto w-full max-w-lg lg:max-w-none">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 border border-slate-200 dark:border-slate-700">
               <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold text-text-primary mb-2">
-                  Live AI Analysis Demo
-                </h3>
-                <p className="text-sm text-text-secondary">
-                  Watch our AI analyze dental images in real-time
-                </p>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Live AI Analysis</h3>
+                <p className="text-xs text-slate-500">Real-time pathology detection</p>
               </div>
 
-              <div className="relative mb-6">
-                <div className="aspect-video bg-muted rounded-lg overflow-hidden border-2 border-dashed border-border">
-                  <Image
-                    src={demoImages[currentImageIndex].src}
-                    alt={demoImages[currentImageIndex].alt}
-                    className="w-full h-full object-cover transition-all duration-500"
-                  />
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
-                      <div className="bg-white rounded-lg p-4 shadow-brand">
-                        <div className="flex items-center space-x-3">
-                          <div className="animate-spin">
-                            <Icon name="Brain" size={24} className="text-primary" />
-                          </div>
-                          <span className="text-sm font-medium text-text-primary">
-                            Analyzing...
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {/* IMAGE CONTAINER */}
+              <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
+                
+                {/* 1. IMAGE DISPLAY */}
+                <img
+                  key={currentImageIndex} // Key forces re-render for transition
+                  src={demoImages[currentImageIndex].src}
+                  alt={demoImages[currentImageIndex].alt}
+                  className="w-full h-full object-cover transition-opacity duration-500"
+                  onError={(e) => {
+                    // Fallback in case local path is wrong
+                    e.target.onerror = null; 
+                    e.target.src = "https://via.placeholder.com/800x450/e2e8f0/475569?text=Image+Unavailable";
+                  }}
+                />
 
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                      <Icon name="Brain" size={16} color="white" />
+                {/* 2. SCANNING EFFECT */}
+                {!isAnalyzing && (
+                  <div className="absolute inset-0 bg-gradient-to-b from-blue-500/10 to-transparent pointer-events-none animate-[scan_3s_ease-in-out_infinite]" />
+                )}
+
+                {/* 3. LOADING OVERLAY */}
+                {isAnalyzing && (
+                  <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center z-10 animate-in fade-in">
+                    <div className="animate-spin mb-3 text-blue-600">
+                      <Icon name="Loader" size={40} />
                     </div>
-                    <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-text-primary mb-1">
-                        AI Analysis Result
-                      </h4>
-                      <p className="text-sm text-text-secondary">
-                        {demoImages[currentImageIndex].analysis}
-                      </p>
-                    </div>
+                    <span className="text-sm font-semibold text-blue-600 animate-pulse">
+                      Processing Image...
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* RESULT BOX */}
+              <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600 flex gap-3 items-start">
+                <div className="mt-1">
+                  <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                    <Icon name="Brain" size={14} className="text-blue-600 dark:text-blue-400" />
                   </div>
                 </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Diagnosis</h4>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {demoImages[currentImageIndex].analysis}
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex space-x-2">
-                  {demoImages.map((_, index) => (
+              {/* CONTROLS */}
+              <div className="flex items-center justify-between mt-6">
+                <div className="flex gap-2">
+                  {demoImages.map((_, idx) => (
                     <button
-                      key={index}
-                      onClick={() => setCurrentImageIndex(index)}
-                      className={`w-3 h-3 rounded-full transition-all ${
-                        index === currentImageIndex ? 'bg-primary' : 'bg-border'
+                      key={idx}
+                      onClick={() => setCurrentImageIndex(idx)}
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        idx === currentImageIndex ? 'w-8 bg-blue-600' : 'w-2 bg-slate-300 dark:bg-slate-600 hover:bg-blue-400'
                       }`}
-                      aria-label={`Show demo image ${index + 1}`}
+                      aria-label={`View image ${idx + 1}`}
                     />
                   ))}
                 </div>
+                {/* Re-Analyze Button (Interactive Demo) */}
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleAnalysisDemo}
                   iconName="RotateCcw"
-                  iconPosition="left"
-                  iconSize={16}
+                  className="text-slate-500 hover:text-blue-600"
                 >
-                  Analyze Again
+                  Re-Analyze
                 </Button>
               </div>
             </div>
 
-            <div className="absolute -top-4 -right-4 bg-white rounded-lg shadow-brand p-4 border border-border">
+            {/* FLOATING STATS */}
+            <div className="absolute -top-4 -right-4 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 animate-bounce-slow hidden lg:block">
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary">98.7%</div>
-                <div className="text-xs text-text-secondary">Accuracy Rate</div>
-              </div>
-            </div>
-
-            <div className="absolute -bottom-4 -left-4 bg-white rounded-lg shadow-brand p-4 border border-border">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-trust-green">&lt;2s</div>
-                <div className="text-xs text-text-secondary">Analysis Time</div>
+                <div className="text-2xl font-bold text-blue-600">98.7%</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accuracy</div>
               </div>
             </div>
           </div>
-          {/* /Right */}
+
         </div>
       </div>
+
+      {/* INLINE STYLE FOR SCAN ANIMATION */}
+      <style>{`
+        @keyframes scan {
+          0% { transform: translateY(-100%); opacity: 0; }
+          50% { opacity: 1; }
+          100% { transform: translateY(100%); opacity: 0; }
+        }
+      `}</style>
     </section>
   );
 };

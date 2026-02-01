@@ -1,97 +1,152 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
-import Image from '../../../components/AppImage';
+import Icon from '../../../components/AppIcon';
 
 const HeroSection = () => {
   return (
-    <section className="relative bg-gradient-to-br from-surface via-white to-brand-canvas min-h-screen flex items-center">
-      <div className="absolute inset-0 bg-white/60"></div>
+    <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-slate-50 dark:bg-slate-950">
       
-      <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Content */}
-          <div className="space-y-8 fade-in-up">
-            <div className="space-y-4">
-              <div className="inline-flex items-center px-4 py-2 bg-primary/10 rounded-full">
-                <span className="text-sm font-medium text-primary">AI-Powered Dental Care</span>
-              </div>
-              
-              <h1 className="text-hero text-text-primary leading-tight">
-                Take control of your 
-                <span className="text-brand-primary"> dental health</span> from home
-              </h1>
-              
-              <p className="text-value-prop text-text-secondary max-w-xl">
-                Get instant AI-powered insights about your dental health. Upload a photo, receive professional-grade analysis, and know when to seek care—all from the comfort of your home.
-              </p>
+      {/* Dynamic Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+          
+          {/* Content Column */}
+          <div className="text-center lg:text-left space-y-8 animate-in slide-in-from-bottom-8 duration-1000">
+            
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 text-xs font-bold uppercase tracking-wider mx-auto lg:mx-0">
+              <Icon name="Smartphone" size={14} />
+              <span>Personal Dental Assistant</span>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                variant="default" 
-                size="lg"
-                iconName="Camera"
-                iconPosition="left"
-                iconSize={20}
-              >
-                Start Free Analysis
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="lg"
-                iconName="Play"
-                iconPosition="left"
-                iconSize={20}
-              >
-                Watch How It Works
-              </Button>
+            {/* Headline */}
+            <h1 className="text-5xl lg:text-7xl font-extrabold text-slate-900 dark:text-white leading-[1.1] tracking-tight">
+              Take Control of Your <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-rose-600">
+                Dental Health
+              </span>
+            </h1>
+
+            {/* Subheadline */}
+            <p className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+              No appointments. No waiting rooms. Just instant, AI-powered insights about your teeth from the comfort of your home.
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+              <Link to="/serene-ai">
+                <Button 
+                  size="xl" 
+                  className="bg-pink-600 hover:bg-pink-500 text-white border-none shadow-lg shadow-pink-500/30 px-8"
+                  iconName="Camera"
+                  iconPosition="left"
+                >
+                  Start Free Analysis
+                </Button>
+              </Link>
+              <Link to="#how-it-works">
+                <Button 
+                  variant="outline" 
+                  size="xl"
+                  className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  iconName="Play"
+                  iconPosition="left"
+                >
+                  Watch Demo
+                </Button>
+              </Link>
             </div>
 
-            {/* Trust Indicators */}
-            <div className="flex items-center space-x-6 pt-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-trust-green rounded-full"></div>
-                <span className="text-sm text-text-secondary">HIPAA Compliant</span>
+            {/* Trust Badges */}
+            <div className="pt-6 flex flex-wrap justify-center lg:justify-start gap-6 text-sm font-medium text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <Icon name="ShieldCheck" size={18} className="text-green-500" />
+                <span>HIPAA Compliant</span>
               </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-trust-green rounded-full"></div>
-                <span className="text-sm text-text-secondary">Clinically Validated</span>
+              <div className="flex items-center gap-2">
+                <Icon name="Lock" size={18} className="text-blue-500" />
+                <span>100% Private</span>
               </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-trust-green rounded-full"></div>
-                <span className="text-sm text-text-secondary">100% Private</span>
+              <div className="flex items-center gap-2">
+                <Icon name="Activity" size={18} className="text-pink-500" />
+                <span>Clinically Validated</span>
               </div>
             </div>
           </div>
 
-          {/* Hero Image */}
-          <div className="relative">
-            <div className="relative bg-white rounded-2xl shadow-brand-hover p-8 hover-lift">
-              <Image 
-                src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=600&h=400&fit=crop&crop=center"
-                alt="Happy patient using dental health app"
-                className="w-full h-80 object-cover rounded-lg"
-              />
+          {/* Visual Column */}
+          <div className="relative mx-auto w-full max-w-[500px] lg:max-w-none perspective-[1000px]">
+            
+            {/* Phone Mockup Container */}
+            <div className="relative z-10 bg-white dark:bg-slate-900 rounded-[2.5rem] border-8 border-slate-900 dark:border-slate-800 shadow-2xl overflow-hidden transform rotate-y-[-5deg] hover:rotate-y-0 transition-transform duration-700">
               
-              {/* Floating Analysis Card */}
-              <div className="absolute -bottom-4 -right-4 bg-white rounded-lg shadow-brand p-4 border border-border">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-trust-green rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">✓</span>
+              {/* Fake Phone UI Header */}
+              <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 flex justify-between items-center border-b border-slate-100 dark:border-slate-700">
+                <div className="w-16 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                <div className="flex gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                </div>
+              </div>
+
+              {/* Phone Content (Simulated App) */}
+              <div className="aspect-[9/16] bg-slate-100 dark:bg-slate-950 relative overflow-hidden group">
+                {/* Background Image (Smiling Person / Selfie) */}
+                <img 
+                  src="https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80" 
+                  alt="App Scan Interface" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-90"
+                />
+                
+                {/* Overlay UI: Scanning Frame */}
+                <div className="absolute inset-8 border-2 border-white/50 rounded-xl flex flex-col justify-between p-4">
+                  <div className="bg-black/40 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full self-center">
+                    Align teeth in frame
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-text-primary">Analysis Complete</p>
-                    <p className="text-xs text-text-secondary">Healthy gums detected</p>
+                  <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-400 w-[70%] animate-[width_2s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+
+                {/* Pop-up Card */}
+                <div className="absolute bottom-6 left-6 right-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-4 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom-4 delay-500 duration-700">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600">
+                      <Icon name="Check" size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">Scan Complete</h4>
+                      <p className="text-xs text-slate-500">No cavities detected.</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Background Decoration */}
-            <div className="absolute -top-4 -left-4 w-24 h-24 bg-brand-gradient rounded-full opacity-20 blur-xl"></div>
-            <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-accent/20 rounded-full blur-xl"></div>
+            {/* Decorative Floating Elements */}
+            <div className="absolute -top-12 -right-12 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl animate-bounce-slow hidden lg:block">
+              <div className="flex items-center gap-2 text-pink-600 font-bold">
+                <Icon name="Heart" size={20} className="fill-current" />
+                <span>Gum Health: 98%</span>
+              </div>
+            </div>
+
+            <div className="absolute top-1/3 -left-16 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl animate-pulse hidden lg:block">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">AI Analysis Active</span>
+              </div>
+            </div>
+
           </div>
+
         </div>
       </div>
     </section>
