@@ -155,7 +155,7 @@ const CTASection = () => {
               Schedule Demo
             </Button>
             <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20" iconName="Phone" iconPosition="left">
-              Call Sales: (555) 123-4567
+              Call Adrian: (+62) 812-8792-8805
             </Button>
           </div>
         </div>

@@ -6,202 +6,142 @@ const IntegrationSection = () => {
   const integrations = [
     {
       name: 'Dentrix',
-      icon: 'Database',
-      description: 'Seamless integration with Dentrix practice management',
-      status: 'Available'
+      type: 'PMS',
+      description: 'Full sync with patient charts and ledger.',
+      color: 'blue'
     },
     {
       name: 'Eaglesoft',
-      icon: 'Layers',
-      description: 'Full compatibility with Eaglesoft systems',
-      status: 'Available'
+      type: 'PMS',
+      description: 'Real-time appointment and clinical data.',
+      color: 'purple'
     },
     {
       name: 'Open Dental',
-      icon: 'Link',
-      description: 'Native integration with Open Dental platform',
-      status: 'Available'
-    },
-    {
-      name: 'Curve Hero',
-      icon: 'Zap',
-      description: 'Connect with Curve Hero imaging systems',
-      status: 'Available'
+      type: 'Open Source',
+      description: 'Native MySQL integration for speed.',
+      color: 'green'
     },
     {
       name: 'DEXIS',
-      icon: 'Camera',
-      description: 'Direct integration with DEXIS imaging',
-      status: 'Available'
+      type: 'Imaging',
+      description: 'Direct X-ray ingestion from sensor.',
+      color: 'amber'
     },
     {
       name: 'Planmeca',
-      icon: 'Monitor',
-      description: 'Compatible with Planmeca equipment',
-      status: 'Available'
+      type: 'Imaging',
+      description: '2D and 3D volume analysis support.',
+      color: 'teal'
+    },
+    {
+      name: 'Carestream',
+      type: 'Imaging',
+      description: 'Seamless DICOM transfer protocol.',
+      color: 'rose'
     }
   ];
 
   return (
-    <section className="py-20 bg-gradient-to-br from-secondary/5 to-primary/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center space-x-2 bg-secondary/10 text-secondary px-4 py-2 rounded-full text-sm font-medium mb-6">
-            <Icon name="Plug" size={16} />
-            <span>System Integration</span>
+    <section className="py-24 bg-white dark:bg-slate-950 overflow-hidden relative">
+      
+      {/* Background Decor */}
+      <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-[0.03]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        
+        {/* Header */}
+        <div className="text-center mb-16 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="Link" size={14} />
+            <span>Universal Compatibility</span>
           </div>
           
-          <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
-            Seamless Integration with
-            <span className="block text-primary">Your Existing Systems</span>
+          <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+            Plug & Play with <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+              Your Current Stack
+            </span>
           </h2>
           
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Connect Serene AI with your current practice management software and imaging systems. 
-            No disruption to your workflow - just enhanced capabilities.
+          <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+            Don't change how you work. Serene AI runs quietly in the background, 
+            connecting with your existing PMS and imaging hardware via secure, local bridges.
           </p>
         </div>
 
-        {/* Integration Cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {integrations?.map((integration, index) => (
-            <div key={index} className="bg-card p-6 rounded-xl border border-border shadow-brand hover-lift transition-gentle">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center">
-                  <Icon name={integration?.icon} size={24} className="text-secondary" />
+        {/* Integration Grid */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
+          {integrations.map((item, index) => (
+            <div 
+              key={index} 
+              className="group bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${item.color}-50 dark:bg-${item.color}-900/20 text-${item.color}-600`}>
+                  <Icon name={item.type === 'PMS' ? 'Database' : 'Image'} size={24} />
                 </div>
-                <div className="inline-flex items-center space-x-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 px-3 py-1 rounded-full text-xs font-medium">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>{integration?.status}</span>
-                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-${item.color}-100 dark:bg-${item.color}-900/30 text-${item.color}-700 dark:text-${item.color}-300`}>
+                  {item.type}
+                </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">{integration?.name}</h3>
-              <p className="text-muted-foreground text-sm">{integration?.description}</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{item.name}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {item.description}
+              </p>
             </div>
           ))}
         </div>
 
-        {/* Integration Process */}
-        <div className="bg-card rounded-2xl border border-border p-8 shadow-brand">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h3 className="text-2xl font-bold text-foreground mb-6">
-                Quick & Easy Setup Process
-              </h3>
-              
-              <div className="space-y-6">
-                <div className="flex items-start space-x-4">
-                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-bold text-white">1</span>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-foreground mb-1">Connect Your Systems</h4>
-                    <p className="text-muted-foreground text-sm">
-                      Simple API connection to your existing practice management software
-                    </p>
-                  </div>
+        {/* Setup Pipeline */}
+        <div className="bg-slate-900 rounded-[2.5rem] p-10 lg:p-12 shadow-2xl relative overflow-hidden border border-slate-800">
+          
+          {/* Decorative Line */}
+          <div className="absolute top-1/2 left-0 w-full h-px bg-slate-800 -z-0 hidden lg:block" />
+
+          <div className="grid lg:grid-cols-3 gap-8 relative z-10">
+            {[
+              { step: "1", title: "Install The Bridge", desc: "Lightweight local service installs in < 5 mins." },
+              { step: "2", title: "Map Data Fields", desc: "Auto-detects your schema and aligns patient IDs." },
+              { step: "3", title: "Live Sync", desc: "Images analyze instantly as they are captured." }
+            ].map((s, i) => (
+              <div key={i} className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex flex-col items-center text-center hover:border-blue-500/50 transition-colors group">
+                <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xl font-bold text-white mb-4 group-hover:bg-blue-600 group-hover:border-blue-500 transition-colors">
+                  {s.step}
                 </div>
-                
-                <div className="flex items-start space-x-4">
-                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-bold text-white">2</span>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-foreground mb-1">Configure Settings</h4>
-                    <p className="text-muted-foreground text-sm">
-                      Customize data sync preferences and AI analysis parameters
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start space-x-4">
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Icon name="Check" size={16} color="white" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-foreground mb-1">Start Analyzing</h4>
-                    <p className="text-muted-foreground text-sm">
-                      Begin getting AI-powered insights within minutes
-                    </p>
-                  </div>
-                </div>
+                <h4 className="text-lg font-bold text-white mb-2">{s.title}</h4>
+                <p className="text-sm text-slate-400">{s.desc}</p>
               </div>
-              
-              <div className="mt-8">
-                <Button className="mr-4" iconName="Play">
-                  Watch Setup Demo
-                </Button>
-                <Button variant="outline" iconName="Download">
-                  Download Guide
-                </Button>
-              </div>
+            ))}
+          </div>
+
+          <div className="mt-12 flex flex-col md:flex-row items-center justify-center gap-6">
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-500/30 rounded-full">
+              <Icon name="Shield" size={16} className="text-green-400" />
+              <span className="text-xs font-bold text-green-300 uppercase tracking-wide">HIPAA Compliant & Encrypted</span>
             </div>
-            
-            <div>
-              <div className="bg-muted rounded-lg p-6">
-                <h4 className="text-lg font-semibold text-foreground mb-4">
-                  Integration Benefits
-                </h4>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-3">
-                    <Icon name="CheckCircle" size={20} className="text-green-500" />
-                    <span className="text-foreground">No workflow disruption</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Icon name="CheckCircle" size={20} className="text-green-500" />
-                    <span className="text-foreground">Automatic data synchronization</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Icon name="CheckCircle" size={20} className="text-green-500" />
-                    <span className="text-foreground">Enhanced patient records</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Icon name="CheckCircle" size={20} className="text-green-500" />
-                    <span className="text-foreground">Real-time AI insights</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Icon name="CheckCircle" size={20} className="text-green-500" />
-                    <span className="text-foreground">Unified reporting dashboard</span>
-                  </div>
-                </div>
-                
-                <div className="mt-6 p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <div className="flex items-start space-x-2">
-                    <Icon name="Shield" size={16} className="text-primary mt-1" />
-                    <div className="text-sm text-primary">
-                      <strong>HIPAA Compliant:</strong> All integrations maintain the highest 
-                      standards of patient data security and privacy.
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-900/30 border border-blue-500/30 rounded-full">
+              <Icon name="Server" size={16} className="text-blue-400" />
+              <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Local + Cloud Hybrid</span>
             </div>
+          </div>
+
+        </div>
+
+        {/* Support CTA */}
+        <div className="mt-20 text-center">
+          <p className="text-slate-500 mb-6">Using a custom or legacy system?</p>
+          <div className="flex justify-center gap-4">
+             <Button variant="outline" iconName="MessageSquare" iconPosition="left">
+               Chat with Integration Engineer
+             </Button>
+             <Button variant="ghost" iconName="FileText" iconPosition="left">
+               Read Technical Docs
+             </Button>
           </div>
         </div>
 
-        {/* Support Section */}
-        <div className="mt-16 text-center">
-          <h3 className="text-2xl font-bold text-foreground mb-4">
-            Need Help with Integration?
-          </h3>
-          <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Our technical support team is here to help you every step of the way. 
-            From initial setup to ongoing maintenance, we ensure seamless operation.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="outline" iconName="MessageCircle">
-              Live Chat Support
-            </Button>
-            <Button variant="outline" iconName="Phone">
-              Schedule Call
-            </Button>
-            <Button variant="outline" iconName="Mail">
-              Email Support
-            </Button>
-          </div>
-        </div>
       </div>
     </section>
   );

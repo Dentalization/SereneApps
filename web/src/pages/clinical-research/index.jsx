@@ -20,11 +20,11 @@ const ClinicalResearch = () => {
         <ResearchHero />
         <AccuracyMetrics />
         <PublishedResearch />
-        <UniversityPartnerships />
+        {/* <UniversityPartnerships /> */}
         <MethodologySection />
-        <AdvisoryBoard />
-        <RegulatorySection />
-        <ResearchParticipation />
+        {/* <AdvisoryBoard /> */}
+        {/* <RegulatorySection /> */}
+        {/* <ResearchParticipation /> */}
       </main>
       {/* Footer */}
       <footer className="bg-text-primary text-white py-12">

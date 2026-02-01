@@ -5,288 +5,226 @@ import Button from '../../../components/ui/Button';
 const DentistDashboardSection = () => {
   const dashboardFeatures = [
     {
-      icon: 'LayoutDashboard',
-      title: 'Unified Dashboard',
-      description: 'All your practice data in one comprehensive view'
+      icon: 'Layout',
+      title: 'Unified View',
+      description: 'Aggregate patient data, schedules, and AI insights in one screen.',
+      color: 'blue'
     },
     {
       icon: 'FileText',
-      title: 'Patient Records',
-      description: 'Digital patient files with AI-enhanced documentation'
-    },
-    {
-      icon: 'Calendar',
-      title: 'Schedule Management',
-      description: 'Intelligent booking and appointment optimization'
-    },
-    {
-      icon: 'BarChart3',
-      title: 'Analytics Suite',
-      description: 'Advanced reporting and performance insights'
+      title: 'Smart Charts',
+      description: 'Auto-populating clinical notes powered by NLP.',
+      color: 'green'
     },
     {
       icon: 'Bell',
-      title: 'Smart Alerts',
-      description: 'Proactive notifications for important events'
-    },
-    {
-      icon: 'Settings',
-      title: 'Custom Workflows',
-      description: 'Personalized workflows for your practice style'
+      title: 'Active Alerts',
+      description: 'Real-time notifications for critical patient follow-ups.',
+      color: 'amber'
     }
   ];
 
   return (
-    <section className="py-20 bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center space-x-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
-            <Icon name="LayoutDashboard" size={16} />
-            <span>Dentist Dashboard</span>
+    <section className="py-24 bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
+      
+      {/* Background Decor */}
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-teal-500/5 rounded-full blur-[100px] pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        
+        {/* Header */}
+        <div className="text-center mb-16 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="LayoutDashboard" size={14} />
+            <span>Practice Command Center</span>
           </div>
           
-          <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
-            Your Command Center for
-            <span className="block text-primary">Modern Dentistry</span>
+          <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+            Your Entire Practice <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">
+              At a Glance
+            </span>
           </h2>
           
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Experience the ultimate dental practice management platform. Our intuitive dashboard 
-            brings together AI diagnostics, patient management, and practice analytics in one place.
+          <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+            No more tab switching. Our intuitive dashboard unifies clinical data, operational metrics, 
+            and patient communications into a single, powerful interface.
           </p>
         </div>
 
-        {/* Dashboard Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {dashboardFeatures?.map((feature, index) => (
-            <div key={index} className="bg-card p-6 rounded-xl border border-border shadow-brand hover-lift transition-gentle">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <Icon name={feature?.icon} size={24} className="text-primary" />
+        {/* Feature Cards */}
+        <div className="grid md:grid-cols-3 gap-6 mb-20">
+          {dashboardFeatures.map((feature, index) => (
+            <div key={index} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all duration-300">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-${feature.color}-50 dark:bg-${feature.color}-900/20 text-${feature.color}-600`}>
+                <Icon name={feature.icon} size={24} />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">{feature?.title}</h3>
-              <p className="text-muted-foreground text-sm">{feature?.description}</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{feature.title}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{feature.description}</p>
             </div>
           ))}
         </div>
 
-        {/* Dashboard Illustration */}
-        <div className="bg-gradient-to-br from-primary/5 to-secondary/5 rounded-2xl p-8 mb-16">
-          <div className="max-w-4xl mx-auto">
-            <h3 className="text-2xl font-bold text-foreground text-center mb-8">
-              Interactive Dashboard Preview
-            </h3>
-            
-            <div className="bg-card rounded-xl border border-border shadow-brand overflow-hidden">
-              {/* Dashboard Header */}
-              <div className="bg-muted px-6 py-4 border-b border-border">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                        <Icon name="Brain" size={20} color="white" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-foreground">Dr. Sarah Mitchell</div>
-                        <div className="text-sm text-muted-foreground">Dental Practice Dashboard</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Button variant="ghost" size="sm" iconName="Bell">
-                      3
-                    </Button>
-                    <Button variant="ghost" size="sm" iconName="Settings" />
-                  </div>
-                </div>
+        {/* Interactive Dashboard UI */}
+        <div className="bg-slate-900 rounded-[2rem] border border-slate-800 shadow-2xl overflow-hidden mb-24">
+          
+          {/* Dashboard Toolbar */}
+          <div className="bg-slate-800/80 backdrop-blur px-6 py-4 border-b border-slate-700 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500" />
               </div>
-              
-              {/* Dashboard Content */}
-              <div className="p-6">
-                <div className="grid lg:grid-cols-3 gap-6">
-                  {/* Today's Overview */}
-                  <div className="lg:col-span-2">
-                    <h4 className="text-lg font-semibold text-foreground mb-4">Today's Overview</h4>
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="bg-muted p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-primary mb-1">14</div>
-                        <div className="text-sm text-muted-foreground">Appointments</div>
-                      </div>
-                      <div className="bg-muted p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-green-500 mb-1">12</div>
-                        <div className="text-sm text-muted-foreground">Completed</div>
-                      </div>
-                      <div className="bg-muted p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-amber-500 mb-1">2</div>
-                        <div className="text-sm text-muted-foreground">Pending</div>
-                      </div>
-                    </div>
-                    
-                    {/* Recent Activity */}
-                    <div>
-                      <h5 className="font-medium text-foreground mb-3">Recent Activity</h5>
-                      <div className="space-y-3">
-                        <div className="flex items-center space-x-3 p-3 bg-muted rounded-lg">
-                          <Icon name="FileCheck" size={20} className="text-green-500" />
-                          <div className="flex-1">
-                            <div className="font-medium text-foreground">Analysis completed for John Doe</div>
-                            <div className="text-sm text-muted-foreground">Root canal assessment • 2 minutes ago</div>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3 p-3 bg-muted rounded-lg">
-                          <Icon name="Calendar" size={20} className="text-primary" />
-                          <div className="flex-1">
-                            <div className="font-medium text-foreground">Appointment scheduled</div>
-                            <div className="text-sm text-muted-foreground">Emma Wilson • Follow-up in 2 weeks</div>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3 p-3 bg-muted rounded-lg">
-                          <Icon name="AlertTriangle" size={20} className="text-amber-500" />
-                          <div className="flex-1">
-                            <div className="font-medium text-foreground">Risk alert generated</div>
-                            <div className="text-sm text-muted-foreground">Patient requires immediate attention</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Quick Actions */}
-                  <div>
-                    <h4 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h4>
-                    <div className="space-y-3">
-                      <Button variant="outline" fullWidth iconName="Upload" className="justify-start">
-                        Upload X-Ray
-                      </Button>
-                      <Button variant="outline" fullWidth iconName="UserPlus" className="justify-start">
-                        New Patient
-                      </Button>
-                      <Button variant="outline" fullWidth iconName="Calendar" className="justify-start">
-                        Schedule Appointment
-                      </Button>
-                      <Button variant="outline" fullWidth iconName="FileText" className="justify-start">
-                        Generate Report
-                      </Button>
-                    </div>
-                    
-                    {/* AI Insights */}
-                    <div className="mt-6">
-                      <h5 className="font-medium text-foreground mb-3">AI Insights</h5>
-                      <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-                        <div className="flex items-start space-x-2">
-                          <Icon name="Brain" size={16} className="text-primary mt-1" />
-                          <div className="text-sm">
-                            <div className="font-medium text-primary mb-1">Today's Recommendation</div>
-                            <div className="text-primary/80">
-                              Consider scheduling Mrs. Johnson's crown placement during her next visit 
-                              based on her X-ray analysis.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+              <div className="h-6 w-px bg-slate-700 mx-2" />
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
+                  DR
                 </div>
+                <div className="text-sm font-medium text-white">Dr. Sarah Mitchell</div>
               </div>
             </div>
+            <div className="flex items-center gap-3">
+               <div className="relative">
+                 <Icon name="Bell" className="text-slate-400" />
+                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+               </div>
+               <Icon name="Settings" className="text-slate-400" />
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-12 min-h-[500px]">
+            
+            {/* Sidebar (2 cols) */}
+            <div className="hidden lg:flex lg:col-span-2 bg-slate-900 border-r border-slate-800 flex-col items-center py-6 gap-6">
+               {['Home', 'Users', 'Calendar', 'FileText', 'BarChart2', 'MessageSquare'].map((icon, i) => (
+                 <div key={i} className={`p-3 rounded-xl transition-colors ${i === 0 ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}`}>
+                   <Icon name={icon} size={20} />
+                 </div>
+               ))}
+            </div>
+
+            {/* Main Content (7 cols) */}
+            <div className="lg:col-span-7 bg-slate-950 p-8">
+              <h3 className="text-xl font-bold text-white mb-6">Today's Overview</h3>
+              
+              {/* Stats Row */}
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                {[
+                  { label: "Appointments", val: "14", color: "text-white" },
+                  { label: "Completed", val: "8", color: "text-green-400" },
+                  { label: "Pending", val: "6", color: "text-amber-400" },
+                ].map((stat, i) => (
+                  <div key={i} className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                    <div className={`text-2xl font-bold ${stat.color} mb-1`}>{stat.val}</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wide">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Activity Feed */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Recent Activity</h4>
+                {[
+                  { icon: "CheckCircle", color: "text-green-500", title: "Analysis Completed", desc: "John Doe • Root Canal Assessment", time: "2m ago" },
+                  { icon: "Calendar", color: "text-blue-500", title: "New Appointment", desc: "Emma Wilson • Initial Consult", time: "15m ago" },
+                  { icon: "AlertTriangle", color: "text-amber-500", title: "Risk Alert", desc: "Patient #492 requires review", time: "1h ago" },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-4 p-4 bg-slate-900 rounded-xl border border-slate-800 hover:bg-slate-800 transition-colors cursor-pointer">
+                    <div className={`p-2 rounded-lg bg-slate-950 ${item.color}`}>
+                      <Icon name={item.icon} size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-slate-200 text-sm">{item.title}</span>
+                        <span className="text-xs text-slate-600">{item.time}</span>
+                      </div>
+                      <div className="text-xs text-slate-500">{item.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Panel (3 cols) */}
+            <div className="lg:col-span-3 bg-slate-900 border-l border-slate-800 p-6 space-y-6">
+               
+               {/* Quick Actions */}
+               <div>
+                 <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Quick Actions</h4>
+                 <div className="space-y-3">
+                   {['Upload X-Ray', 'New Patient', 'Add Appointment', 'Create Report'].map((action, i) => (
+                     <button key={i} className="w-full text-left px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-colors flex items-center gap-3">
+                       <Icon name={i === 0 ? 'UploadCloud' : i === 1 ? 'UserPlus' : i === 2 ? 'Calendar' : 'FileText'} size={16} />
+                       {action}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* AI Assistant */}
+               <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-4">
+                 <div className="flex items-center gap-2 mb-2 text-blue-400">
+                   <Icon name="Sparkles" size={16} />
+                   <span className="text-xs font-bold uppercase">AI Assistant</span>
+                 </div>
+                 <p className="text-xs text-blue-200/80 leading-relaxed mb-3">
+                   Reminder: Mrs. Johnson is due for her 6-month recall. 
+                   Her last scan showed early signs of gingivitis.
+                 </p>
+                 <button className="text-xs font-bold text-blue-400 hover:text-white">Send Reminder</button>
+               </div>
+
+            </div>
+
           </div>
         </div>
 
-        {/* Dashboard Benefits */}
+        {/* Bottom Benefits Grid */}
         <div className="grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h3 className="text-2xl font-bold text-foreground mb-6">
-              Why Dentists Love Our Dashboard
-            </h3>
+          <div className="space-y-8">
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Why Dentists Love It</h3>
             
-            <div className="space-y-6">
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon name="Zap" size={24} className="text-green-600 dark:text-green-400" />
+            {[
+              { icon: 'Smartphone', title: 'Mobile Optimized', desc: 'Access your practice data securely from any device, anywhere.' },
+              { icon: 'Zap', title: 'Zero Latency', desc: 'Built on edge computing for instant load times and real-time updates.' },
+              { icon: 'Palette', title: 'Fully Customizable', desc: 'Drag-and-drop widgets to match your specific workflow needs.' }
+            ].map((item, i) => (
+              <div key={i} className="flex gap-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0 text-blue-600">
+                  <Icon name={item.icon} size={24} />
                 </div>
                 <div>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">Instant Overview</h4>
-                  <p className="text-muted-foreground">
-                    Get a complete picture of your practice at a glance. Critical information is always 
-                    just one click away.
-                  </p>
+                  <h4 className="font-bold text-slate-900 dark:text-white mb-1">{item.title}</h4>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{item.desc}</p>
                 </div>
               </div>
-              
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon name="Smartphone" size={24} className="text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">Mobile Responsive</h4>
-                  <p className="text-muted-foreground">
-                    Access your dashboard anywhere, anytime. Fully optimized for desktop, tablet, 
-                    and mobile devices.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon name="Palette" size={24} className="text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">Customizable</h4>
-                  <p className="text-muted-foreground">
-                    Tailor your dashboard to match your workflow. Drag-and-drop widgets, 
-                    custom themes, and personalized layouts.
-                  </p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
           
-          <div className="bg-card rounded-xl border border-border p-6 shadow-brand">
-            <h4 className="text-lg font-semibold text-foreground mb-4">
-              Dashboard Performance Metrics
-            </h4>
-            
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-muted-foreground">User Satisfaction</span>
-                  <span className="font-bold text-green-500">98%</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '98%' }}></div>
-                </div>
-              </div>
-              
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-muted-foreground">Task Completion Speed</span>
-                  <span className="font-bold text-primary">65% Faster</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: '65%' }}></div>
-                </div>
-              </div>
-              
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-muted-foreground">Learning Curve</span>
-                  <span className="font-bold text-amber-500">2 Hours</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-amber-500 h-2 rounded-full" style={{ width: '85%' }}></div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="mt-6 p-4 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-lg">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary mb-1">2,847</div>
-                <div className="text-sm text-muted-foreground">Active Dental Practices</div>
-              </div>
-            </div>
+          <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-8 border border-slate-100 dark:border-slate-800">
+             <h4 className="font-bold text-slate-900 dark:text-white mb-6">User Satisfaction Metrics</h4>
+             <div className="space-y-6">
+               {[
+                 { label: "Ease of Use", val: "98%", color: "bg-green-500" },
+                 { label: "Task Speed", val: "65% Faster", color: "bg-blue-500", width: "65%" },
+                 { label: "Onboarding Time", val: "< 2 Hours", color: "bg-purple-500", width: "85%" },
+               ].map((metric, i) => (
+                 <div key={i}>
+                   <div className="flex justify-between text-sm mb-2 text-slate-600 dark:text-slate-300">
+                     <span>{metric.label}</span>
+                     <span className="font-bold">{metric.val}</span>
+                   </div>
+                   <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                     <div className={`h-full ${metric.color}`} style={{ width: metric.width || metric.val }} />
+                   </div>
+                 </div>
+               ))}
+             </div>
           </div>
         </div>
+
       </div>
     </section>
   );

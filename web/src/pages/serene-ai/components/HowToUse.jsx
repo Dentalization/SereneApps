@@ -5,52 +5,52 @@ const HowToUse = ({ onContinue }) => {
   const steps = useMemo(
     () => [
       {
-        title: 'Upload Your Dental Images',
+        title: 'Upload Dental Images',
         description:
-          'Click the camera icon or drag & drop your dental X-rays, photos, or scans into the chat interface.',
+          'Click the camera icon or drag & drop your dental X-rays, intraoral photos, or scans directly into the chat.',
         icon: 'Camera',
         details: [
-          'Supports JPG, PNG, and other common image formats.',
-          'Ensure images are clear and well-lit.',
-          'Multiple images can be uploaded for comprehensive analysis.',
+          'Supports JPG, PNG, and DICOM formats.',
+          'Ensure images are well-lit and in focus.',
+          'Upload multiple angles for better accuracy.',
         ],
-        hint: 'Tip: crop or rotate before uploading for best detection quality.',
+        hint: 'Tip: Crop the image to focus on the specific tooth of interest.',
       },
       {
-        title: 'Ask Questions Naturally',
+        title: 'Ask Naturally',
         description:
-          'Type your questions in natural language. Ask about diagnoses, treatment options, or request detailed analysis.',
+          'Interact with Serene AI just like you would with a colleague. Ask for second opinions, differential diagnoses, or treatment plans.',
         icon: 'MessageCircle',
         details: [
-          'Use technical dentist language — For good result.',
-          'Ask specific questions for targeted analysis.',
-          'Request comparisons or second opinions.',
+          'Use clinical terminology for precise results.',
+          'Ask specific questions like "Is there periapical pathology?"',
+          'Request patient-friendly explanations to share.',
         ],
-        hint: 'Try: “Is there decay on the lower left molar? What should I do next?”',
+        hint: 'Try: "Analyze the lower left quadrant for potential caries."',
       },
       {
-        title: 'Get AI-Powered Insights',
+        title: 'AI Analysis & Insights',
         description:
-          'Receive detailed analysis, visualizations, and professional-grade insights powered by advanced AI technology.',
+          'Get instant, clinical-grade analysis powered by our neural networks. Review confidence scores and detected anomalies.',
         icon: 'Brain',
         details: [
-          'Comprehensive diagnostic summaries.',
-          'Visual annotations and overlays.',
-          'Treatment recommendations and next steps.',
+          'Diagnostic summaries generated in seconds.',
+          'Visual bounding boxes on pathologies.',
+          'Risk assessment levels (Low/Medium/High).',
         ],
-        hint: 'All findings include confidence levels and action items.',
+        hint: 'Findings are highlighted with color-coded confidence levels.',
       },
       {
-        title: 'Interactive Visualizations',
+        title: 'Interactive Viewer',
         description:
-          'View and interact with AI-generated visualizations that highlight areas of interest in your dental images.',
+          'Deep dive into the results with our interactive visualizer. Toggle layers, zoom in on details, and export reports.',
         icon: 'Eye',
         details: [
-          'Click to enlarge visualizations.',
-          'Download reports for your records.',
-          'Share findings with your dental team.',
+          'Click annotations to see detailed findings.',
+          'Export PDF reports for patient records.',
+          'Securely share findings with specialists.',
         ],
-        hint: 'Use full-screen mode to inspect micro-details comfortably.',
+        hint: 'Use the toolbar to toggle between original and annotated views.',
       },
     ],
     []
@@ -73,7 +73,7 @@ const HowToUse = ({ onContinue }) => {
 
   const skipToChat = useCallback(() => onContinue && onContinue(), [onContinue]);
 
-  // Keyboard navigation: ← / →, Enter to advance, Esc to skip
+  // Keyboard navigation
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
@@ -94,180 +94,137 @@ const HowToUse = ({ onContinue }) => {
   const progress = Math.round(((currentStep + 1) / total) * 100);
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background layers */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-secondary/10" />
-      <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_20%,rgba(255,255,255,0.6),transparent_60%)] pointer-events-none" />
-      {/* Subtle grid */}
-      <svg className="absolute inset-0 w-full h-full opacity-10 mix-blend-overlay pointer-events-none" aria-hidden="true">
-        <defs>
-          <pattern id="ht-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-black/40" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#ht-grid)" />
-      </svg>
+    <div className="min-h-screen relative overflow-hidden flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      
+      {/* Background Decor */}
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]" />
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[100px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[100px]" />
 
-      {/* Container */}
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      {/* Main Container */}
+      <div className="relative z-10 w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
+        
         {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-4xl sm:text-5xl font-bold text-text-primary">
-            How to Use{' '}
-            <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Serene AI</span>
+        <div className="text-center mb-10 animate-in fade-in slide-in-from-top-4 duration-700">
+          <h1 className="text-3xl sm:text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
+            How to Use <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Serene AI</span>
           </h1>
-          <p className="mt-3 text-lg sm:text-xl text-text-secondary">
-            Learn how to get the most out of your AI dental assistant
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+            Master the platform in 4 simple steps to enhance your dental workflow.
           </p>
         </div>
 
-        {/* Glass card */}
-        <div className="rounded-3xl border border-black/5 dark:border-white/10 bg-white/80 dark:bg-gray-900/70 backdrop-blur-xl shadow-[0_20px_80px_-20px_rgba(0,0,0,0.35)] overflow-hidden">
-          {/* Progress bar */}
-          <div className="h-1 w-full bg-black/5 dark:bg-white/10 relative">
-            <div
-              className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+        {/* The Card */}
+        <div className="rounded-3xl border border-white/20 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[500px]">
+          
+          {/* Progress Bar (Mobile Only - Top) */}
+          <div className="lg:hidden h-1 w-full bg-slate-200 dark:bg-slate-800">
+            <div className="h-full bg-blue-600 transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
           </div>
 
-          {/* Content: two-column on desktop */}
-          <div className="grid grid-cols-1 lg:grid-cols-12">
-            {/* Left column — step overview */}
-            <aside className="lg:col-span-5 p-6 sm:p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-black/5 dark:border-white/10">
-              {/* Icon pill */}
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white shadow-md">
-                <Icon name={steps[currentStep].icon} size={28} />
+          {/* LEFT: Navigation & Titles */}
+          <aside className="lg:w-2/5 p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between bg-white/50 dark:bg-black/20">
+            <div>
+              {/* Icon Container - Fixed duplicate className here */}
+              <div 
+                key={currentStep} // Key helps React trigger animation on change
+                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-lg mb-8 transition-transform animate-in zoom-in-50 duration-300"
+              >
+                <Icon name={steps[currentStep].icon} size={32} />
               </div>
 
-              <h2 className="mt-6 text-2xl sm:text-3xl font-bold text-text-primary">
-                {steps[currentStep].title}
-              </h2>
-              <p className="mt-3 text-gray-700 dark:text-gray-300">{steps[currentStep].description}</p>
-
-              {/* Hint — higher contrast */}
-              <div className="mt-6 rounded-xl border border-primary/30 bg-white dark:bg-gray-900 p-4 text-sm">
-                <div className="flex items-start gap-2">
-                  <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-primary" />
-                  <p className="flex-1 text-gray-800 dark:text-gray-200">{steps[currentStep].hint}</p>
-                </div>
+              {/* Title & Desc */}
+              <div key={`text-${currentStep}`} className="animate-in fade-in slide-in-from-left-4 duration-500">
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">
+                  {steps[currentStep].title}
+                </h2>
+                <p className="text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {steps[currentStep].description}
+                </p>
               </div>
+            </div>
 
-              {/* Step list (vertical) */}
-              <div className="mt-8 space-y-3">
-                {steps.map((s, i) => {
-                  const active = i === currentStep;
-                  return (
-                    <button
-                      key={s.title}
-                      onClick={() => setCurrentStep(i)}
-                      className={[
-                        'w-full text-left rounded-xl px-3 py-2 transition-all',
-                        active
-                          ? 'bg-primary/10 ring-1 ring-primary/30'
-                          : 'hover:bg-primary/5 dark:hover:bg-primary/10',
-                      ].join(' ')}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={['h-2 w-2 rounded-full', active ? 'bg-primary' : 'bg-black/20 dark:bg-white/20'].join(' ')} />
-                        <span className={['text-sm', active ? 'text-text-primary font-medium' : 'text-text-secondary'].join(' ')}>
-                          Step {i + 1}: {s.title}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </aside>
+            {/* Step Indicators (Desktop) */}
+            <div className="hidden lg:flex gap-2 mt-12">
+              {steps.map((_, i) => (
+                <div 
+                  key={i} 
+                  className={`h-1.5 rounded-full transition-all duration-500 ${i <= currentStep ? 'w-8 bg-blue-600' : 'w-2 bg-slate-300 dark:bg-slate-700'}`} 
+                />
+              ))}
+            </div>
+          </aside>
 
-            {/* Right column — details (CONTRAST SAFE) */}
-            <section className="lg:col-span-7 p-6 sm:p-8 lg:p-10">
-              <div className="grid gap-4">
+          {/* RIGHT: Details & Actions */}
+          <section className="lg:w-3/5 p-8 lg:p-10 flex flex-col justify-between">
+            
+            {/* Dynamic Content */}
+            <div key={`details-${currentStep}`} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+              
+              {/* Detail List */}
+              <div className="space-y-3">
                 {steps[currentStep].details.map((detail, idx) => (
-                  <div
-                    key={idx}
-                    className="group flex items-start gap-3 rounded-xl border border-brand-primary/30 bg-brand-primary/5 p-4 shadow-sm hover:border-brand-primary/50 hover:bg-brand-primary/10 transition-all"
-                  >
-                    <div className="mt-1 h-2 w-2 rounded-full bg-primary group-hover:scale-110 transition-transform" />
-                    <p className="text-[15px] leading-relaxed text-gray-900 dark:text-gray-100">
-                      {detail}
-                    </p>
+                  <div key={idx} className="flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="mt-1 w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                      <Icon name="Check" size={12} />
+                    </div>
+                    <p className="text-slate-700 dark:text-slate-300 text-sm font-medium">{detail}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Mini tips row — IMPROVED CONTRAST */}
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-brand-primary/30 bg-brand-primary/5 p-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                    <Icon name="ShieldCheck" size={16} />
-                    Privacy
-                  </div>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    Your uploads are encrypted and processed securely.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-brand-primary/30 bg-brand-primary/5 p-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                    <Icon name="Zap" size={16} />
-                    Speed
-                  </div>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    Get results in seconds with optimized inference.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-brand-primary/30 bg-brand-primary/5 p-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                    <Icon name="Info" size={16} />
-                    Guidance
-                  </div>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    AI suggestions complement, not replace, clinical judgment.
+              {/* Pro Tip */}
+              <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/30">
+                <div className="flex gap-3">
+                  <Icon name="Sparkles" size={20} className="text-purple-600 dark:text-purple-400 shrink-0" />
+                  <p className="text-sm text-purple-900 dark:text-purple-200 font-medium">
+                    <span className="font-bold">Pro Tip:</span> {steps[currentStep].hint}
                   </p>
                 </div>
               </div>
+            </div>
 
-              {/* Navigation bar */}
-              <div className="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Action Bar */}
+            <div className="mt-10 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-200 dark:border-slate-800">
+              
+              <button
+                onClick={skipToChat}
+                className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-colors"
+              >
+                Skip Tutorial
+              </button>
+
+              <div className="flex gap-3 w-full sm:w-auto">
                 <button
                   onClick={prevStep}
                   disabled={currentStep === 0}
-                  className={[
-                    'inline-flex items-center gap-2 px-5 py-2.5 rounded-full transition-all',
+                  className={`flex-1 sm:flex-none px-6 py-3 rounded-full font-medium text-sm border transition-all ${
                     currentStep === 0
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-black/5 dark:hover:bg-white/5',
-                  ].join(' ')}
+                      ? 'border-transparent text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
                 >
-                  <Icon name="ArrowLeft" size={18} />
-                  <span>Previous</span>
-                </button>
-
-                <button
-                  onClick={skipToChat}
-                  className="text-text-secondary hover:text-text-primary transition-colors text-sm"
-                >
-                  Skip Tutorial
+                  Back
                 </button>
 
                 <button
                   onClick={nextStep}
-                  className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white px-6 py-2.5 rounded-full hover:opacity-90 active:scale-[0.99] transition-all shadow-sm"
+                  className="flex-1 sm:flex-none px-8 py-3 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-sm hover:opacity-90 transition-all shadow-lg flex items-center justify-center gap-2"
                 >
-                  <span>{currentStep === total - 1 ? 'Start Chatting' : 'Next'}</span>
-                  <Icon name="ArrowRight" size={18} />
+                  {currentStep === total - 1 ? 'Get Started' : 'Next'}
+                  <Icon name="ArrowRight" size={16} />
                 </button>
               </div>
+            </div>
 
-              {/* Step counter */}
-              <div className="mt-4 text-center text-xs text-text-secondary">
-                Step {currentStep + 1} of {total} • Use ← / → or Enter
-              </div>
-            </section>
-          </div>
+          </section>
         </div>
+
+        {/* Keyboard Hint */}
+        <div className="mt-6 text-center text-xs text-slate-400 dark:text-slate-600 font-medium hidden sm:block">
+          Press <kbd className="font-sans px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 mx-1">Enter</kbd> to continue
+        </div>
+
       </div>
     </div>
   );

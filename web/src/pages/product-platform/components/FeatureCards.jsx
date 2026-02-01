@@ -4,130 +4,160 @@ import Icon from '../../../components/AppIcon';
 const FeatureCards = () => {
   const features = [
     {
-      icon: "Search",
-      title: "Automated Condition Detection",
-      description: "Advanced computer vision identifies 15+ dental conditions including caries, gingivitis, periodontal disease, and oral lesions with clinical-grade accuracy.",
-      metrics: ["94.7% Accuracy", "2s Processing", "15+ Conditions"],
-      color: "bg-blue-500"
-    },
-    {
-      icon: "BarChart3",
-      title: "Risk Assessment Scoring",
-      description: "Comprehensive risk stratification provides actionable insights for treatment prioritization and preventive care planning based on patient history and current findings.",
-      metrics: ["5-Point Scale", "Predictive Analytics", "Treatment Priority"],
-      color: "bg-green-500"
-    },
-    {
-      icon: "Clipboard",
-      title: "Treatment Recommendations",
-      description: "Evidence-based treatment suggestions aligned with clinical guidelines, helping practitioners make informed decisions and improve patient outcomes.",
-      metrics: ["Clinical Guidelines", "Evidence-Based", "Outcome Tracking"],
-      color: "bg-purple-500"
-    },
-    {
-      icon: "BookOpen",
-      title: "Patient Education Materials",
-      description: "Automatically generated, personalized educational content helps patients understand their conditions and treatment options, improving compliance and satisfaction.",
-      metrics: ["Auto-Generated", "Personalized", "Multi-Language"],
-      color: "bg-orange-500"
+      icon: "ScanFace",
+      title: "Automated Detection",
+      description: "Computer vision identifies 15+ conditions including caries, periodontal bone loss, and periapical lesions with pixel-perfect precision.",
+      metrics: ["94.7% Accuracy", "15+ Classes", "Real-time"],
+      color: "blue"
     },
     {
       icon: "Activity",
-      title: "Progress Monitoring",
-      description: "Track treatment progress over time with comparative analysis, helping practitioners adjust treatment plans and demonstrate outcomes to patients.",
-      metrics: ["Timeline Tracking", "Comparative Analysis", "Outcome Metrics"],
-      color: "bg-red-500"
+      title: "Risk Scoring Engine",
+      description: "Dynamic risk stratification based on radiographic findings and patient history to prioritize high-risk cases effectively.",
+      metrics: ["Predictive", "5-Point Scale", "Triage Ready"],
+      color: "emerald"
     },
     {
-      icon: "Shield",
+      icon: "ClipboardCheck",
+      title: "Smart Treatment Plans",
+      description: "Generates evidence-based treatment options aligned with ADA clinical guidelines, reducing administrative planning time.",
+      metrics: ["ADA Aligned", "Auto-Draft", "Editable"],
+      color: "violet"
+    },
+    {
+      icon: "MessageCircle",
+      title: "Patient Education",
+      description: "Instantly converts complex X-ray findings into visual, patient-friendly explainers to boost treatment acceptance.",
+      metrics: ["Visual Aids", "Simplified", "Multi-lingual"],
+      color: "orange"
+    },
+    {
+      icon: "TrendingUp",
+      title: "Longitudinal Tracking",
+      description: "Overlays past and present scans to visualize disease progression or healing over months and years.",
+      metrics: ["Time-Travel View", "Progression UI", "Comparative"],
+      color: "rose"
+    },
+    {
+      icon: "ShieldCheck",
       title: "Quality Assurance",
-      description: "Built-in quality checks and confidence scoring ensure reliable results, with flagging of uncertain cases for human review and validation.",
-      metrics: ["Confidence Scoring", "Quality Flags", "Human Review"],
-      color: "bg-indigo-500"
+      description: "Real-time image quality assessment flags blurry or poorly angulated scans before you even leave the chair.",
+      metrics: ["Blur Detection", "Angle Check", "Auto-Flag"],
+      color: "cyan"
     }
   ];
 
+  const getColorClasses = (color) => {
+    const colors = {
+      blue: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 group-hover:border-blue-500/50",
+      emerald: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 group-hover:border-emerald-500/50",
+      violet: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 group-hover:border-violet-500/50",
+      orange: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 group-hover:border-orange-500/50",
+      rose: "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 group-hover:border-rose-500/50",
+      cyan: "text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 group-hover:border-cyan-500/50",
+    };
+    return colors[color];
+  };
+
   return (
-    <section className="py-16 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Comprehensive AI Capabilities
+    <section className="relative py-24 bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      
+      {/* Background Decor */}
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]" />
+      
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        {/* Header */}
+        <div className="text-center mb-16 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
+            <Icon name="Layers" size={14} />
+            <span>Platform Capabilities</span>
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+            Comprehensive <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">Dental Intelligence</span>
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Our platform combines multiple AI technologies to provide a complete dental analysis solution that enhances clinical decision-making and patient care.
+          
+          <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+            From image capture to patient acceptance, our platform combines multiple AI models 
+            to enhance every step of the clinical workflow.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {features?.map((feature, index) => (
-            <div key={index} className="bg-white rounded-xl shadow-brand border border-gray-200 p-6 hover:shadow-brand-hover transition-all duration-300 hover:-translate-y-1">
-              <div className="flex items-center space-x-4 mb-4">
-                <div className={`w-12 h-12 ${feature?.color} rounded-lg flex items-center justify-center`}>
-                  <Icon name={feature?.icon} size={24} color="white" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">{feature?.title}</h3>
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24">
+          {features.map((feature, index) => (
+            <div 
+              key={index} 
+              className={`group relative bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${getColorClasses(feature.color).split(' ').pop()}`}
+            >
+              {/* Icon */}
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${getColorClasses(feature.color).replace(/group-hover:[^ ]+/g, '')}`}>
+                <Icon name={feature.icon} size={28} />
               </div>
               
-              <p className="text-gray-600 mb-6 leading-relaxed">
-                {feature?.description}
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">
+                {feature.title}
+              </h3>
+              
+              <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-6">
+                {feature.description}
               </p>
               
-              <div className="space-y-2">
-                {feature?.metrics?.map((metric, metricIndex) => (
-                  <div key={metricIndex} className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-primary rounded-full"></div>
-                    <span className="text-sm font-medium text-gray-700">{metric}</span>
-                  </div>
+              {/* Metric Pills */}
+              <div className="flex flex-wrap gap-2 mt-auto">
+                {feature.metrics.map((metric, i) => (
+                  <span 
+                    key={i} 
+                    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  >
+                    {metric}
+                  </span>
                 ))}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Integration Showcase */}
-        <div className="mt-16 bg-gradient-to-r from-primary to-secondary rounded-2xl p-8 text-white">
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold mb-4">Seamless Workflow Integration</h3>
-            <p className="text-primary-foreground/90 max-w-2xl mx-auto">
-              All features work together in a unified platform that integrates with your existing practice management systems and clinical workflows.
-            </p>
-          </div>
+        {/* Integration Pipeline Visualization */}
+        <div className="relative rounded-3xl bg-slate-900 border border-slate-800 p-10 lg:p-16 overflow-hidden text-center lg:text-left">
+          {/* Glowing Background Line */}
+          <div className="absolute top-1/2 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-20 hidden lg:block" />
           
-          <div className="grid md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Icon name="Upload" size={24} color="white" />
-              </div>
-              <h4 className="font-semibold mb-2">Image Capture</h4>
-              <p className="text-sm text-primary-foreground/80">Upload or capture dental images directly in your workflow</p>
-            </div>
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-12">
             
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Icon name="Cpu" size={24} color="white" />
-              </div>
-              <h4 className="font-semibold mb-2">AI Analysis</h4>
-              <p className="text-sm text-primary-foreground/80">Automated processing with real-time results and insights</p>
+            {/* Intro Text */}
+            <div className="max-w-sm">
+              <h3 className="text-2xl font-bold text-white mb-3">Seamless Integration</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Designed to fit into your existing practice management software without disrupting your routine.
+              </p>
             </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Icon name="FileText" size={24} color="white" />
-              </div>
-              <h4 className="font-semibold mb-2">Report Generation</h4>
-              <p className="text-sm text-primary-foreground/80">Comprehensive reports with treatment recommendations</p>
+
+            {/* Pipeline Steps */}
+            <div className="flex-1 w-full grid grid-cols-2 md:grid-cols-4 gap-6 relative">
+              {[
+                { icon: "UploadCloud", title: "Capture", sub: "X-Ray / Intraoral" },
+                { icon: "Cpu", title: "Analyze", sub: "Our Engine" },
+                { icon: "FileText", title: "Report", sub: "Auto-Generated" },
+                { icon: "UserCheck", title: "Consult", sub: "Patient View" }
+              ].map((step, i) => (
+                <div key={i} className="relative group flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-4 group-hover:border-blue-500 group-hover:bg-blue-500/10 transition-all duration-300 z-10 relative">
+                    <Icon name={step.icon} size={24} className="text-slate-400 group-hover:text-blue-400" />
+                    
+                    {/* Connector Line (Mobile/Tablet) */}
+                    {i < 3 && <div className="absolute top-full h-8 w-[2px] bg-slate-800 lg:hidden" />}
+                  </div>
+                  <h4 className="text-white font-bold text-sm mb-1">{step.title}</h4>
+                  <span className="text-xs text-slate-500">{step.sub}</span>
+                </div>
+              ))}
             </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Icon name="Users" size={24} color="white" />
-              </div>
-              <h4 className="font-semibold mb-2">Patient Communication</h4>
-              <p className="text-sm text-primary-foreground/80">Share results and educational materials with patients</p>
-            </div>
+
           </div>
         </div>
+
       </div>
     </section>
   );
