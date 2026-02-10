@@ -15,35 +15,35 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
 
   return (
     <div className="flex flex-col items-center justify-center p-8">
-      
+
       {/* 3D Scanning Container */}
       <div className="relative w-32 h-32 flex items-center justify-center">
-        
+
         {/* --- 1. The Orbiting Rings (SUPER SLOW = SERENE) --- */}
         {/* Outer Ring: 12s duration */}
         <div className="absolute inset-0 rounded-full border border-slate-200 dark:border-slate-800 border-t-blue-500 dark:border-t-blue-400 animate-[spin_12s_linear_infinite]" />
-        
+
         {/* Middle Ring: 16s duration (Reverse) */}
         <div className="absolute inset-4 rounded-full border border-slate-100 dark:border-slate-900 border-b-purple-500 dark:border-b-purple-400 animate-[spin_16s_linear_infinite_reverse]" />
-        
+
         {/* Inner Ring (Pulse) */}
         <div className="absolute inset-8 rounded-full border-2 border-indigo-100 dark:border-indigo-900/30 animate-pulse" />
 
         {/* --- 2. The Tooth Image (Using Masking) --- */}
         <div className="relative z-10 w-14 h-14">
-          
+
           {/* Layer A: The "Ghost" Tooth (Base Layer) */}
-          <div 
+          <div
             className="w-full h-full bg-slate-300 dark:bg-slate-700 absolute top-0 left-0"
             style={toothMaskStyle}
           />
 
           {/* Layer B: The "Scanned" Tooth (Active Layer) */}
           <div className="absolute inset-0 overflow-hidden animate-scan-reveal">
-             <div 
-               className="w-full h-full bg-gradient-to-b from-blue-500 to-purple-600 drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
-               style={toothMaskStyle}
-             />
+            <div
+              className="w-full h-full bg-gradient-to-b from-blue-500 to-purple-600 drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
+              style={toothMaskStyle}
+            />
           </div>
 
           {/* --- 3. The Laser Scanner Beam (FAST = ACTIVE SCANNING) --- */}
