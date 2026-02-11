@@ -1,337 +1,462 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, ScrollView, RefreshControl, TouchableOpacity, Animated, StatusBar, Linking, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, ScrollView, RefreshControl, TouchableOpacity, StatusBar, Dimensions, StyleSheet, Image, Linking, Animated } from 'react-native';
 import { Text, Avatar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { getInitials } from '../../../utils/formatters';
 import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { getAppointments } from '../../../services/appointmentService';
 
-// --- interop shims: tahan semua variasi export (default / named / CJS) ---
+// --- Imports Component ---
 import * as FeaturedDoctorsMod from '../components/featuredDoctors';
 import * as NearbyDentistsMod from '../components/nearbyDentists';
 import * as QuickActionsMod from '../components/quickActions';
 import * as NearbyClinicsMod from '../components/nearbyClinics';
 import * as ArticleMod from '../components/article';
+
 const FeaturedDoctors = FeaturedDoctorsMod.default || FeaturedDoctorsMod;
 const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
 const QuickActions = QuickActionsMod.default || QuickActionsMod;
 const NearbyClinics = NearbyClinicsMod.default || NearbyClinicsMod;
 const Article = ArticleMod.default || ArticleMod;
 
+const { width, height } = Dimensions.get('window');
+
+// Data Kategori Statis
+const CATEGORIES = [
+  { id: 'all', label: 'Semua', icon: 'view-grid-outline' },
+  { id: 'orthodontic', label: 'Kawat Gigi', icon: 'tooth-outline' },
+  { id: 'periodontic', label: 'Gusi', icon: 'water-outline' },
+  { id: 'endodontic', label: 'Saraf', icon: 'lightning-bolt-outline' },
+];
+
+const QUICK_ACTIONS = [
+  { key: 'dentists', label: 'Cari Dokter', icon: 'doctor', tint: '#E0F2FE', iconColor: '#0284C7' },
+  { key: 'book', label: 'Booking', icon: 'calendar-check', tint: '#FFF7ED', iconColor: '#EA580C' },
+  { key: 'ai', label: 'AI Scan', icon: 'scan-helper', tint: '#ECFDF5', iconColor: '#059669' },
+  { key: 'shop', label: 'Toko', icon: 'shopping-outline', tint: '#FEFCE8', iconColor: '#CA8A04' },
+];
+
 const DashboardScreen = () => {
-  const theme = useTheme(); 
-  const navigation = useNavigation(); 
+  const theme = useTheme();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { user } = useSelector((s) => s.auth);
-  
-  // Get avatar from user (users.avatar_url in database) and resolve to full URL
+
   const avatarUrl = resolveMediaUrl(user?.avatar_url || null);
-  const [refreshing, setRefreshing] = useState(false); const [selectedCategory, setSelectedCategory] = useState('all');
-  const scrollY = useRef(new Animated.Value(0)).current; const [fadeAnim] = useState(new Animated.Value(0)); const [isScrolled, _setIsScrolled] = useState(false); const lastScrollFlag = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
 
-  // ukur header → paddingTop konten supaya gap rapi & scroll stabil
-  const headerHRef = useRef(220); const [headerH, setHeaderH] = useState(headerHRef.current);
-  const onHeaderLayout = (e) => { const h = Math.round(e.nativeEvent.layout.height); if (h && h !== headerHRef.current) { headerHRef.current = h; setHeaderH(h); } };
-  const SECTION_GAP = 24, FEATURED_TOP_MARGIN = 16, paddingTop = Math.max(headerH + SECTION_GAP - FEATURED_TOP_MARGIN, 0);
+  // --- SCROLL ANIMATION ---
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Fetch upcoming appointments from API
+  // Search bar: fade out + slide up smoothly
+  const searchOpacity = scrollY.interpolate({
+    inputRange: [0, 40, 70],
+    outputRange: [1, 0.4, 0],
+    extrapolate: 'clamp',
+  });
+  const searchTranslateY = scrollY.interpolate({
+    inputRange: [0, 70],
+    outputRange: [0, -15],
+    extrapolate: 'clamp',
+  });
+
+  // Categories: staggered fade + slide (mulai sedikit setelah search)
+  const catOpacity = scrollY.interpolate({
+    inputRange: [0, 20, 60],
+    outputRange: [1, 0.6, 0],
+    extrapolate: 'clamp',
+  });
+  const catTranslateY = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, -10],
+    extrapolate: 'clamp',
+  });
+
+  // Gradient yang SAMA dengan AIHomeScreen
+  const gradientColors = ['#982598', '#982598'];
+
   const fetchUpcomingAppointments = useCallback(async () => {
     try {
-      const response = await getAppointments({ 
-        limit: 10, 
-        status: 'scheduled,confirmed' 
-      });
-      
+      const response = await getAppointments({ limit: 10, status: 'scheduled,confirmed' });
       if (response?.data && Array.isArray(response.data)) {
-        // Transform API data to match FeaturedDoctors format
         const transformed = response.data.map(apt => ({
           id: apt.id,
-          bookingCode: apt.bookingCode || `SRN-${String(apt.id).padStart(6, '0')}`,
-          startsAt: apt.startsAt,
-          endsAt: apt.endsAt,
-          status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
-          type: apt.metadata?.appointmentType || apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
-          reason: apt.reason || 'Konsultasi gigi',
-          videoRoomRef: apt.videoRoomRef,
           dentist: {
             id: apt.dentistId,
             name: apt.dentist?.name || 'Dokter Gigi',
-            title: apt.dentist?.title || null,
             specialty: apt.dentist?.specialization || 'Dokter Gigi Umum',
-            dentistType: apt.dentist?.dentistType || 'clinic',
             avatar: apt.dentist?.avatar || null,
           },
           clinic: {
             id: apt.clinicBranchId,
-            name: apt.dentist?.dentistType === 'independent' 
-              ? (apt.dentist?.clinicName || 'Praktik Mandiri')
-              : (apt.clinicBranch?.branchName || apt.clinicBranch?.name || 'Klinik'),
+            name: apt.dentist?.dentistType === 'independent' ? (apt.dentist?.clinicName || 'Praktik Mandiri') : (apt.clinicBranch?.branchName || 'Klinik'),
           },
-          payment: apt.payment ? {
-            id: apt.payment.id,
-            amount: apt.payment.amount,
-            status: apt.payment.status,
-          } : null,
+          startsAt: apt.startsAt,
+          status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
+          videoRoomRef: apt.videoRoomRef,
         }));
-        
         setUpcomingAppointments(transformed);
-        console.log('[Dashboard] Fetched', transformed.length, 'upcoming appointments');
-        if (transformed.length > 0) {
-          console.log('[Dashboard] First appointment type:', transformed[0].type, 'videoRoomRef:', transformed[0].videoRoomRef);
-        }
-      } else {
-        setUpcomingAppointments([]);
       }
     } catch (err) {
-      console.log('[Dashboard] Error fetching appointments:', err.message);
       setUpcomingAppointments([]);
     }
   }, []);
 
-  const onRefresh = React.useCallback(() => { 
-    setRefreshing(true); 
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
     fetchUpcomingAppointments().finally(() => setRefreshing(false));
   }, [fetchUpcomingAppointments]);
-  
-  useEffect(() => { 
-    Animated.timing(fadeAnim,{toValue:1,duration:800,useNativeDriver:true}).start(); 
-    fetchUpcomingAppointments();
-  }, [fetchUpcomingAppointments]);
 
-  // Refetch when screen is focused (e.g. after booking)
-  useFocusEffect(
-    useCallback(() => {
-      fetchUpcomingAppointments();
-    }, [fetchUpcomingAppointments])
-  );
+  useEffect(() => { fetchUpcomingAppointments(); }, [fetchUpcomingAppointments]);
 
-  const categories = [
-    { id:'all', label:'Semua', icon:'check-circle' },
-    { id:'orthodontic', label:'Ortodontik', icon:'tooth-outline' },
-    { id:'periodontic', label:'Periodontik', icon:'heart-pulse' },
-    { id:'endodontic', label:'Endodontik', icon:'medical-bag' },
-  ];
-
-  const quickActions = [
-    {
-      key: 'dentists',
-      label: 'Dentist',
-      icon: 'tooth-outline',
-      tint: 'rgba(14,165,233,0.18)',
-      onPress: () => navigation.navigate('DentistDirectory'),
-    },
-    {
-      key: 'book',
-      label: 'Buat Janji',
-      icon: 'calendar-plus',
-      tint: 'rgba(249, 115, 22, 0.2)',
-      onPress: () => navigation.navigate('AppointmentTab', { screen: 'ClinicSearch' }),
-    },
-    {
-      key: 'ai',
-      label: 'AI Scan Gigi',
-      icon: 'camera',
-      tint: 'rgba(16, 185, 129, 0.22)',
-      iconColor: '#064E3B',
-      onPress: () => navigation.navigate('AITab', { screen: 'AIHome' }),
-    },
-    {
-      key: 'myAppointments',
-      label: 'Janji Saya',
-      icon: 'clipboard-text',
-      tint: 'rgba(168, 85, 247, 0.2)',
-      onPress: () => navigation.navigate('AppointmentTab', { screen: 'AppointmentList' }),
-    },
-    {
-      key: 'medicalHistory',
-      label: 'Riwayat Medis',
-      icon: 'file-document',
-      tint: 'rgba(59, 130, 246, 0.22)',
-      onPress: () => navigation.navigate('SettingsTab', { screen: 'DataManagement' }),
-    },
-    {
-      key: 'shop',
-      label: 'Belanja',
-      icon: 'shopping',
-      tint: 'rgba(250, 204, 21, 0.25)',
-      iconColor: '#78350F',
-      onPress: () => navigation.navigate('ShopTab', { screen: 'ShopHome' }),
-    },
-    {
-      key: 'help',
-      label: 'Bantuan',
-      icon: 'lifebuoy',
-      tint: 'rgba(148, 163, 184, 0.2)',
-      onPress: () => navigation.navigate('SettingsTab', { screen: 'HelpCenter' }),
-    },
-  ];
-
-  const articles = SAMPLE_ARTICLES;
-  const notifications = SAMPLE_NOTIFICATIONS;
-  const unreadNotifications = notifications.filter((n) => !n.read).length;
-
-  const handleMainScroll = Animated.event([{ nativeEvent:{ contentOffset:{ y:scrollY } } }], { useNativeDriver:false, listener:(e)=>{ const flag = e.nativeEvent.contentOffset.y > 50; if (flag !== lastScrollFlag.current) { lastScrollFlag.current = flag; _setIsScrolled(flag); } }});
-  const appendClinicParams = (d = {}) => ({
-    clinicContext: d?.clinicContext,
-    clinicId: d?.clinicContext?.profileId,
-    clinicBranchId: d?.clinicContext?.branchId,
-  });
-  
-  // For FeaturedDoctors (appointments carousel) - navigate to detail
-  const handleAppointmentPress = (apt) => {
-    console.log('[Dashboard] handleAppointmentPress called with:', {
-      appointmentId: apt.appointmentId,
-      id: apt.id,
-      bookingCode: apt.bookingCode,
-    });
-    navigation.navigate('AppointmentTab', {
-      screen: 'DetailAppointment',
-      params: { appointmentId: apt.appointmentId || apt.id },
-    });
+  // Handlers Navigasi
+  const handleActionPress = (key) => {
+    if (key === 'dentists') navigation.navigate('DentistDirectory');
+    else if (key === 'book') navigation.navigate('AppointmentTab', { screen: 'ClinicSearch' });
+    else if (key === 'ai') navigation.navigate('AITab', { screen: 'AIHome' });
+    else if (key === 'shop') navigation.navigate('ShopTab', { screen: 'ShopHome' });
   };
-  const handleAppointmentAction = (apt) => {
-    // If canJoin is true, this means it's a virtual appointment within 30 minutes
-    // Navigate to VideoCall if videoRoomId exists, otherwise go to detail
-    if (apt.canJoin && apt.fullAppointment?.videoRoomId) {
-      navigation.navigate('VideoCall', {
-        roomId: apt.fullAppointment.videoRoomId,
-        appointmentId: apt.appointmentId || apt.id,
-      });
-    } else {
-      navigation.navigate('AppointmentTab', {
-        screen: 'DetailAppointment',
-        params: { appointmentId: apt.appointmentId || apt.id },
-      });
-    }
-  };
-  
-  // For NearbyDentists - navigate to dentist detail
-  const handleDoctorPress = (d) =>
-    navigation.navigate('DentistDetail', {
-      dentistId: d.id,
-      dentist: d,
-      ...appendClinicParams(d),
-    });
-  const handleJoinCall = (d) =>
-    navigation.navigate('AppointmentTab', {
-      screen: 'BookingSlot',
-      params: { dentistId: d.id, dentist: d, ...appendClinicParams(d) },
-    });
-  const handleBook = (d) =>
-    navigation.navigate('AppointmentTab', {
-      screen: 'BookingSlot',
-      params: { dentistId: d.id, dentist: d, ...appendClinicParams(d) },
-    });
-  const handleClinicPress = (clinic) =>
-    navigation.navigate('ClinicDetail', { clinicId: clinic?.id, clinic });
-  const handleClinicBook = (clinic) =>
-    navigation.navigate('AppointmentTab', {
-      screen: 'ClinicDetail',
-      params: { clinicId: clinic?.id, clinic },
-    });
-  const handleArticleOpen = (url) => { if(url) { try { Linking.openURL(url); } catch(e) {} } };
-  const handleSeeAllArticles = () => navigation.navigate('ArticleList', { articles });
-  const handleNotificationPress = () => navigation.navigate('Notifications', { notifications });
-  const handleSeeAllDentists = () =>
-    navigation.navigate('NearbyDentists', { maxDistanceKm: 8 });
-  const handleSeeAllClinics = () =>
-    navigation.navigate('NearbyClinics', { maxDistanceKm: 6 });
+
   const handleOpenSearch = () => navigation.navigate('Search');
+  const handleNotificationPress = () => navigation.navigate('Notifications', { notifications: SAMPLE_NOTIFICATIONS });
+
+  // Handlers untuk Komponen Child (Featured, Nearby, dll)
+  const handleAppointmentPress = (apt) => navigation.navigate('AppointmentTab', { screen: 'DetailAppointment', params: { appointmentId: apt.id } });
+  const handleAppointmentAction = (apt) => {
+    if (apt.videoRoomRef) navigation.navigate('VideoCall', { roomId: apt.videoRoomRef, appointmentId: apt.id });
+    else navigation.navigate('AppointmentTab', { screen: 'DetailAppointment', params: { appointmentId: apt.id } });
+  };
+  const handleDoctorPress = (d) => navigation.navigate('DentistDetail', { dentistId: d.id, dentist: d });
+  const handleClinicPress = (c) => navigation.navigate('ClinicDetail', { clinicId: c.id, clinic: c });
+  const handleClinicBook = (c) => navigation.navigate('AppointmentTab', { screen: 'ClinicDetail', params: { clinicId: c.id, clinic: c } });
+  const handleBook = (d) => navigation.navigate('AppointmentTab', { screen: 'BookingSlot', params: { dentistId: d.id, dentist: d } });
+  const handleArticleOpen = (url) => { if (url) { try { Linking.openURL(url); } catch (e) { } } };
 
   return (
-    <View style={{ flex:1, backgroundColor:'#F8FAFC' }}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* HEADER */}
-      <Animated.View onLayout={onHeaderLayout} style={{ position:'absolute', top:0, left:0, right:0, zIndex:1000, opacity:scrollY.interpolate({ inputRange:[0,50,100], outputRange:[1,0.95,0.9], extrapolate:'clamp' }) }}>
-        <LinearGradient colors={isScrolled ? ['rgba(98,16,159,0.95)','rgba(98,16,159,0.85)'] : ((theme.gradients&&theme.gradients.primary)||[theme.colors.primary, theme.colors.primary])} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={{ paddingTop: 64, paddingHorizontal:20, paddingBottom:12, shadowColor:'#000', shadowOffset:{ width:0, height:4 }, shadowOpacity:0.1, shadowRadius:8, elevation:4, borderBottomLeftRadius:isScrolled?0:24, borderBottomRightRadius:isScrolled?0:24 }}>
-          <View style={{ flexDirection:'row', alignItems:'center', marginBottom:16 }}>
-            <View style={{ flex:1, flexDirection:'row', alignItems:'center' }}>
-              <View style={{ marginRight:12 }}>
-                {avatarUrl ? (
-                  <Avatar.Image size={48} source={{ uri: avatarUrl }} />
-                ) : user ? (
-                  <Avatar.Text size={48} label={getInitials(user.name)} style={{ backgroundColor:'rgba(255,255,255,0.3)' }} />
-                ) : (
-                  <Avatar.Icon size={48} icon="account" style={{ backgroundColor:'rgba(255,255,255,0.3)' }} />
-                )}
-              </View>
-              <View style={{ flex:1 }}>
-                <Text style={{ fontSize:14, color:'rgba(255,255,255,0.8)', marginBottom:2 }}>Selamat Datang Kembali</Text>
-                <Text style={{ fontSize:20, fontWeight:'bold', color:'#FFFFFF' }}>{user?.name || 'Tamu'} 👋</Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              onPress={handleNotificationPress}
-              style={{ width:40, height:40, borderRadius:20, backgroundColor:'rgba(255,255,255,0.2)', justifyContent:'center', alignItems:'center' }}
-            >
-              <MaterialCommunityIcons name="bell-outline" size={24} color="white" />
-              {unreadNotifications > 0 && (
-                <View style={{ position:'absolute', top:4, right:4, minWidth:16, height:16, borderRadius:8, backgroundColor:'#F97316', justifyContent:'center', alignItems:'center', paddingHorizontal:3 }}>
-                  <Text style={{ color:'white', fontSize:10, fontWeight:'700' }}>{unreadNotifications}</Text>
-                </View>
+      {/* --- LAYER 1: FIXED GRADIENT BACKGROUND (hanya top area) --- */}
+      <LinearGradient
+        colors={gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.topGradient}
+      />
+
+      {/* --- LAYER 2: FIXED TOP BAR (PROFILE) --- */}
+      <View style={[styles.fixedTopBar, { paddingTop: insets.top + 10 }]}>
+
+        {/* --- TAMBAHKAN INI DI DALAM VIEW TOP BAR --- */}
+        {/* Ini akan menjadi background gradient khusus untuk top bar */}
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill} // KUNCI: Agar memenuhi area parent View
+        />
+
+        {/* Konten Profile (akan berada di atas gradient) */}
+        <View style={styles.profileRow}>
+          <View style={styles.profileInfo}>
+            <View style={styles.avatarContainer}>
+              {avatarUrl ? (
+                <Avatar.Image size={40} source={{ uri: avatarUrl }} />
+              ) : (
+                <Avatar.Text size={40} label={getInitials(user?.name || 'Tamu')} style={{ backgroundColor: 'white' }} labelStyle={{ color: '#4F46E5' }} />
               )}
-            </TouchableOpacity>
+              <View style={styles.onlineBadge} />
+            </View>
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.greetingText}>Halo, {user?.name ? user.name.split(' ')[0] : 'Tamu'}</Text>
+              <Text style={styles.subGreetingText}>Siap merawat gigimu?</Text>
+            </View>
           </View>
 
-          <View style={{ flexDirection:'row', marginBottom:16, alignItems:'center' }}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleOpenSearch}
-              style={{ flex:1, flexDirection:'row', alignItems:'center', backgroundColor:'white', borderRadius:20, paddingHorizontal:16, paddingVertical:10, marginRight:12 }}
-            >
-              <MaterialCommunityIcons name="magnify" size={20} color="#9CA3AF" />
-              <Text style={{ flex:1, fontSize:14, color:'#64748B', marginLeft:8 }}>
-                Cari dokter atau klinik terdekat...
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ width:44, height:44, backgroundColor:'rgba(255,255,255,0.2)', borderRadius:22, justifyContent:'center', alignItems:'center' }}><MaterialCommunityIcons name="tune-variant" size={20} color="white" /></TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={handleNotificationPress} style={styles.iconButton}>
+            <MaterialCommunityIcons name="bell-outline" size={24} color="white" />
+            <View style={styles.notifDot} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight:20 }} style={{ marginBottom:16 }}>
-            {categories.map((c)=>{ const active=selectedCategory===c.id; return (
-              <TouchableOpacity key={c.id} onPress={()=>setSelectedCategory(c.id)} style={{ backgroundColor:active?'white':'rgba(255,255,255,0.2)', borderRadius:16, paddingHorizontal:16, paddingVertical:8, flexDirection:'row', alignItems:'center', marginRight:8, borderWidth:active?0:1, borderColor:'rgba(255,255,255,0.3)' }}>
-                <MaterialCommunityIcons name={c.icon} size={16} color={active?theme.colors.primary:'white'} />
-                {c.id!=='all' && <Text style={{ fontSize:14, fontWeight:'600', color:active?'#62109F':'white', marginLeft:6 }}>{c.label}</Text>}
-              </TouchableOpacity>
-            );})}
-          </ScrollView>
-        </LinearGradient>
-      </Animated.View>
-
-      {/* CONTENT */}
+      {/* --- LAYER 3: MAIN SCROLLVIEW --- */}
       <Animated.ScrollView
-        style={{ flex:1, backgroundColor:'#F8FAFC', opacity:fadeAnim }}
-        contentContainerStyle={{ paddingTop, paddingBottom: 140 }}
+        style={styles.scrollView}
+        contentContainerStyle={{
+          paddingTop: insets.top + 80, // Memberi ruang untuk Top Bar
+          paddingBottom: 20
+        }}
         showsVerticalScrollIndicator={false}
-        onScroll={handleMainScroll}
+        bounces={true}
         scrollEventThrottle={16}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        keyboardShouldPersistTaps="handled"
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" progressViewOffset={insets.top + 80} />
+        }
       >
-        
-        <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleAppointmentPress} onJoinCall={handleAppointmentAction} />
-        <QuickActions actions={quickActions} />
-        <NearbyClinics
-          onClinicPress={handleClinicPress}
-          onBook={handleClinicBook}
-          onSeeAll={handleSeeAllClinics}
-        />
-        <NearbyDentists
-          onDoctorPress={handleDoctorPress}
-          onMessage={() => {}}
-          onBook={handleBook}
-          onSeeAll={handleSeeAllDentists}
-        />
-        <Article articles={articles} onOpen={handleArticleOpen} onSeeAll={handleSeeAllArticles} />
+
+        {/* A. HEADER CONTENT (Search & Categories) */}
+        {/* Ini berada di atas gradient, sebelum white sheet */}
+        <View style={styles.headerContent}>
+
+          {/* Search Bar — smooth fade + slide up on scroll */}
+          <Animated.View style={{
+            opacity: searchOpacity,
+            transform: [{ translateY: searchTranslateY }],
+          }}>
+            <TouchableOpacity activeOpacity={0.9} onPress={handleOpenSearch} style={styles.searchBar}>
+              <MaterialCommunityIcons name="magnify" size={22} color="#4F46E5" />
+              <Text style={styles.searchText}>Cari dokter, klinik...</Text>
+              <View style={styles.searchDivider} />
+              <MaterialCommunityIcons name="tune-vertical" size={20} color="#94A3B8" />
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Categories — staggered fade + slide up */}
+          <Animated.View style={{
+            opacity: catOpacity,
+            transform: [{ translateY: catTranslateY }],
+          }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
+              {CATEGORIES.map((c) => {
+                const active = selectedCategory === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setSelectedCategory(c.id)}
+                    style={[styles.catChip, active ? styles.activeCat : styles.inactiveCat]}
+                  >
+                    <MaterialCommunityIcons name={c.icon} size={18} color={active ? '#4F46E5' : 'rgba(255,255,255,0.9)'} />
+                    <Text style={[styles.catText, active ? { color: '#4F46E5', fontWeight: '700' } : { color: 'white' }]}>
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Animated.View>
+        </View>
+
+        {/* B. WHITE SHEET (Main Content) */}
+        {/* Menggunakan marginTop negatif untuk menumpuk Header Content */}
+        <View style={styles.whiteSheet}>
+          {/* Handle Indicator */}
+          <View style={styles.sheetHandle} />
+
+          {/* Quick Actions Grid */}
+          <View style={styles.gridContainer}>
+            {QUICK_ACTIONS.map((action) => (
+              <TouchableOpacity key={action.key} style={styles.gridItem} onPress={() => handleActionPress(action.key)}>
+                <View style={[styles.gridIcon, { backgroundColor: action.tint }]}>
+                  <MaterialCommunityIcons name={action.icon} size={24} color={action.iconColor} />
+                </View>
+                <Text style={styles.gridLabel}>{action.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Content Sections */}
+          <View style={{ gap: 24 }}>
+            <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleAppointmentPress} onJoinCall={handleAppointmentAction} />
+            <NearbyClinics onClinicPress={handleClinicPress} onBook={handleClinicBook} onSeeAll={() => navigation.navigate('NearbyClinics')} />
+            <NearbyDentists onDoctorPress={handleDoctorPress} onMessage={() => { }} onBook={handleBook} onSeeAll={() => navigation.navigate('NearbyDentists')} />
+            <Article articles={SAMPLE_ARTICLES} onOpen={handleArticleOpen} onSeeAll={() => navigation.navigate('ArticleList')} />
+          </View>
+
+          {/* Bottom Spacer */}
+          <View style={{ height: 16 }} />
+        </View>
+
       </Animated.ScrollView>
     </View>
   );
 };
+
+// --- STYLES (Inline-like structure for easy copying) ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC', // Sama dengan whiteSheet agar tidak ada ungu di bawah
+  },
+  topGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: height * 0.45, // Gradient hanya menutupi ~45% atas layar
+  },
+
+  // --- TOP BAR ---
+  fixedTopBar: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    zIndex: 50, // Paling atas
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
+  },
+  profileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: 0, right: 0,
+    width: 12, height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981', // Green success
+    borderWidth: 2, borderColor: '#4F46E5', // Match gradient start
+  },
+  greetingText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.3,
+  },
+  subGreetingText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  iconButton: {
+    width: 40, height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  notifDot: {
+    position: 'absolute', top: 10, right: 10,
+    width: 8, height: 8,
+    borderRadius: 4, backgroundColor: '#EF4444',
+  },
+
+  // --- SCROLL CONTENT ---
+  scrollView: {
+    flex: 1,
+  },
+  headerContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 50, // Memberi ruang agar White Sheet bisa overlap
+  },
+
+  // Search Bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  searchText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#94A3B8',
+    marginLeft: 10,
+    fontWeight: '500',
+  },
+  searchDivider: {
+    width: 1, height: 20,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 12,
+  },
+
+  // Categories
+  categoriesScroll: {
+    marginBottom: 4,
+  },
+  catChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  activeCat: {
+    backgroundColor: '#white',
+    backgroundColor: 'white', // Harus white agar terlihat "active"
+    elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4,
+  },
+  inactiveCat: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  catText: {
+    fontSize: 12, fontWeight: '600', marginLeft: 8,
+  },
+
+  // --- WHITE SHEET ---
+  whiteSheet: {
+    backgroundColor: '#F8FAFC',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    marginTop: -30, // KUNCI: Efek Overlap ke atas header content
+    paddingBottom: 20,
+  },
+  sheetHandle: {
+    width: 40, height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 24,
+    marginTop: 8,
+  },
+
+  // Quick Actions Grid
+  gridContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 32,
+  },
+  gridItem: {
+    alignItems: 'center',
+    width: (width - 24) / 4,
+  },
+  gridIcon: {
+    width: 52, height: 52,
+    borderRadius: 18,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 8,
+  },
+  gridLabel: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+});
 
 export default DashboardScreen;

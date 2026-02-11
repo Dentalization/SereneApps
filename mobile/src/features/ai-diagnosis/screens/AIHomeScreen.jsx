@@ -1,249 +1,319 @@
 import React from 'react';
-import { View, ScrollView, StatusBar } from 'react-native';
-import { Text, Button, Chip, useTheme, Card } from 'react-native-paper';
+import { View, ScrollView, StatusBar, Dimensions, TouchableOpacity, Platform, Image } from 'react-native';
+import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
-// 1. IMPORT DITAMBAHKAN
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Article from '../../../features/dashboard/components/article.jsx';
 
-import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
-import { Dimensions, Platform, PixelRatio } from 'react-native';
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const scale = SCREEN_WIDTH / 375;
-const normalize = (size) => {
-  const newSize = size * scale;
-  if (Platform.OS === 'ios') {
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-  } else {
-    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 1;
-  }
-};
+// --- UTILS & CONSTANTS ---
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Titik mulai sheet (dikurangi sedikit agar tombol tidak terlalu mepet)
+const HEADER_HEIGHT_EXPANDED = SCREEN_HEIGHT * 0.28; 
+
+// --- DATA ---
 const FEATURES = [
-  {
-    icon: 'tooth',
-    title: 'Deteksi karies',
-    description: 'Model AI membaca perubahan warna dan pola enamel untuk mendeteksi gigi berlubang lebih dini.',
-  },
-  {
-    icon: 'shield-alert',
-    title: 'Risiko radang gusi',
-    description: 'Segmentasi jaringan lunak membantu menilai inflamasi dan potensi periodontitis.',
-  },
-  {
-    icon: 'brain',
-    title: 'Insight cepat',
-    description: 'Ringkasan kondisi, rekomendasi tindakan, serta confidence score dalam hitungan detik.',
-  },
+  { icon: 'tooth-outline', color: '#6366F1', title: 'Cek Karies', desc: 'Deteksi lubang.' },
+  { icon: 'water-outline', color: '#EC4899', title: 'Gusi Sehat', desc: 'Cek radang.' },
+  { icon: 'file-document-outline', color: '#8B5CF6', title: 'Laporan', desc: 'Hasil medis.' },
 ];
 
-const SCAN_STEPS = [
-  'Ambil 3-5 foto dengan pencahayaan terang',
-  'Pastikan bibir terbuka lebar agar gigi depan dan samping terlihat',
-  'Unggah foto atau gunakan kamera langsung untuk mulai analisis',
+const GUIDE_STEPS = [
+  { id: 1, text: 'Cari tempat dengan cahaya terang & merata.' },
+  { id: 2, text: 'Buka mulut lebar agar gigi terlihat jelas.' },
+  { id: 3, text: 'Pegang HP stabil, hindari foto buram.' },
 ];
 
-const TRUST_POINTS = [
-  {
-    icon: 'shield-check',
-    title: 'Keamanan data',
-    caption: 'Foto terenkripsi saat pengunggahan dan otomatis terhapus setelah analisis',
-  },
-  {
-    icon: 'cloud-sync',
-    title: 'Model terkini',
-    caption: 'Model diagnosa diperbarui secara berkala dari dataset klinik mitra',
-  },
+const ARTICLES = [
+  { id: 1, title: '5 Makanan Penguat Gigi', icon: 'food-apple-outline', color: '#10B981' },
+  { id: 2, title: 'Cara Flossing Benar', icon: 'dental-floss', color: '#3B82F6' },
+  { id: 3, title: 'Gejala Gigi Sensitif', icon: 'alert-circle-outline', color: '#F59E0B' },
 ];
 
 const AIHomeScreen = ({ navigation }) => {
-  const theme = useTheme();
-  // 2. DEFINISI INSETS DITAMBAHKAN
   const insets = useSafeAreaInsets();
-  
-  const gradient = theme.gradients?.primary || [theme.colors.primary, '#7F1DFF'];
-  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(260);
+
+  const handleArticleOpen = (url, article) => {
+    console.log('Article opened:', article?.title);
+  };
+
+  const handleSeeAllArticles = (articles) => {
+    console.log('See all articles pressed');
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="light-content" backgroundColor={gradient[0]} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Header anchored */}
-      <View onLayout={handleHeaderLayout} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
-        <LinearGradient
-          colors={gradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+      {/* --- LAYER 1: GRADIENT BACKGROUND --- */}
+      <LinearGradient
+        colors={['#4338ca', '#7e22ce']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+
+      {/* --- LAYER 2: TOP BAR (Fixed) --- */}
+      <View style={{ 
+        position: 'absolute', 
+        top: 0, left: 0, right: 0, 
+        zIndex: 50, 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start', 
+        paddingHorizontal: 20, 
+        paddingTop: insets.top + 8 
+      }}>
+        <View>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            backgroundColor: 'rgba(255,255,255,0.15)', 
+            paddingHorizontal: 8, 
+            paddingVertical: 4, 
+            borderRadius: 16, 
+            alignSelf: 'flex-start', 
+            marginBottom: 6, 
+            borderWidth: 1, 
+            borderColor: 'rgba(255,255,255,0.1)' 
+          }}>
+            <MaterialCommunityIcons name="star-four-points" size={10} color="#FBBF24" />
+            <Text style={{ 
+              color: '#FBBF24', 
+              fontSize: 10, 
+              fontWeight: '700', 
+              marginLeft: 4, 
+              letterSpacing: 0.5 
+            }}>AI-Powered</Text>
+          </View>
+          <Text style={{ 
+            fontSize: 24, 
+            fontWeight: '800', 
+            color: 'white', 
+            letterSpacing: 0.3 
+          }}>Dental Scan</Text>
+        </View>
+        <TouchableOpacity 
           style={{ 
-            // 3. PENGGUNAAN INSETS SEKARANG SUDAH AMAN
-            paddingTop: insets.top + 2, 
-            paddingHorizontal: 20, 
-            paddingBottom: 20, 
-            borderBottomLeftRadius: 24, 
-            borderBottomRightRadius: 24 
+            width: 40, 
+            height: 40, 
+            borderRadius: 12, 
+            backgroundColor: 'rgba(255,255,255,0.15)', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            borderWidth: 1, 
+            borderColor: 'rgba(255,255,255,0.1)' 
           }}
+          onPress={() => navigation.navigate('History')}
         >
-          {/* Top row: title + history icon */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>Diagnosis AI Serene</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700' }}>Analisis gigi modern</Text>
-            </View>
-            <Button
-              mode="text"
-              onPress={() => navigation.navigate('History')}
-              compact
-              style={{ minWidth: 40, paddingHorizontal: 8, marginRight: 2 }}
-              contentStyle={{ margin: 0 }}
-            >
-              <MaterialCommunityIcons name="history" size={24} color="#FFFFFF" />
-            </Button>
-          </View>
-
-          {/* Subtitle */}
-          <Text style={{ color: 'rgba(255,255,255,0.85)', marginTop: 8 }}>
-            Scan kondisi gigi Anda kapan saja dengan dukungan AI Serene.
-          </Text>
-
-          {/* Primary action */}
-          <Button
-            mode="contained"
-            icon="camera"
-            onPress={() => navigation.navigate('Camera')}
-            style={{ marginTop: 20, borderRadius: 18 }}
-            contentStyle={{ paddingVertical: 6 }}
-            labelStyle={{ fontWeight: '700' }}
-          >
-            Mulai Scan
-          </Button>
-
-          {/* Compact stats */}
-          <View style={{ flexDirection: 'row', marginTop: 16, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12, justifyContent: 'space-between' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Scan bulan ini</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 4 }}>12</Text>
-            </View>
-            <View style={{ width: 1, height: '100%', backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Akurasi rata-rata</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 4 }}>92%</Text>
-            </View>
-            <View style={{ width: 1, height: '100%', backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Terhubung ke dokter</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 4 }}>18+</Text>
-            </View>
-          </View>
-        </LinearGradient>
+          <MaterialCommunityIcons name="history" size={22} color="white" />
+        </TouchableOpacity>
       </View>
 
-      {/* Scroll content */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: headerHeight + 12, paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Features */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 14 }}>Apa saja yang bisa dianalisis?</Text>
-          {FEATURES.map((feature, index) => (
-            <Card
-              key={feature.title}
-              style={{
-                marginBottom: 14,
-                borderRadius: 18,
-                shadowColor: '#0F172A',
-                shadowOpacity: 0.05,
-                shadowRadius: 10,
-                elevation: 3,
-                marginTop: index === 0 ? 4 : 0,
-              }}
-            >
-              <Card.Content style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: 'rgba(76,29,149,0.08)', alignItems: 'center', justifyContent: 'center' }}>
-                  <MaterialCommunityIcons name={feature.icon} size={28} color={theme.colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text variant="titleSmall" style={{ fontWeight: '700', color: '#0F172A' }}>
-                    {feature.title}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: '#475569', marginTop: 6 }}>
-                    {feature.description}
-                  </Text>
-                </View>
-              </Card.Content>
-            </Card>
-          ))}
+      {/* --- LAYER 3: HEADER CONTENT --- */}
+      <View style={{ 
+        paddingHorizontal: 20, 
+        width: '100%', 
+        zIndex: 10, 
+        marginTop: insets.top + 60 
+      }}>
+        <Text style={{ 
+          fontSize: 14, 
+          color: 'rgba(255,255,255,0.9)', 
+          lineHeight: 20, 
+          marginBottom: 12, 
+          maxWidth: '90%' 
+        }}>
+          Skrining gigi profesional dalam hitungan detik.
+        </Text>
+
+        {/* Stats Card */}
+        <View style={{ 
+          flexDirection: 'row', 
+          backgroundColor: 'rgba(255,255,255,0.1)', 
+          borderRadius: 18, 
+          padding: 12, 
+          marginBottom: 16, 
+          borderWidth: 1, 
+          borderColor: 'rgba(255,255,255,0.15)', 
+          justifyContent: 'space-around', 
+          alignItems: 'center' 
+        }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>94%</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Akurasi</Text>
+          </View>
+          <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>24/7</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Instant</Text>
+          </View>
+          <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>12k+</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>User</Text>
+          </View>
         </View>
 
-        {/* Scan steps */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 14 }}>Cara scan yang ideal</Text>
-          {SCAN_STEPS.map((step, index) => (
-            <View key={step} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
-              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                <Text style={{ color: '#4C1D95', fontWeight: '700' }}>{index + 1}</Text>
-              </View>
-              <Text style={{ flex: 1, color: '#475569', lineHeight: 21 }}>{step}</Text>
-            </View>
-          ))}
-        </View>
+        {/* Main CTA Button */}
+        <TouchableOpacity 
+          style={{ 
+            width: '100%', 
+            borderRadius: 18, 
+            shadowColor: '#4F46E5', 
+            shadowOffset: { width: 0, height: 6 }, 
+            shadowOpacity: 0.3, 
+            shadowRadius: 10, 
+            elevation: 8 
+          }}
+          onPress={() => navigation.navigate('Camera')}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={['#ffffff', '#f3f4f6']}
+            style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              paddingVertical: 14, 
+              borderRadius: 18 
+            }}
+          >
+            <MaterialCommunityIcons name="camera-iris" size={22} color="#4F46E5" />
+            <Text style={{ 
+              fontSize: 14, 
+              fontWeight: '700', 
+              color: '#4F46E5', 
+              marginLeft: 8 
+            }}>Mulai Scan Baru</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
 
-        {/* Trust points */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 14 }}>Keamanan & akurasi</Text>
-          <View style={{ gap: 12 }}>
-            {TRUST_POINTS.map((point) => (
-              <View
-                key={point.title}
-                style={{
-                  flexDirection: 'row',
-                  padding: 14,
-                  borderRadius: 18,
-                  backgroundColor: '#FFFFFF',
-                  shadowColor: '#0F172A',
-                  shadowOpacity: 0.04,
-                  shadowRadius: 10,
-                  elevation: 2,
+      {/* --- LAYER 4: BOTTOM SHEET (Scrollable) --- */}
+      <View style={{ 
+        position: 'absolute', 
+        bottom: 0, 
+        left: 0, 
+        right: 0, 
+        // GAP FIX: Menambah margin top dari titik header agar ada jarak visual
+        top: HEADER_HEIGHT_EXPANDED + 24, 
+        backgroundColor: '#F8FAFC', 
+        borderTopLeftRadius: 32, 
+        borderTopRightRadius: 32, 
+        overflow: 'hidden', 
+        zIndex: 20 
+      }}>
+        <ScrollView 
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+          scrollEventThrottle={16}
+        >
+          {/* Handle Indicator */}
+          <View style={{ 
+            width: 40, 
+            height: 4, 
+            backgroundColor: '#E2E8F0', 
+            borderRadius: 2, 
+            alignSelf: 'center', 
+            marginBottom: 24 
+          }} />
+
+          {/* 1. Section: Features Grid */}
+          <Text style={{ 
+            fontSize: 16, fontWeight: '800', color: '#1E293B', marginBottom: 12, letterSpacing: 0.2 
+          }}>Kapabilitas AI</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 }}>
+            {FEATURES.map((item, index) => (
+              <View 
+                key={index} 
+                style={{ 
+                  width: (SCREEN_WIDTH - 40 - 20) / 3, 
+                  backgroundColor: 'white', 
+                  borderRadius: 16, 
+                  padding: 12, 
+                  alignItems: 'center', 
+                  shadowColor: '#94A3B8', 
+                  shadowOffset: { width: 0, height: 3 }, 
+                  shadowOpacity: 0.08, 
+                  shadowRadius: 8, 
+                  elevation: 2 
                 }}
               >
-                <MaterialCommunityIcons name={point.icon} size={24} color={theme.colors.primary} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>{point.title}</Text>
-                  <Text style={{ color: '#475569', marginTop: 4 }}>{point.caption}</Text>
+                <View style={{ 
+                  width: 40, height: 40, borderRadius: 12, 
+                  alignItems: 'center', justifyContent: 'center', marginBottom: 8, 
+                  backgroundColor: item.color + '15' 
+                }}>
+                  <MaterialCommunityIcons name={item.icon} size={24} color={item.color} />
                 </View>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B', textAlign: 'center', marginBottom: 2 }}>{item.title}</Text>
+                <Text style={{ fontSize: 10, color: '#64748B', textAlign: 'center', lineHeight: 12 }}>{item.desc}</Text>
               </View>
             ))}
           </View>
-        </View>
 
-        {/* Tips chips */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 14 }}>Tips sebelum scan</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            <Chip icon="white-balance-sunny" style={{ backgroundColor: '#EEF2FF' }}>
-              Gunakan cahaya alami
-            </Chip>
-            <Chip icon="gesture-tap" style={{ backgroundColor: '#EEF2FF' }}>
-              Pegang ponsel stabil
-            </Chip>
-            <Chip icon="account" style={{ backgroundColor: '#EEF2FF' }}>
-              Buka mulut selebar mungkin
-            </Chip>
+          {/* 2. Section: Panduan Scan */}
+          <Text style={{ 
+            fontSize: 16, fontWeight: '800', color: '#1E293B', marginBottom: 12, letterSpacing: 0.2 
+          }}>Panduan Scan</Text>
+          <View style={{ 
+            backgroundColor: 'white', borderRadius: 20, padding: 20, marginBottom: 30,
+            shadowColor: '#94A3B8', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 
+          }}>
+            {GUIDE_STEPS.map((step, index) => (
+              <View key={step.id} style={{ 
+                flexDirection: 'row', alignItems: 'center', paddingVertical: 10, 
+                borderBottomWidth: index !== GUIDE_STEPS.length - 1 ? 1 : 0, borderBottomColor: '#F1F5F9' 
+              }}>
+                <View style={{ 
+                  width: 28, height: 28, borderRadius: 14, backgroundColor: '#EEF2FF', 
+                  alignItems: 'center', justifyContent: 'center', marginRight: 14 
+                }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#4F46E5' }}>{step.id}</Text>
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: '#334155', fontWeight: '500', lineHeight: 18 }}>{step.text}</Text>
+              </View>
+            ))}
           </View>
-        </View>
 
-        {/* Disclaimer */}
-        <View style={{ paddingHorizontal: normalize(20), marginBottom: 0 }}>
-          <View style={{ borderRadius: normalize(18), padding: normalize(16), backgroundColor: '#FEF3C7', flexDirection: 'row', alignItems: 'flex-start' }}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={normalize(22)} color="#F97316" />
-            <Text style={{ flex: 1, marginLeft: normalize(10), color: '#78350F', fontSize: normalize(13) }}>
-              Hasil AI bukan pengganti diagnosis dokter. Bagikan hasil kepada dokter gigi untuk rencana perawatan yang tepat.
+          {/* 3. Section: Artikel Pilihan (NEW CONTENT) */}
+          <Article articles={ARTICLES} onOpen={handleArticleOpen} onSeeAll={handleSeeAllArticles} />
+
+          
+
+          {/* 4. Section: Fakta Unik (NEW CONTENT) */}
+          <View style={{ 
+            backgroundColor: '#FFF7ED', borderRadius: 16, padding: 16, marginBottom: 24,
+            borderWidth: 1, borderColor: '#FFEDD5'
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <MaterialCommunityIcons name="lightbulb-on-outline" size={18} color="#EA580C" />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#C2410C', marginLeft: 6 }}>Tahukah Anda?</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: '#9A3412', lineHeight: 20 }}>
+              Email gigi adalah zat terkeras dalam tubuh manusia, bahkan lebih keras daripada tulang Anda!
             </Text>
           </View>
-        </View>
-      </ScrollView>
+
+          {/* 5. Section: Trust/Privacy */}
+          <View style={{ 
+            flexDirection: 'row', alignItems: 'flex-start', 
+            backgroundColor: '#ECFDF5', padding: 14, borderRadius: 14, 
+            borderWidth: 1, borderColor: '#A7F3D0' 
+          }}>
+            <MaterialCommunityIcons name="shield-check-outline" size={18} color="#059669" />
+            <Text style={{ flex: 1, marginLeft: 10, fontSize: 12, color: '#065F46', lineHeight: 16 }}>
+              Data Anda dienkripsi end-to-end dan hanya untuk keperluan medis.
+            </Text>
+          </View>
+
+          {/* Bottom Padding Extra */}
+          <View style={{ height: 60 }} />
+        </ScrollView>
+      </View>
     </View>
   );
 };

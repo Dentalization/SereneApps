@@ -1,13 +1,14 @@
 import React from 'react';
-import { 
-  View, 
-  ScrollView, 
-  StatusBar, 
-  Dimensions, 
-  Platform, 
+import {
+  View,
+  ScrollView,
+  StatusBar,
+  Dimensions,
+  Platform,
   PixelRatio,
   RefreshControl,
   Alert,
+  TouchableOpacity, // Import TouchableOpacity
 } from 'react-native';
 import { Text, Button, Chip, useTheme, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,7 +40,7 @@ const HistoryScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
-  
+
   const [historyItems, setHistoryItems] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -61,7 +62,7 @@ const HistoryScreen = () => {
       }
 
       const response = await listSessions();
-      
+
       if (response.success && response.data?.sessions) {
         // Parse sessions into history items
         const items = response.data.sessions.map(session => {
@@ -75,7 +76,7 @@ const HistoryScreen = () => {
 
           // Count findings from session messages
           const messageCount = session.message_count || 0;
-          const findingsText = messageCount > 0 
+          const findingsText = messageCount > 0
             ? `${messageCount} pesan dalam sesi`
             : 'Belum ada analisis';
 
@@ -86,19 +87,18 @@ const HistoryScreen = () => {
             status: messageCount > 0 ? 'completed' : 'draft',
             findings: findingsText,
             sessionId: sessionIdentifier,
-            createdAt: session.created_at,
+            createdAt: session.created_at, // Penting untuk filter tanggal
           };
         }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         setHistoryItems(items);
 
-        // Auto-sync latest analysis to backend for dentist portal visibility
+        // Auto-sync latest analysis logic (preserved)
         try {
           const latest = items[0];
           if (latest) {
             const msgRes = await getSessionMessages(latest.sessionId);
             if (msgRes.success && msgRes.messages && msgRes.messages.length) {
-              // Find the latest AI reply with visual findings
               const lastMsg = [...msgRes.messages].reverse().find(m => m.role !== 'user');
               const vf = lastMsg?.visual_findings || lastMsg?.metadata?.visual_findings || {};
 
@@ -116,7 +116,6 @@ const HistoryScreen = () => {
                 confidence_score: typeof vf.confidence === 'number' ? Math.round(vf.confidence * 100) : vf.confidence_score || null,
                 detections,
                 recommendations,
-                // Best-effort image mapping
                 image_url: lastMsg?.images?.[0]?.url || null,
                 annotated_image_url: annotatedBase64 ? `data:image/jpeg;base64,${annotatedBase64}` : null,
                 timestamp: latest.createdAt,
@@ -126,7 +125,6 @@ const HistoryScreen = () => {
             }
           }
         } catch (syncErr) {
-          // Non-blocking: log only
           console.warn('AI analysis sync skipped:', syncErr?.message);
         }
       } else {
@@ -150,7 +148,6 @@ const HistoryScreen = () => {
   };
 
   const handleViewDetails = async (item) => {
-    // Navigate to detail history screen
     navigation.navigate('DetailHistory', {
       sessionId: item.sessionId,
     });
@@ -169,7 +166,6 @@ const HistoryScreen = () => {
             try {
               const response = await deleteSession(sessionId);
               if (response.success) {
-                // Refresh list
                 fetchSessions();
               } else {
                 Alert.alert('Gagal', 'Tidak dapat menghapus riwayat.');
@@ -183,8 +179,18 @@ const HistoryScreen = () => {
       ]
     );
   };
-  
-  const completedThisMonth = historyItems.filter((item) => item.status === 'completed').length;
+
+  // --- ALGORITMA PERBAIKAN: Hitung Bulan Ini ---
+  const completedThisMonth = historyItems.filter((item) => {
+    if (item.status !== 'completed') return false;
+    const now = new Date();
+    const itemDate = new Date(item.createdAt);
+    return (
+      itemDate.getMonth() === now.getMonth() &&
+      itemDate.getFullYear() === now.getFullYear()
+    );
+  }).length;
+  // ---------------------------------------------
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -196,20 +202,32 @@ const HistoryScreen = () => {
           colors={[theme.colors.primary, '#7F1DFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ 
-            paddingTop: insets.top + normalize(2), 
-            paddingHorizontal: normalize(20), 
-            paddingBottom: normalize(20), 
-            borderBottomLeftRadius: normalize(24), 
-            borderBottomRightRadius: normalize(24) 
+          style={{
+            paddingTop: insets.top + normalize(2),
+            paddingHorizontal: normalize(20),
+            paddingBottom: normalize(20),
+            borderBottomLeftRadius: normalize(24),
+            borderBottomRightRadius: normalize(24)
           }}
         >
-          {/* Header minimalis tanpa icon */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1, paddingRight: normalize(12) }}>
+          {/* Header Bar dengan Back Button */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: normalize(12) }}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={{
+                marginRight: normalize(12),
+                padding: normalize(4),
+                borderRadius: normalize(8),
+                backgroundColor: 'rgba(255,255,255,0.15)'
+              }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={normalize(24)} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }}>
               <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: normalize(12) }}>Riwayat Diagnosis</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: normalize(18), fontWeight: '700', marginTop: normalize(4) }}>
-                Pantau progres kesehatan gigi Anda
+              <Text style={{ color: '#FFFFFF', fontSize: normalize(18), fontWeight: '700', marginTop: normalize(2) }}>
+                Pantau progres kesehatan
               </Text>
             </View>
           </View>
@@ -218,7 +236,7 @@ const HistoryScreen = () => {
           <View
             style={{
               flexDirection: 'row',
-              marginTop: normalize(14),
+              marginTop: normalize(4), // Sedikit dikurangi karena ada header bar di atas
               backgroundColor: 'rgba(255,255,255,0.12)',
               borderRadius: normalize(16),
               paddingVertical: normalize(10),
@@ -324,10 +342,10 @@ const HistoryScreen = () => {
                 >
                   Lihat detail
                 </Button>
-                <Button 
-                  mode="outlined" 
-                  compact 
-                  icon="delete-outline" 
+                <Button
+                  mode="outlined"
+                  compact
+                  icon="delete-outline"
                   labelStyle={{ fontSize: normalize(13) }}
                   onPress={() => handleDeleteSession(item.sessionId)}
                 >

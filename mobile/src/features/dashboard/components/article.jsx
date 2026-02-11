@@ -6,9 +6,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SAMPLE_ARTICLES } from '../data/articles';
 
 const { width } = Dimensions.get('window');
-const SIDE = 20;
-const GAP = 16;
-const CARD_W = width - SIDE * 2; // konsisten center seperti FeaturedDoctors
+const SIDE = 12;
+const GAP = 12;
+const CARD_W = width - SIDE * 2 - 40; // smaller width with more margin
 const SNAP_INTERVAL = CARD_W + GAP;
 
 export const formatArticleRelativeTime = (iso) => {
