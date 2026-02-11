@@ -6,7 +6,9 @@ import { useTheme } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Pastikan file-file ini ada dan menggunakan 'export default'
 import DashboardNavigator from './DashboardNavigator';
 import AppointmentNavigator from './AppointmentNavigator';
 import AINavigator from './AINavigator';
@@ -15,85 +17,41 @@ import SettingsNavigator from './SettingsNavigator';
 
 const Tab = createBottomTabNavigator();
 
+// List route yang tabbar-nya disembunyikan
 const HIDDEN_TAB_ROUTES = new Set([
-  'ClinicSearch',
-  'ClinicDetail',
-  'ClinicDetailScreen',
-  'DentistDetail',
-  'DentistDetailScreen',
-  'BookingSlot',
-  'BookingSlotScreen',
-  'BookingConfirm',
-  'BookingConfirmScreen',
-  'Payment',
-  'PaymentScreen',
-  'BookingSuccess',
-  'BookingSuccessScreen',
-  'BookingFailed',
-  'BookingFailedScreen',
-  'DetailAppointment',
-  'DetailAppointmentScreen',
-  'ArticleList',
-  'Notifications',
-  'NotificationAppointmentDetail',
-  'NotificationPaymentDetail',
-  'NotificationShopDetail',
-  'NotificationAIDetail',
-  'NotificationSystemDetail',
-  'NearbyDentists',
-  'NearbyClinics',
-  'DentistDirectory',
-  'DentistSpecialty',
-  'ProductDetail',
-  'Cart',
-  'Checkout',
-  'HelpCenter',
-  'HelpCenterScreen',
-  'FAQCategories',
-  'FAQCategoriesScreen',
-  'FAQCategory',
-  'FAQCategoryScreen',
-  'Profile',
-  'ProfileScreen',
-  'EditProfile',
-  'EditProfileScreen',
-  'Login',
-  'LoginScreen',
-  'Register',
-  'RegisterScreen',
-  'OTP',
-  'OTPScreen',
-  'PrivacyPolicy',
-  'PrivacyPolicyScreen',
-  'Terms',
-  'TermsScreen',
-  'DataManagement',
-  'DataManagementScreen',
-  'ContactSupport',
-  'ContactSupportScreen',
-  'Camera',
-  'ImagePreview',
-  'Analysis',
-  'ServerUnavailable',
-  'Result',
-  'History',
-  'Chat',
-  'Search',
-  'SearchScreen',
+  'ClinicSearch', 'ClinicDetail', 'ClinicDetailScreen', 'DentistDetail',
+  'DentistDetailScreen', 'BookingSlot', 'BookingSlotScreen', 'BookingConfirm',
+  'BookingConfirmScreen', 'Payment', 'PaymentScreen', 'BookingSuccess',
+  'BookingSuccessScreen', 'BookingFailed', 'BookingFailedScreen', 'DetailAppointment',
+  'DetailAppointmentScreen', 'ArticleList', 'Notifications', 'NotificationAppointmentDetail',
+  'NotificationPaymentDetail', 'NotificationShopDetail', 'NotificationAIDetail',
+  'NotificationSystemDetail', 'NearbyDentists', 'NearbyClinics', 'DentistDirectory',
+  'DentistSpecialty', 'ProductDetail', 'Cart', 'Checkout', 'HelpCenter',
+  'HelpCenterScreen', 'FAQCategories', 'FAQCategoriesScreen', 'FAQCategory',
+  'FAQCategoryScreen', 'Profile', 'ProfileScreen', 'EditProfile', 'EditProfileScreen',
+  'Login', 'LoginScreen', 'Register', 'RegisterScreen', 'OTP', 'OTPScreen',
+  'PrivacyPolicy', 'PrivacyPolicyScreen', 'Terms', 'TermsScreen', 'DataManagement',
+  'DataManagementScreen', 'ContactSupport', 'ContactSupportScreen', 'Camera',
+  'ImagePreview', 'Analysis', 'ServerUnavailable', 'Result', 'History', 'Chat',
+  'Search', 'SearchScreen',
 ]);
 
 const TabNavigator = () => {
   const theme = useTheme();
-  const isDark = theme.dark;
+  const insets = useSafeAreaInsets();
+  
+  // Safe access redux: tambahkan (state.cart || {}) untuk mencegah error null
+  const cartItems = useSelector((state) => (state.cart && state.cart.items) ? state.cart.items : []);
 
-  const cartItems = useSelector((state) => state.cart?.items || []);
+  const bottomPosition = Platform.OS === 'ios' 
+    ? 20 
+    : (insets.bottom > 0 ? insets.bottom : 10);
 
-  // Liquid glass effect - white frosted glass
   const baseTabBarStyle = {
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: Platform.OS === 'ios' ? 24 : 16,
+    bottom: bottomPosition,
     backgroundColor: 'transparent',
     borderRadius: 32,
     height: Platform.OS === 'ios' ? 80 : 70,
@@ -113,29 +71,15 @@ const TabNavigator = () => {
     return { ...baseTabBarStyle };
   };
 
-  // Custom tab bar background with BlurView
   const tabBarBackground = () => (
     <BlurView
-      intensity={Platform.OS === 'ios' ? 80 : 100}
+      intensity={Platform.OS === 'ios' ? 80 : 50} // Android blur kadang berat, diturunkan dikit
       tint="light"
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        borderRadius: 32,
-        backgroundColor: Platform.OS === 'ios' 
-          ? 'rgba(255, 255, 255, 0.7)' 
-          : 'rgba(255, 255, 255, 0.95)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.5)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.15,
-        shadowRadius: 25,
-      }}
-    />
+      style={StyleSheet.absoluteFill} // Gunakan absoluteFill agar pas
+    >
+        {/* Hack untuk Android agar blur terlihat lebih putih/glassy */}
+        <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.8)' }} />
+    </BlurView>
   );
 
   return (
@@ -161,11 +105,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons
-                name={focused ? 'home' : 'home-outline'}
-                size={24}
-                color={color}
-              />
+              <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'Dashboard'),
@@ -176,14 +116,10 @@ const TabNavigator = () => {
         name="AppointmentTab"
         component={AppointmentNavigator}
         options={({ route }) => ({
-          tabBarLabel: 'My Appointments',
+          tabBarLabel: 'Appointments',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons
-                name={focused ? 'calendar-check' : 'calendar-check-outline'}
-                size={24}
-                color={color}
-              />
+              <MaterialCommunityIcons name={focused ? 'calendar-check' : 'calendar-check-outline'} size={24} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'AppointmentList'),
@@ -197,11 +133,7 @@ const TabNavigator = () => {
           tabBarLabel: 'AI Scan',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons
-                name={focused ? 'camera' : 'camera-outline'}
-                size={24}
-                color={color}
-              />
+              <MaterialCommunityIcons name={focused ? 'camera' : 'camera-outline'} size={24} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'AIHome'),
@@ -215,18 +147,9 @@ const TabNavigator = () => {
           tabBarLabel: 'Shop',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons
-                name={focused ? 'cart' : 'cart-outline'}
-                size={24}
-                color={color}
-              />
+              <MaterialCommunityIcons name={focused ? 'cart' : 'cart-outline'} size={24} color={color} />
               {cartItems.length > 0 && (
-                <View
-                  style={[
-                    styles.badge,
-                    { backgroundColor: theme.colors.error || '#FF3B30' },
-                  ]}
-                >
+                <View style={[styles.badge, { backgroundColor: theme.colors.error || '#FF3B30' }]}>
                   <View style={styles.badgeDot} />
                 </View>
               )}
@@ -243,11 +166,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons
-                name={focused ? 'account' : 'account-outline'}
-                size={24}
-                color={color}
-              />
+              <MaterialCommunityIcons name={focused ? 'account' : 'account-outline'} size={24} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'Settings'),

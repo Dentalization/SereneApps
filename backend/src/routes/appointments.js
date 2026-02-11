@@ -182,18 +182,18 @@ function serializeHistory(entries = []) {
 function serializeAppointment(appointment) {
   // Generate booking code from appointment id
   const bookingCode = `SRN-${String(appointment.id).padStart(6, '0')}`;
-  
+
   // Get latest payment intent for payment status
   const latestPayment = appointment.paymentIntents?.[0] || null;
-  
+
   // CRITICAL FIX: Read consultation_type column first, fallback to metadata
   const metadata = appointment.metadata || {};
-  const appointmentType = 
-    appointment.consultation_type || 
-    appointment.consultationType || 
-    metadata.appointmentType || 
+  const appointmentType =
+    appointment.consultation_type ||
+    appointment.consultationType ||
+    metadata.appointmentType ||
     (appointment.videoRoomRef ? 'virtual' : 'onsite');
-  
+
   return {
     id: appointment.id.toString(),
     bookingCode,
@@ -287,11 +287,11 @@ router.get('/availability', authenticateToken, async (req, res) => {
         clinic_working_hours: true
       }
     });
-    
+
     if (!dentistProfile) {
       return sendError(res, 404, 'dentist_not_found', 'Dokter gigi tidak ditemukan.');
     }
-    
+
     const dentistId = dentistProfile.userId;
 
     const workingWindow = getWorkingWindow(date, dentistProfile);
@@ -373,32 +373,32 @@ router.post(
     });
 
     try {
-    if (!dentistIdRaw) {
-      console.log('[APPOINTMENT POST] Error: Missing dentistIdRaw');
-      return sendError(res, 400, 'dentist_id_required', 'Pilih dokter gigi yang tersedia sebelum membuat janji temu.');
-    }
-    if (!start || !end) {
-      console.log('[APPOINTMENT POST] Error: Missing start/end time');
-      return sendError(res, 400, 'time_required', 'Waktu mulai dan selesai janji temu wajib diisi.');
-    }
+      if (!dentistIdRaw) {
+        console.log('[APPOINTMENT POST] Error: Missing dentistIdRaw');
+        return sendError(res, 400, 'dentist_id_required', 'Pilih dokter gigi yang tersedia sebelum membuat janji temu.');
+      }
+      if (!start || !end) {
+        console.log('[APPOINTMENT POST] Error: Missing start/end time');
+        return sendError(res, 400, 'time_required', 'Waktu mulai dan selesai janji temu wajib diisi.');
+      }
 
       // dentistIdRaw from mobile is the DentistProfile.id, we need to get the User.id
       const dentistProfileId = toBigInt(dentistIdRaw, 'dentistId');
       const clinicBranchId = clinicBranchIdRaw ? toBigInt(clinicBranchIdRaw, 'clinicBranchId') : null;
-      
+
       // Look up the dentist profile to get the actual user_id and practice type
       const dentistProfile = await prisma.dentistProfile.findUnique({
         where: { id: dentistProfileId },
         select: { userId: true, dentist_type: true, clinic_id: true }
       });
-      
+
       if (!dentistProfile) {
         return sendError(res, 404, 'dentist_not_found', 'Dokter gigi tidak ditemukan.');
       }
-      
+
       const dentistId = dentistProfile.userId;
       const dentistType = dentistProfile.dentist_type || 'clinic';
-      
+
       if (dentistId === patientId) {
         return sendError(res, 400, 'self_booking_not_allowed', 'Pasien tidak dapat membuat janji dengan dirinya sendiri.');
       }
@@ -513,7 +513,7 @@ router.post(
             }
           }
         });
-        console.log('[APPOINTMENT POST] Appointment created IN TRANSACTION:', { 
+        console.log('[APPOINTMENT POST] Appointment created IN TRANSACTION:', {
           id: createdAppointment.id.toString(),
           dentistId: createdAppointment.dentistId.toString(),
           patientId: createdAppointment.patientId.toString(),
@@ -534,7 +534,7 @@ router.post(
           }
         });
         console.log('[APPOINTMENT POST] Status history recorded IN TRANSACTION');
-        
+
         // Verify appointment exists within transaction
         const verifyInTx = await tx.appointment.findUnique({
           where: { id: createdAppointment.id },
@@ -543,14 +543,14 @@ router.post(
         console.log('[APPOINTMENT POST] Verified in transaction:', verifyInTx);
       });
       console.log('[APPOINTMENT POST] ✅ Transaction committed successfully, appointment ID:', createdAppointment.id.toString());
-      
+
       // CRITICAL: Verify appointment actually exists in DB after transaction commit
       const verifyPostCommit = await prisma.appointment.findUnique({
         where: { id: createdAppointment.id },
         select: { id: true, status: true, startsAt: true, patientId: true, dentistId: true }
       });
       console.log('[APPOINTMENT POST] 🔍 POST-COMMIT VERIFICATION:', verifyPostCommit);
-      
+
       if (!verifyPostCommit) {
         console.error('[APPOINTMENT POST] ❌ CRITICAL: Appointment ID', createdAppointment.id.toString(), 'does not exist after transaction commit!');
         throw new Error('PHANTOM_APPOINTMENT: Transaction committed but data missing from database');
@@ -616,17 +616,17 @@ router.post(
         appointment: serializeAppointment(fullAppointment),
         dentist: dentistUser
           ? {
-              id: dentistUser.id.toString(),
-              name: dentistUser.name,
-              email: dentistUser.email,
-              phone: dentistUser.phone_number,
-              avatar: dentistUser.avatar_url,
-              title: dentistProfileDetails?.title || null,
-              specialization: dentistProfileDetails?.primarySpecialization || null,
-              clinicName: dentistProfileDetails?.clinicName || null,
-              clinicAddress: dentistProfileDetails?.clinicAddress || null,
-              consultationFee: dentistProfileDetails?.consultationFee || null
-            }
+            id: dentistUser.id.toString(),
+            name: dentistUser.name,
+            email: dentistUser.email,
+            phone: dentistUser.phone_number,
+            avatar: dentistUser.avatar_url,
+            title: dentistProfileDetails?.title || null,
+            specialization: dentistProfileDetails?.primarySpecialization || null,
+            clinicName: dentistProfileDetails?.clinicName || null,
+            clinicAddress: dentistProfileDetails?.clinicAddress || null,
+            consultationFee: dentistProfileDetails?.consultationFee || null
+          }
           : null
       };
 
@@ -1224,7 +1224,7 @@ router.patch(
         console.error('Failed to emit confirmation event:', error);
       });
 
-      return res.json({ 
+      return res.json({
         appointment: serializeAppointment(fullAppointment),
         message: 'Janji temu berhasil dikonfirmasi.'
       });
@@ -1277,9 +1277,9 @@ router.get(
 
       const statuses = req.query.status
         ? String(req.query.status)
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
         : null;
 
       const limit = Math.min(parseInt(req.query.limit || '200', 10), 500);
@@ -1357,6 +1357,30 @@ router.get(
         where.AND = andFilters;
       }
 
+      // --- AUTO-MARK OVERDUE ---
+      // Appointments yang jadwalnya sudah lewat, masih scheduled/confirmed, dan belum dibayar
+      // akan otomatis diubah statusnya menjadi 'overdue'
+      const now = new Date();
+      try {
+        const overdueResult = await prisma.appointment.updateMany({
+          where: {
+            status: { in: ACTIVE_APPOINTMENT_STATUSES },
+            startsAt: { lt: now },
+            NOT: {
+              paymentIntents: {
+                some: { status: 'succeeded' }
+              }
+            }
+          },
+          data: { status: 'overdue' }
+        });
+        if (overdueResult.count > 0) {
+          console.log(`[Appointments GET] ✅ Auto-marked ${overdueResult.count} appointment(s) as overdue`);
+        }
+      } catch (overdueErr) {
+        console.error('[Appointments GET] ⚠️ Failed to auto-mark overdue:', overdueErr.message);
+      }
+
       const appointments = await prisma.appointment.findMany({
         where,
         include: {
@@ -1411,9 +1435,9 @@ router.get(
           },
           statusHistory: includeHistory
             ? {
-                orderBy: { createdAt: 'desc' },
-                take: 10
-              }
+              orderBy: { createdAt: 'desc' },
+              take: 10
+            }
             : false
         },
         orderBy: { startsAt: orderDirection },

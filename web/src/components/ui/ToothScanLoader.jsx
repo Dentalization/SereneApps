@@ -15,25 +15,25 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
 
   return (
     <div className="flex flex-col items-center justify-center p-8">
-      
+
       {/* 3D Scanning Container */}
       <div className="relative w-32 h-32 flex items-center justify-center">
-        
+
         {/* --- 1. Orbiting Rings (Efek Sci-Fi) --- */}
         {/* Lingkaran Luar (Lambat) */}
         <div className="absolute inset-0 rounded-full border border-slate-200 dark:border-slate-800 border-t-blue-500 dark:border-t-blue-400 animate-[spin_10s_linear_infinite]" />
-        
+
         {/* Lingkaran Tengah (Arah berlawanan) */}
         <div className="absolute inset-4 rounded-full border border-slate-100 dark:border-slate-900 border-b-purple-500 dark:border-b-purple-400 animate-[spin_14s_linear_infinite_reverse]" />
-        
+
         {/* Lingkaran Dalam (Berdenyut) */}
         <div className="absolute inset-8 rounded-full border-2 border-indigo-100 dark:border-indigo-900/30 animate-pulse" />
 
         {/* --- 2. The Tooth (Menggunakan PNG Anda) --- */}
         <div className="relative z-10 w-16 h-16">
-          
+
           {/* Layer A: Ghost Tooth (Gigi dasar abu-abu) */}
-          <div 
+          <div
             className="absolute inset-0 w-full h-full bg-slate-300 dark:bg-slate-700 opacity-50"
             style={maskStyle}
           />
@@ -41,10 +41,10 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
           {/* Layer B: Scanned Tooth (Gigi berwarna/gradient) */}
           {/* Layer ini akan muncul perlahan sesuai animasi scan */}
           <div className="absolute inset-0 w-full h-full animate-scan-fill overflow-hidden">
-             <div 
-               className="w-full h-full bg-gradient-to-b from-blue-500 to-purple-600 drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
-               style={maskStyle}
-             />
+            <div
+              className="w-full h-full bg-gradient-to-b from-blue-500 to-purple-600 drop-shadow-[0_0_15px_rgba(99,102,241,0.6)]"
+              style={maskStyle}
+            />
           </div>
 
           {/* --- 3. Laser Scanner Beam (Garis Laser) --- */}

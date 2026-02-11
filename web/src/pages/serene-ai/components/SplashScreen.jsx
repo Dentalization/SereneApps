@@ -36,40 +36,38 @@ const SplashScreen = ({
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden transition-all duration-500 ${
-        mounted && !exit ? 'opacity-100 bg-slate-950' : 'opacity-0 pointer-events-none'
-      }`}
+      className={`fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden transition-all duration-500 ${mounted && !exit ? 'opacity-100 bg-slate-950' : 'opacity-0 pointer-events-none'
+        }`}
     >
       {/* --- 1. Dynamic Background --- */}
       <div className="absolute inset-0 z-0">
         {/* Deep base */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black" />
-        
+
         {/* Animated Glow Orbs */}
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] animate-pulse" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-purple-600/10 rounded-full blur-[120px]" />
-        
+
         {/* Grid Texture */}
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]" />
       </div>
 
       {/* --- 2. Main Glass Card --- */}
       <div
-        className={`relative z-10 w-full max-w-2xl p-1 rounded-3xl bg-gradient-to-b from-white/10 to-white/5 shadow-2xl transition-all duration-500 ${
-          mounted && !exit ? 'scale-100 translate-y-0 opacity-100' : 'scale-95 translate-y-4 opacity-0'
-        }`}
+        className={`relative z-10 w-full max-w-2xl p-1 rounded-3xl bg-gradient-to-b from-white/10 to-white/5 shadow-2xl transition-all duration-500 ${mounted && !exit ? 'scale-100 translate-y-0 opacity-100' : 'scale-95 translate-y-4 opacity-0'
+          }`}
       >
         <div className="relative rounded-[22px] bg-slate-900/40 backdrop-blur-xl border border-white/10 p-8 sm:p-12 overflow-hidden">
-          
+
           {/* Noise overlay for texture */}
           <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
 
           {/* Content Wrapper */}
           <div className="relative z-10 flex flex-col items-center text-center">
-            
+
             {/* 3D Animation Section */}
             <div className="mb-8 scale-90 sm:scale-100">
-              <ToothScanLoader text="" /> 
+              <ToothScanLoader text="" />
               {/* Passing empty text because we use custom text below */}
             </div>
 
@@ -83,7 +81,7 @@ const SplashScreen = ({
             <h1 className="text-4xl sm:text-5xl font-bold text-white tracking-tight mb-2">
               {title} <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Future</span>
             </h1>
-            
+
             <p className="text-lg text-slate-300 max-w-md mx-auto leading-relaxed mb-8">
               {subtitle}
             </p>

@@ -29,6 +29,7 @@ import NotificationScreenDentist from './pages/dentist-portal/ui/NotificationScr
 import ProtectedRoute from 'components/auth/ProtectedRoute';
 import GetTheApp from './pages/get-the-app';
 import PatientAppointments from './pages/patient-portal/appointments';
+import PricingPage from './pages/prices';
 
 // Clinic Portal Imports
 import { 
@@ -127,7 +128,7 @@ const Routes = () => {
         </Route>
         
         {/* Admin Portal Routes - Protected for admin roles */}
-  <Route element={<ProtectedRoute allow={["admin", "super_admin", "business_manager", "platform_manager", "finance_manager", "customer_success", "customer_success_manager", "technical_support", "ai_engineer", "compliance_officer"]} />}>
+          <Route element={<ProtectedRoute allow={["admin", "super_admin", "business_manager", "platform_manager", "finance_manager", "customer_success", "customer_success_manager", "technical_support", "ai_engineer", "compliance_officer"]} />}>
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/notifications" element={<NotificationScreenAdmin />} />
           <Route path="/admin/clinic-management" element={<ClinicManagement />} />
@@ -145,6 +146,8 @@ const Routes = () => {
         </Route>
         <Route path="/product-platform" element={<ProductPlatform />} />
         <Route path="/clinical-research" element={<ClinicalResearch />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/prices" element={<PricingPage />} />
         <Route path="/serene-agentic" element={<SereneAIPage />} />
         <Route path="/serene-ai" element={<Navigate to="/serene-agentic" replace />} />
         <Route path="/get-the-app" element={<GetTheApp />} />

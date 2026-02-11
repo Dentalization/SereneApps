@@ -40,13 +40,13 @@ const CDSSSection = () => {
 
   return (
     <section className="py-24 bg-slate-50 dark:bg-slate-950 overflow-hidden">
-      
+
       {/* Background Decor */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-teal-500/5 rounded-full blur-[100px] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        
+
         {/* Header */}
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold uppercase tracking-wider mb-6">
@@ -57,13 +57,13 @@ const CDSSSection = () => {
             Evidence-Based <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Precision</span>
           </h2>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-3xl mx-auto leading-relaxed">
-            Our AI doesn't just guess; it validates. Backed by the largest annotated dental dataset 
+            Our AI doesn't just guess; it validates. Backed by the largest annotated dental dataset
             and verified by peer-reviewed clinical trials.
           </p>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 mb-20">
-          
+
           {/* LEFT: Accuracy Dashboard (7 cols) */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -76,23 +76,23 @@ const CDSSSection = () => {
                   v2.4 (Stable)
                 </span>
               </div>
-              
+
               <div className="p-6">
                 <div className="grid grid-cols-12 text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 px-2">
                   <div className="col-span-4">Condition</div>
                   <div className="col-span-5">Accuracy Score</div>
                   <div className="col-span-3 text-right">Samples</div>
                 </div>
-                
+
                 <div className="space-y-4">
                   {accuracyMetrics.map((metric, index) => (
                     <div key={index} className="group flex items-center p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
-                      
+
                       {/* Name */}
                       <div className="w-[33%] font-semibold text-slate-900 dark:text-white">
                         {metric.condition}
                       </div>
-                      
+
                       {/* Progress Bar */}
                       <div className="w-[42%] pr-6">
                         <div className="flex justify-between text-xs mb-1">
@@ -100,13 +100,13 @@ const CDSSSection = () => {
                           <span className="text-green-500 font-medium text-[10px]">{metric.trend}</span>
                         </div>
                         <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-blue-500 to-teal-400 rounded-full" 
-                            style={{ width: `${metric.accuracy}%` }} 
+                          <div
+                            className="h-full bg-gradient-to-r from-blue-500 to-teal-400 rounded-full"
+                            style={{ width: `${metric.accuracy}%` }}
                           />
                         </div>
                       </div>
-                      
+
                       {/* Samples */}
                       <div className="w-[25%] text-right text-sm text-slate-500 font-mono">
                         {metric.samples}
@@ -128,14 +128,14 @@ const CDSSSection = () => {
           {/* RIGHT: Integration Hub (5 cols) */}
           <div className="lg:col-span-5 flex flex-col justify-center">
             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-              Connects with your <br/>
+              Connects with your <br />
               <span className="text-blue-600 dark:text-blue-400">Entire Ecosystem</span>
             </h3>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {integrationFeatures.map((feature, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`p-5 rounded-2xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-4 bg-${feature.color}-50 dark:bg-${feature.color}-900/20 text-${feature.color}-600 dark:text-${feature.color}-400`}>
@@ -158,7 +158,7 @@ const CDSSSection = () => {
         {/* Validation Banner */}
         <div className="relative overflow-hidden rounded-[2rem] bg-slate-900 text-white p-10 lg:p-12 shadow-2xl">
           <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px]" />
-          
+
           <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-10">
             <div className="max-w-xl">
               <div className="flex items-center gap-3 mb-4 text-green-400">
@@ -167,7 +167,7 @@ const CDSSSection = () => {
               </div>
               <h3 className="text-3xl font-bold mb-4">Proven in Multi-Center Trials</h3>
               <p className="text-slate-400 leading-relaxed mb-8">
-                Our algorithms have been rigorously tested across 15 clinical sites globally, 
+                Our algorithms have been rigorously tested across 15 clinical sites globally,
                 analyzing over 35,000 unique patient cases to ensure zero bias and maximum reliability.
               </p>
               <div className="flex flex-wrap gap-6">
