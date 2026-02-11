@@ -1359,10 +1359,10 @@ router.get(
 
       // --- AUTO-MARK OVERDUE ---
       // Appointments yang jadwalnya sudah lewat, masih scheduled/confirmed, dan belum dibayar
-      // akan otomatis diubah statusnya menjadi 'overdue'
+      // akan otomatis diubah statusnya menjadi 'overdue' + dicatat di AppointmentStatusHistory
       const now = new Date();
       try {
-        const overdueResult = await prisma.appointment.updateMany({
+        const overdueAppointments = await prisma.appointment.findMany({
           where: {
             status: { in: ACTIVE_APPOINTMENT_STATUSES },
             startsAt: { lt: now },
@@ -1372,10 +1372,33 @@ router.get(
               }
             }
           },
-          data: { status: 'overdue' }
+          select: { id: true, status: true }
         });
-        if (overdueResult.count > 0) {
-          console.log(`[Appointments GET] ✅ Auto-marked ${overdueResult.count} appointment(s) as overdue`);
+
+        if (overdueAppointments.length > 0) {
+          for (const apt of overdueAppointments) {
+            try {
+              await prisma.$transaction(async (tx) => {
+                await tx.appointment.update({
+                  where: { id: apt.id },
+                  data: { status: 'overdue' }
+                });
+                await recordStatusChange(tx, {
+                  appointmentId: apt.id,
+                  previousStatus: apt.status,
+                  newStatus: 'overdue',
+                  changedBy: null,
+                  changedByRole: 'system',
+                  reason: 'Auto-marked overdue: past scheduled time with no successful payment',
+                  notes: null,
+                  metadata: { trigger: 'auto_overdue_check' }
+                });
+              });
+            } catch (txErr) {
+              console.error(`[Appointments GET] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, txErr.message);
+            }
+          }
+          console.log(`[Appointments GET] ✅ Auto-marked ${overdueAppointments.length} appointment(s) as overdue with status history`);
         }
       } catch (overdueErr) {
         console.error('[Appointments GET] ⚠️ Failed to auto-mark overdue:', overdueErr.message);

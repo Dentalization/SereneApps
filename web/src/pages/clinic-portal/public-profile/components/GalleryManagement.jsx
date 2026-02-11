@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { authHttp } from '../../../../utils/httpClient';
 import Button from '../../../../components/ui/Button';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
 import { resolveMediaUrl } from '../../../../utils/media';
 
@@ -117,71 +118,90 @@ const GalleryManagement = () => {
 
   if (!canEdit) {
     return (
-      <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 text-warning">
-        You don't have permission to manage gallery. Contact your clinic owner or manager.
+      <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
+        <span className="text-2xl">🔒</span>
+        <span className="font-medium">You don't have permission to manage gallery. Contact your clinic owner or manager.</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Message Alert */}
       {message.text && (
         <div className={cn(
-          "rounded-lg p-4 border",
-          message.type === 'success' ? "bg-success/10 border-success/20 text-success" : "bg-error/10 border-error/20 text-error"
+          "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
+          message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
           {message.text}
         </div>
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-foreground">Gallery</h2>
-        <Button onClick={() => setShowDialog(true)}>
-          + Upload Image
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Gallery & Photos</h2>
+          <p className="text-muted-foreground mt-1">Showcase your clinic's environment and facilities</p>
+        </div>
+        <Button onClick={() => setShowDialog(true)} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
+          <span className="mr-2 text-lg">📷</span> Upload Image
         </Button>
       </div>
 
       {/* Gallery Grid */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+        <div className="flex flex-col items-center justify-center py-20 space-y-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading gallery...</p>
         </div>
       ) : images.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
-          <p className="text-muted-foreground mb-4">No images in gallery yet</p>
-          <Button variant="outline" onClick={() => setShowDialog(true)}>
-            Upload First Image
+        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
+            🖼️
+          </div>
+          <h3 className="text-xl font-semibold text-foreground mb-2">Gallery is Empty</h3>
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">Upload high-quality photos of your clinic to build trust with potential patients.</p>
+          <Button variant="outline" onClick={() => setShowDialog(true)} className="rounded-xl">
+            Upload First Photo
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {images.map((image) => (
-            <div key={image.id} className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden group">
-              <div className="aspect-video relative bg-gray-100 dark:bg-gray-700">
+            <div key={image.id} className="group relative bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+              <div className="aspect-[4/3] w-full relative bg-gray-100 dark:bg-gray-700 overflow-hidden">
                 <img
                   src={image.image_url}
                   alt={image.caption || 'Clinic image'}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-              </div>
-              <div className="p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="inline-block px-2 py-1 text-xs bg-brand-primary/10 text-brand-primary rounded">
+
+                {/* Overlay Gradient */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                {/* Checkbox / Badge Top Left */}
+                <div className="absolute top-3 left-3">
+                  <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold bg-white/90 backdrop-blur-sm text-foreground rounded-lg shadow-sm border border-white/20">
                     {imageTypes.find(t => t.value === image.image_type)?.label || image.image_type}
                   </span>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDelete(image.id)}
-                  >
-                    Delete
-                  </Button>
                 </div>
-                {image.caption && (
-                  <p className="text-sm text-muted-foreground">{image.caption}</p>
-                )}
+
+                {/* Delete Action Top Right */}
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0">
+                  <button
+                    onClick={() => handleDelete(image.id)}
+                    className="p-2 bg-white/90 backdrop-blur-sm text-red-500 hover:bg-red-500 hover:text-white rounded-lg shadow-sm transition-colors"
+                    title="Delete Image"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <p className="text-sm font-medium text-foreground line-clamp-2 min-h-[1.25rem]">
+                  {image.caption || <span className="text-muted-foreground italic">No caption provided</span>}
+                </p>
               </div>
             </div>
           ))}
@@ -190,71 +210,110 @@ const GalleryManagement = () => {
 
       {/* Upload Dialog */}
       {showDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-            <form onSubmit={handleUpload}>
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-xl font-semibold text-foreground">Upload Image</h3>
+        <ModalPortal>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-all duration-300 animate-in fade-in"
+              onClick={() => {
+                setShowDialog(false);
+                setUploadData({ imageType: 'general', caption: '', file: null });
+              }}
+            />
+            <div
+              className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-white/20 dark:border-gray-700"
+              onClick={(e) => e.stopPropagation()}
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+            >
+              <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-10">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Upload Photo</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Add visuals to showcase your clinic</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDialog(false);
+                    setUploadData({ imageType: 'general', caption: '', file: null });
+                  }}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Image Type <span className="text-destructive">*</span>
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                    value={uploadData.imageType}
-                    onChange={(e) => setUploadData({ ...uploadData, imageType: e.target.value })}
-                    required
-                  >
-                    {imageTypes.map((type) => (
-                      <option key={type.value} value={type.value}>{type.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Caption (optional)</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={uploadData.caption}
-                    onChange={(e) => setUploadData({ ...uploadData, caption: e.target.value })}
-                    placeholder="Describe the image..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Image File <span className="text-destructive">*</span>
-                  </label>
-                  <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-input border-dashed rounded-lg cursor-pointer bg-background hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        {uploadData.file ? (
-                          <p className="text-sm text-foreground font-medium">{uploadData.file.name}</p>
-                        ) : (
-                          <>
-                            <svg className="w-8 h-8 mb-2 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                            </svg>
-                            <p className="text-xs text-muted-foreground">PNG, JPG, WebP (Max 5MB)</p>
-                          </>
-                        )}
-                      </div>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={handleFileChange}
-                      />
+              <div className="p-8 overflow-y-auto custom-scrollbar">
+                <form id="uploadForm" onSubmit={handleUpload} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Image Category <span className="text-red-500">*</span>
                     </label>
+                    <div className="relative">
+                      <select
+                        className="w-full pl-4 pr-10 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50 appearance-none"
+                        value={uploadData.imageType}
+                        onChange={(e) => setUploadData({ ...uploadData, imageType: e.target.value })}
+                        required
+                      >
+                        {imageTypes.map((type) => (
+                          <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Caption (Optional)</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50"
+                      value={uploadData.caption}
+                      onChange={(e) => setUploadData({ ...uploadData, caption: e.target.value })}
+                      placeholder="e.g., Front desk area, Dental chair view..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Image File <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center justify-center w-full group">
+                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-brand-primary/20 border-dashed rounded-2xl cursor-pointer bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/40 transition-all">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                          {uploadData.file ? (
+                            <>
+                              <div className="w-12 h-12 mb-3 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                              </div>
+                              <p className="text-sm text-gray-900 dark:text-white font-medium truncate max-w-full px-4">{uploadData.file.name}</p>
+                              <p className="text-xs text-brand-primary mt-1">Click to change file</p>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-12 h-12 mb-3 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:bg-white group-hover:text-brand-primary transition-colors flex items-center justify-center shadow-sm">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                </svg>
+                              </div>
+                              <p className="text-sm text-gray-600 dark:text-gray-400"><span className="font-semibold text-brand-primary">Click to upload</span> or drag and drop</p>
+                              <p className="text-xs text-gray-400 mt-1">PNG, JPG, WebP (Max 5MB)</p>
+                            </>
+                          )}
+                        </div>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleFileChange}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </form>
               </div>
 
-              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+              <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm flex justify-end gap-3 sticky bottom-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -262,16 +321,22 @@ const GalleryManagement = () => {
                     setShowDialog(false);
                     setUploadData({ imageType: 'general', caption: '', file: null });
                   }}
+                  className="rounded-xl hover:bg-white dark:hover:bg-gray-700 px-6"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={!uploadData.file}>
-                  Upload
+                <Button
+                  type="submit"
+                  form="uploadForm"
+                  disabled={!uploadData.file}
+                  className="rounded-xl shadow-lg shadow-brand-primary/20 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Upload Photo
                 </Button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

@@ -4,7 +4,7 @@ class ClinicService {
   // Create clinic profile (Admin only)
   async createClinic(clinicData, files) {
     const formData = new FormData();
-    
+
     // Add text fields
     Object.keys(clinicData).forEach(key => {
       if (clinicData[key] !== null && clinicData[key] !== undefined) {
@@ -36,7 +36,7 @@ class ClinicService {
         'Content-Type': 'multipart/form-data',
       },
     });
-    
+
     return response.data;
   }
 
@@ -49,7 +49,7 @@ class ClinicService {
   // Update clinic profile
   async updateClinicProfile(clinicData, files = null) {
     const formData = new FormData();
-    
+
     // Add text fields
     Object.keys(clinicData).forEach(key => {
       if (clinicData[key] !== null && clinicData[key] !== undefined) {
@@ -81,7 +81,7 @@ class ClinicService {
         'Content-Type': 'multipart/form-data',
       },
     });
-    
+
     return response.data;
   }
 
@@ -121,11 +121,23 @@ class ClinicService {
     return response.data;
   }
 
+  // Clinic patients (all patients who have had appointments with clinic dentists)
+  async getClinicPatients() {
+    const response = await httpClient.get('/clinic/patients');
+    return response.data;
+  }
+
+  // Clinic staff list
+  async getClinicStaffList() {
+    const response = await httpClient.get('/clinic/staff');
+    return response.data;
+  }
+
   // Utility methods
   generateOperatingHours() {
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     const defaultHours = {};
-    
+
     days.forEach(day => {
       defaultHours[day] = {
         isOpen: day !== 'sunday', // Default: closed on Sunday
@@ -133,20 +145,20 @@ class ClinicService {
         close: '17:00'
       };
     });
-    
+
     return defaultHours;
   }
 
   validateClinicData(clinicData) {
     const errors = [];
-    
+
     // Required fields validation
     const requiredFields = [
-      'legalName', 'facilityType', 'streetAddress', 'city', 'province', 
-      'postalCode', 'phone', 'email', 'ownerName', 'ownerPosition', 
+      'legalName', 'facilityType', 'streetAddress', 'city', 'province',
+      'postalCode', 'phone', 'email', 'ownerName', 'ownerPosition',
       'ownerEmail', 'ownerWhatsapp', 'ownerNik', 'nibNumber', 'npwpNumber'
     ];
-    
+
     requiredFields.forEach(field => {
       if (!clinicData[field] || clinicData[field].toString().trim() === '') {
         errors.push(`${field} is required`);
@@ -187,7 +199,7 @@ class ClinicService {
   validateFiles(files) {
     const errors = [];
     const requiredFiles = ['ktpFile', 'nibFile', 'npwpFile', 'operationalLicense'];
-    
+
     requiredFiles.forEach(fileKey => {
       if (!files[fileKey]) {
         errors.push(`${fileKey} is required`);

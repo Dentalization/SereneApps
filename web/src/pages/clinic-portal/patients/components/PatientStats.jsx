@@ -20,18 +20,17 @@ const StatCard = ({ icon, title, value, change, changeType, color = "primary" })
           <Icon name={icon} className="w-6 h-6" />
         </div>
         {change && (
-          <div className={`flex items-center text-sm ${
-            changeType === 'increase' ? 'text-green-500' : 'text-red-500'
-          }`}>
-            <Icon 
-              name={changeType === 'increase' ? 'trending-up' : 'trending-down'} 
-              className="w-4 h-4 mr-1" 
+          <div className={`flex items-center text-sm ${changeType === 'increase' ? 'text-green-500' : 'text-red-500'
+            }`}>
+            <Icon
+              name={changeType === 'increase' ? 'trending-up' : 'trending-down'}
+              className="w-4 h-4 mr-1"
             />
             {change}
           </div>
         )}
       </div>
-      
+
       <div>
         <h3 className="text-2xl font-bold text-text-primary mb-1">{value}</h3>
         <p className="text-text-secondary text-sm">{title}</p>
@@ -50,8 +49,8 @@ const PatientStats = ({ patients = [] }) => {
   const newThisMonth = patients.filter(p => {
     const patientDate = new Date(p.createdAt || p.lastVisit);
     const now = new Date();
-    return patientDate.getMonth() === now.getMonth() && 
-           patientDate.getFullYear() === now.getFullYear();
+    return patientDate.getMonth() === now.getMonth() &&
+      patientDate.getFullYear() === now.getFullYear();
   }).length;
 
   return (
@@ -64,7 +63,7 @@ const PatientStats = ({ patients = [] }) => {
         changeType="increase"
         color="primary"
       />
-      
+
       <StatCard
         icon="user-check"
         title={t('patients.registry.stats.activePatients')}
@@ -73,7 +72,7 @@ const PatientStats = ({ patients = [] }) => {
         changeType="increase"
         color="success"
       />
-      
+
       <StatCard
         icon="star"
         title={t('patients.registry.stats.vipPatients')}
@@ -82,7 +81,7 @@ const PatientStats = ({ patients = [] }) => {
         changeType="increase"
         color="warning"
       />
-      
+
       <StatCard
         icon="user-plus"
         title={t('patients.registry.stats.newThisMonth')}

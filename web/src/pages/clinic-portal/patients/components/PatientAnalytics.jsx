@@ -9,6 +9,7 @@ import {
   LineElement,
   BarElement,
   ArcElement,
+  Filler,
   Title,
   Tooltip,
   Legend,
@@ -24,6 +25,7 @@ ChartJS.register(
   LineElement,
   BarElement,
   ArcElement,
+  Filler,
   Title,
   Tooltip,
   Legend
@@ -38,7 +40,13 @@ const ChartCard = ({ title, children }) => (
   </div>
 );
 
-const PatientAnalytics = ({ patients = [] }) => {
+const PatientAnalytics = ({
+  patients = [],
+  allAppointments = [],
+  selectedDentist = 'all',
+  onDentistChange,
+  doctors = [],
+}) => {
   const { t, language } = useLanguage();
   const locale = language === 'id' ? 'id-ID' : 'en-US';
   const [selectedPeriod, setSelectedPeriod] = React.useState('all');
@@ -60,7 +68,7 @@ const PatientAnalytics = ({ patients = [] }) => {
     [locale]
   );
 
-  // Age Distribution Data
+  // ── AGE DISTRIBUTION ─────────────────────────────────────────────────────
   const ageGroups = patients.reduce((acc, patient) => {
     const age = patient.age;
     if (age < 18) acc['0-17']++;
@@ -94,7 +102,7 @@ const PatientAnalytics = ({ patients = [] }) => {
     }]
   };
 
-  // Gender Distribution Data
+  // ── GENDER DISTRIBUTION ──────────────────────────────────────────────────
   const genderCounts = patients.reduce(
     (acc, patient) => {
       const key = patient.gender === 'M' ? 'male' : 'female';
@@ -121,83 +129,135 @@ const PatientAnalytics = ({ patients = [] }) => {
     }]
   };
 
-  // Monthly Visits Data (mock data for demonstration)
-  const monthlyVisitsData = {
+  // ── MONTHLY REVENUE (from actual appointment data) ────────────────────────
+  const monthlyRevenue = React.useMemo(() => {
+    const revenue = new Array(12).fill(0);
+    allAppointments.forEach(apt => {
+      if (apt.isPaid) {
+        const m = new Date(apt.date).getMonth();
+        revenue[m] += apt.fee;
+      }
+    });
+    return revenue;
+  }, [allAppointments]);
+
+  const monthlyRevenueData = {
     labels: monthLabels,
     datasets: [{
-      label: t('patients.analytics.charts.datasets.visits'),
-      data: [120, 150, 180, 200, 170, 190, 220, 240, 210, 190, 160, 180],
-      borderColor: 'rgba(99, 102, 241, 1)',
-      backgroundColor: 'rgba(99, 102, 241, 0.1)',
+      label: 'Revenue (Rp)',
+      data: monthlyRevenue,
+      borderColor: 'rgba(16, 185, 129, 1)',
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
       tension: 0.4,
       fill: true,
     }]
   };
 
-  // Treatment Types Data (mock data)
-  const treatmentTypesData = {
-    labels: ['cleaning', 'filling', 'rootCanal', 'extraction', 'crown', 'whitening'].map((key) =>
-      t(`patients.analytics.treatments.${key}`)
-    ),
+  // ── APPOINTMENT STATUS DISTRIBUTION ──────────────────────────────────────
+  const statusCounts = React.useMemo(() => {
+    const counts = { scheduled: 0, completed: 0, cancelled: 0, overdue: 0, 'no-show': 0 };
+    allAppointments.forEach(apt => {
+      if (counts[apt.status] !== undefined) counts[apt.status]++;
+    });
+    return counts;
+  }, [allAppointments]);
+
+  const statusDistributionData = {
+    labels: ['Scheduled', 'Completed', 'Cancelled', 'Overdue', 'No-Show'],
     datasets: [{
-      label: t('patients.analytics.charts.treatmentTypes'),
-      data: [45, 35, 15, 10, 20, 25],
-      backgroundColor: 'rgba(99, 102, 241, 0.8)',
-      borderColor: 'rgba(99, 102, 241, 1)',
-      borderWidth: 1,
+      label: 'Appointments',
+      data: [statusCounts.scheduled, statusCounts.completed, statusCounts.cancelled, statusCounts.overdue, statusCounts['no-show']],
+      backgroundColor: [
+        'rgba(59, 130, 246, 0.8)',
+        'rgba(16, 185, 129, 0.8)',
+        'rgba(239, 68, 68, 0.8)',
+        'rgba(245, 158, 11, 0.8)',
+        'rgba(234, 179, 8, 0.8)',
+      ],
+      borderWidth: 2,
     }]
   };
+
+  // ── CLINIC-ONLY: Dentist Performance Comparison ──────────────────────────
+  const dentistPerformanceData = React.useMemo(() => {
+    if (!doctors.length) return null;
+    const perfMap = {};
+    doctors.forEach(d => { perfMap[d.id] = { name: d.name, patients: 0, revenue: 0, appointments: 0 }; });
+    patients.forEach(p => {
+      if (perfMap[p.doctorId]) perfMap[p.doctorId].patients++;
+    });
+    allAppointments.forEach(a => {
+      if (perfMap[a.doctorId]) {
+        perfMap[a.doctorId].appointments++;
+        if (a.isPaid) perfMap[a.doctorId].revenue += a.fee;
+      }
+    });
+
+    const labels = doctors.map(d => d.name.replace('Dr. ', ''));
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Pasien',
+          data: doctors.map(d => perfMap[d.id]?.patients || 0),
+          backgroundColor: 'rgba(99, 102, 241, 0.8)',
+        },
+        {
+          label: 'Appointment',
+          data: doctors.map(d => perfMap[d.id]?.appointments || 0),
+          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        },
+      ]
+    };
+  }, [doctors, patients, allAppointments]);
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          padding: 20,
-          usePointStyle: true,
-        }
-      },
+      legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } },
     },
     scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-      },
-      y: {
-        grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
-        },
-        beginAtZero: true,
-      },
+      x: { grid: { display: false } },
+      y: { grid: { color: 'rgba(0, 0, 0, 0.1)' }, beginAtZero: true },
     },
   };
 
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          padding: 20,
-        }
-      },
-    },
+    plugins: { legend: { position: 'bottom', labels: { padding: 20 } } },
   };
+
+  // ── Total Revenue stat
+  const totalRevenue = patients.reduce((sum, p) => sum + (p.totalRevenue || 0), 0);
 
   return (
     <div className="space-y-6">
       {/* Period Filter */}
       <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
-        <h3 className="text-lg font-semibold text-primary mb-4">{t('patients.analytics.filters')}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h3 className="text-lg font-semibold text-primary">{t('patients.analytics.filters')}</h3>
+
+          {/* Dentist filter */}
+          {onDentistChange && (
+            <select
+              value={selectedDentist}
+              onChange={(e) => onDentistChange(e.target.value)}
+              className="px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary text-sm min-w-[160px]"
+            >
+              <option value="all">Semua Dokter</option>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
           <div>
             <label className="block text-sm font-medium text-secondary mb-2">{t('patients.analytics.period')}</label>
-            <select 
-              value={selectedPeriod} 
+            <select
+              value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
               className="w-full px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent"
             >
@@ -209,25 +269,25 @@ const PatientAnalytics = ({ patients = [] }) => {
               <option value="custom">{t('patients.analytics.periods.custom')}</option>
             </select>
           </div>
-          
+
           {selectedPeriod === 'custom' && (
             <>
               <div>
                 <label className="block text-sm font-medium text-secondary mb-2">{t('patients.analytics.year')}</label>
-                <select 
-                  value={selectedYear} 
+                <select
+                  value={selectedYear}
                   onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                   className="w-full px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                 >
-                  {Array.from({length: 5}, (_, i) => new Date().getFullYear() - i).map(year => (
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
                     <option key={year} value={year}>{year}</option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-secondary mb-2">{t('patients.analytics.month')}</label>
-                <select 
-                  value={selectedMonth} 
+                <select
+                  value={selectedMonth}
                   onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
                   className="w-full px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                 >
@@ -239,14 +299,13 @@ const PatientAnalytics = ({ patients = [] }) => {
             </>
           )}
         </div>
-        
-        <button 
+
+        <button
           onClick={() => {
-            // Filter patients based on selected period
             let filtered = patients;
             const now = new Date();
-            
-            switch(selectedPeriod) {
+
+            switch (selectedPeriod) {
               case 'today':
                 filtered = patients.filter(p => {
                   const visitDate = new Date(p.lastVisit);
@@ -278,7 +337,7 @@ const PatientAnalytics = ({ patients = [] }) => {
               default:
                 filtered = patients;
             }
-            
+
             setFilteredPatients(filtered);
             setShowPatientList(true);
           }}
@@ -287,7 +346,7 @@ const PatientAnalytics = ({ patients = [] }) => {
           {t('patients.analytics.viewPatients')} ({filteredPatients.length})
         </button>
       </div>
-      
+
       {/* Patient List Modal */}
       {showPatientList && (
         <ModalPortal>
@@ -295,55 +354,54 @@ const PatientAnalytics = ({ patients = [] }) => {
             className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
             onClick={() => setShowPatientList(false)}
           >
-          <div
-            className="relative w-full max-w-4xl max-h-[80vh] bg-surface-elevated rounded-2xl shadow-2xl p-6 overflow-y-auto flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-primary">{t('patients.analytics.modalTitle')} ({filteredPatients.length})</h2>
-              <button 
-                onClick={() => setShowPatientList(false)}
-                className="p-2 hover:bg-surface rounded-lg transition-colors"
-              >
-                <Icon name="X" size={20} className="text-secondary" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto space-y-3">
-              {filteredPatients.map(patient => (
-                <div key={patient.id} className="flex items-center justify-between p-4 bg-surface rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-                      <Icon name="User" className="w-5 h-5 text-accent" />
+            <div
+              className="relative w-full max-w-4xl max-h-[80vh] bg-surface-elevated rounded-2xl shadow-2xl p-6 overflow-y-auto flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-primary">{t('patients.analytics.modalTitle')} ({filteredPatients.length})</h2>
+                <button
+                  onClick={() => setShowPatientList(false)}
+                  className="p-2 hover:bg-surface rounded-lg transition-colors"
+                >
+                  <Icon name="X" size={20} className="text-secondary" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3">
+                {filteredPatients.map(patient => (
+                  <div key={patient.id} className="flex items-center justify-between p-4 bg-surface rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
+                        <Icon name="User" className="w-5 h-5 text-accent" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-primary">{patient.name}</div>
+                        <div className="text-sm text-secondary">
+                          {t('patients.analytics.patientCard.meta', {
+                            age: patient.age,
+                            gender: patient.gender === 'M'
+                              ? t('patients.common.gender.male')
+                              : t('patients.common.gender.female'),
+                            phone: patient.phone
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-medium text-primary">{patient.name}</div>
-                      <div className="text-sm text-secondary">
-                        {t('patients.analytics.patientCard.meta', {
-                          age: patient.age,
-                          gender: patient.gender === 'M'
-                            ? t('patients.common.gender.male')
-                            : t('patients.common.gender.female'),
-                          phone: patient.phone
-                        })}
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-primary">{new Date(patient.lastVisit).toLocaleDateString(locale)}</div>
+                      <div className={`text-xs px-2 py-1 rounded-full ${patient.status === 'active' ? 'bg-green-100 text-green-800' :
+                        patient.status === 'vip' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                        {t(`patients.registry.status.${patient.status}`)}
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-primary">{new Date(patient.lastVisit).toLocaleDateString(locale)}</div>
-                    <div className={`text-xs px-2 py-1 rounded-full ${
-                      patient.status === 'active' ? 'bg-green-100 text-green-800' :
-                      patient.status === 'vip' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {t(`patients.registry.status.${patient.status}`)}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
         </ModalPortal>
       )}
 
@@ -366,10 +424,10 @@ const PatientAnalytics = ({ patients = [] }) => {
           <div className="text-secondary">{t('patients.analytics.stats.vip')}</div>
         </div>
         <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
-          <div className="text-3xl font-bold text-blue-600">
-            {patients.length ? Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length) : 0}
+          <div className="text-3xl font-bold text-emerald-600">
+            Rp {(totalRevenue / 1000000).toFixed(1)}M
           </div>
-          <div className="text-secondary">{t('patients.analytics.stats.avgAge')}</div>
+          <div className="text-secondary">Total Revenue</div>
         </div>
       </div>
 
@@ -383,14 +441,30 @@ const PatientAnalytics = ({ patients = [] }) => {
           <Doughnut data={genderDistributionData} options={doughnutOptions} />
         </ChartCard>
 
-        <ChartCard title={t('patients.analytics.charts.monthlyVisits')}>
-          <Line data={monthlyVisitsData} options={chartOptions} />
+        <ChartCard title="Revenue Bulanan">
+          <Line data={monthlyRevenueData} options={chartOptions} />
         </ChartCard>
 
-        <ChartCard title={t('patients.analytics.charts.treatmentTypes')}>
-          <Bar data={treatmentTypesData} options={chartOptions} />
+        <ChartCard title="Status Appointment">
+          <Doughnut data={statusDistributionData} options={doughnutOptions} />
         </ChartCard>
       </div>
+
+      {/* Dentist Performance Comparison */}
+      {dentistPerformanceData && (
+        <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
+          <h3 className="text-lg font-semibold text-primary mb-4">Perbandingan Performa Dokter</h3>
+          <div className="h-72">
+            <Bar data={dentistPerformanceData} options={{
+              ...chartOptions,
+              plugins: {
+                ...chartOptions.plugins,
+                legend: { ...chartOptions.plugins.legend, position: 'top' },
+              }
+            }} />
+          </div>
+        </div>
+      )}
 
       {/* Demographics Table */}
       <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
@@ -412,7 +486,7 @@ const PatientAnalytics = ({ patients = [] }) => {
               {Object.entries(ageGroups).map(([ageGroup, total]) => {
                 const groupPatients = patients.filter(p => {
                   const age = p.age;
-                  switch(ageGroup) {
+                  switch (ageGroup) {
                     case '0-17': return age < 18;
                     case '18-29': return age >= 18 && age < 30;
                     case '30-44': return age >= 30 && age < 45;

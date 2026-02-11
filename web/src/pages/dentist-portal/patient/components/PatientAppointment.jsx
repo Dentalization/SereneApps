@@ -42,7 +42,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
   }
 
   const appointments = patient.appointments || [];
-  
+
   const filteredAppointments = appointments.filter(appointment => {
     if (filterStatus === 'all') return true;
     return appointment.status === filterStatus;
@@ -53,6 +53,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
       case 'scheduled': return 'text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-900/20 dark:border-blue-800/50';
       case 'completed': return 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-800/50';
       case 'cancelled': return 'text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800/50';
+      case 'overdue': return 'text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-900/20 dark:border-orange-800/50';
       case 'no-show': return 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800/50';
       case 'in-progress': return 'text-purple-700 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800/50';
       default: return 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50';
@@ -103,7 +104,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     try {
       setSendingReminder(true);
       const token = localStorage.getItem('token');
-      
+
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/v1/notifications/send-appointment-reminder`,
         {
@@ -131,19 +132,22 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     setShowDetailModal(true);
   };
 
-  const upcomingAppointments = appointments.filter(apt => 
-    apt.status === 'scheduled' && new Date(apt.startsAt || apt.date) >= new Date()
+  const upcomingAppointments = appointments.filter(apt =>
+    apt.status === 'scheduled' && apt.status !== 'overdue' && new Date(apt.startsAt || apt.date) >= new Date()
   );
 
-  const pastAppointments = appointments.filter(apt => 
-    apt.status === 'completed' || (apt.status !== 'scheduled' && new Date(apt.startsAt || apt.date) < new Date())
+  const pastAppointments = appointments.filter(apt =>
+    apt.status === 'completed' || apt.status === 'overdue' || (apt.status !== 'scheduled' && new Date(apt.startsAt || apt.date) < new Date())
   );
+
+  const overdueCount = appointments.filter(apt => apt.status === 'overdue').length;
 
   const mapStatusKey = (status) => {
     const key = (status || '').toLowerCase();
     switch (key) {
       case 'no-show': return 'noShow';
       case 'in-progress': return 'inProgress';
+      case 'overdue': return 'overdue';
       default: return key || 'unknown';
     }
   };
@@ -157,6 +161,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     { value: 'all', label: t('dentistPatient.appointments.filters.all') },
     { value: 'scheduled', label: getStatusLabel('scheduled') },
     { value: 'completed', label: getStatusLabel('completed') },
+    { value: 'overdue', label: 'Overdue' },
     { value: 'cancelled', label: getStatusLabel('cancelled') },
     { value: 'no-show', label: getStatusLabel('no-show') }
   ];
@@ -167,7 +172,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
         <span className="text-4xl">{icon}</span>
       </div>
       <div className="flex items-center space-x-2.5 mb-2">
-        <span className={`flex h-2.5 w-2.5 rounded-full ${colorClass}`} style={{boxShadow: `0 0 8px ${shadowColor}`}}></span>
+        <span className={`flex h-2.5 w-2.5 rounded-full ${colorClass}`} style={{ boxShadow: `0 0 8px ${shadowColor}` }}></span>
         <span className="text-xs font-bold uppercase tracking-wider text-muted">{title}</span>
       </div>
       <p className="text-3xl font-bold text-primary">{value}</p>
@@ -189,10 +194,11 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
           <StatCard title={t('dentistPatient.appointments.summary.total')} value={appointments.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️" />
           <StatCard title={t('dentistPatient.appointments.summary.upcoming')} value={upcomingAppointments.length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳" />
-          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={pastAppointments.length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅" />
+          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={appointments.filter(apt => apt.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅" />
+          <StatCard title="Overdue" value={overdueCount} colorClass="bg-orange-500" shadowColor="rgba(249,115,22,0.5)" icon="⚠️" />
           <StatCard title={t('dentistPatient.appointments.summary.cancelled')} value={appointments.filter(apt => apt.status === 'cancelled').length} colorClass="bg-red-500" shadowColor="rgba(239,68,68,0.5)" icon="❌" />
         </div>
       </div>
@@ -228,7 +234,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                     <div className="w-14 h-14 bg-surface-elevated border border-primary/10 rounded-2xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">
                       {getAppointmentTypeIcon(appointment.type)}
                     </div>
-                    
+
                     <div>
                       <h4 className="text-lg font-bold text-primary mb-1">{appointment.reason || appointment.type || 'Appointment'}</h4>
                       <div className="flex flex-wrap items-center gap-3 text-sm text-secondary">
@@ -251,18 +257,18 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                     </span>
 
                     <div className="flex items-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-200">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="bg-surface hover:bg-surface-elevated border-primary/20 text-secondary"
                         onClick={() => handleViewDetails(appointment)}
                       >
                         {t('dentistPatient.appointments.actions.viewDetails')}
                       </Button>
-                      
+
                       {appointment.status === 'scheduled' && (
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           className="text-red-500 hover:text-red-700 hover:bg-red-500/10 dark:hover:bg-red-900/20"
                           onClick={() => onCancelAppointment && onCancelAppointment(appointment.id)}
@@ -273,6 +279,16 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                     </div>
                   </div>
                 </div>
+
+                {appointment.status === 'overdue' && (
+                  <div className="mt-4 ml-0 lg:ml-[4.75rem] p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800/50 flex items-start gap-3">
+                    <span className="text-orange-500 text-lg flex-shrink-0">⚠️</span>
+                    <div>
+                      <h5 className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase tracking-wider mb-1">Overdue & Unpaid</h5>
+                      <p className="text-sm text-orange-600 dark:text-orange-300 leading-relaxed">Appointment ini sudah melewati jadwal dan belum dibayar. Silakan hubungi pasien untuk follow-up.</p>
+                    </div>
+                  </div>
+                )}
 
                 {appointment.status === 'completed' && appointment.treatmentSummary && (
                   <div className="mt-4 ml-0 lg:ml-[4.75rem] p-4 bg-surface rounded-xl border border-primary/10">
@@ -317,8 +333,8 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 className="bg-surface/80 hover:bg-surface border-primary/20 text-secondary"
                 onClick={() => handleSendReminder(upcomingAppointments[0])}
@@ -326,7 +342,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
               >
                 {sendingReminder ? '⏳ Sending...' : '🔔 Send Reminder'}
               </Button>
-              <Button 
+              <Button
                 size="sm"
                 className="shadow-md shadow-accent/20"
                 onClick={() => handleViewDetails(upcomingAppointments[0])}
@@ -340,13 +356,13 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
       {showDetailModal && detailAppointment && (
         <ModalPortal disableScroll={false}>
-          <div 
+          <div
             className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm"
             onClick={() => setShowDetailModal(false)}
             style={{ animation: 'backdropFadeIn 0.3s ease-out' }}
           />
 
-          <div 
+          <div
             className="fixed inset-0 z-[10000] flex items-center justify-center p-4 pointer-events-none"
           >
             <div

@@ -191,79 +191,124 @@ const ServicesManagement = () => {
 
   if (!canEdit) {
     return (
-      <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 text-warning">
-        You don't have permission to manage services. Contact your clinic owner or manager.
+      <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
+        <span className="text-2xl">🔒</span>
+        <span className="font-medium">You don't have permission to manage services. Contact your clinic owner or manager.</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Message Alert */}
       {message.text && (
         <div className={cn(
-          "rounded-lg p-4 border",
-          message.type === 'success' ? "bg-success/10 border-success/20 text-success" : "bg-error/10 border-error/20 text-error"
+          "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
+          message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
           {message.text}
         </div>
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-foreground">Services</h2>
-        <Button onClick={() => handleOpenDialog()}>
-          + Add Service
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Services & Pricing</h2>
+          <p className="text-muted-foreground mt-1">Manage your clinic's service catalog and pricing</p>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
+          <span className="mr-2 text-lg">+</span> Add New Service
         </Button>
       </div>
 
       {/* Services List */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+        <div className="flex flex-col items-center justify-center py-20 space-y-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading services...</p>
         </div>
       ) : services.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
-          <p className="text-muted-foreground mb-4">No services added yet</p>
-          <Button variant="outline" onClick={() => handleOpenDialog()}>
-            Add First Service
+        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
+            🩺
+          </div>
+          <h3 className="text-xl font-semibold text-foreground mb-2">No Services Yet</h3>
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">Start building your service catalog to showcase your treatments to patients.</p>
+          <Button variant="outline" onClick={() => handleOpenDialog()} className="rounded-xl">
+            Add Your First Service
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {services.map((service) => (
-            <div key={service.id} className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow p-6">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg text-foreground">{service.name}</h3>
-                  {service.category === 'specialist' && service.specialty && (
-                    <span className="inline-block mt-1 px-2 py-1 text-xs bg-brand-primary/10 text-brand-primary rounded">
-                      {service.specialty}
-                    </span>
-                  )}
+            <div
+              key={service.id}
+              className="group bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden flex flex-col justify-between h-full"
+            >
+              <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                <button
+                  onClick={() => handleOpenDialog(service)}
+                  className="p-2 bg-white/90 dark:bg-gray-700/90 backdrop-blur-sm text-gray-400 hover:text-brand-primary rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-all hover:scale-105"
+                  title="Edit"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </button>
+                <button
+                  onClick={() => handleDelete(service.id)}
+                  className="p-2 bg-white/90 dark:bg-gray-700/90 backdrop-blur-sm text-gray-400 hover:text-red-500 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-all hover:scale-105"
+                  title="Delete"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm",
+                    service.category === 'specialist'
+                      ? "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400"
+                      : "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                  )}>
+                    {service.category === 'specialist' ? '🦷' : '🩺'}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground line-clamp-1 group-hover:text-brand-primary transition-colors">
+                      {service.name}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      {service.category === 'specialist' && service.specialty && (
+                        <span className="text-xs font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded-md">
+                          {service.specialty}
+                        </span>
+                      )}
+                      {!service.is_active && (
+                        <span className="text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md">
+                          Inactive
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <span className={cn(
-                  "px-2 py-1 text-xs rounded",
-                  service.is_active ? "bg-success/10 text-success" : "bg-gray-200 dark:bg-gray-700 text-muted-foreground"
-                )}>
-                  {service.is_active ? 'Active' : 'Inactive'}
-                </span>
+
+                <p className="text-sm text-muted-foreground mb-6 line-clamp-3 leading-relaxed">
+                  {service.description || "No description provided."}
+                </p>
               </div>
 
-              <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
-
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-lg font-bold text-brand-primary">{formatCurrency(service.base_price)}</span>
-                <span className="text-sm text-muted-foreground">{service.duration_minutes} min</span>
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleOpenDialog(service)} className="flex-1">
-                  Edit
-                </Button>
-                <Button variant="danger" size="sm" onClick={() => handleDelete(service.id)} className="flex-1">
-                  Delete
-                </Button>
+              <div className="pt-4 border-t border-gray-50 dark:border-gray-700/50 flex flex-col gap-1">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Price</div>
+                    <div className="text-2xl font-bold text-brand-primary tracking-tight">
+                      {formatCurrency(service.base_price)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {service.duration_minutes} min
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -273,146 +318,188 @@ const ServicesManagement = () => {
       {/* Add/Edit Dialog wrapped in Portal */}
       {showDialog && (
         <ModalPortal>
-          {/* Wrapper Utama Fixed - Menempel ke Viewport */}
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-            
-            {/* Backdrop Layer - Klik untuk tutup */}
-            <div 
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+          {/* Fixed Wrapper */}
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+
+            {/* Backdrop with Blur */}
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-all duration-300 animate-in fade-in"
               onClick={handleCloseDialog}
             />
 
-            {/* Content Container - Relative agar di atas backdrop */}
-            <div 
-              className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl flex flex-col max-h-[90vh] overflow-hidden"
-              onClick={(e) => e.stopPropagation()} // Mencegah klik di form menutup modal
+            {/* Modal Container */}
+            <div
+              className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 border border-white/20 dark:border-gray-700"
+              onClick={(e) => e.stopPropagation()}
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
             >
-              {/* Scrollable Content Area */}
-              <div className="overflow-y-auto">
-                <form onSubmit={handleSubmit}>
-                  <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-10">
-                    <h3 className="text-xl font-semibold text-foreground">
-                      {editingService ? 'Edit Service' : 'Add Service'}
-                    </h3>
-                  </div>
+              {/* Header */}
+              <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                    {editingService ? 'Edit Service' : 'New Service'}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    {editingService ? 'Update service details and pricing' : 'Add a new treatment to your catalog'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleCloseDialog}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+              </div>
 
-                  <div className="p-6 space-y-4">
+              {/* Scrollable Content */}
+              <div className="overflow-y-auto p-8 custom-scrollbar">
+                <form id="serviceForm" onSubmit={handleSubmit} className="space-y-6">
+                  <div className="space-y-4">
                     <Input
                       label="Service Name"
                       value={formData.serviceName}
                       onChange={(e) => setFormData({ ...formData, serviceName: e.target.value })}
                       required
                       placeholder="e.g., Teeth Cleaning, Orthodontic Consultation"
+                      className="text-lg font-medium"
                     />
 
                     <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">Description</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
                       <textarea
-                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all resize-none"
                         value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                         rows={3}
-                        placeholder="Describe the service..."
+                        placeholder="Describe the procedure, benefits, and what patients can expect..."
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-2">Category</label>
-                        <select
-                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                          value={formData.category}
-                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                        >
-                          <option value="general">General</option>
-                          <option value="specialist">Specialist</option>
-                        </select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                        <div className="relative">
+                          <select
+                            className="w-full pl-4 pr-10 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50 appearance-none"
+                            value={formData.category}
+                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                          >
+                            <option value="general">General Dentistry</option>
+                            <option value="specialist">Specialist Treatment</option>
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                          </div>
+                        </div>
                       </div>
 
                       {formData.category === 'specialist' && (
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">Specialty</label>
-                          <select
-                            className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                            value={formData.specialty}
-                            onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                          >
-                            <option value="">Select Specialty</option>
-                            {specialties.map((specialty) => (
-                              <option key={specialty} value={specialty}>{specialty}</option>
-                            ))}
-                          </select>
+                        <div className="space-y-2 animate-in fade-in slide-in-from-left-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specialty</label>
+                          <div className="relative">
+                            <select
+                              className="w-full pl-4 pr-10 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50 appearance-none"
+                              value={formData.specialty}
+                              onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                            >
+                              <option value="">Select Specialty</option>
+                              {specialties.map((specialty) => (
+                                <option key={specialty} value={specialty}>{specialty}</option>
+                              ))}
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Input
-                          label="Base Price (IDR)*"
-                          type="text"
-                          value={displayPrice}
-                          onChange={handlePriceChange}
-                          required
-                          placeholder="0"
-                          className="font-mono"
-                        />
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Format: Rp. {displayPrice || '0'}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          Duration (minutes) <span className="text-destructive">*</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Base Price <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={formData.durationMinutes}
-                          onChange={handleDurationChange}
-                          required
-                          placeholder="30"
-                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring h-10"
-                        />
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Rekomendasi kelipatan 15 menit (15, 30, 45, 60...)
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">Rp</span>
+                          <input
+                            type="text"
+                            value={displayPrice}
+                            onChange={handlePriceChange}
+                            required
+                            placeholder="0"
+                            className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50 font-mono text-lg tracking-wide"
+                          />
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Duration <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="15"
+                            step="15"
+                            value={formData.durationMinutes}
+                            onChange={handleDurationChange}
+                            required
+                            placeholder="30"
+                            className="w-full pl-4 pr-16 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm">Minutes</span>
+                        </div>
+                        <p className="text-xs text-gray-500">Recommended: 15, 30, 45, 60 mins</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isActive}
-                          onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                          className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
-                        />
-                        <span className="text-sm font-medium text-foreground">Active</span>
+                    <div className="flex flax-wrap gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={formData.isActive}
+                            onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                            className="peer h-5 w-5 rounded-md border-gray-300 text-brand-primary focus:ring-brand-primary/50 transition-all cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-brand-primary transition-colors">Active Service</span>
                       </label>
 
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isAvailableForAllDentists}
-                          onChange={(e) => setFormData({ ...formData, isAvailableForAllDentists: e.target.checked })}
-                          className="h-4 w-4 rounded border-input text-brand-primary focus:ring-2 focus:ring-ring"
-                        />
-                        <span className="text-sm font-medium text-foreground">Available for all dentists</span>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={formData.isAvailableForAllDentists}
+                            onChange={(e) => setFormData({ ...formData, isAvailableForAllDentists: e.target.checked })}
+                            className="peer h-5 w-5 rounded-md border-gray-300 text-brand-primary focus:ring-brand-primary/50 transition-all cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-brand-primary transition-colors">Available to All Dentists</span>
                       </label>
                     </div>
-                  </div>
-
-                  <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-white dark:bg-gray-800 sticky bottom-0">
-                    <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                      Cancel
-                    </Button>
-                    <Button type="submit">
-                      {editingService ? 'Update' : 'Add'} Service
-                    </Button>
                   </div>
                 </form>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm flex justify-end gap-3 sticky bottom-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseDialog}
+                  className="rounded-xl hover:bg-white dark:hover:bg-gray-700 px-6"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  form="serviceForm"
+                  className="rounded-xl shadow-lg shadow-brand-primary/20 px-8"
+                >
+                  {editingService ? 'Save Changes' : 'Create Service'}
+                </Button>
               </div>
             </div>
           </div>

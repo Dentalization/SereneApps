@@ -5,21 +5,20 @@ import Icon from '../../../../components/AppIcon';
 const FilterButton = ({ active, onClick, children, icon }) => (
   <button
     onClick={onClick}
-    className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-      active
-        ? 'bg-primary text-white shadow-md'
-        : 'bg-surface-elevated text-text-secondary hover:text-text-primary hover:bg-surface border border-border/50'
-    }`}
+    className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${active
+      ? 'bg-primary text-white shadow-md'
+      : 'bg-surface-elevated text-text-secondary hover:text-text-primary hover:bg-surface border border-border/50'
+      }`}
   >
     {icon && <Icon name={icon} className="w-4 h-4 mr-2" />}
     {children}
   </button>
 );
 
-const PatientFilters = ({ 
-  activeFilter, 
-  onFilterChange, 
-  searchQuery, 
+const PatientFilters = ({
+  activeFilter,
+  onFilterChange,
+  searchQuery,
   onSearchChange,
   onAddPatient,
   onExport
@@ -59,7 +58,7 @@ const PatientFilters = ({
             <Icon name="plus" className="w-4 h-4 mr-2" />
             {t('patients.registry.actions.add')}
           </button>
-          
+
           <button
             onClick={onExport}
             className="flex items-center px-4 py-3 bg-surface border border-border/50 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-elevated transition-all duration-200"

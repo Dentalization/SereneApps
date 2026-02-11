@@ -13,7 +13,7 @@ const InventoryPage = () => {
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
-  
+
   const [activeTab, setActiveTab] = useState('stock');
   const [inventoryData, setInventoryData] = useState({
     stock: [],
@@ -28,7 +28,7 @@ const InventoryPage = () => {
     const fetchInventoryData = async () => {
       setLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
-      
+
       setInventoryData({
         stock: [
           {
@@ -116,7 +116,7 @@ const InventoryPage = () => {
           }
         ]
       });
-      
+
       setLoading(false);
     };
 
@@ -271,7 +271,8 @@ const InventoryPage = () => {
               className="pl-10 pr-4 py-2 w-80 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
             />
           </div>
-          <select className="px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary">
+          <select className="px-3 py-2 pr-8 border border-primary/20 rounded-lg bg-surface text-primary appearance-none focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
             <option value="">Semua Kategori</option>
             <option value="filling">Filling Material</option>
             <option value="anesthetic">Anesthetic</option>
@@ -418,11 +419,10 @@ const InventoryPage = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-accent text-white shadow-sm'
-                        : 'text-secondary hover:text-primary hover:bg-surface'
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                      }`}
                   >
                     <Icon name={tab.icon} size={16} />
                     <span>{tab.label}</span>
