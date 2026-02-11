@@ -116,11 +116,10 @@ const PublicProfileView = () => {
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-                        isActive
-                          ? 'bg-accent text-white shadow-sm'
-                          : 'text-secondary hover:text-primary hover:bg-surface'
-                      }`}
+                      className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${isActive
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-secondary hover:text-primary hover:bg-surface'
+                        }`}
                     >
                       <Icon name={tab.icon} size={16} />
                       <span>{tab.label}</span>
@@ -131,12 +130,16 @@ const PublicProfileView = () => {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-border/40 bg-surface-elevated shadow-theme-sm p-6">
-            <div className="mb-6 text-sm text-secondary">
-              {tabs.find((tab) => tab.id === activeTab)?.description}
+          <div className="mt-8 transition-all duration-300 ease-in-out">
+            {/* Tab Description - Styled to be more subtle */}
+            <div className="mb-6 text-sm text-secondary bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 flex items-start gap-3">
+              <span className="text-xl">💡</span>
+              <p className="pt-0.5">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
             </div>
+
+            {/* Content Rendered Directly - Each component manages its own containers/cards */}
             {renderTabContent()}
-          </section>
+          </div>
         </div>
       </div>
     </div>

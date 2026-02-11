@@ -26,7 +26,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
@@ -65,23 +65,23 @@ router.post('/create', authenticateToken, requireRoles(['super_admin', 'business
       email,
       timezone = 'Asia/Jakarta',
       operatingHours, // JSON string
-      
+
       // Owner/PIC Data
       ownerName,
       ownerPosition,
       ownerEmail,
       ownerWhatsapp,
       ownerNik,
-      
+
       // Legal Documents
       nibNumber,
       npwpNumber,
-      
+
       // Agreements
       termsAccepted,
       privacyAccepted,
       dataProtectionContact,
-      
+
       // Branches (JSON string)
       branches
     } = req.body;
@@ -122,14 +122,14 @@ router.post('/create', authenticateToken, requireRoles(['super_admin', 'business
 
     // Prepare file paths
     const ktpFilePath = `clinic-documents/${req.files.ktpFile[0].filename}`;
-    const ktpSelfieFilePath = req.files.ktpSelfie?.[0] 
-      ? `clinic-documents/${req.files.ktpSelfie[0].filename}` 
+    const ktpSelfieFilePath = req.files.ktpSelfie?.[0]
+      ? `clinic-documents/${req.files.ktpSelfie[0].filename}`
       : null;
     const nibFilePath = `clinic-documents/${req.files.nibFile[0].filename}`;
     const npwpFilePath = `clinic-documents/${req.files.npwpFile[0].filename}`;
     const operationalLicenseFilePath = `clinic-documents/${req.files.operationalLicense[0].filename}`;
-    
-    const additionalLicenseFilePaths = req.files.additionalLicenses 
+
+    const additionalLicenseFilePaths = req.files.additionalLicenses
       ? req.files.additionalLicenses.map(file => `clinic-documents/${file.filename}`)
       : [];
 
@@ -229,7 +229,7 @@ router.post('/create', authenticateToken, requireRoles(['super_admin', 'business
 
   } catch (error) {
     console.error('Error creating clinic profile:', error);
-    
+
     // Clean up uploaded files on error
     if (req.files) {
       Object.values(req.files).flat().forEach(async (file) => {
@@ -242,8 +242,8 @@ router.post('/create', authenticateToken, requireRoles(['super_admin', 'business
     }
 
     if (error.code === 'P2002') {
-      return res.status(400).json({ 
-        error: 'A clinic with this NIK, NIB, NPWP, or email already exists' 
+      return res.status(400).json({
+        error: 'A clinic with this NIK, NIB, NPWP, or email already exists'
       });
     }
 
@@ -325,7 +325,7 @@ router.put('/profile', authenticateToken, requireRoles(['owner', 'clinic_owner',
     }
 
     const updateData = { ...req.body };
-    
+
     // Handle operating hours
     if (updateData.operatingHours) {
       updateData.operatingHours = JSON.parse(updateData.operatingHours);
@@ -374,10 +374,10 @@ router.put('/profile', authenticateToken, requireRoles(['owner', 'clinic_owner',
 
   } catch (error) {
     console.error('Error updating clinic profile:', error);
-    
+
     if (error.code === 'P2002') {
-      return res.status(400).json({ 
-        error: 'A clinic with this NIK, NIB, NPWP, or email already exists' 
+      return res.status(400).json({
+        error: 'A clinic with this NIK, NIB, NPWP, or email already exists'
       });
     }
 
@@ -389,24 +389,24 @@ router.put('/profile', authenticateToken, requireRoles(['owner', 'clinic_owner',
 // Admin: list clinics (allow broad admin roles)
 router.get('/admin/list', authenticateToken, requireRoles(['super_admin', 'admin', 'business_manager', 'platform_manager', 'finance_manager', 'customer_success_manager', 'technical_support', 'ai_engineer', 'compliance_officer']), async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      status, 
+    const {
+      page = 1,
+      limit = 10,
+      status,
       search,
-      facilityType 
+      facilityType
     } = req.query;
 
     const where = {};
-    
+
     if (status) {
       where.status = status;
     }
-    
+
     if (facilityType) {
       where.facilityType = facilityType;
     }
-    
+
     if (search) {
       where.OR = [
         { legalName: { contains: search, mode: 'insensitive' } },
@@ -565,7 +565,7 @@ router.put('/admin/:id/verify', authenticateToken, requireRoles(['admin']), asyn
 router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
   try {
     console.log('🏢 POST /branches called with data:', req.body);
-    
+
     const clinicProfile = await prisma.clinicProfile.findFirst({
       where: { userId: req.user.id }
     });
@@ -576,20 +576,20 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
 
     console.log('✅ Clinic profile found:', clinicProfile.id);
 
-    const { 
-      branchName, 
-      branchCode, 
-      streetAddress, 
-      city, 
+    const {
+      branchName,
+      branchCode,
+      streetAddress,
+      city,
       province,
       district,
       postalCode,
       latitude,
       longitude,
-      phone, 
-      treatmentRoomsCount, 
-      hasSterlization, 
-      hasRadiography, 
+      phone,
+      treatmentRoomsCount,
+      hasSterlization,
+      hasRadiography,
       operatingHours,
       isMainBranch,
       isActive
@@ -599,15 +599,15 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
     if (!branchName?.trim()) {
       return res.status(400).json({ error: 'Branch name is required' });
     }
-    
+
     if (!streetAddress?.trim()) {
       return res.status(400).json({ error: 'Street address is required' });
     }
-    
+
     if (!city?.trim()) {
       return res.status(400).json({ error: 'City is required' });
     }
-    
+
     if (!province?.trim()) {
       return res.status(400).json({ error: 'Province is required' });
     }
@@ -633,8 +633,8 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
 
     if (operatingHours) {
       try {
-        branchData.operatingHours = typeof operatingHours === 'string' 
-          ? JSON.parse(operatingHours) 
+        branchData.operatingHours = typeof operatingHours === 'string'
+          ? JSON.parse(operatingHours)
           : operatingHours;
       } catch (err) {
         console.log('⚠️ Failed to parse operatingHours, using default');
@@ -674,9 +674,9 @@ router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner
     console.error('❌ Error creating branch:', error);
     console.error('❌ Error details:', error.message);
     console.error('❌ Error stack:', error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create branch',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -704,9 +704,9 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
     }
 
     const branches = await prisma.clinicBranch.findMany({
-      where: { 
+      where: {
         clinicProfileId: clinicProfile.id,
-        isActive: true 
+        isActive: true
       },
       orderBy: [
         { isMainBranch: 'desc' },
@@ -753,7 +753,7 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
 router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const clinicProfile = await prisma.clinicProfile.findFirst({
       where: { userId: req.user.id }
     });
@@ -763,15 +763,15 @@ router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_ow
     }
 
     const updateData = { ...req.body };
-    
+
     if (updateData.treatmentRoomsCount) {
       updateData.treatmentRoomsCount = parseInt(updateData.treatmentRoomsCount);
     }
-    
+
     if (updateData.hasSterlization !== undefined) {
       updateData.hasSterlization = updateData.hasSterlization === 'true';
     }
-    
+
     if (updateData.hasRadiography !== undefined) {
       updateData.hasRadiography = updateData.hasRadiography === 'true';
     }
@@ -781,7 +781,7 @@ router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_ow
     }
 
     const updatedBranch = await prisma.clinicBranch.update({
-      where: { 
+      where: {
         id: BigInt(id),
         clinicProfileId: clinicProfile.id
       },
@@ -802,7 +802,7 @@ router.put('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_ow
 router.delete('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const clinicProfile = await prisma.clinicProfile.findFirst({
       where: { userId: req.user.id }
     });
@@ -813,7 +813,7 @@ router.delete('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic
 
     // Check if branch exists and belongs to this clinic
     const branch = await prisma.clinicBranch.findFirst({
-      where: { 
+      where: {
         id: BigInt(id),
         clinicProfileId: clinicProfile.id
       }
@@ -828,7 +828,7 @@ router.delete('/branches/:id', authenticateToken, requireRoles(['owner', 'clinic
       const branchCount = await prisma.clinicBranch.count({
         where: { clinicProfileId: clinicProfile.id }
       });
-      
+
       if (branchCount === 1) {
         return res.status(400).json({ error: 'Cannot delete the only remaining branch' });
       }
@@ -864,16 +864,16 @@ router.get('/debug-user', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
     const userId = BigInt(user.id);
-    
+
     // Find the clinic staff record
     const clinicStaff = await prisma.clinicStaff.findUnique({
       where: { userId: userId },
-      include: { 
+      include: {
         clinicProfile: { select: { id: true, legalName: true } },
         user: { select: { id: true, email: true, name: true, roles: true } }
       }
     });
-    
+
     // Get all staff for debugging
     const allStaff = await prisma.clinicStaff.findMany({
       include: {
@@ -881,7 +881,7 @@ router.get('/debug-user', authenticateToken, async (req, res) => {
         clinicProfile: { select: { id: true, legalName: true } }
       }
     });
-    
+
     res.json({
       message: 'Debug info',
       currentUser: user,
@@ -913,12 +913,12 @@ router.get('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', '
     // Find the clinic for this user (convert string ID to BigInt)
     const userId = BigInt(user.id);
     console.log('🔍 Staff API: Looking for userId:', userId, 'type:', typeof userId);
-    
+
     const clinicStaff = await prisma.clinicStaff.findUnique({
       where: { userId: userId },
       include: { clinicProfile: true }
     });
-    
+
     console.log('🏥 Staff API: User clinic staff record:', clinicStaff);
 
     if (!clinicStaff) {
@@ -1067,24 +1067,24 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
       console.warn('⚠️ Existing user ID:', targetUser.id.toString());
       console.warn('⚠️ Existing user roles:', targetUser.roles);
       console.warn('⚠️ Existing user name:', targetUser.name);
-      
+
       // Check if this user is already assigned to ANY clinic
       const existingStaffCheck = await prisma.clinicStaff.findUnique({
         where: { userId: targetUser.id }
       });
-      
+
       if (existingStaffCheck) {
         console.error('❌ STAFF ASSIGNMENT BLOCKED - User already assigned to a clinic!');
         console.error('❌ User email:', email);
         console.error('❌ Clinic ID:', existingStaffCheck.clinicProfileId.toString());
         console.error('❌ Assignment attempt from IP:', req.ip || req.connection.remoteAddress);
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'User is already assigned to a clinic',
           errorCode: 'ALREADY_ASSIGNED',
           details: 'This email is already registered and assigned to a clinic. Each staff member can only work at one clinic.'
         });
       }
-      
+
       // User exists but not assigned to any clinic yet
       // This could be a dentist or patient being added as staff
       console.log('⚠️ User exists but not assigned to clinic, will assign with EXISTING password');
@@ -1102,11 +1102,11 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
           isActive: true
         }
       });
-      
+
       if (!branch) {
         return res.status(400).json({ error: 'Invalid branch assignment - branch not found or does not belong to your clinic' });
       }
-      
+
       branchId = parseInt(assignedBranchId);
     }
 
@@ -1199,11 +1199,11 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
     const { staffId } = req.params;
     const { role, position, department, status, permissions, phone, name, email, branchId } = req.body;
     const user = req.user;
-    
-    console.log('🔄 PUT /staff/:staffId called with:', { 
-      staffId, 
+
+    console.log('🔄 PUT /staff/:staffId called with:', {
+      staffId,
       requestBody: { role, position, department, status, permissions, phone, name, email, branchId },
-      userId: user.id 
+      userId: user.id
     });
 
     // Find the clinic for the requesting user
@@ -1244,7 +1244,7 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
       clinicStaffUpdate.isActive = status === 'active';
     }
     if (permissions) clinicStaffUpdate.permissions = permissions;
-    
+
     // Handle branch assignment
     if (branchId !== undefined) {
       if (branchId === null || branchId === '') {
@@ -1257,11 +1257,11 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
             clinicProfileId: requestingUserStaff.clinicProfileId
           }
         });
-        
+
         if (!branch) {
           return res.status(400).json({ error: 'Branch not found or does not belong to your clinic' });
         }
-        
+
         clinicStaffUpdate.assignedBranchId = parseInt(branchId);
       }
     }
@@ -1270,23 +1270,23 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
     if (phone !== undefined) {
       userUpdates.phone_number = phone ? phone : null;
     }
-    
+
     // Handle name update
     if (name !== undefined && name.trim()) {
       userUpdates.name = name.trim();
     }
-    
+
     // Handle email update
     if (email !== undefined && email.trim()) {
       // Check if email is already taken by another user
       const existingUser = await prisma.user.findUnique({
         where: { email: email.trim() }
       });
-      
+
       if (existingUser && existingUser.id !== targetStaff.userId) {
         return res.status(400).json({ error: 'Email already exists' });
       }
-      
+
       userUpdates.email = email.trim();
     }
 
@@ -1296,7 +1296,7 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
       const nextRoles = [...filtered, role].filter((value, index, self) => self.indexOf(value) === index);
       userUpdates.roles = nextRoles;
     }
-    
+
     console.log('🔧 Prepared updates:', { clinicStaffUpdate, userUpdates });
 
     if (Object.keys(clinicStaffUpdate).length > 0 || Object.keys(userUpdates).length > 0) {
@@ -1346,7 +1346,7 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
     });
 
     console.log('✅ Staff update successful:', refreshedStaff);
-    
+
     const serializeId = (value) => (typeof value === 'bigint' ? value.toString() : value);
     res.json({
       success: true,
@@ -1570,7 +1570,7 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
   try {
     const { userId } = req.params;
     const user = req.user;
-    
+
     console.log('🗑️ DELETE /staff/:userId called');
     console.log('🗑️ Received userId parameter:', userId, 'type:', typeof userId);
     console.log('🗑️ Requesting user:', user.id, 'roles:', user.roles);
@@ -1597,12 +1597,12 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
         user: { select: { name: true, email: true, roles: true } }
       }
     });
-    
-    console.log('🔍 Found targetStaff:', targetStaff ? { 
-      id: targetStaff.id, 
-      userId: targetStaff.userId, 
+
+    console.log('🔍 Found targetStaff:', targetStaff ? {
+      id: targetStaff.id,
+      userId: targetStaff.userId,
       role: targetStaff.role,
-      name: targetStaff.user.name 
+      name: targetStaff.user.name
     } : 'null');
 
     if (!targetStaff) {
@@ -1624,7 +1624,7 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
       // Update user roles to remove clinic role
       const currentRoles = targetStaff.user.roles || [];
       const newRoles = currentRoles.filter(r => r !== targetStaff.role);
-      
+
       await tx.user.update({
         where: { id: BigInt(userId) },
         data: { roles: newRoles.length > 0 ? newRoles : ['patient'] } // Default to patient if no roles left
@@ -1647,6 +1647,225 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
   } catch (error) {
     console.error('Error removing staff member:', error);
     res.status(500).json({ error: 'Failed to remove staff member' });
+  }
+});
+
+// =====================
+// CLINIC PATIENTS ENDPOINT
+// =====================
+// Get all patients who have had appointments with dentists in this clinic
+router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+  try {
+    const user = req.user;
+    const userId = BigInt(user.id);
+
+    // 1. Find the clinic for this user
+    const staffRecord = await prisma.clinicStaff.findUnique({
+      where: { userId },
+      select: { clinicProfileId: true }
+    });
+
+    if (!staffRecord) {
+      return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
+    }
+
+    const clinicId = staffRecord.clinicProfileId;
+
+    // 2. Get all staff (dentists) in this clinic
+    const clinicStaffList = await prisma.clinicStaff.findMany({
+      where: { clinicProfileId: clinicId, isActive: true },
+      include: {
+        user: {
+          select: { id: true, name: true, roles: true }
+        }
+      }
+    });
+
+    // Filter to dentist-role staff only
+    const dentistStaff = clinicStaffList.filter(s =>
+      s.role === 'dentist' || s.role === 'owner' || s.user.roles.includes('dentist')
+    );
+
+    const dentistUserIds = dentistStaff.map(s => s.userId);
+
+    if (dentistUserIds.length === 0) {
+      return res.json({ patients: [], appointments: [], dentists: [] });
+    }
+
+    // 3. Get all appointments for these dentists
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        dentistId: { in: dentistUserIds }
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone_number: true,
+            avatar_url: true,
+            createdAt: true,
+            patientProfile: {
+              select: {
+                dateOfBirth: true,
+                gender: true,
+                insuranceProvider: true,
+                medicalDetails: true,
+                address: true,
+                emergencyContact: true
+              }
+            }
+          }
+        },
+        dentist: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            createdAt: true
+          }
+        }
+      },
+      orderBy: { startsAt: 'desc' }
+    });
+
+    // 4. Build unique patients map
+    const patientsMap = new Map();
+    const serializedAppointments = [];
+
+    for (const apt of appointments) {
+      const patientIdStr = apt.patientId.toString();
+      const dentistIdStr = apt.dentistId.toString();
+      const payment = apt.paymentIntents?.[0] || null;
+      const fee = payment?.amount || 0;
+      const isPaid = payment?.status === 'paid' || payment?.status === 'settled';
+
+      // Serialize appointment
+      serializedAppointments.push({
+        id: apt.id.toString(),
+        patientId: patientIdStr,
+        patientName: apt.patient?.name || 'Unknown',
+        dentistId: dentistIdStr,
+        dentistName: apt.dentist?.name || 'Unknown',
+        date: apt.startsAt.toISOString().split('T')[0],
+        time: apt.startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' }),
+        startsAt: apt.startsAt.toISOString(),
+        endsAt: apt.endsAt.toISOString(),
+        status: apt.status,
+        reason: apt.reason || '',
+        treatment: apt.reason || '',
+        notes: apt.notes || '',
+        fee,
+        isPaid,
+        consultationType: apt.consultationType || 'onsite'
+      });
+
+      // Build or update patient entry
+      if (!patientsMap.has(patientIdStr)) {
+        const profile = apt.patient?.patientProfile;
+        const dob = profile?.dateOfBirth;
+        let age = null;
+        if (dob) {
+          const today = new Date();
+          const birth = new Date(dob);
+          age = today.getFullYear() - birth.getFullYear();
+          if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) {
+            age--;
+          }
+        }
+
+        // Normalize gender: DB may store 'male'/'female', frontend expects 'M'/'F'
+        const rawGender = (profile?.gender || '').toLowerCase();
+        const normalizedGender = rawGender === 'male' || rawGender === 'm' ? 'M'
+          : rawGender === 'female' || rawGender === 'f' ? 'F'
+            : null;
+
+        patientsMap.set(patientIdStr, {
+          id: patientIdStr,
+          name: apt.patient?.name || 'Unknown',
+          email: apt.patient?.email || '',
+          phone: apt.patient?.phone_number || '',
+          avatar: apt.patient?.avatar_url || null,
+          age,
+          gender: normalizedGender,
+          dateOfBirth: dob ? dob.toISOString().split('T')[0] : null,
+          address: profile?.address || null,
+          insuranceProvider: profile?.insuranceProvider || null,
+          medicalRecord: {
+            allergies: profile?.medicalDetails?.allergies || [],
+            conditions: profile?.medicalDetails?.conditions || [],
+            bloodType: profile?.medicalDetails?.bloodType || null,
+            lastTreatment: null
+          },
+          emergencyContact: profile?.emergencyContact || null,
+          status: 'active',
+          createdAt: apt.patient?.createdAt?.toISOString() || null,
+          // Will be updated below
+          doctorId: dentistIdStr,
+          doctorName: apt.dentist?.name || 'Unknown',
+          lastVisit: apt.startsAt.toISOString().split('T')[0],
+          totalVisits: 0,
+          totalRevenue: 0,
+          appointments: [],
+          recentAppointments: []
+        });
+      }
+
+      const patientEntry = patientsMap.get(patientIdStr);
+      patientEntry.totalVisits++;
+      if (isPaid) patientEntry.totalRevenue += fee;
+
+      // Track latest visit
+      if (apt.startsAt > new Date(patientEntry.lastVisit)) {
+        patientEntry.lastVisit = apt.startsAt.toISOString().split('T')[0];
+        patientEntry.doctorId = dentistIdStr;
+        patientEntry.doctorName = apt.dentist?.name || 'Unknown';
+        patientEntry.medicalRecord.lastTreatment = apt.reason || null;
+      }
+    }
+
+    // 5. Finalize patients — attach appointments and recent
+    const patients = Array.from(patientsMap.values()).map(p => {
+      const patientApts = serializedAppointments.filter(a => a.patientId === p.id);
+      return {
+        ...p,
+        appointments: patientApts,
+        recentAppointments: patientApts.slice(0, 3).map(a => ({
+          date: a.date,
+          treatment: a.treatment,
+          doctor: a.dentistName,
+          status: a.status
+        }))
+      };
+    });
+
+    // 6. Build dentist list for the frontend
+    const dentists = dentistStaff.map(s => ({
+      id: s.userId.toString(),
+      name: s.user.name,
+      role: s.role
+    }));
+
+    console.log(`📋 Clinic patients: ${patients.length} patients, ${serializedAppointments.length} appointments, ${dentists.length} dentists`);
+
+    res.json({
+      patients,
+      appointments: serializedAppointments,
+      dentists
+    });
+
+  } catch (error) {
+    console.error('Error fetching clinic patients:', error);
+    res.status(500).json({ error: 'Failed to fetch clinic patients' });
   }
 });
 

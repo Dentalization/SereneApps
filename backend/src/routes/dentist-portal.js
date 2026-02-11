@@ -6,6 +6,7 @@
 import express from 'express';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '../generated/prisma/index.js';
+import { recordStatusChange } from '../services/appointments/audit.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -107,6 +108,37 @@ router.get(
         },
         orderBy: { startsAt: 'desc' }
       });
+
+      // --- AUTO-MARK OVERDUE across all fetched appointments ---
+      const now = new Date();
+      const overdueCandiates = appointments.filter(a =>
+        ['scheduled', 'confirmed'].includes(a.status) && new Date(a.startsAt) < now
+      );
+      for (const apt of overdueCandiates) {
+        try {
+          const hasPaid = await prisma.paymentIntent.findFirst({
+            where: { appointmentId: apt.id, status: 'succeeded' },
+            select: { id: true }
+          });
+          if (!hasPaid) {
+            await prisma.$transaction(async (tx) => {
+              await tx.appointment.update({ where: { id: apt.id }, data: { status: 'overdue' } });
+              await recordStatusChange(tx, {
+                appointmentId: apt.id,
+                previousStatus: apt.status,
+                newStatus: 'overdue',
+                changedBy: null,
+                changedByRole: 'system',
+                reason: 'Auto-marked overdue: past scheduled time with no successful payment',
+                metadata: { trigger: 'dentist_portal_patients_list' }
+              });
+            });
+            apt.status = 'overdue';
+          }
+        } catch (err) {
+          console.error(`[DentistPortal] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, err.message);
+        }
+      }
 
       const patientMap = new Map();
       for (const appointment of appointments) {
@@ -221,6 +253,45 @@ router.get(
       }
 
       const patient = appointments[0].patient;
+
+      // --- AUTO-MARK OVERDUE for this patient's appointments ---
+      const now = new Date();
+      const overdueCandiates = appointments.filter(a =>
+        ['scheduled', 'confirmed'].includes(a.status) && new Date(a.startsAt) < now
+      );
+      if (overdueCandiates.length > 0) {
+        // Check which have no successful payment
+        for (const apt of overdueCandiates) {
+          try {
+            const hasPaid = await prisma.paymentIntent.findFirst({
+              where: { appointmentId: apt.id, status: 'succeeded' },
+              select: { id: true }
+            });
+            if (!hasPaid) {
+              await prisma.$transaction(async (tx) => {
+                await tx.appointment.update({
+                  where: { id: apt.id },
+                  data: { status: 'overdue' }
+                });
+                await recordStatusChange(tx, {
+                  appointmentId: apt.id,
+                  previousStatus: apt.status,
+                  newStatus: 'overdue',
+                  changedBy: null,
+                  changedByRole: 'system',
+                  reason: 'Auto-marked overdue: past scheduled time with no successful payment',
+                  notes: null,
+                  metadata: { trigger: 'dentist_portal_view' }
+                });
+              });
+              apt.status = 'overdue'; // Reflect in-memory for serialization
+            }
+          } catch (err) {
+            console.error(`[DentistPortal] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, err.message);
+          }
+        }
+      }
+
       const aiResults = await prisma.aIAnalysisResult.findMany({
         where: { userId: patientId },
         orderBy: { createdAt: 'desc' },
@@ -250,10 +321,10 @@ router.get(
         serializedPatient.gender = patientProfile.gender;
         serializedPatient.insurance = patientProfile.insuranceProvider
           ? {
-              provider: patientProfile.insuranceProvider,
-              number: patientProfile.insuranceNumber,
-              memberId: patientProfile.insuranceMemberId
-            }
+            provider: patientProfile.insuranceProvider,
+            number: patientProfile.insuranceNumber,
+            memberId: patientProfile.insuranceMemberId
+          }
           : null;
         serializedPatient.emergencyContact = patientProfile.emergencyContact;
         serializedPatient.medicalDetails = patientProfile.medicalDetails;

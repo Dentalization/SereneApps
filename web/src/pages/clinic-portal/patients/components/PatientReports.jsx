@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import Icon from '../../../../components/AppIcon';
 
-const PatientReports = ({ patients = [] }) => {
+const PatientReports = ({
+  patients = [],
+  allAppointments = [],
+  selectedDentist = 'all',
+  doctors = [],
+}) => {
   const { t, language } = useLanguage();
   const locale = language === 'id' ? 'id-ID' : 'en-US';
   const [selectedReportType, setSelectedReportType] = useState('patientList');
@@ -17,26 +22,31 @@ const PatientReports = ({ patients = [] }) => {
     { key: 'patientList', label: t('patients.reports.types.patientList'), icon: 'Users' },
     { key: 'visitSummary', label: t('patients.reports.types.visitSummary'), icon: 'Calendar' },
     { key: 'treatmentReport', label: t('patients.reports.types.treatmentReport'), icon: 'Stethoscope' },
-    { key: 'demographic', label: t('patients.reports.types.demographic'), icon: 'PieChart' }
+    { key: 'demographic', label: t('patients.reports.types.demographic'), icon: 'PieChart' },
+    { key: 'dentistPerformance', label: 'Performa Dokter', icon: 'BarChart2' },
   ];
+
+  // ── Compute revenue state ────────────────────────────────────────────────
+  const totalRevenue = useMemo(
+    () => patients.reduce((sum, p) => sum + (p.totalRevenue || 0), 0),
+    [patients]
+  );
 
   const handleGenerateReport = async () => {
     setIsGenerating(true);
-    
+
     // Simulate report generation
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Here you would typically call an API to generate the report
+
     console.log('Generating report:', {
       type: selectedReportType,
       dateRange,
       filters,
-      patients: patients.length
+      patients: patients.length,
+      selectedDentist,
     });
-    
+
     setIsGenerating(false);
-    
-    // Show success message or download file
     alert(t('patients.reports.generationSuccess'));
   };
 
@@ -47,16 +57,18 @@ const PatientReports = ({ patients = [] }) => {
           <div className="space-y-4">
             <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.patientList.title')}</h4>
             <div className="bg-surface rounded-lg p-4">
-              <div className="grid grid-cols-4 gap-4 text-sm font-medium text-text-secondary mb-2">
+              <div className="grid grid-cols-5 gap-4 text-sm font-medium text-text-secondary mb-2">
                 <div>{t('patients.registry.table.name')}</div>
                 <div>{t('patients.registry.table.age')}</div>
+                <div>Dokter</div>
                 <div>{t('patients.registry.table.status')}</div>
                 <div>{t('patients.registry.table.lastVisit')}</div>
               </div>
               {patients.slice(0, 5).map(patient => (
-                <div key={patient.id} className="grid grid-cols-4 gap-4 text-sm text-text-primary py-2 border-b border-border/30 last:border-b-0">
+                <div key={patient.id} className="grid grid-cols-5 gap-4 text-sm text-text-primary py-2 border-b border-border/30 last:border-b-0">
                   <div>{patient.name}</div>
                   <div>{patient.age}</div>
+                  <div className="text-text-secondary">{patient.doctorName}</div>
                   <div>{t(`patients.registry.status.${patient.status}`)}</div>
                   <div>{new Date(patient.lastVisit).toLocaleDateString(locale)}</div>
                 </div>
@@ -69,13 +81,13 @@ const PatientReports = ({ patients = [] }) => {
             </div>
           </div>
         );
-      
+
       case 'visitSummary':
         return (
           <div className="space-y-4">
             <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.visitSummary.title')}</h4>
             <div className="bg-surface rounded-lg p-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-2xl font-bold text-text-primary">
                     {patients.reduce((sum, p) => sum + p.totalVisits, 0)}
@@ -88,38 +100,54 @@ const PatientReports = ({ patients = [] }) => {
                   </div>
                   <div className="text-text-secondary">{t('patients.reports.preview.visitSummary.avgVisits')}</div>
                 </div>
+                <div>
+                  <div className="text-2xl font-bold text-emerald-600">
+                    Rp {(totalRevenue / 1000000).toFixed(1)}M
+                  </div>
+                  <div className="text-text-secondary">Total Revenue</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {allAppointments.filter(a => a.status === 'overdue').length}
+                  </div>
+                  <div className="text-text-secondary">Overdue</div>
+                </div>
               </div>
             </div>
           </div>
         );
-      
+
       case 'treatmentReport':
         return (
           <div className="space-y-4">
             <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.treatmentReport.title')}</h4>
             <div className="bg-surface rounded-lg p-4">
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>{t('patients.analytics.treatments.cleaning')}</span>
-                  <span className="font-medium">45%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('patients.analytics.treatments.filling')}</span>
-                  <span className="font-medium">25%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('patients.analytics.treatments.rootCanal')}</span>
-                  <span className="font-medium">15%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>{t('patients.analytics.treatments.other')}</span>
-                  <span className="font-medium">15%</span>
-                </div>
+                {(() => {
+                  // Build treatment distribution from actual appointment data
+                  const treatmentCounts = {};
+                  allAppointments.forEach(apt => {
+                    treatmentCounts[apt.treatment] = (treatmentCounts[apt.treatment] || 0) + 1;
+                  });
+                  const total = allAppointments.length;
+                  const sorted = Object.entries(treatmentCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+                  return sorted.map(([treatment, count]) => (
+                    <div key={treatment} className="flex justify-between items-center">
+                      <span className="text-sm text-text-primary">{treatment}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 bg-surface-elevated rounded-full h-2">
+                          <div className="bg-accent rounded-full h-2" style={{ width: `${(count / total) * 100}%` }} />
+                        </div>
+                        <span className="font-medium text-sm w-12 text-right">{total ? ((count / total) * 100).toFixed(0) : 0}%</span>
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
         );
-      
+
       case 'demographic':
         return (
           <div className="space-y-4">
@@ -144,8 +172,8 @@ const PatientReports = ({ patients = [] }) => {
                   <div className="text-xl font-bold text-text-primary">
                     {patients.length
                       ? t('patients.common.labels.years', {
-                          count: Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length)
-                        })
+                        count: Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length)
+                      })
                       : t('patients.common.labels.years', { count: 0 })}
                   </div>
                 </div>
@@ -153,7 +181,53 @@ const PatientReports = ({ patients = [] }) => {
             </div>
           </div>
         );
-      
+
+      // ── Dentist Performance Report ────────────────────────────────────────
+      case 'dentistPerformance':
+        return (
+          <div className="space-y-4">
+            <h4 className="font-semibold text-text-primary">Performa Dokter</h4>
+            <div className="bg-surface rounded-lg p-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/30">
+                      <th className="text-left py-2 text-text-secondary font-medium">Dokter</th>
+                      <th className="text-left py-2 text-text-secondary font-medium">Pasien</th>
+                      <th className="text-left py-2 text-text-secondary font-medium">Appointment</th>
+                      <th className="text-left py-2 text-text-secondary font-medium">Revenue</th>
+                      <th className="text-left py-2 text-text-secondary font-medium">Overdue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {doctors.map(doc => {
+                      const docPatients = patients.filter(p => p.doctorId === doc.id);
+                      const docApts = allAppointments.filter(a => a.doctorId === doc.id);
+                      const docRevenue = docApts.filter(a => a.isPaid).reduce((s, a) => s + a.fee, 0);
+                      const docOverdue = docApts.filter(a => a.status === 'overdue').length;
+                      return (
+                        <tr key={doc.id} className="border-b border-border/20">
+                          <td className="py-2 text-text-primary font-medium">{doc.name}</td>
+                          <td className="py-2 text-text-primary">{docPatients.length}</td>
+                          <td className="py-2 text-text-primary">{docApts.length}</td>
+                          <td className="py-2 text-emerald-600 font-medium">Rp {(docRevenue / 1000000).toFixed(1)}M</td>
+                          <td className="py-2">
+                            {docOverdue > 0 ? (
+                              <span className="text-orange-600 font-medium">{docOverdue}</span>
+                            ) : (
+                              <span className="text-text-secondary">0</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -178,11 +252,10 @@ const PatientReports = ({ patients = [] }) => {
                 <button
                   key={type.key}
                   onClick={() => setSelectedReportType(type.key)}
-                  className={`flex items-center p-3 rounded-lg text-left transition-all duration-200 ${
-                    selectedReportType === type.key
-                      ? 'bg-primary text-white'
-                      : 'bg-surface border border-border/50 text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
-                  }`}
+                  className={`flex items-center p-3 rounded-lg text-left transition-all duration-200 ${selectedReportType === type.key
+                    ? 'bg-primary text-white'
+                    : 'bg-surface border border-border/50 text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
+                    }`}
                 >
                   <Icon name={type.icon} className="w-5 h-5 mr-3" />
                   {type.label}
@@ -268,9 +341,14 @@ const PatientReports = ({ patients = [] }) => {
 
       {/* Report Preview */}
       <div className="bg-surface-elevated rounded-xl p-6 border border-border/50">
-        <h3 className="text-lg font-semibold text-text-primary mb-4">
-          {t('patients.reports.preview.title')}
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-text-primary">
+            {t('patients.reports.preview.title')}
+          </h3>
+          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+            {selectedDentist === 'all' ? 'Semua Dokter' : doctors.find(d => d.id === selectedDentist)?.name}
+          </span>
+        </div>
         <ReportPreview />
       </div>
 
@@ -281,9 +359,10 @@ const PatientReports = ({ patients = [] }) => {
         </h3>
         <div className="space-y-3">
           {[
-            { name: 'Patient List - October 2024', date: '2024-10-01', type: 'PDF', size: '2.3 MB' },
-            { name: 'Visit Summary - September 2024', date: '2024-09-30', type: 'Excel', size: '1.8 MB' },
-            { name: 'Treatment Report - Q3 2024', date: '2024-09-15', type: 'PDF', size: '3.1 MB' },
+            { name: `Patient List - ${new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date().toISOString().split('T')[0], type: 'PDF', size: '2.3 MB' },
+            { name: `Visit Summary - ${new Date(Date.now() - 30 * 86400000).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0], type: 'Excel', size: '1.8 MB' },
+            { name: 'Dentist Performance Report - Q4', date: new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0], type: 'PDF', size: '4.2 MB' },
+            { name: `Treatment Report - ${new Date(Date.now() - 90 * 86400000).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0], type: 'PDF', size: '3.1 MB' },
           ].map((report, index) => (
             <div key={index} className="flex items-center justify-between p-4 bg-surface rounded-lg">
               <div className="flex items-center">
