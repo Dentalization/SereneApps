@@ -1,17 +1,17 @@
 import React from 'react';
-import { 
-  View, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform, 
-  StyleSheet, 
+import {
+  View,
+  ScrollView,
+  Platform,
+  StyleSheet,
   StatusBar,
   Dimensions,
   PixelRatio,
   TextInput,
   TouchableOpacity,
   Image,
-  Keyboard
+  Keyboard,
+  Animated,
 } from 'react-native';
 import { Text, IconButton, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -39,35 +39,64 @@ const ChatScreen = ({ route, navigation }) => {
   const { toast, showToast, hideToast } = useToast();
   const { sessionId, analysisData, images, pendingImages, mode } = route.params || {};
   const dispatch = useDispatch();
-  
+
   const [messages, setMessages] = React.useState([]);
   const [inputText, setInputText] = React.useState('');
   const [selectedImages, setSelectedImages] = React.useState([]);
   const [isSending, setIsSending] = React.useState(false);
-  const [hasProvidedContext, setHasProvidedContext] = React.useState(false); 
+  const [hasProvidedContext, setHasProvidedContext] = React.useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = React.useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = React.useState(false);
-  
+
   const scrollViewRef = React.useRef(null);
   const analysisContextRef = React.useRef(null);
+  const keyboardPadding = React.useRef(new Animated.Value(0)).current;
 
-  // --- 1. CALCULATE HEADER HEIGHT & OFFSET ---
-  // Header height standard + top insets + extra padding
-  const HEADER_HEIGHT = normalize(56) + insets.top; 
-  // Offset for KeyboardAvoidingView so it knows where the header ends
-  const KEYBOARD_OFFSET = Platform.OS === 'ios' ? HEADER_HEIGHT : 0;
+  // --- 1. CALCULATE HEADER HEIGHT ---
+  const HEADER_HEIGHT = normalize(56) + insets.top;
 
-  // --- 2. KEYBOARD LISTENER (CRITICAL FOR PADDING) ---
+  // --- 2. KEYBOARD LISTENER (Tracks actual keyboard height for pixel-perfect positioning) ---
   React.useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    const onShow = () => {
+    const onShow = (e) => {
       setKeyboardVisible(true);
+      const kbHeight = e.endCoordinates.height;
+
+      let targetPadding;
+      if (Platform.OS === 'ios') {
+        // iOS: keyboard height minus home indicator (keyboard covers safe area)
+        targetPadding = Math.max(kbHeight - insets.bottom, 0);
+        Animated.timing(keyboardPadding, {
+          toValue: targetPadding,
+          duration: e.duration || 250,
+          useNativeDriver: false,
+        }).start();
+      } else {
+        // Android: Calculate actual overlap between keyboard and window.
+        // If adjustResize already shrank the window, overlap will be ~0 (no extra padding needed).
+        // If adjustResize is NOT active, overlap = amount keyboard covers our content.
+        const windowH = Dimensions.get('window').height;
+        const kbTop = e.endCoordinates.screenY;
+        targetPadding = Math.max(windowH - kbTop, 0);
+        keyboardPadding.setValue(targetPadding);
+      }
+
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     };
-    const onHide = () => {
+
+    const onHide = (e) => {
       setKeyboardVisible(false);
+      if (Platform.OS === 'ios') {
+        Animated.timing(keyboardPadding, {
+          toValue: 0,
+          duration: (e && e.duration) || 250,
+          useNativeDriver: false,
+        }).start();
+      } else {
+        keyboardPadding.setValue(0);
+      }
     };
 
     const showSub = Keyboard.addListener(showEvent, onShow);
@@ -77,7 +106,7 @@ const ChatScreen = ({ route, navigation }) => {
       showSub.remove();
       hideSub.remove();
     };
-  }, []);
+  }, [insets.bottom]);
 
   const isModelUnavailableError = (msg = '') => {
     const lower = String(msg || '').toLowerCase();
@@ -87,7 +116,7 @@ const ChatScreen = ({ route, navigation }) => {
       lower.includes('orchestrator_error')
     );
   };
-  
+
   // --- HISTORY LOADER ---
   React.useEffect(() => {
     const loadSessionHistory = async () => {
@@ -124,7 +153,7 @@ const ChatScreen = ({ route, navigation }) => {
     };
     loadSessionHistory();
   }, [sessionId, mode]);
-  
+
   // --- CONTEXT & INITIAL MESSAGE (No Changes Logic) ---
   React.useEffect(() => {
     if (analysisData && mode !== 'pre-analysis') {
@@ -189,7 +218,7 @@ const ChatScreen = ({ route, navigation }) => {
     if (!sessionId) { showToast('Session ID tidak ditemukan', 'error'); return; }
 
     let messageText = inputText.trim() || (selectedImages.length > 0 ? 'Ini foto gigi saya.' : '');
-    
+
     if (!hasProvidedContext && analysisContextRef.current && analysisData && mode !== 'pre-analysis') {
       messageText = analysisContextRef.current + 'Pertanyaan user: ' + messageText;
       setHasProvidedContext(true);
@@ -208,13 +237,13 @@ const ChatScreen = ({ route, navigation }) => {
     const imagesToSend = [...selectedImages];
     setSelectedImages([]);
     setIsSending(true);
-    
+
     setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    
+
     try {
       let response;
       let compressedImages = imagesToSend;
-      
+
       if (imagesToSend.length > 0) {
         try {
           const compressibleIndexes = await Promise.all(imagesToSend.map(async (uri) => await needsCompression(uri, 600 * 1024)));
@@ -232,7 +261,7 @@ const ChatScreen = ({ route, navigation }) => {
           }
         } catch (error) { compressedImages = imagesToSend; }
       }
-      
+
       if (compressedImages.length > 0) {
         response = await sendChatWithImages(messageText, sessionId, compressedImages);
         if (!hasProvidedContext) setHasProvidedContext(true);
@@ -246,14 +275,14 @@ const ChatScreen = ({ route, navigation }) => {
           };
           setMessages(prev => [...prev, aiMessage]);
           try {
-             const vf = response.data?.visual_findings || {};
-             if (vf && (vf.detections || vf.summary)) {
-                dispatch(syncAnalysisToBackend({
-                  id: response.messageId, session_id: sessionId, findings: response.reply,
-                  image_url: compressedImages[0], timestamp: new Date().toISOString()
-                }));
-             }
-          } catch(e) {}
+            const vf = response.data?.visual_findings || {};
+            if (vf && (vf.detections || vf.summary)) {
+              dispatch(syncAnalysisToBackend({
+                id: response.messageId, session_id: sessionId, findings: response.reply,
+                image_url: compressedImages[0], timestamp: new Date().toISOString()
+              }));
+            }
+          } catch (e) { }
         }
       } else {
         response = await sendChatMessage(messageText, sessionId);
@@ -287,7 +316,7 @@ const ChatScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
+
       {/* HEADER (Fixed Height) */}
       <View style={{ height: HEADER_HEIGHT }}>
         <LinearGradient
@@ -303,114 +332,107 @@ const ChatScreen = ({ route, navigation }) => {
         </LinearGradient>
       </View>
 
-      {/* KEYBOARD HANDLING CONTAINER */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-        keyboardVerticalOffset={KEYBOARD_OFFSET}
-      >
-        <View style={{ flex: 1 }}>
-          {/* MESSAGES LIST */}
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.messagesContainer}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-          >
-            {messages.map((message) => (
-              <View key={message.id} style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.aiBubble]}>
-                {message.role === 'assistant' && (
-                  <MaterialCommunityIcons name="robot-outline" size={normalize(20)} color="#7C3AED" style={styles.aiIcon} />
-                )}
-                {message.images?.length > 0 && (
-                  <View style={styles.messageImages}>
-                    {message.images.map((uri, idx) => <Image key={idx} source={{ uri }} style={styles.messageImage} />)}
-                  </View>
-                )}
-                {message.annotatedImage && (
-                  <Image source={{ uri: `data:image/jpeg;base64,${message.annotatedImage}` }} style={styles.annotatedImage} resizeMode="contain" />
-                )}
-                <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.aiText]}>
-                  {message.content.replace(/\*\*/g, '').replace(/\*/g, '•')}
-                </Text>
-                {message.hasAnalysisOption && (
-                  <TouchableOpacity style={styles.analysisButton} onPress={handleProceedAnalysis}>
-                    <Text style={styles.analysisButtonText}>Analisis Sekarang</Text>
-                  </TouchableOpacity>
-                )}
-                <Text style={[styles.messageTime, message.role === 'user' ? styles.userTime : styles.aiTime]}>
-                  {new Date(message.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            ))}
-            {isSending && (
-              <View style={[styles.messageBubble, styles.aiBubble]}>
-                <ActivityIndicator size="small" color="#7C3AED" />
-                <Text style={[styles.messageText, styles.aiText, { marginLeft: 8 }]}>Mengetik...</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          {/* INPUT AREA (Sticky Bottom) */}
-          <View style={[
-            styles.bottomContainer, 
-            { 
-              // LOGIC PADDING:
-              // Jika keyboard MUNCUL -> Padding kecil (10) agar nempel di keyboard.
-              // Jika keyboard MATI -> Padding insets.bottom (agar tidak ketutup garis home).
-              paddingBottom: isKeyboardVisible ? normalize(10) : Math.max(insets.bottom, normalize(16))
-            }
-          ]}>
-            
-            {/* Image Previews */}
-            {selectedImages.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagePreviewBar}>
-                {selectedImages.map((uri, index) => (
-                  <View key={index} style={styles.previewImageContainer}>
-                    <Image source={{ uri }} style={styles.previewImage} />
-                    <TouchableOpacity style={styles.removeImageButton} onPress={() => removeImage(index)}>
-                      <MaterialCommunityIcons name="close-circle" size={normalize(20)} color="#EF4444" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            {/* Input Row */}
-            <View style={styles.inputRow}>
-              <TouchableOpacity style={styles.attachButton} onPress={pickImage} disabled={isSending}>
-                <MaterialCommunityIcons name="image-plus" size={normalize(24)} color="#6B7280" />
-              </TouchableOpacity>
-              
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Tulis pesan..."
-                  placeholderTextColor="#9CA3AF"
-                  value={inputText}
-                  onChangeText={setInputText}
-                  multiline
-                  maxLength={1000}
-                  editable={!isSending}
-                />
-              </View>
-              
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  (!inputText.trim() && selectedImages.length === 0) && styles.sendButtonDisabled,
-                ]}
-                onPress={handleSend}
-                disabled={isSending || (!inputText.trim() && selectedImages.length === 0)}
-              >
-                <MaterialCommunityIcons name={isSending ? "loading" : "send"} size={normalize(20)} color="#FFFFFF" />
-              </TouchableOpacity>
+      {/* CHAT AREA (flex:1 takes remaining space below header) */}
+      <Animated.View style={{ flex: 1, paddingBottom: keyboardPadding }}>
+        {/* MESSAGES LIST */}
+        <ScrollView
+          ref={scrollViewRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          {messages.map((message) => (
+            <View key={message.id} style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.aiBubble]}>
+              {message.role === 'assistant' && (
+                <MaterialCommunityIcons name="robot-outline" size={normalize(20)} color="#7C3AED" style={styles.aiIcon} />
+              )}
+              {message.images?.length > 0 && (
+                <View style={styles.messageImages}>
+                  {message.images.map((uri, idx) => <Image key={idx} source={{ uri }} style={styles.messageImage} />)}
+                </View>
+              )}
+              {message.annotatedImage && (
+                <Image source={{ uri: `data:image/jpeg;base64,${message.annotatedImage}` }} style={styles.annotatedImage} resizeMode="contain" />
+              )}
+              <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.aiText]}>
+                {message.content.replace(/\*\*/g, '').replace(/\*/g, '•')}
+              </Text>
+              {message.hasAnalysisOption && (
+                <TouchableOpacity style={styles.analysisButton} onPress={handleProceedAnalysis}>
+                  <Text style={styles.analysisButtonText}>Analisis Sekarang</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={[styles.messageTime, message.role === 'user' ? styles.userTime : styles.aiTime]}>
+                {new Date(message.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
             </View>
+          ))}
+          {isSending && (
+            <View style={[styles.messageBubble, styles.aiBubble]}>
+              <ActivityIndicator size="small" color="#7C3AED" />
+              <Text style={[styles.messageText, styles.aiText, { marginLeft: 8 }]}>Mengetik...</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* INPUT AREA (Sticky Bottom) */}
+        <View style={[
+          styles.bottomContainer,
+          {
+            paddingBottom: isKeyboardVisible ? normalize(4) : Math.max(insets.bottom, normalize(16))
+          }
+        ]}>
+
+          {/* Image Previews */}
+          {selectedImages.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagePreviewBar}>
+              {selectedImages.map((uri, index) => (
+                <View key={index} style={styles.previewImageContainer}>
+                  <Image source={{ uri }} style={styles.previewImage} />
+                  <TouchableOpacity style={styles.removeImageButton} onPress={() => removeImage(index)}>
+                    <MaterialCommunityIcons name="close-circle" size={normalize(20)} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Input Row */}
+          <View style={styles.inputRow}>
+            <TouchableOpacity style={styles.attachButton} onPress={pickImage} disabled={isSending}>
+              <MaterialCommunityIcons name="image-plus" size={normalize(24)} color="#6B7280" />
+            </TouchableOpacity>
+
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Tulis pesan..."
+                placeholderTextColor="#9CA3AF"
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={1000}
+                editable={!isSending}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!inputText.trim() && selectedImages.length === 0) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={isSending || (!inputText.trim() && selectedImages.length === 0)}
+            >
+              <MaterialCommunityIcons name={isSending ? "loading" : "send"} size={normalize(20)} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </Animated.View>
 
       <ValidationToast visible={toast.visible} message={toast.message} status={toast.status} onDismiss={hideToast} />
     </View>
@@ -423,16 +445,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
   },
   header: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: normalize(8),
     paddingBottom: normalize(8),
     borderBottomLeftRadius: normalize(24),
     borderBottomRightRadius: normalize(24),
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -498,7 +517,7 @@ const styles = StyleSheet.create({
   },
   userTime: { color: 'rgba(255,255,255,0.7)' },
   aiTime: { color: '#9CA3AF' },
-  
+
   // --- BOTTOM SECTION ---
   bottomContainer: {
     backgroundColor: '#FFFFFF',
@@ -536,7 +555,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
   },
-  
+
   // Input Row
   inputRow: {
     flexDirection: 'row',
@@ -585,7 +604,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  
+
   messageImages: {
     flexDirection: 'row',
     flexWrap: 'wrap',
