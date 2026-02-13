@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import useDICOMViewer from '../hooks/useDICOMViewer';
+import VolumeViewer3D from './VolumeViewer3D';
 
 const Viewer3D = ({ study, onBack }) => {
     const { state, actions, refs } = useDICOMViewer(study);
@@ -9,7 +10,18 @@ const Viewer3D = ({ study, onBack }) => {
     const imgRef = useRef(null);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
+    const [viewMode, setViewMode] = useState('auto'); // 'auto', '3d', 'slice'
 
+    // Determine initial view mode based on series type
+    useEffect(() => {
+        if (study?.selectedSeriesType === '3D Volume') {
+            setViewMode('3d'); // 3D First for volumetric series
+        } else {
+            setViewMode('slice'); // Direct slice view for 2D images
+        }
+    }, [study?.selectedSeriesType]);
+
+    // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS (React Rules of Hooks)
     useEffect(() => {
         const handleFullScreenChange = () => {
             setIsFullScreen(!!document.fullscreenElement);
@@ -104,6 +116,18 @@ const Viewer3D = ({ study, onBack }) => {
         }
     }, [state.showAIOverlay, state.findings, state.isAnalyzing, state.activeView, state.axialIndex, state.coronalIndex, state.sagittalIndex]);
 
+    // Conditional rendering: If 3D mode and volumetric series, show VolumeViewer3D
+    if (viewMode === '3d' && study?.selectedSeriesType === '3D Volume') {
+        return (
+            <VolumeViewer3D
+                study={study}
+                onBack={onBack}
+                onSwitchToSliceMode={() => setViewMode('slice')}
+            />
+        );
+    }
+
+    // Otherwise show slice viewer (original implementation)
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800">
             {/* Toolbar */}
@@ -143,6 +167,21 @@ const Viewer3D = ({ study, onBack }) => {
                     )}
 
                     <div className="h-6 w-px bg-slate-800 mx-2" />
+
+                    {/* 3D View Button (only for 3D Volume series) */}
+                    {study?.selectedSeriesType === '3D Volume' && (
+                        <>
+                            <button
+                                onClick={() => setViewMode('3d')}
+                                className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-medium transition shadow-lg"
+                                title="Switch to 3D Volume View"
+                            >
+                                <AppIcon name="Box" size={18} />
+                                <span className="text-sm">3D View</span>
+                            </button>
+                            <div className="h-6 w-px bg-slate-800 mx-2" />
+                        </>
+                    )}
 
                     {/* View Selector (for MPR) */}
                     {state.currentSeries?.type === '3D Volume' && (

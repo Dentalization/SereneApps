@@ -9,6 +9,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
 
 
     const [studies, setStudies] = useState([]);
+    const [studiesWithSeries, setStudiesWithSeries] = useState([]); // Studies with expanded series cards
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -51,12 +52,18 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                         statusDisplay: (study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1)
                     }));
                     setStudies(formattedStudies);
+                    
+                    // Fetch series information for each study
+                    await fetchSeriesForStudies(formattedStudies);
                 } catch (e) {
                     throw new Error(`JSON Parse Error: ${e.message} - Response: ${text.substring(0, 50)}...`);
                 }
 
             } catch (error) {
-                console.error("Failed to fetch studies:", error);
+                console.error("[Gallery] Failed to fetch studies:", error);
+                console.error("[Gallery] Error name:", error.name);
+                console.error("[Gallery] Error message:", error.message);
+                console.error("[Gallery] Error stack:", error.stack);
                 setError(error.message);
             } finally {
                 setLoading(false);
@@ -64,10 +71,60 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
         };
         fetchStudies();
     }, [refreshTrigger]);
+    
+    // Fetch series cards for each study (Smart Gallery Grouping)
+    const fetchSeriesForStudies = async (studies) => {
+        try {
+            const studiesWithSeriesData = await Promise.all(
+                studies.map(async (study) => {
+                    try {
+                        const studyKey = study.folderName || study.id;
+                        const response = await fetch(`http://127.0.0.1:8000/gallery/${studyKey}`);
+                        
+                        if (!response.ok) {
+                            console.warn(`Failed to fetch series for ${studyKey}`);
+                            return { ...study, series: [] };
+                        }
+                        
+                        const data = await response.json();
+                        return { 
+                            ...study, 
+                            series: data.series || [],
+                            totalSeries: data.total_series || 0
+                        };
+                    } catch (error) {
+                        console.warn(`Error fetching series for study ${study.id}:`, error);
+                        return { ...study, series: [] };
+                    }
+                })
+            );
+            
+            setStudiesWithSeries(studiesWithSeriesData);
+        } catch (error) {
+            console.error("Error in fetchSeriesForStudies:", error);
+            // Fallback to showing studies without series data
+            setStudiesWithSeries(studies.map(s => ({ ...s, series: [] })));
+        }
+    };
 
-    const filteredStudies = studies.filter(s =>
+    const filteredStudies = studiesWithSeries.filter(s =>
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.patientIdDisplay.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
+    // Flatten to series cards for gallery display (Smart Series Grouping)
+    const seriesCards = filteredStudies.flatMap(study => 
+        (study.series || []).map(series => ({
+            ...series,
+            study: study,
+            // Use series info to build card
+            id: `${study.id}-${series.series_uid}`,
+            patientName: study.patientName,
+            patientIdDisplay: study.patientIdDisplay,
+            dateDisplay: study.dateDisplay,
+            statusDisplay: study.statusDisplay,
+            thumbnailUrl: `http://127.0.0.1:8000/thumbnail/${study.folderName || study.id}/${series.series_uid}`
+        }))
     );
 
     const handleDelete = async (e, study) => {
@@ -160,7 +217,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                 </div>
             ) : viewMode === 'grid' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {filteredStudies.length === 0 ? (
+                    {seriesCards.length === 0 ? (
                         <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
                             <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
                                 <AppIcon name={searchQuery ? "SearchX" : "FolderOpen"} size={40} className="text-accent" />
@@ -183,18 +240,51 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                                 </button>
                             )}
                         </div>
-                    ) : filteredStudies.map(study => (
+                    ) : seriesCards.map(card => (
                         <div
-                            key={study.id}
-                            onClick={() => onSelectStudy(study)}
+                            key={card.id}
+                            onClick={() => onSelectStudy({
+                                ...card.study,
+                                selectedSeriesUid: card.series_uid,
+                                selectedSeriesType: card.type
+                            })}
                             className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden hover:shadow-theme-lg transition cursor-pointer"
                         >
-                            <div className="aspect-video bg-gray-900 flex items-center justify-center relative">
-                                <AppIcon name={study.modality === 'CBCT' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
-                                <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
-                                    {study.modality}
+                            {/* Series Thumbnail (replaces generic icon) */}
+                            <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
+                                <img 
+                                    src={card.thumbnailUrl} 
+                                    alt={card.title}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        // Fallback to icon if thumbnail fails
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                />
+                                <div className="absolute inset-0 items-center justify-center hidden">
+                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                                </div>
+                                
+                                {/* Type Badge */}
+                                <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
+                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
+                                    {card.type}
                                 </span>
-                                {study.status === 'Processing' && (
+                                
+                                {/* Modality Badge */}
+                                <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
+                                    {card.modality}
+                                </span>
+                                
+                                {/* Slice Count */}
+                                {card.num_slices > 1 && (
+                                    <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
+                                        {card.num_slices} slices
+                                    </span>
+                                )}
+                                
+                                {card.study.status === 'Processing' && (
                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                                         <div className="flex flex-col items-center gap-2">
                                             <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
@@ -203,21 +293,19 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                                     </div>
                                 )}
                             </div>
+                            
                             <div className="p-4 space-y-2">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <h3 className="font-semibold text-primary">{study.patientName}</h3>
-                                        <p className="text-xs text-secondary">{study.patientIdDisplay}</p>
-                                        <p className="text-[10px] text-muted truncate max-w-[150px]" title={study.originalName}>
-                                            <AppIcon name="Folder" size={10} className="inline mr-1" />
-                                            {study.originalName}
-                                        </p>
+                                        <h3 className="font-semibold text-primary">{card.patientName}</h3>
+                                        <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
+                                        <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
                                     </div>
                                     <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
                                 </div>
-                                <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <button
-                                        onClick={(e) => handleDelete(e, study)}
+                                        onClick={(e) => handleDelete(e, card.study)}
                                         className="p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg backdrop-blur-sm shadow-sm"
                                         title="Delete Study"
                                     >
@@ -225,9 +313,9 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                                     </button>
                                 </div>
                                 <div className="pt-2 border-t border-primary/10 flex justify-between text-xs text-secondary">
-                                    <span>{study.dateDisplay}</span>
-                                    <span className={study.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
-                                        {study.statusDisplay}
+                                    <span>{card.dateDisplay}</span>
+                                    <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
+                                        {card.statusDisplay}
                                     </span>
                                 </div>
                             </div>
@@ -244,36 +332,44 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                             <tr>
                                 <th className="px-6 py-4 font-medium text-secondary">Status</th>
                                 <th className="px-6 py-4 font-medium text-secondary">Patient</th>
-                                <th className="px-6 py-4 font-medium text-secondary">ID</th>
-                                <th className="px-6 py-4 font-medium text-secondary">Source</th>
+                                <th className="px-6 py-4 font-medium text-secondary">Series</th>
+                                <th className="px-6 py-4 font-medium text-secondary">Type</th>
                                 <th className="px-6 py-4 font-medium text-secondary">Modality</th>
+                                <th className="px-6 py-4 font-medium text-secondary">Slices</th>
                                 <th className="px-6 py-4 font-medium text-secondary">Date</th>
                                 <th className="px-6 py-4 font-medium text-secondary">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-primary/5">
-                            {filteredStudies.map(study => (
-                                <tr key={study.id} className="hover:bg-primary/5 transition">
+                            {seriesCards.map(card => (
+                                <tr key={card.id} className="hover:bg-primary/5 transition">
                                     <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
                                             }`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                                            {study.statusDisplay}
+                                            <span className={`w-1.5 h-1.5 rounded-full ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                                            {card.statusDisplay}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 font-medium text-primary">{study.patientName}</td>
-                                    <td className="px-6 py-4 text-secondary">{study.patientIdDisplay}</td>
-                                    <td className="px-6 py-4 text-secondary text-xs truncate max-w-[150px]" title={study.originalName}>
-                                        <AppIcon name="Folder" size={12} className="inline mr-1 text-muted" />
-                                        {study.originalName}
+                                    <td className="px-6 py-4 font-medium text-primary">{card.patientName}</td>
+                                    <td className="px-6 py-4 text-cyan-600 font-medium text-xs">{card.title}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="flex items-center gap-1 text-xs">
+                                            <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={14} className="text-accent" />
+                                            {card.type}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-2 py-1 rounded bg-secondary/10 text-secondary text-xs">{study.modality}</span>
+                                        <span className="px-2 py-1 rounded bg-secondary/10 text-secondary text-xs">{card.modality}</span>
                                     </td>
-                                    <td className="px-6 py-4 text-secondary">{study.dateDisplay}</td>
+                                    <td className="px-6 py-4 text-secondary">{card.num_slices}</td>
+                                    <td className="px-6 py-4 text-secondary">{card.dateDisplay}</td>
                                     <td className="px-6 py-4">
                                         <button
-                                            onClick={() => onSelectStudy(study)}
+                                            onClick={() => onSelectStudy({
+                                                ...card.study,
+                                                selectedSeriesUid: card.series_uid,
+                                                selectedSeriesType: card.type
+                                            })}
                                             className="p-1.5 hover:bg-accent/10 rounded text-accent transition"
                                         >
                                             <AppIcon name="ExternalLink" size={18} />

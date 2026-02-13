@@ -4,6 +4,7 @@ import SideBar from '../ui/SideBar';
 import Gallery from './components/Gallery';
 import Uploader from './components/Uploader';
 import Viewer3D from './components/Viewer3D';
+import ErrorBoundary from './components/ErrorBoundary';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 
 const XCore = () => {
@@ -89,39 +90,43 @@ const XCore = () => {
 
                     {/* Views */}
                     {!activeStudy ? (
-                        <Gallery
-                            onSelectStudy={handleStudySelect}
-                            onUploadClick={() => setShowUploader(true)}
-                            refreshTrigger={refreshTrigger}
-                            onStudyDeleted={() => {
-                                setRefreshTrigger(prev => prev + 1);
-                                // Re-fetch storage stats to show reclaimed space
-                                const fetchStorage = async () => {
-                                    try {
-                                        const token = getAccessToken();
-                                        const response = await fetch('/api/v1/x-core/storage', {
-                                            headers: {
-                                                'Authorization': `Bearer ${token}`
-                                            }
-                                        });
-                                        if (response.ok) {
-                                            const data = await response.json();
-                                            setStorageStats({
-                                                usage: Number(data.usage),
-                                                limit: Number(data.limit),
-                                                percent: data.percent
+                        <ErrorBoundary>
+                            <Gallery
+                                onSelectStudy={handleStudySelect}
+                                onUploadClick={() => setShowUploader(true)}
+                                refreshTrigger={refreshTrigger}
+                                onStudyDeleted={() => {
+                                    setRefreshTrigger(prev => prev + 1);
+                                    // Re-fetch storage stats to show reclaimed space
+                                    const fetchStorage = async () => {
+                                        try {
+                                            const token = getAccessToken();
+                                            const response = await fetch('/api/v1/x-core/storage', {
+                                                headers: {
+                                                    'Authorization': `Bearer ${token}`
+                                                }
                                             });
+                                            if (response.ok) {
+                                                const data = await response.json();
+                                                setStorageStats({
+                                                    usage: Number(data.usage),
+                                                    limit: Number(data.limit),
+                                                    percent: data.percent
+                                                });
+                                            }
+                                        } catch (error) {
+                                            console.error("Failed to fetch storage stats", error);
                                         }
-                                    } catch (error) {
-                                        console.error("Failed to fetch storage stats", error);
-                                    }
-                                };
-                                fetchStorage();
-                            }}
-                        />
+                                    };
+                                    fetchStorage();
+                                }}
+                            />
+                        </ErrorBoundary>
                     ) : (
                         <div className="h-[calc(100vh-200px)]">
-                            <Viewer3D study={activeStudy} onBack={() => setActiveStudy(null)} />
+                            <ErrorBoundary>
+                                <Viewer3D study={activeStudy} onBack={() => setActiveStudy(null)} />
+                            </ErrorBoundary>
                         </div>
                     )}
                 </div>
