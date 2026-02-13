@@ -2,11 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
+import SupportOverviewCards from './components/SupportOverviewCards';
+import TicketVolumeChart from './components/TicketVolumeChart';
+import RecentTickets from './components/RecentTickets';
+import TeamPerformance from './components/TeamPerformance';
+import LiveChat from './components/LiveChat';
+import KnowledgeBase from './components/KnowledgeBase';
 
 const SupportHelpdesk = () => {
   const { t } = useLanguage();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('tickets');
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
@@ -54,15 +61,6 @@ const SupportHelpdesk = () => {
                 </div>
               ))}
             </section>
-
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {Array.from({ length: 2 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-72 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface"
-                ></div>
-              ))}
-            </section>
           </div>
         </div>
       </div>
@@ -74,11 +72,10 @@ const SupportHelpdesk = () => {
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <AdminSideBar />
       </div>
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
-          {/* Header seperti home page */}
           <section className="admin-page-header space-y-6 bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-3xl p-8 border border-teal-100 dark:border-teal-800/30">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
@@ -89,55 +86,86 @@ const SupportHelpdesk = () => {
                   {t('admin.nav.supportHelpdesk') || 'Support & Helpdesk'}
                 </h1>
                 <p className="text-sm text-secondary max-w-2xl">
-                  {t('admin.supportHelpdesk.subtitle') || 'Manajemen customer support dan administrasi knowledge base'}
+                  {t('admin.supportHelpdesk.subtitle') || 'Customer support management, ticketing system, and knowledge base administration'}
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  23 open tickets
+                  23 {t('admin.supportHelpdesk.openTickets')}
                 </div>
                 <div className="flex gap-2">
                   <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
                     <AppIcon name="Plus" size={16} />
-                    <span>New Ticket</span>
+                    <span>{t('admin.supportHelpdesk.newTicket')}</span>
                   </button>
                   <button className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700">
                     <AppIcon name="BookOpen" size={16} />
-                    <span>Knowledge Base</span>
+                    <span>{t('admin.supportHelpdesk.knowledgeBase')}</span>
                   </button>
                 </div>
               </div>
             </div>
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-accent text-white shadow-sm">
+                <button
+                  onClick={() => setActiveTab('tickets')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'tickets'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="HeadphonesIcon" size={16} />
-                  <span>Tickets</span>
+                  <span>{t('admin.supportHelpdesk.tabs.tickets')}</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('liveChat')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'liveChat'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="MessageCircle" size={16} />
-                  <span>Live Chat</span>
+                  <span>{t('admin.supportHelpdesk.tabs.liveChat')}</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('knowledgeBase')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'knowledgeBase'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="BookOpen" size={16} />
-                  <span>Knowledge Base</span>
+                  <span>{t('admin.supportHelpdesk.tabs.knowledgeBase')}</span>
                 </button>
               </div>
             </div>
           </section>
         </div>
 
-                <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-background theme-transition">
-          {/* Content Placeholder */}
-          <div className="bg-surface border border-border/40 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 flex items-center justify-center">
-              <AppIcon name="HeadphonesIcon" size={40} className="text-teal-600 dark:text-teal-400" />
+        <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
+          {activeTab === 'tickets' && (
+            <div className="space-y-6">
+              {/* Overview Cards */}
+              <SupportOverviewCards />
+
+              {/* Charts & Lists */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <TicketVolumeChart />
+                </div>
+                <div>
+                  <TeamPerformance />
+                </div>
+              </div>
+
+              {/* Recent Tickets */}
+              <RecentTickets />
             </div>
-            <h2 className="text-2xl font-bold text-primary mb-4">Support & Helpdesk</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Comprehensive support system with ticketing, knowledge base management, and customer service tools.
-            </p>
-          </div>
+          )}
+
+          {activeTab === 'liveChat' && <LiveChat />}
+
+          {activeTab === 'knowledgeBase' && <KnowledgeBase />}
         </div>
       </div>
     </div>

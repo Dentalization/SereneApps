@@ -2,11 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
+import SystemHealth from './components/SystemHealth';
+import UserManagement from './components/UserManagement';
+import AuditLogs from './components/AuditLogs';
+import IntegrationSettings from './components/IntegrationSettings';
 
 const SystemAdministration = () => {
   const { t } = useLanguage();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('health');
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
@@ -54,15 +59,6 @@ const SystemAdministration = () => {
                 </div>
               ))}
             </section>
-
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {Array.from({ length: 2 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-72 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface"
-                ></div>
-              ))}
-            </section>
           </div>
         </div>
       </div>
@@ -74,11 +70,10 @@ const SystemAdministration = () => {
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <AdminSideBar />
       </div>
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
-          {/* Header seperti home page */}
           <section className="admin-page-header space-y-6 bg-gradient-to-r from-gray-50 to-slate-50 dark:from-gray-900/20 dark:to-slate-900/20 rounded-3xl p-8 border border-gray-100 dark:border-gray-800/30">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
@@ -86,41 +81,69 @@ const SystemAdministration = () => {
                   {t('admin.systemAdmin.badge') || 'System Administration'}
                 </p>
                 <h1 className="text-2xl font-bold text-primary">
-                  {t('admin.nav.systemAdministration') || 'Administrasi Sistem'}
+                  {t('admin.systemAdmin.title') || 'System Administration'}
                 </h1>
                 <p className="text-sm text-secondary max-w-2xl">
-                  {t('admin.systemAdmin.subtitle') || 'Konfigurasi platform, manajemen user, dan monitoring sistem'}
+                  {t('admin.systemAdmin.subtitle') || 'Configuration, user management, and monitoring'}
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  System Health: Optimal
+                  {t('admin.systemAdmin.systemHealth') || 'System Health: Optimal'}
                 </div>
                 <div className="flex gap-2">
                   <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
                     <AppIcon name="Settings2" size={16} />
-                    <span>System Config</span>
+                    <span>{t('admin.systemAdmin.systemConfig')}</span>
                   </button>
                   <button className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700">
                     <AppIcon name="Shield" size={16} />
-                    <span>Security</span>
+                    <span>{t('admin.systemAdmin.security')}</span>
                   </button>
                 </div>
               </div>
             </div>
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-accent text-white shadow-sm">
-                  <AppIcon name="Settings2" size={16} />
-                  <span>System</span>
-                </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
-                  <AppIcon name="Users" size={16} />
-                  <span>Users</span>
-                </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('health')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'health'
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="Activity" size={16} />
-                  <span>Monitoring</span>
+                  <span>{t('admin.systemAdmin.tabs.health')}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'users'
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="Users" size={16} />
+                  <span>{t('admin.systemAdmin.tabs.users')}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('audit')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'audit'
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="FileText" size={16} />
+                  <span>{t('admin.systemAdmin.tabs.audit')}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('integrations')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'integrations'
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="Plug" size={16} />
+                  <span>{t('admin.systemAdmin.tabs.integrations')}</span>
                 </button>
               </div>
             </div>
@@ -128,16 +151,10 @@ const SystemAdministration = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
-          {/* Content Placeholder */}
-          <div className="bg-surface border border-border/40 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-gray-100 to-slate-100 dark:from-gray-900/30 dark:to-slate-900/30 flex items-center justify-center">
-              <AppIcon name="Settings2" size={40} className="text-gray-600 dark:text-gray-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-primary mb-4">System Administration</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Advanced system management tools for platform configuration, user administration, and monitoring.
-            </p>
-          </div>
+          {activeTab === 'health' && <SystemHealth />}
+          {activeTab === 'users' && <UserManagement />}
+          {activeTab === 'audit' && <AuditLogs />}
+          {activeTab === 'integrations' && <IntegrationSettings />}
         </div>
       </div>
     </div>

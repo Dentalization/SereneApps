@@ -23,9 +23,8 @@ const AdminSideBar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [expandedMenus, setExpandedMenus] = useState({});
   const userMenuRef = useRef(null);
-  
+
 
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
@@ -232,9 +231,7 @@ const AdminSideBar = () => {
 
   const isActive = (item) => (item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path));
 
-  const toggleSubmenu = (itemLabel) => {
-    setExpandedMenus(prev => ({ ...prev, [itemLabel]: !prev[itemLabel] }));
-  };
+
 
   // --- KOMPONEN TOMBOL NOTIFIKASI ---
   const NotificationButton = ({ collapsed }) => (
@@ -245,7 +242,7 @@ const AdminSideBar = () => {
     >
       {/* Icon Bell */}
       <AppIcon name="Bell" size={collapsed ? 20 : 18} />
-      
+
       {/* Badge Merah (Jika ada notif) */}
       {unreadNotifications > 0 && (
         <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
@@ -340,12 +337,11 @@ const AdminSideBar = () => {
                 return (
                   <div key={item.id} className="relative group">
                     <button
-                      onClick={() => (item.submenu ? toggleSubmenu(item.label) : handleNavigation(item.path))}
-                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${
-                        active 
-                          ? 'bg-accent text-white shadow-lg' 
-                          : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
-                      } transition-all duration-200`}
+                      onClick={() => handleNavigation(item.path)}
+                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${active
+                        ? 'bg-accent text-white shadow-lg'
+                        : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
+                        } transition-all duration-200`}
                       title={isCollapsed ? item.label : undefined}
                     >
                       <div className="w-5 h-5 flex items-center justify-center">
@@ -360,15 +356,6 @@ const AdminSideBar = () => {
                       {!isCollapsed && (
                         <div className="flex items-center space-x-2">
                           {item.badge && <span className="px-1.5 py-0.5 bg-accent text-white text-xs rounded-full">{item.badge}</span>}
-                          {item.submenu && (
-                            <AppIcon
-                              name="ChevronDown"
-                              size={14}
-                              className={`transition-transform duration-200 ${expandedMenus[item.label] ? 'rotate-180' : ''} ${
-                                active ? 'text-white' : 'text-muted'
-                              }`}
-                            />
-                          )}
                         </div>
                       )}
                       {active && !isCollapsed && (
@@ -384,29 +371,7 @@ const AdminSideBar = () => {
                       </div>
                     )}
 
-                    {item.submenu && !isCollapsed && expandedMenus[item.label] && (
-                      <div className="ml-6 mt-1 space-y-1 border-l border-border/30 pl-3">
-                        {item.submenu
-                          .filter(() => hasRoleAccess(item.roles))
-                          .map((subItem) => (
-                            <button
-                              key={subItem.path}
-                              onClick={() => handleNavigation(subItem.path)}
-                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all duration-200 group ${
-                                isActive(subItem) ? 'bg-accent/20 text-accent border-l-2 border-accent' : 'text-muted hover:text-primary hover:bg-muted/40'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-2">
-                                <AppIcon name={subItem.icon} size={14} className={isActive(subItem) ? 'text-accent' : 'text-muted'} />
-                                <span className={`text-sm ${isActive(subItem) ? 'text-accent font-medium' : 'text-muted group-hover:text-primary'}`}>
-                                  {subItem.label}
-                                </span>
-                              </div>
-                              {subItem.badge && <span className="px-1.5 py-0.5 bg-accent text-white text-xs rounded-full">{subItem.badge}</span>}
-                            </button>
-                          ))}
-                      </div>
-                    )}
+
                   </div>
                 );
               })}
@@ -442,9 +407,8 @@ const AdminSideBar = () => {
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-600 dark:text-gray-400">ID</span>
 
                 <div
-                  className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${
-                    language === 'en' ? 'right-1' : 'left-1'
-                  }`}
+                  className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${language === 'en' ? 'right-1' : 'left-1'
+                    }`}
                 >
                   <img
                     src={FLAG_SRC[language === 'en' ? 'id' : 'en']}
@@ -479,9 +443,8 @@ const AdminSideBar = () => {
           <button
             onClick={toggleTheme}
             disabled={isTransitioning}
-            className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${
-              isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-            } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''} transition-all duration-200`}
+            className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+              } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''} transition-all duration-200`}
             title={isCollapsed ? (isDark ? 'Light Mode' : 'Dark Mode') : undefined}
           >
             <AppIcon name={isDark ? 'Sun' : 'Moon'} size={24} className="flex-shrink-0" />
@@ -496,9 +459,8 @@ const AdminSideBar = () => {
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${
-                isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-              } ${isUserMenuOpen ? 'bg-accent bg-opacity-20 border-accent' : 'hover:bg-accent hover:bg-opacity-10 border-primary'}`}
+              className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+                } ${isUserMenuOpen ? 'bg-accent bg-opacity-20 border-accent' : 'hover:bg-accent hover:bg-opacity-10 border-primary'}`}
               style={{ borderColor: isUserMenuOpen ? '#A08A48' : isDark ? 'rgba(148,163,184,.2)' : 'rgba(156,163,175,.3)' }}
               title={isCollapsed ? 'User Menu' : undefined}
             >
@@ -539,11 +501,11 @@ const AdminSideBar = () => {
                 </div>
 
                 <div className="py-2">
-                  <button 
+                  <button
                     onClick={() => {
                       navigate('/admin/profile');
                       setIsUserMenuOpen(false);
-                    }} 
+                    }}
                     className="w-full flex items-center px-4 py-3 text-left hover:bg-accent hover:bg-opacity-10 transition-colors group"
                   >
                     <AppIcon name="User" size={20} className="mr-3 text-muted group-hover:text-accent" />

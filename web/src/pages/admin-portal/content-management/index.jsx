@@ -2,11 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
+import CMSOverview from './components/CMSOverview';
+import ContentRepository from './components/ContentRepository';
+import PublicationWorkflow from './components/PublicationWorkflow';
+import MediaGallery from './components/MediaGallery';
 
 const ContentManagement = () => {
   const { t } = useLanguage();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
@@ -54,90 +59,82 @@ const ContentManagement = () => {
                 </div>
               ))}
             </section>
-
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {Array.from({ length: 2 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-72 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface"
-                ></div>
-              ))}
-            </section>
           </div>
         </div>
       </div>
     );
   }
 
+  const tabs = [
+    { id: 'overview', icon: 'Activity', label: t('admin.contentManagement.overview.clinicalNotes') || 'Overview' },
+    { id: 'library', icon: 'BookOpen', label: t('admin.contentManagement.title') || 'Library' },
+    { id: 'workflow', icon: 'GitPullRequest', label: 'Workflow' },
+    { id: 'media', icon: 'Image', label: 'Media Gallery' },
+  ];
+
   return (
     <div className="flex min-h-screen bg-background theme-transition">
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <AdminSideBar />
       </div>
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
-          {/* Header seperti home page */}
           <section className="admin-page-header space-y-6 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-3xl p-8 border border-emerald-100 dark:border-emerald-800/30">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-                  {t('admin.contentManagement.badge') || 'Content Management'}
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">
+                  {t('admin.contentManagement.badge') || 'Content Hub'}
                 </p>
                 <h1 className="text-2xl font-bold text-primary">
-                  {t('admin.nav.contentManagement') || 'Manajemen Konten'}
+                  {t('admin.contentManagement.title') || 'Content Management'}
                 </h1>
                 <p className="text-sm text-secondary max-w-2xl">
-                  {t('admin.contentManagement.subtitle') || 'Materi marketing, sumber edukasi, dan perpustakaan konten'}
+                  {t('admin.contentManagement.subtitle') || 'Marketing materials, education resources, and content library'}
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  234 item konten
+                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  System Healthy
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
-                    <AppIcon name="Plus" size={16} />
-                    <span>Add Content</span>
-                  </button>
                   <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">
-                    <AppIcon name="Upload" size={16} />
-                    <span>Bulk Upload</span>
+                    <AppIcon name="Plus" size={16} />
+                    <span>Create Content</span>
                   </button>
                 </div>
               </div>
             </div>
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-accent text-white shadow-sm">
-                  <AppIcon name="FileImage" size={16} />
-                  <span>Library</span>
-                </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
-                  <AppIcon name="Megaphone" size={16} />
-                  <span>Marketing</span>
-                </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
-                  <AppIcon name="BookOpen" size={16} />
-                  <span>Education</span>
-                </button>
+                {tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                      }`}
+                  >
+                    <AppIcon name={tab.icon} size={16} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </section>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
-          {/* Content Placeholder */}
-          <div className="bg-surface border border-border/40 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center">
-              <AppIcon name="FileImage" size={40} className="text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-primary mb-4">Content Management</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Comprehensive content management system for marketing materials and educational resources.
-            </p>
-          </div>
+          {activeTab === 'overview' && <CMSOverview />}
+          {activeTab === 'library' && <ContentRepository />}
+          {activeTab === 'workflow' && <PublicationWorkflow />}
+          {activeTab === 'media' && <MediaGallery />}
         </div>
       </div>
     </div>

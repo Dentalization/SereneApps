@@ -2,16 +2,55 @@ import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
+import AIOverviewCards from './components/AIOverviewCards';
+import AIUsageChart from './components/AIUsageChart';
+import ModelPerformance from './components/ModelPerformance';
+import RecentActivity from './components/RecentActivity';
 
 const AIPlatform = () => {
   const { t } = useLanguage();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <>
+            <AIOverviewCards />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <AIUsageChart />
+              </div>
+              <div>
+                <RecentActivity />
+              </div>
+            </div>
+            <ModelPerformance />
+          </>
+        );
+      case 'usage':
+        // Reuse components or create specific detailed views
+        return (
+          <div className="space-y-6">
+            <AIUsageChart />
+            <AIOverviewCards />
+          </div>
+        );
+      case 'models':
+        return (
+          <ModelPerformance />
+        );
+      default:
+        return null;
+    }
+  };
 
   if (loading) {
     return (
@@ -54,15 +93,6 @@ const AIPlatform = () => {
                 </div>
               ))}
             </section>
-
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {Array.from({ length: 2 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-72 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface"
-                ></div>
-              ))}
-            </section>
           </div>
         </div>
       </div>
@@ -74,11 +104,11 @@ const AIPlatform = () => {
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <AdminSideBar />
       </div>
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
-          {/* Header seperti home page */}
+          {/* Header */}
           <section className="admin-page-header space-y-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-3xl p-8 border border-orange-100 dark:border-orange-800/30">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
@@ -86,41 +116,59 @@ const AIPlatform = () => {
                   {t('admin.aiPlatform.badge') || 'AI Platform'}
                 </p>
                 <h1 className="text-2xl font-bold text-primary">
-                  {t('admin.nav.aiPlatform') || 'Platform AI'}
+                  {t('admin.aiPlatform.title') || 'AI Platform'}
                 </h1>
                 <p className="text-sm text-secondary max-w-2xl">
-                  {t('admin.aiPlatform.subtitle') || 'Monitoring penggunaan AI, manajemen model, dan operasi machine learning'}
+                  {t('admin.aiPlatform.subtitle') || 'Monitoring usage, models, and ML operations'}
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  AI Models: Active
+                  {t('admin.aiPlatform.systemStatus')}
                 </div>
                 <div className="flex gap-2">
                   <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
                     <AppIcon name="Brain" size={16} />
-                    <span>AI Settings</span>
+                    <span>{t('admin.aiPlatform.settings')}</span>
                   </button>
                   <button className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-orange-700">
                     <AppIcon name="Zap" size={16} />
-                    <span>Deploy Model</span>
+                    <span>{t('admin.aiPlatform.deploy')}</span>
                   </button>
                 </div>
               </div>
             </div>
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-accent text-white shadow-sm">
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="Brain" size={16} />
-                  <span>Overview</span>
+                  <span>{t('admin.aiPlatform.tabs.overview')}</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('usage')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'usage'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="Activity" size={16} />
-                  <span>Usage</span>
+                  <span>{t('admin.aiPlatform.tabs.usage')}</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('models')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'models'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="Settings" size={16} />
-                  <span>Models</span>
+                  <span>{t('admin.aiPlatform.tabs.models')}</span>
                 </button>
               </div>
             </div>
@@ -128,15 +176,8 @@ const AIPlatform = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
-          {/* Content Placeholder */}
-          <div className="bg-surface border border-border/40 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 flex items-center justify-center">
-              <AppIcon name="Brain" size={40} className="text-orange-600 dark:text-orange-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-primary mb-4">AI Platform</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Advanced AI monitoring dashboard with model performance tracking, usage analytics, and billing management.
-            </p>
+          <div className="space-y-6">
+            {renderTabContent()}
           </div>
         </div>
       </div>
