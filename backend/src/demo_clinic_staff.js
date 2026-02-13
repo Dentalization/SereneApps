@@ -1,7 +1,7 @@
 // Demo: Single-Clinic Staff Assignment System
 // Mendemonstrasikan cara kerja sistem satu-staff-satu-clinic
 
-import { PrismaClient } from './generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import clinicStaffService from './services/clinicStaffService.js';
 import bcrypt from 'bcrypt';
 

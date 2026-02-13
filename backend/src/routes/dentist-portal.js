@@ -5,7 +5,7 @@
 
 import express from 'express';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { recordStatusChange } from '../services/appointments/audit.js';
 
 const router = express.Router();

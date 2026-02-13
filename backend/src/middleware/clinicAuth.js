@@ -1,6 +1,6 @@
 // Enhanced authentication middleware for clinic staff system
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { getUserEffectiveRoles, canAccessClinicData } from '../services/clinicStaffService.js';
 
 const prisma = new PrismaClient();

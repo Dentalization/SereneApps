@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { notificationConfig, isEmailConfigured, isPushConfigured, isSmsConfigured } from './config.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATION_EVENTS, getTemplate } from './templates.js';
 import { calculateBackoffSeconds, nowPlusSeconds, buildRecipientSnapshot } from './utils.js';

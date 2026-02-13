@@ -3,7 +3,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { authenticateToken } from '../utils/tokens.js';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import {
   ensureChatRoom,
   fetchChatMessages,

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { appointmentConfig, millisecondsFromHours } from '../services/appointments/config.js';
 import { recordStatusChange } from '../services/appointments/audit.js';
 import { emitAppointmentEvent } from '../services/communications.js';

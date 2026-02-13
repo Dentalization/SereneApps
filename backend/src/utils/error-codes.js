@@ -515,7 +515,7 @@ export class APIError extends Error {
 /**
  * Error handler middleware
  */
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { verify } from './tokens.js';
 
 const prisma = new PrismaClient();

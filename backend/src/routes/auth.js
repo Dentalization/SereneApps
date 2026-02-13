@@ -6,7 +6,7 @@ import fs from 'fs';
 import { query } from '../db.js';
 import { signAccess, signRefresh, verify, authenticateToken } from '../utils/tokens.js';
 import { fileURLToPath } from 'url';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { sendPhoneOTP, sendEmailOTP, verifyOTP } from '../services/otp.service.js';
 import { authLimiter, otpLimiter } from '../middleware/rate-limiter.js';
 import { validate } from '../middleware/validate.js';

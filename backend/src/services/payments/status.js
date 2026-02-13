@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { ensureChatRoom, ensureVideoChannel, emitAppointmentEvent } from '../communications.js';
 import { queueNotificationEvent } from '../notifications/index.js';
 
