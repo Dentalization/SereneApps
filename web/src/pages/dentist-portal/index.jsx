@@ -105,11 +105,11 @@ const DentistPortalLanding = () => {
               <br />with AI & Teledentistry
             </h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              An integrated platform that combines the power of artificial intelligence with teledentistry 
+              An integrated platform that combines the power of artificial intelligence with teledentistry
               to deliver dental care that is more efficient, accurate, and accessible.
             </p>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
               onClick={handleGetStarted}

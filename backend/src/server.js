@@ -27,6 +27,7 @@ import dentistServicesRouter from './routes/dentistServices.js';
 import dentistPortalRouter from './routes/dentist-portal.js';
 import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
+import xCoreRouter from './routes/xCoreRoutes.js';
 import { verify } from './utils/tokens.js';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
@@ -35,7 +36,7 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
 
 // Handle BigInt serialization in JSON responses
-BigInt.prototype.toJSON = function() { return this.toString(); };
+BigInt.prototype.toJSON = function () { return this.toString(); };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -131,6 +132,7 @@ app.use(`${prefix}/chat`, chatRouter);
 app.use(`${prefix}/admin`, adminProfileRouter);
 app.use(`${prefix}/admin`, adminDentistsRouter);
 app.use(`${prefix}/admin`, adminRouter);
+app.use(`${prefix}/x-core`, xCoreRouter);
 app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 
 // Global error handler (must be last middleware)

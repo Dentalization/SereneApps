@@ -25,7 +25,7 @@ const SideBar = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const [dentistContext, setDentistContext] = useState({ loading: true, dentistType: null });
-  
+
   // State dummy untuk notifikasi
   const [unreadNotifications, setUnreadNotifications] = useState(2);
 
@@ -92,6 +92,7 @@ const SideBar = () => {
       { id: 'patients', label: t('sidebar.patients'), icon: 'Users', path: '/dentist-portal/patient', description: 'Patient Management' },
       { id: 'consultations', label: t('sidebar.teledentistry'), icon: 'Video', path: '/dentist-portal/teledentistry', description: 'Teledentistry Sessions' },
       { id: 'ai-analysis', label: t('sidebar.aiInsights'), icon: 'Brain', path: '/dentist-portal/ai-analysis', description: 'AI Clinical Decision Support' },
+      { id: 'x-core', label: 'X-Core', icon: 'Cpu', path: '/dentist-portal/x-core', description: 'Core System & Utilities' },
       { id: 'appointments', label: t('sidebar.schedule'), icon: 'Calendar', path: '/dentist-portal/appointments', description: 'Schedule Management' },
       { id: 'reports', label: t('sidebar.reports'), icon: 'BarChart3', path: '/dentist-portal/reports', description: 'Reports & Statistics' },
     ],
@@ -215,7 +216,7 @@ const SideBar = () => {
                   </div>
                 )}
               </div>
-              
+
               {/* NOTIFIKASI (EXPANDED) */}
               {!isCollapsed && (
                 <div className="flex items-center">
@@ -267,9 +268,8 @@ const SideBar = () => {
                   <div key={item.path} className="relative group">
                     <button
                       onClick={() => handleNavigation(item.path)}
-                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${
-                        active ? 'bg-accent text-white' : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
-                      }`}
+                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${active ? 'bg-accent text-white' : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
+                        }`}
                       title={isCollapsed ? item.label : undefined}
                     >
                       <div className="w-5 h-5 flex items-center justify-center">
@@ -311,11 +311,10 @@ const SideBar = () => {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-600 dark:text-gray-400">
                     ID
                   </span>
-                  
+
                   <div
-                    className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${
-                      language === 'en' ? 'right-1' : 'left-1'
-                    }`}
+                    className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${language === 'en' ? 'right-1' : 'left-1'
+                      }`}
                   >
                     <img
                       src={FLAG_SRC[language === 'en' ? 'id' : 'en']}
@@ -350,9 +349,8 @@ const SideBar = () => {
             <button
               onClick={toggleTheme}
               disabled={isTransitioning}
-              className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${
-                isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-              } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+                } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''}`}
               title={isCollapsed ? (isDark ? 'Light Mode' : 'Dark Mode') : undefined}
             >
               <Icon name={isDark ? 'Sun' : 'Moon'} size={24} className="flex-shrink-0" />
@@ -363,9 +361,8 @@ const SideBar = () => {
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${
-                  isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-                } ${isUserMenuOpen ? 'bg-accent bg-opacity-20 border-accent' : 'hover:bg-accent hover:bg-opacity-10 border-primary'}`}
+                className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+                  } ${isUserMenuOpen ? 'bg-accent bg-opacity-20 border-accent' : 'hover:bg-accent hover:bg-opacity-10 border-primary'}`}
                 style={{ borderColor: isUserMenuOpen ? '#A08A48' : isDark ? 'rgba(148,163,184,.2)' : 'rgba(156,163,175,.3)' }}
                 title={isCollapsed ? 'User Menu' : undefined}
               >

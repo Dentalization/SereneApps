@@ -16,5 +16,13 @@ export default defineConfig({
     port: "4028",
     host: "0.0.0.0",
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
   }
 });
