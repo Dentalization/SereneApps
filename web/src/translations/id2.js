@@ -10,53 +10,53 @@ export default {
       clinicDirectory: 'Direktori Klinik',
       clinicVerification: 'Verifikasi Klinik',
       ownerAccounts: 'Akun Owner',
-      
+
       dentistManagement: 'Manajemen Dokter Gigi',
       dentistDirectory: 'Direktori Dokter Gigi',
       verificationQueue: 'Antrean Verifikasi',
       professionalNetwork: 'Jaringan Profesional',
-      
+
       revenueBilling: 'Pendapatan & Tagihan',
       revenueDashboard: 'Dashboard Pendapatan',
       paymentProcessing: 'Pemrosesan Pembayaran',
       subscriptionManagement: 'Manajemen Langganan',
-      
+
       aiPlatform: 'Platform AI',
       aiUsageAnalytics: 'Analitik Penggunaan AI',
       modelManagement: 'Manajemen Model',
       aiBilling: 'Tagihan AI',
-      
+
       supportHelpdesk: 'Dukungan & Helpdesk',
       ticketManagement: 'Manajemen Tiket',
       knowledgeBase: 'Basis Pengetahuan',
       communicationCenter: 'Pusat Komunikasi',
-      
+
       analytics: 'Analitik & Laporan',
       businessIntelligence: 'Business Intelligence',
       performanceMetrics: 'Metrik Kinerja',
       financialReports: 'Laporan Keuangan',
-      
+
       systemAdministration: 'Administrasi Sistem',
       userManagement: 'Manajemen Pengguna',
       systemConfiguration: 'Konfigurasi Sistem',
       monitoring: 'Monitoring & Peringatan',
-      
+
       complianceSecurity: 'Kepatuhan & Keamanan',
       dataPrivacy: 'Privasi Data',
       securityCenter: 'Pusat Keamanan',
       regulatoryCompliance: 'Kepatuhan Regulasi',
-      
+
       partnerships: 'Kemitraan',
       partnerDirectory: 'Direktori Mitra',
       apiManagement: 'Manajemen API',
       integrations: 'Integrasi',
-      
+
       contentManagement: 'Manajemen Konten',
       marketingContent: 'Konten Pemasaran',
       educationalResources: 'Sumber Edukasi',
       resourceLibrary: 'Perpustakaan Sumber Daya'
     },
-    
+
     // User interface
     ui: {
       search: 'Cari admin...',
@@ -65,7 +65,7 @@ export default {
       logout: 'Keluar',
       profile: 'Profil'
     },
-    
+
     // Sidebar interface
     sidebar: {
       searchPlaceholder: 'Cari admin...',
@@ -471,6 +471,496 @@ export default {
       fieldUpdated: 'Diperbarui',
       fieldVerificationNotes: 'Catatan verifikasi'
     },
+    revenueBilling: {
+      badge: 'Manajemen Keuangan',
+      title: 'Pendapatan & Tagihan',
+      subtitle: 'Wawasan keuangan komprehensif, pemrosesan pembayaran, dan manajemen langganan.',
+      systemStatus: 'status sistem: optimal',
+      downloadReport: 'Unduh Laporan',
+      tabs: {
+        overview: 'Ringkasan',
+        transactions: 'Transaksi',
+        invoices: 'Faktur',
+        settings: 'Pengaturan'
+      },
+      cards: {
+        totalRevenue: 'Total Pendapatan',
+        mrr: 'Pendapatan Berulang Bulanan',
+        activeSubscriptions: 'Langganan Aktif',
+        pendingInvoices: 'Faktur Tertunda'
+      },
+      charts: {
+        revenueGrowth: {
+          title: 'Pertumbuhan Pendapatan',
+          subtitle: 'Pendapatan bulanan vs pengeluaran'
+        },
+        timeRanges: {
+          last12Months: '12 Bulan Terakhir',
+          last6Months: '6 Bulan Terakhir',
+          last30Days: '30 Hari Terakhir'
+        },
+        legend: {
+          revenue: 'Pendapatan',
+          expenses: 'Pengeluaran'
+        },
+        subscriptionTiers: {
+          title: 'Tingkat Langganan',
+          subtitle: 'Distribusi paket aktif',
+          tiers: {
+            basic: 'Dasar',
+            professional: 'Profesional',
+            enterprise: 'Enterprise'
+          }
+        }
+      },
+      transactions: {
+        recentTitle: 'Transaksi Terkini',
+        viewAll: 'Lihat Semua',
+        table: {
+          id: 'ID Transaksi',
+          entity: 'Entitas',
+          typePlan: 'Tipe / Paket',
+          amount: 'Jumlah',
+          status: 'Status',
+          action: 'Aksi'
+        },
+        status: {
+          success: 'Berhasil',
+          pending: 'Tertunda',
+          failed: 'Gagal'
+        }
+      },
+      invoices: {
+        title: 'Faktur',
+        subtitle: 'Kelola dan lacak semua faktur',
+        createInvoice: 'Buat Faktur',
+        loadMore: 'Muat Lebih Banyak',
+        table: {
+          id: 'ID Faktur',
+          client: 'Klien',
+          date: 'Tanggal',
+          dueDate: 'Jatuh Tempo',
+          amount: 'Jumlah',
+          status: 'Status',
+          action: 'Aksi'
+        },
+        status: {
+          paid: 'Lunas',
+          pending: 'Tertunda',
+          overdue: 'Terlambat'
+        }
+      },
+      settings: {
+        saveChanges: 'Simpan Perubahan',
+        general: {
+          title: 'Konfigurasi Umum',
+          subtitle: 'Kelola preferensi penagihan',
+          paymentGateway: 'Gerbang Pembayaran',
+          paymentGatewayHint: 'Prosesor pembayaran aktif saat ini.',
+          defaultCurrency: 'Mata Uang Default',
+          taxRate: 'Tarif Pajak (%)'
+        },
+        automation: {
+          title: 'Otomatisasi',
+          subtitle: 'Tugas penagihan otomatis',
+          autoGenerate: 'Buat Faktur Otomatis',
+          autoGenerateHint: 'Buat faktur secara otomatis saat perpanjangan.',
+          reminders: 'Pengingat Pembayaran',
+          remindersHint: 'Kirim pengingat email untuk tagihan yang akan datang/terlambat.',
+          gatewayStatus: 'Status Gerbang',
+          midtransConnection: 'Koneksi Midtrans:',
+          active: 'Aktif'
+        }
+      }
+    },
+    aiPlatform: {
+      badge: 'Platform AI',
+      title: 'Platform AI',
+      subtitle: 'Monitoring penggunaan AI, manajemen model, dan operasi machine learning',
+      systemStatus: 'Model AI: Aktif',
+      settings: 'Pengaturan AI',
+      deploy: 'Deploy Model',
+      tabs: {
+        overview: 'Ringkasan',
+        usage: 'Penggunaan',
+        models: 'Model'
+      },
+      cards: {
+        totalRequests: 'Total Permintaan',
+        tokenUsage: 'Penggunaan Token',
+        avgLatency: 'Rata-rata Latensi',
+        errorRate: 'Tingkat Kesalahan'
+      },
+      charts: {
+        usageTrends: {
+          title: 'Tren Penggunaan AI',
+          subtitle: 'Konsumsi token vs volume permintaan'
+        },
+        timeRanges: {
+          last24Hours: '24 Jam Terakhir',
+          last7Days: '7 Hari Terakhir',
+          last30Days: '30 Hari Terakhir'
+        },
+        legend: {
+          tokens: 'Token (k)',
+          requests: 'Permintaan'
+        }
+      },
+      models: {
+        title: 'Kinerja Model',
+        subtitle: 'Analisis efisiensi dan biaya per model',
+        refresh: 'Segarkan',
+        table: {
+          modelName: 'Nama Model',
+          contextWindow: 'Jendela Konteks',
+          costPer1k: 'Biaya / 1k Token',
+          requests: 'Permintaan (24j)',
+          status: 'Status',
+          action: 'Aksi'
+        },
+        status: {
+          operational: 'Operasional',
+          degraded: 'Terdegradasi',
+          maintenance: 'Pemeliharaan'
+        }
+      },
+      activity: {
+        title: 'Aktivitas Terkini',
+        viewAll: 'Lihat Semua Log',
+        table: {
+          timestamp: 'Waktu',
+          user: 'Pengguna / Klinik',
+          model: 'Model',
+          tokens: 'Token',
+          status: 'Status'
+        },
+        status: {
+          completed: 'Selesai',
+          processing: 'Memproses',
+          failed: 'Gagal'
+        }
+      }
+    },
+    supportHelpdesk: {
+      badge: 'Dukungan & Bantuan',
+      title: 'Dukungan & Bantuan',
+      subtitle: 'Manajemen dukungan pelanggan, sistem tiket, dan administrasi basis pengetahuan',
+      openTickets: 'tiket terbuka',
+      newTicket: 'Tiket Baru',
+      knowledgeBase: 'Basis Pengetahuan',
+      tabs: {
+        tickets: 'Tiket',
+        liveChat: 'Live Chat',
+        knowledgeBase: 'Basis Pengetahuan'
+      },
+      cards: {
+        openTickets: 'Tiket Terbuka',
+        avgResponseTime: 'Rata-rata Waktu Respon',
+        resolutionRate: 'Tingkat Penyelesaian',
+        csatScore: 'Skor CSAT'
+      },
+      charts: {
+        ticketVolume: {
+          title: 'Volume Tiket',
+          subtitle: 'Tiket baru vs diselesaikan dari waktu ke waktu'
+        },
+        timeRanges: {
+          last7Days: '7 Hari Terakhir',
+          last30Days: '30 Hari Terakhir',
+          last90Days: '90 Hari Terakhir'
+        },
+        legend: {
+          new: 'Tiket Baru',
+          resolved: 'Diselesaikan'
+        }
+      },
+      tickets: {
+        title: 'Tiket Terkini',
+        viewAll: 'Lihat Semua Tiket',
+        table: {
+          subject: 'Subjek',
+          requester: 'Pemohon',
+          priority: 'Prioritas',
+          status: 'Status',
+          time: 'Waktu'
+        },
+        priority: {
+          high: 'Tinggi',
+          medium: 'Sedang',
+          low: 'Rendah'
+        },
+        status: {
+          open: 'Terbuka',
+          inProgress: 'Sedang Proses',
+          resolved: 'Diselesaikan',
+          closed: 'Ditutup'
+        }
+      },
+      team: {
+        title: 'Kinerja Tim',
+        subtitle: 'Produktivitas agen dan peringkat kepuasan',
+        table: {
+          agent: 'Agen',
+          resolved: 'Diselesaikan',
+          avgTime: 'Rata-rata Waktu',
+          rating: 'Rating'
+        }
+      },
+      liveChat: {
+        sidebarTitle: 'Obrolan Aktif',
+        searchPlaceholder: 'Cari obrolan...',
+        typing: 'sedang mengetik...',
+        inputPlaceholder: 'Ketik pesan...',
+        send: 'Kirim',
+        endChat: 'Akhiri Obrolan',
+        transfer: 'Transfer',
+        noChatSelected: 'Pilih obrolan untuk memulai pesan'
+      },
+      knowledgeContent: {
+        searchPlaceholder: 'Apa yang bisa kami bantu hari ini?',
+        categories: {
+          gettingStarted: 'Memulai',
+          accountBilling: 'Akun & Tagihan',
+          technicalSupport: 'Dukungan Teknis',
+          features: 'Fitur & Tutorial'
+        },
+        popularArticles: 'Artikel Populer',
+        viewAll: 'Lihat Semua Artikel'
+      }
+    },
+    systemAdmin: {
+      badge: 'Administrasi Sistem',
+      title: 'Administrasi Sistem',
+      subtitle: 'Konfigurasi platform, manajemen pengguna, dan pemantauan sistem',
+      systemHealth: 'Kesehatan Sistem: Optimal',
+      systemConfig: 'Konfigurasi Sistem',
+      security: 'Keamanan',
+      tabs: {
+        health: 'Kesehatan Sistem',
+        users: 'Manajemen Pengguna',
+        audit: 'Log Audit',
+        integrations: 'Integrasi'
+      },
+      health: {
+        cpuUsage: 'Penggunaan CPU',
+        memoryUsage: 'Penggunaan Memori',
+        storageUsage: 'Penyimpanan',
+        apiLatency: 'Latensi API',
+        services: {
+          database: 'Database',
+          redis: 'Redis Cache',
+          storage: 'Object Storage',
+          email: 'Layanan Email'
+        },
+        status: {
+          operational: 'Operasional',
+          degraded: 'Menurun',
+          down: 'Mati'
+        }
+      },
+      users: {
+        title: 'Manajemen Pengguna',
+        subtitle: 'Kelola akses administratif dan staf',
+        addUser: 'Tambah Pengguna',
+        table: {
+          user: 'Pengguna',
+          role: 'Peran',
+          status: 'Status',
+          lastLogin: 'Login Terakhir',
+          actions: 'Tindakan'
+        },
+        roles: {
+          admin: 'Administrator',
+          manager: 'Manajer',
+          staff: 'Staf',
+          support: 'Dukungan'
+        },
+        status: {
+          active: 'Aktif',
+          inactive: 'Tidak Aktif',
+          suspended: 'Ditangguhkan'
+        }
+      },
+      audit: {
+        title: 'Log Audit',
+        subtitle: 'Lacak aktivitas sistem dan peristiwa keamanan',
+        export: 'Ekspor Log',
+        table: {
+          action: 'Tindakan',
+          user: 'Pengguna',
+          ipAddress: 'Alamat IP',
+          time: 'Waktu',
+          status: 'Status'
+        }
+      },
+      integrations: {
+        title: 'Pengaturan Integrasi',
+        subtitle: 'Kelola layanan dan koneksi pihak ketiga',
+        card: {
+          connected: 'Terhubung',
+          disconnected: 'Terputus',
+          configure: 'Konfigurasi'
+        }
+      }
+    },
+    complianceSecurity: {
+      badge: 'Kepatuhan & Keamanan',
+      title: 'Kepatuhan & Keamanan',
+      subtitle: 'Kontrol privasi data, kepatuhan regulasi, dan manajemen audit keamanan',
+      securityScore: 'Skor Keamanan',
+      securityAudit: 'Audit Keamanan',
+      alerts: 'Peringatan',
+      tabs: {
+        overview: 'Ringkasan Keamanan',
+        audit: 'Jejak Audit',
+        standards: 'Standar Kepatuhan',
+        privacy: 'Privasi Data'
+      },
+      overview: {
+        threatsBlocked: 'Ancaman Diblokir',
+        activeAlerts: 'Peringatan Aktif',
+        scoreLabel: 'Skor Keamanan Keseluruhan',
+        riskLevel: 'Tingkat Risiko',
+        low: 'Rendah',
+        medium: 'Sedang',
+        high: 'Tinggi',
+        securityTrend: 'Tren Keamanan',
+        deviceHygiene: 'Kesehatan Perangkat',
+        compliantDevices: 'Perangkat Patuh',
+        nonCompliant: 'Tidak Patuh'
+      },
+      audit: {
+        title: 'Jejak Audit Keamanan',
+        subtitle: 'Log rinci peristiwa terkait keamanan dan akses',
+        table: {
+          event: 'Peristiwa',
+          actor: 'Aktor',
+          resource: 'Sumber Daya',
+          severity: 'Keparahan',
+          time: 'Waktu',
+          details: 'Detail'
+        },
+        filters: {
+          all: 'Semua Peristiwa',
+          high: 'Keparahan Tinggi',
+          medium: 'Keparahan Sedang',
+          low: 'Keparahan Rendah'
+        }
+      },
+      standards: {
+        title: 'Standar Kepatuhan',
+        subtitle: 'Status kerangka kerja kepatuhan regulasi',
+        controls: 'Kontrol Diterapkan',
+        nextAudit: 'Audit Berikutnya',
+        days: 'hari',
+        evidenceLocker: 'Loker Bukti',
+        status: {
+          passed: 'Tersertifikasi',
+          failed: 'Tidak Patuh',
+          pending: 'Sedang Berjalan'
+        }
+      },
+      privacy: {
+        title: 'Pengaturan Privasi Data',
+        subtitle: 'Kelola retensi data, enkripsi, dan hak subjek',
+        export: 'Ekspor Data Pribadi',
+        forget: 'Hak untuk Dilupakan',
+        consentLog: 'Log Persetujuan',
+        optIn: 'Opt-In',
+        optOut: 'Opt-Out',
+        groups: {
+          patient: 'Data Pasien',
+          employee: 'Data Karyawan',
+          system: 'Data Sistem'
+        },
+        settings: {
+          retention: 'Kebijakan Retensi Data',
+          encryption: 'Enkripsi saat Istirahat',
+          anonymization: 'Anonimisasi Data',
+          consent: 'Manajemen Persetujuan',
+          accessControl: 'Kontrol Akses Ketat',
+          auditLogging: 'Log Audit Komprehensif'
+        }
+      }
+    },
+    partnerships: {
+      badge: 'Ekosistem Kemitraan',
+      title: 'Kemitraan',
+      subtitle: 'Direktori mitra, manajemen API, dan pengawasan integrasi',
+      tabs: {
+        overview: 'Vital Ekosistem',
+        directory: 'Registri Mitra',
+        agreements: 'Perjanjian',
+        integrations: 'Detak Integrasi'
+      },
+      overview: {
+        activePartners: 'Mitra Aktif',
+        apiCalls: 'Panggilan API (24j)',
+        revenueShare: 'Bagi Hasil',
+        growthVitals: 'Vital Pertumbuhan',
+        recentActivity: 'Catatan Klinis',
+        health: {
+          healthy: 'Sehat',
+          critical: 'Kritis',
+          stable: 'Stabil'
+        }
+      },
+      directory: {
+        title: 'Registri Mitra',
+        subtitle: 'Mitra dan klinik ekosistem terotorisasi',
+        tier: {
+          gold: 'Spesialis (Gold)',
+          silver: 'Praktisi (Silver)',
+          bronze: 'Residen (Bronze)'
+        },
+        status: {
+          online: 'Online',
+          offline: 'Offline',
+          maintenance: 'Pemeliharaan'
+        }
+      },
+      agreements: {
+        title: 'Siklus Perjanjian',
+        subtitle: 'Manajemen kontrak dan pelacakan pembaruan',
+        stages: {
+          triage: 'Triase (Prospek)',
+          diagnosis: 'Diagnosis (Negosiasi)',
+          treatment: 'Perawatan (Aktif)',
+          recovery: 'Pemulihan (Pembaruan)'
+        }
+      },
+      integrations: {
+        title: 'Detak Integrasi',
+        subtitle: 'Kesehatan API dan pemantauan koneksi real-time',
+        latency: 'Latensi',
+        uptime: 'Uptime',
+        requests: 'Permintaan/menit'
+      }
+    },
+    contentManagement: {
+      badge: 'Pusat Konten',
+      title: 'Manajemen Konten',
+      subtitle: 'Materi pemasaran, sumber edukasi, dan pustaka konten',
+      overview: {
+        activeArticles: 'Artikel Aktif',
+        totalViews: 'Total Dilihat',
+        avgReadTime: 'Rata-rata Waktu Baca',
+        engagementVitals: 'Vital Keterlibatan',
+        clinicalNotes: 'Pembaruan Konten'
+      },
+      status: {
+        published: 'Pulang (Diterbitkan)',
+        review: 'Diagnosis (Review)',
+        draft: 'Triase (Draf)',
+        observation: 'Observasi'
+      },
+      workflow: {
+        draft: 'Draf (Triase)',
+        review: 'Review Klinis',
+        approval: 'Persetujuan Akhir',
+        published: 'Diterbitkan (Pulang)'
+      }
+    }
   },
   clinic: {
     sidebar: {
@@ -506,7 +996,7 @@ export default {
       title: 'Manajemen Staff',
       subtitle: 'Kelola tim klinik, peran, dan penempatan cabang',
       totalStaff: 'total staff',
-      
+
       // Multi-branch extensions
       branches: {
         title: 'Penempatan Cabang',
@@ -518,7 +1008,7 @@ export default {
         moveStaff: 'Pindah Staff',
         filterByBranch: 'Filter berdasarkan Cabang'
       },
-      
+
       // Table columns
       table: {
         staff: 'Staff',
@@ -528,7 +1018,7 @@ export default {
         status: 'Status',
         actions: 'Aksi'
       },
-      
+
       // Actions
       actions: {
         addStaff: 'Tambah Staff',
@@ -537,7 +1027,7 @@ export default {
         changeBranch: 'Ubah Cabang',
         remove: 'Hapus'
       },
-      
+
       // Modals
       modals: {
         invite: {
@@ -571,7 +1061,7 @@ export default {
             sending: 'Mengirim...'
           }
         },
-        
+
         changeBranch: {
           title: 'Ubah Penempatan Cabang',
           subtitle: 'Pindahkan anggota staff ke cabang yang berbeda',
@@ -585,7 +1075,7 @@ export default {
           }
         }
       },
-      
+
       // Branch info
       branchInfo: {
         mainBranch: 'Cabang Utama',
@@ -597,14 +1087,14 @@ export default {
         sterilization: 'Sterilisasi',
         radiography: 'Radiografi'
       },
-      
+
       // Status and labels
       status: {
         active: 'Aktif',
         inactive: 'Tidak Aktif',
         onLeave: 'Cuti'
       },
-      
+
       roles: {
         owner: 'Pemilik',
         manager: 'Manajer',
@@ -1796,7 +2286,7 @@ export default {
       appointmentConflictMessage: 'Ditemukan {{count}} janji yang bertabrakan dengan slot ini',
       appointmentConflictDetail: 'Pilih slot lain yang tersedia'
     },
-    
+
     // Inventory & Sterilization
     inventory: {
       title: 'Inventori & Sterilisasi',
@@ -1808,7 +2298,7 @@ export default {
         usage: 'Pemakaian',
         equipment: 'Sterilisasi & Alat'
       },
-      
+
       // Purchase Requests
       purchase: {
         title: 'Daftar Permintaan Pembelian',
@@ -1842,7 +2332,7 @@ export default {
           actions: 'Aksi'
         }
       },
-      
+
       // Receipts
       receipts: {
         title: 'Daftar Penerimaan Barang',
@@ -1871,7 +2361,7 @@ export default {
           actions: 'Aksi'
         }
       },
-      
+
       // Usage
       usage: {
         title: 'Riwayat Pemakaian',
@@ -1894,7 +2384,7 @@ export default {
           actions: 'Aksi'
         }
       },
-      
+
       // Equipment & Sterilization
       equipment: {
         tabs: {
@@ -1945,7 +2435,7 @@ export default {
         }
       }
     },
-    
+
     // Billing & Insurance
     billing: {
       title: 'Billing & Asuransi',
@@ -1956,7 +2446,7 @@ export default {
         claims: 'Klaim Asuransi',
         promos: 'Promo & Paket'
       },
-      
+
       payments: {
         title: 'Aktivitas Pembayaran',
         recordPayment: 'Catat Pembayaran',
@@ -1992,7 +2482,7 @@ export default {
           actions: 'Aksi'
         }
       },
-      
+
       claims: {
         title: 'Klaim Asuransi',
         submitClaim: 'Ajukan Klaim',
@@ -2023,7 +2513,7 @@ export default {
           actions: 'Aksi'
         }
       },
-      
+
       promos: {
         title: 'Promo & Paket',
         searchPromos: 'Cari promo...',

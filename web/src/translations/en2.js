@@ -7,53 +7,53 @@ export default {
       clinicDirectory: 'Clinic Directory',
       clinicVerification: 'Clinic Verification',
       ownerAccounts: 'Owner Accounts',
-      
+
       dentistManagement: 'Dentist Management',
       dentistDirectory: 'Dentist Directory',
       verificationQueue: 'Verification Queue',
       professionalNetwork: 'Professional Network',
-      
+
       revenueBilling: 'Revenue & Billing',
       revenueDashboard: 'Revenue Dashboard',
       paymentProcessing: 'Payment Processing',
       subscriptionManagement: 'Subscription Management',
-      
+
       aiPlatform: 'AI Platform',
       aiUsageAnalytics: 'AI Usage Analytics',
       modelManagement: 'Model Management',
       aiBilling: 'AI Billing',
-      
+
       supportHelpdesk: 'Support & Helpdesk',
       ticketManagement: 'Ticket Management',
       knowledgeBase: 'Knowledge Base',
       communicationCenter: 'Communication Center',
-      
+
       analytics: 'Analytics & Reports',
       businessIntelligence: 'Business Intelligence',
       performanceMetrics: 'Performance Metrics',
       financialReports: 'Financial Reports',
-      
+
       systemAdministration: 'System Administration',
       userManagement: 'User Management',
       systemConfiguration: 'System Configuration',
       monitoring: 'Monitoring & Alerts',
-      
+
       complianceSecurity: 'Compliance & Security',
       dataPrivacy: 'Data Privacy',
       securityCenter: 'Security Center',
       regulatoryCompliance: 'Regulatory Compliance',
-      
+
       partnerships: 'Partnerships',
       partnerDirectory: 'Partner Directory',
       apiManagement: 'API Management',
       integrations: 'Integrations',
-      
+
       contentManagement: 'Content Management',
       marketingContent: 'Marketing Content',
       educationalResources: 'Educational Resources',
       resourceLibrary: 'Resource Library'
     },
-    
+
     // User interface
     ui: {
       search: 'Search admin...',
@@ -62,7 +62,7 @@ export default {
       logout: 'Logout',
       profile: 'Profile'
     },
-    
+
     // Sidebar interface
     sidebar: {
       searchPlaceholder: 'Search admin...',
@@ -468,6 +468,496 @@ export default {
       fieldUpdated: 'Updated',
       fieldVerificationNotes: 'Verification notes'
     },
+    revenueBilling: {
+      badge: 'Financial Overview',
+      title: 'Revenue & Billing',
+      subtitle: 'Comprehensive financial insights, payment processing, and subscription management.',
+      systemStatus: 'system status: optimal',
+      downloadReport: 'Download Report',
+      tabs: {
+        overview: 'Overview',
+        transactions: 'Transactions',
+        invoices: 'Invoices',
+        settings: 'Settings'
+      },
+      cards: {
+        totalRevenue: 'Total Revenue',
+        mrr: 'Monthly Recurring',
+        activeSubscriptions: 'Active Subscriptions',
+        pendingInvoices: 'Pending Invoices'
+      },
+      charts: {
+        revenueGrowth: {
+          title: 'Revenue Growth',
+          subtitle: 'Monthly revenue vs expenses'
+        },
+        timeRanges: {
+          last12Months: 'Last 12 Months',
+          last6Months: 'Last 6 Months',
+          last30Days: 'Last 30 Days'
+        },
+        legend: {
+          revenue: 'Revenue',
+          expenses: 'Expenses'
+        },
+        subscriptionTiers: {
+          title: 'Subscription Tiers',
+          subtitle: 'Distribution of active plans',
+          tiers: {
+            basic: 'Basic',
+            professional: 'Professional',
+            enterprise: 'Enterprise'
+          }
+        }
+      },
+      transactions: {
+        recentTitle: 'Recent Transactions',
+        viewAll: 'View All',
+        table: {
+          id: 'Transaction ID',
+          entity: 'Entity',
+          typePlan: 'Type / Plan',
+          amount: 'Amount',
+          status: 'Status',
+          action: 'Action'
+        },
+        status: {
+          success: 'Success',
+          pending: 'Pending',
+          failed: 'Failed'
+        }
+      },
+      invoices: {
+        title: 'Invoices',
+        subtitle: 'Manage and track all invoices',
+        createInvoice: 'Create Invoice',
+        loadMore: 'Load More Invoices',
+        table: {
+          id: 'Invoice ID',
+          client: 'Client',
+          date: 'Date',
+          dueDate: 'Due Date',
+          amount: 'Amount',
+          status: 'Status',
+          action: 'Action'
+        },
+        status: {
+          paid: 'Paid',
+          pending: 'Pending',
+          overdue: 'Overdue'
+        }
+      },
+      settings: {
+        saveChanges: 'Save Changes',
+        general: {
+          title: 'General Configuration',
+          subtitle: 'Manage billing preferences',
+          paymentGateway: 'Payment Gateway',
+          paymentGatewayHint: 'Current active payment processor.',
+          defaultCurrency: 'Default Currency',
+          taxRate: 'Tax Rate (%)'
+        },
+        automation: {
+          title: 'Automation',
+          subtitle: 'Automated billing tasks',
+          autoGenerate: 'Auto-generate Invoices',
+          autoGenerateHint: 'Create invoices automatically upon renewal.',
+          reminders: 'Payment Reminders',
+          remindersHint: 'Send email reminders for upcoming/overdue bills.',
+          gatewayStatus: 'Gateway Status',
+          midtransConnection: 'Midtrans Connection:',
+          active: 'Active'
+        }
+      }
+    },
+    aiPlatform: {
+      badge: 'AI Platform',
+      title: 'AI Platform',
+      subtitle: 'AI usage monitoring, model management, and machine learning operations',
+      systemStatus: 'AI Models: Active',
+      settings: 'AI Settings',
+      deploy: 'Deploy Model',
+      tabs: {
+        overview: 'Overview',
+        usage: 'Usage',
+        models: 'Models'
+      },
+      cards: {
+        totalRequests: 'Total Requests',
+        tokenUsage: 'Token Usage',
+        avgLatency: 'Avg. Latency',
+        errorRate: 'Error Rate'
+      },
+      charts: {
+        usageTrends: {
+          title: 'AI Usage Trends',
+          subtitle: 'Token consumption vs request volume'
+        },
+        timeRanges: {
+          last24Hours: 'Last 24 Hours',
+          last7Days: 'Last 7 Days',
+          last30Days: 'Last 30 Days'
+        },
+        legend: {
+          tokens: 'Tokens (k)',
+          requests: 'Requests'
+        }
+      },
+      models: {
+        title: 'Model Performance',
+        subtitle: 'Efficiency and cost analysis per model',
+        refresh: 'Refresh',
+        table: {
+          modelName: 'Model Name',
+          contextWindow: 'Context Window',
+          costPer1k: 'Cost / 1k Tokens',
+          requests: 'Requests (24h)',
+          status: 'Status',
+          action: 'Action'
+        },
+        status: {
+          operational: 'Operational',
+          degraded: 'Degraded',
+          maintenance: 'Maintenance'
+        }
+      },
+      activity: {
+        title: 'Recent Activity',
+        viewAll: 'View All Logs',
+        table: {
+          timestamp: 'Timestamp',
+          user: 'User / Clnic',
+          model: 'Model',
+          tokens: 'Tokens',
+          status: 'Status'
+        },
+        status: {
+          completed: 'Completed',
+          processing: 'Processing',
+          failed: 'Failed'
+        }
+      }
+    },
+    supportHelpdesk: {
+      badge: 'Support & Helpdesk',
+      title: 'Support & Helpdesk',
+      subtitle: 'Customer support management, ticketing system, and knowledge base administration',
+      openTickets: 'open tickets',
+      newTicket: 'New Ticket',
+      knowledgeBase: 'Knowledge Base',
+      tabs: {
+        tickets: 'Tickets',
+        liveChat: 'Live Chat',
+        knowledgeBase: 'Knowledge Base'
+      },
+      cards: {
+        openTickets: 'Open Tickets',
+        avgResponseTime: 'Avg. Response Time',
+        resolutionRate: 'Resolution Rate',
+        csatScore: 'CSAT Score'
+      },
+      charts: {
+        ticketVolume: {
+          title: 'Ticket Volume',
+          subtitle: 'New vs Resolved tickets over time'
+        },
+        timeRanges: {
+          last7Days: 'Last 7 Days',
+          last30Days: 'Last 30 Days',
+          last90Days: 'Last 90 Days'
+        },
+        legend: {
+          new: 'New Tickets',
+          resolved: 'Resolved'
+        }
+      },
+      tickets: {
+        title: 'Recent Tickets',
+        viewAll: 'View All Tickets',
+        table: {
+          subject: 'Subject',
+          requester: 'Requester',
+          priority: 'Priority',
+          status: 'Status',
+          time: 'Time'
+        },
+        priority: {
+          high: 'High',
+          medium: 'Medium',
+          low: 'Low'
+        },
+        status: {
+          open: 'Open',
+          inProgress: 'In Progress',
+          resolved: 'Resolved',
+          closed: 'Closed'
+        }
+      },
+      team: {
+        title: 'Team Performance',
+        subtitle: 'Agent productivity and satisfaction ratings',
+        table: {
+          agent: 'Agent',
+          resolved: 'Resolved',
+          avgTime: 'Avg. Time',
+          rating: 'Rating'
+        }
+      },
+      liveChat: {
+        sidebarTitle: 'Active Chats',
+        searchPlaceholder: 'Search chats...',
+        typing: 'typing...',
+        inputPlaceholder: 'Type a message...',
+        send: 'Send',
+        endChat: 'End Chat',
+        transfer: 'Transfer',
+        noChatSelected: 'Select a chat to start messaging'
+      },
+      knowledgeContent: {
+        searchPlaceholder: 'How can we help today?',
+        categories: {
+          gettingStarted: 'Getting Started',
+          accountBilling: 'Account & Billing',
+          technicalSupport: 'Technical Support',
+          features: 'Features & Tutorials'
+        },
+        popularArticles: 'Popular Articles',
+        viewAll: 'View All Articles'
+      }
+    },
+    systemAdmin: {
+      badge: 'System Administration',
+      title: 'System Administration',
+      subtitle: 'Platform configuration, user management, and system monitoring',
+      systemHealth: 'System Health: Optimal',
+      systemConfig: 'System Config',
+      security: 'Security',
+      tabs: {
+        health: 'System Health',
+        users: 'User Management',
+        audit: 'Audit Logs',
+        integrations: 'Integrations'
+      },
+      health: {
+        cpuUsage: 'CPU Usage',
+        memoryUsage: 'Memory Usage',
+        storageUsage: 'Storage',
+        apiLatency: 'API Latency',
+        services: {
+          database: 'Database',
+          redis: 'Redis Cache',
+          storage: 'Object Storage',
+          email: 'Email Service'
+        },
+        status: {
+          operational: 'Operational',
+          degraded: 'Degraded',
+          down: 'Down'
+        }
+      },
+      users: {
+        title: 'User Management',
+        subtitle: 'Manage administrative and staff access',
+        addUser: 'Add User',
+        table: {
+          user: 'User',
+          role: 'Role',
+          status: 'Status',
+          lastLogin: 'Last Login',
+          actions: 'Actions'
+        },
+        roles: {
+          admin: 'Administrator',
+          manager: 'Manager',
+          staff: 'Staff',
+          support: 'Support'
+        },
+        status: {
+          active: 'Active',
+          inactive: 'Inactive',
+          suspended: 'Suspended'
+        }
+      },
+      audit: {
+        title: 'Audit Logs',
+        subtitle: 'Track system activities and security events',
+        export: 'Export Logs',
+        table: {
+          action: 'Action',
+          user: 'User',
+          ipAddress: 'IP Address',
+          time: 'Time',
+          status: 'Status'
+        }
+      },
+      integrations: {
+        title: 'Integration Settings',
+        subtitle: 'Manage third-party services and connections',
+        card: {
+          connected: 'Connected',
+          disconnected: 'Disconnected',
+          configure: 'Configure'
+        }
+      }
+    },
+    complianceSecurity: {
+      badge: 'Compliance & Security',
+      title: 'Compliance & Security',
+      subtitle: 'Data privacy controls, regulatory compliance, and security audit management',
+      securityScore: 'Security Score',
+      securityAudit: 'Security Audit',
+      alerts: 'Alerts',
+      tabs: {
+        overview: 'Security Overview',
+        audit: 'Audit Trail',
+        standards: 'Compliance Standards',
+        privacy: 'Data Privacy'
+      },
+      overview: {
+        threatsBlocked: 'Threats Blocked',
+        activeAlerts: 'Active Alerts',
+        scoreLabel: 'Overall Security Score',
+        riskLevel: 'Risk Level',
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+        securityTrend: 'Security Trend',
+        deviceHygiene: 'Device Hygiene',
+        compliantDevices: 'Compliant Devices',
+        nonCompliant: 'Non-Compliant'
+      },
+      audit: {
+        title: 'Security Audit Trail',
+        subtitle: 'Detailed log of security-related events and access',
+        table: {
+          event: 'Event',
+          actor: 'Actor',
+          resource: 'Resource',
+          severity: 'Severity',
+          time: 'Time',
+          details: 'Details'
+        },
+        filters: {
+          all: 'All Events',
+          high: 'High Severity',
+          medium: 'Medium Severity',
+          low: 'Low Severity'
+        }
+      },
+      standards: {
+        title: 'Compliance Standards',
+        subtitle: 'Status of regulatory compliance frameworks',
+        controls: 'Controls Implemented',
+        nextAudit: 'Next Audit',
+        days: 'days',
+        evidenceLocker: 'Evidence Locker',
+        status: {
+          passed: 'Certified',
+          failed: 'Non-Compliant',
+          pending: 'In Progress'
+        }
+      },
+      privacy: {
+        title: 'Data Privacy Settings',
+        subtitle: 'Manage data retention, encryption, and subject rights',
+        export: 'Export Personal Data',
+        forget: 'Right to be Forgotten',
+        consentLog: 'Consent Log',
+        optIn: 'Opt-In',
+        optOut: 'Opt-Out',
+        groups: {
+          patient: 'Patient Data',
+          employee: 'Employee Data',
+          system: 'System Data'
+        },
+        settings: {
+          retention: 'Data Retention Policy',
+          encryption: 'Encryption at Rest',
+          anonymization: 'Data Anonymization',
+          consent: 'Consent Management',
+          accessControl: 'Strict Access Control',
+          auditLogging: 'Comprehensive Audit Logging'
+        }
+      }
+    },
+    partnerships: {
+      badge: 'Partnership Ecosystem',
+      title: 'Partnerships',
+      subtitle: 'Partner directory, API management, and integration oversight',
+      tabs: {
+        overview: 'Ecosystem Vitals',
+        directory: 'Partner Registry',
+        agreements: 'Agreements',
+        integrations: 'Integration Pulse'
+      },
+      overview: {
+        activePartners: 'Active Partners',
+        apiCalls: 'API Calls (24h)',
+        revenueShare: 'Revenue Share',
+        growthVitals: 'Growth Vitals',
+        recentActivity: 'Clinical Notes',
+        health: {
+          healthy: 'Healthy',
+          critical: 'Critical',
+          stable: 'Stable'
+        }
+      },
+      directory: {
+        title: 'Partner Registry',
+        subtitle: 'Authorized ecosystem partners and clinics',
+        tier: {
+          gold: 'Specialist (Gold)',
+          silver: 'Practitioner (Silver)',
+          bronze: 'Resident (Bronze)'
+        },
+        status: {
+          online: 'Online',
+          offline: 'Offline',
+          maintenance: 'Maintenance'
+        }
+      },
+      agreements: {
+        title: 'Agreement Lifecycle',
+        subtitle: 'Contract management and renewal tracking',
+        stages: {
+          triage: 'Triage (Prospect)',
+          diagnosis: 'Diagnosis (Negotiation)',
+          treatment: 'Treatment (Active)',
+          recovery: 'Recovery (Renewal)'
+        }
+      },
+      integrations: {
+        title: 'Integration Pulse',
+        subtitle: 'Real-time API health and connection monitoring',
+        latency: 'Latency',
+        uptime: 'Uptime',
+        requests: 'Requests/min'
+      }
+    },
+    contentManagement: {
+      badge: 'Content Hub',
+      title: 'Content Management',
+      subtitle: 'Marketing materials, education resources, and content library',
+      overview: {
+        activeArticles: 'Active Articles',
+        totalViews: 'Total Views',
+        avgReadTime: 'Avg. Read Time',
+        engagementVitals: 'Engagement Vitals',
+        clinicalNotes: 'Content Updates'
+      },
+      status: {
+        published: 'Discharged (Published)',
+        review: 'Diagnosis (Review)',
+        draft: 'Triage (Draft)',
+        observation: 'Observation'
+      },
+      workflow: {
+        draft: 'Draft (Triage)',
+        review: 'Clinical Review',
+        approval: 'Final Approval',
+        published: 'Published (Discharged)'
+      }
+    }
   },
   clinic: {
     sidebar: {
@@ -503,7 +993,7 @@ export default {
       title: 'Staff Management',
       subtitle: 'Manage clinic team, roles, and branch assignments',
       totalStaff: 'total staff',
-      
+
       // Multi-branch extensions
       branches: {
         title: 'Branch Assignment',
@@ -515,7 +1005,7 @@ export default {
         moveStaff: 'Move Staff',
         filterByBranch: 'Filter by Branch'
       },
-      
+
       // Table columns
       table: {
         staff: 'Staff',
@@ -525,7 +1015,7 @@ export default {
         status: 'Status',
         actions: 'Actions'
       },
-      
+
       // Actions
       actions: {
         addStaff: 'Add Staff',
@@ -534,7 +1024,7 @@ export default {
         changeBranch: 'Change Branch',
         remove: 'Remove'
       },
-      
+
       // Modals
       modals: {
         invite: {
@@ -568,7 +1058,7 @@ export default {
             sending: 'Sending...'
           }
         },
-        
+
         changeBranch: {
           title: 'Change Branch Assignment',
           subtitle: 'Move staff member to different branch',
@@ -582,7 +1072,7 @@ export default {
           }
         }
       },
-      
+
       // Branch info
       branchInfo: {
         mainBranch: 'Main Branch',
@@ -594,14 +1084,14 @@ export default {
         sterilization: 'Sterilization',
         radiography: 'Radiography'
       },
-      
+
       // Status and labels
       status: {
         active: 'Active',
         inactive: 'Inactive',
         onLeave: 'On Leave'
       },
-      
+
       roles: {
         owner: 'Owner',
         manager: 'Manager',
@@ -1794,7 +2284,7 @@ export default {
       appointmentConflictMessage: 'Found {{count}} appointment(s) overlapping with the selected time',
       appointmentConflictDetail: 'Pick another available slot'
     },
-    
+
     // Inventory & Sterilization
     inventory: {
       title: 'Inventory & Sterilization',
@@ -1806,7 +2296,7 @@ export default {
         usage: 'Usage',
         equipment: 'Sterilization & Equipment'
       },
-      
+
       // Purchase Requests
       purchase: {
         title: 'Purchase Requests List',
@@ -1840,7 +2330,7 @@ export default {
           actions: 'Actions'
         }
       },
-      
+
       // Receipts
       receipts: {
         title: 'Goods Receipt List',
@@ -1869,7 +2359,7 @@ export default {
           actions: 'Actions'
         }
       },
-      
+
       // Usage
       usage: {
         title: 'Usage History',
@@ -1892,7 +2382,7 @@ export default {
           actions: 'Actions'
         }
       },
-      
+
       // Equipment & Sterilization
       equipment: {
         tabs: {
@@ -1943,7 +2433,7 @@ export default {
         }
       }
     },
-    
+
     // Billing & Insurance
     billing: {
       title: 'Billing & Insurance',
@@ -1954,7 +2444,7 @@ export default {
         claims: 'Insurance Claims',
         promos: 'Promos & Packages'
       },
-      
+
       payments: {
         title: 'Payment Activity',
         recordPayment: 'Record Payment',
@@ -1990,7 +2480,7 @@ export default {
           actions: 'Actions'
         }
       },
-      
+
       claims: {
         title: 'Insurance Claims',
         submitClaim: 'Submit Claim',
@@ -2021,7 +2511,7 @@ export default {
           actions: 'Actions'
         }
       },
-      
+
       promos: {
         title: 'Promos & Packages',
         searchPromos: 'Search promos...',

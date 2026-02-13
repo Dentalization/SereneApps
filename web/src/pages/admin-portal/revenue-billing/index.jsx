@@ -2,16 +2,79 @@ import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
+import RevenueOverviewCards from './components/RevenueOverviewCards';
+import RevenueChart from './components/RevenueChart';
+import TransactionRecent from './components/TransactionRecent';
+import SubscriptionDistribution from './components/SubscriptionDistribution';
+import InvoicesList from './components/InvoicesList';
+import BillingSettings from './components/BillingSettings';
 
 const RevenueBilling = () => {
   const { t } = useLanguage();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Dummy stats data (Updated to IDR)
+  const [stats, setStats] = useState({
+    totalRevenue: 'Rp 18.679.500.000',
+    mrr: 'Rp 1.267.500.000',
+    activeSubscriptions: '856',
+    pendingInvoices: '14'
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+
+  // --- Render Tab Content ---
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <>
+            {/* Overview Cards */}
+            <RevenueOverviewCards stats={stats} />
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <RevenueChart />
+              </div>
+              <div>
+                <SubscriptionDistribution />
+              </div>
+            </div>
+
+            {/* Recent Transactions */}
+            <TransactionRecent />
+          </>
+        );
+      case 'transactions':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-primary">All Transactions</h2>
+            <TransactionRecent />
+            {/* Can add more detailed transaction table or filters here */}
+          </div>
+        );
+      case 'invoices':
+        return (
+          <div className="space-y-6">
+            <InvoicesList />
+          </div>
+        );
+      case 'settings':
+        return (
+          <div className="space-y-6">
+            <BillingSettings />
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   if (loading) {
     return (
@@ -72,70 +135,87 @@ const RevenueBilling = () => {
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <AdminSideBar />
       </div>
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
-          {/* Header seperti home page */}
           <section className="admin-page-header space-y-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-3xl p-8 border border-green-100 dark:border-green-800/30">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-                  {t('admin.revenueBilling.badge') || 'Revenue & Billing'}
+                  {t('admin.revenueBilling.badge') || 'Financial Overview'}
                 </p>
                 <h1 className="text-2xl font-bold text-primary">
-                  {t('admin.nav.revenueBilling') || 'Pendapatan & Billing'}
+                  {t('admin.nav.revenueBilling') || 'Revenue & Billing'}
                 </h1>
                 <p className="text-sm text-secondary max-w-2xl">
-                  {t('admin.revenueBilling.subtitle') || 'Analisis keuangan, pemrosesan pembayaran, dan manajemen langganan'}
+                  {t('admin.revenueBilling.subtitle') || 'Comprehensive financial insights, payment processing, and subscription management.'}
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  Monthly Revenue: $125,430
+                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  system status: optimal
                 </div>
                 <div className="flex gap-2">
                   <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
-                    <AppIcon name="BarChart3" size={16} />
-                    <span>View Reports</span>
-                  </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700">
                     <AppIcon name="Download" size={16} />
-                    <span>Export</span>
+                    <span>Download Report</span>
                   </button>
                 </div>
               </div>
             </div>
-            <div className="border-t border-border/40 pt-4">
+
+            {/* Quick Actions Tabs */}
+            <div className="border-t border-border/40 pt-4 overflow-x-auto">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-accent text-white shadow-sm">
-                  <AppIcon name="DollarSign" size={16} />
-                  <span>Revenue</span>
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="BarChart2" size={16} />
+                  <span>Overview</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('transactions')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="CreditCard" size={16} />
-                  <span>Payments</span>
+                  <span>Transactions</span>
                 </button>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-surface transition-colors">
+                <button
+                  onClick={() => setActiveTab('invoices')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'invoices'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
                   <AppIcon name="FileText" size={16} />
                   <span>Invoices</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'settings'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="Settings" size={16} />
+                  <span>Settings</span>
                 </button>
               </div>
             </div>
           </section>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
-          {/* Content Placeholder */}
-          <div className="bg-surface border border-border/40 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center">
-              <AppIcon name="DollarSign" size={40} className="text-purple-600 dark:text-purple-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-primary mb-4">Revenue & Billing</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Comprehensive financial management with payment processing, subscription tracking, and revenue analytics.
-            </p>
-          </div>
+        <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-0 pb-6 md:pb-8 bg-background theme-transition space-y-6">
+          {renderTabContent()}
         </div>
       </div>
     </div>
