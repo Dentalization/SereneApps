@@ -1,6 +1,6 @@
 import twilio from 'twilio';
 import sgMail from '@sendgrid/mail';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 

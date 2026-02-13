@@ -1,7 +1,7 @@
 // Clinic Staff Service
 // Manages staff authentication and authorization for single-clinic model
 
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 /**

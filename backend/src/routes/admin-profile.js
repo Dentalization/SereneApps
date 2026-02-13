@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import bcrypt from 'bcrypt';
 import { authenticateAdmin } from '../middleware/clinicAuth.js';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);

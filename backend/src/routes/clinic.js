@@ -1,5 +1,5 @@
 import express from 'express';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import multer from 'multer';
 import path from 'path';
