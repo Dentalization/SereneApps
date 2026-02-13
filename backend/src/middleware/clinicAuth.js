@@ -11,14 +11,22 @@ const prisma = new PrismaClient();
 export const authMiddleware = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    
+
     if (!token) {
       return res.status(401).json({ error: 'Access token required' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // console.log('Auth Middleware Decoded:', decoded); 
+
+    const userId = decoded.sub || decoded.userId; // Support both standard 'sub' and legacy 'userId'
+    if (!userId) {
+      console.error('Auth Middleware: Missing userId in token', decoded);
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: BigInt(decoded.userId) },
+      where: { id: BigInt(userId) },
       include: {
         clinicStaff: {
           include: {
@@ -41,7 +49,7 @@ export const authMiddleware = async (req, res, next) => {
 
     // Get effective roles (User.roles + ClinicStaff.role)
     const effectiveRoles = await getUserEffectiveRoles(user.id);
-    
+
     // Attach user info to request
     req.user = {
       ...user,
@@ -70,7 +78,7 @@ export const requireRoles = (allowedRoles) => {
     const hasRequiredRole = allowedRoles.some(role => userRoles.includes(role));
 
     if (!hasRequiredRole) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Insufficient permissions',
         required: allowedRoles,
         current: userRoles
@@ -110,13 +118,13 @@ export const requireClinicAccess = (req, res, next) => {
  */
 export const validateClinicDataAccess = async (req, res, next) => {
   const clinicId = req.params.clinicId || req.body.clinicId || req.query.clinicId;
-  
+
   if (!clinicId) {
     return res.status(400).json({ error: 'Clinic ID required' });
   }
 
   const hasAccess = await canAccessClinicData(req.user.id, clinicId);
-  
+
   if (!hasAccess) {
     return res.status(403).json({ error: 'Access denied to this clinic data' });
   }
@@ -130,14 +138,24 @@ export const validateClinicDataAccess = async (req, res, next) => {
 export const authenticateAdmin = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    
+
     if (!token) {
       return res.status(401).json({ error: 'Access token required' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Debug token payload
+    // console.log('Auth Token Payload:', decoded);
+
+    const userId = decoded.sub || decoded.userId; // Support both standard 'sub' and legacy 'userId'
+    if (!userId) {
+      console.error('Invalid token payload - missing sub/userId:', decoded);
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: BigInt(decoded.userId) },
+      where: { id: BigInt(userId) },
       select: {
         id: true,
         name: true,
@@ -161,9 +179,9 @@ export const authenticateAdmin = async (req, res, next) => {
     // Check if user has admin role
     const userRoles = user.roles || [];
     const adminRoles = ['super_admin', 'admin', 'business_manager', 'platform_manager', 'finance_manager', 'customer_success_manager', 'technical_support', 'ai_engineer', 'compliance_officer'];
-    
+
     const hasAdminRole = userRoles.some(role => adminRoles.includes(role));
-    
+
     if (!hasAdminRole) {
       return res.status(403).json({ error: 'Admin access required' });
     }

@@ -19,6 +19,7 @@ import Teledentistry from './pages/dentist-portal/teledentistry';
 import DentistSettings from './pages/dentist-portal/dentist-settings';
 import Reports from './pages/dentist-portal/reports';
 import AIAnalysis from './pages/dentist-portal/ai';
+import XCore from './pages/dentist-portal/x-core';
 import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
 import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
@@ -92,6 +93,7 @@ const Routes = () => {
             <Route path="/dentist-portal/dentist-settings" element={<DentistSettings />} />
             <Route path="/dentist-portal/reports" element={<Reports />} />
             <Route path="/dentist-portal/ai-analysis" element={<AIAnalysis />} />
+            <Route path="/dentist-portal/x-core" element={<XCore />} />
             <Route path="/dentist-portal/practice/services" element={<DentistPracticeServices />} />
             <Route path="/dentist-portal/practice/availability" element={<DentistPracticeAvailability />} />
             <Route path="/dentist-portal/practice/earnings" element={<DentistPracticeEarnings />} />
