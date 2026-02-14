@@ -1,15 +1,48 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import useDICOMViewer from '../hooks/useDICOMViewer';
+import VolumeViewer3D from './VolumeViewer3D';
+import ImageViewer2D from './ImageViewer2D';
+import SeriesSidebar from './SeriesSidebar';
 
 const Viewer3D = ({ study, onBack }) => {
-    const { state, actions, refs } = useDICOMViewer(study);
+    const [activeStudy, setActiveStudy] = useState(study);
+    const { state, actions, refs } = useDICOMViewer(activeStudy);
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const imgRef = useRef(null);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
+    const [viewMode, setViewMode] = useState('auto'); // 'auto', '3d', 'slice', '2d'
 
+    // Handle series switching from any viewer component
+    const handleSwitchSeries = useCallback((series) => {
+        const newStudy = {
+            ...activeStudy,
+            selectedSeriesUid: series.series_uid,
+            selectedSeriesType: series.type,
+        };
+        setActiveStudy(newStudy);
+        // Set view mode based on new series type
+        if (series.type === '3D Volume') {
+            setViewMode('3d');
+        } else {
+            setViewMode('2d');
+        }
+    }, [activeStudy]);
+
+    // Determine initial view mode based on series type
+    useEffect(() => {
+        if (activeStudy?.selectedSeriesType === '3D Volume') {
+            setViewMode('3d'); // 3D First for volumetric series
+        } else if (activeStudy?.selectedSeriesType === '2D Image') {
+            setViewMode('2d'); // Dedicated 2D viewer for panoramic/ceph
+        } else {
+            setViewMode('slice'); // Fallback to slice view
+        }
+    }, [activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid]);
+
+    // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS (React Rules of Hooks)
     useEffect(() => {
         const handleFullScreenChange = () => {
             setIsFullScreen(!!document.fullscreenElement);
@@ -104,6 +137,49 @@ const Viewer3D = ({ study, onBack }) => {
         }
     }, [state.showAIOverlay, state.findings, state.isAnalyzing, state.activeView, state.axialIndex, state.coronalIndex, state.sagittalIndex]);
 
+    // Conditional rendering: If 3D mode and volumetric series, show VolumeViewer3D
+    if (viewMode === '3d' && activeStudy?.selectedSeriesType === '3D Volume') {
+        return (
+            <VolumeViewer3D
+                study={activeStudy}
+                onBack={onBack}
+                onSwitchToSliceMode={() => setViewMode('slice')}
+                onSwitchSeries={handleSwitchSeries}
+            />
+        );
+    }
+
+    // 2D Image mode — show ImageViewer2D for panoramic/cephalometric/single-slice
+    if (viewMode === '2d') {
+        const seriesInfo = state.allSeries.find(s => s.series_uid === activeStudy?.selectedSeriesUid) || {
+            series_uid: activeStudy?.selectedSeriesUid,
+            series_description: 'Panoramic Image',
+            modality: 'OPG',
+        };
+        return (
+            <div className="relative h-full">
+                <ImageViewer2D
+                    study={activeStudy}
+                    seriesInfo={seriesInfo}
+                    onBack={onBack}
+                    onSwitchSeries={() => setShowSeriesSelector(prev => !prev)}
+                />
+                <SeriesSidebar
+                    study={activeStudy}
+                    currentSeriesUid={activeStudy?.selectedSeriesUid}
+                    onSelectSeries={(series) => {
+                        setShowSeriesSelector(false);
+                        handleSwitchSeries(series);
+                    }}
+                    visible={showSeriesSelector}
+                    onClose={() => setShowSeriesSelector(false)}
+                    position="right"
+                />
+            </div>
+        );
+    }
+
+    // Otherwise show slice viewer (original implementation)
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800">
             {/* Toolbar */}
@@ -113,9 +189,9 @@ const Viewer3D = ({ study, onBack }) => {
                         <AppIcon name="ArrowLeft" size={20} />
                     </button>
                     <div>
-                        <h2 className="font-bold text-white">{study?.patientName || study?.originalName || 'Unknown Patient'}</h2>
-                        <p className="text-xs text-slate-400">{study?.modality || '3D'} • {study?.studyDate ? new Date(study.studyDate).toLocaleDateString() : 'N/A'}</p>
-                        <p className="text-[10px] text-slate-500">Folder: {study?.folderName}</p>
+                        <h2 className="font-bold text-white">{activeStudy?.patientName || activeStudy?.originalName || 'Unknown Patient'}</h2>
+                        <p className="text-xs text-slate-400">{activeStudy?.modality || '3D'} • {activeStudy?.studyDate ? new Date(activeStudy.studyDate).toLocaleDateString() : 'N/A'}</p>
+                        <p className="text-[10px] text-slate-500">Folder: {activeStudy?.folderName}</p>
                     </div>
                 </div>
 
@@ -143,6 +219,21 @@ const Viewer3D = ({ study, onBack }) => {
                     )}
 
                     <div className="h-6 w-px bg-slate-800 mx-2" />
+
+                    {/* 3D View Button (only for 3D Volume series) */}
+                    {activeStudy?.selectedSeriesType === '3D Volume' && (
+                        <>
+                            <button
+                                onClick={() => setViewMode('3d')}
+                                className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-medium transition shadow-lg"
+                                title="Switch to 3D Volume View"
+                            >
+                                <AppIcon name="Box" size={18} />
+                                <span className="text-sm">3D View</span>
+                            </button>
+                            <div className="h-6 w-px bg-slate-800 mx-2" />
+                        </>
+                    )}
 
                     {/* View Selector (for MPR) */}
                     {state.currentSeries?.type === '3D Volume' && (
@@ -297,54 +388,18 @@ const Viewer3D = ({ study, onBack }) => {
                         )}
                     </div>
 
-                    {/* Series Selector Sidebar */}
-                    {showSeriesSelector && state.allSeries.length > 1 && (
-                        <div className="absolute right-0 top-0 bottom-0 w-80 bg-slate-900/95 backdrop-blur-sm border-l border-slate-800 p-4 overflow-y-auto">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-semibold text-white">Select Series</h3>
-                                <button 
-                                    onClick={() => setShowSeriesSelector(false)}
-                                    className="p-1 hover:bg-slate-800 rounded text-slate-400"
-                                >
-                                    <AppIcon name="X" size={18} />
-                                </button>
-                            </div>
-
-                            <div className="space-y-2">
-                                {state.allSeries.map((series) => (
-                                    <button
-                                        key={series.series_uid}
-                                        onClick={() => {
-                                            actions.changeSeries(series);
-                                            setShowSeriesSelector(false);
-                                        }}
-                                        className={`w-full p-3 rounded-lg border text-left transition ${
-                                            state.currentSeries?.series_uid === series.series_uid
-                                                ? 'bg-accent/20 border-accent text-accent'
-                                                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            <AppIcon 
-                                                name={series.type === '3D Volume' ? 'Box' : 'Image'} 
-                                                size={24} 
-                                                className={state.currentSeries?.series_uid === series.series_uid ? 'text-accent' : 'text-slate-500'}
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-medium truncate">{series.series_description}</div>
-                                                <div className="text-xs opacity-70 mt-1">
-                                                    {series.modality} • {series.type} • {series.num_slices} slices
-                                                </div>
-                                                <div className="text-xs opacity-50 mt-0.5">
-                                                    Series {series.series_number}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                    {/* Series Selector Sidebar — uses shared SeriesSidebar */}
+                    <SeriesSidebar
+                        study={activeStudy}
+                        currentSeriesUid={state.currentSeries?.series_uid}
+                        onSelectSeries={(series) => {
+                            setShowSeriesSelector(false);
+                            handleSwitchSeries(series);
+                        }}
+                        visible={showSeriesSelector}
+                        onClose={() => setShowSeriesSelector(false)}
+                        position="right"
+                    />
                 </div>
             )}
         </div>

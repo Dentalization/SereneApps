@@ -145,6 +145,17 @@ export const uploadStudy = async (req, res) => {
             typeof value === 'bigint' ? value.toString() : value
         ));
 
+        // Trigger background VTI conversion (fire-and-forget)
+        // This pre-computes the 3D .vti file so it's ready when user opens the viewer
+        try {
+            fetch(`http://127.0.0.1:8000/convert/${batchId}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => console.log(`[X-Core] VTI conversion triggered: ${JSON.stringify(data)}`))
+                .catch(err => console.warn(`[X-Core] VTI conversion trigger failed (non-critical): ${err.message}`));
+        } catch (e) {
+            console.warn('[X-Core] Could not trigger VTI conversion:', e.message);
+        }
+
         res.json(response);
 
     } catch (error) {
