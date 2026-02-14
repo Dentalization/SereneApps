@@ -99,6 +99,16 @@ class DicomHandler:
             found_files = glob.glob(os.path.join(self.study_path, "**", ext), recursive=True)
             all_files.extend(found_files)
         
+        # Also scan for extensionless files (common in dental CBCT: Morita, Planmeca, Vatech)
+        for root, dirs, files in os.walk(self.study_path):
+            for f in files:
+                fp = os.path.join(root, f)
+                _, ext = os.path.splitext(f)
+                if ext.lower() in ('.vti', '.json', '.txt', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.zip', '.tar', '.gz', '.py', '.js', '.html', '.css', '.log', '.sql', '.md'):
+                    continue
+                if not ext or f.replace('.', '').isdigit():
+                    all_files.append(fp)
+        
         all_files = sorted(list(set(all_files)))
         
         # Group by SeriesInstanceUID
@@ -163,11 +173,13 @@ class DicomHandler:
         self.all_series = dict(series_groups)
 
     def _load_volume(self):
-        """Loads all DICOM files into a 3D numpy array (z, y, x) with proper pixel value scaling."""
+        """Loads all DICOM files into a 3D numpy array (z, y, x) with proper pixel value scaling.
+        Auto-detects raw unsigned data and normalizes to pseudo-HU."""
         if not self.files:
             return
         
         slices = []
+        had_rescale = False
         for file_path in self.files:
             try:
                 ds = self._read_dicom_safe(file_path)
@@ -180,6 +192,7 @@ class DicomHandler:
                 
                 if slope != 1.0 or intercept != 0.0:
                     pixel_array = pixel_array * slope + intercept
+                    had_rescale = True
                 
                 slices.append(pixel_array)
                 
@@ -196,6 +209,21 @@ class DicomHandler:
             self.volume = np.stack(slices)
             self.shape = self.volume.shape
             print(f"Volume loaded: {self.shape}")
+            
+            # ── Raw Unsigned Detection & HU Normalization ──
+            # If no RescaleSlope/Intercept and data is unsigned, shift to pseudo-HU
+            vol_min = float(np.min(self.volume))
+            vol_max = float(np.max(self.volume))
+            
+            if not had_rescale and vol_min >= 0 and self.first_ds:
+                pixel_repr = int(getattr(self.first_ds, 'PixelRepresentation', 0))
+                bits_stored = int(getattr(self.first_ds, 'BitsStored', 16))
+                
+                if pixel_repr == 0:  # Unsigned
+                    shift = -1024.0
+                    self.volume = self.volume + shift
+                    print(f"[HU] Raw unsigned {bits_stored}-bit detected. Applied shift={shift}")
+                    print(f"[HU] Range: [{vol_min:.0f}, {vol_max:.0f}] \u2192 [{np.min(self.volume):.0f}, {np.max(self.volume):.0f}]")
         except Exception as e:
             print(f"Error creating volume: {e}")
             self.volume = None

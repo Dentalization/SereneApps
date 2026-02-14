@@ -1,12 +1,14 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
 import os
 import sys
 import numpy as np
 from services.dicom_handler import DicomHandler
 from services.morita_handler import MoritaHandler
+from services.vti_converter import convert_study_to_vti
 
 app = FastAPI(title="X-Core Intelligent Streamer")
 
@@ -63,16 +65,34 @@ def get_study_gallery(study_id: str):
         # Build series cards for gallery
         series_cards = []
         for series_info in metadata.get('series', []):
+            series_uid = series_info.get('series_uid', 'unknown')
+            safe_uid = series_uid.replace('.', '_')[:50]
+            num_slices = series_info.get('num_slices', 0)
+            series_type = series_info.get('type', '3D Volume')
+            
+            # Check if pre-generated files exist
+            has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+            has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+            has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+            
             card = {
-                "series_uid": series_info.get('series_uid', 'unknown'),
+                "series_uid": series_uid,
                 "title": series_info.get('series_description', 'Unknown Series'),
-                "type": series_info.get('type', '3D Volume'),  # "3D Volume" or "2D Image"
+                "type": series_type,
                 "modality": series_info.get('modality', 'CT'),
-                "num_slices": series_info.get('num_slices', 0),
-                "thumbnail_index": series_info.get('num_slices', 1) // 2,  # Middle slice
-                "series_number": series_info.get('series_number', 0)
+                "num_slices": num_slices,
+                "thumbnail_index": num_slices // 2,  # Middle slice = best thumbnail
+                "series_number": series_info.get('series_number', 0),
+                "has_vti": has_vti,
+                "has_image": has_image,
+                "has_thumb": has_thumb,
+                # Use pre-generated thumb endpoint (fast) or fallback to on-demand
+                "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
             }
             series_cards.append(card)
+        
+        # Sort: 3D volumes first, then by series_number
+        series_cards.sort(key=lambda c: (0 if c['type'] == '3D Volume' else 1, c['series_number']))
         
         return {
             "study_id": study_id,
@@ -112,61 +132,168 @@ def get_series_thumbnail(study_id: str, series_uid: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/volume/{study_id}")
-def get_volume_data(study_id: str, series_uid: str = None):
+def get_volume_vti(study_id: str, series_uid: str = None):
     """
-    Get raw volume data for VTK.js 3D rendering (used in "3D First" viewer)
+    Serve pre-computed .vti file for instant 3D rendering.
     
-    Returns:
-        - Raw voxel data (flattened array)
-        - Dimensions [z, y, x]
-        - Spacing [x, y, z] in mm
-        - Data range for volume rendering opacity mapping
+    The frontend uses vtkXMLImageDataReader to load this single file
+    instead of reconstructing 300+ slices on the fly.
+    
+    If .vti doesn't exist yet, triggers conversion first (blocking for first request,
+    subsequent requests are instant).
     """
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
     
+    # Determine which .vti file to serve
+    if series_uid:
+        safe_uid = series_uid.replace('.', '_')[:50]
+        vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
+        # Fallback to default
+        if not os.path.exists(vti_path):
+            vti_path = os.path.join(study_path, "volume.vti")
+    else:
+        vti_path = os.path.join(study_path, "volume.vti")
+    
+    # If .vti doesn't exist, generate it now (first-time conversion)
+    if not os.path.exists(vti_path):
+        print(f"[Volume] VTI not found, generating on-demand for {study_id}...")
+        try:
+            convert_study_to_vti(study_path)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"VTI conversion failed: {str(e)}")
+        
+        # Re-check with series_uid
+        if series_uid:
+            safe_uid = series_uid.replace('.', '_')[:50]
+            vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
+            if not os.path.exists(vti_path):
+                vti_path = os.path.join(study_path, "volume.vti")
+        
+        if not os.path.exists(vti_path):
+            raise HTTPException(status_code=404, detail="No 3D volume found in this study")
+    
+    file_size = os.path.getsize(vti_path)
+    print(f"[Volume] Serving VTI: {vti_path} ({file_size / (1024*1024):.1f}MB)")
+    
+    return FileResponse(
+        path=vti_path,
+        media_type="application/xml",
+        filename=f"volume_{study_id}.vti",
+        headers={
+            "Content-Length": str(file_size),
+            "Cache-Control": "public, max-age=86400",  # Cache for 24h
+            "X-VTI-Size": str(file_size)
+        }
+    )
+
+
+@app.get("/image/{study_id}/{series_uid}")
+def get_2d_image(study_id: str, series_uid: str):
+    """
+    Serve a pre-generated 2D DICOM image (Panoramic, Cephalometric, etc.) as JPEG.
+    If not pre-generated, generates on-demand.
+    """
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    safe_uid = series_uid.replace('.', '_')[:50]
+    img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
+    
+    # If not pre-generated, generate on demand
+    if not os.path.exists(img_path):
+        from services.vti_converter import scan_dicom_series, generate_2d_image
+        series_groups = scan_dicom_series(study_path)
+        if series_uid in series_groups:
+            files = series_groups[series_uid]
+            files.sort(key=lambda x: (x[0], x[1]))
+            sorted_files = [fp for _, _, fp in files]
+            generate_2d_image(sorted_files, img_path)
+    
+    if not os.path.exists(img_path):
+        raise HTTPException(status_code=404, detail="2D image not found for this series")
+    
+    return FileResponse(
+        path=img_path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
+@app.get("/thumb/{study_id}/{series_uid}")
+def get_series_thumb(study_id: str, series_uid: str):
+    """
+    Serve pre-generated thumbnail (fast, 256x256 JPEG).
+    Falls back to on-demand thumbnail generation via DicomHandler.
+    """
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    safe_uid = series_uid.replace('.', '_')[:50]
+    thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
+    
+    if os.path.exists(thumb_path):
+        return FileResponse(
+            path=thumb_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+    
+    # Fallback: generate thumbnail via DicomHandler (on-demand)
     try:
         handler = DicomHandler(study_path, series_uid=series_uid)
-        
-        # Load full volume
-        if handler.volume is None:
-            handler._load_volume()
-        
-        if handler.volume is None:
-            raise HTTPException(status_code=500, detail="Failed to load volume")
-        
         metadata = handler.get_metadata()
-        
-        # Convert to int16 to reduce size (DICOM data is typically int16)
-        # This cuts transfer size in half compared to float32/float64
-        volume_int16 = handler.volume.astype(np.int16)
-        
-        # Flatten volume to 1D array for transmission
-        # tolist() is slow but necessary for JSON serialization
-        # GZip middleware will compress this significantly
-        volume_flat = volume_int16.flatten().tolist()
-        
-        print(f"[DEBUG] Volume size: {len(volume_flat)} voxels, {len(volume_flat) * 2 / 1024 / 1024:.2f} MB uncompressed")
-        
-        # Get data range for proper windowing in VTK
-        data_min = int(np.min(volume_int16))
-        data_max = int(np.max(volume_int16))
-        
-        return {
-            "voxel_data": volume_flat,
-            "dimensions": metadata['dimensions'],  # [z, y, x]
-            "spacing": metadata['voxel_size'],  # [x, y, z] in mm
-            "data_range": [data_min, data_max],
-            "window_center": metadata['window_center'],
-            "window_width": metadata['window_width']
-        }
-        
+        middle_index = metadata['num_slices'] // 2
+        image_bytes, headers = handler.get_slice('axial', middle_index)
+        return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/volume-status/{study_id}")
+def get_volume_status(study_id: str):
+    """Check if pre-computed .vti file exists for a study."""
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    vti_path = os.path.join(study_path, "volume.vti")
+    exists = os.path.exists(vti_path)
+    
+    return {
+        "study_id": study_id,
+        "vti_ready": exists,
+        "vti_size": os.path.getsize(vti_path) if exists else 0
+    }
+
+
+@app.post("/convert/{study_id}")
+def trigger_vti_conversion(study_id: str, background_tasks: BackgroundTasks, force: bool = False):
+    """
+    Manually trigger VTI conversion for a study.
+    Called by Node.js backend after upload completes.
+    """
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    vti_path = os.path.join(study_path, "volume.vti")
+    
+    if os.path.exists(vti_path) and not force:
+        return {"status": "already_exists", "study_id": study_id}
+    
+    # Run conversion in background so the upload response returns immediately
+    background_tasks.add_task(convert_study_to_vti, study_path, force)
+    
+    return {"status": "converting", "study_id": study_id, "message": "VTI conversion started in background"}
 
 @app.get("/series/{study_id}")
 def list_series(study_id: str):

@@ -20,6 +20,7 @@ model User {
   clinic_id                                                      BigInt?
   lastLoginAt                                                    DateTime?                  @map("last_login_at") @db.Timestamptz(6)
   aiAnalysisResults                                              AIAnalysisResult[]
+  aiChatMessages                                                 AIChatMessage[]
   appointmentStatusHistory                                       AppointmentStatusHistory[]
   dentistAppointments                                            Appointment[]              @relation("DentistAppointments")
   patientAppointments                                            Appointment[]              @relation("PatientAppointments")
@@ -30,6 +31,9 @@ model User {
   dentist_emr_records_dentist_emr_records_dentist_idTousers      dentist_emr_records[]      @relation("dentist_emr_records_dentist_idTousers")
   dentist_emr_records_dentist_emr_records_patient_user_idTousers dentist_emr_records[]      @relation("dentist_emr_records_patient_user_idTousers")
   dentistProfile                                                 DentistProfile[]
+  scheduleEntries                                                DentistScheduleEntry[]
+  dentistStudies                                                 ImagingStudy[]             @relation("DentistStudies")
+  patientStudies                                                 ImagingStudy[]             @relation("PatientStudies")
   notificationDevices                                            NotificationDevice[]
   notificationJobs                                               NotificationJob[]
   notificationPreferences                                        NotificationPreference[]
@@ -38,10 +42,6 @@ model User {
   paymentIntents                                                 PaymentIntent[]
   refreshTokens                                                  RefreshToken[]
   user_devices                                                   UserDevice[]
-  patientStudies                                                 ImagingStudy[]             @relation("PatientStudies")
-  dentistStudies                                                 ImagingStudy[]             @relation("DentistStudies")
-  scheduleEntries                                                DentistScheduleEntry[]
-  aiChatMessages                                                 AIChatMessage[]
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -97,11 +97,8 @@ model DentistProfile {
   dentist_type                String                        @default("independent")
   clinic_id                   BigInt?
   is_clinic_owner             Boolean?                      @default(false)
-  
-  // Storage Quota
+  storage_limit               BigInt                        @default(10737418240) @map("storage_limit")
   storage_usage               BigInt                        @default(0) @map("storage_usage")
-  storage_limit               BigInt                        @default(10737418240) @map("storage_limit") // 10 GB
-
   user                        User                          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   dentist_services            dentist_services[]
   service_dentist_assignments service_dentist_assignments[]
@@ -534,22 +531,22 @@ model UserDevice {
 }
 
 model AIAnalysisResult {
-  id                BigInt   @id @default(autoincrement())
-  userId            BigInt   @map("user_id")
-  sessionId         String   @map("session_id") @db.VarChar(255)
-  imageUrl          String?  @map("image_url")
-  annotatedImageUrl String?  @map("annotated_image_url")
+  id                BigInt          @id @default(autoincrement())
+  userId            BigInt          @map("user_id")
+  sessionId         String          @map("session_id") @db.VarChar(255)
+  imageUrl          String?         @map("image_url")
+  annotatedImageUrl String?         @map("annotated_image_url")
   findings          String?
   summary           String?
-  overallAssessment String?  @map("overall_assessment")
-  riskLevel         String?  @map("risk_level") @db.VarChar(50)
-  confidenceScore   Float?   @map("confidence_score")
-  detections        Json?    @default("[]")
-  recommendations   Json?    @default("[]")
-  metadata          Json?    @default("{}")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  overallAssessment String?         @map("overall_assessment")
+  riskLevel         String?         @map("risk_level") @db.VarChar(50)
+  confidenceScore   Float?          @map("confidence_score")
+  detections        Json?           @default("[]")
+  recommendations   Json?           @default("[]")
+  metadata          Json?           @default("{}")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   chatMessages      AIChatMessage[]
 
   @@index([sessionId], map: "idx_ai_analysis_session")
@@ -684,24 +681,23 @@ model service_dentist_assignments {
 }
 
 model ImagingStudy {
-  id          BigInt          @id @default(autoincrement())
-  patientId   BigInt          @map("patient_id")
-  dentistId   BigInt?         @map("dentist_id")
-  clinicId    BigInt?         @map("clinic_id")
-  studyDate   DateTime        @map("study_date") @db.Date
-  description String?
-  modality    String          @db.VarChar(50)
-  folderName  String          @map("folder_name")
-  originalName String?        @map("original_name")
-  status      String          @default("uploading")
-  metadata    Json?           @default("{}")
-  sizeInBytes BigInt          @default(0) @map("size_in_bytes")
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  patient     User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
-  dentist     User?           @relation("DentistStudies", fields: [dentistId], references: [id])
-  series      ImagingSeries[]
+  id           BigInt          @id @default(autoincrement())
+  patientId    BigInt          @map("patient_id")
+  dentistId    BigInt?         @map("dentist_id")
+  clinicId     BigInt?         @map("clinic_id")
+  studyDate    DateTime        @map("study_date") @db.Date
+  description  String?
+  modality     String          @db.VarChar(50)
+  folderName   String          @map("folder_name")
+  status       String          @default("uploading")
+  metadata     Json?           @default("{}")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sizeInBytes  BigInt          @default(0) @map("size_in_bytes")
+  originalName String?         @map("original_name")
+  series       ImagingSeries[]
+  dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
+  patient      User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId], map: "idx_imaging_studies_patient")
   @@index([studyDate], map: "idx_imaging_studies_date")
@@ -709,75 +705,71 @@ model ImagingStudy {
 }
 
 model ImagingSeries {
-  id              BigInt    @id @default(autoincrement())
-  studyId         BigInt    @map("study_id")
-  seriesNumber    Int?      @map("series_number")
-  modality        String    @db.VarChar(50)
+  id              BigInt       @id @default(autoincrement())
+  studyId         BigInt       @map("study_id")
+  seriesNumber    Int?         @map("series_number")
+  modality        String       @db.VarChar(50)
   description     String?
-  bodyPart        String?   @map("body_part")
-  sliceThickness  Float?    @map("slice_thickness")
-  pixelSpacing    Json?     @map("pixel_spacing")
+  bodyPart        String?
+  sliceThickness  Float?       @map("slice_thickness")
+  pixelSpacing    Json?        @map("pixel_spacing")
   kv              Float?
   ma              Float?
-  exposureTime    Float?    @map("exposure_time")
-  numSlices       Int       @default(0) @map("num_slices")
-  folderPath      String    @map("folder_path")
-  previewImageUrl String?   @map("preview_image_url")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  study           ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  exposureTime    Float?       @map("exposure_time")
+  numSlices       Int          @default(0) @map("num_slices")
+  folderPath      String       @map("folder_path")
+  previewImageUrl String?      @map("preview_image_url")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   aiResults       AIResult[]
+  study           ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
 
   @@index([studyId], map: "idx_imaging_series_study")
   @@map("imaging_series")
 }
 
 model AIResult {
-  id              BigInt    @id @default(autoincrement())
-  seriesId        BigInt    @map("series_id")
-  modelName       String    @map("model_name")
-  analyzedAt      DateTime  @default(now()) @map("analyzed_at") @db.Timestamptz(6)
-  findings        Json      @default("[]")
-  status          String    @default("completed")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  series          ImagingSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  id         BigInt        @id @default(autoincrement())
+  seriesId   BigInt        @map("series_id")
+  modelName  String        @map("model_name")
+  analyzedAt DateTime      @default(now()) @map("analyzed_at") @db.Timestamptz(6)
+  findings   Json          @default("[]")
+  status     String        @default("completed")
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  series     ImagingSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 
   @@index([seriesId], map: "idx_ai_results_series")
   @@map("ai_results")
 }
 
 model DentistScheduleEntry {
-  id          BigInt   @id @default(autoincrement())
-  dentistId   BigInt   @map("dentist_id")
-  type        String   @db.VarChar(50)
-  status      String   @default("active") @db.VarChar(50)
-  startAt     DateTime @map("start_at") @db.Timestamptz(6)
-  endAt       DateTime @map("end_at") @db.Timestamptz(6)
-  notes       String?
-  patientName String?  @map("patient_name")
-  patientPhone String? @map("patient_phone")
-  metadata    Json?    @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  dentist     User     @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+  id           BigInt   @id @default(autoincrement())
+  dentistId    BigInt   @map("dentist_id")
+  type         String   @db.VarChar(50)
+  status       String   @default("active") @db.VarChar(50)
+  startAt      DateTime @map("start_at") @db.Timestamptz(6)
+  endAt        DateTime @map("end_at") @db.Timestamptz(6)
+  notes        String?
+  patientName  String?  @map("patient_name")
+  patientPhone String?  @map("patient_phone")
+  metadata     Json?    @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dentist      User     @relation(fields: [dentistId], references: [id], onDelete: Cascade)
 
   @@index([dentistId, startAt], map: "idx_dentist_schedule_dentist_time")
   @@map("dentist_schedule_entries")
 }
 
 model AIChatMessage {
-  id          BigInt   @id @default(autoincrement())
-  aiResultId  BigInt   @map("ai_result_id")
-  userId      BigInt   @map("user_id")
-  role        String   @db.VarChar(20)
-  content     String
-  metadata    Json?    @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  aiResult    AIAnalysisResult @relation(fields: [aiResultId], references: [id], onDelete: Cascade)
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         BigInt           @id @default(autoincrement())
+  aiResultId BigInt           @map("ai_result_id")
+  userId     BigInt           @map("user_id")
+  role       String           @db.VarChar(20)
+  content    String
+  metadata   Json?            @default("{}")
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  aiResult   AIAnalysisResult @relation(fields: [aiResultId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([aiResultId, createdAt], map: "idx_ai_chat_result_time")
   @@map("ai_chat_messages")
