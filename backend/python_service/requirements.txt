@@ -5,3 +5,7 @@ opencv-python-headless
 numpy
 python-multipart
 Pillow
+monai
+torch
+vtk
+nibabel

@@ -13,7 +13,13 @@ import AppIcon from '../../../../components/AppIcon';
 import SeriesSidebar from './SeriesSidebar';
 
 // ─── Global volume cache (on window to survive HMR) ────────────────────
-if (!window.__volumeCache) window.__volumeCache = new Map();
+// CACHE VERSION: bump this to force re-fetch after VTI regeneration
+const VOLUME_CACHE_VERSION = 2;
+if (!window.__volumeCache || window.__volumeCacheVersion !== VOLUME_CACHE_VERSION) {
+  window.__volumeCache = new Map();
+  window.__volumeCacheVersion = VOLUME_CACHE_VERSION;
+  console.log('[VolumeViewer3D] Cache cleared — version', VOLUME_CACHE_VERSION);
+}
 const volumeCache = window.__volumeCache;
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -23,12 +29,13 @@ const SLAB_MIN_MM = 1;
 const SLAB_MAX_MM = 100;
 const SLAB_DEFAULT_MM = 20;
 
-// Window/Level defaults per render mode (Acteon-calibrated)
+// Window/Level defaults per render mode
+// Data is MONAI-normalized [0.0, 1.0] where 0.0=Air(-1000HU), 0.25=Water(0HU), 1.0=Metal(3000HU)
 const WL_DEFAULTS = {
-    bone: { center: 600,  width: 2800 },
-    soft: { center: 100,  width: 800  },
-    mip:  { center: 1000, width: 4000 },
-    xray: { center: 800,  width: 3500 },
+    bone: { center: 0.40,  width: 0.60  },
+    soft: { center: 0.28,  width: 0.25  },
+    mip:  { center: 0.50,  width: 1.00  },
+    xray: { center: 0.45,  width: 0.90  },
 };
 
 // Camera view presets (dental CBCT anatomical conventions)
@@ -89,18 +96,22 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
 
     // ═══════════════════════════════════════════════════════════════════
-    // Transfer Function Presets — Auto-Calibrating / Scanner-Agnostic
+    // Transfer Function Presets — MONAI-Normalized [0.0, 1.0] Range
     //
-    // Strategy:
-    //   1. Detect if data is Standard HU (min < -500) or Raw Unsigned (min ≥ 0)
-    //   2. Define ALL presets using Standard Hounsfield Unit values
-    //   3. For Raw Unsigned data, compute a shift so lowest value → Air (-1000 HU)
-    //   4. hu() helper maps standard HU → actual data coordinates
+    // Data is pre-processed by MONAI pipeline:
+    //   ScaleIntensityRange(-1000 HU, 3000 HU) → [0.0, 1.0]
+    //   CropForeground removes surrounding air/cylinder
+    //   Spacing(0.5mm) ensures isotropic voxels
+    //   Orientation(RAS) ensures consistent anatomy
     //
-    // Standard Dental CBCT HU Reference:
-    //   Air: -1000   Fat: -100   Water: 0   Soft tissue: 50-200
-    //   Cancellous bone: 200-600   Cortical bone: 600-1500
-    //   Enamel: 1500-2500   Metal implants: 2500+
+    // Normalized Value Reference:
+    //   0.000 = Air  (-1000 HU)     0.225 = Fat    (-100 HU)
+    //   0.250 = Water (   0 HU)     0.288 = Soft   ( 150 HU)
+    //   0.325 = Cancellous (300 HU) 0.500 = Cortical (1000 HU)
+    //   0.625 = Enamel (1500 HU)    1.000 = Metal   (3000 HU)
+    //
+    // hu(v) converts standard HU to normalized [0,1] coordinate:
+    //   hu(v) = (v + 1000) / 4000
     // ═══════════════════════════════════════════════════════════════════
     const applyPreset = useCallback((ctfun, ofun, presetName, dataRange, options) => {
         const opts = options || {};
@@ -112,73 +123,49 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         const dMin = dataRange[0];
         const dMax = dataRange[1];
 
-        // ── Smart Data-Type Detection ──────────────────────────────────
-        // Determines if values are calibrated Hounsfield Units or raw integers
-        let shift = 0;
-        let dataType;
+        // Map HU → normalized value
+        const hu = (v) => (v + 1000) / 4000;
 
-        if (dMin < -500) {
-            // Negative minimum → already in calibrated HU units
-            dataType = 'HU';
-            shift = 0;
-        } else if (dMin >= 0 && dMax > 10000) {
-            // Large positive range → raw unsigned 16-bit
-            dataType = 'RAW16';
-            shift = dMin - (-1000);
-        } else if (dMin >= 0 && dMax > 2000) {
-            // Medium range → 12-bit unsigned or shifted data
-            dataType = 'RAW12';
-            shift = dMin - (-1000);
-        } else if (dMin >= 0) {
-            // Small positive range → pre-processed or 8-bit
-            dataType = 'NORMALIZED';
-            shift = dMin - (-1000);
-        } else {
-            // Slightly negative — partial calibration
-            dataType = 'PARTIAL_HU';
-            shift = 0;
-        }
-
-        // Map standard HU value → actual data coordinate
-        const hu = (v) => v + shift;
-
-        // Safe bounds covering full data range + preset range
-        const lo = Math.min(dMin, hu(-1500));
-        const hi = Math.max(dMax, hu(4500));
+        // Safe bounds
+        const lo = Math.min(dMin, -0.05);
+        const hi = Math.max(dMax, 1.05);
 
         console.log('[VolumeViewer3D] applyPreset:', presetName,
-            '| range:', dMin, '→', dMax,
-            '| type:', dataType, '| shift:', shift);
+            '| range:', dMin.toFixed(3), '→', dMax.toFixed(3),
+            '| MONAI normalized [0,1]');
 
         if (presetName === 'bone') {
-            // ── BONE / TEETH ──
-            // Air+soft transparent, bone progressively opaque, enamel/metal bright
-            ctfun.addRGBPoint(lo,         0.0,  0.0,  0.0);
-            ctfun.addRGBPoint(hu(150),    0.12, 0.08, 0.04);
-            ctfun.addRGBPoint(hu(450),    0.86, 0.65, 0.47);
-            ctfun.addRGBPoint(hu(900),    0.95, 0.88, 0.78);
-            ctfun.addRGBPoint(hu(1800),   1.0,  0.98, 0.94);
-            ctfun.addRGBPoint(hi,         1.0,  1.0,  1.0);
+            // ── BONE / TEETH (CLEAN & SHARP) ──
+            
+            // 1. Color: Keep it realistic
+            ctfun.addRGBPoint(0.0, 0.0, 0.0, 0.0);
+            ctfun.addRGBPoint(0.4, 0.0, 0.0, 0.0);       // Keep dark
+            ctfun.addRGBPoint(0.42, 0.86, 0.65, 0.47);   // Beige (Bone Start)
+            ctfun.addRGBPoint(0.60, 0.95, 0.88, 0.78);   // White (Main Bone)
+            ctfun.addRGBPoint(1.0, 1.0, 0.98, 0.94);     // Enamel/Metal (Highlight)
 
-            ofun.addPoint(lo,          0.0);
-            ofun.addPoint(hu(150),     0.0);      // Air + soft tissue → transparent
-            ofun.addPoint(hu(300),     0.06);     // Cancellous bone begins
-            ofun.addPoint(hu(600),     0.25);     // Mid bone
-            ofun.addPoint(hu(1000),    0.55);     // Cortical bone
-            ofun.addPoint(hu(1500),    0.75);     // Dense bone / enamel
-            ofun.addPoint(hu(3000),    0.88);     // Metal implants
-            ofun.addPoint(hi,          0.90);
+            // 2. Opacity: THE CLEANER
+            ofun.addPoint(0.0, 0.0);
+            
+            // Cutoff at 0.42 — removes all neck/cheek flesh completely
+            ofun.addPoint(0.42, 0.0);    
+            
+            // Fast transition to bone (Sharp Edge)
+            ofun.addPoint(0.45, 0.2);     
+            ofun.addPoint(0.55, 0.7);     // Solid Jawbone
+            ofun.addPoint(0.80, 0.9);     // Teeth Very Solid
+            ofun.addPoint(1.0, 1.0);
 
         } else if (presetName === 'soft') {
             // ── SOFT TISSUE ──
             // Show gums, skin, muscles with peak visibility; dim bone
-            ctfun.addRGBPoint(lo,         0.0,  0.0,  0.0);
-            ctfun.addRGBPoint(hu(-100),   0.0,  0.0,  0.0);
-            ctfun.addRGBPoint(hu(0),      0.45, 0.22, 0.18);
-            ctfun.addRGBPoint(hu(150),    0.85, 0.55, 0.50);
-            ctfun.addRGBPoint(hu(400),    0.90, 0.70, 0.60);
-            ctfun.addRGBPoint(hu(800),    0.50, 0.50, 0.50);
-            ctfun.addRGBPoint(hi,         0.35, 0.35, 0.35);
+            ctfun.addRGBPoint(lo,           0.0,  0.0,  0.0);
+            ctfun.addRGBPoint(hu(-100),     0.0,  0.0,  0.0);  // 0.225
+            ctfun.addRGBPoint(hu(0),        0.45, 0.22, 0.18); // 0.250
+            ctfun.addRGBPoint(hu(150),      0.85, 0.55, 0.50); // 0.288
+            ctfun.addRGBPoint(hu(400),      0.90, 0.70, 0.60); // 0.350
+            ctfun.addRGBPoint(hu(800),      0.50, 0.50, 0.50); // 0.450
+            ctfun.addRGBPoint(hi,           0.35, 0.35, 0.35);
 
             ofun.addPoint(lo,          0.0);
             ofun.addPoint(hu(-200),    0.0);      // Air → transparent
@@ -191,9 +178,9 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
 
         } else if (presetName === 'mip') {
             // ── MIP (Maximum Intensity Projection) ──
-            // W/L-parameterized grayscale, HU threshold to hide air
-            const wCenter = opts.wCenter !== undefined ? opts.wCenter : Math.round((dMin + dMax) / 2);
-            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : Math.round((dMax - dMin) * 1.1);
+            // W/L-parameterized grayscale
+            const wCenter = opts.wCenter !== undefined ? opts.wCenter : 0.5;
+            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : 1.0;
             const lower = wCenter - wWidth / 2;
             const upper = wCenter + wWidth / 2;
 
@@ -205,19 +192,19 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 ctfun.addRGBPoint(upper, 1.0, 1.0, 1.0);
             }
 
-            // HU-based threshold — air/soft transparent, bone/teeth visible
+            // Threshold — air transparent, bone/teeth visible
             ofun.addPoint(lo,          0.0);
-            ofun.addPoint(hu(100),     0.0);
-            ofun.addPoint(hu(300),     0.3);
-            ofun.addPoint(hu(600),     0.8);
-            ofun.addPoint(hu(1000),    1.0);
+            ofun.addPoint(hu(100),     0.0);      // 0.275
+            ofun.addPoint(hu(300),     0.3);      // 0.325
+            ofun.addPoint(hu(600),     0.8);      // 0.400
+            ofun.addPoint(hu(1000),    1.0);      // 0.500
             ofun.addPoint(hi,          1.0);
 
         } else if (presetName === 'xray') {
             // ── X-RAY DRR (Digital Radiograph Reconstruction) ──
             // Very low opacity, Composite blend accumulates through volume
-            const wCenter = opts.wCenter !== undefined ? opts.wCenter : Math.round((dMin + dMax) / 2);
-            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : Math.round((dMax - dMin) * 1.1);
+            const wCenter = opts.wCenter !== undefined ? opts.wCenter : 0.45;
+            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : 0.9;
             const lower = wCenter - wWidth / 2;
             const upper = wCenter + wWidth / 2;
 
@@ -321,7 +308,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     imageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[VolumeViewer3D] ❌ Cache MISS:', cacheKey, '| Cached keys:', [...volumeCache.keys()]);
-                    const url = `http://127.0.0.1:8000/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}`;
+                    const url = `http://127.0.0.1:8000/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}${seriesUid ? '&' : '?'}v=${VOLUME_CACHE_VERSION}`;
                     console.log('[VolumeViewer3D] Fetching VTI from:', url);
 
                     setLoadingStage('Downloading 3D volume...');
@@ -624,14 +611,8 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         if (!vtkContextRef.current) return;
         const { ctfun, ofun, dataRange, renderWindow, actor, mapper, fullScreenRenderer } = vtkContextRef.current;
 
-        // Compute data-range-adaptive W/L defaults for MIP/X-Ray
-        const dMin = dataRange[0];
-        const dMax = dataRange[1];
-        const dCenter = (dMin + dMax) / 2;
-        const dWidth = (dMax - dMin) * 1.1; // Slightly wider than range
-        const defaults = (presetName === 'mip' || presetName === 'xray')
-            ? { center: Math.round(dCenter), width: Math.round(dWidth) }
-            : WL_DEFAULTS[presetName];
+        // Use WL_DEFAULTS for all presets (data is [0,1] normalized)
+        const defaults = WL_DEFAULTS[presetName] || WL_DEFAULTS.bone;
 
         setWindowCenter(defaults.center);
         setWindowWidth(defaults.width);
@@ -661,7 +642,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             actor.getProperty().setUseGradientOpacity(0, true);
             actor.getProperty().setGradientOpacityMinimumValue(0, 0);
             actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-            actor.getProperty().setGradientOpacityMaximumValue(0, 100);
+            actor.getProperty().setGradientOpacityMaximumValue(0, 0.05);
             actor.getProperty().setGradientOpacityMaximumOpacity(0, 1.0);
             actor.getProperty().setScalarOpacityUnitDistance(0, avgSp * 2.5);
             setSlabEnabled(false);
@@ -676,7 +657,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             actor.getProperty().setUseGradientOpacity(0, true);
             actor.getProperty().setGradientOpacityMinimumValue(0, 0);
             actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-            actor.getProperty().setGradientOpacityMaximumValue(0, 50);
+            actor.getProperty().setGradientOpacityMaximumValue(0, 0.03);
             actor.getProperty().setGradientOpacityMaximumOpacity(0, 1.0);
             actor.getProperty().setScalarOpacityUnitDistance(0, avgSp * 2.5);
             setSlabEnabled(false);
@@ -1014,13 +995,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                                 <div className="mb-2.5">
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-[10px] text-gray-400 uppercase tracking-wide">Brightness</span>
-                                        <span className="text-xs font-mono text-cyan-400">{windowCenter}</span>
+                                        <span className="text-xs font-mono text-cyan-400">{windowCenter.toFixed(2)}</span>
                                     </div>
                                     <input
                                         type="range"
-                                        min={vtkContextRef.current?.dataRange?.[0] ?? -1000}
-                                        max={vtkContextRef.current?.dataRange?.[1] ?? 3000}
-                                        step={10}
+                                        min={vtkContextRef.current?.dataRange?.[0] ?? 0.0}
+                                        max={vtkContextRef.current?.dataRange?.[1] ?? 1.0}
+                                        step={0.01}
                                         value={windowCenter}
                                         onChange={(e) => setWindowCenter(Number(e.target.value))}
                                         className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
@@ -1031,13 +1012,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-[10px] text-gray-400 uppercase tracking-wide">Contrast</span>
-                                        <span className="text-xs font-mono text-cyan-400">{windowWidth}</span>
+                                        <span className="text-xs font-mono text-cyan-400">{windowWidth.toFixed(2)}</span>
                                     </div>
                                     <input
                                         type="range"
-                                        min={100}
-                                        max={Math.round(((vtkContextRef.current?.dataRange?.[1] ?? 3000) - (vtkContextRef.current?.dataRange?.[0] ?? -1000)) * 2)}
-                                        step={50}
+                                        min={0.01}
+                                        max={2.0}
+                                        step={0.02}
                                         value={windowWidth}
                                         onChange={(e) => setWindowWidth(Number(e.target.value))}
                                         className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
@@ -1047,15 +1028,9 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                                 {/* Quick reset */}
                                 <button
                                     onClick={() => {
-                                        const dr = vtkContextRef.current?.dataRange;
-                                        if (dr) {
-                                            setWindowCenter(Math.round((dr[0] + dr[1]) / 2));
-                                            setWindowWidth(Math.round((dr[1] - dr[0]) * 1.1));
-                                        } else {
-                                            const d = WL_DEFAULTS[preset];
-                                            setWindowCenter(d.center);
-                                            setWindowWidth(d.width);
-                                        }
+                                        const d = WL_DEFAULTS[preset] || WL_DEFAULTS.bone;
+                                        setWindowCenter(d.center);
+                                        setWindowWidth(d.width);
                                     }}
                                     className="mt-2 w-full py-1 text-[10px] text-gray-500 hover:text-white bg-slate-800/50 hover:bg-slate-700/50 rounded transition uppercase tracking-wider"
                                 >
