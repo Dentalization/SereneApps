@@ -135,23 +135,26 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             '| MONAI normalized [0,1]');
 
         if (presetName === 'bone') {
-            // ── BONE / TEETH ──
-            // Air+soft transparent, bone progressively opaque, enamel/metal bright
-            ctfun.addRGBPoint(lo,         0.0,  0.0,  0.0);
-            ctfun.addRGBPoint(hu(150),    0.12, 0.08, 0.04);   // 0.288
-            ctfun.addRGBPoint(hu(450),    0.86, 0.65, 0.47);   // 0.363
-            ctfun.addRGBPoint(hu(900),    0.95, 0.88, 0.78);   // 0.475
-            ctfun.addRGBPoint(hu(1800),   1.0,  0.98, 0.94);   // 0.700
-            ctfun.addRGBPoint(hi,         1.0,  1.0,  1.0);
+            // ── BONE / TEETH (CLEAN & SHARP) ──
+            
+            // 1. Color: Keep it realistic
+            ctfun.addRGBPoint(0.0, 0.0, 0.0, 0.0);
+            ctfun.addRGBPoint(0.4, 0.0, 0.0, 0.0);       // Keep dark
+            ctfun.addRGBPoint(0.42, 0.86, 0.65, 0.47);   // Beige (Bone Start)
+            ctfun.addRGBPoint(0.60, 0.95, 0.88, 0.78);   // White (Main Bone)
+            ctfun.addRGBPoint(1.0, 1.0, 0.98, 0.94);     // Enamel/Metal (Highlight)
 
-            ofun.addPoint(lo,          0.0);
-            ofun.addPoint(hu(150),     0.0);      // Air + soft tissue → transparent
-            ofun.addPoint(hu(300),     0.06);     // Cancellous bone begins
-            ofun.addPoint(hu(600),     0.25);     // Mid bone
-            ofun.addPoint(hu(1000),    0.55);     // Cortical bone
-            ofun.addPoint(hu(1500),    0.75);     // Dense bone / enamel
-            ofun.addPoint(hu(3000),    0.88);     // Metal implants
-            ofun.addPoint(hi,          0.90);
+            // 2. Opacity: THE CLEANER
+            ofun.addPoint(0.0, 0.0);
+            
+            // Cutoff at 0.42 — removes all neck/cheek flesh completely
+            ofun.addPoint(0.42, 0.0);    
+            
+            // Fast transition to bone (Sharp Edge)
+            ofun.addPoint(0.45, 0.2);     
+            ofun.addPoint(0.55, 0.7);     // Solid Jawbone
+            ofun.addPoint(0.80, 0.9);     // Teeth Very Solid
+            ofun.addPoint(1.0, 1.0);
 
         } else if (presetName === 'soft') {
             // ── SOFT TISSUE ──
