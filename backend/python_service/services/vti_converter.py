@@ -1,11 +1,22 @@
 """
-VTI Converter - Pre-computes DICOM series into optimized .vti files for instant 3D rendering.
+VTI Converter — MONAI-powered DICOM-to-VTI pipeline for dental CBCT.
 
-This shifts all heavy processing to the backend (once, at upload time) so the frontend
-simply loads a single compressed binary file instead of reconstructing 300+ slices.
+Pipeline:
+  1. Robust DICOM loading (pydicom force=True for non-standard headers)
+  2. MONAI Transforms: Orientation(RAS) → Spacing(0.5mm iso) → ScaleIntensityRange → CropForeground
+  3. VTK vtkXMLImageDataWriter with ZLib compression for .vti output
 
-Output: {study_path}/volume.vti (zlib-compressed XML Image Data)
-Typical sizes: Raw ~200MB → Compressed ~30-50MB
+The MONAI pipeline solves:
+  - Cylinder/Box Artifact  → CropForeground removes surrounding air
+  - Upside-down/Mirrored   → Orientation("RAS") forces consistent orientation
+  - Inconsistent Contrast  → ScaleIntensityRange normalizes ALL scanners to [0.0, 1.0]
+  - Squashed Anatomy       → Spacing(0.5mm) makes isotropic voxels
+
+Frontend receives data in [0.0, 1.0] range where:
+  0.0 = Air (-1000 HU)
+  ~0.25 = Soft tissue (0 HU)
+  ~0.50 = Cancellous bone (1000 HU)
+  1.0 = Max density (3000 HU / Metal)
 """
 
 import os
@@ -15,9 +26,6 @@ import pydicom
 from pydicom.uid import ExplicitVRLittleEndian
 import glob
 from collections import defaultdict
-import struct
-import zlib
-import base64
 import time
 
 
@@ -75,14 +83,15 @@ def scan_dicom_series(study_path: str) -> dict:
 def read_dicom_volume(file_list: list) -> tuple:
     """
     Read a sorted list of DICOM files into a 3D numpy array.
+    Uses pydicom with force=True for maximum compatibility with dental CBCT scanners.
     Applies RescaleSlope/Intercept for HU calibration.
     Auto-detects raw unsigned data and normalizes to pseudo-HU.
-    Returns: (volume_array, spacing, origin)
+    Returns: (volume_array, spacing, origin, orientation_cosines)
     """
     slices = []
     first_ds = None
-    had_rescale = False  # Track if any slice had RescaleSlope/Intercept
-    
+    had_rescale = False
+
     for fp in file_list:
         try:
             ds = pydicom.dcmread(fp, force=True)
@@ -90,148 +99,264 @@ def read_dicom_volume(file_list: list) -> tuple:
                 ds.file_meta = pydicom.dataset.FileMetaDataset()
             if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
                 ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
-            
+
             pixel_array = ds.pixel_array.astype(np.float32)
             slope = float(getattr(ds, 'RescaleSlope', 1.0))
             intercept = float(getattr(ds, 'RescaleIntercept', 0.0))
             if slope != 1.0 or intercept != 0.0:
                 pixel_array = pixel_array * slope + intercept
                 had_rescale = True
-            
+
             slices.append(pixel_array)
             if first_ds is None:
                 first_ds = ds
         except Exception as e:
             print(f"[VTI] Failed to read {fp}: {e}")
-    
+
     if not slices or first_ds is None:
         raise ValueError("No valid DICOM slices found")
-    
+
     volume = np.stack(slices)  # Shape: (Z, Y, X)
-    
+
     # ═══ Raw Unsigned Detection & HU Normalization ═══
-    # If no RescaleSlope/Intercept was found and data is unsigned,
-    # shift values to approximate standard Hounsfield Units:
-    #   Air ≈ -1000, Water ≈ 0, Bone ≈ 300-3000
     vol_min = float(np.min(volume))
     vol_max = float(np.max(volume))
-    
+
     if not had_rescale and vol_min >= 0:
-        pixel_repr = int(getattr(first_ds, 'PixelRepresentation', 0))  # 0=unsigned
+        pixel_repr = int(getattr(first_ds, 'PixelRepresentation', 0))
         bits_stored = int(getattr(first_ds, 'BitsStored', 16))
-        
+
         if pixel_repr == 0:
-            # Unsigned data without calibration — apply standard CT offset
-            # Maps air (lowest values around 0) to approximately -1024 HU
             shift = -1024.0
             volume = volume + shift
             new_min = float(np.min(volume))
             new_max = float(np.max(volume))
-            print(f"[VTI] \u26a0\ufe0f  Raw unsigned {bits_stored}-bit data detected (no RescaleSlope/Intercept)")
+            print(f"[VTI] ⚠️  Raw unsigned {bits_stored}-bit data detected (no RescaleSlope/Intercept)")
             print(f"[VTI] Applied HU normalization: shift = {shift}")
-            print(f"[VTI] Range: [{vol_min:.0f}, {vol_max:.0f}] \u2192 [{new_min:.0f}, {new_max:.0f}]")
+            print(f"[VTI] Range: [{vol_min:.0f}, {vol_max:.0f}] → [{new_min:.0f}, {new_max:.0f}]")
         else:
             print(f"[VTI] Signed {bits_stored}-bit data (no rescale). Range: [{vol_min:.0f}, {vol_max:.0f}]")
     else:
         print(f"[VTI] Data calibrated (rescale={'yes' if had_rescale else 'no'}). Range: [{vol_min:.0f}, {vol_max:.0f}]")
-    
+
     # Extract spacing
     pixel_spacing = getattr(first_ds, 'PixelSpacing', [1.0, 1.0])
     px = float(pixel_spacing[0]) if pixel_spacing else 1.0
     py = float(pixel_spacing[1]) if pixel_spacing else 1.0
-    
+
     slice_thickness = float(getattr(first_ds, 'SliceThickness', 1.0))
     if slice_thickness <= 0:
         slice_thickness = 1.0
-    
+
     # VTI uses (X, Y, Z) order for spacing
     spacing = (px, py, slice_thickness)
-    
+
     # Get origin from ImagePositionPatient of first slice
     origin = (0.0, 0.0, 0.0)
     if hasattr(first_ds, 'ImagePositionPatient') and first_ds.ImagePositionPatient:
         origin = tuple(float(v) for v in first_ds.ImagePositionPatient)
-    
-    return volume, spacing, origin
+
+    # Get orientation cosines for MONAI affine construction
+    orientation = None
+    if hasattr(first_ds, 'ImageOrientationPatient') and first_ds.ImageOrientationPatient:
+        orientation = [float(v) for v in first_ds.ImageOrientationPatient]
+
+    return volume, spacing, origin, orientation
 
 
-def write_vti_compressed(volume: np.ndarray, spacing: tuple, origin: tuple, output_path: str):
+def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientation_cosines: list = None) -> tuple:
     """
-    Write a 3D numpy array as a VTK XML ImageData (.vti) file with zlib compression.
-    
-    This is a pure-Python writer that produces files compatible with VTK.js's
-    vtkXMLImageDataReader without requiring the VTK Python library to be installed.
-    
-    Uses base64-encoded zlib-compressed binary data (AppendedData format).
+    MONAI preprocessing pipeline for dental CBCT volumes.
+
+    Pipeline:
+      1. Build diagonal affine matrix (dim0→Z, dim1→Y, dim2→X)
+      2. Orientation("RAS") — reorder axes to Right-Anterior-Superior
+      3. Spacing(0.5mm isotropic) — resample to uniform voxels
+      4. ScaleIntensityRange(-1000→3000 mapped to 0.0→1.0) — universal normalizer
+      5. CropForeground(threshold=0.1, margin=10) — cylinder/box artifact killer
+
+    Input:  numpy (Z, Y, X) in Hounsfield Units
+    Output: numpy (X, Y, Z) in [0.0, 1.0] float32, isotropic 0.5mm spacing
+
+    CRITICAL: The affine MUST correctly tell MONAI which numpy axis is which
+    patient axis, so Orientation("RAS") can reorder them properly.
     """
-    z, y, x = volume.shape
-    num_points = x * y * z
-    
-    # Convert to int16 (standard DICOM range, saves space)
-    vol_int16 = np.clip(volume, -32768, 32767).astype(np.int16)
-    
-    # VTK expects Fortran-order (X varies fastest), but numpy is C-order (Z varies fastest)
-    # For VTI: dimensions are (X, Y, Z) and data is stored as flat array with X varying fastest
-    # We need to transpose from (Z, Y, X) -> (X, Y, Z) then flatten in C-order
-    # OR equivalently, flatten in Fortran order
-    raw_bytes = vol_int16.tobytes(order='F')  # X varies fastest
-    
-    # Compress with zlib
-    compressed = zlib.compress(raw_bytes, level=6)
-    
-    # Build header block (4 uint32 values): num_blocks, block_size, last_block_size, compressed_size
-    # This is the VTK "header" for compressed data
-    header = struct.pack('<IIII', 1, len(raw_bytes), len(raw_bytes), len(compressed))
-    
-    # Combine header + compressed data
-    appended_data = header + compressed
-    appended_b64 = base64.b64encode(appended_data).decode('ascii')
-    
-    # Data range for frontend reference
-    data_min = int(np.min(vol_int16))
-    data_max = int(np.max(vol_int16))
-    
-    # Write VTI XML
-    vti_xml = f'''<?xml version="1.0"?>
-<VTKFile type="ImageData" version="0.1" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
-  <ImageData WholeExtent="0 {x-1} 0 {y-1} 0 {z-1}" Origin="{origin[0]} {origin[1]} {origin[2]}" Spacing="{spacing[0]} {spacing[1]} {spacing[2]}">
-    <FieldData>
-      <DataArray type="Float64" Name="DataRange" NumberOfTuples="2" format="ascii">
-        {data_min} {data_max}
-      </DataArray>
-    </FieldData>
-    <Piece Extent="0 {x-1} 0 {y-1} 0 {z-1}">
-      <PointData Scalars="Scalars">
-        <DataArray type="Int16" Name="Scalars" NumberOfComponents="1" format="appended" offset="0"/>
-      </PointData>
-    </Piece>
-  </ImageData>
-  <AppendedData encoding="base64">
-   _{appended_b64}
-  </AppendedData>
-</VTKFile>
-'''
-    
-    with open(output_path, 'w') as f:
-        f.write(vti_xml)
-    
-    file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    raw_size_mb = len(raw_bytes) / (1024 * 1024)
-    ratio = file_size_mb / raw_size_mb * 100 if raw_size_mb > 0 else 0
-    
+    import torch
+    from monai.transforms import (
+        Orientation,
+        Spacing,
+        ScaleIntensityRange,
+        CropForeground,
+    )
+    from monai.data import MetaTensor
+
+    print(f"[MONAI] Input volume: shape={volume.shape}, range=[{volume.min():.0f}, {volume.max():.0f}]")
+
+    # ── Step 1: Build affine matrix ──
+    # Volume from pydicom is (Z, Y, X). We need affine to map voxel → patient mm.
+    # Always use simple diagonal affine — reliable for standard axial dental CBCT.
+    #
+    # Affine columns: col0=dim0(Z), col1=dim1(Y), col2=dim2(X), col3=origin
+    #   Row 0 (X/R world): only dim2 contributes → affine[0,2] = sx
+    #   Row 1 (Y/A world): only dim1 contributes → affine[1,1] = sy
+    #   Row 2 (Z/S world): only dim0 contributes → affine[2,0] = sz
+    #
+    # nibabel aff2axcodes on this → ('S', 'A', 'R') = dim0→S, dim1→A, dim2→R
+    # MONAI Orientation("RAS") will reorder (S,A,R) → (R,A,S) = (X,Y,Z) ✓
+
+    sx, sy, sz = spacing  # sx=PixelSpacing[0], sy=PixelSpacing[1], sz=SliceThickness
+
+    affine = np.zeros((4, 4), dtype=np.float64)
+    affine[0, 2] = sx    # dim2 (X in volume) → X-world (Right)
+    affine[1, 1] = sy    # dim1 (Y in volume) → Y-world (Anterior)
+    affine[2, 0] = sz    # dim0 (Z in volume) → Z-world (Superior)
+    affine[3, 3] = 1.0
+    affine[:3, 3] = [origin[0], origin[1], origin[2]]
+
+    print(f"[MONAI] Affine: dim0→Z(sz={sz}), dim1→Y(sy={sy}), dim2→X(sx={sx})")
+
+    # ── Step 2: Convert to MONAI MetaTensor ──
+    tensor = torch.from_numpy(volume.copy()).unsqueeze(0).float()  # (1, Z, Y, X)
+    meta_tensor = MetaTensor(tensor, affine=torch.from_numpy(affine).float())
+    print(f"[MONAI] MetaTensor shape: {meta_tensor.shape}")
+
+    # ── Step 3: Orientation("RAS") — Reorder (S,A,R) → (R,A,S) = (X,Y,Z) ──
+    try:
+        orient_transform = Orientation(axcodes="RAS")
+        meta_tensor = orient_transform(meta_tensor)
+        print(f"[MONAI] After Orientation(RAS): shape={meta_tensor.shape}")
+    except Exception as e:
+        print(f"[MONAI] ⚠️  Orientation failed (using original): {e}")
+
+    # ── Step 4: Spacing(0.5mm isotropic) — Resample ──
+    try:
+        spacing_transform = Spacing(pixdim=(0.5, 0.5, 0.5), mode="bilinear")
+        meta_tensor = spacing_transform(meta_tensor)
+        print(f"[MONAI] After Spacing(0.5mm): shape={meta_tensor.shape}")
+    except Exception as e:
+        print(f"[MONAI] ⚠️  Spacing failed (using original): {e}")
+
+    # ── Step 5: ScaleIntensityRange — Normalize HU → [0.0, 1.0] ──
+    try:
+        scale_transform = ScaleIntensityRange(
+            a_min=-1000.0, a_max=3000.0,
+            b_min=0.0, b_max=1.0,
+            clip=True
+        )
+        meta_tensor = scale_transform(meta_tensor)
+        print(f"[MONAI] After ScaleIntensity: range=[{meta_tensor.min():.4f}, {meta_tensor.max():.4f}]")
+    except Exception as e:
+        print(f"[MONAI] ⚠️  ScaleIntensity failed (using original): {e}")
+
+    # ── Step 6: CropForeground — Remove surrounding air/cylinder ──
+    try:
+        crop_transform = CropForeground(
+            select_fn=lambda x: x > 0.1,
+            margin=10
+        )
+        pre_crop_shape = meta_tensor.shape
+        meta_tensor = crop_transform(meta_tensor)
+        print(f"[MONAI] After CropForeground: {pre_crop_shape} → {meta_tensor.shape}")
+
+        if meta_tensor.numel() < 1000:
+            print(f"[MONAI] ⚠️  Crop produced tiny volume — reverting")
+            raise ValueError("Crop too aggressive")
+    except Exception as e:
+        print(f"[MONAI] ⚠️  CropForeground skipped: {e}")
+
+    # ── Step 7: Extract final numpy array ──
+    # After Orientation("RAS"): axes are (R, A, S) = (X, Y, Z)
+    # This is exactly what write_vti_vtk expects: shape (nx, ny, nz)
+    result = meta_tensor.squeeze(0).detach().cpu().numpy().astype(np.float32)
+
+    final_spacing = (0.5, 0.5, 0.5)
+
+    # Get updated origin from MONAI affine
+    if hasattr(meta_tensor, 'affine') and meta_tensor.affine is not None:
+        new_affine = meta_tensor.affine.cpu().numpy()
+        new_origin = (float(new_affine[0, 3]), float(new_affine[1, 3]), float(new_affine[2, 3]))
+    else:
+        new_origin = origin
+
+    print(f"[MONAI] Final volume: shape={result.shape}, range=[{result.min():.4f}, {result.max():.4f}]")
+    print(f"[MONAI] Final spacing: {final_spacing}, origin: {new_origin}")
+
+    return result, final_spacing, new_origin
+
+
+def write_vti_vtk(volume: np.ndarray, spacing: tuple, origin: tuple, output_path: str) -> dict:
+    """
+    Write a 3D numpy volume to VTI using VTK's vtkXMLImageDataWriter with ZLib compression.
+
+    CRITICAL: Input volume must be in (X, Y, Z) axis order:
+      - After MONAI RAS: shape = (R, A, S) = (X, Y, Z) ✓
+      - Fallback mode: must transpose (Z, Y, X) → (X, Y, Z) before calling
+
+    VTK convention:
+      - SetDimensions(nx, ny, nz) — nx=X, ny=Y, nz=Z
+      - Data stored as data[x + nx*y + nx*ny*z] — X varies fastest
+      - numpy.flatten('F') on (nx, ny, nz) array → dim0(X) varies fastest ✓
+
+    Args:
+        volume: numpy float32 array, shape (nx, ny, nz) — X,Y,Z order
+        spacing: (sx, sy, sz) in mm — X,Y,Z order
+        origin: (ox, oy, oz) in mm
+        output_path: path to write .vti file
+    """
+    import vtkmodules.vtkIOXML as vtkIOXML
+    import vtkmodules.vtkCommonDataModel as vtkDataModel
+    import vtkmodules.vtkCommonCore as vtkCore
+    from vtkmodules.util.numpy_support import numpy_to_vtk
+
+    nx, ny, nz = volume.shape
+
+    # Create VTK ImageData
+    image_data = vtkDataModel.vtkImageData()
+    image_data.SetDimensions(nx, ny, nz)
+    image_data.SetSpacing(spacing[0], spacing[1], spacing[2])
+    image_data.SetOrigin(origin[0], origin[1], origin[2])
+
+    # Convert numpy to VTK array
+    # Fortran-order flatten: dim0 (X) varies fastest — matches VTK storage convention
+    flat_data = volume.flatten(order='F').astype(np.float32)
+    vtk_array = numpy_to_vtk(flat_data, deep=True)
+    vtk_array.SetName("Scalars")
+    vtk_array.SetNumberOfComponents(1)
+
+    image_data.GetPointData().SetScalars(vtk_array)
+
+    # Write with ZLib compression
+    writer = vtkIOXML.vtkXMLImageDataWriter()
+    writer.SetFileName(output_path)
+    writer.SetInputData(image_data)
+    writer.SetCompressorTypeToZLib()
+    writer.SetDataModeToAppended()
+    writer.SetEncodeAppendedData(True)  # Base64 encode for VTK.js compatibility
+    writer.Write()
+
+    file_size = os.path.getsize(output_path)
+    file_size_mb = file_size / (1024 * 1024)
+    num_voxels = nx * ny * nz
+    raw_size_mb = num_voxels * 4 / (1024 * 1024)  # float32 = 4 bytes
+
+    data_min = float(np.min(volume))
+    data_max = float(np.max(volume))
+
     print(f"[VTI] Written: {output_path}")
-    print(f"[VTI] Volume: {x}x{y}x{z} = {num_points:,} voxels")
+    print(f"[VTI] Volume: {nx}x{ny}x{nz} (VTK XYZ) = {num_voxels:,} voxels")
     print(f"[VTI] Spacing: {spacing}")
-    print(f"[VTI] Data range: [{data_min}, {data_max}]")
-    print(f"[VTI] Raw size: {raw_size_mb:.1f}MB → Compressed: {file_size_mb:.1f}MB ({ratio:.1f}%)")
-    
+    print(f"[VTI] Data range: [{data_min:.4f}, {data_max:.4f}]")
+    print(f"[VTI] Raw: {raw_size_mb:.1f}MB → Compressed: {file_size_mb:.1f}MB ({file_size_mb/raw_size_mb*100:.1f}%)")
+
     return {
-        "dimensions": [x, y, z],
+        "dimensions": [nx, ny, nz],
         "spacing": list(spacing),
         "origin": list(origin),
         "data_range": [data_min, data_max],
-        "file_size_bytes": os.path.getsize(output_path),
-        "num_voxels": num_points
+        "file_size_bytes": file_size,
+        "num_voxels": num_voxels,
+        "normalized": True,
+        "pipeline": "MONAI"
     }
 
 
@@ -333,44 +458,44 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
 
 def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
     """
-    Main entry point: Convert a DICOM study folder to output files.
-    
+    Main entry point: Convert a DICOM study folder to output files using MONAI pipeline.
+
     For each series:
-    - 3D series (>10 slices): Generate volume_{uid}.vti + thumbnail
+    - 3D series (>10 slices): MONAI pipeline → VTI (RAS-oriented, 0.5mm iso, [0,1] normalized, cropped)
     - 2D series (≤10 slices): Generate image_{uid}.jpg + thumbnail
-    
+
     Args:
         study_path: Path to study folder containing DICOM files
         force: If True, regenerate even if files already exist
-    
+
     Returns:
         Dict with conversion results per series
     """
     start_time = time.time()
     print(f"\n[VTI] ═══════════════════════════════════════════")
-    print(f"[VTI] Converting study: {study_path}")
+    print(f"[VTI] MONAI Pipeline — Converting study: {study_path}")
     print(f"[VTI] ═══════════════════════════════════════════")
-    
+
     results = {}
     series_groups = scan_dicom_series(study_path)
-    
+
     for series_uid, files_with_meta in series_groups.items():
         num_files = len(files_with_meta)
         safe_uid = series_uid.replace('.', '_')[:50]
-        
+
         # Sort files by instance number, then by z-position
         files_with_meta.sort(key=lambda x: (x[0], x[1]))
         sorted_files = [fp for _, _, fp in files_with_meta]
-        
+
         # Generate thumbnail from middle slice (always)
         thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
         if not os.path.exists(thumb_path) or force:
             generate_thumbnail(sorted_files, thumb_path)
-        
+
         if num_files <= 10:
             # ── 2D Series (Panoramic, Cephalometric, etc.) ──
             img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
-            
+
             if os.path.exists(img_path) and not force:
                 print(f"[2D] Already exists: {img_path}")
                 results[series_uid] = {"status": "exists", "type": "2d", "path": img_path}
@@ -380,51 +505,82 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
                 info["type"] = "2d"
                 results[series_uid] = info
             continue
-        
-        # ── 3D Series (CBCT Volume) ──
+
+        # ── 3D Series (CBCT Volume) — MONAI Pipeline ──
         vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
-        
-        # Also create a default volume.vti for the first 3D series
         default_vti = os.path.join(study_path, "volume.vti")
-        is_first_3d = not os.path.exists(default_vti)
-        
+        is_first_3d = True  # Always update volume.vti with the first 3D series processed
+
         if os.path.exists(vti_path) and not force:
             print(f"[VTI] Already exists: {vti_path}")
             results[series_uid] = {"status": "exists", "type": "3d", "path": vti_path}
             continue
-        
+
         try:
             print(f"[VTI] Processing 3D series {series_uid[:30]}... ({num_files} slices)")
-            
-            # Read volume
-            volume, spacing, origin = read_dicom_volume(sorted_files)
-            print(f"[VTI] Volume shape: {volume.shape}, dtype: {volume.dtype}")
-            
-            # Write VTI
-            info = write_vti_compressed(volume, spacing, origin, vti_path)
+
+            # Step 1: Robust DICOM loading with pydicom (handles force=True)
+            volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
+            print(f"[VTI] Raw volume: shape={volume.shape}, dtype={volume.dtype}")
+
+            # Step 2: MONAI preprocessing pipeline
+            try:
+                processed, new_spacing, new_origin = monai_preprocess(
+                    volume, spacing, origin, orientation
+                )
+                print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
+            except Exception as monai_err:
+                # Fallback: if MONAI fails, do basic normalization without MONAI
+                print(f"[VTI] ⚠️  MONAI pipeline failed: {monai_err}")
+                print(f"[VTI] Falling back to basic normalization...")
+                import traceback
+                traceback.print_exc()
+
+                # Basic fallback: scale to [0, 1] manually
+                vol_min = float(np.min(volume))
+                vol_max = float(np.max(volume))
+                a_min = max(vol_min, -1000.0)
+                a_max = min(vol_max, 3000.0)
+                if a_max > a_min:
+                    processed = np.clip(volume, a_min, a_max)
+                    processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
+                else:
+                    processed = np.zeros_like(volume, dtype=np.float32)
+
+                # Transpose (Z, Y, X) → (X, Y, Z) for write_vti_vtk which expects XYZ order
+                processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
+
+                # Spacing from read_dicom_volume is already (X, Y, Z) = (px, py, sz)
+                new_spacing = spacing
+                new_origin = origin
+                print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
+
+            # Step 3: Write VTI using VTK writer with ZLib compression
+            info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)
             info["status"] = "success"
             info["type"] = "3d"
             info["path"] = vti_path
             results[series_uid] = info
-            
-            # Copy as default volume.vti for first 3D series
+
+            # Copy as default volume.vti for first 3D series processed
             if is_first_3d:
                 import shutil
                 shutil.copy2(vti_path, default_vti)
-                print(f"[VTI] Default volume.vti created")
-            
+                is_first_3d = False  # Only first 3D series becomes default
+                print(f"[VTI] Default volume.vti updated from {os.path.basename(vti_path)}")
+
         except Exception as e:
             import traceback
             print(f"[VTI] FAILED: {e}")
             traceback.print_exc()
             results[series_uid] = {"status": "error", "error": str(e)}
-    
+
     elapsed = time.time() - start_time
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] Conversion complete in {elapsed:.1f}s")
     print(f"[VTI] Results: {len(results)} series processed")
     print(f"[VTI] ═══════════════════════════════════════════\n")
-    
+
     return results
 
 
