@@ -61,3 +61,4 @@ coverage/
 .parcel-cache/
 .temp/
 check_token.js
+__pycache__/
