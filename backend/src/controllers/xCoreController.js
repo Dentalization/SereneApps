@@ -17,6 +17,27 @@ if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+/**
+ * Recursively calculate the size of a directory in bytes.
+ * Returns 0n if the directory doesn't exist.
+ */
+function getDirSizeBytes(dirPath) {
+    if (!fs.existsSync(dirPath)) return 0n;
+    let total = 0n;
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            total += getDirSizeBytes(fullPath);
+        } else {
+            try {
+                total += BigInt(fs.statSync(fullPath).size);
+            } catch { /* skip inaccessible files */ }
+        }
+    }
+    return total;
+}
+
 export const uploadStudy = async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
@@ -201,26 +222,52 @@ export const getStorageStats = async (req, res) => {
 
         const dentistProfile = await prisma.dentistProfile.findFirst({
             where: { userId: userId },
-            select: { storage_usage: true, storage_limit: true }
+            select: { id: true, storage_usage: true, storage_limit: true }
         });
 
         console.log(`[X-Core] Profile found for stats: ${!!dentistProfile}`);
 
         if (!dentistProfile) {
-            // Default values if profile not found (e.g. admin or new user)
             return res.json({
                 usage: "0",
-                limit: "10737418240", // 10GB
+                limit: "10737418240",
                 percent: 0
             });
         }
 
-        const usage = dentistProfile.storage_usage || 0n;
+        // Self-heal: Recalculate actual disk usage from existing studies
+        // This fixes any accounting drift (e.g. from VTI files not being tracked)
+        const studies = await prisma.imagingStudy.findMany({
+            where: { dentistId: userId },
+            select: { folderName: true, sizeInBytes: true }
+        });
+
+        let actualTotal = 0n;
+        for (const s of studies) {
+            if (s.folderName) {
+                const studyDir = path.join(UPLOAD_DIR, s.folderName);
+                const diskSize = getDirSizeBytes(studyDir);
+                actualTotal += diskSize > 0n ? diskSize : (s.sizeInBytes || 0n);
+            } else {
+                actualTotal += s.sizeInBytes || 0n;
+            }
+        }
+
+        // If recalculated value differs from stored, update the profile
+        const storedUsage = dentistProfile.storage_usage || 0n;
+        if (actualTotal !== storedUsage) {
+            console.log(`[X-Core] Storage self-heal: stored=${storedUsage}, actual=${actualTotal}, fixing...`);
+            await prisma.dentistProfile.update({
+                where: { id: dentistProfile.id },
+                data: { storage_usage: actualTotal }
+            });
+        }
+
         const limit = dentistProfile.storage_limit || 10737418240n;
-        const percent = Number((usage * 100n) / limit);
+        const percent = limit > 0n ? Number((actualTotal * 100n) / limit) : 0;
 
         res.json({
-            usage: usage.toString(),
+            usage: actualTotal.toString(),
             limit: limit.toString(),
             percent: Math.min(percent, 100)
         });
@@ -252,41 +299,68 @@ export const deleteStudy = async (req, res) => {
             return res.status(403).json({ error: 'You do not have permission to delete this study' });
         }
 
-        if (study) {
-            console.log(`[X-Core] Study Dentist ID: ${study.dentistId}, Size: ${study.sizeInBytes}`);
+        // Calculate ACTUAL disk usage (includes VTI, thumbnails, generated images)
+        // This is more accurate than sizeInBytes which only tracks the original upload
+        let actualDiskSize = study.sizeInBytes || 0n;
+        if (study.folderName) {
+            const studyDir = path.join(UPLOAD_DIR, study.folderName);
+            const diskSize = getDirSizeBytes(studyDir);
+            if (diskSize > 0n) {
+                actualDiskSize = diskSize;
+            }
         }
+        console.log(`[X-Core] Study ${studyId}: DB sizeInBytes=${study.sizeInBytes}, actualDiskSize=${actualDiskSize}`);
 
         // Transaction: Delete DB record & Update Storage Usage
         await prisma.$transaction(async (tx) => {
-            // 1. Delete Study (Cascades to Series typically, but verify usage)
+            // 1. Delete all AI results for series in this study
+            const seriesIds = await tx.imagingSeries.findMany({
+                where: { studyId },
+                select: { id: true }
+            });
+            if (seriesIds.length > 0) {
+                await tx.aIResult.deleteMany({
+                    where: { seriesId: { in: seriesIds.map(s => s.id) } }
+                });
+            }
+
+            // 2. Delete series
+            await tx.imagingSeries.deleteMany({
+                where: { studyId }
+            });
+
+            // 3. Delete Study
             await tx.imagingStudy.delete({
                 where: { id: studyId }
             });
 
-            // 2. Decrement Storage Usage
-            // Only if the study has an associated dentist and profile
+            // 4. Decrement Storage Usage by actual disk size
             if (study.dentistId) {
                 const dentistProfile = await tx.dentistProfile.findFirst({
                     where: { userId: study.dentistId }
                 });
 
                 if (dentistProfile) {
-                    const newUsage = (dentistProfile.storage_usage || 0n) - (study.sizeInBytes || 0n);
+                    const newUsage = (dentistProfile.storage_usage || 0n) - actualDiskSize;
                     await tx.dentistProfile.update({
                         where: { id: dentistProfile.id },
                         data: {
                             storage_usage: newUsage < 0n ? 0n : newUsage
                         }
                     });
+                    console.log(`[X-Core] Storage updated: ${dentistProfile.storage_usage} - ${actualDiskSize} = ${newUsage < 0n ? 0n : newUsage}`);
                 }
             }
         });
 
-        // 3. Delete Files from Disk (Best effort, after DB success)
+        // 5. Delete Files from Disk (after DB success)
         if (study.folderName) {
             const studyDir = path.join(UPLOAD_DIR, study.folderName);
             if (fs.existsSync(studyDir)) {
                 fs.rmSync(studyDir, { recursive: true, force: true });
+                console.log(`[X-Core] Deleted folder: ${studyDir}`);
+            } else {
+                console.log(`[X-Core] Folder already removed: ${studyDir}`);
             }
         }
 
@@ -294,6 +368,6 @@ export const deleteStudy = async (req, res) => {
 
     } catch (error) {
         console.error('Delete Study Error:', error);
-        res.status(500).json({ error: 'Failed to delete study' });
+        res.status(500).json({ error: 'Failed to delete study: ' + error.message });
     }
 };

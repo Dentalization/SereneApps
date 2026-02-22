@@ -112,8 +112,12 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
         s.patientIdDisplay.toLowerCase().includes(searchQuery.toLowerCase())
     );
     
+    // Separate orphan studies (DB record exists but no files/series on disk)
+    const orphanStudies = filteredStudies.filter(study => (!study.series || study.series.length === 0));
+    const healthyStudies = filteredStudies.filter(study => study.series && study.series.length > 0);
+
     // Flatten to series cards for gallery display (Smart Series Grouping)
-    const seriesCards = filteredStudies.flatMap(study => 
+    const seriesCards = healthyStudies.flatMap(study => 
         (study.series || []).map(series => ({
             ...series,
             study: study,
@@ -143,18 +147,20 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
             });
 
             if (response.ok) {
+                // Immediately remove from local state for instant UI feedback
+                setStudiesWithSeries(prev => prev.filter(s => s.id !== study.id));
                 if (onStudyDeleted) onStudyDeleted();
+            } else {
+                const data = await response.json().catch(() => ({}));
+                const msg = data.error || `Server returned ${response.status}`;
+                console.error("[Gallery] Delete failed:", msg);
+                alert(`Failed to delete study: ${msg}`);
             }
         } catch (error) {
             console.error("Delete failed", error);
-            alert("Failed to delete study");
+            alert("Failed to delete study. Please check your connection.");
         }
     };
-
-    // We need to access onDelete from props if we change the signature, 
-    // but to avoid breaking changes let's check if we can add it to the component definition above.
-    // I will assume I can edit the component definition in a separate block or relying on the previous tool output.
-    // Wait, I need to update the prop definition first.
 
     return (
         <div className="space-y-6">
@@ -216,8 +222,43 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                     </div>
                 </div>
             ) : viewMode === 'grid' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {seriesCards.length === 0 ? (
+                <div className="space-y-4">
+                    {/* Orphan Studies Warning — DB records with missing files */}
+                    {orphanStudies.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <AppIcon name="AlertTriangle" size={18} className="text-amber-500" />
+                                <span className="font-semibold text-amber-700 text-sm">
+                                    {orphanStudies.length} orphan {orphanStudies.length === 1 ? 'study' : 'studies'} found
+                                </span>
+                                <span className="text-xs text-amber-500">— Files missing from disk. Delete to free storage.</span>
+                            </div>
+                            <div className="space-y-2">
+                                {orphanStudies.map(study => (
+                                    <div key={study.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-amber-100">
+                                        <div className="flex items-center gap-3">
+                                            <AppIcon name="FileWarning" size={16} className="text-amber-400" />
+                                            <div>
+                                                <span className="text-sm font-medium text-primary">{study.patientName}</span>
+                                                <span className="text-xs text-secondary ml-2">{study.patientIdDisplay}</span>
+                                                <span className="text-xs text-amber-500 ml-2">({study.folderName})</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDelete(e, study)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition"
+                                        >
+                                            <AppIcon name="Trash2" size={14} />
+                                            Delete Record
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {seriesCards.length === 0 && orphanStudies.length === 0 ? (
                         <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
                             <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
                                 <AppIcon name={searchQuery ? "SearchX" : "FolderOpen"} size={40} className="text-accent" />
@@ -321,6 +362,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                             </div>
                         </div>
                     ))}
+                </div>
                 </div>
             )}
 

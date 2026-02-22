@@ -269,17 +269,28 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     }, []);
 
     // ═══════════════════════════════════════════════════════════════════
-    // Container Readiness
+    // Container Readiness (robust: polls until container has real dimensions)
     // ═══════════════════════════════════════════════════════════════════
     useEffect(() => {
         if (!containerRef.current) return;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 20; // 20 × 100ms = 2s max wait
+        let timer;
         const check = () => {
             if (containerRef.current?.offsetWidth > 0 && containerRef.current?.offsetHeight > 0) {
+                setContainerReady(true);
+                return;
+            }
+            attempts++;
+            if (attempts < MAX_ATTEMPTS) {
+                timer = setTimeout(check, 100);
+            } else {
+                // Force ready after timeout — layout should be stable by now
+                console.warn('[VolumeViewer3D] Container readiness timeout, forcing ready');
                 setContainerReady(true);
             }
         };
         check();
-        const timer = setTimeout(check, 100);
         return () => clearTimeout(timer);
     }, []);
 
@@ -419,10 +430,12 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 actor.getProperty().setInterpolationTypeToLinear();
 
                 // Gradient opacity — sharpens bone surface edges
+                // NOTE: Data is MONAI-normalized [0,1], so gradient magnitudes are ~0.01–0.5.
+                // MaxValue must match this range (NOT raw HU scale of 100+).
                 actor.getProperty().setUseGradientOpacity(0, true);
                 actor.getProperty().setGradientOpacityMinimumValue(0, 0);
                 actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-                actor.getProperty().setGradientOpacityMaximumValue(0, 100);
+                actor.getProperty().setGradientOpacityMaximumValue(0, 0.05);
                 actor.getProperty().setGradientOpacityMaximumOpacity(0, 1.0);
 
                 // Lighting
@@ -493,16 +506,42 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 };
 
                 setLoadingProgress(100);
+
+                // Helper: force VTK resize + re-render after React removes the loading overlay.
+                // Without this, the canvas may be stale-sized or fail to display.
+                const forceResizeAndRender = () => {
+                    requestAnimationFrame(() => {
+                        if (cancelled) return;
+                        try {
+                            fullScreenRenderer.resize();
+                            renderWindow.render();
+                            console.log('[VolumeViewer3D] Post-overlay resize+render complete');
+                        } catch (e) {
+                            console.warn('[VolumeViewer3D] Post-overlay render error:', e);
+                        }
+                    });
+                };
+
                 if (isCached) {
                     setLoading(false); // Instant for cached volumes
+                    forceResizeAndRender();
                 } else {
-                    setTimeout(() => setLoading(false), 150);
+                    setTimeout(() => {
+                        if (cancelled) return;
+                        setLoading(false);
+                        forceResizeAndRender();
+                    }, 150);
                 }
 
             } catch (err) {
                 if (cancelled) return;
                 console.error('[VolumeViewer3D] Error:', err);
-                setError(err.message || 'Failed to load volume');
+                // Provide user-friendly error messages
+                let errorMsg = err.message || 'Failed to load volume';
+                if (err.name === 'TypeError' && (errorMsg === 'Failed to fetch' || errorMsg === 'Load failed' || errorMsg.includes('NetworkError'))) {
+                    errorMsg = 'Cannot connect to imaging server (port 8000). Please ensure the Python service is running.';
+                }
+                setError(errorMsg);
                 setLoading(false);
             }
         };
