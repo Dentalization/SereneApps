@@ -69,16 +69,22 @@ def get_study_gallery(study_id: str):
             safe_uid = series_uid.replace('.', '_')[:50]
             num_slices = series_info.get('num_slices', 0)
             series_type = series_info.get('type', '3D Volume')
+            classification = series_info.get('classification', '3D')
             
             # Check if pre-generated files exist
             has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
             has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
             has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
             
+            # Strict enforcement: 3D series should NOT report has_image (no fake 2D)
+            if classification == '3D':
+                has_image = False
+            
             card = {
                 "series_uid": series_uid,
                 "title": series_info.get('series_description', 'Unknown Series'),
                 "type": series_type,
+                "classification": classification,
                 "modality": series_info.get('modality', 'CT'),
                 "num_slices": num_slices,
                 "thumbnail_index": num_slices // 2,  # Middle slice = best thumbnail
@@ -196,7 +202,8 @@ def get_volume_vti(study_id: str, series_uid: str = None):
 def get_2d_image(study_id: str, series_uid: str):
     """
     Serve a pre-generated 2D DICOM image (Panoramic, Cephalometric, etc.) as JPEG.
-    If not pre-generated, generates on-demand.
+    If not pre-generated, generates on-demand — but ONLY for native 2D series.
+    Rejects requests for 3D series (no fake 2D slices from volumes).
     """
     study_path = os.path.join(UPLOAD_DIR, study_id)
     if not os.path.exists(study_path):
@@ -205,12 +212,23 @@ def get_2d_image(study_id: str, series_uid: str):
     safe_uid = series_uid.replace('.', '_')[:50]
     img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
     
-    # If not pre-generated, generate on demand
+    # If not pre-generated, generate on demand — but only for native 2D series
     if not os.path.exists(img_path):
         from services.vti_converter import scan_dicom_series, generate_2d_image
         series_groups = scan_dicom_series(study_path)
         if series_uid in series_groups:
-            files = series_groups[series_uid]
+            series_info = series_groups[series_uid]
+            classification = series_info.get('classification', '2D')
+            
+            # STRICT: refuse to generate 2D image from a 3D volume series
+            if classification == '3D':
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Series {series_uid[:30]}... is a 3D Volume (Modality={series_info.get('modality','')}). "
+                           f"Use /volume/{study_id} for 3D data. No 2D image available."
+                )
+            
+            files = series_info['files']
             files.sort(key=lambda x: (x[0], x[1]))
             sorted_files = [fp for _, _, fp in files]
             generate_2d_image(sorted_files, img_path)
