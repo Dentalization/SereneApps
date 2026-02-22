@@ -29,11 +29,48 @@ from collections import defaultdict
 import time
 
 
+# ── Strict 2D / 3D Classification Constants ──
+# Native 2D modalities: single-frame radiographs (panoramic, cephalometric, periapical, etc.)
+NATIVE_2D_MODALITIES = {'DX', 'PX', 'CR', 'IO', 'RG', 'MG', 'XA'}
+# Native 3D modalities: volumetric datasets (CT, CBCT, MR, etc.)
+NATIVE_3D_MODALITIES = {'CT', 'MR', 'PT', 'NM', 'US'}
+
+
+def classify_series(num_files: int, modality: str) -> str:
+    """
+    Strictly classify a DICOM series as '3D' or '2D'.
+
+    Rules (in priority order):
+      1. If modality is a known 2D type (DX, PX, CR, IO, RG, MG, XA) → '2D'
+         regardless of file count.
+      2. If modality is a known 3D type (CT, MR, PT, NM, US) → '3D'
+         regardless of file count.
+      3. Fallback (unknown modality): >10 files → '3D', else → '2D'.
+    """
+    mod_upper = modality.strip().upper() if modality else ''
+
+    if mod_upper in NATIVE_2D_MODALITIES:
+        return '2D'
+    if mod_upper in NATIVE_3D_MODALITIES:
+        return '3D'
+    # Unknown modality → heuristic by file count
+    return '3D' if num_files > 10 else '2D'
+
+
 def scan_dicom_series(study_path: str) -> dict:
     """
     Scan folder and group DICOM files by SeriesInstanceUID.
     Handles both standard DICOM extensions and extensionless files (common in dental CBCT).
-    Returns dict: {series_uid: [(instance_number, z_pos, file_path), ...]}
+
+    Returns dict: {
+        series_uid: {
+            'files': [(instance_number, z_pos, file_path), ...],
+            'modality': str,            # DICOM Modality tag (e.g. 'CT', 'DX')
+            'classification': '3D'|'2D',# Strict classification
+            'num_files': int,
+            'series_description': str,
+        }
+    }
     """
     extensions = ['*.dcm', '*.DCM', '*.dcom', '*.DCOM', '*.dicom', '*.DICOM', '*.ima', '*.IMA']
     all_files = []
@@ -55,7 +92,8 @@ def scan_dicom_series(study_path: str) -> dict:
     all_files = sorted(set(all_files))
     print(f"[VTI] Found {len(all_files)} candidate files in {study_path}")
     
-    series_groups = defaultdict(list)
+    # Temporary accumulator: {series_uid: {'files': [...], 'modality': str, 'description': str}}
+    _temp = defaultdict(lambda: {'files': [], 'modality': '', 'description': ''})
     
     for fp in all_files:
         try:
@@ -73,11 +111,32 @@ def scan_dicom_series(study_path: str) -> dict:
             if hasattr(ds, 'ImagePositionPatient') and ds.ImagePositionPatient:
                 z_pos = float(ds.ImagePositionPatient[2])
             
-            series_groups[series_uid].append((instance_num, z_pos, fp))
+            _temp[series_uid]['files'].append((instance_num, z_pos, fp))
+
+            # Read modality & description from first file encountered for this series
+            if not _temp[series_uid]['modality']:
+                _temp[series_uid]['modality'] = str(getattr(ds, 'Modality', '')).strip()
+            if not _temp[series_uid]['description']:
+                _temp[series_uid]['description'] = str(getattr(ds, 'SeriesDescription', 'Unknown Series')).strip()
         except Exception as e:
             print(f"[VTI] Skipping {fp}: {e}")
     
-    return dict(series_groups)
+    # Build final dict with classification
+    series_groups = {}
+    for series_uid, data in _temp.items():
+        num_files = len(data['files'])
+        modality = data['modality']
+        classification = classify_series(num_files, modality)
+        series_groups[series_uid] = {
+            'files': data['files'],
+            'modality': modality,
+            'classification': classification,
+            'num_files': num_files,
+            'series_description': data['description'],
+        }
+        print(f"[VTI] Series {series_uid[:30]}... → {num_files} files, Modality={modality}, Class={classification}")
+    
+    return series_groups
 
 
 def read_dicom_volume(file_list: list) -> tuple:
@@ -458,11 +517,14 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
 
 def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
     """
-    Main entry point: Convert a DICOM study folder to output files using MONAI pipeline.
+    Main entry point: Convert a DICOM study folder to output files.
 
-    For each series:
-    - 3D series (>10 slices): MONAI pipeline → VTI (RAS-oriented, 0.5mm iso, [0,1] normalized, cropped)
-    - 2D series (≤10 slices): Generate image_{uid}.jpg + thumbnail
+    Uses STRICT 2D/3D classification from scan_dicom_series (Modality-based):
+    - 3D series (CT/MR or >10 files with unknown modality): MONAI pipeline → VTI
+    - 2D series (DX/PX/CR/IO or ≤10 files with unknown modality): Generate image_{uid}.jpg
+
+    A 3D series will NEVER produce image_{uid}.jpg (no fake 2D from 3D slices).
+    A 2D series will NEVER produce volume_{uid}.vti.
 
     Args:
         study_path: Path to study folder containing DICOM files
@@ -474,50 +536,74 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
     start_time = time.time()
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] MONAI Pipeline — Converting study: {study_path}")
+    print(f"[VTI] Strict 2D/3D classification enabled")
     print(f"[VTI] ═══════════════════════════════════════════")
 
     results = {}
     series_groups = scan_dicom_series(study_path)
+    is_first_3d = True  # Track first 3D series for default volume.vti
 
-    for series_uid, files_with_meta in series_groups.items():
-        num_files = len(files_with_meta)
+    for series_uid, series_info in series_groups.items():
+        files_with_meta = series_info['files']
+        classification = series_info['classification']
+        modality = series_info['modality']
+        num_files = series_info['num_files']
         safe_uid = series_uid.replace('.', '_')[:50]
 
         # Sort files by instance number, then by z-position
         files_with_meta.sort(key=lambda x: (x[0], x[1]))
         sorted_files = [fp for _, _, fp in files_with_meta]
 
-        # Generate thumbnail from middle slice (always)
+        # Generate thumbnail from middle slice (always, for gallery)
         thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
         if not os.path.exists(thumb_path) or force:
             generate_thumbnail(sorted_files, thumb_path)
 
-        if num_files <= 10:
-            # ── 2D Series (Panoramic, Cephalometric, etc.) ──
+        # ════════════════════════════════════════════
+        #  STRICT 2D PATH — Native 2D images only
+        # ════════════════════════════════════════════
+        if classification == '2D':
             img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
 
             if os.path.exists(img_path) and not force:
                 print(f"[2D] Already exists: {img_path}")
-                results[series_uid] = {"status": "exists", "type": "2d", "path": img_path}
+                results[series_uid] = {
+                    "status": "exists", "type": "2d", "path": img_path,
+                    "modality": modality, "classification": classification,
+                }
             else:
-                print(f"[2D] Processing 2D series {series_uid[:30]}... ({num_files} slices)")
+                print(f"[2D] Processing NATIVE 2D series {series_uid[:30]}... "
+                      f"({num_files} files, Modality={modality})")
                 info = generate_2d_image(sorted_files, img_path)
                 info["type"] = "2d"
+                info["modality"] = modality
+                info["classification"] = classification
                 results[series_uid] = info
             continue
 
-        # ── 3D Series (CBCT Volume) — MONAI Pipeline ──
+        # ════════════════════════════════════════════
+        #  STRICT 3D PATH — Volumetric data only
+        #  NO image_{uid}.jpg will be generated here
+        # ════════════════════════════════════════════
         vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
         default_vti = os.path.join(study_path, "volume.vti")
-        is_first_3d = True  # Always update volume.vti with the first 3D series processed
 
         if os.path.exists(vti_path) and not force:
             print(f"[VTI] Already exists: {vti_path}")
-            results[series_uid] = {"status": "exists", "type": "3d", "path": vti_path}
+            results[series_uid] = {
+                "status": "exists", "type": "3d", "path": vti_path,
+                "modality": modality, "classification": classification,
+            }
+            # Still update default volume.vti if this is the first 3D series
+            if is_first_3d and not os.path.exists(default_vti):
+                import shutil
+                shutil.copy2(vti_path, default_vti)
+                is_first_3d = False
             continue
 
         try:
-            print(f"[VTI] Processing 3D series {series_uid[:30]}... ({num_files} slices)")
+            print(f"[VTI] Processing 3D series {series_uid[:30]}... "
+                  f"({num_files} files, Modality={modality})")
 
             # Step 1: Robust DICOM loading with pydicom (handles force=True)
             volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
@@ -560,13 +646,15 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
             info["status"] = "success"
             info["type"] = "3d"
             info["path"] = vti_path
+            info["modality"] = modality
+            info["classification"] = classification
             results[series_uid] = info
 
             # Copy as default volume.vti for first 3D series processed
             if is_first_3d:
                 import shutil
                 shutil.copy2(vti_path, default_vti)
-                is_first_3d = False  # Only first 3D series becomes default
+                is_first_3d = False
                 print(f"[VTI] Default volume.vti updated from {os.path.basename(vti_path)}")
 
         except Exception as e:
@@ -579,6 +667,8 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] Conversion complete in {elapsed:.1f}s")
     print(f"[VTI] Results: {len(results)} series processed")
+    for uid, r in results.items():
+        print(f"[VTI]   {uid[:30]}... → {r.get('classification','?')}/{r.get('type','?')} [{r.get('status','?')}]")
     print(f"[VTI] ═══════════════════════════════════════════\n")
 
     return results

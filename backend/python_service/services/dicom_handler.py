@@ -6,6 +6,22 @@ import numpy as np
 import cv2
 from collections import defaultdict
 
+# Import strict 2D/3D classification from vti_converter
+try:
+    from services.vti_converter import classify_series
+except ImportError:
+    try:
+        from vti_converter import classify_series
+    except ImportError:
+        # Fallback inline if import fails
+        NATIVE_2D_MODALITIES = {'DX', 'PX', 'CR', 'IO', 'RG', 'MG', 'XA'}
+        NATIVE_3D_MODALITIES = {'CT', 'MR', 'PT', 'NM', 'US'}
+        def classify_series(num_files: int, modality: str) -> str:
+            mod = modality.strip().upper() if modality else ''
+            if mod in NATIVE_2D_MODALITIES: return '2D'
+            if mod in NATIVE_3D_MODALITIES: return '3D'
+            return '3D' if num_files > 10 else '2D'
+
 class DicomHandler:
     def __init__(self, study_path, series_uid=None):
         """
@@ -432,17 +448,19 @@ class DicomHandler:
                 
                 series_description = getattr(series_ds, 'SeriesDescription', 'Unknown Series')
                 series_number = getattr(series_ds, 'SeriesNumber', 0)
-                modality = getattr(series_ds, 'Modality', 'CT')
+                modality = str(getattr(series_ds, 'Modality', '')).strip()
                 
-                # Determine if 2D or 3D
-                series_type = '3D Volume' if len(file_list) > 10 else '2D Image'
+                # ── Strict 2D/3D classification (Modality-based) ──
+                classification = classify_series(len(file_list), modality)
+                series_type = '3D Volume' if classification == '3D' else '2D Image'
                 
                 series_info = {
                     'series_uid': series_uid,
                     'series_number': int(series_number),
                     'series_description': str(series_description),
-                    'modality': str(modality),
+                    'modality': modality if modality else 'CT',
                     'type': series_type,
+                    'classification': classification,
                     'num_slices': len(file_list),
                     'is_current': (series_uid == self.series_uid or (self.series_uid is None and series_uid == list(self.all_series.keys())[0]))
                 }
