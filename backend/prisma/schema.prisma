@@ -710,7 +710,7 @@ model ImagingSeries {
   seriesNumber    Int?         @map("series_number")
   modality        String       @db.VarChar(50)
   description     String?
-  bodyPart        String?
+  bodyPart        String?      @map("body_part")
   sliceThickness  Float?       @map("slice_thickness")
   pixelSpacing    Json?        @map("pixel_spacing")
   kv              Float?

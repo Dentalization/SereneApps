@@ -19,6 +19,7 @@ import * as NearbyDentistsMod from '../components/nearbyDentists';
 import * as QuickActionsMod from '../components/quickActions';
 import * as NearbyClinicsMod from '../components/nearbyClinics';
 import * as ArticleMod from '../components/article';
+import QuickActionsManagerModal, { ALL_QUICK_ACTIONS, useSelectedQuickActions } from '../components/QuickActionsManagerModal';
 
 const FeaturedDoctors = FeaturedDoctorsMod.default || FeaturedDoctorsMod;
 const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
@@ -36,12 +37,13 @@ const CATEGORIES = [
   { id: 'endodontic', label: 'Saraf', icon: 'lightning-bolt-outline' },
 ];
 
-const QUICK_ACTIONS = [
-  { key: 'dentists', label: 'Cari Dokter', icon: 'doctor', tint: '#E0F2FE', iconColor: '#0284C7' },
-  { key: 'book', label: 'Booking', icon: 'calendar-check', tint: '#FFF7ED', iconColor: '#EA580C' },
-  { key: 'ai', label: 'AI Scan', icon: 'scan-helper', tint: '#ECFDF5', iconColor: '#059669' },
-  { key: 'shop', label: 'Toko', icon: 'shopping-outline', tint: '#FEFCE8', iconColor: '#CA8A04' },
-];
+const LAINNYA_ACTION = {
+  key: 'lainnya',
+  label: 'Lainnya',
+  icon: 'dots-grid',
+  tint: '#F1F5F9',
+  iconColor: '#64748B',
+};
 
 const DashboardScreen = () => {
   const theme = useTheme();
@@ -53,6 +55,16 @@ const DashboardScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+  const [managerVisible, setManagerVisible] = useState(false);
+
+  // Quick Actions dinamis dari AsyncStorage
+  const { selected: selectedActionKeys, reload: reloadActions } = useSelectedQuickActions();
+  const displayedActions = [
+    ...selectedActionKeys
+      .map((k) => ALL_QUICK_ACTIONS.find((a) => a.key === k))
+      .filter(Boolean),
+    LAINNYA_ACTION,
+  ];
 
   // --- SCROLL ANIMATION ---
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -120,10 +132,17 @@ const DashboardScreen = () => {
 
   // Handlers Navigasi
   const handleActionPress = (key) => {
+    if (key === 'lainnya') { setManagerVisible(true); return; }
     if (key === 'dentists') navigation.navigate('DentistDirectory');
     else if (key === 'book') navigation.navigate('AppointmentTab', { screen: 'ClinicSearch' });
     else if (key === 'ai') navigation.navigate('AITab', { screen: 'AIHome' });
     else if (key === 'shop') navigation.navigate('ShopTab', { screen: 'ShopHome' });
+    else if (key === 'history') navigation.navigate('AppointmentTab', { screen: 'AppointmentList' });
+    else if (key === 'payment') navigation.navigate('AppointmentTab', { screen: 'Payment' });
+    else if (key === 'chat') navigation.navigate('ChatTab');
+    else if (key === 'nearby') navigation.navigate('NearbyClinics');
+    else if (key === 'promo') navigation.navigate('Promo');
+    else if (key === 'emergency') navigation.navigate('Emergency');
   };
 
   const handleOpenSearch = () => navigation.navigate('Search');
@@ -258,8 +277,15 @@ const DashboardScreen = () => {
 
           {/* Quick Actions Grid */}
           <View style={styles.gridContainer}>
-            {QUICK_ACTIONS.map((action) => (
-              <TouchableOpacity key={action.key} style={styles.gridItem} onPress={() => handleActionPress(action.key)}>
+            {displayedActions.map((action) => (
+              <TouchableOpacity
+                key={action.key}
+                style={[
+                  styles.gridItem,
+                  action.key === 'lainnya' && styles.gridItemLainnya,
+                ]}
+                onPress={() => handleActionPress(action.key)}
+              >
                 <View style={[styles.gridIcon, { backgroundColor: action.tint }]}>
                   <MaterialCommunityIcons name={action.icon} size={24} color={action.iconColor} />
                 </View>
@@ -281,6 +307,17 @@ const DashboardScreen = () => {
         </View>
 
       </Animated.ScrollView>
+
+      {/* Quick Actions Manager Modal */}
+      <QuickActionsManagerModal
+        visible={managerVisible}
+        onClose={() => setManagerVisible(false)}
+        selectedKeys={selectedActionKeys}
+        onSave={(newKeys) => {
+          reloadActions();
+          setManagerVisible(false);
+        }}
+      />
     </View>
   );
 };
@@ -444,6 +481,9 @@ const styles = StyleSheet.create({
   gridItem: {
     alignItems: 'center',
     width: (width - 24) / 4,
+  },
+  gridItemLainnya: {
+    opacity: 0.85,
   },
   gridIcon: {
     width: 52, height: 52,
