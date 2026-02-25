@@ -205,11 +205,23 @@ const PaymentScreen = () => {
     } catch (error) {
       setProcessing(false);
       
-      // Determine error type based on error
+      // Map backend error codes to user-friendly error types
+      const backendCode = error.code || '';
       let errorType = 'payment_failed';
       let errorCode = 'PAY_001';
+      let friendlyMessage = error.message;
       
-      if (error.message?.includes('network') || error.message?.includes('Network')) {
+      if (backendCode === 'cannot_book_past') {
+        errorType = 'slot_unavailable';
+        errorCode = 'SLT_002';
+        friendlyMessage = error.message; // Already localized from backend
+      } else if (backendCode === 'slot_taken') {
+        errorType = 'slot_unavailable';
+        errorCode = 'SLT_001';
+      } else if (backendCode === 'invalid_time' || backendCode === 'invalid_duration') {
+        errorType = 'slot_unavailable';
+        errorCode = 'SLT_003';
+      } else if (error.message?.includes('network') || error.message?.includes('Network')) {
         errorType = 'network_error';
         errorCode = 'NET_001';
       } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
@@ -220,7 +232,7 @@ const PaymentScreen = () => {
         errorCode = 'SLT_001';
       }
       
-      // Navigate to failed screen
+      // Navigate to failed screen — no raw error shown, handled by BookingFailedScreen
       navigation.navigate('BookingFailed', {
         dentist,
         slot,
@@ -229,7 +241,7 @@ const PaymentScreen = () => {
         fee: totalFee,
         errorType,
         errorCode,
-        errorMessage: error.message,
+        errorMessage: friendlyMessage,
       });
     }
   };

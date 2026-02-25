@@ -67,7 +67,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
         throw new Error('Authentication required');
       }
 
-      const response = await fetch('http://localhost:4000/v1/admin/dentists', {
+      const response = await fetch('http://localhost:4000/v1/admin/dentists?limit=1000', {
         headers: { Authorization: `Bearer ${token}` },
       });
 

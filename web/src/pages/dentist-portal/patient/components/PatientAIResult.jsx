@@ -5,17 +5,123 @@ import AnalysisSummaryRenderer from './AnalysisSummaryRenderer';
 import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
 import { aiHttp, http } from '../../../../utils/httpClient';
 
+// ── Error Classifier ────────────────────────────────
+function classifyAIError(content = '', err = null) {
+  const raw = (content + ' ' + (err?.message || '') + ' ' + (err?.response?.data?.detail || '')).toLowerCase();
+  if (
+    raw.includes('api_key_invalid') || raw.includes('api key not valid') ||
+    raw.includes('api key is not valid') || raw.includes('please pass a valid api key')
+  ) return {
+    errorType: 'unavailable',
+    title: 'Serene AI Sedang Tidak Tersedia',
+    description: 'Layanan AI kami sedang mengalami gangguan teknis. Tim kami sedang bekerja untuk memulihkannya. Silakan coba beberapa saat lagi.',
+  };
+  if (
+    raw.includes('quota_exceeded') || raw.includes('rate_limit') ||
+    raw.includes('429') || raw.includes('too many requests') ||
+    raw.includes('resource has been exhausted')
+  ) return {
+    errorType: 'busy',
+    title: 'Serene AI Sedang Sibuk',
+    description: 'Terlalu banyak permintaan dalam waktu bersamaan. Harap tunggu sebentar lalu coba lagi.',
+  };
+  if (
+    raw.includes('failed to fetch') || raw.includes('networkerror') ||
+    raw.includes('network error') || raw.includes('econnrefused') ||
+    raw.includes('load failed')
+  ) return {
+    errorType: 'network',
+    title: 'Koneksi Terputus',
+    description: 'Tidak dapat menghubungi layanan AI. Pastikan koneksi internet Anda aktif, lalu coba lagi.',
+  };
+  if (
+    raw.includes('500') || raw.includes('internal server error') || raw.includes('server error')
+  ) return {
+    errorType: 'maintenance',
+    title: 'Serene AI Sedang Dalam Pemeliharaan',
+    description: 'Layanan AI sedang mengalami gangguan sementara. Silakan coba beberapa menit lagi.',
+  };
+  return {
+    errorType: 'generic',
+    title: 'Terjadi Gangguan Sementara',
+    description: 'Serene AI mengalami kendala teknis. Silakan coba lagi dalam beberapa saat.',
+  };
+}
+
+function isRawAIError(text = '') {
+  const c = text.toLowerCase();
+  return (
+    c.includes('invalid argument') || c.includes('api_key_invalid') ||
+    c.includes('api key not valid') || c.includes('quota_exceeded') ||
+    c.includes('resource has been exhausted') || c.includes('internal server error') ||
+    c.includes('output_parsing_failure')
+  );
+}
+
+const ERROR_STYLES = {
+  unavailable: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800/50', icon: '🔧', badge: 'AI Tidak Tersedia', badgeCls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', textCls: 'text-amber-800 dark:text-amber-200' },
+  busy: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800/50', icon: '⏳', badge: 'AI Sedang Sibuk', badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', textCls: 'text-orange-800 dark:text-orange-200' },
+  network: { bg: 'bg-slate-50 dark:bg-slate-800/60', border: 'border-slate-200 dark:border-slate-700', icon: '📶', badge: 'Koneksi Terputus', badgeCls: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300', textCls: 'text-slate-700 dark:text-slate-300' },
+  maintenance: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: '🛠️', badge: 'Sedang Maintenance', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
+  generic: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: '⚠️', badge: 'Gangguan Sementara', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
+};
+
+function AIErrorBubble({ errorType, title, description }) {
+  const s = ERROR_STYLES[errorType] || ERROR_STYLES.generic;
+  return (
+    <div className={`max-w-[85%] rounded-2xl rounded-bl-none border ${s.bg} ${s.border} overflow-hidden shadow-sm`}>
+      <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
+        <span className="text-lg">{s.icon}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${s.badgeCls}`}>{s.badge}</span>
+      </div>
+      <p className={`px-4 pb-3 text-[14px] leading-relaxed font-semibold ${s.textCls}`}>{title}</p>
+      <p className={`px-4 pb-4 text-[13px] leading-relaxed ${s.textCls} opacity-80`}>{description}</p>
+    </div>
+  );
+}
+
 // ── 1. HELPER: Generate Advanced Context for the AI (CDSS) ──
-const generateCDSSContext = (patient, aiResult) => {
+/**
+ * Build a rich CDSS context block for the LLM.
+ * @param {Object} patient  – patient record
+ * @param {Object} aiResult – the enrichedResult (already merged with session detections)
+ * @param {Array}  detections – raw YOLO detections from sessionData (label + confidence)
+ */
+const generateCDSSContext = (patient, aiResult, detections = []) => {
   const history = patient.medicalHistory || {};
   const allergies = history.allergies?.length ? history.allergies.join(', ') : 'None';
   const conditions = history.conditions?.length ? history.conditions.join(', ') : 'None';
   const medications = history.medications?.length ? history.medications.join(', ') : 'None';
 
+  // Build a detection summary from YOLO data (most reliable source)
+  let detectionBlock = '';
+  if (detections.length > 0) {
+    const lines = detections.map((d, i) => {
+      const label = d.label || d.name || `Finding ${i + 1}`;
+      const conf = d.confidence != null
+        ? `${(d.confidence <= 1 ? (d.confidence * 100).toFixed(0) : d.confidence)}%`
+        : '?';
+      return `  ${i + 1}. ${label} (confidence: ${conf})`;
+    });
+    detectionBlock = `\nAI Visual Detections (YOLO — ${detections.length} markers):\n${lines.join('\n')}`;
+  }
+
+  // Diagnosis list from enrichedResult (may be derived from detections)
+  const diagList = aiResult.diagnosis?.length
+    ? aiResult.diagnosis.map(d => {
+        const prob = d.probability ? ` (${d.probability}%)` : '';
+        return `${d.condition}${prob}`;
+      }).join(', ')
+    : 'None';
+
+  // Use summary but cap at 500 chars to keep context focused 
+  const summarySnippet = (aiResult.summary || '').slice(0, 500);
+
   return `
 [SYSTEM CONTEXT: DENTAL CDSS MODE]
-You are an expert Clinical Decision Support System assisting a dentist. 
+You are an expert Clinical Decision Support System assisting a dentist.
 Base your answers strictly on the patient's data and the current AI analysis findings provided below.
+All visual detection data is ALREADY available — do NOT ask for images or image paths.
 
 --- PATIENT PROFILE ---
 Name: ${patient.name}
@@ -26,16 +132,40 @@ Medical History:
 - Current Meds: ${medications}
 
 --- CURRENT AI ANALYSIS FINDINGS ---
-Date: ${aiResult.date}
-Risk Level: ${aiResult.riskLevel}
-Detected Conditions: ${aiResult.diagnosis?.map(d => d.condition).join(', ') || 'None'}
-Clinical Summary: ${aiResult.summary}
+Date: ${aiResult.date || 'N/A'}
+Risk Level: ${aiResult.riskLevel || 'Unknown'}
+Confidence: ${aiResult.confidence != null ? `${aiResult.confidence}%` : 'N/A'}
+Detected Conditions: ${diagList}
+${detectionBlock}
+Clinical Summary: ${summarySnippet || 'See detection data above.'}
 
 --- INSTRUCTION ---
-Answer the dentist's question acting as a professional consultant. 
+Answer the dentist's question acting as a professional clinical consultant.
+Use the detection data above as your primary clinical reference.
 Consider the patient's medical history (e.g., contraindications) when discussing treatments.
+Respond in Bahasa Indonesia unless the dentist writes in English.
 `;
 };
+
+/**
+ * Strip the [SYSTEM CONTEXT: DENTAL CDSS MODE] block from a message for display.
+ * Returns only the dentist's actual question text.
+ */
+function stripCDSSContext(content) {
+  if (!content) return '';
+  // Remove the context block up to "Dentist Question: "
+  let stripped = content.replace(/\[SYSTEM CONTEXT: DENTAL CDSS MODE\][\s\S]*?Dentist Question:\s*/i, '').trim();
+  // Fallback: if the whole block is still there (different format), try alternate strip
+  if (stripped.includes('[SYSTEM CONTEXT')) {
+    const idx = stripped.indexOf('--- INSTRUCTION ---');
+    if (idx !== -1) {
+      stripped = stripped.slice(idx + '--- INSTRUCTION ---'.length).trim();
+      // Also strip instruction text if present
+      stripped = stripped.replace(/^Answer the dentist's question[\s\S]*?\n\n/i, '').trim();
+    }
+  }
+  return stripped;
+}
 
 // Error Boundary Component
 class PatientAIResultErrorBoundary extends React.Component {
@@ -186,7 +316,8 @@ const PatientAIResult = ({ patient }) => {
     const userText = chatInput.trim();
     
     // 1. Generate Contextual Prompt (Invisible to UI, visible to API)
-    const contextPrompt = generateCDSSContext(patient, selectedResult);
+    //    Use enrichedResult (which merges sessionData detections) for richer context
+    const contextPrompt = generateCDSSContext(patient, enrichedResult || selectedResult, sessionData.detections);
     
     // If it's the very first message or context switch, we might want to prepend context.
     // For simplicity, we send the context as a "system" instruction in the payload if your API supports it,
@@ -233,17 +364,27 @@ const PatientAIResult = ({ patient }) => {
       formData.append('language', 'bilingual');
       if (sessionId) formData.append('session_id', sessionId);
 
-      const summaryImage = selectedResult?.images?.[0];
-      if (summaryImage?.url) {
-        formData.append('image_url', summaryImage.url); 
+      // Use effectiveImages (includes sessionData annotated/original) instead of raw selectedResult.images
+      const chatImage = effectiveImages.find(i => i.type === 'annotated') || effectiveImages[0] || null;
+      if (chatImage?.url) {
+        formData.append('image_url', chatImage.url); 
         try {
-          const isLocalhost = summaryImage.url.includes('localhost') || summaryImage.url.includes('127.0.0.1');
-          if (!isLocalhost) {
-            const imgResp = await fetch(summaryImage.url);
+          // Don't try to fetch data: URLs or localhost URLs as blobs
+          const isLocal = chatImage.url.includes('localhost') || chatImage.url.includes('127.0.0.1');
+          const isDataUrl = chatImage.url.startsWith('data:');
+          if (!isLocal && !isDataUrl) {
+            const imgResp = await fetch(chatImage.url);
             if (imgResp.ok) {
               const blob = await imgResp.blob();
               formData.append('images', blob, 'context.jpg');
             }
+          } else if (isDataUrl) {
+            // Convert data URL to blob for upload
+            try {
+              const resp = await fetch(chatImage.url);
+              const blob = await resp.blob();
+              formData.append('images', blob, 'context.jpg');
+            } catch { /* data URL conversion failed, skip */ }
           }
         } catch (e) { /* ignore cors error */ }
       }
@@ -268,6 +409,13 @@ const PatientAIResult = ({ patient }) => {
 
       let aiReply = resp?.data?.reply || resp?.data?.content || '';
 
+      // Intercept raw API error leaks in the reply
+      if (aiReply && isRawAIError(aiReply)) {
+        const classified = classifyAIError(aiReply);
+        setChatMessages(prev => [...prev, { role: 'error', ...classified }]);
+        return;
+      }
+
       if (!aiReply && sessionId) {
         for (let i = 0; i < 5 && !aiReply; i++) {
           await new Promise(r => setTimeout(r, 1000));
@@ -283,7 +431,8 @@ const PatientAIResult = ({ patient }) => {
       setChatMessages(prev => [...prev, { role: 'ai', content: htmlToMarkdown(aiReply) || 'AI sedang memproses...' }]);
 
     } catch (err) {
-      setChatMessages(prev => [...prev, { role: 'ai', content: 'Gagal mengirim pesan.' }]);
+      const classified = classifyAIError('', err);
+      setChatMessages(prev => [...prev, { role: 'error', ...classified }]);
     } finally {
       setChatLoading(false);
     }
@@ -305,14 +454,19 @@ const PatientAIResult = ({ patient }) => {
       }
 
       try {
-        const resp = await aiHttp.get(`/sessions/${sessionId}/messages`);
+        const resp = await aiHttp.get(`/sessions/${sessionId}/messages?limit=200&per_page=200`);
         const rawData = resp?.data;
         let msgs = Array.isArray(rawData) ? rawData : (rawData?.messages || []);
         
-            const normalized = msgs.map(m => ({ 
-          role: m.role || 'ai', 
-          content: htmlToMarkdown(m.content || m.message || '') 
-        }));
+        const normalized = msgs.map(m => {
+          let content = htmlToMarkdown(m.content || m.message || '');
+          const role = m.role || 'ai';
+          // Strip CDSS context block from user messages so only the actual question shows
+          if (role === 'user') {
+            content = stripCDSSContext(content);
+          }
+          return { role, content };
+        });
         
         if (normalized.length > 0) {
             setChatMessages(normalized);
@@ -331,10 +485,149 @@ const PatientAIResult = ({ patient }) => {
   // Note: Ensure you include all the helper functions here in the final file.
   
   // Re-inserting helpers for completeness
-  const htmlToPlain = (html) => { if(!html) return ''; try { const intermediate = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n'); const div = document.createElement('div'); div.innerHTML = intermediate; return (div.textContent || div.innerText || '').trim(); } catch (e) { return String(html); } };
-  const htmlToMarkdown = (html) => { if(!html) return ''; try { const div = document.createElement('div'); div.innerHTML = String(html); const walk = (node) => { if(!node) return ''; if(node.nodeType === Node.TEXT_NODE) return node.nodeValue; let out = ''; const tag = (node.tagName || '').toLowerCase(); if(tag==='strong'||tag==='b') return `**${Array.from(node.childNodes).map(walk).join('')}**`; if(tag==='br') return '\n'; if(tag==='p') return `${Array.from(node.childNodes).map(walk).join('')}\n\n`; return Array.from(node.childNodes).map(walk).join(''); }; return Array.from(div.childNodes).map(walk).join('').trim(); } catch(e){ return htmlToPlain(html); } };
-  const renderBold = (text) => { if(!text) return null; return String(text).split(/(\*\*.*?\*\*)/g).map((part, i) => (i % 2 === 1) ? <strong key={i} className="font-semibold text-slate-800 dark:text-slate-100">{part.slice(2, -2)}</strong> : <span key={i}>{part}</span>); };
-  const formatAIResponse = (text) => { if(!text) return <span>...</span>; return String(text).split('\n').map((line, idx) => { const trimmed = line.trim(); if(!trimmed) return null; const parts = trimmed.split(/(\*\*.*?\*\*)/g); const content = parts.map((part, i) => (i%2===1) ? <strong key={i} className="font-bold text-slate-800 dark:text-slate-200">{part.slice(2,-2)}</strong> : <span key={i}>{part}</span>); if(trimmed.startsWith('* ') || trimmed.startsWith('- ')) return <div key={idx} className="flex gap-3 pl-1 mb-1"><span className="mt-2 w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full flex-shrink-0"/><span>{content}</span></div>; return <p key={idx} className="mb-2 leading-relaxed text-slate-600 dark:text-slate-300">{content}</p>; }); };
+
+  /** Check whether a string contains HTML tags */
+  const isHTML = (str) => /<\/?[a-z][\s\S]*>/i.test(str);
+
+  const htmlToPlain = (html) => {
+    if (!html) return '';
+    try {
+      const intermediate = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
+      const div = document.createElement('div');
+      div.innerHTML = intermediate;
+      return (div.textContent || div.innerText || '').trim();
+    } catch (e) { return String(html); }
+  };
+
+  /**
+   * Convert HTML to markdown-ish text.  If the input is already
+   * plain markdown (no HTML tags), return it unchanged so that
+   * newlines and formatting aren't destroyed by innerHTML parsing.
+   */
+  const htmlToMarkdown = (input) => {
+    if (!input) return '';
+    const str = String(input);
+
+    // Fast-path: no HTML tags → already markdown, return as-is
+    if (!isHTML(str)) return str;
+
+    try {
+      const div = document.createElement('div');
+      div.innerHTML = str;
+
+      const walk = (node) => {
+        if (!node) return '';
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+        const tag = (node.tagName || '').toLowerCase();
+        const children = () => Array.from(node.childNodes).map(walk).join('');
+
+        if (tag === 'strong' || tag === 'b') return `**${children()}**`;
+        if (tag === 'em' || tag === 'i') return `*${children()}*`;
+        if (tag === 'br') return '\n';
+        if (tag === 'p') return `${children()}\n\n`;
+        if (tag === 'li') return `* ${children()}\n`;
+        if (tag === 'ul' || tag === 'ol') return `\n${children()}\n`;
+        if (/^h[1-6]$/.test(tag)) return `**${children()}**\n\n`;
+        return children();
+      };
+
+      return Array.from(div.childNodes).map(walk).join('').trim();
+    } catch (e) {
+      return htmlToPlain(str);
+    }
+  };
+
+  const renderBold = (text) => {
+    if (!text) return null;
+    return String(text).split(/(\*\*.*?\*\*)/g).map((part, i) =>
+      (i % 2 === 1)
+        ? <strong key={i} className="font-semibold text-slate-800 dark:text-slate-100">{part.slice(2, -2)}</strong>
+        : <span key={i}>{part}</span>
+    );
+  };
+
+  /**
+   * The DeepDental API collapses \n when storing session messages.
+   * After a page refresh the history comes back as a single long line.
+   * This function re-inserts line breaks before block-level markdown
+   * patterns so formatAIResponse can properly render structure.
+   */
+  const reinsertMarkdownBreaks = (text) => {
+    if (!text) return text;
+    const s0 = String(text);
+    // If the text already contains real newlines it is formatted correctly
+    if (s0.includes('\n')) return s0;
+
+    let s = s0;
+
+    // 1. Bold numbered headings  **1. Title:**  or  **2) Title:**
+    s = s.replace(/ (\*\*\d+[\.\)]\s)/g, '\n\n$1');
+
+    // 2. Bullet lines: "* text" / "* **text"  (star + space = markdown bullet)
+    s = s.replace(/ (\* (?:\*\*)?[A-Za-z])/g, '\n$1');
+
+    // 3. Dash bullet lines: "- text" / "- **text"
+    s = s.replace(/ (- (?:\*\*)?[A-Za-z])/g, '\n$1');
+
+    // 4. Numbered list items: "1. **Text"  (space before digit)
+    s = s.replace(/ (\d+\.\s+\*\*[A-Z])/g, '\n$1');
+
+    // 5. Bold section headings like  **Perbandingan dan Rekomendasi Klinis:**
+    //    Must NOT be right after a bullet marker (* / -)
+    s = s.replace(/(?<![*\-]) (\*\*[A-Z][^*]{4,}:\*\*)/g, '\n\n$1');
+
+    return s.trim();
+  };
+
+  /**
+   * Render an AI response string (markdown-ish) into formatted JSX.
+   * Handles: paragraphs, **bold**, bullet lists (* / -), numbered lists (1.),
+   * and blank lines as spacing.
+   */
+  const formatAIResponse = (text) => {
+    if (!text) return <span>...</span>;
+    // Reconstruct newlines if API collapsed them
+    const processed = reinsertMarkdownBreaks(String(text));
+    return processed.split('\n').map((line, idx) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={idx} className="h-2" />; // blank line → spacer
+
+      // Render inline bold (**text**)
+      const renderInline = (str) =>
+        str.split(/(\*\*.*?\*\*)/g).map((part, i) =>
+          (i % 2 === 1)
+            ? <strong key={i} className="font-bold text-slate-800 dark:text-slate-200">{part.slice(2, -2)}</strong>
+            : <span key={i}>{part}</span>
+        );
+
+      // Bullet lines: * text  or  - text
+      if (/^[\*\-]\s+/.test(trimmed)) {
+        const bulletText = trimmed.replace(/^[\*\-]\s+/, '');
+        return (
+          <div key={idx} className="flex gap-3 pl-1 mb-1.5">
+            <span className="mt-2 w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full flex-shrink-0" />
+            <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(bulletText)}</span>
+          </div>
+        );
+      }
+
+      // Numbered lines: 1. text  (including sub-numbers like 1.1.)
+      if (/^\d+[\.\)]\s+/.test(trimmed)) {
+        const match = trimmed.match(/^(\d+[\.\)])\s+(.*)/);
+        if (match) {
+          return (
+            <div key={idx} className="flex gap-3 pl-1 mb-1.5">
+              <span className="font-bold text-slate-500 dark:text-slate-400 min-w-[1.5rem] text-right flex-shrink-0">{match[1]}</span>
+              <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(match[2])}</span>
+            </div>
+          );
+        }
+      }
+
+      // Default: paragraph
+      return <p key={idx} className="mb-2 leading-relaxed text-slate-600 dark:text-slate-300">{renderInline(trimmed)}</p>;
+    });
+  };
   const handleResultChange = (e) => setSelectedResult(sortedResults.find(r => r.id === e.target.value));
 
   // State for session data enrichment
@@ -372,33 +665,155 @@ const PatientAIResult = ({ patient }) => {
   const enrichedResult = useMemo(() => {
     if (!selectedResult) return selectedResult;
     const result = { ...selectedResult };
+
+    // --- Map backend field names to component field names ---
+    // Backend sends confidenceScore (float 0-1 or 0-100), map to confidence (0-100)
+    if (result.confidence == null && result.confidenceScore != null) {
+      result.confidence = result.confidenceScore <= 1 ? Math.round(result.confidenceScore * 100) : Math.round(result.confidenceScore);
+    }
+    // Backend sends createdAt, map to date
+    if (!result.date && result.createdAt) {
+      try { result.date = new Date(result.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { result.date = result.createdAt; }
+    }
+    // Build images array from backend flat URL fields
+    // Filter out file:// URLs (mobile-local paths, inaccessible from web)
+    const isWebAccessible = (url) => {
+      if (!url) return false;
+      if (url.startsWith('data:')) return true;  // base64 inline
+      if (url.startsWith('http://') || url.startsWith('https://')) return true;
+      if (url.startsWith('/uploads/')) return true;  // relative server path
+      return false;  // file://, content://, etc. → not usable on web
+    };
+    if (!result.images || result.images.length === 0) {
+      const imgs = [];
+      if (isWebAccessible(result.annotatedImageUrl)) imgs.push({ url: result.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' });
+      if (isWebAccessible(result.imageUrl)) imgs.push({ url: result.imageUrl, type: 'original', description: 'Gambar asli pasien' });
+      result.images = imgs;
+    }
+    // --- Fallback chain for summary: summary → findings → overallAssessment ---
+    if (!result.summary) {
+      result.summary = result.findings || result.overallAssessment || null;
+    }
+    // Build findings text from backend (string → structured)
+    if (!result.findingsText && result.findings) {
+      result.findingsText = typeof result.findings === 'string' ? result.findings : JSON.stringify(result.findings);
+    }
+    // Build overallAssessment
+    if (!result.overallAssessmentText && result.overallAssessment) {
+      result.overallAssessmentText = typeof result.overallAssessment === 'string' ? result.overallAssessment : JSON.stringify(result.overallAssessment);
+    }
+    // --- Parse recommendations from text when structured array is empty ---
+    if ((!result.recommendations || result.recommendations.length === 0) && result.summary) {
+      const textRecs = [];
+      // Reconstruct newlines first (API may have collapsed them)
+      const summaryRaw = typeof result.summary === 'string' ? result.summary : '';
+      const summaryStr = typeof reinsertMarkdownBreaks === 'function' ? reinsertMarkdownBreaks(summaryRaw) : summaryRaw;
+      // Match numbered items across patterns:
+      //   "1. text" / "1. **text**" / "1) text" (with or without leading newline)
+      const numberedPattern = /(?:^|[\n\r]|\s{2,})\s*(\d+)[.)]\s+\*{0,2}([^\n]+?)(?=\s*\d+[.)]\s|\s*$)/g;
+      let match;
+      while ((match = numberedPattern.exec(summaryStr)) !== null) {
+        const recText = match[2].replace(/\*{2,}/g, '').replace(/:\s*$/, '').trim();
+        if (recText.length > 5) textRecs.push(recText);
+      }
+      // Fallback: simpler split if no matches found but text clearly has numbered items
+      if (textRecs.length === 0) {
+        const parts = summaryStr.split(/\d+[.)]\s+/);
+        parts.forEach((part, i) => {
+          if (i === 0) return; // skip preamble before first number
+          const cleaned = part.replace(/\*{2,}/g, '').trim();
+          if (cleaned.length > 10) textRecs.push(cleaned);
+        });
+      }
+      if (textRecs.length > 0) result.recommendations = textRecs;
+    }
+
+    // --- Enrich from session detection data ---
     if ((!result.symptoms || result.symptoms.length === 0) && sessionData.detections.length > 0) {
       result.symptoms = sessionData.detections.map((d) => ({ name: d.label || d.name || 'Temuan', severity: d.severity || (d.confidence >= 0.7 ? 'high' : d.confidence >= 0.4 ? 'medium' : 'low'), description: d.description || null }));
     }
     if ((!result.diagnosis || result.diagnosis.length === 0) && sessionData.detections.length > 0) {
         result.diagnosis = sessionData.detections.map((d, idx) => ({ condition: d.label || `Temuan ${idx + 1}`, description: d.description || '', probability: d.confidence ? Math.round((d.confidence <= 1 ? d.confidence * 100 : d.confidence)) : null, severity: d.severity || null, details: d.description || '', sections: [] }));
     }
-    if ((!result.riskLevel || result.riskLevel === 'unknown') && sessionData.concernLevel) {
+    // Merge recommendations from backend + session
+    if ((!result.recommendations || result.recommendations.length === 0)) {
+      const backendRecs = selectedResult.recommendations || [];
+      const sessionRecs = sessionData.recommendations || [];
+      const merged = [...backendRecs, ...sessionRecs.filter(sr => !backendRecs.some(br => (br.text || br) === (sr.text || sr)))];
+      if (merged.length > 0) result.recommendations = merged;
+    }
+    // Merge findings from session
+    if ((!result.sessionFindings || result.sessionFindings.length === 0) && sessionData.findings.length > 0) {
+      result.sessionFindings = sessionData.findings;
+    }
+    // Compute confidence from max detection confidence if original is 0/null
+    if ((!result.confidence || result.confidence === 0) && sessionData.detections.length > 0) {
+      const maxConf = Math.max(...sessionData.detections.map(d => {
+        if (d.confidence == null) return 0;
+        return d.confidence <= 1 ? d.confidence * 100 : d.confidence;
+      }));
+      result.confidence = Math.round(maxConf);
+    }
+    // Compute risk level from detections if missing/unknown
+    if ((!result.riskLevel || result.riskLevel === 'unknown' || result.riskLevel === 'low') && sessionData.detections.length > 0) {
+      if (sessionData.concernLevel) {
         const cl = sessionData.concernLevel.toLowerCase();
-        if (cl.includes('high')) result.riskLevel = 'high'; else if (cl.includes('medium')) result.riskLevel = 'medium'; else if (cl.includes('low')) result.riskLevel = 'low';
+        if (cl.includes('high')) result.riskLevel = 'high';
+        else if (cl.includes('medium')) result.riskLevel = 'medium';
+        else if (cl.includes('low')) result.riskLevel = 'low';
+      } else {
+        const highConf = sessionData.detections.filter(d => {
+          const c = d.confidence != null ? (d.confidence <= 1 ? d.confidence * 100 : d.confidence) : 0;
+          return c >= 60;
+        });
+        if (highConf.length >= 3) result.riskLevel = 'high';
+        else if (highConf.length >= 1) result.riskLevel = 'medium';
+        else if (sessionData.detections.length > 0) result.riskLevel = 'low';
+      }
     }
     return result;
   }, [selectedResult, sessionData]);
 
-  // Image helpers
+  // Image helpers - build a reliable image list from all available sources
   const galleryImages = enrichedResult?.images || [];
   const effectiveImages = useMemo(() => {
-    const imgs = [...galleryImages];
-    if (sessionData.annotated) {
+    const isUsable = (url) => {
+      if (!url) return false;
+      if (url.startsWith('data:')) return true;
+      if (url.startsWith('http://') || url.startsWith('https://')) return true;
+      if (url.startsWith('/uploads/')) return true;
+      return false;
+    };
+    const imgs = [...galleryImages.filter(i => isUsable(i.url))];
+
+    // Layer 1: session data annotated image (from API messages, base64)
+    if (sessionData.annotated && isUsable(sessionData.annotated)) {
        const idx = imgs.findIndex(i => i.type === 'annotated');
        if(idx>=0) imgs[idx] = { url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' };
        else imgs.push({ url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' });
     }
-    if (sessionData.original && !imgs.some(i => i.type === 'original')) imgs.unshift({ url: sessionData.original, type: 'original', description: 'Gambar asli' });
+    // Layer 2: session data original image (from API messages)
+    if (sessionData.original && isUsable(sessionData.original) && !imgs.some(i => i.type === 'original')) {
+      imgs.unshift({ url: sessionData.original, type: 'original', description: 'Gambar asli' });
+    }
+    // Layer 3: fallback to DB annotatedImageUrl (base64) if no annotated found yet
+    if (!imgs.some(i => i.type === 'annotated') && isUsable(enrichedResult?.annotatedImageUrl)) {
+      imgs.push({ url: enrichedResult.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' });
+    }
+    // Layer 4: fallback to DB imageUrl if web-accessible and no original found
+    if (!imgs.some(i => i.type === 'original') && isUsable(enrichedResult?.imageUrl)) {
+      imgs.unshift({ url: enrichedResult.imageUrl, type: 'original', description: 'Gambar asli pasien' });
+    }
     return imgs;
-  }, [galleryImages, sessionData]);
+  }, [galleryImages, sessionData, enrichedResult?.annotatedImageUrl, enrichedResult?.imageUrl]);
   const summaryImage = effectiveImages.find(i => i.type === 'annotated') || effectiveImages[0] || null;
-  const summaryText = (stripDiagnosisIntro ? stripDiagnosisIntro(enrichedResult?.summary || '') : enrichedResult?.summary || '').trim();
+  const rawSummary = enrichedResult?.summary || '';
+  const summaryText = (() => {
+    let text = stripDiagnosisIntro ? stripDiagnosisIntro(rawSummary) : rawSummary;
+    // Reconstruct newlines that the API may have collapsed
+    text = typeof reinsertMarkdownBreaks === 'function' ? reinsertMarkdownBreaks(text) : text;
+    return text.trim();
+  })();
   const summarySections = enrichedResult?.summarySections || [];
   const hasSummaryHighlights = Boolean(summaryText || summarySections.length);
 
@@ -538,7 +953,7 @@ const PatientAIResult = ({ patient }) => {
                     </span>
                   </div>
                   <div className="relative flex justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed dark:bg-none">
-                    <img src={summaryImage.url} alt="Annotated" className="max-h-[450px] w-auto object-contain dark:mix-blend-luminosity" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={summaryImage.url} alt="Annotated" className="max-h-[450px] w-auto object-contain dark:mix-blend-luminosity" onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'none'; }} />
                   </div>
                   {summaryImage.description && <div className="px-6 py-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800"><p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium">{summaryImage.description}</p></div>}
                 </div>
@@ -551,7 +966,7 @@ const PatientAIResult = ({ patient }) => {
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                       <span className="text-2xl">📑</span> {t('dentistPatient.ai.summary.title')}
                     </h3>
-                    {summaryText && <div className="text-slate-700 dark:text-slate-300 leading-8 text-justify text-[15px] whitespace-pre-wrap font-normal mb-6">{renderBold(summaryText)}</div>}
+                    {summaryText && <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-[15px] font-normal mb-6">{formatAIResponse(summaryText)}</div>}
                     <div className="grid gap-6">
                       {summarySections.map((section, idx) => (
                         <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.02)]">
@@ -607,13 +1022,17 @@ const PatientAIResult = ({ patient }) => {
                       
                       {chatMessages.map((m, i) => (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                          <div className={`max-w-[85%] px-5 py-4 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
-                            m.role === 'user' 
-                              ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none shadow-blue-500/20' 
-                              : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none shadow-slate-200/50 dark:shadow-black/20'
-                          }`}>
-                            {m.role === 'ai' ? formatAIResponse(m.content) : m.content}
-                          </div>
+                          {m.role === 'error' ? (
+                            <AIErrorBubble errorType={m.errorType} title={m.title} description={m.description} />
+                          ) : (
+                            <div className={`max-w-[85%] px-5 py-4 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
+                              m.role === 'user' 
+                                ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none shadow-blue-500/20' 
+                                : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none shadow-slate-200/50 dark:shadow-black/20'
+                            }`}>
+                              {m.role === 'ai' ? formatAIResponse(m.content) : m.content}
+                            </div>
+                          )}
                         </div>
                       ))}
 
@@ -698,7 +1117,210 @@ const PatientAIResult = ({ patient }) => {
               </div>
             </div>
           )}
-          {/* ... Other sections identical to previous version ... */}
+          {/* ── Symptoms Tab ── */}
+          {expandedSection === 'symptoms' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                <span className="text-2xl">📋</span> {t('dentistPatient.ai.tabs.symptoms') || 'Gejala & Temuan'}
+              </h3>
+
+              {/* Session Findings (from AI visual analysis) */}
+              {(enrichedResult?.sessionFindings?.length > 0 || enrichedResult?.findingsText) && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6 border border-blue-100 dark:border-blue-800/50">
+                  <h4 className="text-base font-bold text-blue-800 dark:text-blue-300 mb-4 flex items-center gap-2">
+                    <span className="text-lg">🔬</span> Temuan Klinis AI
+                  </h4>
+                  {enrichedResult?.sessionFindings?.length > 0 ? (
+                    <ul className="space-y-3">
+                      {enrichedResult.sessionFindings.map((f, i) => (
+                        <li key={i} className="flex items-start gap-3">
+                          <span className="mt-2 w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                          <span className="text-sm text-blue-900 dark:text-blue-200 leading-relaxed">{typeof f === 'string' ? f : (f.text || f.finding || JSON.stringify(f))}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : enrichedResult?.findingsText ? (
+                    <div className="text-sm text-blue-900 dark:text-blue-200 leading-relaxed">{formatAIResponse(reinsertMarkdownBreaks(enrichedResult.findingsText))}</div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Overall Assessment */}
+              {enrichedResult?.overallAssessmentText && (
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-800/50">
+                  <h4 className="text-base font-bold text-indigo-800 dark:text-indigo-300 mb-4 flex items-center gap-2">
+                    <span className="text-lg">📊</span> Penilaian Keseluruhan
+                  </h4>
+                  <div className="text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">{formatAIResponse(reinsertMarkdownBreaks(enrichedResult.overallAssessmentText))}</div>
+                </div>
+              )}
+
+              {/* Symptoms list from detections */}
+              {enrichedResult?.symptoms?.length > 0 ? (
+                <div className="grid gap-4">
+                  {enrichedResult.symptoms.map((symptom, index) => {
+                    const severityColors = {
+                      high: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800/50',
+                      medium: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50',
+                      low: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/50'
+                    };
+                    const severityBadge = {
+                      high: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                      medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                      low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    };
+                    return (
+                      <div key={index} className={`rounded-xl p-5 border ${severityColors[symptom.severity] || 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'} transition-all hover:shadow-md`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/80 dark:bg-slate-800/80 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50">
+                              {index + 1}
+                            </span>
+                            <h4 className="font-bold text-slate-800 dark:text-white text-base">{symptom.name}</h4>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${severityBadge[symptom.severity] || 'bg-slate-100 text-slate-600'}`}>
+                            {symptom.severity || 'N/A'}
+                          </span>
+                        </div>
+                        {symptom.description && (
+                          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pl-11">{symptom.description}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                !enrichedResult?.sessionFindings?.length && !enrichedResult?.findingsText && !enrichedResult?.overallAssessmentText && (
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
+                    <span className="text-5xl mb-4">📋</span>
+                    <p className="text-sm font-medium">Belum ada gejala yang terdeteksi</p>
+                    <p className="text-xs mt-1">Data gejala akan muncul setelah AI menganalisis gambar dental</p>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          {/* ── Recommendations Tab ── */}
+          {expandedSection === 'recommendations' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                <span className="text-2xl">💡</span> {t('dentistPatient.ai.tabs.recommendations') || 'Rekomendasi'}
+              </h3>
+              {enrichedResult?.recommendations?.length > 0 ? (
+                <div className="grid gap-4">
+                  {enrichedResult.recommendations.map((rec, index) => {
+                    const recText = typeof rec === 'string' ? rec : (rec.text || rec.recommendation || rec.title || JSON.stringify(rec));
+                    const recPriority = rec.priority || rec.urgency || null;
+                    const priorityCardColors = {
+                      high: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800/50',
+                      urgent: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800/50',
+                      medium: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50',
+                      normal: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50',
+                      low: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/50'
+                    };
+                    const priorityBadge = {
+                      high: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                      urgent: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                      medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                      normal: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                      low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    };
+                    return (
+                      <div key={index} className={`rounded-xl p-5 border ${priorityCardColors[recPriority?.toLowerCase()] || 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'} transition-all hover:shadow-md`}>
+                        <div className="flex items-start gap-3">
+                          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/80 dark:bg-slate-800/80 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50 flex-shrink-0 mt-0.5">
+                            {index + 1}
+                          </span>
+                          <div className="flex-1">
+                            <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{formatAIResponse(recText)}</div>
+                            {recPriority && (
+                              <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold uppercase ${priorityBadge[recPriority?.toLowerCase()] || 'bg-slate-100 text-slate-600'}`}>
+                                {recPriority}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : enrichedResult?.findingsText ? (
+                <div className="rounded-xl p-5 border bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50 transition-all hover:shadow-md">
+                  <div className="flex items-start gap-3">
+                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/80 dark:bg-slate-800/80 text-sm flex-shrink-0 mt-0.5">📋</span>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-2">Ringkasan Analisis AI</h4>
+                      <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {formatAIResponse(reinsertMarkdownBreaks(enrichedResult.findingsText))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
+                  <span className="text-5xl mb-4">💡</span>
+                  <p className="text-sm font-medium">Belum ada rekomendasi</p>
+                  <p className="text-xs mt-1">Rekomendasi perawatan akan muncul setelah AI menganalisis gambar dental</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Images Tab ── */}
+          {expandedSection === 'images' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                <span className="text-2xl">📸</span> {t('dentistPatient.ai.tabs.images') || 'Gambar Dental'}
+              </h3>
+              {effectiveImages.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {effectiveImages.map((img, index) => (
+                    <div key={index} className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-xl transition-all">
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className={`px-3 py-1.5 text-xs font-bold rounded-lg border shadow-sm flex items-center gap-1.5 ${
+                          img.type === 'annotated'
+                            ? 'bg-blue-50/90 dark:bg-blue-900/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700'
+                            : 'bg-white/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                        }`}>
+                          {img.type === 'annotated' && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />}
+                          {img.type === 'annotated' ? 'AI Annotated' : img.type === 'original' ? 'Original' : `Gambar ${index + 1}`}
+                        </span>
+                      </div>
+                      <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={img.url}
+                          alt={img.description || `Dental image ${index + 1}`}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            // Show fallback sibling
+                            const fallback = e.target.nextElementSibling;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <div className="hidden flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
+                          <span className="text-4xl">🖼️</span>
+                          <span className="text-xs">Gambar tidak tersedia</span>
+                        </div>
+                      </div>
+                      {img.description && (
+                        <div className="px-5 py-3 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+                          <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">{img.description}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
+                  <span className="text-5xl mb-4">📸</span>
+                  <p className="text-sm font-medium">Belum ada gambar dental</p>
+                  <p className="text-xs mt-1">Gambar akan tersedia setelah pasien mengunggah foto untuk analisis AI</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

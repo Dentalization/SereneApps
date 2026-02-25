@@ -84,3 +84,53 @@ export async function persistDentistScheduleEntry(payload) {
   const { data } = await authHttp.post('/dentist-portal/schedule', payload);
   return data.entry;
 }
+
+// ==========================================
+// TREATMENT PLANS
+// ==========================================
+
+/**
+ * Create a new treatment plan for a patient
+ */
+export async function createPatientTreatmentPlan(patientId, payload) {
+  const { data } = await authHttp.post(`/dentist-portal/patients/${patientId}/treatment-plans`, payload);
+  return data.treatmentPlan;
+}
+
+/**
+ * Get all treatment plans for a patient
+ */
+export async function getPatientTreatmentPlans(patientId) {
+  const { data } = await authHttp.get(`/dentist-portal/patients/${patientId}/treatment-plans`);
+  return data.treatmentPlans || [];
+}
+
+/**
+ * Update an existing treatment plan
+ */
+export async function updatePatientTreatmentPlan(patientId, planId, payload) {
+  const { data } = await authHttp.put(`/dentist-portal/patients/${patientId}/treatment-plans/${planId}`, payload);
+  return data.treatmentPlan;
+}
+
+/**
+ * Complete / update a single treatment item (supports image upload)
+ * @param {string} patientId
+ * @param {string} planId
+ * @param {string} itemId
+ * @param {{ resultNotes?: string, actualCost?: number, status?: string, image?: File }} payload
+ */
+export async function completeTreatmentItem(patientId, planId, itemId, payload) {
+  const formData = new FormData();
+  if (payload.resultNotes !== undefined) formData.append('resultNotes', payload.resultNotes);
+  if (payload.actualCost !== undefined) formData.append('actualCost', String(payload.actualCost));
+  if (payload.status) formData.append('status', payload.status);
+  if (payload.image) formData.append('image', payload.image);
+
+  const { data } = await authHttp.put(
+    `/dentist-portal/patients/${patientId}/treatment-plans/${planId}/items/${itemId}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data.treatmentPlan;
+}

@@ -11,7 +11,7 @@ router.get('/dentists', authenticateToken, requireRoles(['admin', 'super_admin']
   try {
     console.log('🔍 Admin API: Fetching dentists');
     
-    const { status, type, search, limit = '50' } = req.query;
+    const { status, type, search, limit = '1000' } = req.query;
     
     // Build where clause for filtering
     const whereClause = {

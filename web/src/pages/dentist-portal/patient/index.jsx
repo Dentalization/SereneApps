@@ -423,8 +423,23 @@ const PatientManagement = () => {
   const handleSendMessage = (message) => {};
   const handleScheduleCall = () => {};
   const handleUpdateHistory = (updatedHistory) => {};
-  const handleCreatePlan = (planData) => {};
-  const handleUpdatePlan = (planId, updatedPlan) => {};
+  const handleCreatePlan = (savedPlan) => {
+    // Optimistically append the new plan to the selected patient's treatmentPlans
+    if (selectedPatient && savedPlan) {
+      setSelectedPatient(prev => ({
+        ...prev,
+        treatmentPlans: [...(prev.treatmentPlans || []), savedPlan],
+      }));
+    }
+  };
+  const handleUpdatePlan = (updatedPlan) => {
+    setSelectedPatient(prev => ({
+      ...prev,
+      treatmentPlans: (prev.treatmentPlans || []).map(p =>
+        p.id === updatedPlan.id ? updatedPlan : p
+      ),
+    }));
+  };
   const handleCompleteTreatment = (treatmentId) => {};
 
   if (loading) {

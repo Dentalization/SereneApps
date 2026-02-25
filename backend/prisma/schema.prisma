@@ -42,6 +42,8 @@ model User {
   paymentIntents                                                 PaymentIntent[]
   refreshTokens                                                  RefreshToken[]
   user_devices                                                   UserDevice[]
+  createdTreatmentPlans                                          TreatmentPlan[]            @relation("DentistTreatmentPlans")
+  patientTreatmentPlans                                          TreatmentPlan[]            @relation("PatientTreatmentPlans")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -243,10 +245,11 @@ model PatientProfile {
   emergencyContact  Json?     @map("emergency_contact")
   address           Json?
   medicalDetails    Json?     @map("medical_details")
-  preferredLanguage String    @default("id") @map("preferred_language")
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  preferredLanguage String          @default("id") @map("preferred_language")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  treatmentPlans    TreatmentPlan[] @relation("PatientProfileTreatmentPlans")
 
   @@index([userId], map: "idx_patient_profiles_user_id")
   @@index([insuranceNumber], map: "idx_patient_profiles_insurance_number")
@@ -758,6 +761,56 @@ model DentistScheduleEntry {
 
   @@index([dentistId, startAt], map: "idx_dentist_schedule_dentist_time")
   @@map("dentist_schedule_entries")
+}
+
+model TreatmentPlan {
+  id                  BigInt          @id @default(autoincrement())
+  patientId           BigInt          @map("patient_id")
+  dentistId           BigInt          @map("dentist_id")
+  title               String          @db.VarChar(255)
+  description         String?
+  priority            String          @default("medium") @db.VarChar(20)
+  status              String          @default("pending") @db.VarChar(30)
+  progress            Int             @default(0)
+  estimatedCost       Int             @default(0) @map("estimated_cost")
+  actualCost          Int             @default(0) @map("actual_cost")
+  targetCompletion    DateTime?       @map("target_completion") @db.Date
+  completedAt         DateTime?       @map("completed_at") @db.Timestamptz(6)
+  notes               String?
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient             User             @relation("PatientTreatmentPlans", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dentist             User             @relation("DentistTreatmentPlans", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patientProfile      PatientProfile?  @relation("PatientProfileTreatmentPlans", fields: [patientId], references: [userId], map: "treatment_plans_patient_profile_fkey")
+  items               TreatmentItem[]
+
+  @@index([patientId, createdAt(sort: Desc)], map: "idx_treatment_plans_patient")
+  @@index([dentistId], map: "idx_treatment_plans_dentist")
+  @@index([status], map: "idx_treatment_plans_status")
+  @@map("treatment_plans")
+}
+
+model TreatmentItem {
+  id              BigInt        @id @default(autoincrement())
+  treatmentPlanId BigInt        @map("treatment_plan_id")
+  name            String        @db.VarChar(255)
+  category        String?       @db.VarChar(100)
+  cost            Int           @default(0)
+  actualCost      Int           @default(0) @map("actual_cost")
+  status          String        @default("pending") @db.VarChar(30)
+  scheduledDate   DateTime?     @map("scheduled_date") @db.Date
+  completedDate   DateTime?     @map("completed_date") @db.Date
+  notes           String?
+  resultNotes     String?       @map("result_notes")
+  imageUrl        String?       @map("image_url")
+  sortOrder       Int           @default(0) @map("sort_order")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([treatmentPlanId], map: "idx_treatment_items_plan")
+  @@index([status], map: "idx_treatment_items_status")
+  @@map("treatment_items")
 }
 
 model AIChatMessage {

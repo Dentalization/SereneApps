@@ -26,13 +26,24 @@ const DentistManagement = () => {
   // Define before useEffect to avoid TDZ
   const fetchDentistStats = useCallback(async () => {
     try {
-      // TODO: replace with real API call
+      const token = localStorage.getItem('auth.accessToken');
+      if (!token) return;
+      const res = await fetch('http://localhost:4000/v1/admin/dentists?limit=1000', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const result = await res.json();
+      const data = Array.isArray(result?.data) ? result.data : [];
+      const verified = data.filter(d => d.isVerified).length;
+      const pending  = data.filter(d => !d.isVerified && d.status !== 'rejected').length;
+      const indep    = data.filter(d => d.registrationType === 'independent').length;
+      const clinic   = data.filter(d => d.registrationType === 'clinic-staff').length;
       setStats({
-        totalDentists: 25,
-        pendingVerification: 8,
-        independentDentists: 15,
-        clinicDentists: 10,
-        verifiedDentists: 17,
+        totalDentists: data.length,
+        pendingVerification: pending,
+        independentDentists: indep,
+        clinicDentists: clinic,
+        verifiedDentists: verified,
       });
     } catch (error) {
       console.error('Error fetching dentist stats:', error);
