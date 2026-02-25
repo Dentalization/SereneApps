@@ -484,13 +484,46 @@ const ProfileSettings = ({ user, onDataChange }) => {
       )}
 
       {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-primary mb-2 theme-transition">
-          {t('settings.profileSettings')}
-        </h2>
-        <p className="text-secondary theme-transition">
-          {t('settings.managePersonalProfessional')}
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-primary mb-2 theme-transition">
+            {t('settings.profileSettings')}
+          </h2>
+          <p className="text-secondary theme-transition">
+            {t('settings.managePersonalProfessional')}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleCancel}
+                className="group relative overflow-hidden bg-surface border-2 border-primary/20 hover:border-red-500 text-secondary hover:text-white px-5 py-2.5 rounded-xl font-semibold shadow-theme-md transition-all duration-200 theme-transition"
+              >
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <Icon name="X" size={16} />
+                  Cancel
+                </span>
+                <div className="absolute inset-0 bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl"></div>
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 bg-accent hover:bg-accent/90 text-white px-5 py-2.5 rounded-xl font-semibold shadow-theme-lg hover:shadow-theme-xl transition-all duration-200"
+              >
+                <Icon name="Save" size={16} />
+                Save Changes
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 bg-accent hover:bg-accent/90 text-white px-5 py-2.5 rounded-xl font-semibold shadow-theme-lg hover:shadow-theme-xl transition-all duration-200"
+            >
+              <Icon name="Edit" size={16} />
+              Edit Profile
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -1077,42 +1110,28 @@ const ProfileSettings = ({ user, onDataChange }) => {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="mt-10 pt-8 border-t border-primary flex items-center justify-between theme-transition">
-        {isEditing ? (
-          <div className="flex space-x-4">
-            <button 
-              onClick={handleSave}
-              className="group relative overflow-hidden bg-accent hover:bg-accent/90 text-white px-8 py-4 rounded-2xl font-semibold shadow-theme-lg hover:shadow-theme-xl transform hover:scale-105 transition-all duration-300"
-            >
-              <span className="relative z-10 flex items-center">
-                <Icon name="Save" size={20} className="mr-2" />
-                Save Changes
-              </span>
-            </button>
-            <button 
-              onClick={handleCancel}
-              className="group relative overflow-hidden bg-surface border-2 border-primary hover:border-red-500 text-primary hover:text-white px-8 py-4 rounded-2xl font-semibold shadow-theme-md hover:shadow-theme-lg transform hover:scale-105 transition-all duration-300 theme-transition"
-            >
-              <span className="relative z-10 flex items-center">
-                <Icon name="X" size={20} className="mr-2" />
-                Cancel
-              </span>
-              <div className="absolute inset-0 bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            </button>
-          </div>
-        ) : (
-          <button 
-            onClick={() => setIsEditing(true)}
-            className="group relative overflow-hidden bg-accent hover:bg-accent/90 text-white px-8 py-4 rounded-2xl font-semibold shadow-theme-lg hover:shadow-theme-xl transform hover:scale-105 transition-all duration-300"
+      {/* Bottom action bar — only shown while editing for convenience when scrolled down */}
+      {isEditing && (
+        <div className="mt-10 pt-6 border-t border-primary/10 flex items-center justify-end gap-3 theme-transition">
+          <button
+            onClick={handleCancel}
+            className="group relative overflow-hidden bg-surface border-2 border-primary/20 hover:border-red-500 text-secondary hover:text-white px-6 py-3 rounded-xl font-semibold shadow-theme-md transition-all duration-200 theme-transition"
           >
-            <span className="relative z-10 flex items-center">
-              <Icon name="Edit" size={20} className="mr-2" />
-              Edit Profile
+            <span className="relative z-10 flex items-center gap-1.5">
+              <Icon name="X" size={16} />
+              Cancel
             </span>
+            <div className="absolute inset-0 bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl"></div>
           </button>
-        )}
-      </div>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-1.5 bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-xl font-semibold shadow-theme-lg hover:shadow-theme-xl transition-all duration-200"
+          >
+            <Icon name="Save" size={16} />
+            Save Changes
+          </button>
+        </div>
+      )}
     </div>
   );
 };

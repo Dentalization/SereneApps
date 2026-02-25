@@ -94,12 +94,15 @@ function EmptyState() {
 
 const AIAnalysisPage = () => {
   useLanguage();
-  useAuth();
+  const { user } = useAuth();
 
   const {
     sessionId, messages, sessions, isLoading, isBootstrapping, systemHealth,
     bootstrap, sendMessage, startNewSession, loadSession, deleteSession,
-  } = useDentalAPI();
+  } = useDentalAPI('dentist', user?.id);
+
+  // Resolve the current session's generated title for the header
+  const currentSessionTitle = sessions.find(s => s.id === sessionId)?.metadata?.title || null;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
@@ -176,7 +179,13 @@ const AIAnalysisPage = () => {
                     {sessionId && (
                         <>
                             <ChevronRight className="w-3 h-3 text-slate-300" />
-                            <span className="text-[10px] text-slate-400 font-mono">#{sessionId.slice(0,6)}</span>
+                            {currentSessionTitle ? (
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[200px] truncate" title={currentSessionTitle}>
+                                {currentSessionTitle}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-mono animate-pulse">Sesi Baru…</span>
+                            )}
                         </>
                     )}
                   </div>

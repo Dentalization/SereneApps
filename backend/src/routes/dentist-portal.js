@@ -4,9 +4,35 @@
  */
 
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import { recordStatusChange } from '../services/appointments/audit.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Multer config for treatment images
+const treatmentUploadDir = path.join(__dirname, '../../uploads/treatment-images');
+if (!fs.existsSync(treatmentUploadDir)) {
+  fs.mkdirSync(treatmentUploadDir, { recursive: true });
+}
+const treatmentImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, treatmentUploadDir),
+  filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`),
+});
+const uploadTreatmentImage = multer({
+  storage: treatmentImageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|webp|heic)$/i;
+    if (allowed.test(path.extname(file.originalname))) return cb(null, true);
+    cb(new Error('Only image files (jpg, png, webp, heic) are allowed.'));
+  },
+});
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -300,6 +326,16 @@ router.get(
 
       const patientProfile = await prisma.patientProfile.findUnique({ where: { userId: patientId } });
 
+      // Fetch treatment plans for this patient
+      const treatmentPlans = await prisma.treatmentPlan.findMany({
+        where: { patientId },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
       const serializedPatient = serializePatient(patient, appointments, aiResults);
       serializedPatient.appointments = appointments.map(a => ({
         id: a.id.toString(),
@@ -329,6 +365,9 @@ router.get(
         serializedPatient.emergencyContact = patientProfile.emergencyContact;
         serializedPatient.medicalDetails = patientProfile.medicalDetails;
       }
+
+      // Attach serialized treatment plans
+      serializedPatient.treatmentPlans = treatmentPlans.map(serializeTreatmentPlan);
 
       return res.json({ patient: serializedPatient });
     } catch (error) {
@@ -768,6 +807,302 @@ router.post(
     } catch (error) {
       console.error('Error saving AI chat message:', error);
       return sendError(res, 500, 'save_failed', 'Gagal menyimpan pesan chat AI.');
+    }
+  }
+);
+
+// ====================================================================
+// TREATMENT PLANS
+// ====================================================================
+
+function serializeTreatmentPlan(plan) {
+  return {
+    id: plan.id.toString(),
+    patientId: plan.patientId.toString(),
+    dentistId: plan.dentistId.toString(),
+    title: plan.title,
+    description: plan.description,
+    priority: plan.priority,
+    status: plan.status,
+    progress: plan.progress,
+    estimatedCost: plan.estimatedCost,
+    actualCost: plan.actualCost,
+    startDate: plan.createdAt?.toISOString() || null,
+    targetCompletion: plan.targetCompletion?.toISOString?.() || plan.targetCompletion || null,
+    estimatedCompletion: plan.targetCompletion?.toISOString?.() || plan.targetCompletion || null,
+    completedAt: plan.completedAt?.toISOString() || null,
+    notes: plan.notes,
+    createdAt: plan.createdAt?.toISOString() || null,
+    updatedAt: plan.updatedAt?.toISOString() || null,
+    dentist: plan.dentist ? {
+      id: plan.dentist.id.toString(),
+      name: plan.dentist.name,
+      // Prefer users.avatar_url, fall back to dentist_profiles.avatar_url (where seed data stores it)
+      avatar: plan.dentist.avatar_url || plan.dentist.dentistProfile?.[0]?.avatar_url || null,
+    } : null,
+    treatments: (plan.items || []).map(item => ({
+      id: item.id.toString(),
+      name: item.name,
+      category: item.category,
+      cost: item.cost,
+      actualCost: item.actualCost || 0,
+      status: item.status,
+      scheduledDate: item.scheduledDate?.toISOString?.() || null,
+      completedDate: item.completedDate?.toISOString?.() || null,
+      notes: item.notes,
+      resultNotes: item.resultNotes || null,
+      imageUrl: item.imageUrl || null,
+      sortOrder: item.sortOrder,
+    })),
+  };
+}
+
+// GET /v1/dentist-portal/patients/:patientId/treatment-plans
+router.get(
+  '/patients/:patientId/treatment-plans',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+
+      // Verify dentist has treated this patient (has at least one appointment)
+      const hasAccess = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true },
+      });
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+
+      const plans = await prisma.treatmentPlan.findMany({
+        where: { patientId },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return res.json({ treatmentPlans: plans.map(serializeTreatmentPlan) });
+    } catch (error) {
+      console.error('Error fetching treatment plans:', error);
+      if (error.message?.startsWith('INVALID_')) {
+        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
+      }
+      return sendError(res, 500, 'FETCH_FAILED', 'Gagal mengambil rencana perawatan.');
+    }
+  }
+);
+
+// POST /v1/dentist-portal/patients/:patientId/treatment-plans
+router.post(
+  '/patients/:patientId/treatment-plans',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+
+      // Verify dentist has treated this patient
+      const hasAccess = await prisma.appointment.findFirst({
+        where: { dentistId, patientId },
+        select: { id: true },
+      });
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+
+      const { title, description, priority, estimatedCost, targetCompletion, treatments } = req.body;
+
+      if (!title || !title.trim()) {
+        return sendError(res, 400, 'VALIDATION_ERROR', 'Title is required.');
+      }
+      if (!treatments || !Array.isArray(treatments) || treatments.length === 0) {
+        return sendError(res, 400, 'VALIDATION_ERROR', 'At least one treatment is required.');
+      }
+
+      const plan = await prisma.treatmentPlan.create({
+        data: {
+          patientId,
+          dentistId,
+          title: title.trim(),
+          description: description || '',
+          priority: priority || 'medium',
+          estimatedCost: Number(estimatedCost) || 0,
+          targetCompletion: targetCompletion ? new Date(targetCompletion) : null,
+          items: {
+            create: treatments.map((t, index) => ({
+              name: t.name,
+              category: t.category || null,
+              cost: Number(t.cost) || 0,
+              status: t.status || 'pending',
+              sortOrder: index,
+            })),
+          },
+        },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+        },
+      });
+
+      console.log(`[TreatmentPlan] Created plan ${plan.id} for patient ${patientId} by dentist ${dentistId} with ${treatments.length} treatments`);
+
+      return res.status(201).json({ treatmentPlan: serializeTreatmentPlan(plan) });
+    } catch (error) {
+      console.error('Error creating treatment plan:', error);
+      if (error.message?.startsWith('INVALID_')) {
+        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
+      }
+      return sendError(res, 500, 'CREATE_FAILED', 'Gagal membuat rencana perawatan.');
+    }
+  }
+);
+
+// PUT /v1/dentist-portal/patients/:patientId/treatment-plans/:planId
+router.put(
+  '/patients/:patientId/treatment-plans/:planId',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const planId = toBigInt(req.params.planId, 'planId');
+
+      // Verify the plan exists and belongs to this patient
+      const existingPlan = await prisma.treatmentPlan.findFirst({
+        where: { id: planId, patientId },
+      });
+      if (!existingPlan) {
+        return sendError(res, 404, 'NOT_FOUND', 'Treatment plan not found.');
+      }
+
+      const { title, description, priority, status, estimatedCost, targetCompletion, notes } = req.body;
+
+      const updated = await prisma.treatmentPlan.update({
+        where: { id: planId },
+        data: {
+          ...(title && { title: title.trim() }),
+          ...(description !== undefined && { description }),
+          ...(priority && { priority }),
+          ...(status && { status }),
+          ...(estimatedCost !== undefined && { estimatedCost: Number(estimatedCost) || 0 }),
+          ...(targetCompletion !== undefined && { targetCompletion: targetCompletion ? new Date(targetCompletion) : null }),
+          ...(notes !== undefined && { notes }),
+        },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+        },
+      });
+
+      return res.json({ treatmentPlan: serializeTreatmentPlan(updated) });
+    } catch (error) {
+      console.error('Error updating treatment plan:', error);
+      if (error.message?.startsWith('INVALID_')) {
+        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
+      }
+      return sendError(res, 500, 'UPDATE_FAILED', 'Gagal memperbarui rencana perawatan.');
+    }
+  }
+);
+
+// PUT /v1/dentist-portal/patients/:patientId/treatment-plans/:planId/items/:itemId
+// Complete / update a single treatment item (supports image upload)
+router.put(
+  '/patients/:patientId/treatment-plans/:planId/items/:itemId',
+  authenticateToken,
+  requireRoles(['dentist']),
+  uploadTreatmentImage.single('image'),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const planId = toBigInt(req.params.planId, 'planId');
+      const itemId = toBigInt(req.params.itemId, 'itemId');
+
+      // Verify the plan exists and belongs to this patient
+      const plan = await prisma.treatmentPlan.findFirst({
+        where: { id: planId, patientId },
+      });
+      if (!plan) {
+        return sendError(res, 404, 'NOT_FOUND', 'Treatment plan not found.');
+      }
+
+      // Verify the item belongs to this plan
+      const existingItem = await prisma.treatmentItem.findFirst({
+        where: { id: itemId, treatmentPlanId: planId },
+      });
+      if (!existingItem) {
+        return sendError(res, 404, 'NOT_FOUND', 'Treatment item not found.');
+      }
+
+      const { resultNotes, actualCost, status } = req.body;
+      const imageUrl = req.file ? `/uploads/treatment-images/${req.file.filename}` : undefined;
+
+      const isCompleting = status === 'completed' || (!status && existingItem.status !== 'completed');
+
+      // Build update data
+      const updateData = {};
+      if (resultNotes !== undefined) updateData.resultNotes = resultNotes;
+      if (actualCost !== undefined) updateData.actualCost = Number(actualCost) || 0;
+      if (imageUrl) updateData.imageUrl = imageUrl;
+      if (status) {
+        updateData.status = status;
+        if (status === 'completed' && !existingItem.completedDate) {
+          updateData.completedDate = new Date();
+        }
+      } else if (isCompleting) {
+        updateData.status = 'completed';
+        if (!existingItem.completedDate) {
+          updateData.completedDate = new Date();
+        }
+      }
+
+      // Update the item
+      const updatedItem = await prisma.treatmentItem.update({
+        where: { id: itemId },
+        data: updateData,
+      });
+
+      // Recalculate plan progress and actualCost
+      const allItems = await prisma.treatmentItem.findMany({
+        where: { treatmentPlanId: planId },
+      });
+      const completedCount = allItems.filter(i => i.status === 'completed').length;
+      const progress = allItems.length > 0 ? Math.round((completedCount / allItems.length) * 100) : 0;
+      const totalActualCost = allItems.reduce((sum, i) => sum + (i.actualCost || i.cost || 0), 0);
+
+      const planUpdateData = { progress, actualCost: totalActualCost };
+      if (progress === 100) {
+        planUpdateData.status = 'completed';
+        planUpdateData.completedAt = new Date();
+      } else if (completedCount > 0) {
+        planUpdateData.status = 'in-progress';
+      }
+
+      const updatedPlan = await prisma.treatmentPlan.update({
+        where: { id: planId },
+        data: planUpdateData,
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+        },
+      });
+
+      console.log(`[TreatmentItem] Updated item ${itemId} in plan ${planId} — status: ${updatedItem.status}, progress: ${progress}%`);
+
+      return res.json({ treatmentPlan: serializeTreatmentPlan(updatedPlan) });
+    } catch (error) {
+      console.error('Error updating treatment item:', error);
+      if (error.message?.startsWith('INVALID_')) {
+        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
+      }
+      return sendError(res, 500, 'UPDATE_FAILED', 'Gagal memperbarui item perawatan.');
     }
   }
 );

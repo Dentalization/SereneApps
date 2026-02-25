@@ -58,7 +58,9 @@ export const createAppointment = async ({
       dentist: response.data?.dentist,
     };
   } catch (error) {
-    console.error('[AppointmentService] Create appointment error:', error.response?.data || error.message);
+    // Use console.warn instead of console.error to avoid LogBox red banner
+    // The error is already handled gracefully by BookingFailedScreen
+    console.warn('[AppointmentService] Create appointment failed:', error.response?.data?.error?.code || error.message);
     
     // Extract error message from backend response
     const errorMessage = error.response?.data?.error?.message || 
@@ -68,6 +70,7 @@ export const createAppointment = async ({
     
     const enhancedError = new Error(errorMessage);
     enhancedError.code = error.response?.data?.error?.code || 'unknown';
+    enhancedError.status = error.response?.status;
     enhancedError.originalError = error;
     throw enhancedError;
   }

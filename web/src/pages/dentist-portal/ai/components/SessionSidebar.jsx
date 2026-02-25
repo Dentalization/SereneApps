@@ -130,7 +130,11 @@ export default function SessionSidebar({
                             
                             <div className="flex-1 text-left min-w-0">
                               <div className={`font-medium text-sm truncate ${isActive ? 'text-accent' : 'text-primary'}`}>
-                                {session.metadata?.title || 'Untitled Session'}
+                                {session.metadata?.title || (
+                                  <span className="text-muted italic font-normal">
+                                    {new Date(session.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} — Sesi Baru
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[10px] opacity-60 truncate">
                                 {new Date(session.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
