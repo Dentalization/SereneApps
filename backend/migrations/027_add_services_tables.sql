@@ -144,21 +144,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Apply triggers to all new tables
+DROP TRIGGER IF EXISTS update_clinic_services_updated_at ON clinic_services;
 CREATE TRIGGER update_clinic_services_updated_at BEFORE UPDATE ON clinic_services
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_dentist_services_updated_at ON dentist_services;
 CREATE TRIGGER update_dentist_services_updated_at BEFORE UPDATE ON dentist_services
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_service_assignments_updated_at ON service_dentist_assignments;
 CREATE TRIGGER update_service_assignments_updated_at BEFORE UPDATE ON service_dentist_assignments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_clinic_gallery_updated_at ON clinic_gallery;
 CREATE TRIGGER update_clinic_gallery_updated_at BEFORE UPDATE ON clinic_gallery
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_clinic_highlights_updated_at ON clinic_highlights;
 CREATE TRIGGER update_clinic_highlights_updated_at BEFORE UPDATE ON clinic_highlights
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_clinic_facilities_updated_at ON clinic_facilities;
 CREATE TRIGGER update_clinic_facilities_updated_at BEFORE UPDATE ON clinic_facilities
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

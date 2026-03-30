@@ -14,6 +14,19 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppointmentById, cancelAppointment } from '../../../services/appointmentService';
+import { API_BASE_URL } from '../../../services/api';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
+
+// Only pass URLs that are valid http/https to <Image> — anything else crashes RCTImageManager
+const resolveAvatarUrl = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const full = trimmed.startsWith('http') ? trimmed : `${API_BASE_URL}${trimmed}`;
+  // Final guard: must be a proper http(s) URL
+  return full.startsWith('http://') || full.startsWith('https://') ? full : null;
+};
 
 const DetailAppointmentScreen = () => {
   const theme = useTheme();
@@ -26,6 +39,8 @@ const DetailAppointmentScreen = () => {
   const [loading, setLoading] = useState(!passedAppointment);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const { toast, showToast, hideToast } = useToast();
 
   // Fetch appointment details
   const fetchAppointment = useCallback(async (showLoading = true) => {
@@ -37,6 +52,7 @@ const DetailAppointmentScreen = () => {
     try {
       console.log('[DetailAppointment] Fetching appointment with ID:', appointmentId, 'Type:', typeof appointmentId);
       if (showLoading) setLoading(true);
+      setLoadError(null);
       const response = await getAppointmentById(appointmentId);
       console.log('[DetailAppointment] Response received:', response?.data ? 'Success' : 'No data', 'ID:', response?.data?.id);
       if (response?.data) {
@@ -49,14 +65,17 @@ const DetailAppointmentScreen = () => {
         setAppointment(response.data);
       }
     } catch (err) {
-      console.error('[DetailAppointment] Error fetching:', err);
-      console.error('[DetailAppointment] Error response data:', err.response?.data);
-      console.error('[DetailAppointment] Error status:', err.response?.status);
+      const message = err?.message || 'Gagal memuat detail janji temu.';
+      setLoadError(message);
+      showToast(message, 'error');
+      if (__DEV__) {
+        console.warn('[DetailAppointment] Fetch failed:', err?.code || err?.status || err?.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [appointmentId]);
+  }, [appointmentId, showToast]);
 
   useEffect(() => {
     if (!passedAppointment && appointmentId) {
@@ -175,9 +194,12 @@ const DetailAppointmentScreen = () => {
                 { text: 'OK', onPress: () => navigation.goBack() }
               ]);
             } catch (err) {
-              console.error('[DetailAppointment] Cancel error:', err);
-              const errorMsg = err.response?.data?.error?.message || err.message || 'Gagal membatalkan janji temu.';
+              const errorMsg = err?.message || 'Gagal membatalkan janji temu.';
+              showToast(errorMsg, 'error');
               Alert.alert('Gagal', errorMsg);
+              if (__DEV__) {
+                console.warn('[DetailAppointment] Cancel failed:', err?.code || err?.status || err?.message);
+              }
             } finally {
               setCancelling(false);
             }
@@ -187,17 +209,10 @@ const DetailAppointmentScreen = () => {
     );
   };
 
-  const handleCall = () => {
-    const phone = appointment?.dentist?.phone || appointment?.clinic?.phone;
-    if (phone) {
-      Linking.openURL(`tel:${phone}`);
-    }
-  };
-
   const handleOpenMaps = () => {
     const address = appointment?.clinic?.address || appointment?.dentist?.clinicAddress;
     if (address) {
-      const url = `https://maps.google.com/?q=${encodeURIComponent(address)}`;
+      const url = `http://maps.google.com/?q=${encodeURIComponent(address)}`;
       Linking.openURL(url);
     }
   };
@@ -214,15 +229,29 @@ const DetailAppointmentScreen = () => {
         message: `Janji Temu Dental\n\nKode Booking: ${bookingCode}\nDokter: ${dentistName}\nTanggal: ${date}\nWaktu: ${time}\nLokasi: ${clinicName}`,
       });
     } catch (err) {
-      console.error('Share error:', err);
+      showToast('Gagal membagikan detail janji temu.', 'warning');
+      if (__DEV__) {
+        console.warn('[DetailAppointment] Share failed:', err?.message);
+      }
     }
   };
 
   const handleJoinCall = () => {
-    if (appointment?.videoRoomRef) {
-      // Navigate to video call screen
-      navigation.navigate('VideoCall', { roomRef: appointment.videoRoomRef });
-    }
+    const dentistData = appointment?.dentist || {};
+    const dentistAvatar = resolveAvatarUrl(
+      dentistData?.avatar || dentistData?.avatar_url || dentistData?.avatarUrl
+    );
+
+    // Navigate to PatientTeledentistryScreen with appointment data
+    navigation.navigate('PatientTeledentistry', {
+      appointmentId: appointment?.id,
+      dentistName: dentistData?.name || 'Dokter Gigi',
+      dentistSpecialty: dentistData?.specialization || dentistData?.specialty || '',
+      dentistAvatar,
+      dentistInitials: (dentistData?.name || 'DG').split(' ').filter(w => w.length > 0).map(w => w[0]).join('').substring(0, 2).toUpperCase(),
+      appointmentDate: appointment?.startsAt || null,
+      roomRef: appointment?.videoRoomRef,
+    });
   };
 
   // Data derived from appointment
@@ -250,13 +279,29 @@ const DetailAppointmentScreen = () => {
   if (!appointment) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 20 }}>
-        <MaterialCommunityIcons name="calendar-remove" size={64} color="#CBD5E1" />
+        <MaterialCommunityIcons name={loadError ? 'wifi-alert' : 'calendar-remove'} size={64} color={loadError ? '#F59E0B' : '#CBD5E1'} />
         <Text style={{ fontSize: 18, fontWeight: '600', color: '#1E293B', marginTop: 16 }}>
-          Janji temu tidak ditemukan
+          {loadError ? 'Detail belum dapat dimuat' : 'Janji temu tidak ditemukan'}
         </Text>
+        {loadError ? (
+          <Text style={{ marginTop: 10, textAlign: 'center', color: '#64748B', lineHeight: 20 }}>
+            {loadError}
+          </Text>
+        ) : null}
+        {loadError ? (
+          <Button mode="contained" onPress={() => fetchAppointment()} style={{ marginTop: 20 }} icon="refresh">
+            Coba Lagi
+          </Button>
+        ) : null}
         <Button mode="contained" onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
           Kembali
         </Button>
+        <ValidationToast
+          visible={toast.visible}
+          message={toast.message}
+          status={toast.status}
+          onDismiss={hideToast}
+        />
       </View>
     );
   }
@@ -491,24 +536,8 @@ const DetailAppointmentScreen = () => {
           </View>
 
           {/* Contact actions */}
-          <View style={{ flexDirection: 'row', marginTop: 16, gap: 12 }}>
-            <TouchableOpacity
-              onPress={handleCall}
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#F1F5F9',
-                borderRadius: 12,
-                paddingVertical: 12,
-              }}
-            >
-              <MaterialCommunityIcons name="phone" size={18} color="#475569" />
-              <Text style={{ marginLeft: 8, color: '#475569', fontWeight: '600' }}>Telepon</Text>
-            </TouchableOpacity>
-
-            {isVirtual && isUpcoming && appointment?.videoRoomRef && (
+          {isVirtual && isUpcoming && (
+            <View style={{ flexDirection: 'row', marginTop: 16 }}>
               <TouchableOpacity
                 onPress={handleJoinCall}
                 style={{
@@ -521,11 +550,11 @@ const DetailAppointmentScreen = () => {
                   paddingVertical: 12,
                 }}
               >
-                <MaterialCommunityIcons name="video" size={18} color="white" />
-                <Text style={{ marginLeft: 8, color: 'white', fontWeight: '600' }}>Gabung</Text>
+                <MaterialCommunityIcons name="chat-processing" size={18} color="white" />
+                <Text style={{ marginLeft: 8, color: 'white', fontWeight: '600' }}>Chat Dokter</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
         </View>
 
         {/* Location Card (for non-virtual) */}
@@ -692,6 +721,13 @@ const DetailAppointmentScreen = () => {
           </View>
         </View>
       )}
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };

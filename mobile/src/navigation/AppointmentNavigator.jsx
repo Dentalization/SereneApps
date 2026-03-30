@@ -10,6 +10,7 @@ import BookingConfirmScreen from '../features/appointment/screens/BookingConfirm
 import PaymentScreen from '../features/appointment/screens/PaymentScreen';
 import BookingSuccessScreen from '../features/appointment/screens/BookingSuccessScreen';
 import BookingFailedScreen from '../features/appointment/screens/BookingFailedScreen';
+import PatientTeledentistryScreen from '../features/appointment/screens/PatientTeledentistryScreen';
 
 const Stack = createStackNavigator();
 
@@ -70,6 +71,11 @@ const AppointmentNavigator = () => {
         name="BookingFailed"
         component={BookingFailedScreen}
         options={{ title: 'Booking Gagal', gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="PatientTeledentistry"
+        component={PatientTeledentistryScreen}
+        options={{ title: 'Teledentistry', gestureEnabled: false }}
       />
     </Stack.Navigator>
   );

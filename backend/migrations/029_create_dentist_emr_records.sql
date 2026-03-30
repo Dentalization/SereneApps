@@ -15,6 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_dentist_emr_records_dentist
 CREATE INDEX IF NOT EXISTS idx_dentist_emr_records_patient
   ON dentist_emr_records (patient_user_id);
 
+DROP TRIGGER IF EXISTS update_dentist_emr_records_updated_at ON dentist_emr_records;
 CREATE TRIGGER update_dentist_emr_records_updated_at
   BEFORE UPDATE ON dentist_emr_records
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

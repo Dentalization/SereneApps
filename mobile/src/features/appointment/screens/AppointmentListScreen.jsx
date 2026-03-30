@@ -6,6 +6,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppointments } from '../../../services/appointmentService';
+import ValidationToast from '../../settings/components/ValidationToast';
+import useToast from '../../../hooks/useToast';
 
 // Dimensi Layar
 const { width } = Dimensions.get('window');
@@ -200,6 +202,7 @@ const AppointmentListScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(null);
+  const { toast, showToast, hideToast } = useToast();
 
   // ... (Logika Auth & Fetch sama seperti sebelumnya, tidak diubah logic-nya) ...
   const checkAuthStatus = useCallback(async () => {
@@ -266,13 +269,17 @@ const AppointmentListScreen = () => {
         setAppointments([]);
       }
     } catch (err) {
-      console.error(err);
-      setError(err.message || 'Gagal memuat janji temu');
+      const message = err?.message || 'Gagal memuat janji temu';
+      setError(message);
+      showToast(message, 'error');
+      if (__DEV__) {
+        console.warn('[AppointmentList] Fetch failed:', err?.code || err?.status || err?.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [checkAuthStatus]);
+  }, [checkAuthStatus, showToast]);
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
   useFocusEffect(useCallback(() => { fetchAppointments(false); }, [fetchAppointments]));
@@ -365,6 +372,17 @@ const AppointmentListScreen = () => {
                 </Button>
               }
             />
+          ) : error && filteredAppointments.length === 0 ? (
+            <ModernEmptyState
+              icon="wifi-alert"
+              title="Koneksi Bermasalah"
+              description={error}
+              action={
+                <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => fetchAppointments()}>
+                  Coba Lagi
+                </Button>
+              }
+            />
           ) : filteredAppointments.length === 0 ? (
             <ModernEmptyState
               icon={tab === 'upcoming' ? 'calendar-blank-outline' : 'history'}
@@ -389,6 +407,13 @@ const AppointmentListScreen = () => {
           )}
         </ScrollView>
       </View>
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };
