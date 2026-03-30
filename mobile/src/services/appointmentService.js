@@ -4,6 +4,35 @@ import api from './api';
  * Appointment Service - handles all appointment-related API calls
  */
 
+const normalizeAppointmentError = (error, fallbackMessage) => {
+  const status = error?.response?.status;
+  const backendCode = error?.response?.data?.error?.code;
+  const backendMessage = error?.response?.data?.error?.message;
+  const genericMessage = error?.response?.data?.message;
+  const rawMessage = error?.message;
+
+  let message = backendMessage || genericMessage || fallbackMessage;
+
+  if (!error?.response) {
+    message = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+  } else if (status === 408 || status === 504 || rawMessage?.toLowerCase?.().includes('timeout')) {
+    message = 'Permintaan memakan waktu terlalu lama. Silakan coba lagi.';
+  } else if (backendCode === 'cancel_window_elapsed') {
+    message = backendMessage || 'Pembatalan hanya diperbolehkan hingga beberapa jam sebelum janji.';
+  }
+
+  if (__DEV__) {
+    console.warn('[AppointmentService] API issue:', backendCode || status || rawMessage);
+  }
+
+  const enhancedError = new Error(message || fallbackMessage || 'Terjadi kesalahan');
+  enhancedError.code = backendCode || 'unknown';
+  enhancedError.status = status;
+  enhancedError.originalError = error;
+  enhancedError.responseData = error?.response?.data;
+  return enhancedError;
+};
+
 /**
  * Create a new appointment
  * @param {Object} data - Appointment data
@@ -58,21 +87,7 @@ export const createAppointment = async ({
       dentist: response.data?.dentist,
     };
   } catch (error) {
-    // Use console.warn instead of console.error to avoid LogBox red banner
-    // The error is already handled gracefully by BookingFailedScreen
-    console.warn('[AppointmentService] Create appointment failed:', error.response?.data?.error?.code || error.message);
-    
-    // Extract error message from backend response
-    const errorMessage = error.response?.data?.error?.message || 
-                         error.response?.data?.message || 
-                         error.message ||
-                         'Gagal membuat janji temu';
-    
-    const enhancedError = new Error(errorMessage);
-    enhancedError.code = error.response?.data?.error?.code || 'unknown';
-    enhancedError.status = error.response?.status;
-    enhancedError.originalError = error;
-    throw enhancedError;
+    throw normalizeAppointmentError(error, 'Gagal membuat janji temu');
   }
 };
 
@@ -119,8 +134,7 @@ export const getAppointments = async ({
       summary,
     };
   } catch (error) {
-    console.error('[AppointmentService] Fetch appointments error:', error.response?.data || error.message);
-    throw error;
+    throw normalizeAppointmentError(error, 'Gagal memuat daftar janji temu');
   }
 };
 
@@ -161,8 +175,7 @@ export const getAppointmentById = async (id) => {
     // Backend returns { appointment: {...} }
     return { data: response.data.appointment };
   } catch (error) {
-    console.error('[AppointmentService] Fetch appointment error:', error.response?.data || error.message);
-    throw error;
+    throw normalizeAppointmentError(error, 'Gagal memuat detail janji temu');
   }
 };
 
@@ -180,8 +193,7 @@ export const cancelAppointment = async (id, reason = '') => {
     // Backend returns { appointment: {...} }
     return { data: response.data.appointment };
   } catch (error) {
-    console.error('[AppointmentService] Cancel appointment error:', error.response?.data || error.message);
-    throw error;
+    throw normalizeAppointmentError(error, 'Gagal membatalkan janji temu');
   }
 };
 
@@ -199,8 +211,7 @@ export const rescheduleAppointment = async (id, { date, time }) => {
     const response = await api.patch(`/appointments/${id}/reschedule`, { date, time });
     return response.data;
   } catch (error) {
-    console.error('[AppointmentService] Reschedule appointment error:', error.response?.data || error.message);
-    throw error;
+    throw normalizeAppointmentError(error, 'Gagal mengubah jadwal janji temu');
   }
 };
 
@@ -216,8 +227,7 @@ export const getAvailableSlots = async (dentistId, date) => {
     const response = await api.get(`/appointments/availability?dentist_id=${dentistId}&date=${date}`);
     return response.data;
   } catch (error) {
-    console.error('[AppointmentService] Fetch slots error:', error.response?.data || error.message);
-    throw error;
+    throw normalizeAppointmentError(error, 'Gagal memuat slot jadwal');
   }
 };
 

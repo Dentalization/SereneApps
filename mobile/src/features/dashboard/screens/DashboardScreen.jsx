@@ -173,30 +173,35 @@ const DashboardScreen = () => {
       />
 
       {/* --- LAYER 2: FIXED TOP BAR (PROFILE) --- */}
+      {/* PENTING: paddingTop dikembalikan ke nilai asli (insets.top + 10) agar tinggi tidak berubah */}
       <View style={[styles.fixedTopBar, { paddingTop: insets.top + 10 }]}>
 
-        {/* --- TAMBAHKAN INI DI DALAM VIEW TOP BAR --- */}
         {/* Ini akan menjadi background gradient khusus untuk top bar */}
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill} // KUNCI: Agar memenuhi area parent View
+          style={StyleSheet.absoluteFill} 
         />
 
-        {/* Konten Profile (akan berada di atas gradient) */}
+        {/* Konten Profile */}
         <View style={styles.profileRow}>
           <View style={styles.profileInfo}>
             <View style={styles.avatarContainer}>
               {avatarUrl ? (
-                <Avatar.Image size={40} source={{ uri: avatarUrl }} />
+                // UBAH: Size diperbesar dari 40 ke 48 (kompromi agar muat)
+                <Avatar.Image size={48} source={{ uri: avatarUrl }} />
               ) : (
-                <Avatar.Text size={40} label={getInitials(user?.name || 'Tamu')} style={{ backgroundColor: 'white' }} labelStyle={{ color: '#4F46E5' }} />
+                // UBAH: Size diperbesar dari 40 ke 48
+                <Avatar.Text size={48} label={getInitials(user?.name || 'Tamu')} style={{ backgroundColor: 'white' }} labelStyle={{ color: '#4F46E5', fontSize: 16 }} />
               )}
               <View style={styles.onlineBadge} />
             </View>
+            {/* UBAH: Margin kiri disesuaikan */}
             <View style={{ marginLeft: 12 }}>
+              {/* UBAH: Font size nama diperbesar dari 18 ke 20 */}
               <Text style={styles.greetingText}>Halo, {user?.name ? user.name.split(' ')[0] : 'Tamu'}</Text>
+              {/* UBAH: Font size sambutan diperbesar dari 12 ke 13 */}
               <Text style={styles.subGreetingText}>Siap merawat gigimu?</Text>
             </View>
           </View>
@@ -212,7 +217,7 @@ const DashboardScreen = () => {
       <Animated.ScrollView
         style={styles.scrollView}
         contentContainerStyle={{
-          paddingTop: insets.top + 80, // Memberi ruang untuk Top Bar
+          paddingTop: insets.top + 80, // Memberi ruang untuk Top Bar (nilai asli)
           paddingBottom: 20
         }}
         showsVerticalScrollIndicator={false}
@@ -228,10 +233,9 @@ const DashboardScreen = () => {
       >
 
         {/* A. HEADER CONTENT (Search & Categories) */}
-        {/* Ini berada di atas gradient, sebelum white sheet */}
         <View style={styles.headerContent}>
 
-          {/* Search Bar — smooth fade + slide up on scroll */}
+          {/* Search Bar */}
           <Animated.View style={{
             opacity: searchOpacity,
             transform: [{ translateY: searchTranslateY }],
@@ -244,7 +248,7 @@ const DashboardScreen = () => {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Categories — staggered fade + slide up */}
+          {/* Categories */}
           <Animated.View style={{
             opacity: catOpacity,
             transform: [{ translateY: catTranslateY }],
@@ -270,7 +274,6 @@ const DashboardScreen = () => {
         </View>
 
         {/* B. WHITE SHEET (Main Content) */}
-        {/* Menggunakan marginTop negatif untuk menumpuk Header Content */}
         <View style={styles.whiteSheet}>
           {/* Handle Indicator */}
           <View style={styles.sheetHandle} />
@@ -322,25 +325,25 @@ const DashboardScreen = () => {
   );
 };
 
-// --- STYLES (Inline-like structure for easy copying) ---
+// --- STYLES (Updated specifically for Header elements) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC', // Sama dengan whiteSheet agar tidak ada ungu di bawah
+    backgroundColor: '#F8FAFC',
   },
   topGradient: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: height * 0.45, // Gradient hanya menutupi ~45% atas layar
+    height: height * 0.45,
   },
 
   // --- TOP BAR ---
   fixedTopBar: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
-    zIndex: 50, // Paling atas
+    zIndex: 50,
     paddingHorizontal: 24,
     paddingBottom: 20,
     borderBottomLeftRadius: 28,
@@ -364,18 +367,20 @@ const styles = StyleSheet.create({
     bottom: 0, right: 0,
     width: 12, height: 12,
     borderRadius: 6,
-    backgroundColor: '#10B981', // Green success
-    borderWidth: 2, borderColor: '#4F46E5', // Match gradient start
+    backgroundColor: '#10B981',
+    borderWidth: 2, borderColor: '#4F46E5',
   },
   greetingText: {
-    fontSize: 18,
+    fontSize: 20, // DIPERBESAR dari 18 ke 20
     fontWeight: '800',
     color: '#FFF',
     letterSpacing: 0.3,
+    lineHeight: 24, // LineHeight disesuaikan agar tidak terlalu tinggi
   },
   subGreetingText: {
-    fontSize: 12,
+    fontSize: 13, // DIPERBESAR dari 12 ke 13
     color: 'rgba(255,255,255,0.85)',
+    marginTop: 1,
   },
   iconButton: {
     width: 40, height: 40,
@@ -396,7 +401,7 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     paddingHorizontal: 20,
-    paddingBottom: 50, // Memberi ruang agar White Sheet bisa overlap
+    paddingBottom: 50,
   },
 
   // Search Bar
@@ -441,7 +446,7 @@ const styles = StyleSheet.create({
   },
   activeCat: {
     backgroundColor: '#white',
-    backgroundColor: 'white', // Harus white agar terlihat "active"
+    backgroundColor: 'white',
     elevation: 3,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4,
   },
@@ -460,7 +465,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     paddingHorizontal: 8,
     paddingTop: 12,
-    marginTop: -30, // KUNCI: Efek Overlap ke atas header content
+    marginTop: -30,
     paddingBottom: 20,
   },
   sheetHandle: {

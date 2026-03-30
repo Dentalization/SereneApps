@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
 import os
 import sys
+import threading
 import numpy as np
 from services.dicom_handler import DicomHandler
 from services.morita_handler import MoritaHandler
@@ -36,6 +37,61 @@ app.add_middleware(
 # Upload Directory (Relative to backend execution or hardcoded for now)
 # Assuming this service runs from backend/python_service
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../uploads/x-core'))
+
+# Per-study conversion coordination to prevent duplicate heavy MONAI jobs.
+_conversion_state_lock = threading.Lock()
+_conversion_events = {}
+
+
+def _is_conversion_in_progress(study_path: str) -> bool:
+    with _conversion_state_lock:
+        event = _conversion_events.get(study_path)
+        return event is not None and not event.is_set()
+
+
+def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wait: bool = True) -> bool:
+    """
+    Ensure at most one conversion runs per study.
+
+    Returns:
+        True if this call executed conversion work.
+        False if conversion was already done or handled by another in-flight request.
+    """
+    volume_path = os.path.join(study_path, "volume.vti")
+    if os.path.exists(volume_path) and not force:
+        return False
+
+    while True:
+        should_run = False
+        with _conversion_state_lock:
+            event = _conversion_events.get(study_path)
+
+            if event is None:
+                event = threading.Event()
+                event.clear()
+                _conversion_events[study_path] = event
+                should_run = True
+            elif event.is_set():
+                event.clear()
+                should_run = True
+
+        if should_run:
+            try:
+                convert_study_to_vti(study_path, force)
+                return True
+            finally:
+                with _conversion_state_lock:
+                    done_event = _conversion_events.get(study_path)
+                    if done_event:
+                        done_event.set()
+
+        if not wait:
+            return False
+
+        event.wait()
+
+        if os.path.exists(volume_path) and not force:
+            return False
 
 @app.get("/health")
 def health_check():
@@ -167,7 +223,7 @@ def get_volume_vti(study_id: str, series_uid: str = None):
     if not os.path.exists(vti_path):
         print(f"[Volume] VTI not found, generating on-demand for {study_id}...")
         try:
-            convert_study_to_vti(study_path)
+            _ensure_vti_conversion_singleflight(study_path)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -307,9 +363,12 @@ def trigger_vti_conversion(study_id: str, background_tasks: BackgroundTasks, for
     
     if os.path.exists(vti_path) and not force:
         return {"status": "already_exists", "study_id": study_id}
+
+    if _is_conversion_in_progress(study_path):
+        return {"status": "converting", "study_id": study_id, "message": "VTI conversion already in progress"}
     
     # Run conversion in background so the upload response returns immediately
-    background_tasks.add_task(convert_study_to_vti, study_path, force)
+    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True)
     
     return {"status": "converting", "study_id": study_id, "message": "VTI conversion started in background"}
 
@@ -358,22 +417,15 @@ def stream_slice(study_id: str, view: str, index: int, series_uid: str = None):
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
 
-    # Determine Handler based on content
-    is_dicom = False
     try:
-         temp_handler = DicomHandler(study_path, series_uid=series_uid)
-         if len(temp_handler.files) > 0:
-             is_dicom = True
-    except:
-         pass
-    
-    try:
-        if is_dicom:
+        try:
             handler = DicomHandler(study_path, series_uid=series_uid)
-            image_bytes, headers = handler.get_slice(view, index)
-        else:
+            if len(handler.files) == 0:
+                raise ValueError("No DICOM files found")
+        except Exception:
             handler = MoritaHandler(study_path)
-            image_bytes, headers = handler.get_slice(view, index)
+
+        image_bytes, headers = handler.get_slice(view, index)
             
         return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
         
@@ -400,21 +452,15 @@ def get_metadata(study_id: str, series_uid: str = None):
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
 
-    is_dicom = False
     try:
-         temp_handler = DicomHandler(study_path, series_uid=series_uid)
-         if len(temp_handler.files) > 0:
-             is_dicom = True
-    except:
-         pass
-    
-    try:
-        if is_dicom:
+        try:
             handler = DicomHandler(study_path, series_uid=series_uid)
-            return handler.get_metadata()
-        else:
+            if len(handler.files) == 0:
+                raise ValueError("No DICOM files found")
+        except Exception:
             handler = MoritaHandler(study_path)
-            return handler.get_metadata()
+
+        return handler.get_metadata()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
