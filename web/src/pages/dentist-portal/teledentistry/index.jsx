@@ -110,12 +110,17 @@ const Teledentistry = () => {
 
   const handleAcceptCall = async () => {
     const apptId = videoSession?.appointmentId || incomingCall?.appointmentId || activeAppointmentId;
-    // If accepting an incoming call, we need to fetch a token first
+    // If accepting an incoming call without a token, fetch one first
     if (apptId && !videoSession?.token) {
       try {
-        await initiateCall(apptId);
-        acceptCall();
-        emitVideoCallResponse(apptId, true);
+        const session = await initiateCall(apptId);
+        if (session) {
+          acceptCall();
+          emitVideoCallResponse(apptId, true);
+        } else {
+          toast.error('Failed to connect to video call.');
+          endCall();
+        }
       } catch (error) {
         toast.error('Failed to connect to video call.');
         endCall();
@@ -252,11 +257,15 @@ const Teledentistry = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => handleStartVideoCall()}
-              disabled={!activeAppointmentId}
+              disabled={!activeAppointmentId || callState === 'requesting_token' || callState === 'ringing'}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Icon name="Video" size={16} />
-              <span>Start Instant Call</span>
+              {callState === 'requesting_token' ? (
+                <Icon name="Loader2" size={16} className="animate-spin" />
+              ) : (
+                <Icon name="Video" size={16} />
+              )}
+              <span>{callState === 'requesting_token' ? 'Connecting...' : 'Start Instant Call'}</span>
             </button>
             <button
               onClick={() => setShowNewConsultation(true)}

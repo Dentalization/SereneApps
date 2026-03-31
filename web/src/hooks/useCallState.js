@@ -44,15 +44,15 @@ export function useCallState({ userId } = {}) {
   }, [cleanup]);
 
   const initiateCall = useCallback(
-    async (appointmentId) => {
-      if (!appointmentId) return;
+    async (appointmentId, role = 'publisher') => {
+      if (!appointmentId) return null;
       cleanup();
 
       try {
         setCallState(CALL_STATES.REQUESTING_TOKEN);
         setCallError(null);
 
-        const tokenData = await fetchVideoToken(appointmentId, 'publisher');
+        const tokenData = await fetchVideoToken(appointmentId, role);
 
         const session = {
           appointmentId,
@@ -63,11 +63,13 @@ export function useCallState({ userId } = {}) {
 
         setVideoSession(session);
         setCallState(CALL_STATES.RINGING);
+        return session;
       } catch (error) {
         console.error('[useCallState] Failed to initiate call:', error);
         setCallError(error?.message || 'Failed to start video call');
         setCallState(CALL_STATES.ERROR);
         resetToIdle();
+        return null;
       }
     },
     [userId, cleanup, resetToIdle]
