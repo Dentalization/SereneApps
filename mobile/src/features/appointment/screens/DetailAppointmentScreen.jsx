@@ -17,6 +17,7 @@ import { getAppointmentById, cancelAppointment } from '../../../services/appoint
 import { API_BASE_URL } from '../../../services/api';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import AppointmentChatBanner from './AppointmentChatBanner';
 
 // Only pass URLs that are valid http/https to <Image> — anything else crashes RCTImageManager
 const resolveAvatarUrl = (raw) => {
@@ -535,25 +536,13 @@ const DetailAppointmentScreen = () => {
             </View>
           </View>
 
-          {/* Contact actions */}
-          {isVirtual && isUpcoming && (
-            <View style={{ flexDirection: 'row', marginTop: 16 }}>
-              <TouchableOpacity
-                onPress={handleJoinCall}
-                style={{
-                  flex: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: theme.colors.primary,
-                  borderRadius: 12,
-                  paddingVertical: 12,
-                }}
-              >
-                <MaterialCommunityIcons name="chat-processing" size={18} color="white" />
-                <Text style={{ marginLeft: 8, color: 'white', fontWeight: '600' }}>Chat Dokter</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Chat Banner — shown for all upcoming appointments */}
+          {isUpcoming && (
+            <AppointmentChatBanner
+              appointment={appointment}
+              unreadCount={0}
+              onPress={handleJoinCall}
+            />
           )}
         </View>
 
