@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Icon from '../../../../components/AppIcon';
 
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
 const FILE_BASE_URL = (import.meta.env.VITE_FILE_BASE_URL || API_BASE).replace(/\/$/, '');
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
 function resolveFileUrl(fileUrl) {
   if (!fileUrl) return null;
@@ -12,6 +14,43 @@ function resolveFileUrl(fileUrl) {
   const normalizedPath = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
   return `${FILE_BASE_URL}${normalizedPath}`;
 }
+
+function isImageFile(msg) {
+  if (msg.mimeType && msg.mimeType.startsWith('image/')) return true;
+  const fileName = msg.fileName || msg.fileUrl || '';
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  return IMAGE_EXTENSIONS.includes(ext);
+}
+
+const ImageThumbnail = ({ src, alt, onClick }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  if (errored) {
+    return (
+      <div className="flex items-center space-x-2 py-1">
+        <Icon name="FileImage" size={14} />
+        <span className="text-xs font-medium">{alt || 'Image'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative cursor-pointer" onClick={onClick}>
+      {!loaded && (
+        <div className="w-[200px] h-[120px] rounded-lg bg-primary/10 animate-pulse" />
+      )}
+      <img
+        src={src}
+        alt={alt || 'Attachment'}
+        className={`rounded-lg object-cover transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+        style={{ maxWidth: '200px', maxHeight: '150px' }}
+        onLoad={() => setLoaded(true)}
+        onError={() => setErrored(true)}
+      />
+    </div>
+  );
+};
 
 const ChatInterface = ({
   conversation,
@@ -44,12 +83,18 @@ const ChatInterface = ({
     );
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     const text = message.trim();
     if (!text) return;
     onSendText?.(text);
     setMessage('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -63,6 +108,40 @@ const ChatInterface = ({
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const renderFileContent = (msg) => {
+    const resolved = resolveFileUrl(msg.fileUrl);
+    const openFile = () => {
+      if (resolved) window.open(resolved, '_blank', 'noopener');
+    };
+
+    if (isImageFile(msg) && resolved) {
+      return (
+        <ImageThumbnail
+          src={resolved}
+          alt={msg.fileName || 'Image'}
+          onClick={openFile}
+        />
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center space-x-2">
+          <Icon name="Paperclip" size={14} />
+          <span className="text-xs font-medium">{msg.fileName || 'Attachment'}</span>
+        </div>
+        {msg.fileUrl && (
+          <button
+            onClick={openFile}
+            className="text-xs underline text-white/80"
+          >
+            View file
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderMessage = (msg) => {
     const isMine = msg.senderId === currentUserId?.toString();
     const bubbleClasses = isMine
@@ -73,25 +152,7 @@ const ChatInterface = ({
       <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
         <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg ${bubbleClasses} theme-transition`}>
           {msg.messageType === 'file' ? (
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Icon name="Paperclip" size={14} />
-                <span className="text-xs font-medium">{msg.fileName || 'Attachment'}</span>
-              </div>
-              {msg.fileUrl && (
-                <button
-                  onClick={() => {
-                    const url = resolveFileUrl(msg.fileUrl);
-                    if (url) {
-                      window.open(url, '_blank', 'noopener');
-                    }
-                  }}
-                  className="text-xs underline text-white/80"
-                >
-                  View file
-                </button>
-              )}
-            </div>
+            renderFileContent(msg)
           ) : (
             <p className="text-sm whitespace-pre-line">{msg.message}</p>
           )}
@@ -165,7 +226,7 @@ const ChatInterface = ({
       </div>
 
       <div className="border-t border-primary/10 p-3 bg-surface-elevated theme-transition">
-        <form onSubmit={handleSubmit} className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2">
           <input
             type="file"
             ref={fileInputRef}
@@ -178,18 +239,19 @@ const ChatInterface = ({
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               className="w-full px-3 py-2 border border-primary/10 rounded-lg bg-surface text-primary text-sm focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent theme-transition"
             />
           </div>
           <button
-            type="submit"
+            onClick={handleSubmit}
             disabled={!message.trim()}
             className="p-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed theme-transition"
           >
             <Icon name="Send" size={16} />
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );

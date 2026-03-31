@@ -22,9 +22,9 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall }) => {
   useEffect(() => {
     let durationTimer;
     if (videoSession) {
-      const roomName = videoSession?.roomName ?? videoSession?.channelName;
+      const roomName = videoSession.roomName;
       if (!roomName) {
-        console.error('Video session missing room name');
+        console.warn('[VideoCall] videoSession.roomName is undefined — call will fail');
         return;
       }
       join({
