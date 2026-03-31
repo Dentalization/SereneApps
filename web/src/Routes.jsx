@@ -30,6 +30,7 @@ import NotificationScreenDentist from './pages/dentist-portal/ui/NotificationScr
 import ProtectedRoute from 'components/auth/ProtectedRoute';
 import GetTheApp from './pages/get-the-app';
 import PatientAppointments from './pages/patient-portal/appointments';
+import PatientTeledentistry from './pages/patient-portal/teledentistry';
 import PricingPage from './pages/prices';
 
 // Clinic Portal Imports
@@ -108,6 +109,7 @@ const Routes = () => {
 
           <Route element={<ProtectedRoute allow={["patient"]} />}>
             <Route path="/patient-portal/appointments" element={<PatientAppointments />} />
+            <Route path="/patient-portal/teledentistry" element={<PatientTeledentistry />} />
           </Route>
 
           {/* Clinic Portal Routes - Protected for clinic staff roles */}

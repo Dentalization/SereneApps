@@ -81,6 +81,8 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
     <div
       className="relative h-full bg-black flex flex-col"
       onMouseMove={resetControlsTimer}
+      onTouchMove={resetControlsTimer}
+      onTouchStart={resetControlsTimer}
     >
       <div className={`absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-black/50 to-transparent transition-opacity duration-300 ${
         showControls ? 'opacity-100' : 'opacity-0'
