@@ -167,12 +167,25 @@ export function useChat() {
       setIncomingCall({ appointmentId, callerId, callerName });
     });
 
-    socket.on('video:call_accepted', () => {
+    socket.on('video:call_accepted', ({ appointmentId, responderId }) => {
       setIncomingCall(null);
+      // Notify via custom event so index.jsx can react
+      window.dispatchEvent(new CustomEvent('teledentistry:call_accepted', {
+        detail: { appointmentId, responderId }
+      }));
     });
 
-    socket.on('video:call_declined', () => {
+    socket.on('video:call_declined', ({ appointmentId, responderId }) => {
       setIncomingCall(null);
+      window.dispatchEvent(new CustomEvent('teledentistry:call_declined', {
+        detail: { appointmentId, responderId }
+      }));
+    });
+
+    socket.on('video:call_ended', ({ appointmentId }) => {
+      window.dispatchEvent(new CustomEvent('teledentistry:call_ended', {
+        detail: { appointmentId }
+      }));
     });
 
     socket.on('video:error', ({ message }) => {
@@ -248,9 +261,6 @@ export function useChat() {
               .then((data) => setConversations(data))
               .catch((error) => console.error('Failed to refresh conversations:', error));
           }
-          fetchConversations()
-            .then((data) => setConversations(data))
-            .catch((error) => console.error('Failed to refresh conversations:', error));
         }
         return;
       }
@@ -328,6 +338,11 @@ export function useChat() {
     setIncomingCall(null);
   }, [socketConnected]);
 
+  const emitVideoCallEnded = useCallback((appointmentId) => {
+    if (!socketRef.current || !socketConnected) return;
+    socketRef.current.emit('video:call_ended', { appointmentId });
+  }, [socketConnected]);
+
   return {
     conversations,
     presenceMap,
@@ -343,5 +358,6 @@ export function useChat() {
     refreshConversations,
     emitVideoCall,
     emitVideoCallResponse,
+    emitVideoCallEnded,
   };
 }

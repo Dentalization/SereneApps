@@ -4,13 +4,15 @@ import Icon from '../../../../components/AppIcon';
 
 const AUTO_DECLINE_SECONDS = 30;
 
-const IncomingCallModal = ({ conversation, onAccept, onDecline, callState }) => {
+const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remoteParticipant }) => {
   const [countdown, setCountdown] = useState(AUTO_DECLINE_SECONDS);
   const acceptBtnRef = useRef(null);
   const declineBtnRef = useRef(null);
   const countdownRef = useRef(null);
 
-  const patientName = conversation?.patient?.name || 'Unknown Patient';
+  // Use remoteParticipant if provided, otherwise fall back to conversation.patient
+  const remote = remoteParticipant || conversation?.patient || {};
+  const patientName = remote?.name || 'Unknown';
   const initials = patientName
     .split(' ')
     .map((n) => n[0])

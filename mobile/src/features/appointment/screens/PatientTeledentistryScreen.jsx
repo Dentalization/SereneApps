@@ -21,11 +21,14 @@ import {
   Easing,
   Image,
   SafeAreaView,
+  StyleSheet,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useChat } from '../../../hooks/useChat';
 
 // ─── Brand / Theme Constants ───────────────────────────────────────────────────
 const COLORS = {
@@ -127,10 +130,28 @@ const PatientTeledentistryScreen = () => {
   // Display specialty: use what's provided, don't default to generic
   const displaySpecialty = dentistSpecialty || 'Dokter Gigi';
 
-  // ─── Core State (Mock Engine) ──────────────────────────────────────────────
-  const [chatMessages, setChatMessages] = useState([]);
-  const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming'); // 'upcoming' | 'active' | 'ended'
-  const [callStatus, setCallStatus] = useState('idle');          // 'idle' | 'incoming' | 'active'
+  // ─── Real Chat Backend ─────────────────────────────────────────────────────
+  const [currentUser, setCurrentUser] = useState(null);
+  useEffect(() => {
+    AsyncStorage.getItem('user').then((json) => {
+      if (json) setCurrentUser(JSON.parse(json));
+    }).catch(() => {});
+  }, []);
+
+  const {
+    messages: chatMessagesFromSocket,
+    socketConnected,
+    incomingCall,
+    selectConversation,
+    sendMessage,
+    emitVideoCallResponse,
+    emitVideoCallEnded,
+    fetchVideoToken,
+  } = useChat({ userId: currentUser?.id });
+
+  const [systemMessages, setSystemMessages] = useState([]);
+  const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
+  const [callStatus, setCallStatus] = useState('idle');  // 'idle' | 'incoming' | 'active'
 
   // ─── UI State ──────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -138,9 +159,8 @@ const PatientTeledentistryScreen = () => {
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
-  const [avatarError, setAvatarError] = useState(false);  // fallback to initials on load error
+  const [avatarError, setAvatarError] = useState(false);
 
-  // Resolved avatar: null if error occurred during load
   const resolvedAvatar = avatarError ? null : dentistAvatar;
 
   // ─── Refs ──────────────────────────────────────────────────────────────────
@@ -152,50 +172,55 @@ const PatientTeledentistryScreen = () => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const videoCallAnim = useRef(new Animated.Value(0)).current;
 
+  // ─── Merge socket messages + system messages for display ──────────────────
+  const chatMessages = useMemo(() => {
+    const socketMsgs = (chatMessagesFromSocket || []).map((m) => ({
+      id: m.id,
+      role: m.senderId === currentUser?.id?.toString() ? 'user' : 'dentist',
+      text: m.message,
+      timestamp: new Date(m.createdAt),
+    }));
+    const all = [...systemMessages, ...socketMsgs];
+    all.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return all;
+  }, [chatMessagesFromSocket, systemMessages, currentUser?.id]);
+
+  // ─── Join chat room on mount ───────────────────────────────────────────────
+  useEffect(() => {
+    if (appointmentId && socketConnected) {
+      selectConversation(appointmentId.toString());
+    }
+  }, [appointmentId, socketConnected, selectConversation]);
+
   // ─── Init: Push system welcome message ─────────────────────────────────────
   useEffect(() => {
     const shortName = dentistName.split(',')[0];
     let systemText;
-
     if (!isSessionReady && resolvedAppointmentDate) {
       const formattedDate = formatAppointmentDateTime(resolvedAppointmentDate);
       systemText = `Sesi Anda dijadwalkan pada ${formattedDate}. Anda belum bisa mengirim pesan hingga jadwal dimulai.`;
     } else {
       systemText = `Sesi telah dimulai. Silakan tunggu, ${shortName} akan segera menghubungi Anda via Video Call.`;
     }
-
-    const systemMsg = {
-      id: nextId(),
-      role: 'system',
-      text: systemText,
-      timestamp: new Date(),
-    };
-    setChatMessages([systemMsg]);
+    setSystemMessages([{ id: 'sys-init', role: 'system', text: systemText, timestamp: new Date() }]);
   }, [dentistName, isSessionReady, resolvedAppointmentDate]);
 
   // ─── Upcoming → Active transition timer ────────────────────────────────────
   useEffect(() => {
     if (sessionStatus !== 'upcoming' || !resolvedAppointmentDate) return;
-
     const now = new Date();
     const msUntilStart = resolvedAppointmentDate.getTime() - now.getTime();
-
     if (msUntilStart <= 0) {
-      // Already past, transition immediately
       setSessionStatus('active');
-      const shortName = dentistName.split(',')[0];
-      addMessage('system', `Sesi telah dimulai. Silakan tunggu, ${shortName} akan segera menghubungi Anda via Video Call.`);
+      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${dentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
       return;
     }
-
     const timer = setTimeout(() => {
       setSessionStatus('active');
-      const shortName = dentistName.split(',')[0];
-      addMessage('system', `Sesi telah dimulai. Silakan tunggu, ${shortName} akan segera menghubungi Anda via Video Call.`);
+      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${dentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
     }, msUntilStart);
-
     return () => clearTimeout(timer);
-  }, [sessionStatus, resolvedAppointmentDate, dentistName, addMessage]);
+  }, [sessionStatus, resolvedAppointmentDate, dentistName]);
 
   // ─── Auto-scroll on new message ────────────────────────────────────────────
   useEffect(() => {
@@ -277,51 +302,59 @@ const PatientTeledentistryScreen = () => {
     return `${m}:${s}`;
   };
 
-  const addMessage = useCallback((role, text) => {
-    const msg = { id: nextId(), role, text, timestamp: new Date() };
-    setChatMessages((prev) => [...prev, msg]);
+  const addSystemMessage = useCallback((text) => {
+    setSystemMessages((prev) => [...prev, {
+      id: `sys-${Date.now()}`,
+      role: 'system',
+      text,
+      timestamp: new Date(),
+    }]);
   }, []);
 
+  // ─── Listen for incoming call from socket ──────────────────────────────────
+  useEffect(() => {
+    if (incomingCall && incomingCall.appointmentId === appointmentId?.toString()) {
+      setCallStatus('incoming');
+    }
+  }, [incomingCall, appointmentId]);
+
   // ─── Actions ───────────────────────────────────────────────────────────────
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = inputText.trim();
     if (!trimmed || sessionStatus !== 'active') return;
-    addMessage('user', trimmed);
     setInputText('');
-
-    // Simulate dentist auto-reply after a delay
-    setTimeout(() => {
-      const replies = [
-        'Baik, saya catat keluhannya ya.',
-        'Terima kasih informasinya. Mari kita bahas lebih lanjut via video call.',
-        'Saya mengerti. Mohon tunggu sebentar ya.',
-        'Noted. Saya akan segera menghubungi Anda.',
-      ];
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-      addMessage('dentist', randomReply);
-    }, 1500 + Math.random() * 1500);
+    await sendMessage({ appointmentId: appointmentId?.toString(), text: trimmed });
   };
 
   const handleAcceptCall = () => {
+    if (appointmentId) {
+      emitVideoCallResponse(appointmentId.toString(), true);
+    }
     setCallStatus('active');
-    addMessage('system', 'Video call dimulai.');
+    addSystemMessage('Video call dimulai.');
   };
 
   const handleRejectCall = () => {
+    if (appointmentId) {
+      emitVideoCallResponse(appointmentId.toString(), false);
+    }
     setCallStatus('idle');
-    addMessage('system', 'Panggilan video ditolak.');
+    addSystemMessage('Panggilan video ditolak.');
   };
 
   const handleEndCall = () => {
     const duration = formatCallDuration(callDuration);
+    if (appointmentId) {
+      emitVideoCallEnded(appointmentId.toString());
+    }
     setCallStatus('idle');
-    addMessage('system', `Video call berakhir. Durasi: ${duration}.`);
+    addSystemMessage(`Video call berakhir. Durasi: ${duration}.`);
   };
 
   const handleEndSession = () => {
     setSessionStatus('ended');
     setCallStatus('idle');
-    addMessage('system', 'Sesi konsultasi telah berakhir.');
+    addSystemMessage('Sesi konsultasi telah berakhir.');
   };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
