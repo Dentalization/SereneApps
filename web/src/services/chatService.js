@@ -38,5 +38,9 @@ export async function uploadAttachment(appointmentId, file) {
 
 export async function fetchVideoToken(appointmentId, role = 'publisher') {
   const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/video/token`, { role });
-  return data;
+  // Normalize: always expose roomName regardless of backend key
+  return {
+    ...data,
+    roomName: data.roomName || data.channelName,
+  };
 }

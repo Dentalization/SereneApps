@@ -6,6 +6,23 @@
 
 const SUMMARY_INTRO_REGEX = /^Tentu,\s*mari\s*kita\s*bahas\s*lebih\s*lanjut\s*mengenai\s*kondisi\s*gigi\s*Anda\s*berdasarkan\s*informasi\s*yang\s*saya\s*miliki\s*dan\s*hasil\s*analisis\s*awal\.?\s*/i;
 
+// Aggressive intro/greeting removal for dentist portal
+const GREETING_REGEXES = [
+  /^Terima\s*kasih\s*sudah\s*mengunggah.*?\.\s*/i,
+  /^Halo.*?hari.*?\.\s*/i,
+  /^Saya\s*telah\s*menganalisis.*?Anda.*?\.\s*/i,
+  /^Berdasarkan\s*analisis\s*gambar\s*yang\s*Anda\s*kirim.*?\.\s*/i,
+];
+
+// Remove redundant explanation sections
+const REDUNDANT_SECTIONS = [
+  /Apa\s*Artinya\s*Ini\?[^]+?(?=(?:Perubahan Warna|Rekomendasi|Temuan|Diagnosa|\n\n|-|\*|$))/gi,
+  /Arti\s*dari.*?\?[^]+?(?=(?:Perubahan Warna|Rekomendasi|Temuan|Diagnosa|\n\n|-|\*|$))/gi,
+];
+
+// Clean up numbered/bracketed references [1], [2], etc.
+const REFERENCE_REGEX = /\[\d+\]\s*/g;
+
 // Heuristic patterns for deterministic parsing (Indonesian dental domain)
 const CONDITION_REGEX = /\b(karies|gigi berlubang|periodontitis|radang gusi|gingivitis|abses|pulpitis|kalkulus|karang gigi|perubahan warna|diskolorisasi|impaksi|gigi bungsu|retak|fraktur|infeksi|ulser|lesi)\b/i;
 const LOCATION_REGEX = /\b(gigi\s*\[\d+\]|gigi\s*(depan|belakang|atas|bawah|geraham|taring)|rahang|kuadran\s*\d|kuadran)\b/i;
@@ -68,10 +85,46 @@ const clip = (text = '', max = 220) => {
 
 const containsStopWord = (sentence = '') => STOP_WORDS_SUMMARY.some((word) => sentence.toLowerCase().startsWith(word.toLowerCase()));
 
-// --- EXPORT 1: Strip Intro ---
+// --- EXPORT 1: Strip Intro (Aggressive Version) ---
 export const stripDiagnosisIntro = (text = '') => {
   if (typeof text !== 'string') return '';
-  return text.replace(SUMMARY_INTRO_REGEX, '').trim();
+
+  let cleaned = text;
+
+  // Remove all greeting patterns
+  for (const regex of GREETING_REGEXES) {
+    cleaned = cleaned.replace(regex, '');
+  }
+
+  // Remove standard intro
+  cleaned = cleaned.replace(SUMMARY_INTRO_REGEX, '');
+
+  // Remove references like [1], [2], etc
+  cleaned = cleaned.replace(REFERENCE_REGEX, '');
+
+  // Remove redundant explanation sections ("Apa Artinya Ini?", repetitive explanations)
+  cleaned = cleaned.replace(/Apa\s*Artinya\s*Ini\s*\?[^]*?(?=\n\n|-\s|^\s*-|Rekomendasi|Temuan|Analisis|Diagnosa|Perubahan|$)/gi, '');
+
+  // Remove overly verbose educational sections (specific patterns that add no value)
+  cleaned = cleaned.replace(/Ini\s+(?:seperti|terutama|adalah\s+(?:proses|kombinasi|hasil))\s+[^.!?]*[.!?]\s*/gi, '');
+  cleaned = cleaned.replace(/Meskipun\s+mungkin\s+hanya[^.!?]*[.!?]\s*/gi, '');
+  cleaned = cleaned.replace(/Penting\s+untuk\s+memeriksa[^.!?]*[.!?]\s*/gi, 'Periksa ke dokter gigi untuk diagnosis akurat. ');
+
+  // Clean up multiple "Sementara menunggu..." sections (keep only first)
+  const matches = cleaned.match(/Sementara\s+menunggu[^]+?(?=\n\n|Berikan|$)/gi);
+  if (matches && matches.length > 1) {
+    cleaned = cleaned.replace(/Sementara\s+menunggu[^]+?(?=\n\n|Berikan|$)/gi, (match, offset) => {
+      return offset === cleaned.search(/Sementara\s+menunggu/i) ? match : '';
+    });
+  }
+
+  // Remove duplicate "Ingat," sections
+  cleaned = cleaned.replace(/Ingat,\s*[^.]+deteksi\s+dini[^.]*\./gi, '');
+
+  // Collapse multiple newlines
+  cleaned = cleaned.replace(/\n\n\n+/g, '\n\n');
+
+  return cleaned.trim();
 };
 
 export const deriveSummaryFromNarrative = (text = '') => {
@@ -214,6 +267,84 @@ export const parseMarkdownText = (text) => {
   return structured;
 };
 
+// --- NEW: Aggressive Format for Dentist Portal ---
+export const cleanAIDentistOutput = (rawText = '') => {
+  if (!rawText) return '';
+
+  let text = stripDiagnosisIntro(rawText);
+
+  // Section 1: Consolidate "Temuan:" sections into one
+  const findings = [];
+  const findingMatches = text.match(/(?:Temuan|Findings?|Lokasi)[\s:]*([^]+?)(?=(?:Area|Perubahan|Apa Artinya|Rekomendasi|Perawatan|$))/gi);
+  if (findingMatches) {
+    findingMatches.forEach(match => {
+      const cleaned = match
+        .replace(/^(?:Temuan|Findings?|Lokasi)[\s:]*/, '')
+        .replace(/^Area\s+(?:dan|[-–])\s*:?\s*/, '')
+        .trim();
+      if (cleaned.length > 10 && !findings.includes(cleaned)) {
+        findings.push(cleaned);
+      }
+    });
+  }
+
+  if (findings.length > 0) {
+    const findingsBlock = `**Temuan Klinis:**\n${findings.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
+    text = text.replace(/(?:Temuan|Findings?|Lokasi)[\s:]*[^]+?(?=(?:Apa Artinya|Rekomendasi|Perawatan|$))/gi, findingsBlock);
+  }
+
+  // Section 2: Move recommendations to end, consolidate them
+  const recMatches = text.match(/(?:Rekomendasi|Recommendation)[\s:]+([^]+?)(?=Sementara|Ingat|$)/gi);
+  let recommendations = '';
+  if (recMatches) {
+    const recSet = new Set();
+    recMatches.forEach(match => {
+      match.replace(/^(?:Rekomendasi|Recommendation)[\s:]+/, '')
+        .split(/[-•*]|\d+\./)
+        .forEach(item => {
+          const cleaned = item.trim();
+          if (cleaned.length > 10) recSet.add(cleaned);
+        });
+    });
+    if (recSet.size > 0) {
+      recommendations = `**Rekomendasi Perawatan:**\n${Array.from(recSet).map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+    }
+  }
+
+  // Section 3: Remove "Sementara menunggu" advice (keep only once if exists)
+  let waitingAdvice = '';
+  const waitMatch = text.match(/Sementara\s+menunggu[^]+?(?=Berikan|Ingat|$)/i);
+  if (waitMatch) {
+    waitingAdvice = waitMatch[0]
+      .split(/[-•*]|\d+\./)
+      .slice(0, 4)
+      .join('\n');
+  }
+
+  // Section 4: Rebuild clean output
+  let output = text;
+
+  // Remove all the explanation sections we've extracted
+  output = output.replace(/(?:Temuan|Findings?|Lokasi)[\s:]*[^]+?(?=(?:Apa Artinya|Rekomendasi|Perawatan|$))/gi, '');
+  output = output.replace(/(?:Rekomendasi|Recommendation)[\s:]+[^]+?(?=Sementara|Ingat|$)/gi, '');
+  output = output.replace(/Apa\s*Artinya[^]+?(?=\n\n|$)/gi, '');
+  output = output.replace(/Sementara\s+menunggu[^]+?(?=Berikan|Ingat|$)/gi, '');
+  output = output.replace(/Ingat,\s*[^.]+\.\s*/gi, '');
+  output = output.replace(/Dokter\s+gigi\s+Anda[^.]*\.\s*/gi, '');
+
+  // Rebuild in logical order
+  output = output.trim();
+  if (output) output += '\n\n';
+  if (findings.length > 0) output += findingsBlock + '\n\n';
+  if (recommendations) output += recommendations + '\n\n';
+  if (waitingAdvice) output += `**Perawatan Saat Ini:**\n${waitingAdvice}\n\n`;
+
+  // Final cleanup
+  output = output.replace(/\n\n\n+/g, '\n\n').trim();
+
+  return output;
+};
+
 // --- Main Normalizer (Updated) ---
 export const normalizeAIText = (rawText = '') => ({
   summary: extractSummary(rawText),
@@ -233,5 +364,6 @@ export default {
   extractSections,
   parseMarkdownText,
   normalizeAIText,
-  normalizeAIExplanation
+  normalizeAIExplanation,
+  cleanAIDentistOutput
 };

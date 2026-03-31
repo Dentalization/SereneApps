@@ -5,14 +5,17 @@ import ConversationList from './components/ConversationList';
 import ChatInterface from './components/ChatInterface';
 import VideoCallInterface from './components/VideoCallInterface';
 import PatientInfoPanel from './components/PatientInfoPanel';
+import IncomingCallModal from './components/IncomingCallModal';
 import { useChat } from '../../../hooks/useChat';
 import { useAuth } from '../../../contexts/AuthContext';
-import { fetchVideoToken } from '../../../services/chatService';
+import { useCallState } from '../../../hooks/useCallState';
+import { useToast } from '../../../contexts/ToastContext';
 
 const MIN_LOADING_MS = 900;
 
 const Teledentistry = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const {
     conversations,
     presenceMap,
@@ -25,7 +28,15 @@ const Teledentistry = () => {
     sendAttachmentMessage
   } = useChat();
 
-  const [videoSession, setVideoSession] = useState(null);
+  const {
+    callState,
+    callError,
+    videoSession,
+    initiateCall,
+    acceptCall,
+    endCall,
+  } = useCallState({ userId: user?.id?.toString() });
+
   const [isPatientPanelExpanded, setIsPatientPanelExpanded] = useState(true);
   const [bootstrapping, setBootstrapping] = useState(true);
   const loadStartRef = useRef(Date.now());
@@ -70,21 +81,30 @@ const Teledentistry = () => {
   const handleStartVideoCall = async () => {
     if (!activeAppointmentId) return;
     try {
-      const tokenData = await fetchVideoToken(activeAppointmentId, 'publisher');
-      setVideoSession({
-        appointmentId: activeAppointmentId,
-        channelName: tokenData.channelName,
-        token: tokenData.token,
-        uid: user?.id?.toString() || undefined
-      });
+      await initiateCall(activeAppointmentId);
     } catch (error) {
-      console.error('Failed to start video call:', error);
+      toast.error('Failed to start video call. Please try again.');
     }
   };
 
-  const handleEndVideoCall = () => {
-    setVideoSession(null);
+  const handleAcceptCall = () => {
+    acceptCall();
   };
+
+  const handleDeclineCall = () => {
+    endCall();
+  };
+
+  const handleEndVideoCall = () => {
+    endCall();
+  };
+
+  // Show toast on call error
+  useEffect(() => {
+    if (callError) {
+      toast.error(callError);
+    }
+  }, [callError, toast]);
 
   const selectedPresence = useMemo(() => {
     if (!activeAppointmentId) return [];
@@ -198,7 +218,15 @@ const Teledentistry = () => {
           </aside>
 
           <section className="flex-1 flex flex-col min-w-0 bg-surface theme-transition">
-            {videoSession ? (
+            {callState === 'ringing' && (
+              <IncomingCallModal
+                conversation={activeConversation}
+                onAccept={handleAcceptCall}
+                onDecline={handleDeclineCall}
+                callState={callState}
+              />
+            )}
+            {videoSession && callState === 'connected' ? (
               <VideoCallInterface
                 conversation={activeConversation}
                 videoSession={videoSession}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { extractAnalysisTopics, parseTextWithLists } from '../../../../utils/textFormatting';
-import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
+import { stripDiagnosisIntro, cleanAIDentistOutput } from '../../../../utils/aiTextHelpers';
 
 /**
  * Helper: Merender teks dengan format Bold (**teks**)
@@ -34,6 +34,74 @@ const RichText = ({ text }) => {
   );
 };
 
+const reinsertAnalysisBreaks = (text = '') => {
+  if (!text) return '';
+
+  let s = String(text)
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .trim();
+
+  if (!s) return '';
+
+  // Rebuild likely block boundaries when the backend stores everything in one line.
+  if (!s.includes('\n')) {
+    s = s
+      .replace(/ (\*\*\d+[\.\)]\s)/g, '\n\n$1')
+      .replace(/ (\d+[\.\)]\s+(?:\*\*)?[A-Za-z])/g, '\n$1')
+      .replace(/ (\* (?:\*\*)?[A-Za-z])/g, '\n$1')
+      .replace(/ (- (?:\*\*)?[A-Za-z])/g, '\n$1')
+      .replace(/ (\*\*[A-Z][^*]{4,}:\*\*)/g, '\n\n$1')
+      .replace(/ ([A-Z][A-Za-z\s]{4,45}:)(?=\s)/g, '\n\n$1');
+  }
+
+  s = s
+    .replace(/([.!?])\s+(\*\*[A-Z][^*]{4,}:\*\*)/g, '$1\n\n$2')
+    .replace(/([.!?])\s+(\d+[\.\)]\s+)/g, '$1\n$2')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return s.trim();
+};
+
+const splitLongParagraphs = (sections = []) => {
+  const output = [];
+
+  sections.forEach((section) => {
+    if (!section || section.type !== 'paragraph') {
+      output.push(section);
+      return;
+    }
+
+    const text = String(section.content || '').trim();
+    if (!text || text.length <= 260) {
+      output.push(section);
+      return;
+    }
+
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    let current = '';
+
+    sentences.forEach((sentence) => {
+      const trimmed = sentence.trim();
+      if (!trimmed) return;
+      const next = current ? `${current} ${trimmed}` : trimmed;
+
+      if (next.length > 220 && current) {
+        output.push({ type: 'paragraph', content: current.trim() });
+        current = trimmed;
+      } else {
+        current = next;
+      }
+    });
+
+    if (current) {
+      output.push({ type: 'paragraph', content: current.trim() });
+    }
+  });
+
+  return output;
+};
+
 // ... (Sisa kode AnalysisSummaryRenderer sama, pastikan menggunakan <RichText /> di dalam StructuredContent)
 
 const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
@@ -43,9 +111,9 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
     if (!value) return null;
     if (Array.isArray(value)) {
       const joined = value.filter(Boolean).join('\n');
-      return stripDiagnosisIntro(joined);
+      return reinsertAnalysisBreaks(cleanAIDentistOutput(joined));
     }
-    return stripDiagnosisIntro(String(value));
+    return reinsertAnalysisBreaks(cleanAIDentistOutput(String(value)));
   };
 
   const textContent = cleanInput(overallAssessment) || cleanInput(summary) || cleanInput(findings);
@@ -68,30 +136,32 @@ const AnalysisSummaryRenderer = ({ summary, findings, overallAssessment }) => {
             <h4 className="text-base font-bold text-primary border-b border-primary/10 pb-2 mb-3">
               <RichText text={topic.title} />
             </h4>
-            <StructuredContent content={topic.content} />
+            <StructuredContent content={splitLongParagraphs(parseTextWithLists(reinsertAnalysisBreaks(topic.content)))} />
           </div>
         ))}
       </div>
     );
   }
 
-  const sections = parseTextWithLists(textContent);
+  const sections = splitLongParagraphs(parseTextWithLists(reinsertAnalysisBreaks(textContent)));
 
   return (
     <div className="space-y-4">
-      {sections.map((section, idx) => (
-        <StructuredContent key={idx} content={[section]} />
-      ))}
+      <StructuredContent content={sections} />
     </div>
   );
 };
 
 const StructuredContent = ({ content }) => {
-  if (!Array.isArray(content)) content = [content];
+  let normalizedContent = content;
+  if (typeof normalizedContent === 'string') {
+    normalizedContent = splitLongParagraphs(parseTextWithLists(reinsertAnalysisBreaks(normalizedContent)));
+  }
+  if (!Array.isArray(normalizedContent)) normalizedContent = [normalizedContent];
 
   return (
     <>
-      {content.map((section, idx) => {
+      {normalizedContent.map((section, idx) => {
         if (!section) return null;
 
         if (section.type === 'header') {
@@ -104,7 +174,7 @@ const StructuredContent = ({ content }) => {
 
         if (section.type === 'paragraph') {
           return (
-            <p key={idx} className="text-sm text-primary leading-[1.8] text-justify mb-3 last:mb-0">
+            <p key={idx} className="text-sm text-primary leading-[1.85] text-left mb-3 last:mb-0">
               <RichText text={section.content} />
             </p>
           );
@@ -112,11 +182,11 @@ const StructuredContent = ({ content }) => {
 
         if (section.type === 'list') {
           return (
-            <ul key={idx} className="space-y-2 mb-3 pl-1">
+            <ul key={idx} className="space-y-2.5 mb-3 pl-3">
               {section.content.map((item, itemIdx) => (
                 <li key={itemIdx} className="text-sm text-primary flex items-start gap-3">
                   <span className="mt-2 w-1.5 h-1.5 bg-primary/60 rounded-full flex-shrink-0" />
-                  <span className="leading-[1.7] text-justify">
+                  <span className="leading-[1.75] text-left">
                     <RichText text={item} />
                   </span>
                 </li>

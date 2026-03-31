@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import AnalysisSummaryRenderer from './AnalysisSummaryRenderer';
-import { stripDiagnosisIntro } from '../../../../utils/aiTextHelpers';
+import { stripDiagnosisIntro, cleanAIDentistOutput } from '../../../../utils/aiTextHelpers';
 import { aiHttp, http } from '../../../../utils/httpClient';
 
 // ── Error Classifier ────────────────────────────────
@@ -66,6 +66,61 @@ const ERROR_STYLES = {
   generic: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: '⚠️', badge: 'Gangguan Sementara', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
 };
 
+const SUMMARY_CARD_STYLES = {
+  findings: {
+    card: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50',
+    title: 'text-blue-800 dark:text-blue-300',
+    dot: 'bg-blue-500',
+    text: 'text-sm text-blue-900 dark:text-blue-200 leading-relaxed',
+  },
+  interpretation: {
+    card: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50',
+    title: 'text-amber-800 dark:text-amber-300',
+    dot: 'bg-amber-500',
+    text: 'text-sm text-amber-900 dark:text-amber-200 leading-relaxed',
+  },
+  recommendations: {
+    card: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/50',
+    title: 'text-emerald-800 dark:text-emerald-300',
+    dot: 'bg-emerald-500',
+    text: 'text-sm text-emerald-900 dark:text-emerald-200 leading-relaxed',
+  },
+};
+
+const isLikelyNetworkError = (err) => {
+  const msg = String(err?.message || '').toLowerCase();
+  return err?.code === 'ERR_NETWORK' || (!err?.response && (
+    msg.includes('network error') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('load failed')
+  ));
+};
+
+const fetchSessionMessagesResilient = async (sessionId, retries = 2) => {
+  let lastErr = null;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const paged = await aiHttp.get(`/sessions/${sessionId}/messages?limit=200&per_page=200`);
+      return Array.isArray(paged?.data) ? paged.data : (paged?.data?.messages || paged?.data || []);
+    } catch (pagedErr) {
+      lastErr = pagedErr;
+      try {
+        const plain = await aiHttp.get(`/sessions/${sessionId}/messages`);
+        return Array.isArray(plain?.data) ? plain.data : (plain?.data?.messages || plain?.data || []);
+      } catch (plainErr) {
+        lastErr = plainErr;
+      }
+    }
+
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+
+  throw lastErr;
+};
+
 function AIErrorBubble({ errorType, title, description }) {
   const s = ERROR_STYLES[errorType] || ERROR_STYLES.generic;
   return (
@@ -81,19 +136,12 @@ function AIErrorBubble({ errorType, title, description }) {
 }
 
 // ── 1. HELPER: Generate Advanced Context for the AI (CDSS) ──
-/**
- * Build a rich CDSS context block for the LLM.
- * @param {Object} patient  – patient record
- * @param {Object} aiResult – the enrichedResult (already merged with session detections)
- * @param {Array}  detections – raw YOLO detections from sessionData (label + confidence)
- */
 const generateCDSSContext = (patient, aiResult, detections = []) => {
   const history = patient.medicalHistory || {};
   const allergies = history.allergies?.length ? history.allergies.join(', ') : 'None';
   const conditions = history.conditions?.length ? history.conditions.join(', ') : 'None';
   const medications = history.medications?.length ? history.medications.join(', ') : 'None';
 
-  // Build a detection summary from YOLO data (most reliable source)
   let detectionBlock = '';
   if (detections.length > 0) {
     const lines = detections.map((d, i) => {
@@ -106,7 +154,6 @@ const generateCDSSContext = (patient, aiResult, detections = []) => {
     detectionBlock = `\nAI Visual Detections (YOLO — ${detections.length} markers):\n${lines.join('\n')}`;
   }
 
-  // Diagnosis list from enrichedResult (may be derived from detections)
   const diagList = aiResult.diagnosis?.length
     ? aiResult.diagnosis.map(d => {
         const prob = d.probability ? ` (${d.probability}%)` : '';
@@ -114,7 +161,6 @@ const generateCDSSContext = (patient, aiResult, detections = []) => {
       }).join(', ')
     : 'None';
 
-  // Use summary but cap at 500 chars to keep context focused 
   const summarySnippet = (aiResult.summary || '').slice(0, 500);
 
   return `
@@ -148,23 +194,46 @@ Respond in Bahasa Indonesia unless the dentist writes in English.
 };
 
 /**
- * Strip the [SYSTEM CONTEXT: DENTAL CDSS MODE] block from a message for display.
- * Returns only the dentist's actual question text.
+ * ROBUST VERSION: Strip the CDSS context block from a message for display.
+ * Returns only the dentist's actual question text with no garbage残留.
  */
-function stripCDSSContext(content) {
+function stripCDSSContextRobust(content) {
   if (!content) return '';
-  // Remove the context block up to "Dentist Question: "
-  let stripped = content.replace(/\[SYSTEM CONTEXT: DENTAL CDSS MODE\][\s\S]*?Dentist Question:\s*/i, '').trim();
-  // Fallback: if the whole block is still there (different format), try alternate strip
-  if (stripped.includes('[SYSTEM CONTEXT')) {
-    const idx = stripped.indexOf('--- INSTRUCTION ---');
-    if (idx !== -1) {
-      stripped = stripped.slice(idx + '--- INSTRUCTION ---'.length).trim();
-      // Also strip instruction text if present
-      stripped = stripped.replace(/^Answer the dentist's question[\s\S]*?\n\n/i, '').trim();
-    }
+  const raw = String(content).trim();
+  if (!raw) return '';
+
+  const normalized = raw.replace(/\\n/g, '\n');
+  
+  // Priority 1: Extract dentist question if explicitly marked
+  const questionMatch = normalized.match(/Dentist Question:\s*([\s\S]+?)(?=\n\n\[|\n---\s*INSTRUCTION|$)/i);
+  if (questionMatch?.[1]?.trim()) {
+    return questionMatch[1].trim();
   }
-  return stripped;
+  
+  // Priority 2: If no CDSS marker, return as-is (already cleaned by htmlToMarkdown)
+  if (!/\[SYSTEM CONTEXT:\s*DENTAL CDSS MODE\]/i.test(normalized)) {
+    return normalized;
+  }
+  
+  // Priority 3: Aggressive cleanup for malformed persisted prompts
+  const cleaned = normalized
+    .replace(/\[SYSTEM CONTEXT:\s*DENTAL CDSS MODE\][\s\S]*?---\s*INSTRUCTION\s*---/i, '')
+    .replace(/Answer the dentist's question[\s\S]*?Respond in Bahasa Indonesia unless the dentist writes in English\.?/i, '')
+    .replace(/^Dentist Question:\s*/i, '')
+    .replace(/^\s*\[.*?\]\s*$/gm, '') // Remove leftover bracketed metadata lines
+    .trim();
+  
+  // Final sanity check: if it still looks like system text, return empty
+  if (!cleaned || /\[SYSTEM CONTEXT|---\s*(PATIENT PROFILE|CURRENT AI ANALYSIS|INSTRUCTION)\s*---/i.test(cleaned)) {
+    return '';
+  }
+  
+  return cleaned;
+}
+
+// Legacy wrapper for backward compatibility
+function stripCDSSContext(content) {
+  return stripCDSSContextRobust(content);
 }
 
 // Error Boundary Component
@@ -231,6 +300,217 @@ const getSessionFromLocal = (patientId, resultId) => {
   try {
     return localStorage.getItem(getSessionStorageKey(patientId, resultId));
   } catch (e) { return null; }
+};
+
+// ── TEXT PROCESSING HELPERS ────────────────────────────────
+
+/** Check whether a string contains HTML tags */
+const isHTML = (str) => /<\/?[a-z][\s\S]*>/i.test(str);
+
+const htmlToPlain = (html) => {
+  if (!html) return '';
+  try {
+    const intermediate = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
+    const div = document.createElement('div');
+    div.innerHTML = intermediate;
+    return (div.textContent || div.innerText || '').trim();
+  } catch (e) { return String(html); }
+};
+
+/**
+ * Convert HTML to markdown-ish text. If the input is already
+ * plain markdown (no HTML tags), return it unchanged.
+ */
+const htmlToMarkdown = (input) => {
+  if (!input) return '';
+  const str = String(input);
+
+  // Fast-path: no HTML tags → already markdown, return as-is
+  if (!isHTML(str)) return str;
+
+  try {
+    const div = document.createElement('div');
+    div.innerHTML = str;
+
+    const walk = (node) => {
+      if (!node) return '';
+      if (node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+      const tag = (node.tagName || '').toLowerCase();
+      const children = () => Array.from(node.childNodes).map(walk).join('');
+
+      if (tag === 'strong' || tag === 'b') return `**${children()}**`;
+      if (tag === 'em' || tag === 'i') return `*${children()}*`;
+      if (tag === 'br') return '\n';
+      if (tag === 'p') return `${children()}\n\n`;
+      if (tag === 'li') return `* ${children()}\n`;
+      if (tag === 'ul' || tag === 'ol') return `\n${children()}\n`;
+      if (/^h[1-6]$/.test(tag)) return `**${children()}**\n\n`;
+      return children();
+    };
+
+    return Array.from(div.childNodes).map(walk).join('').trim();
+  } catch (e) {
+    return htmlToPlain(str);
+  }
+};
+
+/**
+ * The DeepDental API collapses \n when storing session messages.
+ * This function re-inserts line breaks before block-level markdown patterns.
+ */
+const reinsertMarkdownBreaks = (text) => {
+  if (!text) return text;
+  const s0 = String(text).replace(/\\n/g, '\n');
+  // If the text already contains real newlines it is formatted correctly
+  if (s0.includes('\n')) return s0;
+
+  let s = s0;
+
+  // 1. Bold numbered headings  **1. Title:**  or  **2) Title:**
+  s = s.replace(/ (\*\*\d+[\.\)]\s)/g, '\n\n$1');
+
+  // 2. Bullet lines: "* text" / "* **text"  (star + space = markdown bullet)
+  s = s.replace(/ (\* (?:\*\*)?[A-Za-z])/g, '\n$1');
+
+  // 3. Dash bullet lines: "- text" / "- **text"
+  s = s.replace(/ (- (?:\*\*)?[A-Za-z])/g, '\n$1');
+
+  // 4. Numbered list items: "1. **Text"  (space before digit)
+  s = s.replace(/ (\d+\.\s+\*\*[A-Z])/g, '\n$1');
+
+  // 4b. Numbered list items without bold marker: "1. Text"
+  s = s.replace(/ (\d+[\.\)]\s+[A-Za-z])/g, '\n$1');
+
+  // 5. Bold section headings like  **Perbandingan dan Rekomendasi Klinis:**
+  s = s.replace(/(?<![*\-]) (\*\*[A-Z][^*]{4,}:\*\*)/g, '\n\n$1');
+
+  // 6. Plain headings ending with colon.
+  s = s.replace(/ ([A-Z][A-Za-z\s]{4,40}:)(?=\s)/g, '\n\n$1');
+
+  return s.trim();
+};
+
+/**
+ * ✅ NEW: Pre-process plain text to inject markdown-like structure for better rendering.
+ * Detects long paragraphs, sentence boundaries, and common dental terminology patterns.
+ */
+const preprocessSummaryText = (text) => {
+  if (!text) return text;
+  let t = String(text).trim();
+  
+  // 1. Ensure sentences ending with .!? have a newline after them (if followed by capital letter)
+  t = t.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n\n');
+  
+  // 2. Detect common dental section headers and add spacing
+  const headers = [
+    'Temuan Klinis', 'Interpretasi', 'Rekomendasi', 'Diagnosis', 
+    'Area', 'Lesi', 'Karies', 'Plak', 'Kalkulus', 'Gingivitis',
+    'Perawatan', 'Tindak Lanjut', 'Saran', 'Kesimpulan'
+  ];
+  headers.forEach(header => {
+    const regex = new RegExp(`(^|\\n)(${header}[^:\\n]{0,30}:)`, 'gi');
+    t = t.replace(regex, '$1\n**$2**\n');
+  });
+  
+  // 3. Break up very long paragraphs (>200 chars without line break)
+  t = t.split('\n').map(line => {
+    if (line.length > 200 && !line.match(/^[\*\-\d]/)) {
+      // Insert soft break after sentence boundaries within long lines
+      return line.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n');
+    }
+    return line;
+  }).join('\n');
+  
+  // 4. Ensure bullet-like items get proper markdown marker
+  t = t.replace(/^(?:\-|\•|\*)\s+/gm, '* ');
+  
+  return t.trim();
+};
+
+/**
+ * ✅ NEW: Unified message normalization pipeline for consistent chat history processing.
+ * Applies to ALL message roles (user, ai, error) for structure preservation.
+ */
+const normalizeMessageContent = (content, role) => {
+  if (!content) return '';
+  
+  // Step 1: Convert HTML to markdown-safe text
+  let normalized = htmlToMarkdown(String(content));
+  
+  // Step 2: Strip CDSS context for user messages
+  if (role === 'user') {
+    normalized = stripCDSSContextRobust(normalized);
+  }
+  
+  // Step 3: ALWAYS reinsert markdown breaks for structure restoration (CRITICAL FIX)
+  normalized = reinsertMarkdownBreaks(normalized);
+  
+  // Step 4: Final cleanup - remove any leftover system artifacts
+  normalized = normalized
+    .replace(/\[SYSTEM CONTEXT[^\]]*\][\s\S]*?---\s*INSTRUCTION\s*---/gi, '')
+    .replace(/Answer the dentist's question[\s\S]*?Respond in Bahasa Indonesia.?/gi, '')
+    .replace(/^\s*[\-\*]\s*$/gm, '') // Remove empty bullet lines
+    .replace(/\n{3,}/g, '\n\n') // Collapse excessive newlines
+    .trim();
+    
+  return normalized;
+};
+
+const renderBold = (text) => {
+  if (!text) return null;
+  return String(text).split(/(\*\*.*?\*\*)/g).map((part, i) =>
+    (i % 2 === 1)
+      ? <strong key={i} className="font-semibold text-slate-800 dark:text-slate-100">{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>
+  );
+};
+
+/**
+ * Render an AI response string (markdown-ish) into formatted JSX.
+ */
+const formatAIResponse = (text) => {
+  if (!text) return <span>...</span>;
+  // Reconstruct newlines if API collapsed them
+  const processed = reinsertMarkdownBreaks(String(text));
+  return processed.split('\n').map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={idx} className="h-2" />; // blank line → spacer
+
+    // Render inline bold (**text**)
+    const renderInline = (str) =>
+      str.split(/(\*\*.*?\*\*)/g).map((part, i) =>
+        (i % 2 === 1)
+          ? <strong key={i} className="font-bold text-slate-800 dark:text-slate-200">{part.slice(2, -2)}</strong>
+          : <span key={i}>{part}</span>
+      );
+
+    // Bullet lines: * text  or  - text
+    if (/^[\*\-]\s+/.test(trimmed)) {
+      const bulletText = trimmed.replace(/^[\*\-]\s+/, '');
+      return (
+        <div key={idx} className="flex gap-3 pl-1 mb-1.5">
+          <span className="mt-2 w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full flex-shrink-0" />
+          <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(bulletText)}</span>
+        </div>
+      );
+    }
+
+    // Numbered lines: 1. text  (including sub-numbers like 1.1.)
+    if (/^\d+[\.\)]\s+/.test(trimmed)) {
+      const match = trimmed.match(/^(\d+[\.\)])\s+(.*)/);
+      if (match) {
+        return (
+          <div key={idx} className="flex gap-3 pl-1 mb-1.5">
+            <span className="font-bold text-slate-500 dark:text-slate-400 min-w-[1.5rem] text-right flex-shrink-0">{match[1]}</span>
+            <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(match[2])}</span>
+          </div>
+        );
+      }
+    }
+
+    // Default: paragraph
+    return <p key={idx} className="mb-2 leading-relaxed text-slate-600 dark:text-slate-300">{renderInline(trimmed)}</p>;
+  });
 };
 
 // Component Utama
@@ -316,13 +596,7 @@ const PatientAIResult = ({ patient }) => {
     const userText = chatInput.trim();
     
     // 1. Generate Contextual Prompt (Invisible to UI, visible to API)
-    //    Use enrichedResult (which merges sessionData detections) for richer context
     const contextPrompt = generateCDSSContext(patient, enrichedResult || selectedResult, sessionData.detections);
-    
-    // If it's the very first message or context switch, we might want to prepend context.
-    // For simplicity, we send the context as a "system" instruction in the payload if your API supports it,
-    // OR we prepend it to the message. Here we prepend it ONLY if it's the start of a session or context refresh.
-    // However, usually it's cleaner to send: `Context: ... \n\n User Question: ...`
     const finalPayloadMessage = `${contextPrompt}\n\nDentist Question: ${userText}`;
 
     try {
@@ -353,23 +627,23 @@ const PatientAIResult = ({ patient }) => {
         }
       }
 
-      // Optimistic UI Update (Show ONLY user text, not the hidden context)
-      setChatMessages(prev => [...prev, { role: 'user', content: userText }]);
+      // ✅ CRITICAL FIX: Apply same normalization to optimistic UI updates
+      setChatMessages(prev => [...prev, { 
+        role: 'user', 
+        content: normalizeMessageContent(userText, 'user')
+      }]);
       setChatInput('');
 
       const formData = new FormData();
-      // Send the RICH CONTEXT message to the backend
       formData.append('message', finalPayloadMessage); 
       formData.append('role', 'dentist');
       formData.append('language', 'bilingual');
       if (sessionId) formData.append('session_id', sessionId);
 
-      // Use effectiveImages (includes sessionData annotated/original) instead of raw selectedResult.images
       const chatImage = effectiveImages.find(i => i.type === 'annotated') || effectiveImages[0] || null;
       if (chatImage?.url) {
         formData.append('image_url', chatImage.url); 
         try {
-          // Don't try to fetch data: URLs or localhost URLs as blobs
           const isLocal = chatImage.url.includes('localhost') || chatImage.url.includes('127.0.0.1');
           const isDataUrl = chatImage.url.startsWith('data:');
           if (!isLocal && !isDataUrl) {
@@ -379,7 +653,6 @@ const PatientAIResult = ({ patient }) => {
               formData.append('images', blob, 'context.jpg');
             }
           } else if (isDataUrl) {
-            // Convert data URL to blob for upload
             try {
               const resp = await fetch(chatImage.url);
               const blob = await resp.blob();
@@ -395,7 +668,7 @@ const PatientAIResult = ({ patient }) => {
       } catch (uploadErr) {
         if (uploadErr?.response?.status === 500 || uploadErr?.response?.status === 422) {
           const fallbackPayload = {
-            message: finalPayloadMessage, // Use context here too
+            message: finalPayloadMessage,
             session_id: sessionId,
             role: 'dentist',
             language: 'bilingual',
@@ -422,13 +695,19 @@ const PatientAIResult = ({ patient }) => {
           try {
             const hist = await aiHttp.get(`/sessions/${sessionId}/messages`);
             const msgs = hist?.data?.messages || hist?.data || [];
-              const lastAI = [...msgs].reverse().find(m => m.role !== 'user');
-              if (lastAI) aiReply = htmlToMarkdown(lastAI.content);
+            const lastAI = [...msgs].reverse().find(m => {
+              const r = String(m?.role || '').toLowerCase();
+              return r !== 'user' && r !== 'dentist';
+            });
+            if (lastAI) aiReply = reinsertMarkdownBreaks(htmlToMarkdown(lastAI.content || lastAI.message || ''));
           } catch (e) {}
         }
       }
 
-      setChatMessages(prev => [...prev, { role: 'ai', content: htmlToMarkdown(aiReply) || 'AI sedang memproses...' }]);
+      setChatMessages(prev => [...prev, { 
+        role: 'ai', 
+        content: normalizeMessageContent(aiReply || 'AI sedang memproses...', 'ai')
+      }]);
 
     } catch (err) {
       const classified = classifyAIError('', err);
@@ -438,7 +717,7 @@ const PatientAIResult = ({ patient }) => {
     }
   };
 
-  // ... (Load History logic remains same) ...
+  // Load History with ✅ UNIFIED NORMALIZATION PIPELINE
   useEffect(() => {
     const fetchHistory = async () => {
       if (skipNextFetchRef.current || !selectedResult) return;
@@ -454,19 +733,25 @@ const PatientAIResult = ({ patient }) => {
       }
 
       try {
-        const resp = await aiHttp.get(`/sessions/${sessionId}/messages?limit=200&per_page=200`);
-        const rawData = resp?.data;
-        let msgs = Array.isArray(rawData) ? rawData : (rawData?.messages || []);
+        const msgs = await fetchSessionMessagesResilient(sessionId);
         
-        const normalized = msgs.map(m => {
-          let content = htmlToMarkdown(m.content || m.message || '');
-          const role = m.role || 'ai';
-          // Strip CDSS context block from user messages so only the actual question shows
-          if (role === 'user') {
-            content = stripCDSSContext(content);
-          }
-          return { role, content };
-        });
+        // ✅ CRITICAL FIX: Use unified normalization for ALL messages
+        const normalized = msgs
+          .map((m) => {
+            const apiRole = String(m?.role || '').toLowerCase();
+            const role = (apiRole === 'user' || apiRole === 'dentist')
+              ? 'user'
+              : (apiRole === 'error' ? 'error' : 'ai');
+
+            // Apply unified normalization pipeline
+            let content = normalizeMessageContent(m?.content || m?.message || m?.reply || '', role);
+
+            const cleaned = String(content || '').trim();
+            if (!cleaned) return null;
+
+            return { role, content: cleaned };
+          })
+          .filter(Boolean);
         
         if (normalized.length > 0) {
             setChatMessages(normalized);
@@ -474,161 +759,14 @@ const PatientAIResult = ({ patient }) => {
             setChatMessages([]);
         }
       } catch (e) {
-        setChatMessages([]);
+        if (!isLikelyNetworkError(e)) {
+          console.warn('Fetch history error', e);
+        }
+        // Keep previous messages during transient network outages.
       }
     };
     fetchHistory();
   }, [selectedResult, patient?.id]);
-
-  // ... (Helpers: formatAIResponse, htmlToPlain, htmlToMarkdown, renderMarkdown, renderBold, handleResultChange, fetch session data, enrich result) ...
-  // [Code omitted for brevity, it is identical to your previous version]
-  // Note: Ensure you include all the helper functions here in the final file.
-  
-  // Re-inserting helpers for completeness
-
-  /** Check whether a string contains HTML tags */
-  const isHTML = (str) => /<\/?[a-z][\s\S]*>/i.test(str);
-
-  const htmlToPlain = (html) => {
-    if (!html) return '';
-    try {
-      const intermediate = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
-      const div = document.createElement('div');
-      div.innerHTML = intermediate;
-      return (div.textContent || div.innerText || '').trim();
-    } catch (e) { return String(html); }
-  };
-
-  /**
-   * Convert HTML to markdown-ish text.  If the input is already
-   * plain markdown (no HTML tags), return it unchanged so that
-   * newlines and formatting aren't destroyed by innerHTML parsing.
-   */
-  const htmlToMarkdown = (input) => {
-    if (!input) return '';
-    const str = String(input);
-
-    // Fast-path: no HTML tags → already markdown, return as-is
-    if (!isHTML(str)) return str;
-
-    try {
-      const div = document.createElement('div');
-      div.innerHTML = str;
-
-      const walk = (node) => {
-        if (!node) return '';
-        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue;
-        const tag = (node.tagName || '').toLowerCase();
-        const children = () => Array.from(node.childNodes).map(walk).join('');
-
-        if (tag === 'strong' || tag === 'b') return `**${children()}**`;
-        if (tag === 'em' || tag === 'i') return `*${children()}*`;
-        if (tag === 'br') return '\n';
-        if (tag === 'p') return `${children()}\n\n`;
-        if (tag === 'li') return `* ${children()}\n`;
-        if (tag === 'ul' || tag === 'ol') return `\n${children()}\n`;
-        if (/^h[1-6]$/.test(tag)) return `**${children()}**\n\n`;
-        return children();
-      };
-
-      return Array.from(div.childNodes).map(walk).join('').trim();
-    } catch (e) {
-      return htmlToPlain(str);
-    }
-  };
-
-  const renderBold = (text) => {
-    if (!text) return null;
-    return String(text).split(/(\*\*.*?\*\*)/g).map((part, i) =>
-      (i % 2 === 1)
-        ? <strong key={i} className="font-semibold text-slate-800 dark:text-slate-100">{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
-  };
-
-  /**
-   * The DeepDental API collapses \n when storing session messages.
-   * After a page refresh the history comes back as a single long line.
-   * This function re-inserts line breaks before block-level markdown
-   * patterns so formatAIResponse can properly render structure.
-   */
-  const reinsertMarkdownBreaks = (text) => {
-    if (!text) return text;
-    const s0 = String(text);
-    // If the text already contains real newlines it is formatted correctly
-    if (s0.includes('\n')) return s0;
-
-    let s = s0;
-
-    // 1. Bold numbered headings  **1. Title:**  or  **2) Title:**
-    s = s.replace(/ (\*\*\d+[\.\)]\s)/g, '\n\n$1');
-
-    // 2. Bullet lines: "* text" / "* **text"  (star + space = markdown bullet)
-    s = s.replace(/ (\* (?:\*\*)?[A-Za-z])/g, '\n$1');
-
-    // 3. Dash bullet lines: "- text" / "- **text"
-    s = s.replace(/ (- (?:\*\*)?[A-Za-z])/g, '\n$1');
-
-    // 4. Numbered list items: "1. **Text"  (space before digit)
-    s = s.replace(/ (\d+\.\s+\*\*[A-Z])/g, '\n$1');
-
-    // 5. Bold section headings like  **Perbandingan dan Rekomendasi Klinis:**
-    //    Must NOT be right after a bullet marker (* / -)
-    s = s.replace(/(?<![*\-]) (\*\*[A-Z][^*]{4,}:\*\*)/g, '\n\n$1');
-
-    return s.trim();
-  };
-
-  /**
-   * Render an AI response string (markdown-ish) into formatted JSX.
-   * Handles: paragraphs, **bold**, bullet lists (* / -), numbered lists (1.),
-   * and blank lines as spacing.
-   */
-  const formatAIResponse = (text) => {
-    if (!text) return <span>...</span>;
-    // Reconstruct newlines if API collapsed them
-    const processed = reinsertMarkdownBreaks(String(text));
-    return processed.split('\n').map((line, idx) => {
-      const trimmed = line.trim();
-      if (!trimmed) return <div key={idx} className="h-2" />; // blank line → spacer
-
-      // Render inline bold (**text**)
-      const renderInline = (str) =>
-        str.split(/(\*\*.*?\*\*)/g).map((part, i) =>
-          (i % 2 === 1)
-            ? <strong key={i} className="font-bold text-slate-800 dark:text-slate-200">{part.slice(2, -2)}</strong>
-            : <span key={i}>{part}</span>
-        );
-
-      // Bullet lines: * text  or  - text
-      if (/^[\*\-]\s+/.test(trimmed)) {
-        const bulletText = trimmed.replace(/^[\*\-]\s+/, '');
-        return (
-          <div key={idx} className="flex gap-3 pl-1 mb-1.5">
-            <span className="mt-2 w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full flex-shrink-0" />
-            <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(bulletText)}</span>
-          </div>
-        );
-      }
-
-      // Numbered lines: 1. text  (including sub-numbers like 1.1.)
-      if (/^\d+[\.\)]\s+/.test(trimmed)) {
-        const match = trimmed.match(/^(\d+[\.\)])\s+(.*)/);
-        if (match) {
-          return (
-            <div key={idx} className="flex gap-3 pl-1 mb-1.5">
-              <span className="font-bold text-slate-500 dark:text-slate-400 min-w-[1.5rem] text-right flex-shrink-0">{match[1]}</span>
-              <span className="text-slate-600 dark:text-slate-300 leading-relaxed">{renderInline(match[2])}</span>
-            </div>
-          );
-        }
-      }
-
-      // Default: paragraph
-      return <p key={idx} className="mb-2 leading-relaxed text-slate-600 dark:text-slate-300">{renderInline(trimmed)}</p>;
-    });
-  };
-  const handleResultChange = (e) => setSelectedResult(sortedResults.find(r => r.id === e.target.value));
 
   // State for session data enrichment
   const [sessionData, setSessionData] = useState({ annotated: null, original: null, detections: [], findings: [], recommendations: [], concernLevel: null });
@@ -637,14 +775,12 @@ const PatientAIResult = ({ patient }) => {
   useEffect(() => {
     if (!selectedResult) return;
     if (sessionFetchedRef.current === selectedResult.id) return;
-    sessionFetchedRef.current = selectedResult.id;
     const sid = selectedResult.sessionId || selectedResult.session_id || getSessionFromLocal(patient?.id, selectedResult.id);
     if (!sid) return;
     let cancelled = false;
     (async () => {
       try {
-        const resp = await aiHttp.get(`/sessions/${sid}/messages`);
-        const msgs = Array.isArray(resp?.data) ? resp.data : (resp?.data?.messages || resp?.data || []);
+        const msgs = await fetchSessionMessagesResilient(sid);
         let annotatedUri=null, originalUri=null, detections=[], findings=[], recommendations=[], concernLevel=null;
         for (const msg of msgs) {
           const vf = msg.visual_findings || msg.metadata?.visual_findings || msg.analysis?.visual_findings;
@@ -656,8 +792,18 @@ const PatientAIResult = ({ patient }) => {
           if (vf?.recommendations?.length > 0 && recommendations.length === 0) recommendations = vf.recommendations;
           if (vf?.concern_level && !concernLevel) concernLevel = typeof vf.concern_level === 'string' ? vf.concern_level : (vf.concern_level?.level || null);
         }
-        if (!cancelled) setSessionData({ annotated: annotatedUri, original: originalUri, detections, findings, recommendations, concernLevel });
-      } catch (e) { console.warn('Fetch session error', e); }
+        if (!cancelled) {
+          setSessionData({ annotated: annotatedUri, original: originalUri, detections, findings, recommendations, concernLevel });
+          sessionFetchedRef.current = selectedResult.id;
+        }
+      } catch (e) {
+        if (!cancelled) {
+          sessionFetchedRef.current = null;
+        }
+        if (!isLikelyNetworkError(e)) {
+          console.warn('Fetch session error', e);
+        }
+      }
     })();
     return () => { cancelled = true; };
   }, [selectedResult, patient?.id]);
@@ -666,23 +812,19 @@ const PatientAIResult = ({ patient }) => {
     if (!selectedResult) return selectedResult;
     const result = { ...selectedResult };
 
-    // --- Map backend field names to component field names ---
-    // Backend sends confidenceScore (float 0-1 or 0-100), map to confidence (0-100)
+    // Map backend field names to component field names
     if (result.confidence == null && result.confidenceScore != null) {
       result.confidence = result.confidenceScore <= 1 ? Math.round(result.confidenceScore * 100) : Math.round(result.confidenceScore);
     }
-    // Backend sends createdAt, map to date
     if (!result.date && result.createdAt) {
       try { result.date = new Date(result.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { result.date = result.createdAt; }
     }
-    // Build images array from backend flat URL fields
-    // Filter out file:// URLs (mobile-local paths, inaccessible from web)
     const isWebAccessible = (url) => {
       if (!url) return false;
-      if (url.startsWith('data:')) return true;  // base64 inline
+      if (url.startsWith('data:')) return true;
       if (url.startsWith('http://') || url.startsWith('https://')) return true;
-      if (url.startsWith('/uploads/')) return true;  // relative server path
-      return false;  // file://, content://, etc. → not usable on web
+      if (url.startsWith('/uploads/')) return true;
+      return false;
     };
     if (!result.images || result.images.length === 0) {
       const imgs = [];
@@ -690,37 +832,29 @@ const PatientAIResult = ({ patient }) => {
       if (isWebAccessible(result.imageUrl)) imgs.push({ url: result.imageUrl, type: 'original', description: 'Gambar asli pasien' });
       result.images = imgs;
     }
-    // --- Fallback chain for summary: summary → findings → overallAssessment ---
     if (!result.summary) {
       result.summary = result.findings || result.overallAssessment || null;
     }
-    // Build findings text from backend (string → structured)
     if (!result.findingsText && result.findings) {
       result.findingsText = typeof result.findings === 'string' ? result.findings : JSON.stringify(result.findings);
     }
-    // Build overallAssessment
     if (!result.overallAssessmentText && result.overallAssessment) {
       result.overallAssessmentText = typeof result.overallAssessment === 'string' ? result.overallAssessment : JSON.stringify(result.overallAssessment);
     }
-    // --- Parse recommendations from text when structured array is empty ---
     if ((!result.recommendations || result.recommendations.length === 0) && result.summary) {
       const textRecs = [];
-      // Reconstruct newlines first (API may have collapsed them)
       const summaryRaw = typeof result.summary === 'string' ? result.summary : '';
       const summaryStr = typeof reinsertMarkdownBreaks === 'function' ? reinsertMarkdownBreaks(summaryRaw) : summaryRaw;
-      // Match numbered items across patterns:
-      //   "1. text" / "1. **text**" / "1) text" (with or without leading newline)
       const numberedPattern = /(?:^|[\n\r]|\s{2,})\s*(\d+)[.)]\s+\*{0,2}([^\n]+?)(?=\s*\d+[.)]\s|\s*$)/g;
       let match;
       while ((match = numberedPattern.exec(summaryStr)) !== null) {
         const recText = match[2].replace(/\*{2,}/g, '').replace(/:\s*$/, '').trim();
         if (recText.length > 5) textRecs.push(recText);
       }
-      // Fallback: simpler split if no matches found but text clearly has numbered items
       if (textRecs.length === 0) {
         const parts = summaryStr.split(/\d+[.)]\s+/);
         parts.forEach((part, i) => {
-          if (i === 0) return; // skip preamble before first number
+          if (i === 0) return;
           const cleaned = part.replace(/\*{2,}/g, '').trim();
           if (cleaned.length > 10) textRecs.push(cleaned);
         });
@@ -728,25 +862,22 @@ const PatientAIResult = ({ patient }) => {
       if (textRecs.length > 0) result.recommendations = textRecs;
     }
 
-    // --- Enrich from session detection data ---
+    // Enrich from session detection data
     if ((!result.symptoms || result.symptoms.length === 0) && sessionData.detections.length > 0) {
       result.symptoms = sessionData.detections.map((d) => ({ name: d.label || d.name || 'Temuan', severity: d.severity || (d.confidence >= 0.7 ? 'high' : d.confidence >= 0.4 ? 'medium' : 'low'), description: d.description || null }));
     }
     if ((!result.diagnosis || result.diagnosis.length === 0) && sessionData.detections.length > 0) {
         result.diagnosis = sessionData.detections.map((d, idx) => ({ condition: d.label || `Temuan ${idx + 1}`, description: d.description || '', probability: d.confidence ? Math.round((d.confidence <= 1 ? d.confidence * 100 : d.confidence)) : null, severity: d.severity || null, details: d.description || '', sections: [] }));
     }
-    // Merge recommendations from backend + session
     if ((!result.recommendations || result.recommendations.length === 0)) {
       const backendRecs = selectedResult.recommendations || [];
       const sessionRecs = sessionData.recommendations || [];
       const merged = [...backendRecs, ...sessionRecs.filter(sr => !backendRecs.some(br => (br.text || br) === (sr.text || sr)))];
       if (merged.length > 0) result.recommendations = merged;
     }
-    // Merge findings from session
     if ((!result.sessionFindings || result.sessionFindings.length === 0) && sessionData.findings.length > 0) {
       result.sessionFindings = sessionData.findings;
     }
-    // Compute confidence from max detection confidence if original is 0/null
     if ((!result.confidence || result.confidence === 0) && sessionData.detections.length > 0) {
       const maxConf = Math.max(...sessionData.detections.map(d => {
         if (d.confidence == null) return 0;
@@ -754,7 +885,6 @@ const PatientAIResult = ({ patient }) => {
       }));
       result.confidence = Math.round(maxConf);
     }
-    // Compute risk level from detections if missing/unknown
     if ((!result.riskLevel || result.riskLevel === 'unknown' || result.riskLevel === 'low') && sessionData.detections.length > 0) {
       if (sessionData.concernLevel) {
         const cl = sessionData.concernLevel.toLowerCase();
@@ -774,7 +904,7 @@ const PatientAIResult = ({ patient }) => {
     return result;
   }, [selectedResult, sessionData]);
 
-  // Image helpers - build a reliable image list from all available sources
+  // Image helpers
   const galleryImages = enrichedResult?.images || [];
   const effectiveImages = useMemo(() => {
     const isUsable = (url) => {
@@ -786,21 +916,17 @@ const PatientAIResult = ({ patient }) => {
     };
     const imgs = [...galleryImages.filter(i => isUsable(i.url))];
 
-    // Layer 1: session data annotated image (from API messages, base64)
     if (sessionData.annotated && isUsable(sessionData.annotated)) {
        const idx = imgs.findIndex(i => i.type === 'annotated');
        if(idx>=0) imgs[idx] = { url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' };
        else imgs.push({ url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' });
     }
-    // Layer 2: session data original image (from API messages)
     if (sessionData.original && isUsable(sessionData.original) && !imgs.some(i => i.type === 'original')) {
       imgs.unshift({ url: sessionData.original, type: 'original', description: 'Gambar asli' });
     }
-    // Layer 3: fallback to DB annotatedImageUrl (base64) if no annotated found yet
     if (!imgs.some(i => i.type === 'annotated') && isUsable(enrichedResult?.annotatedImageUrl)) {
       imgs.push({ url: enrichedResult.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' });
     }
-    // Layer 4: fallback to DB imageUrl if web-accessible and no original found
     if (!imgs.some(i => i.type === 'original') && isUsable(enrichedResult?.imageUrl)) {
       imgs.unshift({ url: enrichedResult.imageUrl, type: 'original', description: 'Gambar asli pasien' });
     }
@@ -808,14 +934,178 @@ const PatientAIResult = ({ patient }) => {
   }, [galleryImages, sessionData, enrichedResult?.annotatedImageUrl, enrichedResult?.imageUrl]);
   const summaryImage = effectiveImages.find(i => i.type === 'annotated') || effectiveImages[0] || null;
   const rawSummary = enrichedResult?.summary || '';
+
+  const cleanSummaryItem = (value = '') => {
+    if (!value) return '';
+    const cleaned = String(value)
+      .replace(/\*\*/g, '')
+      .replace(/\[\d+\]/g, '')
+      .replace(/^\s*[\-\*•]\s+/, '')
+      .replace(/^\s*\d+[\.)]\s+/, '')
+      .replace(/^area\s+dan\s*:?\s*/i, '')
+      .replace(/^area\s*\[?(\d+)\]?\s*:?\s*/i, 'Area $1: ')
+      .replace(/^apa\s*artinya\s*ini\??\s*:?\s*/i, '')
+      .replace(/\s+\.{3,}/g, '...')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned || /^(dan|dan\s*:|area\s*:?)$/i.test(cleaned)) return '';
+    return cleaned;
+  };
+
+  const toUniqueSummaryItems = (items = [], limit = 6) => {
+    const seen = new Set();
+    const result = [];
+    for (const item of items) {
+      const cleaned = cleanSummaryItem(item);
+      if (!cleaned || cleaned.length < 4) continue;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(cleaned);
+      if (result.length >= limit) break;
+    }
+    return result;
+  };
+
+  const extractSummarySentences = (value = '', max = 4) => {
+    if (!value) return [];
+    const normalized = typeof reinsertMarkdownBreaks === 'function'
+      ? reinsertMarkdownBreaks(String(value))
+      : String(value);
+    const chunks = normalized
+      .split('\n')
+      .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+      .map((line) => cleanSummaryItem(line))
+      .filter(Boolean);
+    return toUniqueSummaryItems(chunks, max);
+  };
+
+  const looksCorruptedSummary = (value = '') => {
+    const text = String(value || '').trim();
+    if (!text) return true;
+    return /(^|\n)\s*(area\s+dan\s*:|dan\s*:?)\s*($|\n)/i.test(text);
+  };
+
   const summaryText = (() => {
-    let text = stripDiagnosisIntro ? stripDiagnosisIntro(rawSummary) : rawSummary;
-    // Reconstruct newlines that the API may have collapsed
+    const source = String(rawSummary || '').trim();
+    if (!source) return '';
+
+    let text = typeof cleanAIDentistOutput === 'function' ? cleanAIDentistOutput(source) : stripDiagnosisIntro(source);
     text = typeof reinsertMarkdownBreaks === 'function' ? reinsertMarkdownBreaks(text) : text;
-    return text.trim();
+
+    if (looksCorruptedSummary(text)) {
+      const fallback = typeof stripDiagnosisIntro === 'function' ? stripDiagnosisIntro(source) : source;
+      text = typeof reinsertMarkdownBreaks === 'function' ? reinsertMarkdownBreaks(fallback) : fallback;
+    }
+
+    return String(text || '').trim();
   })();
+
+  const buildDentistSummaryCards = (text = '', result = {}) => {
+    const buckets = {
+      findings: [],
+      interpretation: [],
+      recommendations: [],
+    };
+
+    const resolveBucket = (heading = '') => {
+      const h = heading.toLowerCase();
+      if (/temuan|finding|area|gejala|lesi/.test(h)) return 'findings';
+      if (/apa artinya|interpretasi|makna|assessment|penilaian|diagnosis/.test(h)) return 'interpretation';
+      if (/rekomendasi|saran|tindak lanjut|perawatan|aksi/.test(h)) return 'recommendations';
+      return null;
+    };
+
+    const normalized = typeof reinsertMarkdownBreaks === 'function'
+      ? reinsertMarkdownBreaks(String(text || ''))
+      : String(text || '');
+
+    let activeBucket = 'findings';
+    normalized.split('\n').forEach((lineRaw) => {
+      const line = String(lineRaw || '').replace(/\*\*/g, '').trim();
+      if (!line) return;
+
+      const headerMatch = line.match(/^([^:]{3,64}):\s*(.*)$/);
+      if (headerMatch) {
+        const nextBucket = resolveBucket(headerMatch[1]);
+        if (nextBucket) {
+          activeBucket = nextBucket;
+          const firstItem = cleanSummaryItem(headerMatch[2]);
+          if (firstItem) buckets[activeBucket].push(firstItem);
+          return;
+        }
+      }
+
+      if (/^area\s*\[?\d+\]?/i.test(line)) activeBucket = 'findings';
+      if (/^(apa\s*artinya|interpretasi|makna)/i.test(line)) activeBucket = 'interpretation';
+      if (/^(rekomendasi|saran|tindak lanjut|perawatan)/i.test(line)) activeBucket = 'recommendations';
+
+      const item = cleanSummaryItem(line);
+      if (!item || /^(analysis summary|clinical summary)$/i.test(item)) return;
+      buckets[activeBucket].push(item);
+    });
+
+    buckets.findings = toUniqueSummaryItems(buckets.findings, 6);
+    buckets.interpretation = toUniqueSummaryItems(buckets.interpretation, 4);
+    buckets.recommendations = toUniqueSummaryItems(buckets.recommendations, 6);
+
+    if (buckets.findings.length === 0) {
+      const diagnosisFallback = (result?.diagnosis || []).map((diag) => {
+        const label = cleanSummaryItem(diag?.condition || '');
+        const details = cleanSummaryItem(diag?.description || '');
+        if (!label && !details) return '';
+        return details ? `${label}: ${details}` : label;
+      });
+      buckets.findings = toUniqueSummaryItems(diagnosisFallback, 6);
+    }
+
+    if (buckets.findings.length === 0) {
+      const findingsFallback = (result?.sessionFindings || []).map((f) =>
+        cleanSummaryItem(typeof f === 'string' ? f : (f?.text || f?.finding || ''))
+      );
+      buckets.findings = toUniqueSummaryItems(findingsFallback, 6);
+    }
+
+    if (buckets.interpretation.length === 0) {
+      buckets.interpretation = extractSummarySentences(result?.overallAssessmentText || result?.findingsText || '', 3);
+    }
+
+    if (buckets.recommendations.length === 0) {
+      const recFallback = (result?.recommendations || []).map((rec) =>
+        cleanSummaryItem(typeof rec === 'string' ? rec : (rec?.text || rec?.recommendation || rec?.title || ''))
+      );
+      buckets.recommendations = toUniqueSummaryItems(recFallback, 6);
+    }
+
+    return [
+      {
+        key: 'findings',
+        icon: '🔬',
+        title: 'Temuan Klinis Utama',
+        style: SUMMARY_CARD_STYLES.findings,
+        items: buckets.findings,
+      },
+      {
+        key: 'interpretation',
+        icon: '🧠',
+        title: 'Interpretasi Klinis',
+        style: SUMMARY_CARD_STYLES.interpretation,
+        items: buckets.interpretation,
+      },
+      {
+        key: 'recommendations',
+        icon: '💡',
+        title: 'Rencana Tindak Lanjut',
+        style: SUMMARY_CARD_STYLES.recommendations,
+        items: buckets.recommendations,
+      },
+    ].filter((section) => section.items.length > 0);
+  };
+
+  const summaryCards = useMemo(() => buildDentistSummaryCards(summaryText, enrichedResult), [summaryText, enrichedResult]);
   const summarySections = enrichedResult?.summarySections || [];
-  const hasSummaryHighlights = Boolean(summaryText || summarySections.length);
+  const hasSummaryHighlights = Boolean(summaryCards.length || summaryText || summarySections.length);
 
   const getRiskColor = (risk) => {
     switch (String(risk).toLowerCase()) {
@@ -827,12 +1117,12 @@ const PatientAIResult = ({ patient }) => {
   };
   const getConfidenceColor = (c) => (c >= 80 ? 'text-emerald-600 dark:text-emerald-400' : c >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400');
 
+  const handleResultChange = (e) => setSelectedResult(sortedResults.find(r => r.id === e.target.value));
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* 1. Header & Stats */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] p-8 transition-colors">
-        {/* ... (Header content mostly same, using enrichedResult) ... */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dentistPatient.ai.header.title')}</h2>
@@ -894,10 +1184,6 @@ const PatientAIResult = ({ patient }) => {
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <span className="text-4xl text-slate-900 dark:text-white">🛡️</span>
             </div>
-            <div className="flex items-center space-x-2.5 mb-2">
-              <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t('dentistPatient.ai.summary.risk')}</span>
-            </div>
             <div className="flex items-center">
               <span className={`px-3 py-1 rounded-lg text-sm font-bold border ${getRiskColor(enrichedResult?.riskLevel)}`}>
                 {String(enrichedResult?.riskLevel || 'Unknown').toUpperCase()}
@@ -940,7 +1226,6 @@ const PatientAIResult = ({ patient }) => {
 
         {/* Content Body */}
         <div className="p-8">
-          {/* ... Summary / Diagnosis / etc sections ... (Visuals already updated) */}
           {expandedSection === 'summary' && (
             <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-300">
               {/* Image & Description */}
@@ -959,14 +1244,18 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               )}
 
-              {/* Text Summary */}
+              {/* Text Summary - ✅ NOW WITH preprocessSummaryText */}
               {hasSummaryHighlights && (
                 <div className="prose prose-slate dark:prose-invert max-w-none">
                   <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-8 border border-slate-100/80 dark:border-slate-800">
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                       <span className="text-2xl">📑</span> {t('dentistPatient.ai.summary.title')}
                     </h3>
-                    {summaryText && <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-[15px] font-normal mb-6">{formatAIResponse(summaryText)}</div>}
+                    {summaryText && (
+                      <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-[15px] font-normal mb-6">
+                        {formatAIResponse(preprocessSummaryText(summaryText))}
+                      </div>
+                    )}
                     <div className="grid gap-6">
                       {summarySections.map((section, idx) => (
                         <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.02)]">
@@ -981,7 +1270,7 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               )}
 
-              {/* C. CHAT SECTION (Refined UI) */}
+              {/* C. CHAT SECTION */}
               <div className="mt-12">
                 {!isChatOpen ? (
                   <div className="flex flex-col items-center justify-center py-10 bg-gradient-to-b from-transparent to-slate-50/50 dark:to-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
@@ -1048,7 +1337,7 @@ const PatientAIResult = ({ patient }) => {
                       )}
                     </div>
 
-                    {/* FIXED INPUT BAR: Removed striped artifacts (resize handle) */}
+                    {/* Input Bar */}
                     <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-3 items-end">
                       <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-hidden">
                         <textarea 
@@ -1080,7 +1369,7 @@ const PatientAIResult = ({ patient }) => {
             </div>
           )}
 
-          {/* ... (Diagnosis, Symptoms, Recommendations, Images tabs content) ... */}
+          {/* Diagnosis Tab */}
           {expandedSection === 'diagnosis' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
@@ -1117,14 +1406,14 @@ const PatientAIResult = ({ patient }) => {
               </div>
             </div>
           )}
-          {/* ── Symptoms Tab ── */}
+
+          {/* Symptoms Tab */}
           {expandedSection === 'symptoms' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
                 <span className="text-2xl">📋</span> {t('dentistPatient.ai.tabs.symptoms') || 'Gejala & Temuan'}
               </h3>
 
-              {/* Session Findings (from AI visual analysis) */}
               {(enrichedResult?.sessionFindings?.length > 0 || enrichedResult?.findingsText) && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6 border border-blue-100 dark:border-blue-800/50">
                   <h4 className="text-base font-bold text-blue-800 dark:text-blue-300 mb-4 flex items-center gap-2">
@@ -1145,7 +1434,6 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               )}
 
-              {/* Overall Assessment */}
               {enrichedResult?.overallAssessmentText && (
                 <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-800/50">
                   <h4 className="text-base font-bold text-indigo-800 dark:text-indigo-300 mb-4 flex items-center gap-2">
@@ -1155,7 +1443,6 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               )}
 
-              {/* Symptoms list from detections */}
               {enrichedResult?.symptoms?.length > 0 ? (
                 <div className="grid gap-4">
                   {enrichedResult.symptoms.map((symptom, index) => {
@@ -1201,7 +1488,7 @@ const PatientAIResult = ({ patient }) => {
             </div>
           )}
 
-          {/* ── Recommendations Tab ── */}
+          {/* Recommendations Tab */}
           {expandedSection === 'recommendations' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
@@ -1267,7 +1554,7 @@ const PatientAIResult = ({ patient }) => {
             </div>
           )}
 
-          {/* ── Images Tab ── */}
+          {/* Images Tab */}
           {expandedSection === 'images' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
@@ -1294,7 +1581,6 @@ const PatientAIResult = ({ patient }) => {
                           className="w-full h-full object-contain"
                           onError={(e) => {
                             e.target.style.display = 'none';
-                            // Show fallback sibling
                             const fallback = e.target.nextElementSibling;
                             if (fallback) fallback.style.display = 'flex';
                           }}
