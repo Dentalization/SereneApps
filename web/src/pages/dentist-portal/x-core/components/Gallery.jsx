@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+
 const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted }) => {
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
-
-
-
     const [studies, setStudies] = useState([]);
     const [studiesWithSeries, setStudiesWithSeries] = useState([]); // Studies with expanded series cards
     const [loading, setLoading] = useState(true);
@@ -26,8 +25,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                 });
 
                 if (!response.ok) {
-                    const text = await response.text();
-                    throw new Error(`Server Error: ${response.status} ${response.statusText} - ${text.substring(0, 100)}`);
+                    throw new Error(`Something went wrong on our end. Please try again in a few minutes.`);
                 }
 
                 const text = await response.text();
@@ -52,18 +50,15 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                         statusDisplay: (study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1)
                     }));
                     setStudies(formattedStudies);
-                    
+
                     // Fetch series information for each study
                     await fetchSeriesForStudies(formattedStudies);
                 } catch (e) {
-                    throw new Error(`JSON Parse Error: ${e.message} - Response: ${text.substring(0, 50)}...`);
+                    throw new Error(`Failed to parse studies data. Please try refreshing the page.`);
                 }
 
             } catch (error) {
-                console.error("[Gallery] Failed to fetch studies:", error);
-                console.error("[Gallery] Error name:", error.name);
-                console.error("[Gallery] Error message:", error.message);
-                console.error("[Gallery] Error stack:", error.stack);
+                console.error("[Gallery] Failed to fetch studies:", error.message);
                 setError(error.message);
             } finally {
                 setLoading(false);
@@ -71,7 +66,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
         };
         fetchStudies();
     }, [refreshTrigger]);
-    
+
     // Fetch series cards for each study (Smart Gallery Grouping)
     const fetchSeriesForStudies = async (studies) => {
         try {
@@ -79,16 +74,16 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                 studies.map(async (study) => {
                     try {
                         const studyKey = study.folderName || study.id;
-                        const response = await fetch(`http://127.0.0.1:8000/gallery/${studyKey}`);
-                        
+                        const response = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
+
                         if (!response.ok) {
                             console.warn(`Failed to fetch series for ${studyKey}`);
                             return { ...study, series: [] };
                         }
-                        
+
                         const data = await response.json();
-                        return { 
-                            ...study, 
+                        return {
+                            ...study,
                             series: data.series || [],
                             totalSeries: data.total_series || 0
                         };
@@ -98,7 +93,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                     }
                 })
             );
-            
+
             setStudiesWithSeries(studiesWithSeriesData);
         } catch (error) {
             console.error("Error in fetchSeriesForStudies:", error);
@@ -111,13 +106,13 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.patientIdDisplay.toLowerCase().includes(searchQuery.toLowerCase())
     );
-    
+
     // Separate orphan studies (DB record exists but no files/series on disk)
     const orphanStudies = filteredStudies.filter(study => (!study.series || study.series.length === 0));
     const healthyStudies = filteredStudies.filter(study => study.series && study.series.length > 0);
 
     // Flatten to series cards for gallery display (Smart Series Grouping)
-    const seriesCards = healthyStudies.flatMap(study => 
+    const seriesCards = healthyStudies.flatMap(study =>
         (study.series || []).map(series => ({
             ...series,
             study: study,
@@ -127,7 +122,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
             patientIdDisplay: study.patientIdDisplay,
             dateDisplay: study.dateDisplay,
             statusDisplay: study.statusDisplay,
-            thumbnailUrl: `http://127.0.0.1:8000/thumbnail/${study.folderName || study.id}/${series.series_uid}`
+            thumbnailUrl: `${PY_API_BASE}/thumbnail/${study.folderName || study.id}/${series.series_uid}`
         }))
     );
 
@@ -258,111 +253,111 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {seriesCards.length === 0 && orphanStudies.length === 0 ? (
-                        <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
-                            <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
-                                <AppIcon name={searchQuery ? "SearchX" : "FolderOpen"} size={40} className="text-accent" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-primary mb-2">
-                                {searchQuery ? "No matching results" : "No studies found"}
-                            </h3>
-                            <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
-                                {searchQuery
-                                    ? `We couldn't find any studies matching "${searchQuery}". Try adjusting your filters.`
-                                    : "Get started by uploading a patient's DICOM study or J. Morita dataset folder to the secure X-Core storage."}
-                            </p>
-                            {!searchQuery && (
-                                <button
-                                    onClick={onUploadClick}
-                                    className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-lg shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5"
-                                >
-                                    <AppIcon name="UploadCloud" size={20} />
-                                    <span>Upload First Study</span>
-                                </button>
-                            )}
-                        </div>
-                    ) : seriesCards.map(card => (
-                        <div
-                            key={card.id}
-                            onClick={() => onSelectStudy({
-                                ...card.study,
-                                selectedSeriesUid: card.series_uid,
-                                selectedSeriesType: card.type
-                            })}
-                            className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden hover:shadow-theme-lg transition cursor-pointer"
-                        >
-                            {/* Series Thumbnail (replaces generic icon) */}
-                            <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                <img 
-                                    src={card.thumbnailUrl} 
-                                    alt={card.title}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        // Fallback to icon if thumbnail fails
-                                        e.target.style.display = 'none';
-                                        e.target.nextSibling.style.display = 'flex';
-                                    }}
-                                />
-                                <div className="absolute inset-0 items-center justify-center hidden">
-                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                        {seriesCards.length === 0 && orphanStudies.length === 0 ? (
+                            <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
+                                <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
+                                    <AppIcon name={searchQuery ? "SearchX" : "FolderOpen"} size={40} className="text-accent" />
                                 </div>
-                                
-                                {/* Type Badge */}
-                                <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
-                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
-                                    {card.type}
-                                </span>
-                                
-                                {/* Modality Badge */}
-                                <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
-                                    {card.modality}
-                                </span>
-                                
-                                {/* Slice Count */}
-                                {card.num_slices > 1 && (
-                                    <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
-                                        {card.num_slices} slices
-                                    </span>
-                                )}
-                                
-                                {card.study.status === 'Processing' && (
-                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
-                                            <span className="text-xs text-white font-medium">AI Analyzing...</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="p-4 space-y-2">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <h3 className="font-semibold text-primary">{card.patientName}</h3>
-                                        <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
-                                        <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
-                                    </div>
-                                    <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
-                                </div>
-                                <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                <h3 className="text-xl font-semibold text-primary mb-2">
+                                    {searchQuery ? "No matching results" : "No studies found"}
+                                </h3>
+                                <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
+                                    {searchQuery
+                                        ? `We couldn't find any studies matching "${searchQuery}". Try adjusting your filters.`
+                                        : "Get started by uploading a patient's DICOM study or J. Morita dataset folder to the secure X-Core storage."}
+                                </p>
+                                {!searchQuery && (
                                     <button
-                                        onClick={(e) => handleDelete(e, card.study)}
-                                        className="p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg backdrop-blur-sm shadow-sm"
-                                        title="Delete Study"
+                                        onClick={onUploadClick}
+                                        className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-lg shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5"
                                     >
-                                        <AppIcon name="Trash2" size={16} />
+                                        <AppIcon name="UploadCloud" size={20} />
+                                        <span>Upload First Study</span>
                                     </button>
-                                </div>
-                                <div className="pt-2 border-t border-primary/10 flex justify-between text-xs text-secondary">
-                                    <span>{card.dateDisplay}</span>
-                                    <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
-                                        {card.statusDisplay}
+                                )}
+                            </div>
+                        ) : seriesCards.map(card => (
+                            <div
+                                key={card.id}
+                                onClick={() => onSelectStudy({
+                                    ...card.study,
+                                    selectedSeriesUid: card.series_uid,
+                                    selectedSeriesType: card.type
+                                })}
+                                className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden hover:shadow-theme-lg transition cursor-pointer"
+                            >
+                                {/* Series Thumbnail (replaces generic icon) */}
+                                <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
+                                    <img
+                                        src={card.thumbnailUrl}
+                                        alt={card.title}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            // Fallback to icon if thumbnail fails
+                                            e.target.style.display = 'none';
+                                            e.target.nextSibling.style.display = 'flex';
+                                        }}
+                                    />
+                                    <div className="absolute inset-0 items-center justify-center hidden">
+                                        <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                                    </div>
+
+                                    {/* Type Badge */}
+                                    <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
+                                        <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
+                                        {card.type}
                                     </span>
+
+                                    {/* Modality Badge */}
+                                    <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
+                                        {card.modality}
+                                    </span>
+
+                                    {/* Slice Count */}
+                                    {card.num_slices > 1 && (
+                                        <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
+                                            {card.num_slices} slices
+                                        </span>
+                                    )}
+
+                                    {card.study.status === 'Processing' && (
+                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
+                                                <span className="text-xs text-white font-medium">AI Analyzing...</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="p-4 space-y-2">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h3 className="font-semibold text-primary">{card.patientName}</h3>
+                                            <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
+                                            <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
+                                        </div>
+                                        <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
+                                    </div>
+                                    <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                        <button
+                                            onClick={(e) => handleDelete(e, card.study)}
+                                            className="p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg backdrop-blur-sm shadow-sm"
+                                            title="Delete Study"
+                                        >
+                                            <AppIcon name="Trash2" size={16} />
+                                        </button>
+                                    </div>
+                                    <div className="pt-2 border-t border-primary/10 flex justify-between text-xs text-secondary">
+                                        <span>{card.dateDisplay}</span>
+                                        <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
+                                            {card.statusDisplay}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
                 </div>
             )}
 

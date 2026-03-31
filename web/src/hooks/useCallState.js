@@ -52,6 +52,18 @@ export function useCallState({ userId } = {}) {
         setCallState(CALL_STATES.REQUESTING_TOKEN);
         setCallError(null);
 
+        // Pre-flight check: ensure permissions before ringing the other side
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          stream.getTracks().forEach(t => t.stop());
+        } catch (mediaError) {
+          console.warn('[useCallState] Media permission error:', mediaError);
+          if (mediaError.name === 'NotAllowedError' || mediaError.message?.includes('denied')) {
+            throw new Error('Kamera & Mikrofon tidak diizinkan. Mohon izinkan akses di browser.');
+          }
+          throw new Error('Kamera/Mikrofon tidak ditemukan atau tidak dapat diakses.');
+        }
+
         const tokenData = await fetchVideoToken(appointmentId, role);
 
         const session = {

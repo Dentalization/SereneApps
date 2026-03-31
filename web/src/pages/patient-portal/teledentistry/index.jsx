@@ -21,11 +21,13 @@ const PatientTeledentistry = () => {
     activeAppointmentId,
     messages,
     incomingCall,
+    socketConnected,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
     emitVideoCall,
     emitVideoCallResponse,
+    emitVideoCallEnded,
   } = useChat();
 
   const {
@@ -64,17 +66,59 @@ const PatientTeledentistry = () => {
     setBootstrapping(false);
   }, [loading]);
 
-  // Handle incoming call from socket
+  // ── Handle incoming call from socket (use ref to avoid dep loop) ──
+  const receiveIncomingCallRef = useRef(receiveIncomingCall);
+  receiveIncomingCallRef.current = receiveIncomingCall;
+
   useEffect(() => {
     if (!incomingCall) return;
-    receiveIncomingCall({
+    receiveIncomingCallRef.current({
       appointmentId: incomingCall.appointmentId,
       roomName: null,
       token: null,
       callerId: incomingCall.callerId,
       callerName: incomingCall.callerName,
     });
-  }, [incomingCall, receiveIncomingCall]);
+  }, [incomingCall]);
+
+  // ── Listen for call_accepted → auto-connect (patient initiated call) ──
+  useEffect(() => {
+    const onAccepted = () => {
+      if (callState === 'ringing' && videoSession?.token) {
+        acceptCall();
+      }
+    };
+    const onDeclined = () => {
+      if (callState === 'ringing') {
+        toast.info('Panggilan ditolak oleh dokter.');
+        endCall();
+      }
+    };
+    const onEnded = () => {
+      if (callState === 'connected') {
+        toast.info('Panggilan diakhiri oleh partisipan lain.');
+        endCall();
+      }
+    };
+    window.addEventListener('teledentistry:call_accepted', onAccepted);
+    window.addEventListener('teledentistry:call_declined', onDeclined);
+    window.addEventListener('teledentistry:call_ended', onEnded);
+    return () => {
+      window.removeEventListener('teledentistry:call_accepted', onAccepted);
+      window.removeEventListener('teledentistry:call_declined', onDeclined);
+      window.removeEventListener('teledentistry:call_ended', onEnded);
+    };
+  }, [callState, videoSession, acceptCall, endCall, toast]);
+
+  // ── Ringing timeout (60s) for call initiator ──
+  useEffect(() => {
+    if (callState !== 'ringing') return;
+    const timer = setTimeout(() => {
+      toast.info('Tidak ada jawaban. Panggilan berakhir.');
+      endCall();
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, [callState, endCall, toast]);
 
   // Show toast on call error
   useEffect(() => {
@@ -132,6 +176,8 @@ const PatientTeledentistry = () => {
   };
 
   const handleEndVideoCall = () => {
+    const apptId = videoSession?.appointmentId || activeAppointmentId;
+    if (apptId) emitVideoCallEnded(apptId);
     endCall();
   };
 
@@ -233,6 +279,14 @@ const PatientTeledentistry = () => {
         </div>
       </header>
 
+      {/* Network Banner */}
+      {!socketConnected && !loading && !bootstrapping && (
+        <div className="w-full bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 shadow-sm z-40 relative">
+          <Icon name="WifiOff" size={16} className="animate-pulse" />
+          <span className="text-sm font-medium leading-none tracking-wide">Koneksi terputus. Mencoba menghubungkan kembali...</span>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-0">
         {videoSession && callState === 'connected' ? (
@@ -241,6 +295,7 @@ const PatientTeledentistry = () => {
             videoSession={videoSession}
             onEndCall={handleEndVideoCall}
             onJoinError={handleJoinError}
+            remoteParticipant={activeConversation?.dentist}
           />
         ) : (
           <ChatInterface
@@ -262,6 +317,7 @@ const PatientTeledentistry = () => {
           onAccept={handleAcceptCall}
           onDecline={handleDeclineCall}
           callState={callState}
+          remoteParticipant={activeConversation?.dentist}
         />
       )}
     </div>

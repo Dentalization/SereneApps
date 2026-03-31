@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+
 /**
  * SeriesSidebar — Reusable series selection panel
  * 
@@ -14,7 +16,7 @@ import AppIcon from '../../../../components/AppIcon';
  * - Smart default: auto-selects series with most slices
  * - Collapsible drawer design
  */
-const SeriesSidebar = ({ 
+const SeriesSidebar = ({
     study,
     currentSeriesUid,
     onSelectSeries,
@@ -30,11 +32,11 @@ const SeriesSidebar = ({
     // Fetch series list
     useEffect(() => {
         if (!studyKey) return;
-        
+
         const fetchSeries = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`http://127.0.0.1:8000/gallery/${studyKey}`);
+                const res = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
                 if (!res.ok) throw new Error('Failed to fetch series');
                 const data = await res.json();
                 setSeriesList(data.series || []);
@@ -51,8 +53,8 @@ const SeriesSidebar = ({
 
     if (!visible) return null;
 
-    const posClass = position === 'left' 
-        ? 'left-0 border-r' 
+    const posClass = position === 'left'
+        ? 'left-0 border-r'
         : 'right-0 border-l';
 
     return (
@@ -89,17 +91,16 @@ const SeriesSidebar = ({
                     seriesList.map((series) => {
                         const isActive = series.series_uid === currentSeriesUid;
                         const is3D = series.type === '3D Volume';
-                        const thumbUrl = `http://127.0.0.1:8000/thumb/${studyKey}/${series.series_uid}`;
+                        const thumbUrl = `${PY_API_BASE}/thumb/${studyKey}/${series.series_uid}`;
 
                         return (
                             <button
                                 key={series.series_uid}
                                 onClick={() => onSelectSeries(series)}
-                                className={`w-full rounded-xl border overflow-hidden transition-all text-left ${
-                                    isActive
+                                className={`w-full rounded-xl border overflow-hidden transition-all text-left ${isActive
                                         ? 'bg-cyan-500/10 border-cyan-500/40 ring-1 ring-cyan-500/30'
                                         : 'bg-slate-800/60 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
-                                }`}
+                                    }`}
                             >
                                 {/* Thumbnail */}
                                 <div className="relative aspect-[16/10] bg-black/50 overflow-hidden">
@@ -111,13 +112,12 @@ const SeriesSidebar = ({
                                             e.target.style.display = 'none';
                                         }}
                                     />
-                                    
+
                                     {/* Type Badge */}
-                                    <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 backdrop-blur-sm ${
-                                        is3D 
-                                            ? 'bg-cyan-500/80 text-white' 
+                                    <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 backdrop-blur-sm ${is3D
+                                            ? 'bg-cyan-500/80 text-white'
                                             : 'bg-purple-500/80 text-white'
-                                    }`}>
+                                        }`}>
                                         <AppIcon name={is3D ? 'Box' : 'Image'} size={10} />
                                         {is3D ? '3D' : '2D'}
                                     </span>

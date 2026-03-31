@@ -25,6 +25,7 @@ const Teledentistry = () => {
     activeAppointmentId,
     messages,
     incomingCall,
+    socketConnected,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
@@ -213,11 +214,10 @@ const Teledentistry = () => {
   };
 
   // ── Fix 5: New Consultation modal ─────────────────────────────
-  const handleNewConsultationSubmit = async ({ patient, consultationType, notes }) => {
-    toast.success(`Consultation created for ${patient.name || 'patient'} (${consultationType})`);
+  const handleNewConsultationSubmit = async ({ appointmentId, patient, consultationType, notes }) => {
+    toast.success(`Joining session with ${patient.name || 'patient'}`);
     setShowNewConsultation(false);
-    // TODO: POST to backend to create a new appointment/consultation
-    console.log('[Teledentistry] New consultation:', { patient, consultationType, notes });
+    selectConversation(appointmentId);
   };
 
   const selectedPresence = useMemo(() => {
@@ -321,6 +321,14 @@ const Teledentistry = () => {
           </div>
         </div>
 
+        {/* Network Banner */}
+        {!socketConnected && !loading && !bootstrapping && (
+          <div className="w-full bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 shadow-sm z-40 relative">
+            <Icon name="WifiOff" size={16} className="animate-pulse" />
+            <span className="text-sm font-medium leading-none tracking-wide">Koneksi terputus. Mencoba menghubungkan kembali...</span>
+          </div>
+        )}
+
         <div className="flex flex-1 min-h-0">
           <aside className="w-80 bg-surface-elevated border-r border-primary/20 flex flex-col theme-transition">
             <div className="px-4 py-4 border-b border-primary/10">
@@ -381,7 +389,6 @@ const Teledentistry = () => {
 
       {showNewConsultation && (
         <NewConsultationModal
-          conversations={conversations}
           onClose={() => setShowNewConsultation(false)}
           onSubmit={handleNewConsultationSubmit}
         />

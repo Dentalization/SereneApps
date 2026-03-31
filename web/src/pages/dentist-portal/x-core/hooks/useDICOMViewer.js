@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+const NODE_API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:4000';
+
 const useDICOMViewer = (study) => {
     // State
     const [axialIndex, setAxialIndex] = useState(0);
@@ -39,7 +42,7 @@ const useDICOMViewer = (study) => {
             try {
                 console.log('[useDICOMViewer] Loading study:', study);
                 const studyKey = study.folderName || study.id;
-                const metadataUrl = `http://127.0.0.1:8000/metadata/${studyKey}`;
+                const metadataUrl = `${PY_API_BASE}/metadata/${studyKey}`;
                 console.log('[useDICOMViewer] Fetching metadata from:', metadataUrl);
 
                 const response = await fetch(metadataUrl);
@@ -100,7 +103,7 @@ const useDICOMViewer = (study) => {
         else if (activeView === 'sagittal') currentIndex = sagittalIndex;
         
         // Build URL with series_uid
-        const url = `http://127.0.0.1:8000/stream/${studyKey}/${currentView}/${currentIndex}?series_uid=${currentSeries.series_uid}`;
+        const url = `${PY_API_BASE}/stream/${studyKey}/${currentView}/${currentIndex}?series_uid=${currentSeries.series_uid}`;
         
         // Check cache first
         if (imageCache.current.has(url)) {
@@ -133,7 +136,7 @@ const useDICOMViewer = (study) => {
         for (let i = 1; i <= 5; i++) {
             const nextIndex = startIndex + i;
             if (nextIndex < numSlices) {
-                const url = `http://127.0.0.1:8000/stream/${studyKey}/${view}/${nextIndex}?series_uid=${seriesUid}`;
+                const url = `${PY_API_BASE}/stream/${studyKey}/${view}/${nextIndex}?series_uid=${seriesUid}`;
                 if (!imageCache.current.has(url)) {
                     const img = new Image();
                     img.onload = () => imageCache.current.set(url, true);
@@ -149,7 +152,7 @@ const useDICOMViewer = (study) => {
             const fetchAnalysis = async () => {
                 setIsAnalyzing(true);
                 try {
-                    const response = await fetch(`http://localhost:4000/v1/x-core/analyze`, {
+                    const response = await fetch(`${NODE_API_BASE}/v1/x-core/analyze`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ studyId: study.id })

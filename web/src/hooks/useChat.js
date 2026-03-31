@@ -54,6 +54,18 @@ export function useChat() {
     loadConversations();
   }, []);
 
+  // ── Handle Tab Focus (Web) ───────────────────────────────────
+  useEffect(() => {
+    const handleFocus = () => {
+      if (socketRef.current && socketRef.current.disconnected) {
+        console.log('[useChat] Tab focused, forcing socket reconnect...');
+        socketRef.current.connect();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     const socket = io(SOCKET_URL, {

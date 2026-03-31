@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, API_VERSION } from '../services/api';
@@ -51,6 +52,21 @@ export function useChat({ userId } = {}) {
     if (!activeAppointmentId) return [];
     return messagesByAppointment[activeAppointmentId] || [];
   }, [messagesByAppointment, activeAppointmentId]);
+
+  // ── Handle Background AppState Reconnects ────────────────────
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        if (socketRef.current && socketRef.current.disconnected) {
+          console.log('[useChat] App returned to foreground, forcing socket reconnect...');
+          socketRef.current.connect();
+        }
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // ── Load conversations on mount ──────────────────────────────
   useEffect(() => {

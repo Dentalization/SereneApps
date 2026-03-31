@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import '@kitware/vtk.js/favicon';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
@@ -319,7 +321,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     imageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[VolumeViewer3D] ❌ Cache MISS:', cacheKey, '| Cached keys:', [...volumeCache.keys()]);
-                    const url = `http://127.0.0.1:8000/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}${seriesUid ? '&' : '?'}v=${VOLUME_CACHE_VERSION}`;
+                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}${seriesUid ? '&' : '?'}v=${VOLUME_CACHE_VERSION}`;
                     console.log('[VolumeViewer3D] Fetching VTI from:', url);
 
                     setLoadingStage('Downloading 3D volume...');

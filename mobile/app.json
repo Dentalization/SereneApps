@@ -24,7 +24,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sereneapps.dentalpatient"
+      "bundleIdentifier": "com.sereneapps.dentalpatient",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Serene Dental Patient membutuhkan akses kamera untuk Video Call teledentistry.",
+        "NSMicrophoneUsageDescription": "Serene Dental Patient membutuhkan akses mikrofon untuk Video Call teledentistry."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,6 +37,8 @@
       "package": "com.sereneapps.dentalpatient",
       "permissions": [
         "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_COARSE_LOCATION",
