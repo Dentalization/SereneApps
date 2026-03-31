@@ -114,6 +114,10 @@ export function registerChatGateway(io) {
     socket.data.rooms = new Map(); // channelName -> { roomId, appointmentId }
     touchUserSocket(user.id, socket.id, 'add');
 
+    // Join a personal room so we can reach this user even if they haven't opened a chat
+    const personalRoom = `user:${user.id}`;
+    socket.join(personalRoom);
+
     socket.emit('chat:connected', { userId: user.id.toString() });
 
     socket.on('chat:join', async ({ appointmentId }) => {
@@ -197,12 +201,20 @@ export function registerChatGateway(io) {
         const appointment = await authorizeAppointment(appointmentId, user);
         const { room } = await ensureChatRoom({ appointmentId: appointment.id });
 
-        // Broadcast to the room so the other participant receives the incoming call
-        socket.to(room.channelName).emit('video:incoming_call', {
+        const payload = {
           appointmentId: appointment.id.toString(),
           callerId: user.id.toString(),
           callerName: user.name || user.email || 'Unknown',
-        });
+        };
+
+        // Broadcast to chat room (works if receiver has joined)
+        socket.to(room.channelName).emit('video:incoming_call', payload);
+
+        // Also emit to the target participant's personal room for guaranteed delivery
+        const targetUserId = BigInt(user.id) === appointment.dentistId
+          ? appointment.patientId
+          : appointment.dentistId;
+        socket.to(`user:${targetUserId}`).emit('video:incoming_call', payload);
       } catch (error) {
         console.error('Socket video:call error', error);
         socket.emit('video:error', { message: error.message || 'Unable to initiate call' });
@@ -223,6 +235,22 @@ export function registerChatGateway(io) {
       } catch (error) {
         console.error('Socket video:call_response error', error);
         socket.emit('video:error', { message: error.message || 'Unable to respond to call' });
+      }
+    });
+
+    socket.on('video:call_ended', async ({ appointmentId }) => {
+      try {
+        if (!appointmentId) return;
+        const appointment = await authorizeAppointment(appointmentId, user);
+        const { room } = await ensureChatRoom({ appointmentId: appointment.id });
+
+        socket.to(room.channelName).emit('video:call_ended', {
+          appointmentId: appointment.id.toString(),
+          endedBy: user.id.toString(),
+        });
+      } catch (error) {
+        console.error('Socket video:call_ended error', error);
+        socket.emit('video:error', { message: error.message || 'Unable to end call' });
       }
     });
 

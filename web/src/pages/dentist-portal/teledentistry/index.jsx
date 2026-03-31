@@ -30,6 +30,7 @@ const Teledentistry = () => {
     sendAttachmentMessage,
     emitVideoCall,
     emitVideoCallResponse,
+    emitVideoCallEnded,
   } = useChat();
 
   const {
@@ -70,18 +71,59 @@ const Teledentistry = () => {
     }
   }, [loading]);
 
-  // ── Fix 2: Handle incoming call from socket ──────────────────
+  // ── Handle incoming call from socket (use ref to avoid dep loop) ──
+  const receiveIncomingCallRef = useRef(receiveIncomingCall);
+  receiveIncomingCallRef.current = receiveIncomingCall;
+
   useEffect(() => {
     if (!incomingCall) return;
-    // Build a minimal session and trigger ringing
-    receiveIncomingCall({
+    receiveIncomingCallRef.current({
       appointmentId: incomingCall.appointmentId,
-      roomName: null, // Will be set when acceptCall fetches the token
+      roomName: null,
       token: null,
       callerId: incomingCall.callerId,
       callerName: incomingCall.callerName,
     });
-  }, [incomingCall, receiveIncomingCall]);
+  }, [incomingCall]);
+
+  // ── Listen for call_accepted → auto-connect (dentist initiated call) ──
+  useEffect(() => {
+    const onAccepted = () => {
+      if (callState === 'ringing' && videoSession?.token) {
+        acceptCall();
+      }
+    };
+    const onDeclined = () => {
+      if (callState === 'ringing') {
+        toast.info('Call was declined by the patient.');
+        endCall();
+      }
+    };
+    const onEnded = () => {
+      if (callState === 'connected') {
+        toast.info('Call ended by the other participant.');
+        endCall();
+      }
+    };
+    window.addEventListener('teledentistry:call_accepted', onAccepted);
+    window.addEventListener('teledentistry:call_declined', onDeclined);
+    window.addEventListener('teledentistry:call_ended', onEnded);
+    return () => {
+      window.removeEventListener('teledentistry:call_accepted', onAccepted);
+      window.removeEventListener('teledentistry:call_declined', onDeclined);
+      window.removeEventListener('teledentistry:call_ended', onEnded);
+    };
+  }, [callState, videoSession, acceptCall, endCall, toast]);
+
+  // ── Ringing timeout (60s) for call initiator ──
+  useEffect(() => {
+    if (callState !== 'ringing') return;
+    const timer = setTimeout(() => {
+      toast.info('No answer. Call timed out.');
+      endCall();
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, [callState, endCall, toast]);
 
   const handleConversationSelect = (conversation) => {
     selectConversation(conversation.appointmentId);
@@ -138,6 +180,8 @@ const Teledentistry = () => {
   };
 
   const handleEndVideoCall = () => {
+    const apptId = videoSession?.appointmentId || activeAppointmentId;
+    if (apptId) emitVideoCallEnded(apptId);
     endCall();
   };
 
@@ -298,6 +342,7 @@ const Teledentistry = () => {
                 videoSession={videoSession}
                 onEndCall={handleEndVideoCall}
                 onJoinError={handleJoinError}
+                remoteParticipant={activeConversation?.patient}
               />
             ) : (
               <ChatInterface
@@ -330,6 +375,7 @@ const Teledentistry = () => {
           onAccept={handleAcceptCall}
           onDecline={handleDeclineCall}
           callState={callState}
+          remoteParticipant={activeConversation?.patient}
         />
       )}
 

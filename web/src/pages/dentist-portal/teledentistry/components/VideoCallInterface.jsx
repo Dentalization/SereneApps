@@ -2,7 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useTwilioVideoClient } from '../../../../hooks/useTwilioVideoClient';
 
-const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError }) => {
+const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError, remoteParticipant }) => {
+  // remoteParticipant = { name, avatar } — the person on the other end
+  const remote = remoteParticipant || conversation?.patient || {};
+  const remoteName = remote?.name || 'Participant';
+  const remoteInitials = remoteName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const controlsHideTimerRef = useRef(null);
@@ -91,15 +99,11 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
               <span className="text-sm font-medium">
-                {conversation?.patient?.name
-                  ?.split(' ')
-                  .map((n) => n[0])
-                  .join('')
-                  .toUpperCase()}
+                {remoteInitials}
               </span>
             </div>
             <div>
-              <h3 className="text-sm font-medium">{conversation?.patient?.name}</h3>
+              <h3 className="text-sm font-medium">{remoteName}</h3>
               <p className="text-xs text-gray-300">
                 {isJoined ? 'Connected' : 'Connecting'} • {formatDuration(callDuration)}
               </p>
@@ -115,14 +119,10 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
             <div className="text-center text-white">
               <div className="w-24 h-24 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl font-medium">
-                  {conversation?.patient?.name
-                    ?.split(' ')
-                    .map((n) => n[0])
-                    .join('')
-                    .toUpperCase()}
+                  {remoteInitials}
                 </span>
               </div>
-              <p className="text-lg font-medium">{conversation?.patient?.name}</p>
+              <p className="text-lg font-medium">{remoteName}</p>
               <p className="text-sm text-gray-300">Connecting video...</p>
             </div>
           </div>
