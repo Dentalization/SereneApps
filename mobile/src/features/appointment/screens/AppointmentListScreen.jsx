@@ -34,7 +34,8 @@ const ModernEmptyState = ({ title, description, icon, action }) => (
 );
 
 // 2. Modern Card Component
-const ModernAppointmentCard = ({ appointment, onPress }) => {
+const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
+  const navigation = useNavigation();
   const starts = new Date(appointment.startsAt);
   const dayNumber = starts.getDate();
   const monthShort = starts.toLocaleDateString('id-ID', { month: 'short' });
@@ -187,13 +188,70 @@ const ModernAppointmentCard = ({ appointment, onPress }) => {
           </Button>
         )}
       </View>
+
+      {/* Chat Nudge Row */}
+      {(appointment.status === 'upcoming' || appointment.status === 'scheduled') && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            const dentistData = appointment.dentist || {};
+            navigation.navigate('PatientTeledentistry', {
+              appointmentId: appointment.id,
+              dentistName: dentistData.name || 'Dokter Gigi',
+              dentistSpecialty: dentistData.specialty || '',
+              dentistAvatar: dentistData.avatar || null,
+              dentistInitials: (dentistData.name || 'DG')
+                .split(' ')
+                .filter((w) => w.length > 0)
+                .map((w) => w[0])
+                .join('')
+                .substring(0, 2)
+                .toUpperCase(),
+              appointmentDate: appointment.startsAt,
+              roomRef: appointment.videoRoomRef,
+            });
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderTopColor: '#F1F5F9',
+          }}
+        >
+          <MaterialCommunityIcons name="chat-processing-outline" size={16} color="#6366F1" />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#6366F1', marginLeft: 8, flex: 1 }}>
+            {unreadCount > 0 ? `${unreadCount} pesan belum dibaca` : 'Mulai chat'}
+          </Text>
+          {unreadCount > 0 && (
+            <View
+              style={{
+                backgroundColor: '#DC2626',
+                borderRadius: 10,
+                minWidth: 20,
+                height: 20,
+                justifyContent: 'center',
+                alignItems: 'center',
+                paddingHorizontal: 6,
+                marginRight: 4,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
+          <MaterialCommunityIcons name="chevron-right" size={16} color="#94A3B8" />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 };
 
 // --- MAIN SCREEN ---
 
-const AppointmentListScreen = () => {
+const AppointmentListScreen = ({ unreadMap = {} }) => {
   const theme = useTheme();
   const navigation = useNavigation();
   const [tab, setTab] = useState('upcoming');
@@ -401,6 +459,7 @@ const AppointmentListScreen = () => {
               <ModernAppointmentCard
                 key={appointment.id}
                 appointment={appointment}
+                unreadCount={unreadMap[appointment.id] || 0}
                 onPress={() => navigation.navigate('DetailAppointment', { appointmentId: appointment.id, appointment })}
               />
             ))
