@@ -156,9 +156,9 @@ const generateCDSSContext = (patient, aiResult, detections = []) => {
 
   const diagList = aiResult.diagnosis?.length
     ? aiResult.diagnosis.map(d => {
-        const prob = d.probability ? ` (${d.probability}%)` : '';
-        return `${d.condition}${prob}`;
-      }).join(', ')
+      const prob = d.probability ? ` (${d.probability}%)` : '';
+      return `${d.condition}${prob}`;
+    }).join(', ')
     : 'None';
 
   const summarySnippet = (aiResult.summary || '').slice(0, 500);
@@ -203,18 +203,18 @@ function stripCDSSContextRobust(content) {
   if (!raw) return '';
 
   const normalized = raw.replace(/\\n/g, '\n');
-  
+
   // Priority 1: Extract dentist question if explicitly marked
   const questionMatch = normalized.match(/Dentist Question:\s*([\s\S]+?)(?=\n\n\[|\n---\s*INSTRUCTION|$)/i);
   if (questionMatch?.[1]?.trim()) {
     return questionMatch[1].trim();
   }
-  
+
   // Priority 2: If no CDSS marker, return as-is (already cleaned by htmlToMarkdown)
   if (!/\[SYSTEM CONTEXT:\s*DENTAL CDSS MODE\]/i.test(normalized)) {
     return normalized;
   }
-  
+
   // Priority 3: Aggressive cleanup for malformed persisted prompts
   const cleaned = normalized
     .replace(/\[SYSTEM CONTEXT:\s*DENTAL CDSS MODE\][\s\S]*?---\s*INSTRUCTION\s*---/i, '')
@@ -222,12 +222,12 @@ function stripCDSSContextRobust(content) {
     .replace(/^Dentist Question:\s*/i, '')
     .replace(/^\s*\[.*?\]\s*$/gm, '') // Remove leftover bracketed metadata lines
     .trim();
-  
+
   // Final sanity check: if it still looks like system text, return empty
   if (!cleaned || /\[SYSTEM CONTEXT|---\s*(PATIENT PROFILE|CURRENT AI ANALYSIS|INSTRUCTION)\s*---/i.test(cleaned)) {
     return '';
   }
-  
+
   return cleaned;
 }
 
@@ -259,7 +259,7 @@ class PatientAIResultErrorBoundary extends React.Component {
             <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500 dark:text-red-400 text-xl">⚠️</div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Gagal Memuat Hasil</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{this.state.error?.message || 'Terjadi kesalahan sistem'}</p>
-            <button 
+            <button
               onClick={() => this.setState({ hasError: false, error: null })}
               className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-red-500/20"
             >
@@ -397,13 +397,13 @@ const reinsertMarkdownBreaks = (text) => {
 const preprocessSummaryText = (text) => {
   if (!text) return text;
   let t = String(text).trim();
-  
+
   // 1. Ensure sentences ending with .!? have a newline after them (if followed by capital letter)
   t = t.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n\n');
-  
+
   // 2. Detect common dental section headers and add spacing
   const headers = [
-    'Temuan Klinis', 'Interpretasi', 'Rekomendasi', 'Diagnosis', 
+    'Temuan Klinis', 'Interpretasi', 'Rekomendasi', 'Diagnosis',
     'Area', 'Lesi', 'Karies', 'Plak', 'Kalkulus', 'Gingivitis',
     'Perawatan', 'Tindak Lanjut', 'Saran', 'Kesimpulan'
   ];
@@ -411,7 +411,7 @@ const preprocessSummaryText = (text) => {
     const regex = new RegExp(`(^|\\n)(${header}[^:\\n]{0,30}:)`, 'gi');
     t = t.replace(regex, '$1\n**$2**\n');
   });
-  
+
   // 3. Break up very long paragraphs (>200 chars without line break)
   t = t.split('\n').map(line => {
     if (line.length > 200 && !line.match(/^[\*\-\d]/)) {
@@ -420,10 +420,10 @@ const preprocessSummaryText = (text) => {
     }
     return line;
   }).join('\n');
-  
+
   // 4. Ensure bullet-like items get proper markdown marker
   t = t.replace(/^(?:\-|\•|\*)\s+/gm, '* ');
-  
+
   return t.trim();
 };
 
@@ -433,18 +433,18 @@ const preprocessSummaryText = (text) => {
  */
 const normalizeMessageContent = (content, role) => {
   if (!content) return '';
-  
+
   // Step 1: Convert HTML to markdown-safe text
   let normalized = htmlToMarkdown(String(content));
-  
+
   // Step 2: Strip CDSS context for user messages
   if (role === 'user') {
     normalized = stripCDSSContextRobust(normalized);
   }
-  
+
   // Step 3: ALWAYS reinsert markdown breaks for structure restoration (CRITICAL FIX)
   normalized = reinsertMarkdownBreaks(normalized);
-  
+
   // Step 4: Final cleanup - remove any leftover system artifacts
   normalized = normalized
     .replace(/\[SYSTEM CONTEXT[^\]]*\][\s\S]*?---\s*INSTRUCTION\s*---/gi, '')
@@ -452,7 +452,7 @@ const normalizeMessageContent = (content, role) => {
     .replace(/^\s*[\-\*]\s*$/gm, '') // Remove empty bullet lines
     .replace(/\n{3,}/g, '\n\n') // Collapse excessive newlines
     .trim();
-    
+
   return normalized;
 };
 
@@ -519,7 +519,7 @@ const PatientAIResult = ({ patient }) => {
 
   // State untuk Chat Toggle
   const [isChatOpen, setIsChatOpen] = useState(false);
-  
+
   // Ref khusus untuk container chat
   const chatContainerRef = useRef(null);
 
@@ -555,7 +555,7 @@ const PatientAIResult = ({ patient }) => {
 
   const [selectedResult, setSelectedResult] = useState(sortedResults[0] || null);
   const [expandedSection, setExpandedSection] = useState('summary');
-  
+
   // Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -572,7 +572,7 @@ const PatientAIResult = ({ patient }) => {
       if (prev && sortedResults.some((result) => result.id === prev.id)) {
         return prev;
       }
-      setIsChatOpen(false); 
+      setIsChatOpen(false);
       return sortedResults[0];
     });
   }, [sortedResults]);
@@ -594,7 +594,7 @@ const PatientAIResult = ({ patient }) => {
     setChatLoading(true);
 
     const userText = chatInput.trim();
-    
+
     // 1. Generate Contextual Prompt (Invisible to UI, visible to API)
     const contextPrompt = generateCDSSContext(patient, enrichedResult || selectedResult, sessionData.detections);
     const finalPayloadMessage = `${contextPrompt}\n\nDentist Question: ${userText}`;
@@ -613,14 +613,14 @@ const PatientAIResult = ({ patient }) => {
             metadata: { source: 'dentist_portal', patient_id: patient.id, ai_result_id: selectedResult.id }
           });
           sessionId = createResp?.data?.id || createResp?.data?.session?.id;
-          
+
           if (sessionId) {
             saveSessionToLocal(patient.id, selectedResult.id, sessionId);
             setSelectedResult(prev => ({ ...(prev || {}), sessionId }));
             try {
               await http.post(`/v1/dentist-portal/patients/${patient.id}/ai-results/${selectedResult.id}/session`, { sessionId });
               skipNextFetchRef.current = true;
-            } catch (e) {}
+            } catch (e) { }
           }
         } catch (createErr) {
           console.warn('Session init failed, continuing stateless');
@@ -628,21 +628,21 @@ const PatientAIResult = ({ patient }) => {
       }
 
       // ✅ CRITICAL FIX: Apply same normalization to optimistic UI updates
-      setChatMessages(prev => [...prev, { 
-        role: 'user', 
+      setChatMessages(prev => [...prev, {
+        role: 'user',
         content: normalizeMessageContent(userText, 'user')
       }]);
       setChatInput('');
 
       const formData = new FormData();
-      formData.append('message', finalPayloadMessage); 
+      formData.append('message', finalPayloadMessage);
       formData.append('role', 'dentist');
       formData.append('language', 'bilingual');
       if (sessionId) formData.append('session_id', sessionId);
 
       const chatImage = effectiveImages.find(i => i.type === 'annotated') || effectiveImages[0] || null;
       if (chatImage?.url) {
-        formData.append('image_url', chatImage.url); 
+        formData.append('image_url', chatImage.url);
         try {
           const isLocal = chatImage.url.includes('localhost') || chatImage.url.includes('127.0.0.1');
           const isDataUrl = chatImage.url.startsWith('data:');
@@ -700,12 +700,12 @@ const PatientAIResult = ({ patient }) => {
               return r !== 'user' && r !== 'dentist';
             });
             if (lastAI) aiReply = reinsertMarkdownBreaks(htmlToMarkdown(lastAI.content || lastAI.message || ''));
-          } catch (e) {}
+          } catch (e) { }
         }
       }
 
-      setChatMessages(prev => [...prev, { 
-        role: 'ai', 
+      setChatMessages(prev => [...prev, {
+        role: 'ai',
         content: normalizeMessageContent(aiReply || 'AI sedang memproses...', 'ai')
       }]);
 
@@ -721,7 +721,7 @@ const PatientAIResult = ({ patient }) => {
   useEffect(() => {
     const fetchHistory = async () => {
       if (skipNextFetchRef.current || !selectedResult) return;
-      
+
       let sessionId = selectedResult.sessionId || selectedResult.session_id;
       if (!sessionId && patient?.id && selectedResult?.id) {
         sessionId = getSessionFromLocal(patient.id, selectedResult.id);
@@ -734,7 +734,7 @@ const PatientAIResult = ({ patient }) => {
 
       try {
         const msgs = await fetchSessionMessagesResilient(sessionId);
-        
+
         // ✅ CRITICAL FIX: Use unified normalization for ALL messages
         const normalized = msgs
           .map((m) => {
@@ -752,11 +752,11 @@ const PatientAIResult = ({ patient }) => {
             return { role, content: cleaned };
           })
           .filter(Boolean);
-        
+
         if (normalized.length > 0) {
-            setChatMessages(normalized);
+          setChatMessages(normalized);
         } else {
-            setChatMessages([]);
+          setChatMessages([]);
         }
       } catch (e) {
         if (!isLikelyNetworkError(e)) {
@@ -781,7 +781,7 @@ const PatientAIResult = ({ patient }) => {
     (async () => {
       try {
         const msgs = await fetchSessionMessagesResilient(sid);
-        let annotatedUri=null, originalUri=null, detections=[], findings=[], recommendations=[], concernLevel=null;
+        let annotatedUri = null, originalUri = null, detections = [], findings = [], recommendations = [], concernLevel = null;
         for (const msg of msgs) {
           const vf = msg.visual_findings || msg.metadata?.visual_findings || msg.analysis?.visual_findings;
           const b64 = vf?.annotated_image_base64 || msg.annotated_image_base64 || msg.metadata?.annotated_image_base64;
@@ -867,7 +867,7 @@ const PatientAIResult = ({ patient }) => {
       result.symptoms = sessionData.detections.map((d) => ({ name: d.label || d.name || 'Temuan', severity: d.severity || (d.confidence >= 0.7 ? 'high' : d.confidence >= 0.4 ? 'medium' : 'low'), description: d.description || null }));
     }
     if ((!result.diagnosis || result.diagnosis.length === 0) && sessionData.detections.length > 0) {
-        result.diagnosis = sessionData.detections.map((d, idx) => ({ condition: d.label || `Temuan ${idx + 1}`, description: d.description || '', probability: d.confidence ? Math.round((d.confidence <= 1 ? d.confidence * 100 : d.confidence)) : null, severity: d.severity || null, details: d.description || '', sections: [] }));
+      result.diagnosis = sessionData.detections.map((d, idx) => ({ condition: d.label || `Temuan ${idx + 1}`, description: d.description || '', probability: d.confidence ? Math.round((d.confidence <= 1 ? d.confidence * 100 : d.confidence)) : null, severity: d.severity || null, details: d.description || '', sections: [] }));
     }
     if ((!result.recommendations || result.recommendations.length === 0)) {
       const backendRecs = selectedResult.recommendations || [];
@@ -917,9 +917,9 @@ const PatientAIResult = ({ patient }) => {
     const imgs = [...galleryImages.filter(i => isUsable(i.url))];
 
     if (sessionData.annotated && isUsable(sessionData.annotated)) {
-       const idx = imgs.findIndex(i => i.type === 'annotated');
-       if(idx>=0) imgs[idx] = { url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' };
-       else imgs.push({ url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' });
+      const idx = imgs.findIndex(i => i.type === 'annotated');
+      if (idx >= 0) imgs[idx] = { url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' };
+      else imgs.push({ url: sessionData.annotated, type: 'annotated', description: 'Hasil anotasi AI' });
     }
     if (sessionData.original && isUsable(sessionData.original) && !imgs.some(i => i.type === 'original')) {
       imgs.unshift({ url: sessionData.original, type: 'original', description: 'Gambar asli' });
@@ -1128,7 +1128,7 @@ const PatientAIResult = ({ patient }) => {
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dentistPatient.ai.header.title')}</h2>
             <p className="text-slate-500 dark:text-slate-400 mt-1">{t('dentistPatient.ai.header.count', { count: patient.aiResults.length })}</p>
           </div>
-          
+
           {patient.aiResults.length > 1 && (
             <div className="w-full md:w-64">
               <div className="relative">
@@ -1164,7 +1164,7 @@ const PatientAIResult = ({ patient }) => {
             </div>
             <p className="text-xl font-bold text-slate-800 dark:text-white">{enrichedResult?.date ?? '-'}</p>
           </div>
-          
+
           {/* Confidence Card */}
           <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -1208,11 +1208,10 @@ const PatientAIResult = ({ patient }) => {
               <button
                 key={tab.id}
                 onClick={() => setExpandedSection(tab.id)}
-                className={`relative px-6 py-5 text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2.5 outline-none ${
-                  expandedSection === tab.id
-                    ? 'text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] dark:shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] rounded-t-2xl z-10'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 rounded-t-2xl'
-                }`}
+                className={`relative px-6 py-5 text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2.5 outline-none ${expandedSection === tab.id
+                  ? 'text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] dark:shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] rounded-t-2xl z-[5]'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 rounded-t-2xl'
+                  }`}
               >
                 {expandedSection === tab.id && (
                   <span className="absolute top-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-500 rounded-full mx-6" />
@@ -1231,7 +1230,7 @@ const PatientAIResult = ({ patient }) => {
               {/* Image & Description */}
               {summaryImage && (
                 <div className="relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden group shadow-sm hover:shadow-md transition-shadow">
-                  <div className="absolute top-4 left-4 z-10">
+                  <div className="absolute top-4 left-4 z-[2]">
                     <span className="px-3 py-1.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur text-blue-700 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-100 dark:border-blue-800/50 shadow-sm flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
                       AI Annotated Analysis
@@ -1275,7 +1274,7 @@ const PatientAIResult = ({ patient }) => {
                 {!isChatOpen ? (
                   <div className="flex flex-col items-center justify-center py-10 bg-gradient-to-b from-transparent to-slate-50/50 dark:to-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                     <p className="text-slate-500 dark:text-slate-400 font-medium mb-4">Butuh detail lebih lanjut tentang kasus ini?</p>
-                    <button 
+                    <button
                       onClick={() => setIsChatOpen(true)}
                       className="group relative inline-flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all duration-300"
                     >
@@ -1285,7 +1284,7 @@ const PatientAIResult = ({ patient }) => {
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 ring-1 ring-slate-900/5 dark:ring-white/10">
-                    <div className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 z-10">
+                    <div className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 z-[10]">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-xl shadow-inner">🤖</div>
                         <div>
@@ -1308,17 +1307,16 @@ const PatientAIResult = ({ patient }) => {
                           <p className="text-sm font-medium">Ajukan pertanyaan klinis Anda di sini.</p>
                         </div>
                       )}
-                      
+
                       {chatMessages.map((m, i) => (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                           {m.role === 'error' ? (
                             <AIErrorBubble errorType={m.errorType} title={m.title} description={m.description} />
                           ) : (
-                            <div className={`max-w-[85%] px-5 py-4 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
-                              m.role === 'user' 
-                                ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none shadow-blue-500/20' 
-                                : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none shadow-slate-200/50 dark:shadow-black/20'
-                            }`}>
+                            <div className={`max-w-[85%] px-5 py-4 rounded-2xl text-[15px] leading-relaxed shadow-sm ${m.role === 'user'
+                              ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none shadow-blue-500/20'
+                              : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none shadow-slate-200/50 dark:shadow-black/20'
+                              }`}>
                               {m.role === 'ai' ? formatAIResponse(m.content) : m.content}
                             </div>
                           )}
@@ -1340,7 +1338,7 @@ const PatientAIResult = ({ patient }) => {
                     {/* Input Bar */}
                     <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-3 items-end">
                       <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-hidden">
-                        <textarea 
+                        <textarea
                           className="w-full bg-transparent px-4 py-3 text-sm text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none resize-none h-12 max-h-32 appearance-none border-0 focus:ring-0"
                           placeholder="Ketik pesan..."
                           rows={1}
@@ -1355,7 +1353,7 @@ const PatientAIResult = ({ patient }) => {
                           disabled={chatLoading}
                         />
                       </div>
-                      <button 
+                      <button
                         onClick={handleSendChat}
                         disabled={chatLoading || !chatInput.trim()}
                         className="h-12 w-12 flex-shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 hover:to-purple-700 text-white rounded-2xl flex items-center justify-center disabled:opacity-50 disabled:grayscale transition-all shadow-lg shadow-indigo-500/20 hover:scale-105 active:scale-95"
@@ -1385,11 +1383,10 @@ const PatientAIResult = ({ patient }) => {
                         </span>
                         <h4 className="font-bold text-slate-800 dark:text-white text-lg">{diag.condition}</h4>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                        (diag.probability || 0) >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50' :
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${(diag.probability || 0) >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50' :
                         (diag.probability || 0) >= 60 ? 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50' :
-                        'bg-red-50 text-red-700 border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50'
-                      }`}>
+                          'bg-red-50 text-red-700 border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50'
+                        }`}>
                         {diag.probability ? `${diag.probability}% Match` : ''}
                       </span>
                     </div>
@@ -1564,12 +1561,11 @@ const PatientAIResult = ({ patient }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {effectiveImages.map((img, index) => (
                     <div key={index} className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-xl transition-all">
-                      <div className="absolute top-3 left-3 z-10">
-                        <span className={`px-3 py-1.5 text-xs font-bold rounded-lg border shadow-sm flex items-center gap-1.5 ${
-                          img.type === 'annotated'
-                            ? 'bg-blue-50/90 dark:bg-blue-900/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700'
-                            : 'bg-white/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'
-                        }`}>
+                      <div className="absolute top-3 left-3 z-[2]">
+                        <span className={`px-3 py-1.5 text-xs font-bold rounded-lg border shadow-sm flex items-center gap-1.5 ${img.type === 'annotated'
+                          ? 'bg-blue-50/90 dark:bg-blue-900/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700'
+                          : 'bg-white/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                          }`}>
                           {img.type === 'annotated' && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />}
                           {img.type === 'annotated' ? 'AI Annotated' : img.type === 'original' ? 'Original' : `Gambar ${index + 1}`}
                         </span>

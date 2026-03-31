@@ -8,27 +8,19 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Dimensions,
-  StatusBar,
-  Animated,
-  Easing,
-  Image,
-  SafeAreaView,
-  StyleSheet,
+  View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert,
 } from 'react-native';
+import { Camera } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo
+} from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
+import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 
 // ─── Brand / Theme Constants ───────────────────────────────────────────────────
 const COLORS = {
@@ -135,7 +127,7 @@ const PatientTeledentistryScreen = () => {
   useEffect(() => {
     AsyncStorage.getItem('user').then((json) => {
       if (json) setCurrentUser(JSON.parse(json));
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const {
@@ -148,6 +140,20 @@ const PatientTeledentistryScreen = () => {
     emitVideoCallEnded,
     fetchVideoToken,
   } = useChat({ userId: currentUser?.id });
+
+  const {
+    twilioRef,
+    isConnected,
+    isAudioEnabled,
+    isVideoEnabled,
+    remoteParticipantSids,
+    connect,
+    disconnect,
+    toggleAudio,
+    toggleVideo,
+    flipCamera,
+    handlers
+  } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
@@ -326,12 +332,26 @@ const PatientTeledentistryScreen = () => {
     await sendMessage({ appointmentId: appointmentId?.toString(), text: trimmed });
   };
 
-  const handleAcceptCall = () => {
-    if (appointmentId) {
-      emitVideoCallResponse(appointmentId.toString(), true);
+  const handleAcceptCall = async () => {
+    try {
+      const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
+      const { status: micStatus } = await Camera.requestMicrophonePermissionsAsync();
+
+      if (cameraStatus !== 'granted' || micStatus !== 'granted') {
+        Alert.alert('Izin Ditolak', 'Aplikasi memerlukan akses Kamera dan Mikrofon untuk Video Call.');
+        return;
+      }
+
+      if (appointmentId) {
+        emitVideoCallResponse(appointmentId.toString(), true);
+        const { token, roomName } = await fetchVideoToken(appointmentId.toString());
+        connect({ roomName, token });
+      }
+      setCallStatus('active');
+      addSystemMessage('Video call dimulai.');
+    } catch (e) {
+      console.warn('Failed to get permissions', e);
     }
-    setCallStatus('active');
-    addSystemMessage('Video call dimulai.');
   };
 
   const handleRejectCall = () => {
@@ -347,6 +367,7 @@ const PatientTeledentistryScreen = () => {
     if (appointmentId) {
       emitVideoCallEnded(appointmentId.toString());
     }
+    disconnect();
     setCallStatus('idle');
     addSystemMessage(`Video call berakhir. Durasi: ${duration}.`);
   };
@@ -824,28 +845,32 @@ const PatientTeledentistryScreen = () => {
         }}
         pointerEvents={callStatus === 'active' ? 'auto' : 'none'}
       >
-        {/* Dentist "Video" - full background placeholder */}
-        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#1A0A30' }}>
-          <LinearGradient colors={['#1A0A30', '#2D1155']} style={StyleSheet.absoluteFill} />
-          {/* Dentist placeholder */}
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            {resolvedAvatar ? (
-              <Image
-                source={{ uri: resolvedAvatar }}
-                style={{ width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              <LinearGradient
-                colors={[COLORS.primaryLight, COLORS.primary]}
-                style={{ width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}
-              >
-                <Text style={{ fontSize: 36, fontWeight: '700', color: COLORS.white }}>{dentistInitials}</Text>
-              </LinearGradient>
-            )}
-            <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{dentistName}</Text>
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{displaySpecialty}</Text>
-          </View>
+        {/* Remote Participant View / Background */}
+        <View style={StyleSheet.absoluteFill}>
+          {remoteParticipantSids.length > 0 ? (
+            <TwilioVideoParticipantView
+              style={{ flex: 1, backgroundColor: '#000' }}
+              trackIdentifier={{
+                participantSid: remoteParticipantSids[0],
+                videoTrackSid: ''
+              }}
+            />
+          ) : (
+            <LinearGradient colors={['#0F172A', '#1E293B']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <View style={{ position: 'relative' }}>
+                {resolvedAvatar ? (
+                  <Image source={{ uri: resolvedAvatar }} style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', marginBottom: 16 }} onError={() => setAvatarError(true)} />
+                ) : (
+                  <LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={{ width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                    <Text style={{ fontSize: 36, fontWeight: '700', color: COLORS.white }}>{dentistInitials}</Text>
+                  </LinearGradient>
+                )}
+                <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{dentistName}</Text>
+                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4, textAlign: 'center' }}>{displaySpecialty}</Text>
+                <Text style={{ fontSize: 14, color: COLORS.accent, marginTop: 12, textAlign: 'center' }}>Menunggu terhubung...</Text>
+              </View>
+            </LinearGradient>
+          )}
         </View>
 
         {/* Top Bar: Timer + Back */}
@@ -863,11 +888,15 @@ const PatientTeledentistryScreen = () => {
         </SafeAreaView>
 
         {/* PIP (Patient Camera) */}
-        <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60 }}>
-          <LinearGradient colors={['#37474F', '#263238']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <MaterialCommunityIcons name={isCameraOff ? 'camera-off' : 'account'} size={32} color="rgba(255,255,255,0.6)" />
-            {isCameraOff && <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, marginTop: 4 }}>Kamera Mati</Text>}
-          </LinearGradient>
+        <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60, backgroundColor: '#263238' }}>
+          {isVideoEnabled ? (
+            <TwilioVideoLocalView enabled={true} style={{ flex: 1 }} />
+          ) : (
+            <LinearGradient colors={['#37474F', '#263238']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <MaterialCommunityIcons name="camera-off" size={32} color="rgba(255,255,255,0.6)" />
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, marginTop: 4 }}>Kamera Mati</Text>
+            </LinearGradient>
+          )}
         </View>
 
         {/* Bottom Controls */}
@@ -875,28 +904,28 @@ const PatientTeledentistryScreen = () => {
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, paddingHorizontal: 20 }}>
             {/* Mute */}
             <TouchableOpacity
-              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: isMuted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
-              onPress={() => setIsMuted((prev) => !prev)}
+              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isAudioEnabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
+              onPress={toggleAudio}
               activeOpacity={0.8}
             >
-              <MaterialCommunityIcons name={isMuted ? 'microphone-off' : 'microphone'} size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+              <MaterialCommunityIcons name={!isAudioEnabled ? 'microphone-off' : 'microphone'} size={24} color={COLORS.white} />
+              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
             </TouchableOpacity>
 
             {/* Camera Toggle */}
             <TouchableOpacity
-              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: isCameraOff ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
-              onPress={() => setIsCameraOff((prev) => !prev)}
+              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isVideoEnabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
+              onPress={toggleVideo}
               activeOpacity={0.8}
             >
-              <MaterialCommunityIcons name={isCameraOff ? 'camera-off' : 'camera'} size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{isCameraOff ? 'Nyalakan' : 'Matikan'}</Text>
+              <MaterialCommunityIcons name={!isVideoEnabled ? 'camera-off' : 'camera'} size={24} color={COLORS.white} />
+              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{!isVideoEnabled ? 'Nyalakan' : 'Matikan'}</Text>
             </TouchableOpacity>
 
             {/* Switch Camera */}
             <TouchableOpacity
               style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', paddingTop: 6 }}
-              onPress={() => setIsFrontCamera((prev) => !prev)}
+              onPress={flipCamera}
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="camera-flip-outline" size={24} color={COLORS.white} />
@@ -928,6 +957,13 @@ const PatientTeledentistryScreen = () => {
 
       {renderHeader()}
 
+      {!socketConnected && (
+        <View style={{ backgroundColor: '#F59E0B', paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.white} style={{ marginRight: 8 }} />
+          <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>Koneksi terputus. Menghubungkan kembali...</Text>
+        </View>
+      )}
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -940,6 +976,9 @@ const PatientTeledentistryScreen = () => {
       {/* Overlays */}
       {renderIncomingCallOverlay()}
       {renderVideoCallOverlay()}
+
+      {/* Global Twilio Video Engine */}
+      <TwilioVideo ref={twilioRef} {...handlers} />
     </View>
   );
 };

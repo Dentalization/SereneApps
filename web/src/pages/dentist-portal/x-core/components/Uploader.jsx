@@ -105,15 +105,14 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                     }, 1500);
                 } else {
                     console.error('Upload failed with status:', xhr.status);
-                    // Handle error (alert/toast)
-                    alert(`Upload failed: ${xhr.statusText}`);
+                    alert(`Upload failed. The server encountered an error (Status: ${xhr.status}). Please try again.`);
                     setUploading(false);
                 }
             };
 
             xhr.onerror = () => {
-                console.error('Upload Error');
-                alert('Upload failed due to network error.');
+                console.error('Network Error during upload');
+                alert('Upload failed due to a network connection error. Please check your internet and try again.');
                 setUploading(false);
             };
 

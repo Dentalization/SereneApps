@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+
 /**
  * ImageViewer2D — Full-featured 2D DICOM image viewer
  * 
@@ -36,7 +38,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
     const seriesUid = seriesInfo?.series_uid || study?.selectedSeriesUid || '';
 
     // Image URL — use pre-generated 2D image endpoint
-    const imageUrl = `http://127.0.0.1:8000/image/${studyKey}/${seriesUid}`;
+    const imageUrl = `${PY_API_BASE}/image/${studyKey}/${seriesUid}`;
 
     // ── Zoom ──
     const handleWheel = useCallback((e) => {

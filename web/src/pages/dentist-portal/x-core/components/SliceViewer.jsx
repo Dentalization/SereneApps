@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 
 // VTK.js — 2D slice rendering (reuses Volume profile already loaded by VolumeViewer3D)
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
+const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 
 import vtkGenericRenderWindow   from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow';
 import vtkImageMapper            from '@kitware/vtk.js/Rendering/Core/ImageMapper';
@@ -238,7 +239,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                     imageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[SliceViewer] Cache MISS:', cacheKey, '| Downloading VTI...');
-                    const url = `http://127.0.0.1:8000/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}`;
+                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}`;
 
                     setLoadingStage('Downloading 3D volume...');
                     setLoadingProgress(5);

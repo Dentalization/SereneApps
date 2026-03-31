@@ -97,10 +97,20 @@ export function useTwilioVideoClient() {
       localElementRef.current = localVideoEl;
       remoteElementRef.current = remoteVideoEl;
 
-      const room = await connect(token, {
-        name: roomName,
-        ...DEFAULT_VIDEO_SETTINGS
-      });
+      let room;
+      try {
+        room = await connect(token, {
+          name: roomName,
+          ...DEFAULT_VIDEO_SETTINGS
+        });
+      } catch (error) {
+        if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
+          throw new Error('Kamera & Mikrofon tidak diizinkan. Mohon izinkan akses di pengaturan browser Anda.');
+        } else if (error.name === 'NotFoundError') {
+          throw new Error('Kamera/Mikrofon tidak ditemukan di perangkat Anda.');
+        }
+        throw new Error(`Video connection failed: ${error.message || 'Unknown error'}`);
+      }
       roomRef.current = room;
       setIsConnected(true);
       setAudioEnabled(true);

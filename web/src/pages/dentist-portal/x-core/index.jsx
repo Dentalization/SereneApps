@@ -19,29 +19,30 @@ const XCore = () => {
 
     const [storageStats, setStorageStats] = useState({ usage: 0, limit: 10 * 1024 * 1024 * 1024, percent: 0 });
 
-    React.useEffect(() => {
-        const fetchStorage = async () => {
-            try {
-                const token = getAccessToken();
-                const response = await fetch('/api/v1/x-core/storage', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setStorageStats({
-                        usage: Number(data.usage),
-                        limit: Number(data.limit),
-                        percent: data.percent
-                    });
+    const fetchStorage = React.useCallback(async () => {
+        try {
+            const token = getAccessToken();
+            const response = await fetch('/api/v1/x-core/storage', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
                 }
-            } catch (error) {
-                console.error("Failed to fetch storage stats", error);
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setStorageStats({
+                    usage: Number(data.usage),
+                    limit: Number(data.limit),
+                    percent: data.percent
+                });
             }
-        };
-        fetchStorage();
+        } catch (error) {
+            console.error("Failed to fetch storage stats", error);
+        }
     }, []);
+
+    React.useEffect(() => {
+        fetchStorage();
+    }, [fetchStorage]);
 
     const formatBytes = (bytes) => {
         if (bytes === 0) return '0 GB';
@@ -54,7 +55,9 @@ const XCore = () => {
     return (
         <div className="flex h-screen bg-background theme-transition overflow-hidden">
             {/* Sidebar */}
-            <SideBar />
+            <div className="flex-shrink-0 z-50 transition-all duration-300 relative" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+                <SideBar />
+            </div>
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -97,27 +100,6 @@ const XCore = () => {
                                 refreshTrigger={refreshTrigger}
                                 onStudyDeleted={() => {
                                     setRefreshTrigger(prev => prev + 1);
-                                    // Re-fetch storage stats to show reclaimed space
-                                    const fetchStorage = async () => {
-                                        try {
-                                            const token = getAccessToken();
-                                            const response = await fetch('/api/v1/x-core/storage', {
-                                                headers: {
-                                                    'Authorization': `Bearer ${token}`
-                                                }
-                                            });
-                                            if (response.ok) {
-                                                const data = await response.json();
-                                                setStorageStats({
-                                                    usage: Number(data.usage),
-                                                    limit: Number(data.limit),
-                                                    percent: data.percent
-                                                });
-                                            }
-                                        } catch (error) {
-                                            console.error("Failed to fetch storage stats", error);
-                                        }
-                                    };
                                     fetchStorage();
                                 }}
                             />
@@ -138,27 +120,6 @@ const XCore = () => {
                     onClose={() => setShowUploader(false)}
                     onUploadComplete={() => {
                         setRefreshTrigger(prev => prev + 1);
-                        // Refresh storage stats too
-                        const fetchStorage = async () => {
-                            try {
-                                const token = getAccessToken();
-                                const response = await fetch('/api/v1/x-core/storage', {
-                                    headers: {
-                                        'Authorization': `Bearer ${token}`
-                                    }
-                                });
-                                if (response.ok) {
-                                    const data = await response.json();
-                                    setStorageStats({
-                                        usage: Number(data.usage),
-                                        limit: Number(data.limit),
-                                        percent: data.percent
-                                    });
-                                }
-                            } catch (error) {
-                                console.error("Failed to fetch storage stats", error);
-                            }
-                        };
                         fetchStorage();
                     }}
                 />

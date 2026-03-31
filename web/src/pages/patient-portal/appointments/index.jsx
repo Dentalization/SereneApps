@@ -193,6 +193,15 @@ const PatientAppointments = () => {
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {appointment.type === 'virtual' && (
+                        <a
+                          href="/patient-portal/teledentistry"
+                          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
+                        >
+                          <Icon name="Video" size={14} />
+                          Ikuti Konsultasi
+                        </a>
+                      )}
                       <button
                         onClick={() => handleOpenReschedule(appointment)}
                         className="inline-flex items-center gap-2 rounded-lg border border-accent/40 px-3 py-2 text-sm text-accent hover:bg-accent/10 transition"

@@ -504,7 +504,7 @@ const PatientManagement = () => {
                 <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
 
                   {/* Tabs */}
-                  <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-2 sticky top-0 z-10 backdrop-blur-md transition-colors">
+                  <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-2 sticky top-0 z-30 backdrop-blur-md transition-colors">
                     <div className="flex gap-1 overflow-x-auto no-scrollbar p-1">
                       {[
                         { id: 'profile', label: t('dentistPatient.tabs.profile'), icon: 'User' },

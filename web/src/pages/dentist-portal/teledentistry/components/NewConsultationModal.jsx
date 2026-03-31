@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../../../../components/AppIcon';
 
+import { fetchAppointments } from '../../../../services/appointmentService';
+
 const CONSULTATION_TYPES = [
   { value: 'general', label: 'General Consultation' },
   { value: 'follow_up', label: 'Follow-up Visit' },
@@ -9,9 +11,11 @@ const CONSULTATION_TYPES = [
   { value: 'second_opinion', label: 'Second Opinion' },
 ];
 
-const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
+const NewConsultationModal = ({ onClose, onSubmit }) => {
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [consultationType, setConsultationType] = useState('general');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,6 +24,26 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
   // Focus search on mount
   useEffect(() => {
     searchInputRef.current?.focus();
+  }, []);
+
+  // Fetch Virtual Appointments
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const response = await fetchAppointments({ view: 'dentist', status: 'confirmed' });
+        if (mounted) {
+          const virtualAppts = (response.appointments || []).filter(a => a.type === 'virtual' || a.isVirtual);
+          setAppointments(virtualAppts);
+        }
+      } catch (error) {
+        console.error('Failed to load appointments for modal:', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
   }, []);
 
   // Escape key to close
@@ -38,24 +62,25 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // Filter patients from conversations
-  const filteredPatients = conversations
-    .filter((conv) => conv.patient)
-    .filter((conv) => {
+  // Filter appointments
+  const filteredAppointments = appointments
+    .filter((appt) => appt.patient)
+    .filter((appt) => {
       if (!searchQuery.trim()) return true;
-      const name = (conv.patient.name || '').toLowerCase();
-      const email = (conv.patient.email || '').toLowerCase();
+      const name = (appt.patient.name || '').toLowerCase();
+      const email = (appt.patient.email || '').toLowerCase();
       const q = searchQuery.toLowerCase();
       return name.includes(q) || email.includes(q);
     })
     .slice(0, 5);
 
   const handleSubmitClick = async () => {
-    if (!selectedPatient || submitting) return;
+    if (!selectedAppointment || submitting) return;
     setSubmitting(true);
     try {
       await onSubmit?.({
-        patient: selectedPatient,
+        appointmentId: selectedAppointment.id,
+        patient: selectedAppointment.patient,
         consultationType,
         notes: notes.trim(),
       });
@@ -103,7 +128,7 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  setSelectedPatient(null);
+                  setSelectedAppointment(null);
                 }}
                 placeholder="Search by name or email..."
                 className="w-full pl-9 pr-3 py-2.5 border border-primary/10 rounded-xl bg-surface text-primary text-sm focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent theme-transition"
@@ -111,23 +136,25 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
             </div>
 
             {/* Patient Results */}
-            {!selectedPatient && searchQuery.trim() && (
+            {!selectedAppointment && searchQuery.trim() && (
               <div className="mt-2 border border-primary/10 rounded-xl overflow-hidden bg-surface theme-transition">
-                {filteredPatients.length === 0 ? (
-                  <div className="px-4 py-3 text-xs text-muted text-center">No patients found</div>
+                {loading ? (
+                  <div className="px-4 py-3 text-xs text-muted text-center">Loading...</div>
+                ) : filteredAppointments.length === 0 ? (
+                  <div className="px-4 py-3 text-xs text-muted text-center">No matching upcoming virtual appointments found</div>
                 ) : (
-                  filteredPatients.map((conv) => (
+                  filteredAppointments.map((appt) => (
                     <button
-                      key={conv.appointmentId}
+                      key={appt.id}
                       onClick={() => {
-                        setSelectedPatient(conv.patient);
-                        setSearchQuery(conv.patient.name || '');
+                        setSelectedAppointment(appt);
+                        setSearchQuery(appt.patient.name || '');
                       }}
                       className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent/5 transition-colors text-left"
                     >
                       <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs font-semibold text-accent">
-                          {(conv.patient.name || '?')
+                          {(appt.patient.name || '?')
                             .split(' ')
                             .map((n) => n[0])
                             .join('')
@@ -136,10 +163,10 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-primary truncate theme-transition">
-                          {conv.patient.name}
+                          {appt.patient.name} <span className="text-muted font-normal">({new Date(appt.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'})})</span>
                         </p>
                         <p className="text-xs text-muted truncate theme-transition">
-                          {conv.patient.email || 'No email'}
+                          #{appt.id} • {appt.patient.email || 'No email'}
                         </p>
                       </div>
                     </button>
@@ -149,15 +176,18 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
             )}
 
             {/* Selected Patient Chip */}
-            {selectedPatient && (
+            {selectedAppointment && (
               <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/10 border border-accent/20">
-                <span className="text-xs font-medium text-accent">{selectedPatient.name}</span>
+                <span className="text-xs font-medium text-accent">{selectedAppointment.patient.name}</span>
+                <span className="text-[10px] text-accent/60 bg-accent/10 px-1.5 rounded-full block border border-accent/20">
+                  #{selectedAppointment.id}
+                </span>
                 <button
                   onClick={() => {
-                    setSelectedPatient(null);
+                    setSelectedAppointment(null);
                     setSearchQuery('');
                   }}
-                  className="text-accent/60 hover:text-accent"
+                  className="text-accent/60 hover:text-accent ml-1"
                   aria-label="Remove patient"
                 >
                   <Icon name="X" size={12} />
@@ -212,7 +242,7 @@ const NewConsultationModal = ({ onClose, onSubmit, conversations = [] }) => {
           </button>
           <button
             onClick={handleSubmitClick}
-            disabled={!selectedPatient || submitting}
+            disabled={!selectedAppointment || submitting}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? (
