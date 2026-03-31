@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useTwilioVideoClient } from '../../../../hooks/useTwilioVideoClient';
 
-const VideoCallInterface = ({ conversation, videoSession, onEndCall }) => {
+const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError }) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const controlsHideTimerRef = useRef(null);
@@ -34,6 +34,8 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall }) => {
         remoteVideoEl: remoteVideoRef.current
       }).catch((error) => {
         console.error('Failed to join Twilio room:', error);
+        onJoinError?.(error);
+        onEndCall?.();
       });
       durationTimer = setInterval(() => {
         setCallDuration((prev) => prev + 1);

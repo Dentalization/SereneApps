@@ -6,6 +6,7 @@ import ChatInterface from './components/ChatInterface';
 import VideoCallInterface from './components/VideoCallInterface';
 import PatientInfoPanel from './components/PatientInfoPanel';
 import IncomingCallModal from './components/IncomingCallModal';
+import NewConsultationModal from './components/NewConsultationModal';
 import { useChat } from '../../../hooks/useChat';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCallState } from '../../../hooks/useCallState';
@@ -23,9 +24,12 @@ const Teledentistry = () => {
     activeConversation,
     activeAppointmentId,
     messages,
+    incomingCall,
     selectConversation,
     sendMessage,
-    sendAttachmentMessage
+    sendAttachmentMessage,
+    emitVideoCall,
+    emitVideoCallResponse,
   } = useChat();
 
   const {
@@ -35,9 +39,11 @@ const Teledentistry = () => {
     initiateCall,
     acceptCall,
     endCall,
+    receiveIncomingCall,
   } = useCallState({ userId: user?.id?.toString() });
 
   const [isPatientPanelExpanded, setIsPatientPanelExpanded] = useState(true);
+  const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
@@ -64,6 +70,19 @@ const Teledentistry = () => {
     }
   }, [loading]);
 
+  // ── Fix 2: Handle incoming call from socket ──────────────────
+  useEffect(() => {
+    if (!incomingCall) return;
+    // Build a minimal session and trigger ringing
+    receiveIncomingCall({
+      appointmentId: incomingCall.appointmentId,
+      roomName: null, // Will be set when acceptCall fetches the token
+      token: null,
+      callerId: incomingCall.callerId,
+      callerName: incomingCall.callerName,
+    });
+  }, [incomingCall, receiveIncomingCall]);
+
   const handleConversationSelect = (conversation) => {
     selectConversation(conversation.appointmentId);
   };
@@ -82,21 +101,44 @@ const Teledentistry = () => {
     if (!activeAppointmentId) return;
     try {
       await initiateCall(activeAppointmentId);
+      // Notify the other participant via socket
+      emitVideoCall(activeAppointmentId);
     } catch (error) {
       toast.error('Failed to start video call. Please try again.');
     }
   };
 
-  const handleAcceptCall = () => {
-    acceptCall();
+  const handleAcceptCall = async () => {
+    const apptId = videoSession?.appointmentId || incomingCall?.appointmentId || activeAppointmentId;
+    // If accepting an incoming call, we need to fetch a token first
+    if (apptId && !videoSession?.token) {
+      try {
+        await initiateCall(apptId);
+        acceptCall();
+        emitVideoCallResponse(apptId, true);
+      } catch (error) {
+        toast.error('Failed to connect to video call.');
+        endCall();
+      }
+    } else {
+      acceptCall();
+      if (apptId) emitVideoCallResponse(apptId, true);
+    }
   };
 
   const handleDeclineCall = () => {
+    const apptId = videoSession?.appointmentId || incomingCall?.appointmentId;
+    if (apptId) emitVideoCallResponse(apptId, false);
     endCall();
   };
 
   const handleEndVideoCall = () => {
     endCall();
+  };
+
+  // Fix 3: Handle join error from VideoCallInterface
+  const handleJoinError = (error) => {
+    toast.error(`Video call failed: ${error?.message || 'Connection error'}`);
   };
 
   // Show toast on call error
@@ -105,6 +147,29 @@ const Teledentistry = () => {
       toast.error(callError);
     }
   }, [callError, toast]);
+
+  // ── Fix 4: PatientInfoPanel quick action handlers ─────────────
+  const handleScheduleAppointment = () => {
+    if (!activeConversation) return;
+    toast.info(`Scheduling follow-up for ${activeConversation.patient?.name || 'patient'}…`);
+    // TODO: Navigate to appointment scheduling page or open scheduling modal
+    console.log('[Teledentistry] Schedule appointment for:', activeConversation.appointmentId);
+  };
+
+  const handleViewMedicalHistory = () => {
+    if (!activeConversation) return;
+    toast.info(`Opening medical history for ${activeConversation.patient?.name || 'patient'}…`);
+    // TODO: Navigate to EMR/patient profile page
+    console.log('[Teledentistry] View medical history for:', activeConversation.patient?.id);
+  };
+
+  // ── Fix 5: New Consultation modal ─────────────────────────────
+  const handleNewConsultationSubmit = async ({ patient, consultationType, notes }) => {
+    toast.success(`Consultation created for ${patient.name || 'patient'} (${consultationType})`);
+    setShowNewConsultation(false);
+    // TODO: POST to backend to create a new appointment/consultation
+    console.log('[Teledentistry] New consultation:', { patient, consultationType, notes });
+  };
 
   const selectedPresence = useMemo(() => {
     if (!activeAppointmentId) return [];
@@ -194,7 +259,7 @@ const Teledentistry = () => {
               <span>Start Instant Call</span>
             </button>
             <button
-              onClick={() => console.log('Initiate new consultation flow')}
+              onClick={() => setShowNewConsultation(true)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-all duration-200"
             >
               <Icon name="Plus" size={16} />
@@ -218,19 +283,12 @@ const Teledentistry = () => {
           </aside>
 
           <section className="flex-1 flex flex-col min-w-0 bg-surface theme-transition">
-            {callState === 'ringing' && (
-              <IncomingCallModal
-                conversation={activeConversation}
-                onAccept={handleAcceptCall}
-                onDecline={handleDeclineCall}
-                callState={callState}
-              />
-            )}
             {videoSession && callState === 'connected' ? (
               <VideoCallInterface
                 conversation={activeConversation}
                 videoSession={videoSession}
                 onEndCall={handleEndVideoCall}
+                onJoinError={handleJoinError}
               />
             ) : (
               <ChatInterface
@@ -250,9 +308,29 @@ const Teledentistry = () => {
             presence={selectedPresence}
             isExpanded={isPatientPanelExpanded}
             onToggleExpanded={setIsPatientPanelExpanded}
+            onScheduleAppointment={handleScheduleAppointment}
+            onViewMedicalHistory={handleViewMedicalHistory}
           />
         </div>
       </main>
+
+      {/* Portaled modals */}
+      {callState === 'ringing' && (
+        <IncomingCallModal
+          conversation={activeConversation}
+          onAccept={handleAcceptCall}
+          onDecline={handleDeclineCall}
+          callState={callState}
+        />
+      )}
+
+      {showNewConsultation && (
+        <NewConsultationModal
+          conversations={conversations}
+          onClose={() => setShowNewConsultation(false)}
+          onSubmit={handleNewConsultationSubmit}
+        />
+      )}
     </div>
   );
 };

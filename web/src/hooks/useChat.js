@@ -23,6 +23,7 @@ export function useChat() {
   const [activeAppointmentId, setActiveAppointmentId] = useState(null);
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
+  const [incomingCall, setIncomingCall] = useState(null);
   const socketRef = useRef(null);
 
   const token = useMemo(() => getAccessToken(), [user?.id]);
@@ -159,6 +160,23 @@ export function useChat() {
 
     socket.on('chat:error', ({ message }) => {
       console.error('Socket chat error:', message);
+    });
+
+    // ── Video call signaling ──────────────────────────────────
+    socket.on('video:incoming_call', ({ appointmentId, callerId, callerName }) => {
+      setIncomingCall({ appointmentId, callerId, callerName });
+    });
+
+    socket.on('video:call_accepted', () => {
+      setIncomingCall(null);
+    });
+
+    socket.on('video:call_declined', () => {
+      setIncomingCall(null);
+    });
+
+    socket.on('video:error', ({ message }) => {
+      console.error('Socket video error:', message);
     });
 
     return () => {
@@ -299,6 +317,17 @@ export function useChat() {
     }
   }, []);
 
+  const emitVideoCall = useCallback((appointmentId) => {
+    if (!socketRef.current || !socketConnected) return;
+    socketRef.current.emit('video:call', { appointmentId });
+  }, [socketConnected]);
+
+  const emitVideoCallResponse = useCallback((appointmentId, accepted) => {
+    if (!socketRef.current || !socketConnected) return;
+    socketRef.current.emit('video:call_response', { appointmentId, accepted });
+    setIncomingCall(null);
+  }, [socketConnected]);
+
   return {
     conversations,
     presenceMap,
@@ -307,9 +336,12 @@ export function useChat() {
     activeConversation,
     activeAppointmentId,
     messages: activeMessages,
+    incomingCall,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
-    refreshConversations
+    refreshConversations,
+    emitVideoCall,
+    emitVideoCallResponse,
   };
 }
