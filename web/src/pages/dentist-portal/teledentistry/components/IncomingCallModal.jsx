@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../../../../components/AppIcon';
 
 const AUTO_DECLINE_SECONDS = 30;
@@ -76,8 +77,8 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState }) => 
 
   const isConnecting = callState === 'connected' || callState === 'requesting_token';
 
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-black/60 backdrop-blur-sm z-50">
+  return createPortal(
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-elevated rounded-3xl shadow-2xl p-8 max-w-sm w-full mx-4 theme-transition border border-primary/10">
         {/* Patient Avatar with Pulse Ring */}
         <div className="flex flex-col items-center mb-6">
@@ -153,7 +154,8 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState }) => 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

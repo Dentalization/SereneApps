@@ -190,6 +190,42 @@ export function registerChatGateway(io) {
       }
     });
 
+    // ── Video call signaling ──────────────────────────────────
+    socket.on('video:call', async ({ appointmentId }) => {
+      try {
+        if (!appointmentId) return;
+        const appointment = await authorizeAppointment(appointmentId, user);
+        const { room } = await ensureChatRoom({ appointmentId: appointment.id });
+
+        // Broadcast to the room so the other participant receives the incoming call
+        socket.to(room.channelName).emit('video:incoming_call', {
+          appointmentId: appointment.id.toString(),
+          callerId: user.id.toString(),
+          callerName: user.name || user.email || 'Unknown',
+        });
+      } catch (error) {
+        console.error('Socket video:call error', error);
+        socket.emit('video:error', { message: error.message || 'Unable to initiate call' });
+      }
+    });
+
+    socket.on('video:call_response', async ({ appointmentId, accepted }) => {
+      try {
+        if (!appointmentId) return;
+        const appointment = await authorizeAppointment(appointmentId, user);
+        const { room } = await ensureChatRoom({ appointmentId: appointment.id });
+
+        const event = accepted ? 'video:call_accepted' : 'video:call_declined';
+        socket.to(room.channelName).emit(event, {
+          appointmentId: appointment.id.toString(),
+          responderId: user.id.toString(),
+        });
+      } catch (error) {
+        console.error('Socket video:call_response error', error);
+        socket.emit('video:error', { message: error.message || 'Unable to respond to call' });
+      }
+    });
+
     socket.on('disconnect', async () => {
       touchUserSocket(user.id, socket.id, 'remove');
       const roomEntries = Array.from(socket.data.rooms.entries());

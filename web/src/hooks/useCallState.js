@@ -85,6 +85,20 @@ export function useCallState({ userId } = {}) {
     resetToIdle();
   }, [cleanup, resetToIdle]);
 
+  /**
+   * Receive an incoming call triggered by a socket event.
+   * Transitions to RINGING with the provided session data.
+   */
+  const receiveIncomingCall = useCallback(
+    (session) => {
+      if (callState !== CALL_STATES.IDLE) return;
+      cleanup();
+      setVideoSession(session);
+      setCallState(CALL_STATES.RINGING);
+    },
+    [callState, cleanup]
+  );
+
   return {
     callState,
     callError,
@@ -92,6 +106,7 @@ export function useCallState({ userId } = {}) {
     initiateCall,
     acceptCall,
     endCall,
+    receiveIncomingCall,
   };
 }
 
