@@ -10,6 +10,7 @@ import { getAccessToken } from '../../../utils/auth/tokenStorage';
 const XCore = () => {
     const [showUploader, setShowUploader] = useState(false);
     const [activeStudy, setActiveStudy] = useState(null);
+    const [studiesCache, setStudiesCache] = useState(null);
 
     const handleStudySelect = (study) => {
         setActiveStudy(study);
@@ -99,14 +100,17 @@ const XCore = () => {
                                 onUploadClick={() => setShowUploader(true)}
                                 refreshTrigger={refreshTrigger}
                                 onStudyDeleted={() => {
+                                    setStudiesCache(null);
                                     setRefreshTrigger(prev => prev + 1);
                                     fetchStorage();
                                 }}
+                                cachedStudies={studiesCache}
+                                onStudiesLoaded={setStudiesCache}
                             />
                         </ErrorBoundary>
                     ) : (
                         <div className="h-[calc(100vh-200px)]">
-                            <ErrorBoundary>
+                            <ErrorBoundary onCleanup={() => { window.__volumeCache?.clear?.(); }}>
                                 <Viewer3D study={activeStudy} onBack={() => setActiveStudy(null)} />
                             </ErrorBoundary>
                         </div>
@@ -119,6 +123,7 @@ const XCore = () => {
                 <Uploader
                     onClose={() => setShowUploader(false)}
                     onUploadComplete={() => {
+                        setStudiesCache(null);
                         setRefreshTrigger(prev => prev + 1);
                         fetchStorage();
                     }}

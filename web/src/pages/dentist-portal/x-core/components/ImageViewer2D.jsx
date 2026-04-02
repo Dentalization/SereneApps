@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
-
-const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+import { PY_API_BASE } from '../../../../config/api';
 
 /**
  * ImageViewer2D — Full-featured 2D DICOM image viewer
