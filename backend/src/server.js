@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import http from 'http';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { Server as SocketIOServer } from 'socket.io';
 import authRouter from './routes/auth.js';
@@ -40,6 +41,7 @@ BigInt.prototype.toJSON = function () { return this.toString(); };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const pyApiBase = (process.env.XCORE_PY_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
 const app = express();
 const server = http.createServer(app);
@@ -89,6 +91,59 @@ app.use(cors(corsOptions));
 // Increase JSON body size limit to handle AI analysis payloads safely
 // Default 100kb was causing PayloadTooLargeError for annotated images metadata
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
+
+app.use('/py-api', async (req, res) => {
+  const targetUrl = new URL(req.originalUrl.replace(/^\/py-api/, '') || '/', `${pyApiBase}/`);
+
+  try {
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value == null) continue;
+      if (['host', 'connection', 'content-length'].includes(key.toLowerCase())) continue;
+      if (Array.isArray(value)) {
+        value.forEach((item) => headers.append(key, item));
+      } else {
+        headers.set(key, value);
+      }
+    }
+
+    const init = {
+      method: req.method,
+      headers,
+      redirect: 'manual'
+    };
+
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      if (req.body && Object.keys(req.body).length > 0) {
+        init.body = JSON.stringify(req.body);
+        if (!headers.has('content-type')) {
+          headers.set('content-type', 'application/json');
+        }
+      }
+    }
+
+    const upstream = await fetch(targetUrl, init);
+
+    res.status(upstream.status);
+    upstream.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'transfer-encoding') return;
+      res.setHeader(key, value);
+    });
+
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
+
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch (error) {
+    console.error(`[py-api] Proxy request failed for ${targetUrl}:`, error.message);
+    res.status(502).json({
+      error: 'Imaging service unavailable',
+      detail: 'Cannot connect to the X-Core Python service'
+    });
+  }
+});
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

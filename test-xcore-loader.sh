@@ -8,7 +8,9 @@
 set -e  # Exit on error
 
 BACKEND_URL="http://127.0.0.1:8000"
-TEST_STUDY="adrianhalim-rontgen"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LATEST_STUDY_DIR=$(find "${REPO_ROOT}/backend/uploads/x-core" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1)
+TEST_STUDY="${XCORE_TEST_STUDY:-${LATEST_STUDY_DIR##*/}}"
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -19,18 +21,38 @@ echo "X-Core JPEG Loader Test Suite"
 echo "========================================="
 echo ""
 
+if [[ -z "${TEST_STUDY}" ]]; then
+    echo -e "${RED}✗ No X-Core study folder found. Upload a study first or set XCORE_TEST_STUDY=<folderName>.${NC}"
+    exit 1
+fi
+
+echo "Using study folder: ${TEST_STUDY}"
+echo ""
+
 # Test 1: Backend Health
-echo -e "${YELLOW}[1/6] Testing Backend Health...${NC}"
+echo -e "${YELLOW}[1/7] Testing Backend Health...${NC}"
 if curl -s "${BACKEND_URL}/health" | grep -q "online"; then
     echo -e "${GREEN}✓ Backend is online${NC}"
 else
-    echo -e "${RED}✗ Backend is offline. Start it with: cd backend/python_service && python main.py${NC}"
+    echo -e "${RED}✗ Backend is offline. Start it with: cd backend/python_service && venv/bin/python main.py${NC}"
     exit 1
 fi
 echo ""
 
-# Test 2: Metadata Endpoint
-echo -e "${YELLOW}[2/6] Testing Metadata Endpoint...${NC}"
+# Test 2: Gallery Endpoint
+echo -e "${YELLOW}[2/7] Testing Gallery Endpoint...${NC}"
+GALLERY=$(curl -s "${BACKEND_URL}/gallery/${TEST_STUDY}")
+if echo "$GALLERY" | grep -q "\"total_series\""; then
+    echo -e "${GREEN}✓ Gallery endpoint works${NC}"
+else
+    echo -e "${RED}✗ Gallery endpoint failed${NC}"
+    echo "Response: $GALLERY"
+    exit 1
+fi
+echo ""
+
+# Test 3: Metadata Endpoint
+echo -e "${YELLOW}[3/7] Testing Metadata Endpoint...${NC}"
 METADATA=$(curl -s "${BACKEND_URL}/metadata/${TEST_STUDY}")
 if echo "$METADATA" | grep -q "num_slices"; then
     echo -e "${GREEN}✓ Metadata endpoint works${NC}"
@@ -42,21 +64,21 @@ else
 fi
 echo ""
 
-# Test 3: Axial Stream with Headers
-echo -e "${YELLOW}[3/6] Testing Axial Stream with Headers...${NC}"
-HEADERS=$(curl -sI "${BACKEND_URL}/stream/${TEST_STUDY}/axial/256")
-if echo "$HEADERS" | grep -q "X-Pixel-Spacing"; then
+# Test 4: Axial Stream with Headers
+echo -e "${YELLOW}[4/7] Testing Axial Stream with Headers...${NC}"
+HEADERS=$(curl -s -D - -o /dev/null "${BACKEND_URL}/stream/${TEST_STUDY}/axial/256")
+if echo "$HEADERS" | grep -qi "x-pixel-spacing"; then
     echo -e "${GREEN}✓ X-Pixel-Spacing header present${NC}"
-    echo "$HEADERS" | grep "X-Pixel-Spacing"
+    echo "$HEADERS" | grep -i "x-pixel-spacing"
 else
     echo -e "${RED}✗ X-Pixel-Spacing header missing${NC}"
     echo "Headers:"
     echo "$HEADERS"
 fi
 
-if echo "$HEADERS" | grep -q "X-Slice-Thickness"; then
+if echo "$HEADERS" | grep -qi "x-slice-thickness"; then
     echo -e "${GREEN}✓ X-Slice-Thickness header present${NC}"
-    echo "$HEADERS" | grep "X-Slice-Thickness"
+    echo "$HEADERS" | grep -i "x-slice-thickness"
 else
     echo -e "${RED}✗ X-Slice-Thickness header missing${NC}"
 fi
@@ -68,8 +90,8 @@ else
 fi
 echo ""
 
-# Test 4: Download and Verify Axial Image
-echo -e "${YELLOW}[4/6] Testing Axial Image Download...${NC}"
+# Test 5: Download and Verify Axial Image
+echo -e "${YELLOW}[5/7] Testing Axial Image Download...${NC}"
 curl -s "${BACKEND_URL}/stream/${TEST_STUDY}/axial/256" > /tmp/test_axial.jpg
 if file /tmp/test_axial.jpg | grep -q "JPEG"; then
     echo -e "${GREEN}✓ Axial image is valid JPEG${NC}"
@@ -82,8 +104,8 @@ else
 fi
 echo ""
 
-# Test 5: Test Coronal MPR
-echo -e "${YELLOW}[5/6] Testing Coronal MPR (3D Reconstruction)...${NC}"
+# Test 6: Test Coronal MPR
+echo -e "${YELLOW}[6/7] Testing Coronal MPR (3D Reconstruction)...${NC}"
 curl -s "${BACKEND_URL}/stream/${TEST_STUDY}/coronal/256" > /tmp/test_coronal.jpg
 if file /tmp/test_coronal.jpg | grep -q "JPEG"; then
     echo -e "${GREEN}✓ Coronal image is valid JPEG${NC}"
@@ -100,8 +122,8 @@ else
 fi
 echo ""
 
-# Test 6: Test Sagittal MPR
-echo -e "${YELLOW}[6/6] Testing Sagittal MPR (3D Reconstruction)...${NC}"
+# Test 7: Test Sagittal MPR
+echo -e "${YELLOW}[7/7] Testing Sagittal MPR (3D Reconstruction)...${NC}"
 curl -s "${BACKEND_URL}/stream/${TEST_STUDY}/sagittal/256" > /tmp/test_sagittal.jpg
 if file /tmp/test_sagittal.jpg | grep -q "JPEG"; then
     echo -e "${GREEN}✓ Sagittal image is valid JPEG${NC}"

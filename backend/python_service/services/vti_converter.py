@@ -663,6 +663,41 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
             traceback.print_exc()
             results[series_uid] = {"status": "error", "error": str(e)}
 
+    import json
+    
+    manifest = []
+    for series_uid, series_info in series_groups.items():
+        safe_uid = series_uid.replace('.', '_')[:50]
+        classification = series_info.get('classification', '3D')
+        
+        has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+        has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+        has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+        
+        if classification == '3D':
+            series_status = 'ready' if has_vti else 'pending'
+        else:
+            series_status = 'ready' if has_image else 'pending'
+        
+        manifest.append({
+            "series_uid": series_uid,
+            "title": series_info.get('series_description', 'Unknown Series'),
+            "type": '3D Volume' if classification == '3D' else '2D Image',
+            "classification": classification,
+            "modality": series_info.get('modality', 'CT'),
+            "num_slices": series_info.get('num_files', 0),
+            "series_number": 0,
+            "has_vti": has_vti,
+            "has_image": has_image,
+            "has_thumb": has_thumb,
+            "status": series_status,
+        })
+    
+    manifest_path = os.path.join(study_path, "series_manifest.json")
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+    print(f"[VTI] Series manifest written: {manifest_path}")
+
     elapsed = time.time() - start_time
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] Conversion complete in {elapsed:.1f}s")

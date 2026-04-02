@@ -23,7 +23,7 @@ All files have been created/modified:
 ### Step 1: Start Backend (Terminal 1)
 ```bash
 cd backend/python_service
-python main.py
+venv/bin/python main.py
 ```
 
 **Expected output:**
@@ -37,12 +37,13 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 ### Step 2: Run Tests (Terminal 2)
 ```bash
 cd /Users/adrianhalim/SereneApps
-./test-xcore-loader.sh
+XCORE_TEST_STUDY=1775114002779 ./test-xcore-loader.sh
 ```
 
 **Expected output:**
 ```
 ✓ Backend is online
+✓ Gallery endpoint works
 ✓ Metadata endpoint works
 ✓ X-Pixel-Spacing header present
 ✓ X-Slice-Thickness header present
@@ -100,19 +101,20 @@ kill -9 <PID>
 
 # Restart backend
 cd backend/python_service
-python main.py
+venv/bin/python main.py
 ```
 
 ---
 
 ### ❌ "Failed to fetch metadata"
 ```bash
-# Test manually
-curl http://127.0.0.1:8000/metadata/adrianhalim-rontgen
+# Test manually (replace with your folderName if needed)
+curl http://127.0.0.1:8000/gallery/1775114002779
+curl http://127.0.0.1:8000/metadata/1775114002779
 
 # If returns JSON → backend works, frontend issue
 # If returns error → check study folder exists:
-ls backend/uploads/x-core/adrianhalim-rontgen/
+ls backend/uploads/x-core/1775114002779/
 ```
 
 ---
@@ -195,10 +197,11 @@ registerMetadata(studyKey, metadata); // Must be here!
 
 ```bash
 # Start backend
-cd backend/python_service && python main.py
+cd backend/python_service && venv/bin/python main.py
 
-# Test backend
+# Test backend against the latest upload or a specific folderName
 ./test-xcore-loader.sh
+XCORE_TEST_STUDY=1775114002779 ./test-xcore-loader.sh
 
 # Start frontend
 cd web && npm start
@@ -209,11 +212,14 @@ open /tmp/test_axial.jpg /tmp/test_coronal.jpg /tmp/test_sagittal.jpg
 # Check backend health
 curl http://127.0.0.1:8000/health
 
+# Check gallery for a specific upload folder
+curl http://127.0.0.1:8000/gallery/1775114002779 | python3 -m json.tool
+
 # Get metadata
-curl http://127.0.0.1:8000/metadata/adrianhalim-rontgen | python3 -m json.tool
+curl http://127.0.0.1:8000/metadata/1775114002779 | python3 -m json.tool
 
 # Download test image
-curl http://127.0.0.1:8000/stream/adrianhalim-rontgen/axial/256 > test.jpg && open test.jpg
+curl http://127.0.0.1:8000/stream/1775114002779/axial/256 > test.jpg && open test.jpg
 ```
 
 ---
