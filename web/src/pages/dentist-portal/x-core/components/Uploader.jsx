@@ -84,6 +84,11 @@ const Uploader = ({ onClose, onUploadComplete }) => {
 
         try {
             const token = getAccessToken();
+            if (!token) {
+                alert('Session expired. Please refresh the page and log in again.');
+                setUploading(false);
+                return;
+            }
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/v1/x-core/upload', true);
             xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -103,6 +108,10 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                         onUploadComplete();
                         onClose(); // Close after short delay
                     }, 1500);
+                } else if (xhr.status === 401 || xhr.status === 403) {
+                    alert('Your session has expired. Please log in again.');
+                    setUploading(false);
+                    return;
                 } else {
                     console.error('Upload failed with status:', xhr.status);
                     alert(`Upload failed. The server encountered an error (Status: ${xhr.status}). Please try again.`);

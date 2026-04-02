@@ -1,20 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
+import { PY_API_BASE } from '../../../../config/api';
 
-const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+async function batchFetch(items, asyncFn, concurrency = 5) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = items.slice(i, i + concurrency);
+    const chunkResults = await Promise.allSettled(chunk.map(asyncFn));
+    results.push(...chunkResults);
+  }
+  return results;
+}
 
-const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted }) => {
+const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded }) => {
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
     const [studies, setStudies] = useState([]);
     const [studiesWithSeries, setStudiesWithSeries] = useState([]); // Studies with expanded series cards
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const scrollRef = useRef(null);
+
+    useEffect(() => {
+        return () => {
+            if (scrollRef.current) {
+                sessionStorage.setItem('gallery-scroll', scrollRef.current.scrollTop);
+            }
+        };
+    }, []);
 
     // Fetch Studies from Backend
     React.useEffect(() => {
         const fetchStudies = async () => {
+            if (cachedStudies) {
+                setStudiesWithSeries(cachedStudies);
+                setLoading(false);
+                setTimeout(() => {
+                    if (scrollRef.current) {
+                        scrollRef.current.scrollTo(0, parseInt(sessionStorage.getItem('gallery-scroll') || '0', 10));
+                    }
+                }, 0);
+                return;
+            }
             setLoading(true);
             try {
                 const token = getAccessToken();
@@ -69,37 +98,27 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
 
     // Fetch series cards for each study (Smart Gallery Grouping)
     const fetchSeriesForStudies = async (studies) => {
-        try {
-            const studiesWithSeriesData = await Promise.all(
-                studies.map(async (study) => {
-                    try {
-                        const studyKey = study.folderName || study.id;
-                        const response = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
-
-                        if (!response.ok) {
-                            console.warn(`Failed to fetch series for ${studyKey}`);
-                            return { ...study, series: [] };
-                        }
-
-                        const data = await response.json();
-                        return {
-                            ...study,
-                            series: data.series || [],
-                            totalSeries: data.total_series || 0
-                        };
-                    } catch (error) {
-                        console.warn(`Error fetching series for study ${study.id}:`, error);
-                        return { ...study, series: [] };
-                    }
-                })
-            );
-
-            setStudiesWithSeries(studiesWithSeriesData);
-        } catch (error) {
-            console.error("Error in fetchSeriesForStudies:", error);
-            // Fallback to showing studies without series data
-            setStudiesWithSeries(studies.map(s => ({ ...s, series: [] })));
-        }
+        const results = await batchFetch(studies, async (study) => {
+            try {
+                const studyKey = study.folderName || study.id;
+                const response = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
+                if (!response.ok) return { ...study, series: [] };
+                const data = await response.json();
+                return { ...study, series: data.series || [], totalSeries: data.total_series || 0 };
+            } catch {
+                return { ...study, series: [] };
+            }
+        });
+        const studiesWithSeriesData = results.map((r, i) =>
+            r.status === 'fulfilled' ? r.value : { ...studies[i], series: [] }
+        );
+        setStudiesWithSeries(studiesWithSeriesData);
+        if (onStudiesLoaded) onStudiesLoaded(studiesWithSeriesData);
+        setTimeout(() => {
+            if (scrollRef.current) {
+                scrollRef.current.scrollTo(0, parseInt(sessionStorage.getItem('gallery-scroll') || '0', 10));
+            }
+        }, 0);
     };
 
     const filteredStudies = studiesWithSeries.filter(s =>
@@ -126,12 +145,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
         }))
     );
 
-    const handleDelete = async (e, study) => {
-        e.stopPropagation(); // Prevent opening the study
-        if (!window.confirm(`Are you sure you want to delete ${study.patientName}'s study? This action cannot be undone.`)) {
-            return;
-        }
-
+    const handleDelete = async (study) => {
         try {
             const token = getAccessToken();
             const response = await fetch(`/api/v1/x-core/studies/${study.id}`, {
@@ -158,7 +172,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" ref={scrollRef}>
             {/* Header Actions */}
             <div className="flex flex-col sm:flex-row justify-between gap-4">
                 <div className="relative flex-1 max-w-md">
@@ -240,7 +254,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                                             </div>
                                         </div>
                                         <button
-                                            onClick={(e) => handleDelete(e, study)}
+                                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(study); }}
                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition"
                                         >
                                             <AppIcon name="Trash2" size={14} />
@@ -339,20 +353,20 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                                         </div>
                                         <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
                                     </div>
-                                    <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                        <button
-                                            onClick={(e) => handleDelete(e, card.study)}
-                                            className="p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg backdrop-blur-sm shadow-sm"
-                                            title="Delete Study"
-                                        >
-                                            <AppIcon name="Trash2" size={16} />
-                                        </button>
-                                    </div>
-                                    <div className="pt-2 border-t border-primary/10 flex justify-between text-xs text-secondary">
+                                    <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
                                         <span>{card.dateDisplay}</span>
-                                        <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
-                                            {card.statusDisplay}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
+                                                {card.statusDisplay}
+                                            </span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(card.study); }}
+                                                className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
+                                                title="Delete Study"
+                                            >
+                                                <AppIcon name="Trash2" size={14} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -416,6 +430,35 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted 
                             ))}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteTarget !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
+                    <div className="bg-white rounded-3xl border border-primary/10 shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Study</h3>
+                        <p className="text-gray-600 mb-6 font-medium">
+                            Are you sure you want to delete {deleteTarget.patientName}'s study? This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                className="px-5 py-2.5 rounded-xl font-semibold text-gray-700 hover:bg-gray-100 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    handleDelete(deleteTarget);
+                                    setDeleteTarget(null);
+                                }}
+                                className="px-5 py-2.5 rounded-xl font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 transition"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

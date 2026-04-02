@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import '@kitware/vtk.js/favicon';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
-const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+import { PY_API_BASE } from '../../../../config/api';
+import { VOLUME_PRESETS } from '../config/volumePresets';
 
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
@@ -17,8 +18,21 @@ import SeriesSidebar from './SeriesSidebar';
 // ─── Global volume cache (on window to survive HMR) ────────────────────
 // CACHE VERSION: bump this to force re-fetch after VTI regeneration
 const VOLUME_CACHE_VERSION = 2;
+function makeLRUCache(maxSize) {
+  const map = new Map();
+  return {
+    has: k => map.has(k),
+    get(k) { if (!map.has(k)) return undefined; const v = map.get(k); map.delete(k); map.set(k, v); return v; },
+    set(k, v) { if (map.has(k)) map.delete(k); if (map.size >= maxSize) map.delete(map.keys().next().value); map.set(k, v); },
+    delete: k => map.delete(k),
+    clear: () => map.clear(),
+    get size() { return map.size; },
+    keys: () => map.keys(),
+  };
+}
+
 if (!window.__volumeCache || window.__volumeCacheVersion !== VOLUME_CACHE_VERSION) {
-  window.__volumeCache = new Map();
+  window.__volumeCache = makeLRUCache(3);
   window.__volumeCacheVersion = VOLUME_CACHE_VERSION;
   console.log('[VolumeViewer3D] Cache cleared — version', VOLUME_CACHE_VERSION);
 }
@@ -62,6 +76,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     const containerRef = useRef(null);
     const wrapperRef = useRef(null);
     const vtkContextRef = useRef(null);
+    const pendingVtkRef = useRef(null);
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -137,47 +152,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             '| MONAI normalized [0,1]');
 
         if (presetName === 'bone') {
-            // ── BONE / TEETH (CLEAN & SHARP) ──
-            
-            // 1. Color: Keep it realistic
-            ctfun.addRGBPoint(0.0, 0.0, 0.0, 0.0);
-            ctfun.addRGBPoint(0.4, 0.0, 0.0, 0.0);       // Keep dark
-            ctfun.addRGBPoint(0.42, 0.86, 0.65, 0.47);   // Beige (Bone Start)
-            ctfun.addRGBPoint(0.60, 0.95, 0.88, 0.78);   // White (Main Bone)
-            ctfun.addRGBPoint(1.0, 1.0, 0.98, 0.94);     // Enamel/Metal (Highlight)
-
-            // 2. Opacity: THE CLEANER
-            ofun.addPoint(0.0, 0.0);
-            
-            // Cutoff at 0.42 — removes all neck/cheek flesh completely
-            ofun.addPoint(0.42, 0.0);    
-            
-            // Fast transition to bone (Sharp Edge)
-            ofun.addPoint(0.45, 0.2);     
-            ofun.addPoint(0.55, 0.7);     // Solid Jawbone
-            ofun.addPoint(0.80, 0.9);     // Teeth Very Solid
-            ofun.addPoint(1.0, 1.0);
-
+            const preset = VOLUME_PRESETS.bone;
+            preset.color.forEach(([v, r, g, b]) => ctfun.addRGBPoint(v, r, g, b));
+            preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
         } else if (presetName === 'soft') {
-            // ── SOFT TISSUE ──
-            // Show gums, skin, muscles with peak visibility; dim bone
-            ctfun.addRGBPoint(lo,           0.0,  0.0,  0.0);
-            ctfun.addRGBPoint(hu(-100),     0.0,  0.0,  0.0);  // 0.225
-            ctfun.addRGBPoint(hu(0),        0.45, 0.22, 0.18); // 0.250
-            ctfun.addRGBPoint(hu(150),      0.85, 0.55, 0.50); // 0.288
-            ctfun.addRGBPoint(hu(400),      0.90, 0.70, 0.60); // 0.350
-            ctfun.addRGBPoint(hu(800),      0.50, 0.50, 0.50); // 0.450
-            ctfun.addRGBPoint(hi,           0.35, 0.35, 0.35);
-
-            ofun.addPoint(lo,          0.0);
-            ofun.addPoint(hu(-200),    0.0);      // Air → transparent
-            ofun.addPoint(hu(-50),     0.02);     // Fat begins
-            ofun.addPoint(hu(50),      0.12);     // Soft tissue
-            ofun.addPoint(hu(200),     0.25);     // Peak soft tissue
-            ofun.addPoint(hu(500),     0.15);     // Bone (dimmed)
-            ofun.addPoint(hu(1000),    0.08);     // Dense bone (faded)
-            ofun.addPoint(hi,          0.05);
-
+            const preset = VOLUME_PRESETS.soft;
+            preset.color.forEach(([v, r, g, b]) => ctfun.addRGBPoint(v, r, g, b));
+            preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
         } else if (presetName === 'mip') {
             // ── MIP (Maximum Intensity Projection) ──
             // W/L-parameterized grayscale
@@ -404,6 +385,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     container: containerRef.current,
                     background: BG_COLORS.bone
                 });
+                pendingVtkRef.current = fullScreenRenderer;
 
                 const renderer = fullScreenRenderer.getRenderer();
                 const renderWindow = fullScreenRenderer.getRenderWindow();
@@ -555,9 +537,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         return () => {
             cancelled = true;
             clearTimeout(timer);
+            if (pendingVtkRef.current) {
+                try { pendingVtkRef.current.delete(); } catch (_) {}
+                pendingVtkRef.current = null;
+            }
             if (vtkContextRef.current) {
                 if (vtkContextRef.current.sharpenTimer) clearTimeout(vtkContextRef.current.sharpenTimer);
-                vtkContextRef.current.fullScreenRenderer.delete();
+                try { vtkContextRef.current.fullScreenRenderer.delete(); } catch (_) {}
                 vtkContextRef.current = null;
             }
         };

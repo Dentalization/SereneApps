@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import useDICOMViewer from '../hooks/useDICOMViewer';
+import useSeriesList from '../hooks/useSeriesList';
 import VolumeViewer3D from './VolumeViewer3D';
 import ImageViewer2D from './ImageViewer2D';
 import SliceViewer from './SliceViewer';
@@ -7,7 +7,7 @@ import SeriesSidebar from './SeriesSidebar';
 
 const Viewer3D = ({ study, onBack }) => {
     const [activeStudy, setActiveStudy] = useState(study);
-    const { state } = useDICOMViewer(activeStudy);
+    const { allSeries } = useSeriesList(activeStudy);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
     const [viewMode, setViewMode] = useState('auto'); // 'auto', '3d', 'slice', '2d'
 
@@ -52,7 +52,7 @@ const Viewer3D = ({ study, onBack }) => {
 
     // 2D Image mode — show ImageViewer2D for panoramic/cephalometric/single-slice
     if (viewMode === '2d') {
-        const seriesInfo = state.allSeries.find(s => s.series_uid === activeStudy?.selectedSeriesUid) || {
+        const seriesInfo = allSeries.find(s => s.series_uid === activeStudy?.selectedSeriesUid) || {
             series_uid: activeStudy?.selectedSeriesUid,
             series_description: 'Panoramic Image',
             modality: 'OPG',

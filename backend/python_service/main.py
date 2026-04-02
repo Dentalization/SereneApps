@@ -115,7 +115,13 @@ def get_study_gallery(study_id: str):
         raise HTTPException(status_code=404, detail="Study not found")
     
     try:
-        handler = DicomHandler(study_path)
+        try:
+            handler = DicomHandler(study_path)
+            if len(handler.files) == 0:
+                raise ValueError("No DICOM files found")
+        except Exception:
+            handler = MoritaHandler(study_path)
+            
         metadata = handler.get_metadata()
         
         # Build series cards for gallery
@@ -181,7 +187,13 @@ def get_series_thumbnail(study_id: str, series_uid: str):
         raise HTTPException(status_code=404, detail="Study not found")
     
     try:
-        handler = DicomHandler(study_path, series_uid=series_uid)
+        try:
+            handler = DicomHandler(study_path, series_uid=series_uid)
+            if len(handler.files) == 0:
+                raise ValueError("No DICOM files found")
+        except Exception:
+            handler = MoritaHandler(study_path)
+            
         metadata = handler.get_metadata()
         
         # Get middle slice as thumbnail
@@ -319,9 +331,15 @@ def get_series_thumb(study_id: str, series_uid: str):
             headers={"Cache-Control": "public, max-age=86400"}
         )
     
-    # Fallback: generate thumbnail via DicomHandler (on-demand)
+    # Fallback: generate thumbnail (on-demand)
     try:
-        handler = DicomHandler(study_path, series_uid=series_uid)
+        try:
+            handler = DicomHandler(study_path, series_uid=series_uid)
+            if len(handler.files) == 0:
+                raise ValueError("No DICOM files found")
+        except Exception:
+            handler = MoritaHandler(study_path)
+            
         metadata = handler.get_metadata()
         middle_index = metadata['num_slices'] // 2
         image_bytes, headers = handler.get_slice('axial', middle_index)

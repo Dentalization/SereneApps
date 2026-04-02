@@ -12,6 +12,7 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
+        if (this.props.onCleanup) this.props.onCleanup();
         console.error('[ErrorBoundary] Caught an error:', error);
         console.error('[ErrorBoundary] Error name:', error?.name);
         console.error('[ErrorBoundary] Error message:', error?.message);
@@ -49,7 +50,7 @@ class ErrorBoundary extends React.Component {
                                 Reload Page
                             </button>
                             <button
-                                onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+                                onClick={() => window.location.reload()}
                                 className="flex-1 px-6 py-3 bg-gray-50 text-gray-700 rounded-xl font-medium hover:bg-gray-100 border border-gray-200 transition"
                             >
                                 Try Again

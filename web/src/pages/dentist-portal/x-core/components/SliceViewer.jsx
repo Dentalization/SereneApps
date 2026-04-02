@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 
 // VTK.js — 2D slice rendering (reuses Volume profile already loaded by VolumeViewer3D)
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
-const PY_API_BASE = import.meta.env.VITE_SERENE_AI_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+import { PY_API_BASE } from '../../../../config/api';
 
 import vtkGenericRenderWindow   from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow';
 import vtkImageMapper            from '@kitware/vtk.js/Rendering/Core/ImageMapper';
@@ -19,8 +19,21 @@ import SeriesSidebar from './SeriesSidebar';
 
 // ─── Reuse the global volume cache from VolumeViewer3D ───────────
 const VOLUME_CACHE_VERSION = 2;
+function makeLRUCache(maxSize) {
+  const map = new Map();
+  return {
+    has: k => map.has(k),
+    get(k) { if (!map.has(k)) return undefined; const v = map.get(k); map.delete(k); map.set(k, v); return v; },
+    set(k, v) { if (map.has(k)) map.delete(k); if (map.size >= maxSize) map.delete(map.keys().next().value); map.set(k, v); },
+    delete: k => map.delete(k),
+    clear: () => map.clear(),
+    get size() { return map.size; },
+    keys: () => map.keys(),
+  };
+}
+
 if (!window.__volumeCache || window.__volumeCacheVersion !== VOLUME_CACHE_VERSION) {
-    window.__volumeCache = new Map();
+    window.__volumeCache = makeLRUCache(3);
     window.__volumeCacheVersion = VOLUME_CACHE_VERSION;
 }
 const volumeCache = window.__volumeCache;
@@ -51,6 +64,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     const wrapperRef = useRef(null);   // Outer wrapper for fullscreen
     const vtkContainerRef = useRef(null); // Dedicated div for VTK.js rendering
     const vtkRef = useRef(null); // { grw, renderer, mapper, actor, renderWindow, imageData }
+    const pendingGrwRef = useRef(null);
 
     // State
     const [axis, setAxis] = useState('axial');
@@ -317,6 +331,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
 
                 // ── Step 3: Build VTK.js 2D pipeline ──
                 const grw = vtkGenericRenderWindow.newInstance();
+                pendingGrwRef.current = grw;
                 grw.setContainer(container);
                 grw.resize();
 
@@ -404,6 +419,10 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
 
         return () => {
             cancelled = true;
+            if (pendingGrwRef.current) {
+                try { pendingGrwRef.current.delete(); } catch (_) {}
+                pendingGrwRef.current = null;
+            }
             if (vtkRef.current) {
                 try { vtkRef.current.grw.delete(); } catch (_) {}
                 vtkRef.current = null;
