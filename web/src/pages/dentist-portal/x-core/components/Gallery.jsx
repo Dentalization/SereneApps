@@ -4,13 +4,13 @@ import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { PY_API_BASE } from '../../../../config/api';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
-  const results = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const chunk = items.slice(i, i + concurrency);
-    const chunkResults = await Promise.allSettled(chunk.map(asyncFn));
-    results.push(...chunkResults);
-  }
-  return results;
+    const results = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+        const chunk = items.slice(i, i + concurrency);
+        const chunkResults = await Promise.allSettled(chunk.map(asyncFn));
+        results.push(...chunkResults);
+    }
+    return results;
 }
 
 const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded }) => {
@@ -19,6 +19,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
     const [studies, setStudies] = useState([]);
     const [studiesWithSeries, setStudiesWithSeries] = useState([]); // Studies with expanded series cards
     const [loading, setLoading] = useState(true);
+    const [fetchingSeries, setFetchingSeries] = useState(false);
     const [error, setError] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const scrollRef = useRef(null);
@@ -98,6 +99,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
 
     // Fetch series cards for each study (Smart Gallery Grouping)
     const fetchSeriesForStudies = async (studies) => {
+        setFetchingSeries(true);
         const results = await batchFetch(studies, async (study) => {
             try {
                 const studyKey = study.folderName || study.id;
@@ -114,12 +116,49 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         );
         setStudiesWithSeries(studiesWithSeriesData);
         if (onStudiesLoaded) onStudiesLoaded(studiesWithSeriesData);
+        setFetchingSeries(false);
         setTimeout(() => {
             if (scrollRef.current) {
                 scrollRef.current.scrollTo(0, parseInt(sessionStorage.getItem('gallery-scroll') || '0', 10));
             }
         }, 0);
     };
+
+    // Auto-refresh while any series is still converting
+    useEffect(() => {
+        const hasConverting = studiesWithSeries.some(study =>
+            (study.series || []).some(s => s.status === 'converting' || s.status === 'pending')
+        );
+
+        if (!hasConverting) return;
+
+        const interval = setInterval(async () => {
+            // Only re-fetch series status, not the full study list
+            const updated = await Promise.all(
+                studiesWithSeries.map(async (study) => {
+                    const hasIncomplete = (study.series || []).some(
+                        s => s.status === 'converting' || s.status === 'pending'
+                    );
+                    if (!hasIncomplete) return study;
+
+                    try {
+                        const studyKey = study.folderName || study.id;
+                        const res = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
+                        if (!res.ok) return study;
+                        const data = await res.json();
+                        return { ...study, series: data.series || [] };
+                    } catch {
+                        return study;
+                    }
+                })
+            );
+
+            setStudiesWithSeries(updated);
+            if (onStudiesLoaded) onStudiesLoaded(updated);
+        }, 4000); // Poll every 4 seconds
+
+        return () => clearInterval(interval);
+    }, [studiesWithSeries, onStudiesLoaded]);
 
     const filteredStudies = studiesWithSeries.filter(s =>
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -209,11 +248,11 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
             </div>
 
             {/* Grid View */}
-            {loading ? (
+            {loading || fetchingSeries ? (
                 <div className="flex justify-center py-20">
                     <div className="flex flex-col items-center gap-4 text-muted">
                         <AppIcon name="Loader2" size={40} className="animate-spin text-accent" />
-                        <p>Loading studies...</p>
+                        <p>{fetchingSeries ? "Analyzing metadata..." : "Loading studies..."}</p>
                     </div>
                 </div>
             ) : error ? (
@@ -240,7 +279,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                 <span className="font-semibold text-amber-700 text-sm">
                                     {orphanStudies.length} orphan {orphanStudies.length === 1 ? 'study' : 'studies'} found
                                 </span>
-                                <span className="text-xs text-amber-500">— Files missing from disk. Delete to free storage.</span>
+                                <span className="text-xs text-amber-500">— No scan files found on disk. Delete record to free storage.</span>
                             </div>
                             <div className="space-y-2">
                                 {orphanStudies.map(study => (
@@ -290,87 +329,105 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                     </button>
                                 )}
                             </div>
-                        ) : seriesCards.map(card => (
-                            <div
-                                key={card.id}
-                                onClick={() => onSelectStudy({
-                                    ...card.study,
-                                    selectedSeriesUid: card.series_uid,
-                                    selectedSeriesType: card.type
-                                })}
-                                className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden hover:shadow-theme-lg transition cursor-pointer"
-                            >
-                                {/* Series Thumbnail (replaces generic icon) */}
-                                <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                    <img
-                                        src={card.thumbnailUrl}
-                                        alt={card.title}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                            // Fallback to icon if thumbnail fails
-                                            e.target.style.display = 'none';
-                                            e.target.nextSibling.style.display = 'flex';
-                                        }}
-                                    />
-                                    <div className="absolute inset-0 items-center justify-center hidden">
-                                        <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                        ) : seriesCards.map(card => {
+                            const isReady = card.status === 'ready';
+                            const isConverting = card.status === 'converting' || card.status === 'pending';
+
+                            return (
+                                <div
+                                    key={card.id}
+                                    onClick={() => isReady && onSelectStudy({
+                                        ...card.study,
+                                        selectedSeriesUid: card.series_uid,
+                                        selectedSeriesType: card.type
+                                    })}
+                                    className={`group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden transition ${isReady
+                                        ? 'hover:shadow-theme-lg cursor-pointer'
+                                        : 'opacity-75 cursor-not-allowed'
+                                        }`}
+                                >
+                                    {/* Series Thumbnail */}
+                                    <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
+                                        {isReady ? (
+                                            <>
+                                                <img
+                                                    src={card.thumbnailUrl}
+                                                    alt={card.title}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                        e.target.nextSibling.style.display = 'flex';
+                                                    }}
+                                                />
+                                                <div className="absolute inset-0 items-center justify-center hidden">
+                                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
+                                                    <span className="text-xs text-white font-medium">
+                                                        {card.status === 'converting' ? 'Processing...' : 'Queued'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Type Badge */}
+                                        <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
+                                            <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
+                                            {card.type}
+                                        </span>
+
+                                        {/* Modality Badge */}
+                                        <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
+                                            {card.modality}
+                                        </span>
+
+                                        {card.num_slices > 1 && (
+                                            <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
+                                                {card.num_slices} slices
+                                            </span>
+                                        )}
                                     </div>
 
-                                    {/* Type Badge */}
-                                    <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
-                                        <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
-                                        {card.type}
-                                    </span>
-
-                                    {/* Modality Badge */}
-                                    <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
-                                        {card.modality}
-                                    </span>
-
-                                    {/* Slice Count */}
-                                    {card.num_slices > 1 && (
-                                        <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
-                                            {card.num_slices} slices
-                                        </span>
-                                    )}
-
-                                    {card.study.status === 'Processing' && (
-                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
-                                                <span className="text-xs text-white font-medium">AI Analyzing...</span>
+                                    <div className="p-4 space-y-2">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h3 className="font-semibold text-primary">{card.patientName}</h3>
+                                                <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
+                                                <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
+                                            </div>
+                                            {isReady && (
+                                                <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
+                                            )}
+                                        </div>
+                                        <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
+                                            <span>{card.dateDisplay}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={
+                                                    isConverting
+                                                        ? 'text-blue-500 font-medium'
+                                                        : card.statusDisplay === 'Analyzed'
+                                                            ? 'text-emerald-500 font-medium'
+                                                            : 'text-amber-500'
+                                                }>
+                                                    {isConverting ? 'Processing' : card.statusDisplay}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(card.study); }}
+                                                    className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
+                                                    title="Delete Study"
+                                                >
+                                                    <AppIcon name="Trash2" size={14} />
+                                                </button>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-
-                                <div className="p-4 space-y-2">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h3 className="font-semibold text-primary">{card.patientName}</h3>
-                                            <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
-                                            <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
-                                        </div>
-                                        <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1" />
-                                    </div>
-                                    <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
-                                        <span>{card.dateDisplay}</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className={card.statusDisplay === 'Analyzed' ? 'text-emerald-500 font-medium' : 'text-amber-500'}>
-                                                {card.statusDisplay}
-                                            </span>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(card.study); }}
-                                                className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
-                                                title="Delete Study"
-                                            >
-                                                <AppIcon name="Trash2" size={14} />
-                                            </button>
-                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

@@ -163,5 +163,18 @@ class MoritaHandler:
             "dimensions": dimensions,  # [z, y, x]
             "pixel_spacing": self.metadata["pixel_spacing"],
             "slice_thickness": self.metadata["slice_thickness"],
-            "modality": "CBCT"  # J. Morita is typically CBCT
+            "voxel_size": [self.metadata["pixel_spacing"], self.metadata["pixel_spacing"], self.metadata["slice_thickness"]],
+            "modality": "CBCT",  # J. Morita is typically CBCT
+            "series": [{
+                "series_uid": "morita_default_series",
+                "series_number": 1,
+                "series_description": "J. Morita CBCT",
+                "modality": "CBCT",
+                "type": "3D Volume",
+                "classification": "3D",
+                "num_slices": len(self.files),
+                "is_current": True
+            }],
+            "total_series_found": 1
         }
+
