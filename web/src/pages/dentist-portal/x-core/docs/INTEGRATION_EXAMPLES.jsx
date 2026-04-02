@@ -189,9 +189,10 @@ class DentistPortalXCore extends React.Component {
 /**
  * Testing Checklist
  * 
- * ✅ Backend running: python backend/python_service/main.py
- * ✅ Metadata endpoint: curl http://127.0.0.1:8000/metadata/adrianhalim-rontgen
- * ✅ Stream endpoint: curl http://127.0.0.1:8000/stream/adrianhalim-rontgen/axial/0 > test.jpg
+ * ✅ Backend running: backend/python_service/venv/bin/python backend/python_service/main.py
+ * ✅ Gallery endpoint: curl http://127.0.0.1:8000/gallery/1775114002779
+ * ✅ Metadata endpoint: curl http://127.0.0.1:8000/metadata/1775114002779
+ * ✅ Stream endpoint: curl http://127.0.0.1:8000/stream/1775114002779/axial/0 > test.jpg
  * ✅ Headers exposed: Check X-Pixel-Spacing and X-Slice-Thickness in Network tab
  * ✅ Custom loader registered: Check console for "[xcoreLoader] X-Core image loader registered"
  * ✅ Images loading: Check console for "[useDICOMViewer] First image loaded"

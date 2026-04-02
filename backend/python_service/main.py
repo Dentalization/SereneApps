@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 import numpy as np
+import json
 from services.dicom_handler import DicomHandler
 from services.morita_handler import MoritaHandler
 from services.vti_converter import convert_study_to_vti
@@ -105,78 +106,80 @@ def get_study_gallery(study_id: str):
         raise HTTPException(status_code=404, detail="Study not found")
     
     try:
-        # Always scan DICOM files directly — don't rely only on output files
+        is_converting = _is_conversion_in_progress(study_path)
+        manifest_path = os.path.join(study_path, "series_manifest.json")
+        
+        # ── FAST PATH: Manifest exists (conversion already ran) ──
+        if os.path.exists(manifest_path):
+            with open(manifest_path, 'r') as f:
+                series_cards = json.load(f)
+            
+            # Re-check actual file status (in case files were deleted externally)
+            for card in series_cards:
+                safe_uid = card['series_uid'].replace('.', '_')[:50]
+                if card['classification'] == '3D':
+                    card['has_vti'] = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+                    card['status'] = 'ready' if card['has_vti'] else ('converting' if is_converting else 'pending')
+                else:
+                    card['has_image'] = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+                    card['status'] = 'ready' if card['has_image'] else ('converting' if is_converting else 'pending')
+                card['has_thumb'] = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+                card['thumbnail_url'] = f"/thumb/{study_id}/{card['series_uid']}" if card['has_thumb'] else f"/thumbnail/{study_id}/{card['series_uid']}"
+            
+            return {
+                "study_id": study_id,
+                "total_series": len(series_cards),
+                "series": series_cards,
+                "is_converting": is_converting,
+            }
+        
+        # ── SLOW PATH: No manifest yet — conversion hasn't run or is in progress ──
+        # Use scan_dicom_series but only read headers (stop_before_pixels=True is already used)
+        # This path should only happen briefly during the first gallery load after upload
+        print(f"[Gallery] No manifest for {study_id}, scanning DICOM files...")
+        
         from services.vti_converter import scan_dicom_series
         series_groups = scan_dicom_series(study_path)
         
-        # Fallback to DicomHandler if scan finds nothing
         if not series_groups:
-            try:
-                handler = DicomHandler(study_path)
-                if len(handler.files) == 0:
-                    raise ValueError("No DICOM files found")
-            except Exception:
-                handler = MoritaHandler(study_path)
-            metadata = handler.get_metadata()
-            series_groups_from_handler = {}
-            for s in metadata.get('series', []):
-                series_groups_from_handler[s['series_uid']] = {
-                    'files': [],
-                    'modality': s.get('modality', 'CT'),
-                    'classification': s.get('classification', '3D'),
-                    'num_files': s.get('num_slices', 0),
-                    'series_description': s.get('series_description', 'Unknown Series'),
-                }
-            series_groups = series_groups_from_handler
-
-        is_converting = _is_conversion_in_progress(study_path)
+            # No DICOM files found at all — true orphan
+            return {
+                "study_id": study_id,
+                "total_series": 0,
+                "series": [],
+                "is_converting": is_converting,
+            }
         
         series_cards = []
         for series_uid, series_info in series_groups.items():
             classification = series_info.get('classification', '3D')
             modality = series_info.get('modality', 'CT')
-            num_files = series_info.get('num_files', len(series_info.get('files', [])))
+            num_files = series_info.get('num_files', 0)
             safe_uid = series_uid.replace('.', '_')[:50]
-            series_description = series_info.get('series_description', 'Unknown Series')
             
             has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
             has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg")) if classification == '2D' else False
             has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
             
-            # Determine series status
             if classification == '3D':
-                if has_vti:
-                    series_status = 'ready'
-                elif is_converting:
-                    series_status = 'converting'
-                else:
-                    series_status = 'pending'
-            else:  # 2D
-                if has_image:
-                    series_status = 'ready'
-                elif is_converting:
-                    series_status = 'converting'
-                else:
-                    series_status = 'pending'
+                series_status = 'ready' if has_vti else ('converting' if is_converting else 'pending')
+            else:
+                series_status = 'ready' if has_image else ('converting' if is_converting else 'pending')
             
-            series_type = '3D Volume' if classification == '3D' else '2D Image'
-            
-            card = {
+            series_cards.append({
                 "series_uid": series_uid,
-                "title": series_description,
-                "type": series_type,
+                "title": series_info.get('series_description', 'Unknown Series'),
+                "type": '3D Volume' if classification == '3D' else '2D Image',
                 "classification": classification,
                 "modality": modality if modality else 'CT',
                 "num_slices": num_files,
-                "thumbnail_index": num_files // 2,
                 "series_number": series_info.get('series_number', 0),
                 "has_vti": has_vti,
                 "has_image": has_image,
                 "has_thumb": has_thumb,
-                "status": series_status,  # NEW: 'ready' | 'converting' | 'pending'
+                "status": series_status,
                 "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
-            }
-            series_cards.append(card)
+            })
         
         series_cards.sort(key=lambda c: (0 if c['type'] == '3D Volume' else 1, c.get('series_number', 0)))
         
@@ -189,7 +192,7 @@ def get_study_gallery(study_id: str):
         
     except Exception as e:
         import traceback
-        print(f"[ERROR] Gallery endpoint failed: {e}")
+        print(f"[ERROR] Gallery endpoint failed for {study_id}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
