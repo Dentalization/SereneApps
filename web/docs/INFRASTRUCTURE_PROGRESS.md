@@ -3,6 +3,7 @@
 > **Session Date:** November 10, 2025  
 > **Status:** Phase 3 - Infrastructure & Documentation Implementation  
 > **Completion:** 60% (3/5 critical items done)
+> Historical progress snapshot. OTP endpoint references here are superseded by the SMS-only `/v1/otp/*` rollout and the internal changelog at `/docs/INTERNAL_RELEASE_CHANGELOG_2026-04-07_OTP_SMS_ONLY.md`.
 
 ---
 

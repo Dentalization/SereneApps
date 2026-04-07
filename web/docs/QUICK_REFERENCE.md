@@ -110,9 +110,25 @@ curl -X POST http://localhost:4000/v1/auth/patient/register \
 
 ### **Send OTP:**
 ```bash
-curl -X POST http://localhost:4000/v1/auth/send-phone-otp \
+curl -X POST http://localhost:4000/v1/otp/requests \
   -H "Content-Type: application/json" \
-  -d '{"phone_number": "+628123456789"}'
+  -H "Idempotency-Key: otp-quick-ref-001" \
+  -d '{
+    "channel": "sms",
+    "phone_number": "+628123456789",
+    "purpose": "login"
+  }'
+```
+
+### **Verify OTP:**
+```bash
+curl -X POST http://localhost:4000/v1/otp/verifications \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "sms",
+    "phone_number": "+628123456789",
+    "otp": "123456"
+  }'
 ```
 
 ### **Login:**
@@ -143,9 +159,8 @@ CORS_ORIGINS=https://your-frontend.vercel.app,http://localhost:4028
 ```bash
 TWILIO_ACCOUNT_SID=<for production SMS>
 TWILIO_AUTH_TOKEN=<for production SMS>
-TWILIO_PHONE_NUMBER=<for production SMS>
-SENDGRID_API_KEY=<for emails>
-SENDGRID_FROM_EMAIL=<for emails>
+TWILIO_SMS_FROM_NUMBER=<for production SMS>
+OTP_EMAIL_DEPRECATED=true
 ```
 
 ---
@@ -158,7 +173,9 @@ SENDGRID_FROM_EMAIL=<for emails>
 | Build fails | Check `package.json`, run `npm install` |
 | Database error | Verify `DATABASE_URL`, run migrations |
 | CORS error | Add frontend URL to `CORS_ORIGINS` |
-| OTP not visible | Check Railway logs for `🔐 [OTP]` |
+| Legacy email OTP still hit | Check `OTP_CHANNEL_DEPRECATED` dashboard/alert and stale clients |
+| OTP rate-limited | Check `OTP_RATE_LIMITED` dashboard panel for abuse or retry loops |
+| OTP locked | Check `OTP_LOCKED` dashboard panel for repeated invalid attempts |
 
 ---
 

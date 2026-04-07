@@ -32,24 +32,72 @@ const phoneOTPSchema = z.object({
   phone_number: z
     .string()
     .regex(/^\+[1-9]\d{1,14}$/, 'Format nomor HP tidak valid. Contoh: +628123456789'),
+  purpose: z.string().max(50).optional(),
+  channel: z.enum(['sms']).optional()
 });
 
 // Email OTP schema
 const emailOTPSchema = z.object({
-  email: z.string().email('Email tidak valid'),
+  email: z.string().email('Email tidak valid')
 });
 
 // Verify OTP schema
 const verifyOTPSchema = z.object({
   phone_number: z.string().optional(),
   email: z.string().email().optional(),
-  otp: z.string().length(6, 'OTP harus 6 digit'),
+  otp: z.string().min(4).max(10, 'OTP tidak valid')
 }).refine(
   (data) => data.phone_number || data.email,
   {
     message: 'Phone number atau email harus diisi',
   }
 );
+
+const otpRequestSchema = z.object({
+  channel: z.enum(['sms', 'email']).default('sms'),
+  phone_number: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Format nomor HP tidak valid. Contoh: +628123456789').optional(),
+  email: z.string().email('Email tidak valid').optional(),
+  purpose: z.string().max(50).optional()
+}).superRefine((data, ctx) => {
+  if (data.channel === 'sms' && !data.phone_number) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['phone_number'],
+      message: 'Phone number wajib diisi untuk OTP SMS'
+    });
+  }
+
+  if (data.channel === 'email' && !data.email) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['email'],
+      message: 'Email wajib diisi untuk OTP email'
+    });
+  }
+});
+
+const otpVerifyRequestSchema = z.object({
+  channel: z.enum(['sms', 'email']).default('sms'),
+  phone_number: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Format nomor HP tidak valid. Contoh: +628123456789').optional(),
+  email: z.string().email('Email tidak valid').optional(),
+  otp: z.string().min(4).max(10, 'OTP tidak valid')
+}).superRefine((data, ctx) => {
+  if (data.channel === 'sms' && !data.phone_number) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['phone_number'],
+      message: 'Phone number wajib diisi untuk verifikasi OTP SMS'
+    });
+  }
+
+  if (data.channel === 'email' && !data.email) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['email'],
+      message: 'Email wajib diisi untuk verifikasi OTP email'
+    });
+  }
+});
 
 // Forgot password schema
 const forgotPasswordSchema = z.object({
@@ -72,6 +120,8 @@ export {
   loginSchema,
   phoneOTPSchema,
   emailOTPSchema,
+  otpRequestSchema,
+  otpVerifyRequestSchema,
   verifyOTPSchema,
   forgotPasswordSchema,
   resetPasswordSchema,

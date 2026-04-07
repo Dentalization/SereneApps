@@ -1,0 +1,29 @@
+# Example Vector transform for production log forwarders.
+# Insert this transform between the backend log source and the sink that forwards
+# records to Loki / Datadog / another storage backend.
+
+[transforms.otp_redaction]
+type = "remap"
+inputs = ["backend_logs"]
+source = '''
+if exists(.identifier) && .identifier != null {
+  identifier = string!(.identifier)
+  if contains(identifier, "@") {
+    .identifier = replace_regex(identifier, r'(^.).*(@.*$)', "${1}***${2}")
+  } else {
+    .identifier = replace_regex(identifier, r'(^\\+?\\d{0,4})\\d+(\\d{3}$)', "${1}***${2}")
+  }
+}
+
+if exists(.phone_number) && .phone_number != null {
+  .phone_number = replace_regex(string!(.phone_number), r'(^\\+?\\d{0,4})\\d+(\\d{3}$)', "${1}***${2}")
+}
+
+if exists(.phoneNumber) && .phoneNumber != null {
+  .phoneNumber = replace_regex(string!(.phoneNumber), r'(^\\+?\\d{0,4})\\d+(\\d{3}$)', "${1}***${2}")
+}
+
+if exists(.email) && .email != null {
+  .email = replace_regex(string!(.email), r'(^.).*(@.*$)', "${1}***${2}")
+}
+'''

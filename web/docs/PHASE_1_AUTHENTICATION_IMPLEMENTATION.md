@@ -3,6 +3,8 @@
 **Timeline:** 3-5 days  
 **Goal:** Patient dapat register, login, dan booking appointment dari mobile app
 
+> Historical plan. OTP implementation details in this document are superseded by the SMS-only rollout in `/docs/INTERNAL_RELEASE_CHANGELOG_2026-04-07_OTP_SMS_ONLY.md`. Use `/v1/otp/*` for active integrations.
+
 ---
 
 ## 🎯 Scope Minimal (Must Have)

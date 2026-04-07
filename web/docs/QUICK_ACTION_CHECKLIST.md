@@ -19,18 +19,14 @@
   SENDGRID_API_KEY=your_sendgrid_key
   SENDGRID_FROM_EMAIL=noreply@sereneai.id
   ```
-- [ ] Create `backend/src/services/otp.js`:
-  - `generateOTP()` - Generate 6-digit code
-  - `sendPhoneOTP(phoneNumber, code)` - Twilio SMS
-  - `sendEmailOTP(email, code)` - SendGrid email
-  - `verifyOTP(identifier, code)` - Verify code (5min expiry)
-- [ ] Create endpoints in `backend/src/routes/auth.js`:
-  - `POST /v1/auth/send-phone-otp` - Send phone OTP
-  - `POST /v1/auth/verify-phone-otp` - Verify phone OTP
-  - `POST /v1/auth/send-email-otp` - Send email OTP
-  - `POST /v1/auth/verify-email-otp` - Verify email OTP
-- [ ] Store OTP in Redis with TTL (5 minutes)
-- [ ] Test all 4 endpoints with Postman
+- [ ] Use `backend/src/services/otp/` as the OTP adapter/service layer
+- [ ] Use public OTP endpoints:
+  - `POST /v1/otp/requests`
+  - `POST /v1/otp/requests/:challengeId/resend`
+  - `POST /v1/otp/verifications`
+- [ ] Keep `OTP_EMAIL_DEPRECATED=true`
+- [ ] Verify `channel=email` returns `OTP_CHANNEL_DEPRECATED`
+- [ ] Test cooldown, rate-limit, and lockout behavior
 - [ ] Update `docs/mobile-api-contract.md` with OTP endpoints
 
 #### 🔴 Password Reset (Day 2)

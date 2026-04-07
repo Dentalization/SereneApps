@@ -11,7 +11,7 @@
  *       **After registration:**
  *       - User receives JWT access token and refresh token
  *       - Phone verification required before booking appointments
- *       - Send OTP to phone number using `/auth/send-phone-otp`
+ *       - Send OTP to phone number using `/otp/requests`
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -212,23 +212,24 @@
  *       429:
  *         $ref: '#/components/responses/RateLimitError'
  * 
- * /auth/send-phone-otp:
+ * /otp/requests:
  *   post:
- *     summary: Send OTP to phone number
+ *     summary: Request SMS OTP
  *     description: |
- *       Sends a 6-digit OTP code via SMS to verify phone number.
+ *       Sends a 6-digit OTP code via SMS to verify a phone number.
  *       
- *       **Rate Limit:** 3 requests / 5 minutes (stricter limit)
+ *       **Channel Rules:**
+ *       - Public OTP only supports `sms`
+ *       - `email` channel is deprecated and rejected by default
  *       
- *       **OTP Details:**
+ *       **Security Rules:**
  *       - 6-digit numeric code
  *       - Valid for 5 minutes
- *       - Maximum 3 verification attempts
- *       - After 3 failed attempts, request new OTP
+ *       - Cooldown enforced between sends
+ *       - Max resend per rolling window
+ *       - Max verification attempts with temporary lockout
+ *       - Per-IP and per-identifier throttling
  *       
- *       **Development Mode:**
- *       - If Twilio credentials not configured, OTP is logged to console
- *       - OTP returned in response for testing (removed in production)
  *     tags:
  *       - OTP Verification
  *     requestBody:
@@ -238,31 +239,65 @@
  *           schema:
  *             type: object
  *             required:
+ *               - channel
  *               - phone_number
  *             properties:
+ *               channel:
+ *                 type: string
+ *                 enum: [sms, email]
+ *                 example: sms
  *               phone_number:
  *                 type: string
  *                 description: Phone number with country code
  *                 example: +628123456789
+ *               purpose:
+ *                 type: string
+ *                 example: login
  *     responses:
- *       200:
+ *       201:
  *         description: OTP sent successfully
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message:
+ *                 challengeId:
  *                   type: string
- *                   example: OTP sent to +628123456789
- *                 expiresIn:
+ *                   example: 55f89c12-37f7-4dc1-a98b-5f85c373228f
+ *                 identifier:
+ *                   type: string
+ *                   example: +628123456789
+ *                 channel:
+ *                   type: string
+ *                   example: sms
+ *                 expiresAt:
+ *                   type: string
+ *                   format: date-time
+ *                 cooldownUntil:
+ *                   type: string
+ *                   format: date-time
+ *                 remainingAttempts:
  *                   type: integer
- *                   description: OTP validity in seconds
- *                   example: 300
- *                 otp:
- *                   type: string
- *                   description: OTP code (only in dev mode)
- *                   example: "123456"
+ *                   example: 5
+ *       410:
+ *         description: Email channel deprecated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: OTP_CHANNEL_DEPRECATED
+ *                     message:
+ *                       type: string
+ *                       example: Email OTP is deprecated. Use SMS OTP.
+ *                     retryable:
+ *                       type: boolean
+ *                       example: false
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       429:
@@ -270,23 +305,41 @@
  *       500:
  *         $ref: '#/components/responses/ServerError'
  * 
- * /auth/verify-otp:
+ * /otp/requests/{challengeId}/resend:
  *   post:
- *     summary: Verify OTP code
+ *     summary: Resend SMS OTP
+ *     tags:
+ *       - OTP Verification
+ *     parameters:
+ *       - in: path
+ *         name: challengeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OTP resent successfully
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
+ * 
+ * /otp/verifications:
+ *   post:
+ *     summary: Verify SMS OTP
  *     description: |
- *       Verifies the OTP code sent to phone number or email.
+ *       Verifies the OTP code sent to a phone number via SMS.
  *       
  *       **Rate Limit:** 3 requests / 5 minutes
  *       
  *       **Verification Rules:**
- *       - OTP must match exactly (case-sensitive)
- *       - OTP must not be expired (< 5 minutes old)
- *       - Maximum 3 attempts per OTP
- *       - After 3 failed attempts, request new OTP
+ *       - OTP must match the stored hash
+ *       - OTP must not be expired
+ *       - Max verify attempts enforced with lockout
  *       
  *       **After successful verification:**
- *       - User's `isPhoneVerified` or `isEmailVerified` flag is set to true
- *       - User can proceed with booking appointments
+ *       - Challenge is marked verified
+ *       - Client can continue the login or verification flow
  *     tags:
  *       - OTP Verification
  *     requestBody:
@@ -296,12 +349,17 @@
  *           schema:
  *             type: object
  *             required:
- *               - identifier
+ *               - channel
+ *               - phone_number
  *               - otp
  *             properties:
- *               identifier:
+ *               channel:
  *                 type: string
- *                 description: Phone number or email that received OTP
+ *                 enum: [sms, email]
+ *                 example: sms
+ *               phone_number:
+ *                 type: string
+ *                 description: Phone number that received OTP
  *                 example: +628123456789
  *               otp:
  *                 type: string
@@ -315,37 +373,39 @@
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                   example: Phone number verified successfully
  *                 verified:
  *                   type: boolean
  *                   example: true
+ *                 verifiedAt:
+ *                   type: string
+ *                   format: date-time
  *       400:
- *         description: Invalid or expired OTP
+ *         description: Invalid OTP
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Error'
+ *               type: object
  *             examples:
  *               invalidOtp:
  *                 value:
- *                   code: 1004
- *                   errorCode: AUTH_OTP_INVALID
- *                   message: Kode OTP tidak valid
- *                   solution: Periksa kembali kode yang Anda masukkan
+ *                   error:
+ *                     code: OTP_INVALID
+ *                     message: Invalid OTP. Please try again.
+ *                     retryable: true
  *               expiredOtp:
  *                 value:
- *                   code: 1003
- *                   errorCode: AUTH_OTP_EXPIRED
- *                   message: Kode OTP sudah kadaluarsa
- *                   solution: Silakan minta kode OTP baru
+ *                   error:
+ *                     code: OTP_EXPIRED
+ *                     message: OTP has expired. Please request a new one.
+ *                     retryable: true
  *               maxAttempts:
  *                 value:
- *                   code: 1009
- *                   errorCode: AUTH_OTP_MAX_ATTEMPTS
- *                   message: Terlalu banyak percobaan OTP yang salah
- *                   solution: Silakan minta kode OTP baru
+ *                   error:
+ *                     code: OTP_LOCKED
+ *                     message: Too many failed attempts. Please try again later.
+ *                     retryable: false
+ *       410:
+ *         description: Email channel deprecated
  *       429:
  *         $ref: '#/components/responses/RateLimitError'
  *       500:

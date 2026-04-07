@@ -1,0 +1,138 @@
+{
+  "title": "SereneApps OTP Rollout",
+  "uid": "sereneapps-otp-rollout",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "tags": ["otp", "security", "rollout"],
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "loki",
+        "label": "Loki",
+        "current": {
+          "selected": true,
+          "text": "Loki",
+          "value": "Loki"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "OTP Requests Accepted vs Rejected",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | event=\"otp.request\" [5m]))",
+          "legendFormat": "{{ outcome }}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Deprecated Email OTP Hits (24h)",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_CHANNEL_DEPRECATED\" [24h]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 0 }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Rate Limited Events (24h)",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_RATE_LIMITED\" [24h]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 0 }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Locked Events (24h)",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_LOCKED\" [24h]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 0 }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Deprecated / Rate Limited / Locked Trend",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_CHANNEL_DEPRECATED\" [5m]))",
+          "legendFormat": "OTP_CHANNEL_DEPRECATED",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_RATE_LIMITED\" [5m]))",
+          "legendFormat": "OTP_RATE_LIMITED",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(count_over_time({app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=\"OTP_LOCKED\" [5m]))",
+          "legendFormat": "OTP_LOCKED",
+          "refId": "C"
+        }
+      ],
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Recent OTP Security Events",
+      "datasource": {
+        "type": "loki",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "expr": "{app=\"sereneapps-backend\"} | json | domain=\"otp\" | reason=~\"OTP_CHANNEL_DEPRECATED|OTP_RATE_LIMITED|OTP_LOCKED\"",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 8 }
+    }
+  ]
+}

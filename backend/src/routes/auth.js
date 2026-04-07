@@ -3,11 +3,12 @@ import bcrypt from 'bcrypt';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 import { query } from '../db.js';
 import { signAccess, signRefresh, verify, authenticateToken } from '../utils/tokens.js';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
-import { sendPhoneOTP, sendEmailOTP, verifyOTP } from '../services/otp.service.js';
+import { OtpServiceError, sendPhoneOTP, sendEmailOTP, verifyOTP } from '../services/otp.service.js';
 import { authLimiter, otpLimiter } from '../middleware/rate-limiter.js';
 import { validate } from '../middleware/validate.js';
 import {
@@ -24,6 +25,42 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+function ensureCorrelationId(req, res) {
+  const correlationId = req.get('X-Correlation-Id') || req.get('X-Request-Id') || randomUUID();
+  res.setHeader('X-Correlation-Id', correlationId);
+  return correlationId;
+}
+
+function otpErrorResponse(error, correlationId, fallbackCode = 'OTP_INTERNAL_ERROR', fallbackMessage = 'Failed to process OTP request') {
+  if (error instanceof OtpServiceError) {
+    return {
+      status: error.status,
+      body: {
+        error: {
+          code: error.code,
+          message: error.message,
+          retryable: error.retryable,
+          correlationId,
+          details: error.details || {}
+        }
+      }
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      error: {
+        code: fallbackCode,
+        message: fallbackMessage,
+        retryable: false,
+        correlationId,
+        details: {}
+      }
+    }
+  };
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1726,78 +1763,107 @@ router.delete('/user/documents/:documentType/:index?', async (req, res) => {
 
 // Send Phone OTP
 router.post('/send-phone-otp', otpLimiter, validate(phoneOTPSchema), async (req, res) => {
+  const correlationId = ensureCorrelationId(req, res);
   try {
     const { phone_number } = req.body;
 
-    const result = await sendPhoneOTP(phone_number);
+    const result = await sendPhoneOTP(phone_number, {
+      requestIp: req.ip,
+      purpose: req.body?.purpose || 'login',
+      correlationId,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+      userId: req.user?.id || null
+    });
 
     res.json({
       success: true,
       message: result.message,
+      challengeId: result.challengeId,
+      expiresAt: result.expiresAt,
+      cooldownUntil: result.cooldownUntil,
+      remainingAttempts: result.remainingAttempts,
       ...(result.otp && { otp: result.otp }), // Only in dev mode
     });
   } catch (error) {
-    console.error('Send phone OTP error:', error);
-    res.status(500).json({
-      code: 'OTP_SEND_FAILED',
-      message: error.message || 'Failed to send OTP',
-    });
+    if (!(error instanceof OtpServiceError)) {
+      console.error('Send phone OTP error:', error);
+    }
+    const response = otpErrorResponse(error, correlationId, 'OTP_SEND_FAILED', 'Failed to send OTP');
+    res.status(response.status).json(response.body);
   }
 });
 
 // Send Email OTP (fallback)
 router.post('/send-email-otp', otpLimiter, validate(emailOTPSchema), async (req, res) => {
+  const correlationId = ensureCorrelationId(req, res);
   try {
     const { email } = req.body;
 
-    const result = await sendEmailOTP(email);
+    const result = await sendEmailOTP(email, {
+      requestIp: req.ip,
+      purpose: req.body?.purpose || 'login',
+      correlationId,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+      userId: req.user?.id || null
+    });
 
     res.json({
       success: true,
       message: result.message,
+      challengeId: result.challengeId,
+      expiresAt: result.expiresAt,
+      cooldownUntil: result.cooldownUntil,
+      remainingAttempts: result.remainingAttempts,
       ...(result.otp && { otp: result.otp }), // Only in dev mode
     });
   } catch (error) {
-    console.error('Send email OTP error:', error);
-    res.status(500).json({
-      code: 'OTP_SEND_FAILED',
-      message: error.message || 'Failed to send OTP',
-    });
+    if (!(error instanceof OtpServiceError)) {
+      console.error('Send email OTP error:', error);
+    }
+    const response = otpErrorResponse(error, correlationId, 'OTP_SEND_FAILED', 'Failed to send OTP');
+    res.status(response.status).json(response.body);
   }
 });
 
 // Verify OTP
 router.post('/verify-otp', otpLimiter, validate(verifyOTPSchema), async (req, res) => {
+  const correlationId = ensureCorrelationId(req, res);
   try {
     const { phone_number, email, otp } = req.body;
     const identifier = phone_number || email;
 
     if (!identifier) {
       return res.status(400).json({
-        code: 'MISSING_IDENTIFIER',
-        message: 'Phone number or email is required',
+        error: {
+          code: 'OTP_IDENTIFIER_REQUIRED',
+          message: 'Phone number is required for SMS OTP.',
+          retryable: false,
+          correlationId,
+          details: {}
+        }
       });
     }
 
-    const result = await verifyOTP(identifier, otp);
-
-    if (!result.success) {
-      return res.status(400).json({
-        code: 'OTP_VERIFICATION_FAILED',
-        message: result.error,
-      });
-    }
+    const result = await verifyOTP(identifier, otp, {
+      channel: email ? 'email' : 'sms',
+      requestIp: req.ip,
+      correlationId,
+      userId: req.user?.id || null
+    });
 
     res.json({
       success: true,
-      message: result.message,
+      message: 'OTP verified successfully',
+      verified: result.verified,
+      verifiedAt: result.verifiedAt,
+      challengeId: result.challengeId
     });
   } catch (error) {
-    console.error('Verify OTP error:', error);
-    res.status(500).json({
-      code: 'OTP_VERIFY_ERROR',
-      message: 'Failed to verify OTP',
-    });
+    if (!(error instanceof OtpServiceError)) {
+      console.error('Verify OTP error:', error);
+    }
+    const response = otpErrorResponse(error, correlationId, 'OTP_VERIFY_ERROR', 'Failed to verify OTP');
+    res.status(response.status).json(response.body);
   }
 });
 

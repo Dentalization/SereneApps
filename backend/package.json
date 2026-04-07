@@ -8,7 +8,8 @@
     "dev": "node --watch src/server.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
-    "test:journey": "node tests/patient_journey.test.js"
+    "test:journey": "node tests/patient_journey.test.js",
+    "test:otp": "node --test --test-concurrency=1 tests/otp.service.test.js tests/otp.routes.test.js"
   },
   "dependencies": {
     "@prisma/client": "^6.16.1",

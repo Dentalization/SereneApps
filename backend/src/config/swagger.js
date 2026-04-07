@@ -329,6 +329,22 @@ Set \`Accept-Language\` header for localized responses:
             },
           },
         },
+        NotFound: {
+          description: 'Resource not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/Error',
+              },
+              example: {
+                code: 9001,
+                errorCode: 'NOT_FOUND',
+                message: 'Resource tidak ditemukan',
+                solution: 'Periksa kembali resource yang diminta',
+              },
+            },
+          },
+        },
         ServerError: {
           description: 'Internal server error',
           content: {
@@ -354,7 +370,7 @@ Set \`Accept-Language\` header for localized responses:
       },
       {
         name: 'OTP Verification',
-        description: 'Phone and email OTP verification',
+        description: 'SMS OTP verification and verification lifecycle',
       },
       {
         name: 'Appointments',

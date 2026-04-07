@@ -33,9 +33,14 @@ function serializePaymentIntent(intent) {
     currency: intent.currency,
     status: intent.status,
     provider: intent.provider,
+    idempotencyKey: intent.idempotencyKey ?? intent.idempotency_key ?? null,
+    providerOrderId: intent.providerOrderId ?? intent.provider_order_id ?? null,
     providerPaymentId: intent.providerPaymentId ?? intent.provider_payment_id ?? null,
     redirectUrl: intent.redirectUrl ?? intent.redirect_url ?? null,
     expiresAt: intent.expiresAt ?? intent.expires_at ?? null,
+    reconciliationStatus: intent.reconciliationStatus ?? intent.reconciliation_status ?? null,
+    lastReconciledAt: intent.lastReconciledAt ?? intent.last_reconciled_at ?? null,
+    callbackVerifiedAt: intent.callbackVerifiedAt ?? intent.callback_verified_at ?? null,
     metadata: intent.metadata || {},
     providerResponse: intent.providerResponse ?? intent.provider_response ?? {},
     createdAt: intent.createdAt ?? intent.created_at,
@@ -72,6 +77,7 @@ router.post(
     try {
       const patientId = toBigInt(req.user.id, 'patientId');
       const { appointmentId: appointmentIdRaw, amount, currency = 'IDR' } = req.body || {};
+      const requestIdempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || null;
 
       if (!appointmentIdRaw) {
         return res.status(400).json({ error: 'appointmentId is required' });
@@ -98,7 +104,34 @@ router.post(
         return res.status(403).json({ error: 'You can only create payments for your own appointments' });
       }
 
-      const existingIntent = await prisma.paymentIntent.findUnique({
+      if (requestIdempotencyKey) {
+        const existingByKey = await prisma.paymentIntent.findFirst({
+          where: {
+            patientId,
+            idempotencyKey: requestIdempotencyKey
+          },
+          include: {
+            appointment: true,
+            patient: { select: { id: true, name: true, email: true, phone_number: true } }
+          }
+        });
+
+        if (existingByKey) {
+          const midtransConfig = getMidtransClientConfig();
+          return res.status(200).json({
+            paymentIntent: serializePaymentIntent(existingByKey),
+            provider: midtransConfig
+              ? {
+                  name: 'midtrans',
+                  redirectUrl: existingByKey.redirectUrl ?? existingByKey.redirect_url ?? null,
+                  clientKey: midtransConfig.clientKey
+                }
+              : null
+          });
+        }
+      }
+
+      const existingIntent = await prisma.paymentIntent.findFirst({
         where: { appointmentId },
         select: { id: true, status: true }
       }).catch(() => null);
@@ -115,6 +148,7 @@ router.post(
           currency,
           status: 'pending',
           provider: 'midtrans',
+          idempotencyKey: requestIdempotencyKey,
           metadata: {}
         },
         include: {
@@ -151,6 +185,7 @@ router.post(
         where: { id: paymentIntent.id },
         data: {
           status: 'requires_action',
+          providerOrderId: providerResult.providerOrderId,
           providerPaymentId: providerResult.providerPaymentId,
           redirectUrl: providerResult.redirectUrl,
           expiresAt: providerResult.expiresAt,

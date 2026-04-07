@@ -55,15 +55,18 @@ Copy from `.env.staging.example` and set in Railway:
 ### **OTP Configuration:**
 - [ ] `OTP_EXPIRY_MINUTES=5`
 - [ ] `OTP_LENGTH=6`
+- [ ] `OTP_EMAIL_DEPRECATED=true`
+- [ ] `OTP_REQUEST_COOLDOWN_SECONDS=60`
+- [ ] `OTP_MAX_SEND_PER_HOUR=5`
+- [ ] `OTP_MAX_VERIFY_ATTEMPTS=5`
+- [ ] `OTP_LOCKOUT_MINUTES=30`
 
 ### **Optional (Can Skip for Now):**
 - [ ] `TWILIO_ACCOUNT_SID`
 - [ ] `TWILIO_AUTH_TOKEN`
-- [ ] `TWILIO_PHONE_NUMBER`
-- [ ] `SENDGRID_API_KEY`
-- [ ] `SENDGRID_FROM_EMAIL`
+- [ ] `TWILIO_SMS_FROM_NUMBER`
 
-**Note:** App works in dev mode without Twilio/SendGrid (OTP logged to Railway logs)
+**Note:** Public OTP is SMS-only. Email OTP must remain deprecated in staging and production.
 
 ---
 
@@ -112,12 +115,18 @@ curl -X POST https://your-railway-domain.up.railway.app/v1/auth/patient/register
 
 ### **Send OTP:**
 ```bash
-curl -X POST https://your-railway-domain.up.railway.app/v1/auth/send-phone-otp \
+curl -X POST https://your-railway-domain.up.railway.app/v1/otp/requests \
   -H "Content-Type: application/json" \
-  -d '{"phone_number": "+628123456789"}'
+  -H "Idempotency-Key: otp-staging-001" \
+  -d '{
+    "channel": "sms",
+    "phone_number": "+628123456789",
+    "purpose": "login"
+  }'
 ```
-- [ ] Returns success message
-- [ ] OTP logged in Railway console (dev mode)
+- [ ] Returns `challengeId`
+- [ ] Returns `cooldownUntil`
+- [ ] Email channel request returns `OTP_CHANNEL_DEPRECATED`
 
 ### **Login:**
 ```bash
@@ -153,8 +162,9 @@ Test Credentials:
 - Password: TestPass123
 
 Notes:
-- OTP is in dev mode (no SMS sent)
-- Check API docs for OTP code
+- OTP public contract is `/v1/otp/*`
+- OTP channel is SMS only
+- Monitor `OTP_CHANNEL_DEPRECATED`, `OTP_RATE_LIMITED`, and `OTP_LOCKED`
 - All endpoints documented in Swagger UI
 
 Happy testing! 🎉

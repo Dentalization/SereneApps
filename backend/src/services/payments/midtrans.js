@@ -35,7 +35,9 @@ export function getMidtransClientConfig() {
 export async function createMidtransTransaction({ paymentIntent, appointment, patient }) {
   if (MIDTRANS_MOCK_MODE) {
     const now = new Date();
+    const orderId = `appointment-${appointment.id.toString()}-intent-${paymentIntent.id.toString()}`;
     return {
+      providerOrderId: orderId,
       providerPaymentId: `mock-${paymentIntent.id.toString()}`,
       redirectUrl: `https://example.com/mock-payment/${paymentIntent.id.toString()}`,
       rawResponse: {
@@ -96,6 +98,7 @@ export async function createMidtransTransaction({ paymentIntent, appointment, pa
   const data = await response.json();
 
   return {
+    providerOrderId: orderId,
     providerPaymentId: data.token || data.transaction_id || orderId,
     redirectUrl: data.redirect_url || data.payment_url,
     rawResponse: data,
