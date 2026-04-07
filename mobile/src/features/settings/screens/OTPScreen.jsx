@@ -7,92 +7,253 @@ import {
   TextInput as RNTextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, ProgressBar, Text, useTheme } from 'react-native-paper';
+import { Button, Card, ProgressBar, Text, TextInput, useTheme } from 'react-native-paper';
 import ValidationToast from '../components/ValidationToast';
 import { useDispatch, useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthHero from '../components/AuthHero';
-import { otpSchema } from '../../../utils/validation';
-import { otpVerified } from '../../../store/slices/authSlice';
+import { otpSchema, phoneSchema } from '../../../utils/validation';
+import { otpVerified, setPhoneNumber } from '../../../store/slices/authSlice';
+import { requestSmsOtp, resendSmsOtp, verifySmsOtp } from '../../../services/authService';
+
+const DEFAULT_PHONE_PREFIX = '+628';
+
+const OTP_STATUS_BY_CODE = {
+  OTP_COOLDOWN_ACTIVE: 'warning',
+  OTP_RATE_LIMITED: 'warning',
+  OTP_EXPIRED: 'warning',
+  OTP_LOCKED: 'error',
+  OTP_INVALID: 'error',
+};
+
+const secondsUntil = (target) => {
+  if (!target) return 0;
+  const parsedTime = new Date(target).getTime();
+  if (Number.isNaN(parsedTime)) return 0;
+  return Math.max(0, Math.ceil((parsedTime - Date.now()) / 1000));
+};
 
 const OTPScreen = ({ navigation, route }) => {
   const dispatch = useDispatch();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const storedPhone = useSelector((state) => state.auth.phoneNumber);
-  const phoneNumber = route?.params?.phoneNumber || storedPhone || '+628';
+  const initialPhone = route?.params?.phoneNumber || storedPhone || DEFAULT_PHONE_PREFIX;
+  const purpose = route?.params?.purpose || 'login';
+  const autoSend = route?.params?.autoSend !== false;
+
+  const [phoneNumber, setPhoneNumberValue] = useState(initialPhone);
   const [otp, setOtp] = useState('');
   const [errors, setErrors] = useState({});
-  const [timer, setTimer] = useState(60);
-  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [challengeId, setChallengeId] = useState(route?.params?.challengeId || null);
+  const [cooldownUntil, setCooldownUntil] = useState(route?.params?.cooldownUntil || null);
+  const [timer, setTimer] = useState(secondsUntil(route?.params?.cooldownUntil));
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '', status: 'info' });
   const [loading, setLoading] = useState(false);
+
   const inputRef = useRef(null);
+  const bootstrappedRef = useRef(false);
 
   useEffect(() => {
-    if (timer === 0) return undefined;
+    if (!cooldownUntil) {
+      setTimer(0);
+      return undefined;
+    }
+
+    setTimer(secondsUntil(cooldownUntil));
     const interval = setInterval(() => {
-      setTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      setTimer(secondsUntil(cooldownUntil));
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [timer]);
+  }, [cooldownUntil]);
+
+  useEffect(() => {
+    if (bootstrappedRef.current || !autoSend || challengeId) {
+      return;
+    }
+
+    bootstrappedRef.current = true;
+    if (phoneSchema.safeParse(phoneNumber.trim()).success) {
+      void requestCode();
+    }
+  }, [autoSend, challengeId, phoneNumber]);
 
   const formattedTimer = useMemo(() => `00:${timer.toString().padStart(2, '0')}`, [timer]);
+  const progress = useMemo(() => Math.min(1, timer / 60), [timer]);
 
-  const progress = useMemo(() => timer / 60, [timer]);
-
-  const handleChange = (value) => {
-    const sanitized = value.replace(/[^0-9]/g, '').slice(0, 6);
-    setOtp(sanitized);
-    if (errors.otp) {
-      setErrors({});
-    }
+  const showSnackbar = (message, status = 'info') => {
+    setSnackbar({ visible: true, message, status });
   };
 
-  const handleVerify = () => {
-    const check = otpSchema.safeParse(otp);
-    if (!check.success) {
-      setErrors({ otp: check.error.issues?.[0]?.message || 'Kode OTP tidak valid' });
+  const validatePhoneNumber = () => {
+    const normalizedPhone = phoneNumber.trim();
+    const result = phoneSchema.safeParse(normalizedPhone);
+
+    if (!result.success) {
+      setErrors((prev) => ({
+        ...prev,
+        phoneNumber: result.error.issues?.[0]?.message || 'Nomor telepon tidak valid',
+      }));
+      return null;
+    }
+
+    return normalizedPhone;
+  };
+
+  const applyOtpChallenge = (responseData, normalizedPhone) => {
+    setChallengeId(responseData.challengeId);
+    setCooldownUntil(responseData.cooldownUntil || null);
+    dispatch(setPhoneNumber(normalizedPhone));
+  };
+
+  const requestCode = async ({ isResend = false } = {}) => {
+    const normalizedPhone = validatePhoneNumber();
+    if (!normalizedPhone) {
+      showSnackbar('Masukkan nomor telepon aktif untuk menerima OTP via SMS.', 'warning');
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      dispatch(otpVerified({ phoneNumber }));
+
+    try {
+      let result = null;
+
+      if (isResend && challengeId) {
+        result = await resendSmsOtp({ challengeId });
+        if (!result.success && result.code === 'OTP_CHALLENGE_NOT_FOUND') {
+          result = await requestSmsOtp({ phoneNumber: normalizedPhone, purpose });
+        }
+      } else {
+        result = await requestSmsOtp({ phoneNumber: normalizedPhone, purpose });
+      }
+
+      if (result.success) {
+        applyOtpChallenge(result.data, normalizedPhone);
+        showSnackbar(
+          isResend
+            ? `Kode OTP baru dikirim ke ${normalizedPhone}`
+            : `Kode OTP dikirim ke ${normalizedPhone}`,
+          'success'
+        );
+        return;
+      }
+
+      setCooldownUntil(result.details?.cooldownUntil || result.details?.lockedUntil || null);
+      showSnackbar(result.message, OTP_STATUS_BY_CODE[result.code] || 'error');
+    } finally {
       setLoading(false);
-      setSnackbar({ visible: true, message: 'Verifikasi berhasil. Lengkapi profil Anda sekarang.' });
-      navigation.navigate('Login');
-    }, 500);
+    }
   };
 
-  const handleResend = () => {
-    setTimer(60);
-    setSnackbar({ visible: true, message: `Kode baru dikirim ke ${phoneNumber}` });
+  const handleOtpChange = (value) => {
+    const sanitized = value.replace(/[^0-9]/g, '').slice(0, 6);
+    setOtp(sanitized);
+    if (errors.otp) {
+      setErrors((prev) => ({ ...prev, otp: undefined }));
+    }
+  };
+
+  const handleVerify = async () => {
+    const normalizedPhone = validatePhoneNumber();
+    if (!normalizedPhone) {
+      showSnackbar('Nomor telepon tidak valid.', 'warning');
+      return;
+    }
+
+    const otpCheck = otpSchema.safeParse(otp);
+    if (!otpCheck.success) {
+      setErrors((prev) => ({
+        ...prev,
+        otp: otpCheck.error.issues?.[0]?.message || 'Kode OTP tidak valid',
+      }));
+      return;
+    }
+
+    if (!challengeId) {
+      showSnackbar('Minta kode OTP terlebih dahulu sebelum verifikasi.', 'warning');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await verifySmsOtp({
+        phoneNumber: normalizedPhone,
+        otp,
+      });
+
+      if (result.success) {
+        dispatch(setPhoneNumber(normalizedPhone));
+        dispatch(otpVerified({ phoneNumber: normalizedPhone }));
+        setOtp('');
+        showSnackbar('Verifikasi berhasil. Anda bisa melanjutkan ke login.', 'success');
+        setTimeout(() => {
+          navigation.navigate('Login');
+        }, 500);
+        return;
+      }
+
+      if (result.code === 'OTP_EXPIRED') {
+        setChallengeId(null);
+      }
+
+      setCooldownUntil(result.details?.cooldownUntil || result.details?.lockedUntil || null);
+      if (result.code === 'OTP_INVALID') {
+        setErrors((prev) => ({ ...prev, otp: result.message }));
+      }
+      showSnackbar(result.message, OTP_STATUS_BY_CODE[result.code] || 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    // PERBAIKAN: Ganti SafeAreaView dengan View + paddingTop manual
     <View style={[styles.safeArea, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <AuthHero
           title="Konfirmasi nomor Anda"
-          subtitle={`Kami mengirim kode verifikasi ke ${phoneNumber}. Pastikan nomor aktif.`}
+          subtitle="OTP publik hanya dikirim lewat SMS. Pastikan nomor yang Anda masukkan aktif."
           badgeLabel="Verifikasi keamanan"
           highlights={[
-            { icon: 'clock-outline', label: 'Kedaluwarsa', value: formattedTimer },
-            { icon: 'shield-key', label: 'Status', value: 'Terenkripsi' },
+            { icon: 'clock-outline', label: 'Cooldown', value: formattedTimer },
+            { icon: 'shield-key', label: 'Channel', value: 'SMS only' },
           ]}
         />
 
         <Card style={[styles.card, theme?.shadows?.lg]}>
           <Card.Content>
             <Text variant="titleLarge" style={styles.cardTitle}>
-              Masukkan 6 digit kode
+              Masukkan nomor dan kode OTP
             </Text>
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-              Jika Anda tidak menerima kode dalam 60 detik, ketuk kirim ulang untuk mencoba lagi.
+              Endpoint mobile sudah dipindahkan ke `/v1/otp/*`. Gunakan nomor aktif untuk menerima kode 6 digit.
+            </Text>
+
+            <TextInput
+              mode="outlined"
+              label="Nomor telepon"
+              value={phoneNumber}
+              onChangeText={(value) => {
+                setPhoneNumberValue(value);
+                if (errors.phoneNumber) {
+                  setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+                }
+              }}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder={DEFAULT_PHONE_PREFIX}
+              style={styles.phoneInput}
+              error={Boolean(errors.phoneNumber)}
+              disabled={loading}
+            />
+            <Text style={[styles.errorText, { color: theme.colors.error }]}>
+              {errors.phoneNumber || ' '}
             </Text>
 
             <ProgressBar
@@ -128,7 +289,7 @@ const OTPScreen = ({ navigation, route }) => {
               style={styles.hiddenInput}
               keyboardType="number-pad"
               value={otp}
-              onChangeText={handleChange}
+              onChangeText={handleOtpChange}
               maxLength={6}
               autoFocus
             />
@@ -143,9 +304,9 @@ const OTPScreen = ({ navigation, route }) => {
                 color={theme.colors.primary}
               />
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text variant="titleSmall">Aktifkan notifikasi SMS</Text>
+                <Text variant="titleSmall">Kebijakan keamanan OTP</Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Supaya verifikasi berikutnya lebih cepat dan tidak tertahan di spam.
+                  Cooldown, rate limit, dan lockout diterapkan penuh oleh backend.
                 </Text>
               </View>
               <Button compact mode="text" onPress={() => navigation.navigate('Register')}>
@@ -158,6 +319,7 @@ const OTPScreen = ({ navigation, route }) => {
               onPress={handleVerify}
               loading={loading}
               style={styles.primaryButton}
+              disabled={loading || otp.length !== 6}
             >
               Verifikasi kode
             </Button>
@@ -165,10 +327,10 @@ const OTPScreen = ({ navigation, route }) => {
             <Button
               mode="outlined"
               icon="refresh"
-              disabled={timer > 0}
-              onPress={handleResend}
+              disabled={timer > 0 || loading}
+              onPress={() => requestCode({ isResend: true })}
             >
-              Kirim ulang kode
+              {challengeId ? 'Kirim ulang kode' : 'Kirim kode'}
             </Button>
 
             <Button
@@ -185,8 +347,8 @@ const OTPScreen = ({ navigation, route }) => {
       <ValidationToast
         visible={snackbar.visible}
         message={snackbar.message}
-        onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        status="info"
+        onDismiss={() => setSnackbar({ visible: false, message: '', status: 'info' })}
+        status={snackbar.status}
       />
     </View>
   );
@@ -208,8 +370,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: '700',
   },
+  phoneInput: {
+    marginTop: 20,
+  },
   progressBar: {
-    marginVertical: 20,
+    marginBottom: 20,
     borderRadius: 999,
   },
   otpTouchArea: {

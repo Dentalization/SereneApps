@@ -4,11 +4,12 @@ export const validate = (schema) => {
       schema.parse(req.body);
       next();
     } catch (error) {
-      if (error.errors) {
+      const issues = error?.issues || error?.errors;
+      if (issues) {
         return res.status(400).json({
           code: 'VALIDATION_ERROR',
           message: 'Data tidak valid',
-          errors: error.errors.map((err) => ({
+          errors: issues.map((err) => ({
             field: err.path.join('.'),
             message: err.message,
           })),

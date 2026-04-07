@@ -2,6 +2,8 @@
 
 > **Everything mobile developers need to integrate with SereneAI backend**
 
+> OTP rollout note: email OTP is deprecated. Mobile clients must use `/v1/otp/*` with `channel="sms"` only. Legacy `/v1/auth/*` OTP routes are compatibility-only.
+
 ---
 
 ## 🎯 **TL;DR - Start Here**
@@ -149,36 +151,42 @@ curl https://YOUR_RAILWAY_URL/health
 }
 ```
 
-### **2. Send OTP (Phone Verification)**
+### **2. Request OTP (SMS Only)**
 
-**Endpoint:** `POST /v1/auth/send-phone-otp`
+**Endpoint:** `POST /v1/otp/requests`
 
 **Request:**
 ```json
 {
-  "phone_number": "+628123456789"
+  "channel": "sms",
+  "phone_number": "+628123456789",
+  "purpose": "login"
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "OTP sent successfully",
-  "messageId": "OTP-uuid"
+  "challengeId": "otp-uuid",
+  "identifier": "+628123456789",
+  "channel": "sms",
+  "expiresAt": "2026-04-07T10:20:00.000Z",
+  "cooldownUntil": "2026-04-07T10:16:00.000Z",
+  "remainingAttempts": 5
 }
 ```
 
-**⚠️ Important:** In staging (dev mode), SMS is NOT sent. Check API documentation or logs for OTP code.
+**⚠️ Important:** Email OTP is deprecated. If a client sends `channel=email`, the backend returns `OTP_CHANNEL_DEPRECATED`.
 
 ### **3. Verify OTP**
 
-**Endpoint:** `POST /v1/auth/verify-otp`
+**Endpoint:** `POST /v1/otp/verifications`
 
 **Request:**
 ```json
 {
-  "identifier": "+628123456789",
+  "channel": "sms",
+  "phone_number": "+628123456789",
   "otp": "123456"
 }
 ```
@@ -186,15 +194,17 @@ curl https://YOUR_RAILWAY_URL/health
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Phone number verified successfully"
+  "verified": true,
+  "verifiedAt": "2026-04-07T10:17:20.000Z",
+  "challengeId": "otp-uuid"
 }
 ```
 
 **Error Cases:**
-- Invalid OTP: Error code `1003`
-- OTP expired: Error code `1004`
-- Max attempts exceeded: Error code `1005`
+- Invalid OTP: `OTP_INVALID`
+- OTP expired: `OTP_EXPIRED`
+- Too many requests: `OTP_RATE_LIMITED`
+- Temporary lockout: `OTP_LOCKED`
 
 ### **4. Login**
 
@@ -469,8 +479,9 @@ try {
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/auth/send-phone-otp` | 3 requests | 15 minutes |
-| `/auth/verify-otp` | 3 attempts | Per OTP session |
+| `/v1/otp/requests` | 5 requests | 1 hour per identifier |
+| `/v1/otp/requests/:challengeId/resend` | cooldown enforced | 60 seconds |
+| `/v1/otp/verifications` | 5 attempts | Per OTP challenge |
 | All other endpoints | 100 requests | 15 minutes |
 
 ### **Rate Limit Response:**
@@ -509,7 +520,7 @@ if (error.code == 9004) {
 ### **Test Scenarios:**
 
 1. **Complete Authentication Flow:**
-   - Register → Send OTP → Verify OTP → Login
+   - Register/Login helper → Request OTP via `/v1/otp/requests` → Verify via `/v1/otp/verifications`
 
 2. **Error Handling:**
    - Invalid email format
@@ -519,7 +530,7 @@ if (error.code == 9004) {
 
 3. **Rate Limiting:**
    - Send OTP 4 times rapidly
-   - Verify with wrong OTP 4 times
+   - Verify with wrong OTP until `OTP_LOCKED`
 
 4. **Token Refresh:**
    - Let access token expire (15 min)
@@ -534,8 +545,9 @@ if (error.code == 9004) {
 ### **Test Checklist:**
 
 - [ ] Registration flow works
-- [ ] OTP send works (check docs/logs for code)
+- [ ] OTP request works via `/v1/otp/requests`
 - [ ] OTP verification works
+- [ ] Email OTP is rejected with `OTP_CHANNEL_DEPRECATED`
 - [ ] Login returns valid tokens
 - [ ] Authenticated endpoints require Bearer token
 - [ ] Token refresh works

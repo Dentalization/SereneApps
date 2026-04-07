@@ -12,6 +12,7 @@ import clinicsRouter from './routes/clinics.js';
 import dentistsRouter from './routes/dentists.js';
 import profileRouter from './routes/profile.js';
 import patientRouter from './routes/patient.js';
+import otpRouter from './routes/otp.js';
 import adminProfileRouter from './routes/admin-profile.js';
 import adminDentistsRouter from './routes/admin-dentists.js';
 import adminRouter from './routes/admin.js';
@@ -166,6 +167,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 // Mount API under versioned prefix to match frontend
 const prefix = `/${process.env.API_VERSION || 'v1'}`;
 app.use(`${prefix}/auth`, authRouter);
+app.use(`${prefix}/otp`, otpRouter);
 app.use(`${prefix}`, authRouter); // Also mount auth routes under /v1 for profile endpoints
 app.use(`${prefix}/profile`, profileRouter);
 app.use(`${prefix}/patient`, patientRouter); // Patient-specific routes

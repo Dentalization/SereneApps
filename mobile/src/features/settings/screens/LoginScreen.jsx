@@ -182,7 +182,11 @@ const LoginScreen = ({ navigation }) => {
       {
         icon: 'cellphone-lock',
         label: 'OTP',
-        onPress: () => navigation.navigate('OTP', { phoneNumber: '+628' }),
+        onPress: () => navigation.navigate('OTP', {
+          phoneNumber: '',
+          autoSend: false,
+          purpose: 'login',
+        }),
       },
       {
         icon: 'face-recognition',

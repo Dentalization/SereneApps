@@ -110,6 +110,15 @@ export async function applyPaymentStatus({
       throw error;
     }
 
+    if (intent.status === newStatus) {
+      return {
+        paymentIntent: intent,
+        appointmentStatus: mapStatusToAppointment(newStatus),
+        appointment: intent.appointment,
+        noOp: true
+      };
+    }
+
     if (FINAL_PAYMENT_STATUSES.includes(intent.status) && intent.status !== newStatus) {
       const error = new Error('PAYMENT_ALREADY_FINAL');
       error.status = 400;
@@ -166,9 +175,18 @@ export async function applyPaymentStatus({
     return {
       paymentIntent: updatedIntent,
       appointmentStatus,
-      appointment
+      appointment,
+      noOp: false
     };
   });
+
+  if (result.noOp) {
+    return {
+      paymentIntent: result.paymentIntent,
+      appointmentStatus: result.appointmentStatus || result.appointment?.status || result.paymentIntent.status,
+      noOp: true
+    };
+  }
 
   const resolvedStatus = result.appointmentStatus || result.appointment?.status || newStatus;
   const commPayload = await syncCommunications(result.appointment, resolvedStatus);
@@ -186,6 +204,7 @@ export async function applyPaymentStatus({
 
   return {
     paymentIntent: result.paymentIntent,
-    appointmentStatus: resolvedStatus
+    appointmentStatus: resolvedStatus,
+    noOp: false
   };
 }

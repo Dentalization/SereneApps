@@ -319,6 +319,8 @@ model PaymentIntent {
   currency          String          @default("IDR") @db.VarChar
   status            String          @default("pending") @db.VarChar
   provider          String?         @db.VarChar
+  idempotencyKey    String?         @unique(map: "uniq_payment_intents_idempotency_key") @map("idempotency_key") @db.VarChar(180)
+  providerOrderId   String?         @map("provider_order_id") @db.VarChar(191)
   providerPaymentId String?         @map("provider_payment_id") @db.VarChar
   metadata          Json?           @default("{}")
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -326,12 +328,17 @@ model PaymentIntent {
   redirectUrl       String?         @map("redirect_url")
   expiresAt         DateTime?       @map("expires_at") @db.Timestamptz(6)
   providerResponse  Json?           @default("{}") @map("provider_response")
+  reconciliationStatus String       @default("pending") @map("reconciliation_status") @db.VarChar(32)
+  lastReconciledAt  DateTime?       @map("last_reconciled_at") @db.Timestamptz(6)
+  callbackVerifiedAt DateTime?      @map("callback_verified_at") @db.Timestamptz(6)
   appointment       Appointment     @relation("AppointmentPaymentIntents", fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   patient           User            @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   ledgerEntries     PaymentLedger[]
 
   @@index([patientId, createdAt(sort: Desc)], map: "idx_payment_intents_patient")
   @@index([status], map: "idx_payment_intents_status")
+  @@index([providerOrderId], map: "idx_payment_intents_provider_order_id")
+  @@index([reconciliationStatus, updatedAt(sort: Desc)], map: "idx_payment_intents_reconciliation")
   @@map("payment_intents")
 }
 
@@ -458,18 +465,101 @@ model NotificationJob {
 }
 
 model OTPVerification {
-  id         String   @id @default(dbgenerated("gen_random_uuid()"))
-  identifier String   @unique
-  otp        String
-  type       String
-  expiresAt  DateTime
-  attempts   Int      @default(0)
-  verified   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now())
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  identifier        String    @unique
+  otp               String
+  type              String
+  purpose           String    @default("login") @db.VarChar(50)
+  expiresAt         DateTime
+  attempts          Int       @default(0)
+  resendCount       Int       @default(0) @map("resend_count")
+  maxAttempts       Int       @default(5) @map("max_attempts")
+  cooldownUntil     DateTime? @map("cooldown_until")
+  lockedUntil       DateTime? @map("locked_until")
+  lastSentAt        DateTime? @map("last_sent_at")
+  lastRequestIpHash String?   @map("last_request_ip_hash") @db.VarChar(128)
+  verified          Boolean   @default(false)
+  verifiedAt        DateTime? @map("verified_at")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now())
 
   @@index([expiresAt])
   @@index([identifier])
+  @@index([cooldownUntil], map: "idx_otp_verification_cooldown")
+  @@index([lockedUntil], map: "idx_otp_verification_locked")
+  @@map("OTPVerification")
+}
+
+model OtpRequestAttempt {
+  id                BigInt   @id @default(autoincrement())
+  otpVerificationId String?  @map("otp_verification_id")
+  action            String   @db.VarChar(16)
+  identifierHash    String?  @map("identifier_hash") @db.VarChar(128)
+  ipHash            String?  @map("ip_hash") @db.VarChar(128)
+  channel           String   @db.VarChar(16)
+  outcome           String   @db.VarChar(32)
+  reason            String?  @db.VarChar(64)
+  correlationId     String?  @map("correlation_id") @db.VarChar(120)
+  userId            BigInt?  @map("user_id")
+  idempotencyKey    String?  @map("idempotency_key") @db.VarChar(180)
+  metadata          Json?    @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ipHash, action, createdAt(sort: Desc)], map: "idx_otp_request_attempts_ip_window")
+  @@index([identifierHash, action, createdAt(sort: Desc)], map: "idx_otp_request_attempts_identifier_window")
+  @@index([idempotencyKey, createdAt(sort: Desc)], map: "idx_otp_request_attempts_idempotency")
+  @@map("otp_request_attempts")
+}
+
+model DomainEventOutbox {
+  id             BigInt    @id @default(autoincrement())
+  eventId        String    @unique @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  eventType      String    @map("event_type") @db.VarChar(100)
+  aggregateType  String    @map("aggregate_type") @db.VarChar(100)
+  aggregateId    String    @map("aggregate_id") @db.VarChar(100)
+  correlationId  String?   @map("correlation_id") @db.VarChar(120)
+  causationId    String?   @map("causation_id") @db.VarChar(120)
+  idempotencyKey String?   @map("idempotency_key") @db.VarChar(180)
+  payload        Json?     @default("{}")
+  headers        Json?     @default("{}")
+  status         String    @default("pending") @db.VarChar(32)
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6)
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, availableAt], map: "idx_domain_event_outbox_status_available")
+  @@index([aggregateType, aggregateId, createdAt(sort: Desc)], map: "idx_domain_event_outbox_aggregate")
+  @@map("domain_event_outbox")
+}
+
+model WebhookReceipt {
+  id            BigInt    @id @default(autoincrement())
+  provider      String    @db.VarChar(32)
+  source        String?   @db.VarChar(64)
+  deliveryKey   String    @map("delivery_key") @db.VarChar(191)
+  eventType     String?   @map("event_type") @db.VarChar(100)
+  resourceId    String?   @map("resource_id") @db.VarChar(191)
+  signature     String?   @db.VarChar(255)
+  payloadHash   String    @map("payload_hash") @db.VarChar(128)
+  correlationId String?   @map("correlation_id") @db.VarChar(120)
+  rawPayload    Json?     @default("{}") @map("raw_payload")
+  headers       Json?     @default("{}")
+  status        String    @default("processing") @db.VarChar(32)
+  attempts      Int       @default(1)
+  receivedAt    DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([provider, deliveryKey], map: "uniq_webhook_receipts_provider_delivery")
+  @@index([status, nextAttemptAt], map: "idx_webhook_receipts_status_next_attempt")
+  @@index([provider, receivedAt(sort: Desc)], map: "idx_webhook_receipts_provider_received_at")
+  @@map("webhook_receipts")
 }
 
 model Clinic {

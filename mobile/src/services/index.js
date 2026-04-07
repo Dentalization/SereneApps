@@ -1,4 +1,5 @@
 import api from './api';
+import { requestSmsOtp, resendSmsOtp, verifySmsOtp } from './authService';
 
 export const authService = {
   // Patient registration
@@ -14,15 +15,43 @@ export const authService = {
   },
 
   // Send OTP
-  sendOTP: async (phoneNumber) => {
-    const response = await api.post('/auth/otp/send', { phoneNumber });
-    return response.data;
+  sendOTP: async (phoneNumber, options = {}) => {
+    const result = await requestSmsOtp({
+      phoneNumber,
+      purpose: options.purpose || 'login',
+      idempotencyKey: options.idempotencyKey || null,
+    });
+
+    if (!result.success) {
+      throw Object.assign(new Error(result.message), result);
+    }
+
+    return result.data;
   },
 
   // Verify OTP
   verifyOTP: async (phoneNumber, code) => {
-    const response = await api.post('/auth/otp/verify', { phoneNumber, code });
-    return response.data;
+    const result = await verifySmsOtp({ phoneNumber, otp: code });
+
+    if (!result.success) {
+      throw Object.assign(new Error(result.message), result);
+    }
+
+    return result.data;
+  },
+
+  // Resend OTP
+  resendOTP: async (challengeId, options = {}) => {
+    const result = await resendSmsOtp({
+      challengeId,
+      idempotencyKey: options.idempotencyKey || null,
+    });
+
+    if (!result.success) {
+      throw Object.assign(new Error(result.message), result);
+    }
+
+    return result.data;
   },
 
   // Logout

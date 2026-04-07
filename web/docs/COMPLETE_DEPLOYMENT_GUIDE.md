@@ -236,28 +236,27 @@ curl -X POST https://YOUR_RAILWAY_URL/v1/auth/patient/register \
 ### **Test 4: Send OTP (Dev Mode)**
 
 ```bash
-curl -X POST https://YOUR_RAILWAY_URL/v1/auth/send-phone-otp \
+curl -X POST https://YOUR_RAILWAY_URL/v1/otp/requests \
   -H "Content-Type: application/json" \
-  -d '{"phone_number": "+628111222333"}'
+  -H "Idempotency-Key: otp-complete-guide-001" \
+  -d '{
+    "channel": "sms",
+    "phone_number": "+628111222333",
+    "purpose": "login"
+  }'
 ```
 
-✅ Expected: Success message
-
-**Check OTP in Railway logs:**
-1. Go to Railway dashboard
-2. Click on backend service
-3. Go to "Deployments" → Latest deployment
-4. View logs
-5. Search for: `🔐 [OTP]`
+✅ Expected: Returns `challengeId`, `cooldownUntil`, and `remainingAttempts`
 
 ### **Test 5: Verify OTP**
 
 ```bash
-# Use OTP from Railway logs (e.g., 123456)
-curl -X POST https://YOUR_RAILWAY_URL/v1/auth/verify-otp \
+# Use OTP returned by dev mode or received via SMS
+curl -X POST https://YOUR_RAILWAY_URL/v1/otp/verifications \
   -H "Content-Type: application/json" \
   -d '{
-    "identifier": "+628111222333",
+    "channel": "sms",
+    "phone_number": "+628111222333",
     "otp": "123456"
   }'
 ```
@@ -300,14 +299,18 @@ curl -X POST https://YOUR_RAILWAY_URL/v1/auth/patient/register \
 ```bash
 # Send 5 OTP requests rapidly
 for i in {1..5}; do
-  curl -X POST https://YOUR_RAILWAY_URL/v1/auth/send-phone-otp \
+  curl -X POST https://YOUR_RAILWAY_URL/v1/otp/requests \
     -H "Content-Type: application/json" \
-    -d '{"phone_number": "+628111222333"}'
+    -d '{
+      "channel": "sms",
+      "phone_number": "+628111222333",
+      "purpose": "login"
+    }'
   echo ""
 done
 ```
 
-✅ Expected: 4th request returns error code 9004 (rate limit exceeded)
+✅ Expected: Request is blocked with `OTP_COOLDOWN_ACTIVE` or `OTP_RATE_LIMITED`
 
 ---
 

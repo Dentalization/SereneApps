@@ -1,0 +1,47 @@
+groups:
+  - name: sereneapps-otp-rollout
+    interval: 1m
+    rules:
+      - alert: OtpChannelDeprecatedTraffic
+        expr: |
+          sum(
+            count_over_time({app="sereneapps-backend"} | json | domain="otp" | reason="OTP_CHANNEL_DEPRECATED" [10m])
+          ) > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: otp
+        annotations:
+          summary: Deprecated email OTP traffic detected
+          description: Legacy email OTP requests are still reaching the backend. Clients should use POST /v1/otp/* with channel=sms only.
+
+      - alert: OtpRateLimitedSpike
+        expr: |
+          sum(
+            count_over_time({app="sereneapps-backend"} | json | domain="otp" | reason="OTP_RATE_LIMITED" [10m])
+          ) > 20
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: otp
+          category: security
+        annotations:
+          summary: OTP rate limiting spike
+          description: OTP requests are being throttled above the rollout threshold. Check for abuse patterns, broken clients, or aggressive retry loops.
+
+      - alert: OtpLockedSpike
+        expr: |
+          sum(
+            count_over_time({app="sereneapps-backend"} | json | domain="otp" | reason="OTP_LOCKED" [10m])
+          ) > 10
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+          service: otp
+          category: security
+        annotations:
+          summary: OTP lockouts increasing
+          description: OTP lockout events exceeded threshold. Investigate user-facing regressions, brute-force attempts, or client-side OTP autofill issues.

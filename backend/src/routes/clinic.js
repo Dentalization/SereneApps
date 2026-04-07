@@ -1738,6 +1738,9 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
       orderBy: { startsAt: 'desc' }
     });
 
+    // Accept both current and legacy success statuses for compatibility.
+    const successfulPaymentStatuses = new Set(['succeeded', 'paid', 'settled']);
+
     // 4. Build unique patients map
     const patientsMap = new Map();
     const serializedAppointments = [];
@@ -1747,7 +1750,7 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
       const dentistIdStr = apt.dentistId.toString();
       const payment = apt.paymentIntents?.[0] || null;
       const fee = payment?.amount || 0;
-      const isPaid = payment?.status === 'paid' || payment?.status === 'settled';
+      const isPaid = payment?.status ? successfulPaymentStatuses.has(payment.status) : false;
 
       // Serialize appointment
       serializedAppointments.push({

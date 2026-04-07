@@ -4,6 +4,70 @@ import { API_BASE_URL } from './api';
 
 console.log('🌐 API Base URL:', API_BASE_URL);
 
+const OTP_ERROR_MESSAGES = {
+  OTP_CHANNEL_DEPRECATED: 'Email OTP sudah tidak didukung. Gunakan OTP via SMS.',
+  OTP_INVALID: 'Kode OTP tidak valid. Silakan coba lagi.',
+  OTP_EXPIRED: 'Kode OTP sudah kedaluwarsa. Minta kode baru untuk melanjutkan.',
+  OTP_LOCKED: 'Terlalu banyak percobaan yang gagal. Silakan coba lagi nanti.',
+  OTP_COOLDOWN_ACTIVE: 'Mohon tunggu sejenak sebelum meminta kode OTP lagi.',
+  OTP_RATE_LIMITED: 'Terlalu banyak permintaan OTP. Silakan coba lagi nanti.',
+  OTP_CHALLENGE_NOT_FOUND: 'Sesi OTP tidak ditemukan. Minta kode baru untuk melanjutkan.',
+  OTP_IDENTIFIER_REQUIRED: 'Nomor telepon wajib diisi untuk OTP SMS.',
+  NETWORK_ERROR: 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.',
+};
+
+const buildRequestHeaders = (idempotencyKey = null) => ({
+  'Content-Type': 'application/json',
+  'X-Correlation-Id': `otp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+});
+
+const buildOtpIdempotencyKey = (prefix = 'otp-request') =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const mapOtpErrorMessage = (code, fallbackMessage) =>
+  OTP_ERROR_MESSAGES[code] || fallbackMessage || 'Permintaan OTP gagal diproses.';
+
+const mapOtpErrorResponse = (error) => {
+  if (error.response) {
+    const { status, data } = error.response;
+    const structuredError = data?.error || {};
+    const code = structuredError.code || 'OTP_REQUEST_FAILED';
+
+    return {
+      success: false,
+      status,
+      code,
+      retryable: structuredError.retryable ?? false,
+      correlationId: structuredError.correlationId || null,
+      message: mapOtpErrorMessage(code, structuredError.message),
+      details: structuredError.details || {},
+    };
+  }
+
+  if (error.request) {
+    return {
+      success: false,
+      status: 0,
+      code: 'NETWORK_ERROR',
+      retryable: true,
+      correlationId: null,
+      message: OTP_ERROR_MESSAGES.NETWORK_ERROR,
+      details: {},
+    };
+  }
+
+  return {
+    success: false,
+    status: 0,
+    code: 'OTP_UNKNOWN_ERROR',
+    retryable: false,
+    correlationId: null,
+    message: error.message || 'Terjadi kesalahan tidak terduga saat memproses OTP.',
+    details: {},
+  };
+};
+
 /**
  * Register a new patient
  * @param {Object} registrationData - Patient registration data
@@ -174,6 +238,93 @@ export const loginPatient = async (email, password) => {
       error: 'Unknown error',
       message: error.message || 'Something went wrong. Please try again.',
     };
+  }
+};
+
+/**
+ * Request OTP via SMS using the new /v1/otp/* contract.
+ */
+export const requestSmsOtp = async ({
+  phoneNumber,
+  purpose = 'login',
+  idempotencyKey = buildOtpIdempotencyKey('otp-request'),
+} = {}) => {
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/v1/otp/requests`,
+      {
+        channel: 'sms',
+        phone_number: phoneNumber,
+        purpose,
+      },
+      {
+        timeout: 15000,
+        headers: buildRequestHeaders(idempotencyKey),
+      }
+    );
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return mapOtpErrorResponse(error);
+  }
+};
+
+/**
+ * Resend OTP via SMS using the current challenge.
+ */
+export const resendSmsOtp = async ({
+  challengeId,
+  idempotencyKey = buildOtpIdempotencyKey('otp-resend'),
+} = {}) => {
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/v1/otp/requests/${challengeId}/resend`,
+      {},
+      {
+        timeout: 15000,
+        headers: buildRequestHeaders(idempotencyKey),
+      }
+    );
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return mapOtpErrorResponse(error);
+  }
+};
+
+/**
+ * Verify SMS OTP using the new /v1/otp/verifications contract.
+ */
+export const verifySmsOtp = async ({
+  phoneNumber,
+  otp,
+} = {}) => {
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/v1/otp/verifications`,
+      {
+        channel: 'sms',
+        phone_number: phoneNumber,
+        otp,
+      },
+      {
+        timeout: 15000,
+        headers: buildRequestHeaders(),
+      }
+    );
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return mapOtpErrorResponse(error);
   }
 };
 

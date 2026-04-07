@@ -98,6 +98,46 @@ export const ERROR_CODES = {
     solutionEn: 'Please use a different phone number',
   },
 
+  AUTH_OTP_CHANNEL_DEPRECATED: {
+    code: 1011,
+    message: 'OTP email sudah deprecated. Gunakan OTP SMS.',
+    messageEn: 'Email OTP is deprecated. Use SMS OTP.',
+    solution: 'Kirim OTP ke nomor telepon melalui channel SMS',
+    solutionEn: 'Request OTP to a phone number through SMS',
+  },
+
+  AUTH_OTP_COOLDOWN: {
+    code: 1012,
+    message: 'Harap tunggu sebelum meminta OTP baru',
+    messageEn: 'Please wait before requesting another OTP',
+    solution: 'Coba lagi setelah masa cooldown berakhir',
+    solutionEn: 'Retry after the cooldown window ends',
+  },
+
+  AUTH_OTP_RATE_LIMITED: {
+    code: 1013,
+    message: 'Permintaan OTP melebihi batas',
+    messageEn: 'OTP request limit exceeded',
+    solution: 'Coba lagi beberapa saat lagi',
+    solutionEn: 'Please try again later',
+  },
+
+  AUTH_OTP_LOCKED: {
+    code: 1014,
+    message: 'OTP dikunci sementara karena terlalu banyak percobaan gagal',
+    messageEn: 'OTP temporarily locked due to too many failed attempts',
+    solution: 'Tunggu sampai lockout berakhir lalu minta OTP baru',
+    solutionEn: 'Wait until the lockout ends and request a new OTP',
+  },
+
+  AUTH_OTP_CHALLENGE_NOT_FOUND: {
+    code: 1015,
+    message: 'Challenge OTP tidak ditemukan',
+    messageEn: 'OTP challenge not found',
+    solution: 'Minta OTP baru',
+    solutionEn: 'Request a new OTP',
+  },
+
   // ============================================================================
   // APPOINTMENTS (2000-2099)
   // ============================================================================
