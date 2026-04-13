@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 import glob
 
+DEFAULT_PIXEL_SPACING = 0.25
+DEFAULT_SLICE_THICKNESS = 1.0
+
 class MoritaHandler:
     def __init__(self, study_path):
         self.study_path = study_path
@@ -22,8 +25,8 @@ class MoritaHandler:
     def _parse_proc_file(self):
         proc_path = os.path.join(self.study_path, 'photo_proc.txt')
         meta = {
-            "pixel_spacing": 0.25, # Default fallback
-            "slice_thickness": 1.0
+            "pixel_spacing": DEFAULT_PIXEL_SPACING, # Default fallback
+            "slice_thickness": DEFAULT_SLICE_THICKNESS
         }
         
         if os.path.exists(proc_path):
@@ -34,11 +37,43 @@ class MoritaHandler:
                             key, val = line.strip().split('=', 1)
                             # Actual keys vary by machine version, these are educated guesses/common keys
                             if key == 'PixelSize':
-                                meta["pixel_spacing"] = float(val)
+                                try:
+                                    pixel_spacing = float(val)
+                                except (TypeError, ValueError):
+                                    pixel_spacing = DEFAULT_PIXEL_SPACING
+                                    print(
+                                        f"[MoritaHandler] Warning: Invalid PixelSize '{val}'. "
+                                        f"Using fallback pixel_spacing={DEFAULT_PIXEL_SPACING}"
+                                    )
+
+                                if pixel_spacing <= 0:
+                                    pixel_spacing = DEFAULT_PIXEL_SPACING
+                                    print(
+                                        f"[MoritaHandler] Warning: Non-positive PixelSize '{val}'. "
+                                        f"Using fallback pixel_spacing={DEFAULT_PIXEL_SPACING}"
+                                    )
+
+                                meta["pixel_spacing"] = pixel_spacing
                             elif key == 'SlicePitch':
-                                meta["slice_thickness"] = float(val)
-            except Exception:
-                pass 
+                                try:
+                                    slice_thickness = float(val)
+                                except (TypeError, ValueError):
+                                    slice_thickness = DEFAULT_SLICE_THICKNESS
+                                    print(
+                                        f"[MoritaHandler] Warning: Invalid SlicePitch '{val}'. "
+                                        f"Using fallback slice_thickness={DEFAULT_SLICE_THICKNESS}"
+                                    )
+
+                                if slice_thickness <= 0:
+                                    slice_thickness = DEFAULT_SLICE_THICKNESS
+                                    print(
+                                        f"[MoritaHandler] Warning: Non-positive SlicePitch '{val}'. "
+                                        f"Using fallback slice_thickness={DEFAULT_SLICE_THICKNESS}"
+                                    )
+
+                                meta["slice_thickness"] = slice_thickness
+            except Exception as e:
+                print(f"[MoritaHandler] Warning: Failed to parse photo_proc.txt: {e}")
                 
         return meta
 
@@ -94,7 +129,26 @@ class MoritaHandler:
             # SliceThickness (z-spacing) is usually larger than PixelSpacing (x,y spacing)
             # E.g., SliceThickness = 1.0mm, PixelSpacing = 0.25mm
             # Aspect ratio = SliceThickness / PixelSpacing = 4.0
-            aspect_ratio = self.metadata["slice_thickness"] / self.metadata["pixel_spacing"]
+            pixel_spacing = self.metadata.get("pixel_spacing", DEFAULT_PIXEL_SPACING)
+            slice_thickness = self.metadata.get("slice_thickness", DEFAULT_SLICE_THICKNESS)
+
+            if pixel_spacing <= 0:
+                pixel_spacing = DEFAULT_PIXEL_SPACING
+                self.metadata["pixel_spacing"] = pixel_spacing
+                print(
+                    f"[MoritaHandler] Warning: Non-positive pixel_spacing at slice render. "
+                    f"Using fallback {DEFAULT_PIXEL_SPACING}"
+                )
+
+            if slice_thickness <= 0:
+                slice_thickness = DEFAULT_SLICE_THICKNESS
+                self.metadata["slice_thickness"] = slice_thickness
+                print(
+                    f"[MoritaHandler] Warning: Non-positive slice_thickness at slice render. "
+                    f"Using fallback {DEFAULT_SLICE_THICKNESS}"
+                )
+
+            aspect_ratio = slice_thickness / pixel_spacing
             
             if view == 'coronal':
                 # Coronal view: slice along Y axis -> (z, x) plane
@@ -177,4 +231,3 @@ class MoritaHandler:
             }],
             "total_series_found": 1
         }
-

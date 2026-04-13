@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { PY_API_BASE } from '../../../../config/api';
@@ -143,6 +143,12 @@ function shouldRevalidateCachedStudies(cachedStudies) {
     });
 }
 
+function hasIncompleteSeries(study) {
+    return (study?.series || []).some(
+        (series) => series.status === 'converting' || series.status === 'pending'
+    );
+}
+
 const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded }) => {
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
@@ -153,6 +159,11 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
     const [error, setError] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const scrollRef = useRef(null);
+    const onStudiesLoadedRef = useRef(onStudiesLoaded);
+
+    useEffect(() => {
+        onStudiesLoadedRef.current = onStudiesLoaded;
+    }, [onStudiesLoaded]);
 
     useEffect(() => {
         return () => {
@@ -276,34 +287,49 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         studiesRef.current = studiesWithSeries;
     }, [studiesWithSeries]);
 
+    const convertingKey = useMemo(() => (
+        studiesWithSeries
+            .map((study) => {
+                const studyIdentifier = study.id || getStudyKey(study);
+                const statusKey = (study.series || [])
+                    .map((series) => series.status || '')
+                    .join('|');
+                return `${studyIdentifier}:${statusKey}`;
+            })
+            .join(',')
+    ), [studiesWithSeries]);
+
     // Auto-refresh while any series is still converting
     useEffect(() => {
-        const hasConverting = studiesWithSeries.some(study =>
-            (study.series || []).some(s => s.status === 'converting' || s.status === 'pending')
-        );
+        const hasConverting = studiesWithSeries.some(hasIncompleteSeries);
 
         if (!hasConverting) return;
 
         const interval = setInterval(async () => {
             const current = studiesRef.current;
+            if (!current.some(hasIncompleteSeries)) {
+                clearInterval(interval);
+                return;
+            }
+
             const updated = await Promise.all(
                 current.map(async (study) => {
-                    const hasIncomplete = (study.series || []).some(
-                        s => s.status === 'converting' || s.status === 'pending'
-                    );
-                    if (!hasIncomplete) return study;
+                    if (!hasIncompleteSeries(study)) return study;
 
                     return fetchStudySeries(study);
                 })
             );
 
             setStudiesWithSeries(updated);
-            if (onStudiesLoaded) onStudiesLoaded(updated);
+            if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(updated);
+
+            if (!updated.some(hasIncompleteSeries)) {
+                clearInterval(interval);
+            }
         }, 4000);
 
         return () => clearInterval(interval);
-    }, [studiesWithSeries.map(s => s.id + (s.series || []).map(x => x.status).join('')).join(',')]);
-    // ↑ Only restart the interval when study IDs or statuses actually change
+    }, [convertingKey]);
 
     const filteredStudies = studiesWithSeries.filter(s =>
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||

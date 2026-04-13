@@ -40,8 +40,14 @@ app.add_middleware(
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../uploads/x-core'))
 
 # Per-study conversion coordination to prevent duplicate heavy MONAI jobs.
+# Singleflight pattern: the first request creates an Event and performs the
+# conversion, while followers wait on the same Event and then inspect the
+# shared failure state after the leader signals completion.
 _conversion_state_lock = threading.Lock()
 _conversion_events = {}
+_conversion_failures = {}
+_conversion_waiters = {}
+_CONVERSION_WAIT_TIMEOUT_SECONDS = 300
 
 
 def _is_conversion_in_progress(study_path: str) -> bool:
@@ -62,37 +68,72 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
     if os.path.exists(volume_path) and not force:
         return False
 
-    while True:
-        should_run = False
+    should_run = False
+    registered_waiter = False
+    with _conversion_state_lock:
+        event = _conversion_events.get(study_path)
+
+        if event is None:
+            event = threading.Event()
+            _conversion_events[study_path] = event
+            _conversion_failures.pop(study_path, None)
+            should_run = True
+        elif wait:
+            _conversion_waiters[study_path] = _conversion_waiters.get(study_path, 0) + 1
+            registered_waiter = True
+
+    if should_run:
+        conversion_failed = False
+        failure_message = None
+
+        try:
+            convert_study_to_vti(study_path, force)
+            return True
+        except Exception as exc:
+            conversion_failed = True
+            failure_message = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            with _conversion_state_lock:
+                if conversion_failed:
+                    _conversion_failures[study_path] = failure_message
+                else:
+                    _conversion_failures.pop(study_path, None)
+
+                done_event = _conversion_events.get(study_path)
+                if done_event:
+                    done_event.set()
+
+    if not wait:
+        return False
+
+    try:
+        completed = event.wait(timeout=_CONVERSION_WAIT_TIMEOUT_SECONDS)
+        if not completed:
+            raise TimeoutError(
+                f"Timed out after {_CONVERSION_WAIT_TIMEOUT_SECONDS}s waiting for VTI conversion: {study_path}"
+            )
+
         with _conversion_state_lock:
-            event = _conversion_events.get(study_path)
+            failure_message = _conversion_failures.get(study_path)
 
-            if event is None:
-                event = threading.Event()
-                event.clear()
-                _conversion_events[study_path] = event
-                should_run = True
-            elif event.is_set():
-                event.clear()
-                should_run = True
+        if failure_message:
+            raise RuntimeError(
+                f"VTI conversion failed while another request was converting {study_path}: {failure_message}"
+            )
 
-        if should_run:
-            try:
-                convert_study_to_vti(study_path, force)
-                return True
-            finally:
-                with _conversion_state_lock:
-                    done_event = _conversion_events.get(study_path)
-                    if done_event:
-                        done_event.set()
-
-        if not wait:
-            return False
-
-        event.wait()
-
-        if os.path.exists(volume_path) and not force:
-            return False
+        return False
+    finally:
+        if registered_waiter:
+            with _conversion_state_lock:
+                remaining_waiters = _conversion_waiters.get(study_path, 0) - 1
+                if remaining_waiters > 0:
+                    _conversion_waiters[study_path] = remaining_waiters
+                else:
+                    _conversion_waiters.pop(study_path, None)
+                    if not os.path.exists(volume_path):
+                        _conversion_events.pop(study_path, None)
+                        _conversion_failures.pop(study_path, None)
 
 @app.get("/health")
 def health_check():
@@ -355,10 +396,26 @@ def get_2d_image(study_id: str, series_uid: str):
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="2D image not found for this series")
     
+    metadata_headers = {}
+    try:
+        handler = DicomHandler(study_path, series_uid=series_uid)
+        metadata = handler.get_metadata()
+        metadata_headers = {
+            "X-Pixel-Spacing": str(metadata.get("pixel_spacing", 1.0)),
+            "X-Slice-Thickness": str(metadata.get("slice_thickness", 1.0)),
+            "X-Window-Center": str(metadata.get("window_center", 127.0)),
+            "X-Window-Width": str(metadata.get("window_width", 255.0)),
+        }
+    except Exception as e:
+        print(f"[Image] Warning: Failed to load metadata headers for {study_id}/{series_uid}: {e}")
+
     return FileResponse(
         path=img_path,
         media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"}
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            **metadata_headers,
+        }
     )
 
 

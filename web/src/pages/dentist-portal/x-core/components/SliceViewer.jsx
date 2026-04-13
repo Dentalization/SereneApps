@@ -1,72 +1,148 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-// VTK.js — 2D slice rendering (reuses Volume profile already loaded by VolumeViewer3D)
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
-import { PY_API_BASE } from '../../../../config/api';
 
-import vtkGenericRenderWindow   from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow';
-import vtkImageMapper            from '@kitware/vtk.js/Rendering/Core/ImageMapper';
-import vtkImageSlice             from '@kitware/vtk.js/Rendering/Core/ImageSlice';
-import vtkColorTransferFunction  from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
-import vtkPiecewiseFunction      from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
-import vtkInteractorStyleImage   from '@kitware/vtk.js/Interaction/Style/InteractorStyleImage';
-import vtkXMLImageDataReader     from '@kitware/vtk.js/IO/XML/XMLImageDataReader';
+import vtkXMLImageDataReader from '@kitware/vtk.js/IO/XML/XMLImageDataReader';
+import vtkInteractorStyleImage from '@kitware/vtk.js/Interaction/Style/InteractorStyleImage';
+import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper';
+import vtkImageSlice from '@kitware/vtk.js/Rendering/Core/ImageSlice';
+import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
+import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
+import vtkGenericRenderWindow from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow';
+import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
+import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
+import vtkWidgetManager from '@kitware/vtk.js/Widgets/Core/WidgetManager';
+import vtkLineWidget from '@kitware/vtk.js/Widgets/Widgets3D/LineWidget';
+import vtkAngleWidget from '@kitware/vtk.js/Widgets/Widgets3D/AngleWidget';
 
 import { SlicingMode } from '@kitware/vtk.js/Rendering/Core/ImageMapper/Constants';
 
 import AppIcon from '../../../../components/AppIcon';
+import { useAuth } from '../../../../contexts/AuthContext';
+import { PY_API_BASE } from '../../../../config/api';
+import { VOLUME_PRESETS } from '../config/volumePresets';
+import useStudyMetadata from '../hooks/useStudyMetadata';
+import { volumeCache } from '../utils/volumeCache';
+import { exportPdfReport } from '../utils/reportUtils';
+import AnnotationCanvas from './AnnotationCanvas';
+import MetadataPanel from './MetadataPanel';
+import ReportExportModal from './ReportExportModal';
 import SeriesSidebar from './SeriesSidebar';
 
-// ─── Reuse the global volume cache from VolumeViewer3D ───────────
-const VOLUME_CACHE_VERSION = 2;
-function makeLRUCache(maxSize) {
-  const map = new Map();
-  return {
-    has: k => map.has(k),
-    get(k) { if (!map.has(k)) return undefined; const v = map.get(k); map.delete(k); map.set(k, v); return v; },
-    set(k, v) { if (map.has(k)) map.delete(k); if (map.size >= maxSize) map.delete(map.keys().next().value); map.set(k, v); },
-    delete: k => map.delete(k),
-    clear: () => map.clear(),
-    get size() { return map.size; },
-    keys: () => map.keys(),
-  };
-}
-
-if (!window.__volumeCache || window.__volumeCacheVersion !== VOLUME_CACHE_VERSION) {
-    window.__volumeCache = makeLRUCache(3);
-    window.__volumeCacheVersion = VOLUME_CACHE_VERSION;
-}
-const volumeCache = window.__volumeCache;
-
-// ─── Axis Definitions ────────────────────────────────────────────
-// NOTE: Static Tailwind class maps — JIT cannot detect dynamic `text-${color}-400` patterns
 const AXIS = {
-    axial:    { slicingMode: SlicingMode.K, dimIndex: 2, camUp: [0, -1, 0], camDir: [0, 0, -1], label: 'Axial',
+    axial: {
+        slicingMode: SlicingMode.K,
+        dimIndex: 2,
+        camUp: [0, -1, 0],
+        camDir: [0, 0, -1],
+        label: 'Axial',
         activeBtn: 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50',
-        labelClass: 'text-cyan-400' },
-    coronal:  { slicingMode: SlicingMode.J, dimIndex: 1, camUp: [0, 0,  1], camDir: [0, -1, 0], label: 'Coronal',
+        labelClass: 'text-cyan-400',
+        paneBorderClass: 'border-cyan-500/70',
+        colorHex: '#22d3ee',
+    },
+    coronal: {
+        slicingMode: SlicingMode.J,
+        dimIndex: 1,
+        camUp: [0, 0, 1],
+        camDir: [0, -1, 0],
+        label: 'Coronal',
         activeBtn: 'bg-purple-500/20 text-purple-400 border border-purple-500/50',
-        labelClass: 'text-purple-400' },
-    sagittal: { slicingMode: SlicingMode.I, dimIndex: 0, camUp: [0, 0,  1], camDir: [-1, 0, 0], label: 'Sagittal',
+        labelClass: 'text-purple-400',
+        paneBorderClass: 'border-purple-500/70',
+        colorHex: '#c084fc',
+    },
+    sagittal: {
+        slicingMode: SlicingMode.I,
+        dimIndex: 0,
+        camUp: [0, 0, 1],
+        camDir: [-1, 0, 0],
+        label: 'Sagittal',
         activeBtn: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50',
-        labelClass: 'text-emerald-400' },
+        labelClass: 'text-emerald-400',
+        paneBorderClass: 'border-emerald-500/70',
+        colorHex: '#34d399',
+    },
 };
 
-// MONAI-normalized [0.0, 1.0] where 0.0=Air(-1000HU), 1.0=Metal(3000HU)
+const CROSSHAIR_COLORS = {
+    axial: {
+        vertical: AXIS.sagittal.colorHex,
+        horizontal: AXIS.coronal.colorHex,
+    },
+    coronal: {
+        vertical: AXIS.sagittal.colorHex,
+        horizontal: AXIS.axial.colorHex,
+    },
+    sagittal: {
+        vertical: AXIS.coronal.colorHex,
+        horizontal: AXIS.axial.colorHex,
+    },
+};
+
 const WL_PRESETS = {
-    dental:    { center: 0.38, width: 0.70, label: 'Dental'     },
-    bone:      { center: 0.45, width: 0.50, label: 'Bone'       },
-    soft:      { center: 0.28, width: 0.30, label: 'Soft Tissue'},
-    full:      { center: 0.50, width: 1.00, label: 'Full Range' },
+    dental: { center: 0.38, width: 0.70, label: 'Dental' },
+    bone: { center: 0.45, width: 0.50, label: 'Bone' },
+    soft: { center: 0.28, width: 0.30, label: 'Soft Tissue' },
+    full: { center: 0.50, width: 1.00, label: 'Full Range' },
+};
+
+const AXIS_ORDER = ['axial', 'coronal', 'sagittal'];
+const MEASUREMENT_COLOR = '#1D9E75';
+const MEASUREMENT_RGB = [29, 158, 117];
+const SINGLE_CAMERA_ZOOM = 1.3;
+const QUAD_CAMERA_ZOOM = 1.05;
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const buildCenteredSlices = (dims) => ({
+    axial: Math.floor(Math.max((dims?.[2] ?? 1) - 1, 0) / 2),
+    coronal: Math.floor(Math.max((dims?.[1] ?? 1) - 1, 0) / 2),
+    sagittal: Math.floor(Math.max((dims?.[0] ?? 1) - 1, 0) / 2),
+});
+
+const emptyMeasurementLabels = () => ({
+    axial: [],
+    coronal: [],
+    sagittal: [],
+});
+
+const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
+
+const drawMeasurementPillToCanvas = (ctx, label) => {
+    const width = Math.max(60, label.text.length * 6.8 + 16);
+    const x = label.x - (width / 2);
+    const y = Math.max(label.y - 26, 10);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = '#1D9E75';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, 22, 11);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label.text, label.x, y + 11);
+    ctx.restore();
 };
 
 const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
-    const wrapperRef = useRef(null);   // Outer wrapper for fullscreen
-    const vtkContainerRef = useRef(null); // Dedicated div for VTK.js rendering
-    const vtkRef = useRef(null); // { grw, renderer, mapper, actor, renderWindow, imageData }
-    const pendingGrwRef = useRef(null);
+    const { user } = useAuth();
+    const wrapperRef = useRef(null);
+    const viewerAreaRef = useRef(null);
+    const vtkContainerRef = useRef(null);
+    const vtkRef = useRef(null);
+    const quadAxialRef = useRef(null);
+    const quadCoronalRef = useRef(null);
+    const quadSagittalRef = useRef(null);
+    const quadVolumeRef = useRef(null);
+    const quadRefs = useRef({ axial: null, coronal: null, sagittal: null, volume: null });
+    const measurementStoreRef = useRef({ axial: [], coronal: [], sagittal: [] });
 
-    // State
     const [axis, setAxis] = useState('axial');
     const [sliceIndex, setSliceIndex] = useState(0);
     const [maxSlice, setMaxSlice] = useState(0);
@@ -82,26 +158,52 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     const [inverted, setInverted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
+    const [showMetadataPanel, setShowMetadataPanel] = useState(false);
     const [volumeInfo, setVolumeInfo] = useState(null);
+    const [imageData, setImageData] = useState(null);
+    const [quadView, setQuadView] = useState(false);
+    const [sliceIndices, setSliceIndices] = useState(buildCenteredSlices([1, 1, 1]));
+    const [measurementMode, setMeasurementMode] = useState(false);
+    const [measurementTool, setMeasurementTool] = useState('distance');
+    const [measurementLabels, setMeasurementLabels] = useState(emptyMeasurementLabels);
+    const [quadCrosshairPositions, setQuadCrosshairPositions] = useState({});
+    const [annotateMode, setAnnotateMode] = useState(false);
+    const [annotationTool, setAnnotationTool] = useState('arrow');
+    const [annotations, setAnnotations] = useState([]);
+    const [reportModalOpen, setReportModalOpen] = useState(false);
+    const [exportingReport, setExportingReport] = useState(false);
+    const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
 
-    // Stable study key for cache lookup
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
     const seriesUid = useMemo(() => study?.selectedSeriesUid || '', [study]);
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
+    const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
+        enabled: !!studyKey,
+    });
+    const dentistName = useMemo(() => buildDentistName(user), [user]);
+    const patientName = metadata?.PatientName || study?.patientName || study?.originalName || 'Patient';
+    const clinicName = user?.profile?.clinic_name || metadata?.InstitutionName || 'Dental Clinic';
+    const reportInitialValues = useMemo(() => ({
+        dentistName,
+        patientName,
+        clinicalNotes: '',
+        includeScreenshot: true,
+        includeMetadataSummary: true,
+    }), [dentistName, patientName]);
 
-    // ── Build Color Transfer Function (Window/Level) ─────────────
     const buildColorFunction = useCallback((center, width, invert) => {
         const ctf = vtkColorTransferFunction.newInstance();
         const low = center - width / 2;
         const high = center + width / 2;
 
         if (invert) {
-            ctf.addRGBPoint(low,  1.0, 1.0, 1.0);
+            ctf.addRGBPoint(low, 1.0, 1.0, 1.0);
             ctf.addRGBPoint(high, 0.0, 0.0, 0.0);
         } else {
-            ctf.addRGBPoint(low,  0.0, 0.0, 0.0);
+            ctf.addRGBPoint(low, 0.0, 0.0, 0.0);
             ctf.addRGBPoint(high, 1.0, 1.0, 1.0);
         }
+
         return ctf;
     }, []);
 
@@ -112,129 +214,568 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
         return ofun;
     }, []);
 
-    // ── Apply Window/Level to existing actor ─────────────────────
-    const applyWindowLevel = useCallback((center, width, invert) => {
-        const ctx = vtkRef.current;
-        if (!ctx || !ctx.actor) return;
+    const applyWindowLevelToActor = useCallback((actor, center, width, invert) => {
+        if (!actor) return;
 
         const ctf = buildColorFunction(center, width, invert);
-        ctx.actor.getProperty().setRGBTransferFunction(0, ctf);
+        actor.getProperty().setRGBTransferFunction(0, ctf);
 
         const ofun = buildOpacityFunction();
-        ctx.actor.getProperty().setPiecewiseFunction(0, ofun);
-
-        ctx.renderWindow.render();
+        actor.getProperty().setPiecewiseFunction(0, ofun);
+        actor.getProperty().setUseLookupTableScalarRange(true);
     }, [buildColorFunction, buildOpacityFunction]);
 
-    // ── Switch axis ──────────────────────────────────────────────
-    const switchAxis = useCallback((newAxis) => {
+    const applyWindowLevel = useCallback((center, width, invert) => {
         const ctx = vtkRef.current;
+        if (!ctx?.actor) return;
+        applyWindowLevelToActor(ctx.actor, center, width, invert);
+        ctx.renderWindow.render();
+    }, [applyWindowLevelToActor]);
+
+    const createSlicePaneContext = useCallback((container, nextImageData, axisName, zoomFactor, center, width, invert) => {
+        if (!container || !nextImageData) return null;
+
+        const grw = vtkGenericRenderWindow.newInstance({ listenWindowResize: false });
+        grw.setContainer(container);
+        grw.resize();
+
+        const renderer = grw.getRenderer();
+        const renderWindow = grw.getRenderWindow();
+        const apiSpecificRenderWindow = grw.getApiSpecificRenderWindow();
+
+        renderer.setBackground(0.05, 0.05, 0.08);
+
+        const interactorStyle = vtkInteractorStyleImage.newInstance();
+        renderWindow.getInteractor().setInteractorStyle(interactorStyle);
+
+        const mapper = vtkImageMapper.newInstance();
+        mapper.setInputData(nextImageData);
+
+        const actor = vtkImageSlice.newInstance();
+        actor.setMapper(mapper);
+        actor.getProperty().setInterpolationTypeToLinear();
+        applyWindowLevelToActor(actor, center, width, invert);
+
+        renderer.addActor(actor);
+
+        const widgetManager = vtkWidgetManager.newInstance();
+        widgetManager.setRenderer(renderer);
+        widgetManager.enablePicking();
+
+        return {
+            axisName,
+            zoomFactor,
+            container,
+            grw,
+            renderer,
+            renderWindow,
+            apiSpecificRenderWindow,
+            mapper,
+            actor,
+            imageData: nextImageData,
+            widgetManager,
+        };
+    }, [applyWindowLevelToActor]);
+
+    const updateSlicePaneContext = useCallback((ctx, axisName, sliceValue, zoomFactor = SINGLE_CAMERA_ZOOM) => {
         if (!ctx) return;
 
-        const axisDef = AXIS[newAxis];
+        const axisDef = AXIS[axisName];
         const dims = ctx.imageData.getDimensions();
         const sp = ctx.imageData.getSpacing();
         const origin = ctx.imageData.getOrigin();
-        const maxIdx = dims[axisDef.dimIndex] - 1;
-        const centerIdx = Math.floor(maxIdx / 2);
+        const clampedSlice = clamp(sliceValue, 0, dims[axisDef.dimIndex] - 1);
 
-        // Update mapper slicing
+        ctx.axisName = axisName;
+        ctx.zoomFactor = zoomFactor;
         ctx.mapper.setSlicingMode(axisDef.slicingMode);
-        ctx.mapper.setSlice(centerIdx);
+        ctx.mapper.setSlice(clampedSlice);
 
-        // Position camera for the new axis
-        const cam = ctx.renderer.getActiveCamera();
-        cam.setParallelProjection(true);
+        const camera = ctx.renderer.getActiveCamera();
+        camera.setParallelProjection(true);
 
-        // Compute center of volume
         const cx = origin[0] + (dims[0] * sp[0]) / 2;
         const cy = origin[1] + (dims[1] * sp[1]) / 2;
         const cz = origin[2] + (dims[2] * sp[2]) / 2;
-        const center = [cx, cy, cz];
-
-        // Position camera along the slice normal
         const dist = Math.max(dims[0] * sp[0], dims[1] * sp[1], dims[2] * sp[2]) * 2;
-        const pos = [
-            center[0] + axisDef.camDir[0] * dist,
-            center[1] + axisDef.camDir[1] * dist,
-            center[2] + axisDef.camDir[2] * dist,
-        ];
 
-        cam.setPosition(...pos);
-        cam.setFocalPoint(...center);
-        cam.setViewUp(...axisDef.camUp);
+        camera.setPosition(
+            cx + axisDef.camDir[0] * dist,
+            cy + axisDef.camDir[1] * dist,
+            cz + axisDef.camDir[2] * dist
+        );
+        camera.setFocalPoint(cx, cy, cz);
+        camera.setViewUp(...axisDef.camUp);
 
         ctx.renderer.resetCamera();
-
-        // Ensure tight fit — zoom a bit more to fill screen
-        cam.zoom(1.3);
-
+        camera.zoom(zoomFactor);
         ctx.renderWindow.render();
-
-        setAxis(newAxis);
-        setSliceIndex(centerIdx);
-        setMaxSlice(maxIdx);
     }, []);
 
-    // ── Navigate to a specific slice ─────────────────────────────
-    const goToSlice = useCallback((idx) => {
-        const ctx = vtkRef.current;
+    const resizePaneContext = useCallback((ctx) => {
         if (!ctx) return;
-
-        const axisDef = AXIS[axis];
-        const dims = ctx.imageData.getDimensions();
-        const clamped = Math.max(0, Math.min(dims[axisDef.dimIndex] - 1, idx));
-
-        ctx.mapper.setSlice(clamped);
+        ctx.grw.resize();
         ctx.renderWindow.render();
-        setSliceIndex(clamped);
-    }, [axis]);
+    }, []);
 
-    // ── Mouse-wheel scroll → slice navigation ────────────────────
-    // Uses capture phase + stopPropagation so VTK's interactor never sees the wheel event
-    const handleWheel = useCallback((e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const delta = e.deltaY > 0 ? 1 : -1;
-        setSliceIndex(prev => {
-            const next = prev + delta;
-            const ctx = vtkRef.current;
-            if (!ctx) return prev;
-            const axisDef = AXIS[axis];
-            const dims = ctx.imageData.getDimensions();
-            const maxIdx = dims[axisDef.dimIndex] - 1;
-            const clamped = Math.max(0, Math.min(maxIdx, next));
-            ctx.mapper.setSlice(clamped);
-            ctx.renderWindow.render();
-            return clamped;
+    const destroyPaneContext = useCallback((ctx) => {
+        if (!ctx) return;
+        try {
+            ctx.widgetManager?.removeWidgets?.();
+            ctx.widgetManager?.delete?.();
+        } catch (_) {}
+        try {
+            ctx.grw?.delete?.();
+        } catch (_) {}
+    }, []);
+
+    const createVolumePreviewContext = useCallback((container, nextImageData) => {
+        if (!container || !nextImageData) return null;
+
+        const grw = vtkGenericRenderWindow.newInstance({ listenWindowResize: false });
+        grw.setContainer(container);
+        grw.resize();
+
+        const renderer = grw.getRenderer();
+        const renderWindow = grw.getRenderWindow();
+        renderer.setBackground(0.08, 0.08, 0.12);
+
+        const mapper = vtkVolumeMapper.newInstance();
+        mapper.setInputData(nextImageData);
+        mapper.setSampleDistance(0.7);
+        mapper.setMaximumSamplesPerRay(1200);
+        mapper.setBlendModeToComposite();
+
+        const actor = vtkVolume.newInstance();
+        actor.setMapper(mapper);
+
+        const ctf = vtkColorTransferFunction.newInstance();
+        const ofun = vtkPiecewiseFunction.newInstance();
+        VOLUME_PRESETS.bone.color.forEach(([value, r, g, b]) => ctf.addRGBPoint(value, r, g, b));
+        VOLUME_PRESETS.bone.opacity.forEach(([value, opacity]) => ofun.addPoint(value, opacity));
+
+        actor.getProperty().setRGBTransferFunction(0, ctf);
+        actor.getProperty().setScalarOpacity(0, ofun);
+        actor.getProperty().setInterpolationTypeToLinear();
+        actor.getProperty().setShade(true);
+        actor.getProperty().setAmbient(0.3);
+        actor.getProperty().setDiffuse(0.7);
+        actor.getProperty().setSpecular(0.2);
+        actor.getProperty().setSpecularPower(10);
+
+        const spacingAverage = nextImageData.getSpacing().reduce((sum, value) => sum + value, 0) / 3;
+        actor.getProperty().setScalarOpacityUnitDistance(0, spacingAverage * 2.5);
+
+        renderer.addVolume(actor);
+        renderer.resetCamera();
+        renderer.getActiveCamera().zoom(1.2);
+        renderWindow.render();
+
+        return { grw, renderer, renderWindow, mapper, actor, container, imageData: nextImageData };
+    }, []);
+
+    const getPaneContext = useCallback((axisName) => {
+        if (quadView) return quadRefs.current[axisName];
+        if (vtkRef.current?.axisName === axisName) return vtkRef.current;
+        return null;
+    }, [quadView]);
+
+    const getPaneDisplayPosition = useCallback((ctx, worldPoint) => {
+        if (!ctx || !worldPoint) return null;
+
+        const view = ctx.apiSpecificRenderWindow;
+        const viewportSize = view.getViewportSize(ctx.renderer);
+        const dpr = view.getComputedDevicePixelRatio?.() || window.devicePixelRatio || 1;
+        const displayPoint = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], ctx.renderer);
+
+        if (!Number.isFinite(displayPoint?.[0]) || !Number.isFinite(displayPoint?.[1])) {
+            return null;
+        }
+
+        return {
+            x: displayPoint[0] / dpr,
+            y: (viewportSize[1] - displayPoint[1]) / dpr,
+            z: displayPoint[2],
+            width: ctx.container.clientWidth,
+            height: ctx.container.clientHeight,
+            dpr,
+            viewportHeight: viewportSize[1],
+        };
+    }, []);
+
+    const syncMeasurementLabelForAxis = useCallback((axisName) => {
+        const ctx = getPaneContext(axisName);
+        const items = measurementStoreRef.current[axisName] || [];
+
+        if (!ctx || items.length === 0) {
+            setMeasurementLabels((current) => ({ ...current, [axisName]: [] }));
+            return;
+        }
+
+        const nextLabels = items.map((item) => {
+            if (item.type === 'distance') {
+                const handle1 = item.factory.getWidgetState().getHandle1().getOrigin();
+                const handle2 = item.factory.getWidgetState().getHandle2().getOrigin();
+                if (!handle1 || !handle2) return null;
+
+                const midpoint = [
+                    (handle1[0] + handle2[0]) / 2,
+                    (handle1[1] + handle2[1]) / 2,
+                    (handle1[2] + handle2[2]) / 2,
+                ];
+                const position = getPaneDisplayPosition(ctx, midpoint);
+                if (!position) return null;
+
+                return {
+                    id: item.id,
+                    text: `${item.factory.getDistance().toFixed(2)} mm`,
+                    x: position.x,
+                    y: position.y,
+                };
+            }
+
+            const handles = item.factory.getWidgetState().getHandleList();
+            if (!handles || handles.length < 3) return null;
+
+            const origins = handles.slice(0, 3).map((handle) => handle.getOrigin());
+            if (origins.some((origin) => !origin)) return null;
+
+            const centroid = origins.reduce(
+                (accumulator, point) => [accumulator[0] + point[0], accumulator[1] + point[1], accumulator[2] + point[2]],
+                [0, 0, 0]
+            ).map((value) => value / 3);
+            const position = getPaneDisplayPosition(ctx, centroid);
+            if (!position) return null;
+
+            return {
+                id: item.id,
+                text: `${(item.factory.getAngle() * 180 / Math.PI).toFixed(1)}°`,
+                x: position.x,
+                y: position.y,
+            };
+        }).filter(Boolean);
+
+        setMeasurementLabels((current) => ({ ...current, [axisName]: nextLabels }));
+    }, [getPaneContext, getPaneDisplayPosition]);
+
+    const syncAllMeasurementLabels = useCallback(() => {
+        AXIS_ORDER.forEach((axisName) => syncMeasurementLabelForAxis(axisName));
+    }, [syncMeasurementLabelForAxis]);
+
+    const removeMeasurementsForAxis = useCallback((axisName) => {
+        const ctx = getPaneContext(axisName);
+        const items = measurementStoreRef.current[axisName] || [];
+
+        items.forEach((item) => {
+            try { item.subscription?.unsubscribe?.(); } catch (_) {}
+            try { ctx?.widgetManager?.removeWidget?.(item.viewWidget || item.factory); } catch (_) {}
+            try { item.factory?.delete?.(); } catch (_) {}
         });
-    }, [axis]);
 
-    // ── Fullscreen ───────────────────────────────────────────────
-    useEffect(() => {
-        const onFSChange = () => setIsFullscreen(!!document.fullscreenElement);
-        document.addEventListener('fullscreenchange', onFSChange);
-        return () => document.removeEventListener('fullscreenchange', onFSChange);
+        measurementStoreRef.current[axisName] = [];
+        setMeasurementLabels((current) => ({ ...current, [axisName]: [] }));
+    }, [getPaneContext]);
+
+    const clearAllMeasurements = useCallback(() => {
+        AXIS_ORDER.forEach((axisName) => removeMeasurementsForAxis(axisName));
+    }, [removeMeasurementsForAxis]);
+
+    const configureWidgetColor = useCallback((factory) => {
+        try {
+            factory.getWidgetState().getMoveHandle?.().setColor?.(MEASUREMENT_RGB);
+            factory.getWidgetState().getHandle1?.().setColor?.(MEASUREMENT_RGB);
+            factory.getWidgetState().getHandle2?.().setColor?.(MEASUREMENT_RGB);
+            factory.getWidgetState().getHandleList?.().forEach?.((handle) => handle.setColor?.(MEASUREMENT_RGB));
+        } catch (_) {}
+        try {
+            factory.setActiveColor?.(MEASUREMENT_RGB);
+            factory.setUseActiveColor?.(true);
+            factory.setScaleInPixels?.(true);
+            factory.setDefaultScale?.(18);
+        } catch (_) {}
+    }, []);
+
+    const ensureMeasurementWidget = useCallback((axisName) => {
+        if (!measurementMode) return;
+
+        const ctx = getPaneContext(axisName);
+        if (!ctx?.widgetManager || ctx.widgetManager.getActiveWidget?.()) return;
+
+        const factory = measurementTool === 'angle'
+            ? vtkAngleWidget.newInstance()
+            : vtkLineWidget.newInstance();
+        const viewWidget = ctx.widgetManager.addWidget(factory);
+
+        configureWidgetColor(factory);
+        factory.placeWidget?.(ctx.imageData.getBounds());
+        ctx.widgetManager.grabFocus(viewWidget);
+
+        const item = {
+            id: `${axisName}-${measurementTool}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: measurementTool,
+            factory,
+            viewWidget,
+        };
+
+        item.subscription = factory.onWidgetChangeEvent(() => {
+            syncMeasurementLabelForAxis(axisName);
+        });
+
+        measurementStoreRef.current[axisName] = [
+            ...(measurementStoreRef.current[axisName] || []),
+            item,
+        ];
+        ctx.renderWindow.render();
+    }, [configureWidgetColor, getPaneContext, measurementMode, measurementTool, syncMeasurementLabelForAxis]);
+
+    const currentWorldPoint = useMemo(() => {
+        if (!imageData) return null;
+        return imageData.indexToWorld([
+            sliceIndices.sagittal,
+            sliceIndices.coronal,
+            sliceIndices.axial,
+        ]);
+    }, [imageData, sliceIndices]);
+
+    const syncQuadCrosshairs = useCallback(() => {
+        if (!quadView || !currentWorldPoint) {
+            setQuadCrosshairPositions({});
+            return;
+        }
+
+        const nextPositions = {};
+        AXIS_ORDER.forEach((axisName) => {
+            const ctx = quadRefs.current[axisName];
+            const position = getPaneDisplayPosition(ctx, currentWorldPoint);
+            if (position) {
+                nextPositions[axisName] = position;
+            }
+        });
+        setQuadCrosshairPositions(nextPositions);
+    }, [currentWorldPoint, getPaneDisplayPosition, quadView]);
+
+    const setSliceForAxis = useCallback((axisName, nextValue) => {
+        setSliceIndices((current) => {
+            const maxForAxis = Math.max((dimensions[AXIS[axisName].dimIndex] || 1) - 1, 0);
+            const rawValue = typeof nextValue === 'function' ? nextValue(current[axisName] ?? 0) : nextValue;
+            const clamped = clamp(rawValue, 0, maxForAxis);
+
+            if (current[axisName] === clamped) {
+                return current;
+            }
+
+            return {
+                ...current,
+                [axisName]: clamped,
+            };
+        });
+    }, [dimensions]);
+
+    const syncSlicesFromWorldPoint = useCallback((sourceAxis, worldPoint) => {
+        if (!imageData) return;
+
+        const dims = imageData.getDimensions();
+        const indexPoint = imageData.worldToIndex(worldPoint);
+
+        setSliceIndices((current) => ({
+            axial: sourceAxis === 'axial' ? current.axial : clamp(Math.round(indexPoint[2]), 0, dims[2] - 1),
+            coronal: sourceAxis === 'coronal' ? current.coronal : clamp(Math.round(indexPoint[1]), 0, dims[1] - 1),
+            sagittal: sourceAxis === 'sagittal' ? current.sagittal : clamp(Math.round(indexPoint[0]), 0, dims[0] - 1),
+        }));
+    }, [imageData]);
+
+    const handleQuadPaneClick = useCallback((axisName, event) => {
+        if (!imageData || !currentWorldPoint || event.button !== 0) return;
+
+        const ctx = quadRefs.current[axisName];
+        if (!ctx?.container || !ctx.apiSpecificRenderWindow) return;
+
+        const rect = ctx.container.getBoundingClientRect();
+        const currentPosition = getPaneDisplayPosition(ctx, currentWorldPoint);
+        if (!currentPosition) return;
+
+        const cssX = event.clientX - rect.left;
+        const cssY = event.clientY - rect.top;
+        const displayX = cssX * currentPosition.dpr;
+        const displayY = currentPosition.viewportHeight - (cssY * currentPosition.dpr);
+
+        const worldPoint = ctx.apiSpecificRenderWindow.displayToWorld(
+            displayX,
+            displayY,
+            currentPosition.z,
+            ctx.renderer
+        );
+
+        syncSlicesFromWorldPoint(axisName, worldPoint);
+    }, [currentWorldPoint, getPaneDisplayPosition, imageData, syncSlicesFromWorldPoint]);
+
+    const switchAxis = useCallback((nextAxis) => {
+        if (quadView || nextAxis === axis) return;
+        removeMeasurementsForAxis(axis);
+        setAxis(nextAxis);
+    }, [axis, quadView, removeMeasurementsForAxis]);
+
+    const goToSlice = useCallback((indexValue) => {
+        setSliceForAxis(axis, indexValue);
+    }, [axis, setSliceForAxis]);
+
+    const handleSingleWheel = useCallback((event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const delta = event.deltaY > 0 ? 1 : -1;
+        setSliceForAxis(axis, (current) => current + delta);
+    }, [axis, setSliceForAxis]);
+
+    const selectWlPreset = useCallback((key) => {
+        const preset = WL_PRESETS[key];
+        setWlPreset(key);
+        setWindowCenter(preset.center);
+        setWindowWidth(preset.width);
     }, []);
 
     const toggleFullscreen = useCallback(() => {
         if (!document.fullscreenElement && wrapperRef.current) {
             wrapperRef.current.requestFullscreen().catch(() => {});
-        } else {
+            return;
+        }
+
+        if (document.fullscreenElement) {
             document.exitFullscreen().catch(() => {});
         }
     }, []);
 
-    // ── Apply WL preset changes ──────────────────────────────────
-    useEffect(() => {
-        applyWindowLevel(windowCenter, windowWidth, inverted);
-    }, [windowCenter, windowWidth, inverted, applyWindowLevel]);
+    const handleToggleQuadView = useCallback(() => {
+        clearAllMeasurements();
+        if (quadView) {
+            setAxis('axial');
+        }
+        setQuadView((current) => !current);
+    }, [clearAllMeasurements, quadView]);
 
-    // ══════════════════════════════════════════════════════════════
-    //  MAIN SETUP: Load imageData from cache or fetch, create VTK pipeline
-    // ══════════════════════════════════════════════════════════════
+    const captureCurrentViewDataUrl = useCallback(() => {
+        const viewerArea = viewerAreaRef.current;
+        if (!viewerArea || loading || error) return null;
+
+        const width = viewerArea.clientWidth;
+        const height = viewerArea.clientHeight;
+        if (!width || !height) return null;
+
+        const scale = Math.max(window.devicePixelRatio || 1, 2);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        const surfaceRect = viewerArea.getBoundingClientRect();
+        const canvases = Array.from(viewerArea.querySelectorAll('canvas'));
+
+        canvases.forEach((canvasNode) => {
+            const rect = canvasNode.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            ctx.drawImage(
+                canvasNode,
+                rect.left - surfaceRect.left,
+                rect.top - surfaceRect.top,
+                rect.width,
+                rect.height
+            );
+        });
+
+        if (quadView) {
+            AXIS_ORDER.forEach((axisName) => {
+                const position = quadCrosshairPositions[axisName];
+                if (!position) return;
+                const colors = CROSSHAIR_COLORS[axisName];
+
+                ctx.save();
+                ctx.strokeStyle = colors.vertical;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(position.x, 0);
+                ctx.lineTo(position.x, position.height);
+                ctx.stroke();
+
+                ctx.strokeStyle = colors.horizontal;
+                ctx.beginPath();
+                ctx.moveTo(0, position.y);
+                ctx.lineTo(position.width, position.y);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = AXIS[axisName].colorHex;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(position.x, position.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            AXIS_ORDER.forEach((axisName) => {
+                (measurementLabels[axisName] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
+            });
+        } else {
+            (measurementLabels[axis] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
+        }
+
+        return canvas.toDataURL('image/png');
+    }, [axis, error, loading, measurementLabels, quadCrosshairPositions, quadView]);
+
+    const handleExportReport = useCallback(async (formValues) => {
+        try {
+            setExportingReport(true);
+            const screenshotDataUrl = formValues.includeScreenshot ? captureCurrentViewDataUrl() : null;
+
+            exportPdfReport({
+                clinicName,
+                dentistName: formValues.dentistName,
+                patientName: formValues.patientName,
+                clinicalNotes: formValues.clinicalNotes,
+                metadata,
+                screenshotDataUrl,
+                includeMetadataSummary: formValues.includeMetadataSummary,
+            });
+
+            setReportModalOpen(false);
+        } catch (reportError) {
+            console.error('[SliceViewer] Report export failed:', reportError);
+        } finally {
+            setExportingReport(false);
+        }
+    }, [captureCurrentViewDataUrl, clinicName, metadata]);
+
     useEffect(() => {
-        if (!study) return;
+        const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+    }, []);
+
+    useEffect(() => {
+        setSliceIndex(sliceIndices[axis] ?? 0);
+        setMaxSlice(Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0));
+    }, [axis, dimensions, sliceIndices]);
+
+    useEffect(() => {
+        clearAllMeasurements();
+        setMeasurementMode(false);
+        setMeasurementTool('distance');
+        setMeasurementLabels(emptyMeasurementLabels());
+        setQuadCrosshairPositions({});
+        setAnnotateMode(false);
+        setAnnotationTool('arrow');
+        setAnnotations([]);
+        setReportModalOpen(false);
+        setShowSeriesPanel(false);
+        setShowMetadataPanel(false);
+    }, [cacheKey, clearAllMeasurements]);
+
+    useEffect(() => {
+        if (!study) return undefined;
 
         let cancelled = false;
 
@@ -243,17 +784,16 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
             setError(null);
 
             try {
-                // ── Step 1: Get vtkImageData from cache or fetch ──
-                let imageData;
+                let nextImageData = null;
 
                 if (volumeCache.has(cacheKey)) {
                     console.log('[SliceViewer] Cache HIT:', cacheKey);
                     setLoadingStage('Restoring from cache...');
-                    setLoadingProgress(80);
-                    imageData = volumeCache.get(cacheKey);
+                    setLoadingProgress(82);
+                    nextImageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[SliceViewer] Cache MISS:', cacheKey, '| Downloading VTI...');
-                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}`;
+                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? `?series_uid=${seriesUid}` : ''}`;
 
                     setLoadingStage('Downloading 3D volume...');
                     setLoadingProgress(5);
@@ -263,153 +803,85 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                         throw new Error(`Server error ${response.status}`);
                     }
 
-                    const contentLength = response.headers.get('Content-Length');
-                    const totalBytes = contentLength ? parseInt(contentLength) : 0;
-                    const reader = response.body.getReader();
-                    const chunks = [];
-                    let received = 0;
+                    let buffer;
 
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        if (cancelled) return;
-                        chunks.push(value);
-                        received += value.length;
-                        if (totalBytes > 0) {
-                            setLoadingProgress(5 + Math.round((received / totalBytes) * 65));
-                            setLoadingStage(`Downloading... ${(received / 1048576).toFixed(1)}MB / ${(totalBytes / 1048576).toFixed(1)}MB`);
-                        } else {
-                            setLoadingStage(`Downloading... ${(received / 1048576).toFixed(1)}MB`);
+                    if (response.body?.getReader) {
+                        const contentLength = response.headers.get('Content-Length');
+                        const totalBytes = contentLength ? Number.parseInt(contentLength, 10) : 0;
+                        const reader = response.body.getReader();
+                        const chunks = [];
+                        let received = 0;
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            if (cancelled) return;
+                            chunks.push(value);
+                            received += value.length;
+
+                            if (totalBytes > 0) {
+                                setLoadingProgress(5 + Math.round((received / totalBytes) * 65));
+                                setLoadingStage(
+                                    `Downloading... ${(received / 1048576).toFixed(1)}MB / ${(totalBytes / 1048576).toFixed(1)}MB`
+                                );
+                            } else {
+                                setLoadingStage(`Downloading... ${(received / 1048576).toFixed(1)}MB`);
+                            }
                         }
+
+                        if (cancelled) return;
+
+                        buffer = new Uint8Array(received);
+                        let offset = 0;
+                        for (const chunk of chunks) {
+                            buffer.set(chunk, offset);
+                            offset += chunk.length;
+                        }
+                        buffer = buffer.buffer;
+                    } else {
+                        buffer = await response.arrayBuffer();
                     }
-                    if (cancelled) return;
-
-                    setLoadingStage('Decompressing...');
-                    setLoadingProgress(72);
-
-                    const buffer = new Uint8Array(received);
-                    let offset = 0;
-                    for (const c of chunks) { buffer.set(c, offset); offset += c.length; }
 
                     setLoadingStage('Parsing VTI...');
-                    setLoadingProgress(78);
+                    setLoadingProgress(80);
 
-                    const vtiReader = vtkXMLImageDataReader.newInstance();
-                    vtiReader.parseAsArrayBuffer(buffer.buffer);
-                    imageData = vtiReader.getOutputData(0);
+                    const reader = vtkXMLImageDataReader.newInstance();
+                    reader.parseAsArrayBuffer(buffer);
+                    nextImageData = reader.getOutputData(0);
 
-                    if (!imageData) throw new Error('VTI parse failed — no output data');
+                    if (!nextImageData) {
+                        throw new Error('VTI parse failed — no output data');
+                    }
 
-                    volumeCache.set(cacheKey, imageData);
+                    volumeCache.set(cacheKey, nextImageData);
                     console.log('[SliceViewer] Cached volume:', cacheKey);
                 }
 
-                if (cancelled) return;
+                if (cancelled || !nextImageData) return;
 
-                const dims = imageData.getDimensions();
-                const sp = imageData.getSpacing();
-                const scalars = imageData.getPointData().getScalars();
-                const dataRange = scalars.getRange();
+                const dims = nextImageData.getDimensions();
+                const nextSpacing = nextImageData.getSpacing();
+                const scalars = nextImageData.getPointData().getScalars();
+                const dataRange = scalars?.getRange?.() || [0, 1];
+                const centeredSlices = buildCenteredSlices(dims);
 
                 setDimensions(dims);
-                setSpacing(sp);
-                setVolumeInfo({ dimensions: dims, spacing: sp, dataRange });
-                console.log('[SliceViewer] Volume:', { dims, sp, dataRange });
-
-                setLoadingStage('Initializing MPR viewer...');
-                setLoadingProgress(90);
-
-                // ── Step 2: Wait for container to be ready ──
-                const container = vtkContainerRef.current;
-                if (!container || cancelled) return;
-
-                // Clean up any previous VTK context
-                if (vtkRef.current) {
-                    try { vtkRef.current.grw.delete(); } catch (_) {}
-                    vtkRef.current = null;
-                }
-
-                // ── Step 3: Build VTK.js 2D pipeline ──
-                const grw = vtkGenericRenderWindow.newInstance();
-                pendingGrwRef.current = grw;
-                grw.setContainer(container);
-                grw.resize();
-
-                const renderer = grw.getRenderer();
-                const renderWindow = grw.getRenderWindow();
-
-                // Dark background
-                renderer.setBackground(0.05, 0.05, 0.08);
-
-                // Interactor style: Image (pan, zoom, window/level)
-                const iStyle = vtkInteractorStyleImage.newInstance();
-                renderWindow.getInteractor().setInteractorStyle(iStyle);
-
-                // Mapper
-                const mapper = vtkImageMapper.newInstance();
-                mapper.setInputData(imageData);
-
-                // Start on Axial, center slice
-                const axisDef = AXIS.axial;
-                const maxIdx = dims[axisDef.dimIndex] - 1;
-                const centerIdx = Math.floor(maxIdx / 2);
-                mapper.setSlicingMode(axisDef.slicingMode);
-                mapper.setSlice(centerIdx);
-
-                // Actor with color-based W/L
-                const actor = vtkImageSlice.newInstance();
-                actor.setMapper(mapper);
-
-                const ctf = buildColorFunction(windowCenter, windowWidth, inverted);
-                actor.getProperty().setRGBTransferFunction(0, ctf);
-
-                const ofun = buildOpacityFunction();
-                actor.getProperty().setPiecewiseFunction(0, ofun);
-                actor.getProperty().setInterpolationTypeToLinear();
-
-                // CRITICAL: derive colorWindow/colorLevel from the CTF range
-                // Default colorWindow=255/colorLevel=127.5 maps all [0,1] data to a single grey pixel
-                actor.getProperty().setUseLookupTableScalarRange(true);
-
-                renderer.addActor(actor);
-
-                // Camera setup for Axial view
-                const cam = renderer.getActiveCamera();
-                cam.setParallelProjection(true);
-
-                const origin = imageData.getOrigin();
-                const cx = origin[0] + (dims[0] * sp[0]) / 2;
-                const cy = origin[1] + (dims[1] * sp[1]) / 2;
-                const cz = origin[2] + (dims[2] * sp[2]) / 2;
-
-                const dist = Math.max(dims[0] * sp[0], dims[1] * sp[1], dims[2] * sp[2]) * 2;
-                cam.setPosition(
-                    cx + axisDef.camDir[0] * dist,
-                    cy + axisDef.camDir[1] * dist,
-                    cz + axisDef.camDir[2] * dist
-                );
-                cam.setFocalPoint(cx, cy, cz);
-                cam.setViewUp(...axisDef.camUp);
-
-                renderer.resetCamera();
-                cam.zoom(1.3);
-
-                renderWindow.render();
-
-                // Store refs
-                vtkRef.current = { grw, renderer, renderWindow, mapper, actor, imageData };
-
-                setSliceIndex(centerIdx);
-                setMaxSlice(maxIdx);
+                setSpacing(nextSpacing);
+                setVolumeInfo({ dimensions: dims, spacing: nextSpacing, dataRange });
+                setImageData(nextImageData);
                 setAxis('axial');
+                setSliceIndices(centeredSlices);
+                setSliceIndex(centeredSlices.axial);
+                setMaxSlice(Math.max(dims[2] - 1, 0));
+                setLoadingStage('Initializing viewer...');
+                setLoadingProgress(95);
                 setLoading(false);
 
-                console.log('[SliceViewer] Ready — Axial slice', centerIdx, '/', maxIdx);
-
-            } catch (err) {
+                console.log('[SliceViewer] Volume ready:', { dims, spacing: nextSpacing, dataRange });
+            } catch (nextError) {
                 if (!cancelled) {
-                    console.error('[SliceViewer] Error:', err);
-                    setError(err.message || String(err));
+                    console.error('[SliceViewer] Error:', nextError);
+                    setError(nextError.message || String(nextError));
                     setLoading(false);
                 }
             }
@@ -419,119 +891,574 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
 
         return () => {
             cancelled = true;
-            if (pendingGrwRef.current) {
-                try { pendingGrwRef.current.delete(); } catch (_) {}
-                pendingGrwRef.current = null;
-            }
-            if (vtkRef.current) {
-                try { vtkRef.current.grw.delete(); } catch (_) {}
+        };
+    }, [cacheKey, seriesUid, study, studyKey]);
+
+    // Pane creation is split from slice/window updates so widgets survive normal interaction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (quadView) {
+            const singleContext = vtkRef.current;
+            vtkRef.current = null;
+            destroyPaneContext(singleContext);
+            return undefined;
+        }
+
+        if (!imageData || !vtkContainerRef.current) return undefined;
+
+        const ctx = createSlicePaneContext(
+            vtkContainerRef.current,
+            imageData,
+            axis,
+            SINGLE_CAMERA_ZOOM,
+            windowCenter,
+            windowWidth,
+            inverted
+        );
+        vtkRef.current = ctx;
+
+        return () => {
+            if (vtkRef.current === ctx) {
                 vtkRef.current = null;
             }
+            destroyPaneContext(ctx);
         };
-    }, [study, cacheKey, studyKey, seriesUid]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [createSlicePaneContext, destroyPaneContext, imageData, quadView]);
 
-    // ── Handle resize ────────────────────────────────────────────
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (!quadView) {
+            const existing = { ...quadRefs.current };
+            quadRefs.current = { axial: null, coronal: null, sagittal: null, volume: null };
+            AXIS_ORDER.forEach((axisName) => destroyPaneContext(existing[axisName]));
+            destroyPaneContext(existing.volume);
+            return undefined;
+        }
+
+        if (!imageData || !quadAxialRef.current || !quadCoronalRef.current || !quadSagittalRef.current || !quadVolumeRef.current) {
+            return undefined;
+        }
+
+        const axialCtx = createSlicePaneContext(
+            quadAxialRef.current,
+            imageData,
+            'axial',
+            QUAD_CAMERA_ZOOM,
+            windowCenter,
+            windowWidth,
+            inverted
+        );
+        const coronalCtx = createSlicePaneContext(
+            quadCoronalRef.current,
+            imageData,
+            'coronal',
+            QUAD_CAMERA_ZOOM,
+            windowCenter,
+            windowWidth,
+            inverted
+        );
+        const sagittalCtx = createSlicePaneContext(
+            quadSagittalRef.current,
+            imageData,
+            'sagittal',
+            QUAD_CAMERA_ZOOM,
+            windowCenter,
+            windowWidth,
+            inverted
+        );
+        const volumeCtx = createVolumePreviewContext(quadVolumeRef.current, imageData);
+
+        quadRefs.current = {
+            axial: axialCtx,
+            coronal: coronalCtx,
+            sagittal: sagittalCtx,
+            volume: volumeCtx,
+        };
+
+        return () => {
+            const existing = { ...quadRefs.current };
+            quadRefs.current = { axial: null, coronal: null, sagittal: null, volume: null };
+            AXIS_ORDER.forEach((axisName) => destroyPaneContext(existing[axisName]));
+            destroyPaneContext(existing.volume);
+        };
+    }, [createSlicePaneContext, createVolumePreviewContext, destroyPaneContext, imageData, quadView]);
+
+    useEffect(() => {
+        if (!quadView) {
+            applyWindowLevel(windowCenter, windowWidth, inverted);
+            return;
+        }
+
+        AXIS_ORDER.forEach((axisName) => {
+            const ctx = quadRefs.current[axisName];
+            if (!ctx?.actor) return;
+            applyWindowLevelToActor(ctx.actor, windowCenter, windowWidth, inverted);
+            ctx.renderWindow.render();
+        });
+    }, [applyWindowLevel, applyWindowLevelToActor, inverted, quadView, windowCenter, windowWidth]);
+
+    useEffect(() => {
+        if (quadView || !vtkRef.current || !imageData) return;
+
+        updateSlicePaneContext(vtkRef.current, axis, sliceIndices[axis] ?? 0, SINGLE_CAMERA_ZOOM);
+        const frameId = window.requestAnimationFrame(() => {
+            syncMeasurementLabelForAxis(axis);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [axis, imageData, quadView, sliceIndices, syncMeasurementLabelForAxis, updateSlicePaneContext]);
+
+    useEffect(() => {
+        if (!quadView || !imageData) return;
+
+        AXIS_ORDER.forEach((axisName) => {
+            updateSlicePaneContext(quadRefs.current[axisName], axisName, sliceIndices[axisName] ?? 0, QUAD_CAMERA_ZOOM);
+        });
+
+        const frameId = window.requestAnimationFrame(() => {
+            syncAllMeasurementLabels();
+            syncQuadCrosshairs();
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [imageData, quadView, sliceIndices, syncAllMeasurementLabels, syncQuadCrosshairs, updateSlicePaneContext]);
+
     useEffect(() => {
         const onResize = () => {
-            const ctx = vtkRef.current;
-            if (ctx) {
-                ctx.grw.resize();
-                ctx.renderer.resetCamera();
-                ctx.renderer.getActiveCamera().zoom(1.3);
-                ctx.renderWindow.render();
+            const viewerArea = viewerAreaRef.current;
+            if (viewerArea) {
+                setViewerSize({
+                    width: viewerArea.clientWidth,
+                    height: viewerArea.clientHeight,
+                });
+            }
+
+            if (quadView) {
+                AXIS_ORDER.forEach((axisName) => resizePaneContext(quadRefs.current[axisName]));
+                resizePaneContext(quadRefs.current.volume);
+                window.requestAnimationFrame(() => {
+                    syncAllMeasurementLabels();
+                    syncQuadCrosshairs();
+                });
+                return;
+            }
+
+            resizePaneContext(vtkRef.current);
+            if (vtkRef.current) {
+                updateSlicePaneContext(vtkRef.current, axis, sliceIndices[axis] ?? 0, SINGLE_CAMERA_ZOOM);
+                window.requestAnimationFrame(() => syncMeasurementLabelForAxis(axis));
             }
         };
+
+        onResize();
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
-    }, []);
+    }, [axis, quadView, resizePaneContext, sliceIndices, syncAllMeasurementLabels, syncMeasurementLabelForAxis, syncQuadCrosshairs, updateSlicePaneContext]);
 
-    // ── Attach wheel handler to container ────────────────────────
     useEffect(() => {
-        const el = vtkContainerRef.current;
-        if (!el) return;
-        // Capture phase fires BEFORE VTK's bubble-phase listener → we stopPropagation
-        el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-        return () => el.removeEventListener('wheel', handleWheel, { capture: true });
-    }, [handleWheel]);
+        const element = vtkContainerRef.current;
+        if (!element || quadView) return undefined;
 
-    // ── WL Preset change ─────────────────────────────────────────
-    const selectWlPreset = useCallback((key) => {
-        const p = WL_PRESETS[key];
-        setWlPreset(key);
-        setWindowCenter(p.center);
-        setWindowWidth(p.width);
-    }, []);
+        const handleMouseDownCapture = () => {
+            if (measurementMode) {
+                ensureMeasurementWidget(axis);
+            }
+        };
 
-    // ══════════════════════════════════════════════════════════════
-    //  RENDER
-    // ══════════════════════════════════════════════════════════════
+        element.addEventListener('wheel', handleSingleWheel, { passive: false, capture: true });
+        element.addEventListener('mousedown', handleMouseDownCapture, true);
+
+        return () => {
+            element.removeEventListener('wheel', handleSingleWheel, { capture: true });
+            element.removeEventListener('mousedown', handleMouseDownCapture, true);
+        };
+    }, [axis, ensureMeasurementWidget, handleSingleWheel, measurementMode, quadView]);
+
+    useEffect(() => {
+        if (!quadView) return undefined;
+
+        const panes = [
+            ['axial', quadAxialRef.current],
+            ['coronal', quadCoronalRef.current],
+            ['sagittal', quadSagittalRef.current],
+        ];
+
+        const cleanups = panes.map(([axisName, element]) => {
+            if (!element) return () => {};
+
+            const handlePaneWheel = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const delta = event.deltaY > 0 ? 1 : -1;
+                setSliceForAxis(axisName, (current) => current + delta);
+            };
+
+            const handlePaneMouseDown = (event) => {
+                if (measurementMode) {
+                    ensureMeasurementWidget(axisName);
+                    return;
+                }
+                handleQuadPaneClick(axisName, event);
+            };
+
+            element.addEventListener('wheel', handlePaneWheel, { passive: false, capture: true });
+            element.addEventListener('mousedown', handlePaneMouseDown, true);
+
+            return () => {
+                element.removeEventListener('wheel', handlePaneWheel, { capture: true });
+                element.removeEventListener('mousedown', handlePaneMouseDown, true);
+            };
+        });
+
+        return () => cleanups.forEach((cleanup) => cleanup());
+    }, [ensureMeasurementWidget, handleQuadPaneClick, measurementMode, quadView, setSliceForAxis]);
+
+    useEffect(() => {
+        return () => {
+            clearAllMeasurements();
+        };
+    }, [clearAllMeasurements]);
+
     const axisDef = AXIS[axis];
+    const measurementHint = annotateMode
+        ? annotationTool === 'text'
+            ? 'Click to place a text note'
+            : `Drag to place a ${annotationTool}`
+        : measurementMode
+        ? measurementTool === 'angle'
+            ? 'Click to place three points for an angle'
+            : 'Click and drag to place a ruler'
+        : quadView
+            ? 'Click a pane to sync crosshairs, scroll any pane to change its slice'
+            : 'Scroll to navigate slices';
+
+    const renderMeasurementPills = useCallback((axisName) => {
+        return (measurementLabels[axisName] || []).map((label) => (
+            <div
+                key={label.id}
+                className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg"
+                style={{
+                    left: `${label.x}px`,
+                    top: `${Math.max(label.y - 10, 22)}px`,
+                    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                    border: `1px solid ${MEASUREMENT_COLOR}`,
+                    boxShadow: '0 10px 25px rgba(29, 158, 117, 0.18)',
+                }}
+            >
+                {label.text}
+            </div>
+        ));
+    }, [measurementLabels]);
+
+    const renderQuadCrosshair = useCallback((axisName) => {
+        const position = quadCrosshairPositions[axisName];
+        if (!position) return null;
+
+        const colors = CROSSHAIR_COLORS[axisName];
+        return (
+            <svg
+                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                viewBox={`0 0 ${position.width} ${position.height}`}
+                preserveAspectRatio="none"
+            >
+                <line
+                    x1={position.x}
+                    y1={0}
+                    x2={position.x}
+                    y2={position.height}
+                    stroke={colors.vertical}
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    opacity="0.9"
+                />
+                <line
+                    x1={0}
+                    y1={position.y}
+                    x2={position.width}
+                    y2={position.y}
+                    stroke={colors.horizontal}
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    opacity="0.9"
+                />
+                <circle
+                    cx={position.x}
+                    cy={position.y}
+                    r="4"
+                    fill="#ffffff"
+                    stroke={AXIS[axisName].colorHex}
+                    strokeWidth="1.5"
+                />
+            </svg>
+        );
+    }, [quadCrosshairPositions]);
+
+    const renderPaneLabel = useCallback((axisName) => {
+        const paneAxis = AXIS[axisName];
+        const paneMaxSlice = Math.max((dimensions[paneAxis.dimIndex] || 1) - 1, 0);
+        const paneSlice = sliceIndices[axisName] ?? 0;
+
+        return (
+            <div className="pointer-events-none absolute left-3 top-3 z-20">
+                <span className={`rounded-lg bg-black/70 px-2.5 py-1 text-xs font-mono font-bold ${paneAxis.labelClass}`}>
+                    {paneAxis.label.toUpperCase()} [{paneSlice + 1}/{paneMaxSlice + 1}]
+                </span>
+            </div>
+        );
+    }, [dimensions, sliceIndices]);
+
+    const renderQuadPane = useCallback((axisName, ref) => (
+        <div className={`relative overflow-hidden border ${AXIS[axisName].paneBorderClass} bg-black`} style={{ cursor: annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}>
+            <div ref={ref} className="absolute inset-0" />
+            {renderQuadCrosshair(axisName)}
+            {renderPaneLabel(axisName)}
+            {renderMeasurementPills(axisName)}
+        </div>
+    ), [annotateMode, measurementMode, renderMeasurementPills, renderPaneLabel, renderQuadCrosshair]);
 
     return (
-        <div ref={wrapperRef} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800">
-
-            {/* ── Toolbar ── */}
-            <div className="flex items-center justify-between p-3 bg-slate-900/95 border-b border-slate-800 backdrop-blur z-20">
+        <div ref={wrapperRef} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+            <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 p-3 backdrop-blur">
                 <div className="flex items-center gap-3">
-                    <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+                    <button onClick={onBack} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
                         <AppIcon name="ArrowLeft" size={20} />
                     </button>
                     <div>
-                        <h2 className="font-bold text-white text-sm">{study?.patientName || study?.originalName || 'Patient'}</h2>
+                        <h2 className="text-sm font-bold text-white">{study?.patientName || study?.originalName || 'Patient'}</h2>
                         <p className="text-[10px] text-slate-500">MPR Slice Viewer • {study?.folderName}</p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                    {/* Axis Buttons */}
-                    {Object.entries(AXIS).map(([key, def]) => (
+                    {!quadView && Object.entries(AXIS).map(([key, def]) => (
                         <button
                             key={key}
                             onClick={() => switchAxis(key)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                                 axis === key
                                     ? def.activeBtn
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-transparent'
+                                    : 'border border-transparent bg-slate-800 text-slate-400 hover:bg-slate-700'
                             }`}
                         >
                             {def.label}
                         </button>
                     ))}
 
-                    <div className="h-5 w-px bg-slate-800 mx-1" />
+                    {!quadView && <div className="mx-1 h-5 w-px bg-slate-800" />}
 
-                    {/* W/L Presets */}
-                    {Object.entries(WL_PRESETS).map(([key, p]) => (
+                    {Object.entries(WL_PRESETS).map(([key, preset]) => (
                         <button
                             key={key}
                             onClick={() => selectWlPreset(key)}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
                                 wlPreset === key
-                                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
-                                    : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300 border border-transparent'
+                                    ? 'border border-amber-500/50 bg-amber-500/20 text-amber-400'
+                                    : 'border border-transparent bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300'
                             }`}
-                            title={p.label}
+                            title={preset.label}
                         >
-                            {p.label}
+                            {preset.label}
                         </button>
                     ))}
 
-                    <div className="h-5 w-px bg-slate-800 mx-1" />
+                    <div className="mx-1 h-5 w-px bg-slate-800" />
 
-                    {/* Invert */}
                     <button
-                        onClick={() => setInverted(v => !v)}
-                        className={`p-1.5 rounded-lg transition ${inverted ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
+                        onClick={() => setInverted((current) => !current)}
+                        className={`rounded-lg p-1.5 transition ${
+                            inverted
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+                        }`}
                         title="Invert (Film Negative)"
                     >
                         <AppIcon name="SunMoon" size={16} />
                     </button>
 
-                    {/* 3D View */}
+                    <button
+                        onClick={() => {
+                            setMeasurementMode((current) => {
+                                const next = !current;
+                                if (next) {
+                                    setAnnotateMode(false);
+                                }
+                                return next;
+                            });
+                        }}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                            measurementMode
+                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="Measurement Mode"
+                    >
+                        <AppIcon name="Ruler" size={16} />
+                        <span>Measure</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setAnnotateMode((current) => {
+                                const next = !current;
+                                if (next) {
+                                    setMeasurementMode(false);
+                                }
+                                return next;
+                            });
+                        }}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                            annotateMode
+                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="Annotation Mode"
+                    >
+                        <AppIcon name="Edit3" size={16} />
+                        <span>Annotate</span>
+                    </button>
+
+                    {measurementMode && (
+                        <>
+                            <button
+                                onClick={() => setMeasurementTool('distance')}
+                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                                    measurementTool === 'distance'
+                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                }`}
+                            >
+                                Distance
+                            </button>
+                            <button
+                                onClick={() => setMeasurementTool('angle')}
+                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                                    measurementTool === 'angle'
+                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                }`}
+                            >
+                                Angle
+                            </button>
+                            <button
+                                onClick={clearAllMeasurements}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                title="Clear measurements"
+                            >
+                                <AppIcon name="Trash2" size={16} />
+                            </button>
+                        </>
+                    )}
+
+                    {annotateMode && (
+                        <>
+                            <button
+                                onClick={() => setAnnotationTool('arrow')}
+                                className={`rounded-lg p-1.5 transition ${
+                                    annotationTool === 'arrow'
+                                        ? 'border border-red-500/40 bg-red-500/20 text-red-300'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                }`}
+                                title="Arrow Annotation"
+                            >
+                                <AppIcon name="ArrowRight" size={16} />
+                            </button>
+                            <button
+                                onClick={() => setAnnotationTool('circle')}
+                                className={`rounded-lg p-1.5 transition ${
+                                    annotationTool === 'circle'
+                                        ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                }`}
+                                title="Circle Annotation"
+                            >
+                                <AppIcon name="Circle" size={16} />
+                            </button>
+                            <button
+                                onClick={() => setAnnotationTool('text')}
+                                className={`rounded-lg p-1.5 transition ${
+                                    annotationTool === 'text'
+                                        ? 'border border-slate-500/40 bg-slate-700 text-white'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                }`}
+                                title="Text Annotation"
+                            >
+                                <AppIcon name="Type" size={16} />
+                            </button>
+                            <button
+                                onClick={() => setAnnotations((current) => current.slice(0, -1))}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                title="Undo last annotation"
+                            >
+                                <AppIcon name="Undo2" size={16} />
+                            </button>
+                            <button
+                                onClick={() => setAnnotations([])}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                title="Clear annotations"
+                            >
+                                <AppIcon name="Trash2" size={16} />
+                            </button>
+                        </>
+                    )}
+
+                    <div className="mx-1 h-5 w-px bg-slate-800" />
+
+                    <button
+                        onClick={() => {
+                            setShowSeriesPanel(false);
+                            setShowMetadataPanel((current) => !current);
+                        }}
+                        className={`rounded-lg p-1.5 transition ${
+                            showMetadataPanel
+                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="DICOM Info"
+                    >
+                        <AppIcon name="Info" size={16} />
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setShowMetadataPanel(false);
+                            setShowSeriesPanel((current) => !current);
+                        }}
+                        className={`rounded-lg p-1.5 transition ${
+                            showSeriesPanel
+                                ? 'border border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
+                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="Series Panel"
+                    >
+                        <AppIcon name="Layers" size={16} />
+                    </button>
+
+                    <button
+                        onClick={handleToggleQuadView}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                            quadView
+                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="Quad View"
+                    >
+                        <AppIcon name="LayoutGrid" size={16} />
+                        <span>Quad</span>
+                    </button>
+
+                    <button
+                        onClick={() => setReportModalOpen(true)}
+                        className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                        title="Export Report"
+                    >
+                        <AppIcon name="FileText" size={16} />
+                        <span>Export Report</span>
+                    </button>
+
                     {study?.selectedSeriesType === '3D Volume' && (
                         <button
                             onClick={onSwitchTo3D}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-xs font-semibold transition shadow"
+                            className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow transition hover:from-cyan-500 hover:to-blue-500"
                             title="Switch to 3D Volume Rendering"
                         >
                             <AppIcon name="Box" size={14} />
@@ -539,66 +1466,81 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                         </button>
                     )}
 
-                    {/* Series Panel Toggle */}
-                    <button
-                        onClick={() => setShowSeriesPanel(v => !v)}
-                        className={`p-1.5 rounded-lg transition ${showSeriesPanel ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
-                        title="Series Panel"
-                    >
-                        <AppIcon name="Layers" size={16} />
-                    </button>
-
-                    {/* Fullscreen */}
-                    <button onClick={toggleFullscreen} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400" title="Fullscreen">
-                        <AppIcon name={isFullscreen ? "Minimize2" : "Maximize2"} size={16} />
+                    <button onClick={toggleFullscreen} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white" title="Fullscreen">
+                        <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={16} />
                     </button>
                 </div>
             </div>
 
-            {/* ── Main VTK Container ── */}
-            <div className="flex-1 relative bg-black">
-                {/* VTK.js renders into this div via grw.setContainer() */}
-                {/* VTK.js renders into this dedicated div */}
-                <div
-                    ref={vtkContainerRef}
-                    className="absolute inset-0"
-                    style={{ cursor: 'crosshair' }}
-                />
+            <div ref={viewerAreaRef} className="relative flex-1 bg-black">
+                {!quadView && (
+                    <div
+                        ref={vtkContainerRef}
+                        className="absolute inset-0"
+                        style={{ cursor: annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}
+                    />
+                )}
 
-                {/* ── Overlay: View label + slice info ── */}
-                {!loading && !error && (
+                {quadView && (
+                    <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px bg-slate-900 p-px">
+                        {renderQuadPane('axial', quadAxialRef)}
+                        {renderQuadPane('coronal', quadCoronalRef)}
+                        {renderQuadPane('sagittal', quadSagittalRef)}
+                        <div className="relative overflow-hidden border border-slate-700 bg-black">
+                            <div ref={quadVolumeRef} className="absolute inset-0" />
+                            <div className="pointer-events-none absolute left-3 top-3 z-20">
+                                <span className="rounded-lg bg-black/70 px-2.5 py-1 text-xs font-mono font-bold text-slate-200">
+                                    3D PREVIEW
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && !quadView && (
                     <>
-                        {/* Top-left: Axis + Slice info */}
-                        <div className="absolute top-3 left-3 z-10 pointer-events-none">
-                            <span className={`text-xs font-mono font-bold bg-black/70 px-2 py-1 rounded ${axisDef.labelClass}`}>
+                        <div className="pointer-events-none absolute left-3 top-3 z-10">
+                            <span className={`rounded-lg bg-black/70 px-2 py-1 text-xs font-mono font-bold ${axisDef.labelClass}`}>
                                 {axisDef.label.toUpperCase()} [{sliceIndex + 1}/{maxSlice + 1}]
                             </span>
                         </div>
-
-                        {/* Top-right: Volume info */}
-                        {volumeInfo && (
-                            <div className="absolute top-3 right-3 z-10 pointer-events-none text-[10px] font-mono text-slate-500 bg-black/60 px-2 py-1 rounded">
-                                {volumeInfo.dimensions.join('×')} • {volumeInfo.spacing.map(s => s.toFixed(2)).join('×')}mm
-                            </div>
-                        )}
-
-                        {/* Bottom-center: W/L readout */}
-                        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 pointer-events-none text-[10px] font-mono text-slate-500 bg-black/60 px-2 py-1 rounded">
-                            W/L: {windowWidth.toFixed(3)} / {windowCenter.toFixed(3)}{inverted ? ' (Inv)' : ''}
-                        </div>
+                        {renderMeasurementPills(axis)}
                     </>
                 )}
 
-                {/* ── Slice Slider ── */}
-                {!loading && !error && maxSlice > 0 && (
+                {!loading && !error && volumeInfo && (
+                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-slate-500">
+                        {volumeInfo.dimensions.join('×')} • {volumeInfo.spacing.map((value) => value.toFixed(2)).join('×')}mm
+                    </div>
+                )}
+
+                {!loading && !error && (
+                    <div className="pointer-events-none absolute bottom-14 left-1/2 z-10 -translate-x-1/2 rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-slate-500">
+                        W/L: {windowWidth.toFixed(3)} / {windowCenter.toFixed(3)}{inverted ? ' (Inv)' : ''} • {measurementHint}
+                    </div>
+                )}
+
+                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
+                    <AnnotationCanvas
+                        width={viewerSize.width}
+                        height={viewerSize.height}
+                        active={annotateMode}
+                        tool={annotationTool}
+                        annotations={annotations}
+                        onChange={setAnnotations}
+                        className="absolute inset-0 z-[15]"
+                    />
+                )}
+
+                {!loading && !error && !quadView && maxSlice > 0 && (
                     <div className="absolute bottom-3 left-4 right-4 z-10">
                         <input
                             type="range"
                             min={0}
                             max={maxSlice}
                             value={sliceIndex}
-                            onChange={(e) => goToSlice(parseInt(e.target.value))}
-                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                            onChange={(event) => goToSlice(Number.parseInt(event.target.value, 10))}
+                            className="h-1.5 w-full cursor-pointer appearance-none rounded-full"
                             style={{
                                 background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${(sliceIndex / maxSlice) * 100}%, #1e293b ${(sliceIndex / maxSlice) * 100}%, #1e293b 100%)`,
                             }}
@@ -606,48 +1548,78 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                     </div>
                 )}
 
-                {/* ── Loading overlay ── */}
                 {loading && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 z-30">
-                        <div className="relative w-20 h-20 mb-4">
-                            <svg className="animate-spin w-20 h-20" viewBox="0 0 80 80">
+                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95">
+                        <div className="relative mb-4 h-20 w-20">
+                            <svg className="h-20 w-20 animate-spin" viewBox="0 0 80 80">
                                 <circle cx="40" cy="40" r="35" strokeWidth="4" stroke="#1e293b" fill="none" />
-                                <circle cx="40" cy="40" r="35" strokeWidth="4" stroke="#6366f1" fill="none"
-                                    strokeDasharray={`${loadingProgress * 2.2} 220`} strokeLinecap="round"
-                                    transform="rotate(-90 40 40)" />
+                                <circle
+                                    cx="40"
+                                    cy="40"
+                                    r="35"
+                                    strokeWidth="4"
+                                    stroke="#6366f1"
+                                    fill="none"
+                                    strokeDasharray={`${loadingProgress * 2.2} 220`}
+                                    strokeLinecap="round"
+                                    transform="rotate(-90 40 40)"
+                                />
                             </svg>
                             <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{loadingProgress}%</span>
                         </div>
-                        <p className="text-sm font-semibold text-white mb-1">Loading MPR Viewer</p>
+                        <p className="mb-1 text-sm font-semibold text-white">Loading MPR Viewer</p>
                         <p className="text-xs text-slate-400">{loadingStage}</p>
                     </div>
                 )}
 
-                {/* ── Error overlay ── */}
                 {error && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 z-30 text-center p-8">
-                        <AppIcon name="AlertTriangle" size={48} className="text-red-400 mb-4" />
-                        <h3 className="text-lg font-bold text-red-400 mb-2">Failed to Load MPR</h3>
-                        <p className="text-sm text-slate-400 max-w-md mb-4">{error}</p>
-                        <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white text-sm">
+                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-8 text-center">
+                        <AppIcon name="AlertTriangle" size={48} className="mb-4 text-red-400" />
+                        <h3 className="mb-2 text-lg font-bold text-red-400">Failed to Load MPR</h3>
+                        <p className="mb-4 max-w-md text-sm text-slate-400">{error}</p>
+                        <button onClick={() => window.location.reload()} className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700">
                             Retry
                         </button>
                     </div>
                 )}
-            </div>
 
-            {/* ── Series Sidebar ── */}
-            <SeriesSidebar
-                study={study}
-                currentSeriesUid={study?.selectedSeriesUid}
-                onSelectSeries={(series) => {
-                    setShowSeriesPanel(false);
-                    if (onSwitchSeries) onSwitchSeries(series);
-                }}
-                visible={showSeriesPanel}
-                onClose={() => setShowSeriesPanel(false)}
-                position="right"
-            />
+                <SeriesSidebar
+                    study={study}
+                    currentSeriesUid={study?.selectedSeriesUid}
+                    onSelectSeries={(series) => {
+                        clearAllMeasurements();
+                        setShowSeriesPanel(false);
+                        if (onSwitchSeries) onSwitchSeries(series);
+                    }}
+                    visible={showSeriesPanel}
+                    onClose={() => setShowSeriesPanel(false)}
+                    position="right"
+                />
+
+                <MetadataPanel
+                    visible={showMetadataPanel}
+                    onClose={() => setShowMetadataPanel(false)}
+                    metadata={metadata}
+                    loading={metadataLoading}
+                    error={metadataError}
+                    title="DICOM Info"
+                />
+
+                {!loading && !error && (
+                    <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg bg-black/60 px-2.5 py-1 font-mono text-[10px] text-slate-400">
+                        Spacing: {spacing.map((value) => value.toFixed(2)).join(' × ')} mm
+                    </div>
+                )}
+
+                <ReportExportModal
+                    visible={reportModalOpen}
+                    onClose={() => setReportModalOpen(false)}
+                    onConfirm={handleExportReport}
+                    initialValues={reportInitialValues}
+                    exporting={exportingReport}
+                    clinicName={clinicName}
+                />
+            </div>
         </div>
     );
 };

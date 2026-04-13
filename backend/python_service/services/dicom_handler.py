@@ -244,6 +244,129 @@ class DicomHandler:
             print(f"Error creating volume: {e}")
             self.volume = None
 
+    def _get_dicom_window(self):
+        dicom_wc = None
+        dicom_ww = None
+
+        if self.first_ds:
+            try:
+                wc = getattr(self.first_ds, 'WindowCenter', None)
+                ww = getattr(self.first_ds, 'WindowWidth', None)
+
+                if wc is not None:
+                    dicom_wc = float(wc[0]) if isinstance(wc, (list, pydicom.multival.MultiValue)) else float(wc)
+                if ww is not None:
+                    dicom_ww = float(ww[0]) if isinstance(ww, (list, pydicom.multival.MultiValue)) else float(ww)
+            except Exception:
+                pass
+
+        return dicom_wc, dicom_ww
+
+    def _normalize_metadata_value(self, value):
+        if value is None:
+            return None
+
+        if isinstance(value, pydicom.multival.MultiValue):
+            parts = [self._normalize_metadata_value(v) for v in value]
+            parts = [p for p in parts if p not in (None, '')]
+            return ' × '.join(str(p) for p in parts) if parts else None
+
+        if hasattr(value, 'family_name') or value.__class__.__name__ == 'PersonName':
+            text = str(value).replace('^', ' ').strip()
+            return text or None
+
+        if isinstance(value, bytes):
+            try:
+                value = value.decode('utf-8', errors='ignore')
+            except Exception:
+                value = str(value)
+
+        text = str(value).strip()
+        return text if text else None
+
+    def _get_first_ds_metadata_value(self, *tag_names):
+        if not self.first_ds:
+            return None
+
+        for tag_name in tag_names:
+            try:
+                raw_value = getattr(self.first_ds, tag_name, None)
+            except Exception:
+                raw_value = None
+
+            normalized = self._normalize_metadata_value(raw_value)
+            if normalized is not None:
+                return normalized
+
+        return None
+
+    def _resolve_window_settings(self, pixel_array):
+        pixel_min = float(np.min(pixel_array))
+        pixel_max = float(np.max(pixel_array))
+        dicom_wc, dicom_ww = self._get_dicom_window()
+
+        use_auto_window = False
+
+        if dicom_wc is not None and dicom_ww is not None:
+            if not np.isfinite(dicom_wc) or not np.isfinite(dicom_ww) or dicom_ww <= 0:
+                use_auto_window = True
+                print(
+                    f"[Window] Auto-window selected. Invalid DICOM window C/W: "
+                    f"{dicom_wc}/{dicom_ww}. Pixel range [{pixel_min:.2f}, {pixel_max:.2f}]"
+                )
+            else:
+                window_min = dicom_wc - (dicom_ww / 2.0)
+                window_max = dicom_wc + (dicom_ww / 2.0)
+
+                total_pixels = float(pixel_array.size) if pixel_array.size else 1.0
+                below_ratio = float(np.count_nonzero(pixel_array < window_min)) / total_pixels
+                above_ratio = float(np.count_nonzero(pixel_array > window_max)) / total_pixels
+                outside_ratio = below_ratio + above_ratio
+                inside_ratio = 1.0 - outside_ratio
+
+                if outside_ratio > 0.30:
+                    use_auto_window = True
+                    print(
+                        f"[Window] Auto-window selected. DICOM window covers {inside_ratio * 100:.1f}% "
+                        f"of voxels ({below_ratio * 100:.1f}% below, {above_ratio * 100:.1f}% above). "
+                        f"Window C/W: {dicom_wc:.2f}/{dicom_ww:.2f}, "
+                        f"pixel range [{pixel_min:.2f}, {pixel_max:.2f}]"
+                    )
+                else:
+                    print(
+                        f"[Window] Using DICOM window. Coverage {inside_ratio * 100:.1f}% "
+                        f"inside ({below_ratio * 100:.1f}% below, {above_ratio * 100:.1f}% above). "
+                        f"Window C/W: {dicom_wc:.2f}/{dicom_ww:.2f}, "
+                        f"pixel range [{pixel_min:.2f}, {pixel_max:.2f}]"
+                    )
+        else:
+            use_auto_window = True
+            print(
+                f"[Window] Auto-window selected. No DICOM window found. "
+                f"Pixel range [{pixel_min:.2f}, {pixel_max:.2f}]"
+            )
+
+        if use_auto_window:
+            p1 = float(np.percentile(pixel_array, 1))
+            p99 = float(np.percentile(pixel_array, 99))
+
+            window_min = p1
+            window_max = p99
+            window_center = (p1 + p99) / 2.0
+            window_width = p99 - p1
+
+            print(
+                f"[Window] Auto-window computed: C/W = {window_center:.2f}/{window_width:.2f} "
+                f"[range: {window_min:.2f} to {window_max:.2f}]"
+            )
+        else:
+            window_center = dicom_wc
+            window_width = dicom_ww
+            window_min = window_center - (window_width / 2.0)
+            window_max = window_center + (window_width / 2.0)
+
+        return window_center, window_width, window_min, window_max
+
     def get_slice(self, view, index):
         """Get a slice with proper windowing from DICOM metadata (WindowCenter/WindowWidth)."""
         # Lazy load volume
@@ -290,63 +413,7 @@ class DicomHandler:
             else:
                 raise ValueError("Volume not loaded and view is not axial/index valid")
 
-        # Get pixel value range for auto-windowing
-        pixel_min = np.min(pixel_array)
-        pixel_max = np.max(pixel_array)
-        
-        # Try to get WindowCenter/WindowWidth from DICOM metadata
-        dicom_wc = None
-        dicom_ww = None
-        
-        if self.first_ds:
-            try:
-                wc = getattr(self.first_ds, 'WindowCenter', None)
-                ww = getattr(self.first_ds, 'WindowWidth', None)
-                
-                if wc is not None:
-                    dicom_wc = float(wc[0]) if isinstance(wc, (list, pydicom.multival.MultiValue)) else float(wc)
-                if ww is not None:
-                    dicom_ww = float(ww[0]) if isinstance(ww, (list, pydicom.multival.MultiValue)) else float(ww)
-            except:
-                pass
-        
-        # Smart windowing: Use DICOM values only if they make sense for the data
-        # Otherwise use auto-windowing for optimal contrast
-        use_auto_window = False
-        
-        if dicom_wc is not None and dicom_ww is not None:
-            # Check if DICOM window makes sense (window should cover actual pixel range)
-            window_min = dicom_wc - (dicom_ww / 2.0)
-            window_max = dicom_wc + (dicom_ww / 2.0)
-            
-            # If most pixels would be clipped, use auto-windowing instead
-            if pixel_min < window_min - 500 or pixel_max > window_max + 500:
-                use_auto_window = True
-                print(f"[DEBUG] DICOM window invalid. Pixel range [{pixel_min:.2f}, {pixel_max:.2f}] vs Window [{window_min:.2f}, {window_max:.2f}]. Using auto-window.")
-            else:
-                print(f"[DEBUG] Using DICOM window. Pixel range [{pixel_min:.2f}, {pixel_max:.2f}], Window C/W: {dicom_wc:.2f}/{dicom_ww:.2f}")
-        else:
-            use_auto_window = True
-            print(f"[DEBUG] No DICOM window found. Pixel range [{pixel_min:.2f}, {pixel_max:.2f}]. Using auto-window.")
-        
-        if use_auto_window:
-            # Auto-windowing using percentile clipping (robust to outliers)
-            # Use 1st and 99th percentile to ignore extreme outliers
-            p1 = np.percentile(pixel_array, 1)
-            p99 = np.percentile(pixel_array, 99)
-            
-            window_min = p1
-            window_max = p99
-            window_center = (p1 + p99) / 2.0
-            window_width = p99 - p1
-            
-            print(f"[DEBUG] Auto-window computed: C/W = {window_center:.2f}/{window_width:.2f} [range: {window_min:.2f} to {window_max:.2f}]")
-        else:
-            # Use DICOM values
-            window_center = dicom_wc
-            window_width = dicom_ww
-            window_min = window_center - (window_width / 2.0)
-            window_max = window_center + (window_width / 2.0)
+        window_center, window_width, window_min, window_max = self._resolve_window_settings(pixel_array)
         
         # Apply windowing and normalize to 0-255
         pixel_array = np.clip(pixel_array, window_min, window_max)
@@ -438,6 +505,24 @@ class DicomHandler:
                     window_width = float(ww[0]) if isinstance(ww, (list, pydicom.multival.MultiValue)) else float(ww)
             except:
                 pass
+
+        extra_metadata = {
+            "PatientName": self._get_first_ds_metadata_value('PatientName'),
+            "PatientID": self._get_first_ds_metadata_value('PatientID'),
+            "PatientBirthDate": self._get_first_ds_metadata_value('PatientBirthDate'),
+            "PatientSex": self._get_first_ds_metadata_value('PatientSex'),
+            "StudyDate": self._get_first_ds_metadata_value('StudyDate'),
+            "StudyDescription": self._get_first_ds_metadata_value('StudyDescription'),
+            "InstitutionName": self._get_first_ds_metadata_value('InstitutionName'),
+            "KVP": self._get_first_ds_metadata_value('KVP'),
+            "Exposure": self._get_first_ds_metadata_value('Exposure'),
+            "ExposureTime": self._get_first_ds_metadata_value('ExposureTime'),
+            "FocalSpots": self._get_first_ds_metadata_value('FocalSpots'),
+            "Manufacturer": self._get_first_ds_metadata_value('Manufacturer'),
+            "ManufacturerModelName": self._get_first_ds_metadata_value('ManufacturerModelName'),
+            "SoftwareVersions": self._get_first_ds_metadata_value('SoftwareVersions'),
+            "FieldOfViewDimensions": self._get_first_ds_metadata_value('FieldOfViewDimensions', 'ReconstructionDiameter'),
+        }
         
         # Build series list with metadata for each series
         series_list = []
@@ -477,7 +562,7 @@ class DicomHandler:
         # Calculate VoxelSize for accurate 3D rendering (X, Y, Z spacing)
         voxel_size = [ps, ps, st]  # [X, Y, Z] in mm
         
-        return {
+        metadata = {
             "num_slices": dims[0],
             "dimensions": [int(d) for d in dims],
             "pixel_spacing": float(ps),
@@ -488,3 +573,6 @@ class DicomHandler:
             "series": series_list,  # Multi-series support (The Acteon Way)
             "total_series_found": len(self.all_series)
         }
+
+        metadata.update(extra_metadata)
+        return metadata

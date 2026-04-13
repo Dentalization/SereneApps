@@ -50,6 +50,7 @@
     "framer-motion": "^10.16.4",
     "hammerjs": "^2.0.8",
     "jquery": "^3.7.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.484.0",
     "multer": "^2.0.2",
     "ogl": "^1.0.11",
