@@ -4,6 +4,8 @@ import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
 import { PY_API_BASE } from '../../../../config/api';
 import { VOLUME_PRESETS } from '../config/volumePresets';
+import { VOLUME_CACHE_VERSION, volumeCache } from '../utils/volumeCache';
+import useStudyMetadata from '../hooks/useStudyMetadata';
 
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
@@ -13,30 +15,8 @@ import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunc
 import vtkXMLImageDataReader from '@kitware/vtk.js/IO/XML/XMLImageDataReader';
 import vtkPlane from '@kitware/vtk.js/Common/DataModel/Plane';
 import AppIcon from '../../../../components/AppIcon';
+import MetadataPanel from './MetadataPanel';
 import SeriesSidebar from './SeriesSidebar';
-
-// ─── Global volume cache (on window to survive HMR) ────────────────────
-// CACHE VERSION: bump this to force re-fetch after VTI regeneration
-const VOLUME_CACHE_VERSION = 2;
-function makeLRUCache(maxSize) {
-  const map = new Map();
-  return {
-    has: k => map.has(k),
-    get(k) { if (!map.has(k)) return undefined; const v = map.get(k); map.delete(k); map.set(k, v); return v; },
-    set(k, v) { if (map.has(k)) map.delete(k); if (map.size >= maxSize) map.delete(map.keys().next().value); map.set(k, v); },
-    delete: k => map.delete(k),
-    clear: () => map.clear(),
-    get size() { return map.size; },
-    keys: () => map.keys(),
-  };
-}
-
-if (!window.__volumeCache || window.__volumeCacheVersion !== VOLUME_CACHE_VERSION) {
-  window.__volumeCache = makeLRUCache(3);
-  window.__volumeCacheVersion = VOLUME_CACHE_VERSION;
-  console.log('[VolumeViewer3D] Cache cleared — version', VOLUME_CACHE_VERSION);
-}
-const volumeCache = window.__volumeCache;
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const SAMPLE_DISTANCE_INTERACTIVE = 1.0;
@@ -106,11 +86,15 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
 
     // Series panel
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
+    const [showMetadataPanel, setShowMetadataPanel] = useState(false);
 
     // Stable study key for caching
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
     const seriesUid = useMemo(() => study?.selectedSeriesUid || '', [study]);
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
+    const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
+        enabled: !!studyKey,
+    });
 
     // ═══════════════════════════════════════════════════════════════════
     // Transfer Function Presets — MONAI-Normalized [0.0, 1.0] Range
@@ -929,6 +913,21 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     <div className="h-6 w-px bg-slate-700 mx-1" />
 
                     <button
+                        onClick={() => {
+                            setShowSeriesPanel(false);
+                            setShowMetadataPanel(prev => !prev);
+                        }}
+                        className={'p-2 rounded-lg transition ' + (
+                            showMetadataPanel
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                                : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
+                        )}
+                        title="DICOM Info"
+                    >
+                        <AppIcon name="Info" size={18} />
+                    </button>
+
+                    <button
                         onClick={() => setShowSeriesPanel(prev => !prev)}
                         className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition shadow-lg ' + (
                             showSeriesPanel
@@ -1141,6 +1140,15 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     visible={showSeriesPanel}
                     onClose={() => setShowSeriesPanel(false)}
                     position="right"
+                />
+
+                <MetadataPanel
+                    visible={showMetadataPanel}
+                    onClose={() => setShowMetadataPanel(false)}
+                    metadata={metadata}
+                    loading={metadataLoading}
+                    error={metadataError}
+                    title="DICOM Info"
                 />
 
                 {/* ─── Mode Label Badge ──────────────────────────── */}
