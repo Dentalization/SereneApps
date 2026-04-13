@@ -7,49 +7,25 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import {
-  View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert,
-} from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert, } from 'react-native';
 import { Camera } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo
-} from '@twilio/video-react-native-sdk';
+import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 
 // ─── Brand / Theme Constants ───────────────────────────────────────────────────
 const COLORS = {
-  primary: '#62109F',
-  primaryLight: '#982BEA',
-  primaryDark: '#450B71',
-  secondary: '#00BFA6',
-  accent: '#FF6B9D',
-  success: '#4CAF50',
-  error: '#F44336',
-  warning: '#FF9800',
-  white: '#FFFFFF',
-  black: '#000000',
-  gray50: '#FAFAFA',
-  gray100: '#F5F5F5',
-  gray200: '#EEEEEE',
-  gray300: '#E0E0E0',
-  gray400: '#BDBDBD',
-  gray500: '#9E9E9E',
-  gray600: '#757575',
-  gray700: '#616161',
-  gray800: '#424242',
-  gray900: '#212121',
-  background: '#F8FAFC',
-  chatUser: '#62109F',
-  chatDentist: '#FFFFFF',
-  chatSystem: '#F1F5F9',
-  overlayDark: 'rgba(0,0,0,0.75)',
-  overlayBlur: 'rgba(15,10,30,0.85)',
+  primary: '#62109F', primaryLight: '#982BEA', primaryDark: '#450B71', secondary: '#00BFA6',
+  accent: '#FF6B9D', success: '#4CAF50', error: '#F44336', warning: '#FF9800', white: '#FFFFFF',
+  black: '#000000', gray50: '#FAFAFA', gray100: '#F5F5F5', gray200: '#EEEEEE',
+  gray300: '#E0E0E0', gray400: '#BDBDBD', gray500: '#9E9E9E', gray600: '#757575',
+  gray700: '#616161', gray800: '#424242', gray900: '#212121', background: '#F8FAFC',
+  chatUser: '#62109F', chatDentist: '#FFFFFF', chatSystem: '#F1F5F9', overlayDark: 'rgba(0,0,0,0.75)', overlayBlur: 'rgba(15,10,30,0.85)',
 };
 
 // ─── Utility: Format appointment date for display ─────────────────────────────
@@ -141,19 +117,7 @@ const PatientTeledentistryScreen = () => {
     fetchVideoToken,
   } = useChat({ userId: currentUser?.id });
 
-  const {
-    twilioRef,
-    isConnected,
-    isAudioEnabled,
-    isVideoEnabled,
-    remoteParticipantSids,
-    connect,
-    disconnect,
-    toggleAudio,
-    toggleVideo,
-    flipCamera,
-    handlers
-  } = useTwilioVideoClient();
+  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
@@ -166,7 +130,6 @@ const PatientTeledentistryScreen = () => {
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [avatarError, setAvatarError] = useState(false);
-
   const resolvedAvatar = avatarError ? null : dentistAvatar;
 
   // ─── Refs ──────────────────────────────────────────────────────────────────
