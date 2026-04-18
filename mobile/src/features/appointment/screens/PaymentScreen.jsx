@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image, Linking } from 'react-native';
 import { Text, Button, RadioButton, useTheme, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -12,6 +12,7 @@ import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { createAppointment } from '../../../services/appointmentService';
 import { syncAIAnalysisHistory } from '../../../services/aiAnalysisSyncService';
+import { createSnapTransaction, getPaymentStatus } from '../../../services/paymentService';
 
 const PAYMENT_METHODS = [
   {
@@ -85,6 +86,16 @@ const PaymentScreen = () => {
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [countdown, setCountdown] = useState(null);
+  const [pollingState, setPollingState] = useState('idle');
+  const [paymentIntentId, setPaymentIntentId] = useState(null);
+
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(200);
 
@@ -110,52 +121,28 @@ const PaymentScreen = () => {
     setProcessing(true);
 
     try {
-      // Extract date and time for API
       const bookingDate = new Date(selectedDate);
-      const dateStr = bookingDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      const timeStr = slot?.time || bookingDate.toTimeString().slice(0, 5); // HH:mm
+      const dateStr = bookingDate.toISOString().split('T')[0];
+      const timeStr = slot?.time || bookingDate.toTimeString().slice(0, 5);
 
-      // Get IDs from dentist object
-      // dentist.id is the user_id from dentist_profiles
-      // clinicContext.profileId is the clinic_profile_id
       const dentistId = dentist?.id || dentist?.userId;
       const clinicId = dentist?.clinicContext?.profileId || 
                        dentist?.clinicContext?.branchId || 
                        dentist?.clinicId || 
                        dentist?.clinic?.id;
 
-      // Check if this is an independent dentist (no clinic)
       const isIndependentDentist = !clinicId;
 
-      if (!dentistId) {
-        throw new Error('Informasi dokter tidak lengkap');
-      }
+      if (!dentistId) throw new Error('Informasi dokter tidak lengkap');
+      if (!isIndependentDentist && !clinicId) throw new Error('Informasi klinik tidak lengkap');
 
-      // Only require clinic_id for non-independent dentists
-      // Independent dentists can book without a clinic
-      if (!isIndependentDentist && !clinicId) {
-        throw new Error('Informasi klinik tidak lengkap');
-      }
-
-      console.log('[Payment] Creating appointment:', {
-        dentist_id: dentistId,
-        clinic_id: clinicId,
-        is_independent: isIndependentDentist,
-        date: dateStr,
-        time: timeStr,
-        dentist_name: dentist?.name,
-        clinic_name: dentist?.clinicContext?.name || dentist?.clinic,
-      });
-
-      // Call backend API to create appointment
-      // clinic_id can be null for independent dentists
       const response = await createAppointment({
         dentist_id: dentistId,
-        clinic_id: clinicId || null, // null for independent dentists
+        clinic_id: clinicId || null,
         date: dateStr,
         time: timeStr,
         duration: service?.durationMinutes || service?.duration || 60,
-        type: type, // 'virtual' or 'onsite'
+        type: type,
         reason: service?.name || notes || 'Konsultasi Gigi',
         notes: notes,
         metadata: {
@@ -167,81 +154,89 @@ const PaymentScreen = () => {
         },
       });
 
-      console.log('[Payment] Appointment created:', response);
-
-      // Sync AI analysis history to backend (if any)
-      // This ensures dentist can see patient's AI diagnosis results
       if (aiHistory.length > 0) {
         try {
-          console.log('[Payment] Syncing AI analysis to backend...');
-          const syncResult = await syncAIAnalysisHistory(aiHistory.slice(0, 5)); // Sync last 5 results
-          console.log('[Payment] AI analysis synced:', syncResult);
+          await syncAIAnalysisHistory(aiHistory.slice(0, 5));
         } catch (syncError) {
-          // Don't fail the booking if sync fails, just log it
           console.warn('[Payment] Failed to sync AI analysis:', syncError.message);
         }
       }
 
-      setProcessing(false);
-      
-      // Generate booking code from appointment ID
-      const appointmentId = response.data?.id || Date.now();
+      const appointmentId = response.data?.id;
+      if (!appointmentId) throw new Error('Gagal mendapatkan ID janji temu');
       const bookingCode = `SRN-${String(appointmentId).padStart(6, '0')}`;
 
-      // Navigate to success screen
-      navigation.navigate('BookingSuccess', {
-        dentist,
-        slot,
-        date: selectedDate,
-        type,
-        service,
-        notes,
-        reminder,
-        fee: totalFee,
-        paymentMethod: selectedPayment,
-        bookingId: bookingCode,
-        appointmentData: response.data, // Pass full appointment data
-      });
+      // --- MIDTRANS INTEGRATION ---
+      const { redirectUrl, paymentIntentId: newPaymentIntentId } = await createSnapTransaction(appointmentId);
+      
+      setPaymentIntentId(newPaymentIntentId);
+      setPollingState('waiting');
+      setProcessing(false);
+
+      if (redirectUrl) {
+         await Linking.openURL(redirectUrl);
+      }
+
+      let attempts = 0;
+      intervalRef.current = setInterval(async () => {
+        attempts += 1;
+        
+        try {
+          const { status } = await getPaymentStatus(newPaymentIntentId);
+          
+          if (status === 'succeeded') {
+            clearInterval(intervalRef.current);
+            setPollingState('done');
+            navigation.navigate('BookingSuccess', {
+              dentist, slot, date: selectedDate, type, service, notes, reminder,
+              fee: totalFee, paymentMethod: selectedPayment, bookingId: bookingCode,
+              appointmentData: response.data,
+            });
+          } else if (status === 'failed') {
+            clearInterval(intervalRef.current);
+            setPollingState('done');
+            navigation.navigate('BookingFailed', {
+              dentist, slot, date: selectedDate, type, fee: totalFee,
+              errorType: 'payment_failed', errorCode: 'PAY_FAILED', errorMessage: 'Pembayaran gagal atau dibatalkan.'
+            });
+          }
+        } catch (pollErr) {
+           console.warn('Polling error:', pollErr.message);
+        }
+
+        if (attempts >= 100) {
+          clearInterval(intervalRef.current);
+          navigation.navigate('BookingFailed', {
+            dentist, slot, date: selectedDate, type, fee: totalFee,
+            errorType: 'timeout', errorCode: 'TMO_001', errorMessage: 'Waktu tunggu pembayaran habis'
+          });
+        }
+      }, 3000);
+
     } catch (error) {
       setProcessing(false);
       
-      // Map backend error codes to user-friendly error types
       const backendCode = error.code || '';
       let errorType = 'payment_failed';
       let errorCode = 'PAY_001';
       let friendlyMessage = error.message;
       
       if (backendCode === 'cannot_book_past') {
-        errorType = 'slot_unavailable';
-        errorCode = 'SLT_002';
-        friendlyMessage = error.message; // Already localized from backend
+        errorType = 'slot_unavailable'; errorCode = 'SLT_002'; friendlyMessage = error.message;
       } else if (backendCode === 'slot_taken') {
-        errorType = 'slot_unavailable';
-        errorCode = 'SLT_001';
+        errorType = 'slot_unavailable'; errorCode = 'SLT_001';
       } else if (backendCode === 'invalid_time' || backendCode === 'invalid_duration') {
-        errorType = 'slot_unavailable';
-        errorCode = 'SLT_003';
+        errorType = 'slot_unavailable'; errorCode = 'SLT_003';
       } else if (error.message?.includes('network') || error.message?.includes('Network')) {
-        errorType = 'network_error';
-        errorCode = 'NET_001';
+        errorType = 'network_error'; errorCode = 'NET_001';
       } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
-        errorType = 'timeout';
-        errorCode = 'TMO_001';
+        errorType = 'timeout'; errorCode = 'TMO_001';
       } else if (error.message?.includes('slot') || error.message?.includes('unavailable')) {
-        errorType = 'slot_unavailable';
-        errorCode = 'SLT_001';
+        errorType = 'slot_unavailable'; errorCode = 'SLT_001';
       }
       
-      // Navigate to failed screen — no raw error shown, handled by BookingFailedScreen
       navigation.navigate('BookingFailed', {
-        dentist,
-        slot,
-        date: selectedDate,
-        type,
-        fee: totalFee,
-        errorType,
-        errorCode,
-        errorMessage: friendlyMessage,
+        dentist, slot, date: selectedDate, type, fee: totalFee, errorType, errorCode, errorMessage: friendlyMessage,
       });
     }
   };
@@ -551,30 +546,53 @@ const PaymentScreen = () => {
           elevation: 10,
         }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Text style={{ color: '#64748B' }}>Total Pembayaran</Text>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
-            {formatCurrency(totalFee)}
-          </Text>
-        </View>
-        <Button
-          mode="contained"
-          icon={processing ? undefined : 'lock'}
-          onPress={handlePayment}
-          disabled={!selectedPayment || processing}
-          loading={processing}
-          style={{ borderRadius: 16 }}
-          contentStyle={{ paddingVertical: 6 }}
-          labelStyle={{ fontWeight: '700', fontSize: 16 }}
-        >
-          {processing ? 'Memproses...' : 'Bayar Sekarang'}
-        </Button>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
-          <MaterialCommunityIcons name="shield-check" size={14} color="#22C55E" />
-          <Text style={{ marginLeft: 6, fontSize: 12, color: '#64748B' }}>
-            Pembayaran aman & terenkripsi
-          </Text>
-        </View>
+        {pollingState === 'idle' ? (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ color: '#64748B' }}>Total Pembayaran</Text>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
+                {formatCurrency(totalFee)}
+              </Text>
+            </View>
+            <Button
+              mode="contained"
+              icon={processing ? undefined : 'lock'}
+              onPress={handlePayment}
+              disabled={!selectedPayment || processing}
+              loading={processing}
+              style={{ borderRadius: 16 }}
+              contentStyle={{ paddingVertical: 6 }}
+              labelStyle={{ fontWeight: '700', fontSize: 16 }}
+            >
+              {processing ? 'Memproses...' : 'Bayar Sekarang'}
+            </Button>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
+              <MaterialCommunityIcons name="shield-check" size={14} color="#22C55E" />
+              <Text style={{ marginLeft: 6, fontSize: 12, color: '#64748B' }}>
+                Pembayaran aman & terenkripsi
+              </Text>
+            </View>
+          </>
+        ) : pollingState === 'waiting' ? (
+          <View style={{ alignItems: 'center', marginVertical: 8 }}>
+            <ActivityIndicator size="large" color="#7C3AED" />
+            <Text style={{ marginTop: 16, fontSize: 14, color: '#64748B', fontWeight: '500' }}>
+              Menunggu konfirmasi pembayaran...
+            </Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: '#94A3B8' }}>
+              Selesaikan pembayaran di browser Anda
+            </Text>
+            <TouchableOpacity 
+              style={{ marginTop: 20, padding: 8 }}
+              onPress={() => {
+                 if (intervalRef.current) clearInterval(intervalRef.current);
+                 navigation.goBack();
+              }}
+            >
+              <Text style={{ color: '#EF4444', fontWeight: '600' }}>Batalkan</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     </View>
   );

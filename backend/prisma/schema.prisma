@@ -270,6 +270,7 @@ model Appointment {
   updatedAt          DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   chatRoomRef        String?                    @map("chat_room_ref")
   videoRoomRef       String?                    @map("video_room_ref")
+  video_room_sid     String?
   commStatus         String                     @default("pending") @map("comm_status") @db.VarChar
   cancellationReason String?                    @map("cancellation_reason") @db.VarChar
   cancellationFee    Int?                       @map("cancellation_fee")
@@ -284,6 +285,7 @@ model Appointment {
   rescheduledTo      Appointment[]              @relation("AppointmentRescheduleChain")
   chatRoom           ChatRoom?
   paymentIntents     PaymentIntent[]            @relation("AppointmentPaymentIntents")
+  videoSessions      VideoSession[]
 
   @@index([dentistId, startsAt], map: "idx_appointments_dentist_time")
   @@index([patientId, startsAt], map: "idx_appointments_patient_time")
@@ -320,7 +322,7 @@ model PaymentIntent {
   status            String          @default("pending") @db.VarChar
   provider          String?         @db.VarChar
   idempotencyKey    String?         @unique(map: "uniq_payment_intents_idempotency_key") @map("idempotency_key") @db.VarChar(180)
-  providerOrderId   String?         @map("provider_order_id") @db.VarChar(191)
+  providerOrderId   String?         @unique(map: "uniq_payment_intents_provider_order_id") @map("provider_order_id") @db.VarChar(191)
   providerPaymentId String?         @map("provider_payment_id") @db.VarChar
   metadata          Json?           @default("{}")
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -358,13 +360,14 @@ model PaymentLedger {
 }
 
 model ChatRoom {
-  id            BigInt           @id @default(autoincrement())
-  appointmentId BigInt           @unique @map("appointment_id")
-  channelName   String           @map("channel_name")
-  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  messages      ChatMessage[]
-  members       ChatRoomMember[]
-  appointment   Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                        BigInt           @id @default(autoincrement())
+  appointmentId             BigInt           @unique @map("appointment_id")
+  channelName               String           @map("channel_name")
+  twilio_conversation_sid   String?          @unique
+  createdAt                 DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  messages                  ChatMessage[]
+  members                   ChatRoomMember[]
+  appointment               Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("chat_rooms")
 }
@@ -916,4 +919,16 @@ model AIChatMessage {
 
   @@index([aiResultId, createdAt], map: "idx_ai_chat_result_time")
   @@map("ai_chat_messages")
+}
+
+model VideoSession {
+  id            BigInt   @id @default(autoincrement())
+  appointmentId BigInt
+  userId        BigInt
+  joinedAt      DateTime @default(now())
+  leftAt        DateTime?
+  durationSeconds Int?
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@map("video_sessions")
 }

@@ -66,9 +66,13 @@ export function useCallState({ userId } = {}) {
 
         const tokenData = await fetchVideoToken(appointmentId, role);
 
+        if (!tokenData.roomName) {
+          throw { code: 'VIDEO_ROOM_NOT_FOUND', message: 'Room name missing from token response' };
+        }
+
         const session = {
           appointmentId,
-          roomName: tokenData.roomName || tokenData.channelName,
+          roomName: tokenData.roomName,
           token: tokenData.token,
           uid: userId || undefined,
         };

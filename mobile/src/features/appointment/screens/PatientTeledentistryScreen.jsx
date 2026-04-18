@@ -12,7 +12,7 @@ import { Camera } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
@@ -117,7 +117,7 @@ const PatientTeledentistryScreen = () => {
     fetchVideoToken,
   } = useChat({ userId: currentUser?.id });
 
-  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
+  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connectError, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
@@ -340,6 +340,13 @@ const PatientTeledentistryScreen = () => {
     setCallStatus('idle');
     addSystemMessage('Sesi konsultasi telah berakhir.');
   };
+
+  useEffect(() => {
+    if (connectError && callStatus === 'active') {
+      handleEndCall();
+      addSystemMessage('Koneksi video terputus: ' + connectError);
+    }
+  }, [connectError, callStatus]);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  SUB-COMPONENTS (RENDER FUNCTIONS)
