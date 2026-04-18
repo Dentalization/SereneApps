@@ -1,10 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, ScrollView, RefreshControl, TouchableOpacity, StatusBar, Dimensions, StyleSheet, Image, Linking, Animated } from 'react-native';
+import {
+  View,
+  ScrollView,
+  RefreshControl,
+  TouchableOpacity,
+  StatusBar,
+  Dimensions,
+  StyleSheet,
+  Linking,
+  Animated,
+  Easing
+} from 'react-native';
 import { Text, Avatar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getInitials } from '../../../utils/formatters';
@@ -66,35 +77,56 @@ const DashboardScreen = () => {
     LAINNYA_ACTION,
   ];
 
-  // --- SCROLL ANIMATION ---
+  // --- ANIMATIONS ---
   const scrollY = useRef(new Animated.Value(0)).current;
+  const mountAnim = useRef(new Animated.Value(0)).current;
 
-  // Search bar: fade out + slide up smoothly
+  // Modern UI Gradient: Base Ungu (#982598) dengan sedikit sentuhan dimensi
+  const primaryPurple = '#982598';
+  const gradientColors = ['#A82CA8', '#821C82'];
+
+  // Run entrance animation on mount
+  useEffect(() => {
+    Animated.timing(mountAnim, {
+      toValue: 1,
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [mountAnim]);
+
+  // Entrance interpolations
+  const sheetTranslateY = mountAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [50, 0],
+  });
+  const sheetOpacity = mountAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
+  // Scroll animations
   const searchOpacity = scrollY.interpolate({
-    inputRange: [0, 40, 70],
-    outputRange: [1, 0.4, 0],
+    inputRange: [0, 40, 80],
+    outputRange: [1, 0.3, 0],
     extrapolate: 'clamp',
   });
   const searchTranslateY = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, -20],
+    extrapolate: 'clamp',
+  });
+
+  const catOpacity = scrollY.interpolate({
+    inputRange: [0, 30, 70],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+  const catTranslateY = scrollY.interpolate({
     inputRange: [0, 70],
     outputRange: [0, -15],
     extrapolate: 'clamp',
   });
-
-  // Categories: staggered fade + slide (mulai sedikit setelah search)
-  const catOpacity = scrollY.interpolate({
-    inputRange: [0, 20, 60],
-    outputRange: [1, 0.6, 0],
-    extrapolate: 'clamp',
-  });
-  const catTranslateY = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [0, -10],
-    extrapolate: 'clamp',
-  });
-
-  // Gradient yang SAMA dengan AIHomeScreen
-  const gradientColors = ['#982598', '#982598'];
 
   const fetchUpcomingAppointments = useCallback(async () => {
     try {
@@ -147,8 +179,6 @@ const DashboardScreen = () => {
 
   const handleOpenSearch = () => navigation.navigate('Search');
   const handleNotificationPress = () => navigation.navigate('Notifications', { notifications: SAMPLE_NOTIFICATIONS });
-
-  // Handlers untuk Komponen Child (Featured, Nearby, dll)
   const handleAppointmentPress = (apt) => navigation.navigate('AppointmentTab', { screen: 'DetailAppointment', params: { appointmentId: apt.id } });
   const handleAppointmentAction = (apt) => {
     if (apt.videoRoomRef) navigation.navigate('VideoCall', { roomId: apt.videoRoomRef, appointmentId: apt.id });
@@ -164,7 +194,7 @@ const DashboardScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* --- LAYER 1: FIXED GRADIENT BACKGROUND (hanya top area) --- */}
+      {/* FIXED GRADIENT BACKGROUND */}
       <LinearGradient
         colors={gradientColors}
         start={{ x: 0, y: 0 }}
@@ -172,52 +202,48 @@ const DashboardScreen = () => {
         style={styles.topGradient}
       />
 
-      {/* --- LAYER 2: FIXED TOP BAR (PROFILE) --- */}
-      {/* PENTING: paddingTop dikembalikan ke nilai asli (insets.top + 10) agar tinggi tidak berubah */}
-      <View style={[styles.fixedTopBar, { paddingTop: insets.top + 10 }]}>
-
-        {/* Ini akan menjadi background gradient khusus untuk top bar */}
+      {/* FIXED TOP BAR (PROFILE) */}
+      <View style={[styles.fixedTopBar, { paddingTop: insets.top + 12 }]}>
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill} 
+          style={StyleSheet.absoluteFill}
         />
 
-        {/* Konten Profile */}
         <View style={styles.profileRow}>
           <View style={styles.profileInfo}>
             <View style={styles.avatarContainer}>
               {avatarUrl ? (
-                // UBAH: Size diperbesar dari 40 ke 48 (kompromi agar muat)
-                <Avatar.Image size={48} source={{ uri: avatarUrl }} />
+                <Avatar.Image size={52} source={{ uri: avatarUrl }} style={styles.avatarShadow} />
               ) : (
-                // UBAH: Size diperbesar dari 40 ke 48
-                <Avatar.Text size={48} label={getInitials(user?.name || 'Tamu')} style={{ backgroundColor: 'white' }} labelStyle={{ color: '#4F46E5', fontSize: 16 }} />
+                <Avatar.Text
+                  size={52}
+                  label={getInitials(user?.name || 'Tamu')}
+                  style={[styles.avatarShadow, { backgroundColor: 'white' }]}
+                  labelStyle={{ color: primaryPurple, fontSize: 18, fontWeight: '700' }}
+                />
               )}
               <View style={styles.onlineBadge} />
             </View>
-            {/* UBAH: Margin kiri disesuaikan */}
-            <View style={{ marginLeft: 12 }}>
-              {/* UBAH: Font size nama diperbesar dari 18 ke 20 */}
+            <View style={{ marginLeft: 14 }}>
               <Text style={styles.greetingText}>Halo, {user?.name ? user.name.split(' ')[0] : 'Tamu'}</Text>
-              {/* UBAH: Font size sambutan diperbesar dari 12 ke 13 */}
-              <Text style={styles.subGreetingText}>Siap merawat gigimu?</Text>
+              <Text style={styles.subGreetingText}>Siap merawat gigimu hari ini?</Text>
             </View>
           </View>
 
-          <TouchableOpacity onPress={handleNotificationPress} style={styles.iconButton}>
-            <MaterialCommunityIcons name="bell-outline" size={24} color="white" />
+          <TouchableOpacity activeOpacity={0.7} onPress={handleNotificationPress} style={styles.iconButton}>
+            <MaterialCommunityIcons name="bell-badge-outline" size={24} color="white" />
             <View style={styles.notifDot} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* --- LAYER 3: MAIN SCROLLVIEW --- */}
+      {/* MAIN SCROLLVIEW */}
       <Animated.ScrollView
         style={styles.scrollView}
         contentContainerStyle={{
-          paddingTop: insets.top + 80, // Memberi ruang untuk Top Bar (nilai asli)
+          paddingTop: insets.top + 90,
           paddingBottom: 20
         }}
         showsVerticalScrollIndicator={false}
@@ -228,42 +254,40 @@ const DashboardScreen = () => {
           { useNativeDriver: true }
         )}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" progressViewOffset={insets.top + 80} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" progressViewOffset={insets.top + 90} />
         }
       >
 
-        {/* A. HEADER CONTENT (Search & Categories) */}
+        {/* HEADER CONTENT: Search & Categories */}
         <View style={styles.headerContent}>
-
-          {/* Search Bar */}
-          <Animated.View style={{
-            opacity: searchOpacity,
-            transform: [{ translateY: searchTranslateY }],
-          }}>
+          <Animated.View style={{ opacity: searchOpacity, transform: [{ translateY: searchTranslateY }] }}>
             <TouchableOpacity activeOpacity={0.9} onPress={handleOpenSearch} style={styles.searchBar}>
-              <MaterialCommunityIcons name="magnify" size={22} color="#4F46E5" />
-              <Text style={styles.searchText}>Cari dokter, klinik...</Text>
+              <MaterialCommunityIcons name="magnify" size={24} color={primaryPurple} />
+              <Text style={styles.searchText}>Cari dokter, klinik, artikel...</Text>
               <View style={styles.searchDivider} />
-              <MaterialCommunityIcons name="tune-vertical" size={20} color="#94A3B8" />
+              <TouchableOpacity activeOpacity={0.7} style={styles.filterButton}>
+                <MaterialCommunityIcons name="tune-variant" size={20} color="#FFF" />
+              </TouchableOpacity>
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Categories */}
-          <Animated.View style={{
-            opacity: catOpacity,
-            transform: [{ translateY: catTranslateY }],
-          }}>
+          <Animated.View style={{ opacity: catOpacity, transform: [{ translateY: catTranslateY }] }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
               {CATEGORIES.map((c) => {
                 const active = selectedCategory === c.id;
                 return (
                   <TouchableOpacity
                     key={c.id}
+                    activeOpacity={0.7}
                     onPress={() => setSelectedCategory(c.id)}
                     style={[styles.catChip, active ? styles.activeCat : styles.inactiveCat]}
                   >
-                    <MaterialCommunityIcons name={c.icon} size={18} color={active ? '#4F46E5' : 'rgba(255,255,255,0.9)'} />
-                    <Text style={[styles.catText, active ? { color: '#4F46E5', fontWeight: '700' } : { color: 'white' }]}>
+                    <MaterialCommunityIcons
+                      name={c.icon}
+                      size={20}
+                      color={active ? primaryPurple : 'rgba(255,255,255,0.8)'}
+                    />
+                    <Text style={[styles.catText, active ? { color: primaryPurple } : { color: 'white' }]}>
                       {c.label}
                     </Text>
                   </TouchableOpacity>
@@ -273,8 +297,16 @@ const DashboardScreen = () => {
           </Animated.View>
         </View>
 
-        {/* B. WHITE SHEET (Main Content) */}
-        <View style={styles.whiteSheet}>
+        {/* WHITE SHEET (Main Content with Entrance Animation) */}
+        <Animated.View
+          style={[
+            styles.whiteSheet,
+            {
+              opacity: sheetOpacity,
+              transform: [{ translateY: sheetTranslateY }]
+            }
+          ]}
+        >
           {/* Handle Indicator */}
           <View style={styles.sheetHandle} />
 
@@ -283,31 +315,29 @@ const DashboardScreen = () => {
             {displayedActions.map((action) => (
               <TouchableOpacity
                 key={action.key}
-                style={[
-                  styles.gridItem,
-                  action.key === 'lainnya' && styles.gridItemLainnya,
-                ]}
+                activeOpacity={0.6}
+                style={[styles.gridItem, action.key === 'lainnya' && styles.gridItemLainnya]}
                 onPress={() => handleActionPress(action.key)}
               >
                 <View style={[styles.gridIcon, { backgroundColor: action.tint }]}>
-                  <MaterialCommunityIcons name={action.icon} size={24} color={action.iconColor} />
+                  <MaterialCommunityIcons name={action.icon} size={26} color={action.iconColor} />
                 </View>
+                {/* UBAH: Dihapus numberOfLines={1} agar teks bisa turun ke bawah jika panjang */}
                 <Text style={styles.gridLabel}>{action.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Content Sections */}
-          <View style={{ gap: 24 }}>
+          <View style={{ gap: 28, paddingHorizontal: 4 }}>
             <FeaturedDoctors appointments={upcomingAppointments} onDoctorPress={handleAppointmentPress} onJoinCall={handleAppointmentAction} />
             <NearbyClinics onClinicPress={handleClinicPress} onBook={handleClinicBook} onSeeAll={() => navigation.navigate('NearbyClinics')} />
             <NearbyDentists onDoctorPress={handleDoctorPress} onMessage={() => { }} onBook={handleBook} onSeeAll={() => navigation.navigate('NearbyDentists')} />
             <Article articles={SAMPLE_ARTICLES} onOpen={handleArticleOpen} onSeeAll={() => navigation.navigate('ArticleList')} />
           </View>
 
-          {/* Bottom Spacer */}
-          <View style={{ height: 16 }} />
-        </View>
+          <View style={{ height: 24 }} />
+        </Animated.View>
 
       </Animated.ScrollView>
 
@@ -325,29 +355,24 @@ const DashboardScreen = () => {
   );
 };
 
-// --- STYLES (Updated specifically for Header elements) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9', // Slightly cooler background to match modern UI
   },
   topGradient: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: 0, left: 0, right: 0,
     height: height * 0.45,
   },
-
-  // --- TOP BAR ---
   fixedTopBar: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
     zIndex: 50,
     paddingHorizontal: 24,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
     overflow: 'hidden',
   },
   profileRow: {
@@ -362,118 +387,142 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
   },
+  avatarShadow: {
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
   onlineBadge: {
     position: 'absolute',
-    bottom: 0, right: 0,
-    width: 12, height: 12,
-    borderRadius: 6,
+    bottom: 2, right: 2,
+    width: 14, height: 14,
+    borderRadius: 7,
     backgroundColor: '#10B981',
-    borderWidth: 2, borderColor: '#4F46E5',
+    borderWidth: 2.5, borderColor: '#982598',
   },
   greetingText: {
-    fontSize: 20, // DIPERBESAR dari 18 ke 20
+    fontSize: 24,
     fontWeight: '800',
     color: '#FFF',
-    letterSpacing: 0.3,
-    lineHeight: 24, // LineHeight disesuaikan agar tidak terlalu tinggi
+    letterSpacing: 0.5,
   },
   subGreetingText: {
-    fontSize: 13, // DIPERBESAR dari 12 ke 13
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 1,
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 2,
+    fontWeight: '500',
   },
   iconButton: {
-    width: 40, height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 44, height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   notifDot: {
     position: 'absolute', top: 10, right: 10,
-    width: 8, height: 8,
-    borderRadius: 4, backgroundColor: '#EF4444',
+    width: 10, height: 10,
+    borderRadius: 5, backgroundColor: '#EF4444',
+    borderWidth: 1.5, borderColor: '#982598',
   },
 
-  // --- SCROLL CONTENT ---
+  // SCROLL CONTENT
   scrollView: {
     flex: 1,
   },
   headerContent: {
     paddingHorizontal: 20,
-    paddingBottom: 50,
+    paddingBottom: 45,
   },
 
-  // Search Bar
+  // Modern Search Bar
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingLeft: 18,
+    paddingRight: 10,
+    marginBottom: 24,
+    shadowColor: '#982598',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
   },
   searchText: {
     flex: 1,
-    fontSize: 14,
-    color: '#94A3B8',
-    marginLeft: 10,
+    fontSize: 17,
+    color: '#64748B',
+    marginLeft: 12,
     fontWeight: '500',
   },
   searchDivider: {
-    width: 1, height: 20,
+    width: 1, height: 24,
     backgroundColor: '#E2E8F0',
     marginHorizontal: 12,
+  },
+  filterButton: {
+    backgroundColor: '#982598',
+    padding: 8,
+    borderRadius: 12,
   },
 
   // Categories
   categoriesScroll: {
-    marginBottom: 4,
+    marginBottom: 10,
   },
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    marginRight: 12,
   },
   activeCat: {
-    backgroundColor: '#white',
-    backgroundColor: 'white',
-    elevation: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   inactiveCat: {
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
   catText: {
-    fontSize: 12, fontWeight: '600', marginLeft: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.3,
   },
 
-  // --- WHITE SHEET ---
+  // WHITE SHEET
   whiteSheet: {
-    backgroundColor: '#F8FAFC',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 8,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    paddingHorizontal: 4, // Dipertahankan lebar
     paddingTop: 12,
     marginTop: -30,
-    paddingBottom: 20,
+    paddingBottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 10,
   },
   sheetHandle: {
-    width: 40, height: 4,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 2,
+    width: 48, height: 5,
+    backgroundColor: '#CBD5E1',
+    borderRadius: 3,
     alignSelf: 'center',
-    marginBottom: 24,
+    marginBottom: 30,
     marginTop: 8,
   },
 
@@ -481,26 +530,32 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start', // Penting agar sejajar atas jika ada teks 2 baris
+    flexWrap: 'wrap',
     marginBottom: 32,
+    paddingHorizontal: 4,
   },
   gridItem: {
     alignItems: 'center',
-    width: (width - 24) / 4,
+    width: (width - 16) / 4, // RUMUS PAS: width dikurangi total padding luar
+    marginBottom: 16,
+    paddingHorizontal: 2,
   },
   gridItemLainnya: {
-    opacity: 0.85,
+    opacity: 0.9,
   },
   gridIcon: {
-    width: 52, height: 52,
-    borderRadius: 18,
+    width: 56, height: 56,
+    borderRadius: 20,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: 8,
   },
   gridLabel: {
-    fontSize: 11,
-    color: '#475569',
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '700',
     textAlign: 'center',
+    lineHeight: 18, // Ruang rapi untuk teks baris kedua
   },
 });
 

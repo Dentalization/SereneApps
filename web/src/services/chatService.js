@@ -37,10 +37,14 @@ export async function uploadAttachment(appointmentId, file) {
 }
 
 export async function fetchVideoToken(appointmentId, role = 'publisher') {
-  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/video/token`, { role });
-  // Normalize: always expose roomName regardless of backend key
-  return {
-    ...data,
-    roomName: data.roomName || data.channelName,
-  };
+  try {
+    const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/video/token`, { role });
+    // Normalize: always expose roomName regardless of backend key
+    return {
+      ...data,
+      roomName: data.roomName || data.channelName,
+    };
+  } catch (err) {
+    throw { code: 'VIDEO_TOKEN_FETCH_FAILED', message: err.message };
+  }
 }

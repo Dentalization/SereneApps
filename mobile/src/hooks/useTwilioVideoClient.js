@@ -11,11 +11,14 @@ export function useTwilioVideoClient() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [remoteParticipantSids, setRemoteParticipantSids] = useState([]);
+  const [connectError, setConnectError] = useState(null);
+  const [networkQuality, setNetworkQuality] = useState(-1);
 
   const connect = useCallback(async ({ roomName, token }) => {
     if (!twilioRef.current) return;
     
     try {
+      setConnectError(null);
       // Connect to the room using the React Native Ref
       twilioRef.current.connect({
         roomName,
@@ -25,6 +28,7 @@ export function useTwilioVideoClient() {
       });
     } catch (error) {
       console.error('[useTwilioVideoClient] Failed to invoke connect', error);
+      setConnectError(error?.message || 'Failed to connect to video room');
       throw error;
     }
   }, []);
@@ -60,17 +64,23 @@ export function useTwilioVideoClient() {
   const onRoomDidConnect = () => {
     // console.log('[useTwilioVideoClient] Room connected');
     setIsConnected(true);
+    setConnectError(null);
   };
 
   const onRoomDidDisconnect = ({ error }) => {
     // console.log('[useTwilioVideoClient] Room disconnected', error);
     setIsConnected(false);
     setRemoteParticipantSids([]);
+    if (error) {
+       setConnectError(error.message || 'Room disconnected with error');
+    }
   };
 
   const onRoomDidFailToConnect = (error) => {
     // console.log('[useTwilioVideoClient] Room failed to connect', error);
     setIsConnected(false);
+    setRemoteParticipantSids([]);
+    setConnectError(error?.error || error?.message || 'Failed to connect to video room');
   };
 
   const onParticipantAddedVideoTrack = ({ participant, track }) => {
@@ -84,6 +94,12 @@ export function useTwilioVideoClient() {
   const onParticipantRemovedVideoTrack = ({ participant, track }) => {
     setRemoteParticipantSids((prev) => prev.filter(sid => sid !== participant.sid));
   };
+  
+  const onNetworkQualityLevelChanged = ({ participant, isLocalUser, quality }) => {
+     if (isLocalUser) {
+        setNetworkQuality(quality);
+     }
+  };
 
   return {
     twilioRef,
@@ -91,6 +107,8 @@ export function useTwilioVideoClient() {
     isAudioEnabled,
     isVideoEnabled,
     remoteParticipantSids,
+    connectError,
+    networkQuality,
     connect,
     disconnect,
     toggleAudio,
@@ -103,6 +121,7 @@ export function useTwilioVideoClient() {
       onRoomDidFailToConnect,
       onParticipantAddedVideoTrack,
       onParticipantRemovedVideoTrack,
+      onNetworkQualityLevelsChanged: onNetworkQualityLevelChanged // The rn twilio video lib sometimes refers to this callback as onNetworkQualityLevelsChanged
     }
   };
 }

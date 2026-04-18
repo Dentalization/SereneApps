@@ -39,28 +39,31 @@ const HIDDEN_TAB_ROUTES = new Set([
 const TabNavigator = () => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  
-  // Safe access redux: tambahkan (state.cart || {}) untuk mencegah error null
+
   const cartItems = useSelector((state) => (state.cart && state.cart.items) ? state.cart.items : []);
 
-  const bottomPosition = Platform.OS === 'ios' 
-    ? 20 
+  const bottomPosition = Platform.OS === 'ios'
+    ? 20
     : (insets.bottom > 0 ? insets.bottom : 10);
 
+  // Styling utama untuk Tab Bar Wrapper
   const baseTabBarStyle = {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: bottomPosition,
     backgroundColor: 'transparent',
-    borderRadius: 32,
     height: Platform.OS === 'ios' ? 80 : 70,
     paddingBottom: Platform.OS === 'ios' ? 20 : 12,
     paddingTop: 10,
     paddingHorizontal: 24,
     borderTopWidth: 0,
-    elevation: 0,
-    overflow: 'hidden',
+    // PENTING: Jangan gunakan overflow: 'hidden' di sini karena akan memotong shadow di iOS
+    elevation: 12, // Shadow untuk Android
+    shadowColor: '#000', // Shadow untuk iOS
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
   };
 
   const getTabBarStyle = (route, defaultRouteName) => {
@@ -71,15 +74,26 @@ const TabNavigator = () => {
     return { ...baseTabBarStyle };
   };
 
+  // Komponen Background Tab Bar dengan INLINE CSS
   const tabBarBackground = () => (
-    <BlurView
-      intensity={Platform.OS === 'ios' ? 80 : 50} // Android blur kadang berat, diturunkan dikit
-      tint="light"
-      style={StyleSheet.absoluteFill} // Gunakan absoluteFill agar pas
+    <View
+      style={{
+        flex: 1,
+        borderRadius: 32,
+        overflow: 'hidden',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.7)' // Memberikan efek border putih tebal ala Glassmorphism
+      }}
     >
-        {/* Hack untuk Android agar blur terlihat lebih putih/glassy */}
-        <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.8)' }} />
-    </BlurView>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 80 : 60}
+        tint="light"
+        style={StyleSheet.absoluteFill}
+      >
+        {/* Layer putih solid transparan agar warna blur lebih kuat / bold */}
+        <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+      </BlurView>
+    </View>
   );
 
   return (
@@ -93,7 +107,7 @@ const TabNavigator = () => {
         tabBarBackground: tabBarBackground,
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '600',
+          fontWeight: '700', // Ditebalkan agar teks lebih jelas
           marginTop: 2,
         },
       }}
@@ -105,7 +119,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
+              <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={26} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'Dashboard'),
@@ -119,7 +133,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Appointments',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name={focused ? 'calendar-check' : 'calendar-check-outline'} size={24} color={color} />
+              <MaterialCommunityIcons name={focused ? 'calendar-check' : 'calendar-check-outline'} size={26} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'AppointmentList'),
@@ -133,7 +147,7 @@ const TabNavigator = () => {
           tabBarLabel: 'AI Scan',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name={focused ? 'camera' : 'camera-outline'} size={24} color={color} />
+              <MaterialCommunityIcons name={focused ? 'camera' : 'camera-outline'} size={26} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'AIHome'),
@@ -147,7 +161,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Shop',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name={focused ? 'cart' : 'cart-outline'} size={24} color={color} />
+              <MaterialCommunityIcons name={focused ? 'cart' : 'cart-outline'} size={26} color={color} />
               {cartItems.length > 0 && (
                 <View style={[styles.badge, { backgroundColor: theme.colors.error || '#FF3B30' }]}>
                   <View style={styles.badgeDot} />
@@ -166,7 +180,7 @@ const TabNavigator = () => {
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name={focused ? 'account' : 'account-outline'} size={24} color={color} />
+              <MaterialCommunityIcons name={focused ? 'account' : 'account-outline'} size={26} color={color} />
             </View>
           ),
           tabBarStyle: getTabBarStyle(route, 'Settings'),
@@ -190,11 +204,13 @@ const styles = StyleSheet.create({
     height: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5, // Tambahan border putih pada badge agar lebih tegas
+    borderColor: '#FFF',
   },
   badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#FFF',
   },
 });

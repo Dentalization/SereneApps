@@ -1793,36 +1793,15 @@ router.post('/send-phone-otp', otpLimiter, validate(phoneOTPSchema), async (req,
   }
 });
 
-// Send Email OTP (fallback)
-router.post('/send-email-otp', otpLimiter, validate(emailOTPSchema), async (req, res) => {
-  const correlationId = ensureCorrelationId(req, res);
-  try {
-    const { email } = req.body;
-
-    const result = await sendEmailOTP(email, {
-      requestIp: req.ip,
-      purpose: req.body?.purpose || 'login',
-      correlationId,
-      idempotencyKey: req.get('Idempotency-Key') || null,
-      userId: req.user?.id || null
-    });
-
-    res.json({
-      success: true,
-      message: result.message,
-      challengeId: result.challengeId,
-      expiresAt: result.expiresAt,
-      cooldownUntil: result.cooldownUntil,
-      remainingAttempts: result.remainingAttempts,
-      ...(result.otp && { otp: result.otp }), // Only in dev mode
-    });
-  } catch (error) {
-    if (!(error instanceof OtpServiceError)) {
-      console.error('Send email OTP error:', error);
+// DEPRECATED: Replaced by Twilio SMS OTP (Sprint 1.5). Remove in next major version.
+router.post('/send-email-otp', async (req, res) => {
+  return res.status(410).json({
+    error: {
+      code: 'ENDPOINT_DEPRECATED',
+      message: 'Email OTP has been replaced by SMS OTP. Use POST /v1/otp/requests instead.',
+      replacement: '/v1/otp/requests'
     }
-    const response = otpErrorResponse(error, correlationId, 'OTP_SEND_FAILED', 'Failed to send OTP');
-    res.status(response.status).json(response.body);
-  }
+  });
 });
 
 // Verify OTP

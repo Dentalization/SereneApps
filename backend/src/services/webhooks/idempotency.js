@@ -117,3 +117,67 @@ export async function markWebhookFailed({ receiptId, errorMessage, nextAttemptAt
     }
   });
 }
+
+export async function guardWebhookIdempotency(provider, deliveryKey, payload, handler) {
+  const existing = await prisma.webhookReceipt.findUnique({
+    where: {
+      provider_deliveryKey: { provider, deliveryKey }
+    }
+  });
+
+  if (existing && existing.status === WEBHOOK_STATUS.PROCESSED) {
+    return { skipped: true };
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    let receiptId;
+
+    if (!existing) {
+      const payloadHash = hashWebhookPayload(payload);
+      const created = await tx.webhookReceipt.create({
+        data: {
+          provider,
+          deliveryKey,
+          payloadHash,
+          rawPayload: typeof payload === 'string' ? { raw: payload } : (payload || {}),
+          status: WEBHOOK_STATUS.PROCESSING
+        }
+      });
+      receiptId = created.id;
+    } else {
+      receiptId = existing.id;
+      await tx.webhookReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: WEBHOOK_STATUS.PROCESSING,
+          lastError: null,
+          attempts: { increment: 1 }
+        }
+      });
+    }
+
+    try {
+      const result = await handler(tx);
+      
+      await tx.webhookReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: WEBHOOK_STATUS.PROCESSED,
+          processedAt: new Date()
+        }
+      });
+      
+      return result;
+    } catch (error) {
+      await tx.webhookReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: WEBHOOK_STATUS.FAILED,
+          lastError: error.message || 'HANDLER_EXECUTION_FAILED',
+          nextAttemptAt: new Date(Date.now() + 60_000) // retry in 1m if needed
+        }
+      });
+      throw error;
+    }
+  });
+}

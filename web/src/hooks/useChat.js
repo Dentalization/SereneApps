@@ -1,19 +1,22 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { io } from 'socket.io-client';
+import { Client as ConversationsClient } from '@twilio/conversations';
 import { getAccessToken } from '../utils/auth/tokenStorage';
-import {
-  fetchConversations,
-  sendTextMessage,
-  uploadAttachment,
-  markConversationRead
-} from '../services/chatService';
+import { fetchConversations, markConversationRead } from '../services/chatService';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
 const API_VERSION = import.meta.env.VITE_AUTH_API_VERSION || 'v1';
-const SOCKET_URL = [API_BASE?.replace(/\/$/, ''), API_VERSION?.replace(/^\//, '')]
-  .filter(Boolean)
-  .join('/');
+
+const getTwilioToken = async (appointmentId, authToken) => {
+  const baseUrl = `${API_BASE.replace(/\/$/, '')}/${API_VERSION.replace(/^\//, '')}`;
+  const response = await fetch(`${baseUrl}/communications/appointments/${appointmentId}/token`, {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch Twilio token');
+  }
+  return response.json();
+};
 
 export function useChat() {
   const { user } = useAuth();
@@ -24,7 +27,9 @@ export function useChat() {
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
-  const socketRef = useRef(null);
+
+  const clientRef = useRef(null);
+  const convRef = useRef(null);
 
   const token = useMemo(() => getAccessToken(), [user?.id]);
 
@@ -38,6 +43,7 @@ export function useChat() {
     return messagesByAppointment[activeAppointmentId] || [];
   }, [messagesByAppointment, activeAppointmentId]);
 
+  // Initial load
   useEffect(() => {
     const loadConversations = async () => {
       try {
@@ -52,283 +58,237 @@ export function useChat() {
     };
 
     loadConversations();
-  }, []);
+  }, [user?.id]);
 
-  // ── Handle Tab Focus (Web) ───────────────────────────────────
+  // Tab focus reconnection
   useEffect(() => {
-    const handleFocus = () => {
-      if (socketRef.current && socketRef.current.disconnected) {
-        console.log('[useChat] Tab focused, forcing socket reconnect...');
-        socketRef.current.connect();
+    const handleFocus = async () => {
+      if (clientRef.current && activeAppointmentId) {
+        console.log('[useChat] Tab focused, fetching fresh Twilio token...');
+        try {
+          const freshJwt = getAccessToken();
+          if (freshJwt) {
+            const data = await getTwilioToken(activeAppointmentId, freshJwt);
+            if (data?.token) {
+              await clientRef.current.updateToken(data.token);
+            }
+          }
+        } catch (error) {
+          console.warn('[useChat] Error updating Twilio token on focus:', error.message);
+        }
       }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [activeAppointmentId]);
 
+  // Cleanup Twilio client on unmount
   useEffect(() => {
-    if (!token) return;
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket'],
-      auth: { token }
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      setSocketConnected(true);
-    });
-
-    socket.on('disconnect', () => {
-      setSocketConnected(false);
-    });
-
-    socket.on('chat:history', ({ appointmentId, messages }) => {
-      setMessagesByAppointment((prev) => ({
-        ...prev,
-        [appointmentId]: messages
-      }));
-    });
-
-    socket.on('chat:new_message', (message) => {
-      const appointmentId = message.appointmentId;
-      setMessagesByAppointment((prev) => {
-        const current = prev[appointmentId] || [];
-        const exists = current.some((m) => m.id === message.id);
-        if (exists) return prev;
-        return {
-          ...prev,
-          [appointmentId]: [...current, message]
-        };
-      });
-      let conversationExists = false;
-      setConversations((prev) => {
-        const list = prev.map((conv) => {
-          if (conv.appointmentId === appointmentId) {
-            conversationExists = true;
-            const unreadIncrement = message.senderId === user?.id?.toString() ? 0 : 1;
-            return {
-              ...conv,
-              lastMessage: message,
-              unreadCount: unreadIncrement ? (conv.unreadCount || 0) + unreadIncrement : 0,
-              lastReadAt: unreadIncrement ? conv.lastReadAt : new Date().toISOString()
-            };
-          }
-          return conv;
-        });
-        if (!conversationExists) {
-          return list;
-        }
-        return list;
-      });
-
-      if (!conversationExists) {
-        fetchConversations()
-          .then((data) => setConversations(data))
-          .catch((error) => console.error('Failed to refresh conversations:', error));
-      }
-    });
-
-    socket.on('chat:presence', ({ appointmentId, onlineUserIds }) => {
-      setPresenceMap((prev) => ({
-        ...prev,
-        [appointmentId]: onlineUserIds
-      }));
-    });
-
-    socket.on('chat:read', ({ appointmentId, userId, lastReadAt }) => {
-      if (userId === user?.id?.toString()) return;
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.appointmentId === appointmentId
-            ? { ...conv, lastReadAt }
-            : conv
-        )
-      );
-    });
-
-    socket.on('chat:message_ack', ({ appointmentId, message }) => {
-      setMessagesByAppointment((prev) => {
-        const current = prev[appointmentId] || [];
-        const exists = current.some((m) => m.id === message.id);
-        if (exists) return prev;
-        return {
-          ...prev,
-          [appointmentId]: [...current, message]
-        };
-      });
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.appointmentId === appointmentId
-            ? {
-                ...conv,
-                lastMessage: message,
-                unreadCount: 0,
-                lastReadAt: new Date().toISOString()
-              }
-            : conv
-        )
-      );
-    });
-
-    socket.on('chat:error', ({ message }) => {
-      console.error('Socket chat error:', message);
-    });
-
-    // ── Video call signaling ──────────────────────────────────
-    socket.on('video:incoming_call', ({ appointmentId, callerId, callerName }) => {
-      setIncomingCall({ appointmentId, callerId, callerName });
-    });
-
-    socket.on('video:call_accepted', ({ appointmentId, responderId }) => {
-      setIncomingCall(null);
-      // Notify via custom event so index.jsx can react
-      window.dispatchEvent(new CustomEvent('teledentistry:call_accepted', {
-        detail: { appointmentId, responderId }
-      }));
-    });
-
-    socket.on('video:call_declined', ({ appointmentId, responderId }) => {
-      setIncomingCall(null);
-      window.dispatchEvent(new CustomEvent('teledentistry:call_declined', {
-        detail: { appointmentId, responderId }
-      }));
-    });
-
-    socket.on('video:call_ended', ({ appointmentId }) => {
-      window.dispatchEvent(new CustomEvent('teledentistry:call_ended', {
-        detail: { appointmentId }
-      }));
-    });
-
-    socket.on('video:error', ({ message }) => {
-      console.error('Socket video error:', message);
-    });
-
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      if (clientRef.current) {
+        clientRef.current.shutdown();
+        clientRef.current = null;
+      }
     };
-  }, [token, user?.id]);
+  }, []);
 
   const selectConversation = useCallback(
     async (appointmentId) => {
       setActiveAppointmentId(appointmentId);
-      if (!socketRef.current) return;
-
-      socketRef.current.emit('chat:join', { appointmentId });
-
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.appointmentId === appointmentId
-            ? { ...conv, unreadCount: 0 }
-            : conv
-        )
-      );
 
       try {
-        await markConversationRead(appointmentId);
-      } catch (error) {
-        console.warn('Failed to mark conversation read:', error);
-      }
-    },
-    []
-  );
+        // Fetch Token
+        const jwtToken = getAccessToken();
+        const data = await getTwilioToken(appointmentId, jwtToken);
+        const { token: twilioToken, conversationSid } = data;
 
-  const sendMessage = useCallback(
-    async ({ appointmentId, text }) => {
-      if (!appointmentId || !text) return;
-      if (!socketRef.current || !socketConnected) {
-        const saved = await sendTextMessage(appointmentId, text);
-        if (saved) {
+        // Init Twilio client if null
+        let client = clientRef.current;
+        if (!client) {
+          client = await ConversationsClient.create(twilioToken);
+          clientRef.current = client;
+
+          client.on('connectionStateChanged', (state) => {
+            setSocketConnected(state === 'connected');
+          });
+          
+          if (client.connectionState === 'connected') {
+            setSocketConnected(true);
+          }
+        } else {
+          try {
+            await client.updateToken(twilioToken);
+          } catch(e) {
+            console.warn('[useChat] update token on select failed', e);
+          }
+        }
+
+        if (convRef.current) {
+          convRef.current.removeAllListeners();
+        }
+
+        // Get actual conversation
+        const conv = await client.getConversationBySid(conversationSid);
+        convRef.current = conv;
+
+        // Load History
+        const paginator = await conv.getMessages(50);
+        
+        const formatMessage = (msg) => {
+          let attrs = {};
+          try {
+            attrs = typeof msg.attributes === 'string' ? JSON.parse(msg.attributes) : (msg.attributes || {});
+          } catch (e) {}
+
+          return {
+            id: msg.sid,
+            senderId: msg.author,
+            message: msg.body,
+            messageType: msg.type || 'text',
+            createdAt: msg.dateCreated,
+            twilioMessageSid: msg.sid,
+            _attrs: attrs
+          };
+        };
+
+        const parsedHistory = [];
+        paginator.items.forEach((msg) => {
+          const formatted = formatMessage(msg);
+          // Don't show system signals in actual message UI
+          if (formatted._attrs && formatted._attrs.type === 'video_call') return;
+          parsedHistory.push(formatted);
+        });
+
+        setMessagesByAppointment((prev) => ({
+          ...prev,
+          [appointmentId]: parsedHistory
+        }));
+
+        // Presence via getParticipants()
+        const updatePresence = async () => {
+          const participants = await conv.getParticipants();
+          const onlineUserIds = participants.filter((p) => p.isOnline).map((p) => p.identity);
+          setPresenceMap((prev) => ({
+            ...prev,
+            [appointmentId]: onlineUserIds
+          }));
+        };
+        updatePresence();
+
+        conv.on('participantUpdated', updatePresence);
+        conv.on('participantJoined', updatePresence);
+        conv.on('participantLeft', updatePresence);
+
+        // Subscriptions
+        conv.on('messageAdded', (message) => {
+          const formatted = formatMessage(message);
+
+          if (formatted._attrs.type === 'video_call') {
+            const callerId = message.author;
+            const action = formatted._attrs.action;
+            const targetAppt = formatted._attrs.appointmentId || appointmentId;
+
+            if (action === 'incoming') {
+              setIncomingCall({ appointmentId: targetAppt, callerId, callerName: 'A Caller' });
+            } else if (action === 'accepted') {
+              setIncomingCall(null);
+              window.dispatchEvent(
+                new CustomEvent('teledentistry:call_accepted', {
+                  detail: { appointmentId: targetAppt, responderId: callerId }
+                })
+              );
+            } else if (action === 'declined') {
+              setIncomingCall(null);
+              window.dispatchEvent(
+                new CustomEvent('teledentistry:call_declined', {
+                  detail: { appointmentId: targetAppt, responderId: callerId }
+                })
+              );
+            } else if (action === 'ended') {
+              setIncomingCall(null);
+              window.dispatchEvent(
+                new CustomEvent('teledentistry:call_ended', {
+                  detail: { appointmentId: targetAppt }
+                })
+              );
+            }
+            return;
+          }
+
           setMessagesByAppointment((prev) => {
             const current = prev[appointmentId] || [];
+            if (current.some((m) => m.id === formatted.id)) return prev;
             return {
               ...prev,
-              [appointmentId]: [...current, saved]
+              [appointmentId]: [...current, formatted]
             };
           });
-          let needsRefresh = false;
+
           setConversations((prev) => {
             let found = false;
-            const updated = prev.map((conv) => {
-              if (conv.appointmentId === appointmentId) {
+            const updated = prev.map((c) => {
+              if (c.appointmentId === appointmentId) {
                 found = true;
+                const isOwn = formatted.senderId === user?.id?.toString();
                 return {
-                  ...conv,
-                  lastMessage: saved,
-                  unreadCount: 0,
-                  lastReadAt: saved.createdAt || new Date().toISOString()
+                  ...c,
+                  lastMessage: formatted,
+                  unreadCount: isOwn ? 0 : (c.unreadCount || 0) + 1,
+                  lastReadAt: isOwn ? new Date().toISOString() : c.lastReadAt
                 };
               }
-              return conv;
+              return c;
             });
             if (!found) {
-              needsRefresh = true;
-              return prev;
+              fetchConversations()
+                .then((data) => setConversations(data))
+                .catch(() => {});
             }
             return updated;
           });
-          if (needsRefresh) {
-            fetchConversations()
-              .then((data) => setConversations(data))
-              .catch((error) => console.error('Failed to refresh conversations:', error));
-          }
+        });
+
+        // 10. Mark conversation read via REST
+        setConversations((prev) =>
+          prev.map((c) => (c.appointmentId === appointmentId ? { ...c, unreadCount: 0 } : c))
+        );
+        try {
+          await markConversationRead(appointmentId);
+        } catch (error) {
+          console.warn('Failed to mark conversation read:', error);
         }
-        return;
+
+      } catch (err) {
+        console.error('Failed to select Twilio conversation:', err.message);
       }
-      socketRef.current.emit('chat:message', {
-        appointmentId,
-        message: text,
-        messageType: 'text'
-      });
     },
-    [socketConnected]
+    [user?.id]
   );
 
-  const sendAttachmentMessage = useCallback(
-    async ({ appointmentId, file }) => {
-      if (!appointmentId || !file) return;
-      const message = await uploadAttachment(appointmentId, file);
-      setMessagesByAppointment((prev) => {
-        const current = prev[appointmentId] || [];
-        const exists = current.some((m) => m.id === message?.id);
-        if (exists) return prev;
-        return {
-          ...prev,
-          [appointmentId]: [...current, message]
-        };
-      });
-      if (message) {
-        let needsRefresh = false;
-        setConversations((prev) => {
-          let found = false;
-          const updated = prev.map((conv) => {
-            if (conv.appointmentId === appointmentId) {
-              found = true;
-              return {
-                ...conv,
-                lastMessage: message,
-                unreadCount: 0,
-                lastReadAt: message.createdAt || new Date().toISOString()
-              };
-            }
-            return conv;
-          });
-          if (!found) {
-            needsRefresh = true;
-            return prev;
-          }
-          return updated;
-        });
-        if (needsRefresh) {
-          fetchConversations()
-            .then((data) => setConversations(data))
-            .catch((error) => console.error('Failed to refresh conversations:', error));
-        }
+  // ── Actions ──────────────────────────────────────────────────
+  const sendMessage = useCallback(async ({ appointmentId, text }) => {
+    if (!appointmentId || !text) return;
+    if (convRef.current) {
+      try {
+        await convRef.current.sendMessage(text);
+      } catch (err) {
+        console.error('[useChat] Twilio send message failed', err.message);
       }
-    },
-    []
-  );
+    }
+  }, []);
+
+  const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
+    if (!appointmentId || !file) return;
+    if (convRef.current) {
+      const formData = new FormData();
+      formData.append('media', file);
+      try {
+        await convRef.current.sendMessage(formData);
+      } catch (err) {
+        console.error('[useChat] Twilio send attachment failed', err.message);
+      }
+    }
+  }, []);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -340,20 +300,30 @@ export function useChat() {
   }, []);
 
   const emitVideoCall = useCallback((appointmentId) => {
-    if (!socketRef.current || !socketConnected) return;
-    socketRef.current.emit('video:call', { appointmentId });
-  }, [socketConnected]);
+    if (!convRef.current) return;
+    convRef.current.sendMessage(
+      'VIDEO_CALL_INITIATED',
+      JSON.stringify({ type: 'video_call', action: 'incoming', appointmentId })
+    );
+  }, []);
 
   const emitVideoCallResponse = useCallback((appointmentId, accepted) => {
-    if (!socketRef.current || !socketConnected) return;
-    socketRef.current.emit('video:call_response', { appointmentId, accepted });
+    if (!convRef.current) return;
+    convRef.current.sendMessage(
+      'VIDEO_CALL_RESPONSE',
+      JSON.stringify({ type: 'video_call', action: accepted ? 'accepted' : 'declined', appointmentId })
+    );
     setIncomingCall(null);
-  }, [socketConnected]);
+  }, []);
 
   const emitVideoCallEnded = useCallback((appointmentId) => {
-    if (!socketRef.current || !socketConnected) return;
-    socketRef.current.emit('video:call_ended', { appointmentId });
-  }, [socketConnected]);
+    if (!convRef.current) return;
+    convRef.current.sendMessage(
+      'VIDEO_CALL_ENDED',
+      JSON.stringify({ type: 'video_call', action: 'ended', appointmentId })
+    );
+    setIncomingCall(null);
+  }, []);
 
   return {
     conversations,

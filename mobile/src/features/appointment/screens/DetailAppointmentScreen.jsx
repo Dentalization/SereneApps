@@ -33,9 +33,9 @@ const DetailAppointmentScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
-  
+
   const { appointmentId, appointment: passedAppointment } = route.params || {};
-  
+
   const [appointment, setAppointment] = useState(passedAppointment || null);
   const [loading, setLoading] = useState(!passedAppointment);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,7 +49,7 @@ const DetailAppointmentScreen = () => {
       console.log('[DetailAppointment] No appointmentId provided');
       return;
     }
-    
+
     try {
       console.log('[DetailAppointment] Fetching appointment with ID:', appointmentId, 'Type:', typeof appointmentId);
       if (showLoading) setLoading(true);
@@ -337,9 +337,9 @@ const DetailAppointmentScreen = () => {
           >
             <MaterialCommunityIcons name="arrow-left" size={24} color="white" />
           </TouchableOpacity>
-          
+
           <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>Detail Janji Temu</Text>
-          
+
           <TouchableOpacity
             onPress={handleShare}
             style={{
@@ -501,7 +501,7 @@ const DetailAppointmentScreen = () => {
           elevation: 3,
         }}>
           <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Dokter Gigi</Text>
-          
+
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{
               width: 60,
@@ -560,7 +560,7 @@ const DetailAppointmentScreen = () => {
             elevation: 3,
           }}>
             <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Lokasi</Text>
-            
+
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <View style={{
                 width: 44,
@@ -634,14 +634,14 @@ const DetailAppointmentScreen = () => {
             elevation: 3,
           }}>
             <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Detail Pembayaran</Text>
-            
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
               <Text style={{ color: '#64748B' }}>Biaya Konsultasi</Text>
               <Text style={{ fontWeight: '600', color: '#1E293B' }}>{formatCurrency(payment.amount)}</Text>
             </View>
-            
+
             <Divider style={{ marginVertical: 12 }} />
-            
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Total</Text>
               <Text style={{ fontSize: 18, fontWeight: '800', color: theme.colors.primary }}>
