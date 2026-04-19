@@ -98,7 +98,7 @@ router.get('/appointments/:appointmentId/messages', authenticateToken, async (re
       twilioMessageSid: msg.twilioMessageSid || null 
     }));
 
-    const nextCursor = orderedMessages.length > 0 ? orderedMessages[0].id : null;
+    const nextCursor = orderedMessages.length > 0 ? orderedMessages[orderedMessages.length - 1].id : null;
 
     return res.status(200).json({
       messages: returnMessages,

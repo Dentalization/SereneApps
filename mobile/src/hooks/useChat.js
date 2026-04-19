@@ -140,8 +140,23 @@ export function useChat({ userId } = {}) {
     setActiveAppointmentId(appointmentId);
 
     try {
-      // 1-2. Fetch token
-      const { data } = await api.get(`/communications/appointments/${appointmentId}/token`);
+      // 1-2. Fetch token with retry logic for provision race condition
+      let data;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await api.get(`/communications/appointments/${appointmentId}/token`);
+          data = response.data;
+          break;
+        } catch (err) {
+          if (err.response?.data?.error?.code === 'CONVERSATION_NOT_PROVISIONED' && attempt < 2) {
+            console.log(`[useChat] Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
+            await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+            continue;
+          }
+          throw err;
+        }
+      }
+
       const { token, conversationSid } = data;
       const ConversationsClient = await loadConversationsClientCtor();
 
@@ -303,7 +318,7 @@ export function useChat({ userId } = {}) {
 
   const fetchVideoToken = useCallback(async (appointmentId) => {
     try {
-      const { data } = await api.post(`/communications/appointments/${appointmentId}/video/token`, {
+      const { data } = await api.post(`/appointments/${appointmentId}/video/token`, {
         role: 'publisher',
       });
       return {

@@ -14,7 +14,7 @@ async function getAppointmentForPayment(appointmentId, userId) {
       dentist: true,
       patient: {
         include: {
-          profile: true
+          patientProfile: true
         }
       }
     }
@@ -74,7 +74,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // 7. Midtrans Snap Payload Execution
     const orderId = `APT-${appointmentId}-PI-${Date.now()}`;
-    const patientProfile = appointment.patient.profile || {};
+    const patientProfile = appointment.patient.patientProfile || {};
     
     // Fallbacks since midtrans requires valid string structures 
     const phoneFallback = patientProfile.phoneNumber || appointment.patient.phone;

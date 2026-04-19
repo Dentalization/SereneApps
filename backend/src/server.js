@@ -33,6 +33,7 @@ import xCoreRouter from './routes/xCoreRoutes.js';
 import { verify } from './utils/tokens.js';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
+import { start as startOutboxWorker } from './services/events/outboxWorker.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
@@ -87,6 +88,7 @@ io.use((socket, next) => {
 
 registerChatGateway(io);
 startNotificationWorker();
+startOutboxWorker();
 
 app.use(cors(corsOptions));
 // Increase JSON body size limit to handle AI analysis payloads safely

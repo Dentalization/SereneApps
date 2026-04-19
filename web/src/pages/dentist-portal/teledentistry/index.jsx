@@ -47,6 +47,7 @@ const Teledentistry = () => {
   const [isPatientPanelExpanded, setIsPatientPanelExpanded] = useState(true);
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
+  const [chatLoading, setChatLoading] = useState(false);
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
 
@@ -127,7 +128,11 @@ const Teledentistry = () => {
   }, [callState, endCall, toast]);
 
   const handleConversationSelect = (conversation) => {
+    if (conversation.appointmentId === activeAppointmentId) return;
+    setChatLoading(true);
     selectConversation(conversation.appointmentId);
+    // Simulation of data transition
+    setTimeout(() => setChatLoading(false), 400);
   };
 
   const handleSendTextMessage = async (text) => {
@@ -358,6 +363,7 @@ const Teledentistry = () => {
                 messages={messages}
                 currentUserId={user?.id?.toString()}
                 presence={selectedPresence}
+                loading={chatLoading}
                 onSendText={handleSendTextMessage}
                 onUploadAttachment={handleUploadAttachment}
                 onStartVideoCall={handleStartVideoCall}

@@ -236,3 +236,34 @@ export const shadows = {
     elevation: 12,
   },
 };
+
+// Flattened Colors requested by audit
+export const colors = {
+  primary: '#7C3AED',
+  primaryLight: '#A855F7',
+  primaryDark: '#5B21B6',
+  surface: '#F8FAFC',
+  surfaceElevated: '#FFFFFF',
+  textPrimary: '#0F172A',
+  textSecondary: '#64748B',
+  textMuted: '#94A3B8',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  error: '#DC2626',
+  border: '#E2E8F0',
+};
+
+/**
+ * Utility to add opacity to a hex color
+ * @param {string} hex - 6-digit or 3-digit hex color
+ * @param {number} opacity - 0 to 1
+ * @returns {string} - rgba color string for React Native
+ */
+export const withOpacity = (hex, opacity) => {
+  if (!hex || typeof hex !== 'string') return hex;
+  const cleanedHex = hex.replace('#', '');
+  const r = parseInt(cleanedHex.length === 3 ? cleanedHex.slice(0, 1).repeat(2) : cleanedHex.slice(0, 2), 16);
+  const g = parseInt(cleanedHex.length === 3 ? cleanedHex.slice(1, 2).repeat(2) : cleanedHex.slice(2, 4), 16);
+  const b = parseInt(cleanedHex.length === 3 ? cleanedHex.slice(2, 3).repeat(2) : cleanedHex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};

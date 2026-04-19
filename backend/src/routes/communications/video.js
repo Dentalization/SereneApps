@@ -1,94 +1,150 @@
 import express from 'express';
 import { authenticateToken } from '../../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
-import VideoService from '../../services/communications/videoService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const videoService = new VideoService();
 
-// POST /appointments/:appointmentId/video/token
-router.post('/appointments/:appointmentId/video/token', authenticateToken, async (req, res) => {
+/**
+ * @route POST /v1/appointments/:appointmentId/video/leave
+ * @desc Handle logic when a participant leaves a video call
+ */
+router.post('/:appointmentId/video/leave', authenticateToken, async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const userId = req.user.id;
+    const userId = BigInt(req.user.id);
+    const apptId = BigInt(appointmentId);
+
+    console.log(`[Video] User ${userId} leaving appointment ${appointmentId}`);
 
     const appointment = await prisma.appointment.findUnique({
-      where: { id: BigInt(appointmentId) }
+      where: { id: apptId },
+      select: { dentistId: true, patientId: true, status: true }
     });
 
-    if (!appointment) return res.status(404).json({ error: 'Not found' });
-
-    // Verify requester
-    if (appointment.dentistId !== BigInt(userId) && appointment.patientId !== BigInt(userId)) {
-      return res.status(403).json({ error: { code: 'FORBIDDEN' } });
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    if (appointment.status !== 'confirmed') {
-      return res.status(403).json({ error: { code: 'APPOINTMENT_NOT_CONFIRMED' } });
+    // Verify ownership
+    if (userId !== appointment.dentistId && userId !== appointment.patientId) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { roomSid, roomName } = await videoService.ensureRoom(appointmentId);
-
-    const tokenData = await videoService.generateVideoToken({
-      identity: String(userId),
-      roomName,
-      ttl: 14400
-    });
-
-    return res.status(200).json({
-      token: tokenData.token,
-      roomName: tokenData.roomName,
-      identity: tokenData.identity,
-      expiresAt: tokenData.expiresAt
-    });
-
-  } catch (error) {
-    console.error('Video token error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /appointments/:appointmentId/video/leave
-router.post('/appointments/:appointmentId/video/leave', authenticateToken, async (req, res) => {
-  try {
-    const { appointmentId } = req.params;
-    const userId = req.user.id;
-
-    // Check active session
-    const session = await prisma.videoSession.findFirst({
-      where: { 
-        appointmentId: BigInt(appointmentId), 
-        userId: BigInt(userId), 
-        leftAt: null 
-      },
+    // Record session end (fallback for missed webhooks)
+    const activeSession = await prisma.videoSession.findFirst({
+      where: { appointmentId: apptId, userId, leftAt: null },
       orderBy: { joinedAt: 'desc' }
     });
 
-    if (session) {
-      const now = new Date();
-      const diffSecs = Math.floor((now.getTime() - session.joinedAt.getTime()) / 1000);
-      
+    if (activeSession) {
+      const leftAt = new Date();
+      const durationSeconds = Math.max(1, Math.round((leftAt.getTime() - activeSession.joinedAt.getTime()) / 1000));
       await prisma.videoSession.update({
-        where: { id: session.id },
-        data: { leftAt: now, durationSeconds: diffSecs }
+        where: { id: activeSession.id },
+        data: { leftAt, durationSeconds }
       });
     } else {
-      // Clean up fallback insert
+      // If no active session found (missed join), create a dummy 1s session to mark presence
       await prisma.videoSession.create({
         data: {
-          appointmentId: BigInt(appointmentId),
-          userId: BigInt(userId),
+          appointmentId: apptId,
+          userId,
+          joinedAt: new Date(Date.now() - 1000),
           leftAt: new Date(),
-          durationSeconds: 0
+          durationSeconds: 1
         }
       });
     }
 
-    return res.status(200).json({ ok: true });
+    // Optional: Log session event in status history
+    await prisma.appointmentStatusHistory.create({
+      data: {
+        appointmentId: apptId,
+        status: appointment.status,
+        changedBy: userId,
+        notes: `Participant left video session (manual)`
+      }
+    }).catch(err => console.error('[Video] Failed to log leave event:', err.message));
+
+    return res.json({ success: true, message: 'Successfully left session' });
   } catch (error) {
-    console.error('Video leave error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('[Video] Error in leave endpoint:', error);
+    return res.status(500).json({ error: 'Failed to process leave request' });
+  }
+});
+
+/**
+ * @route GET /v1/appointments/:appointmentId/video/sessions
+ * @desc Get aggregated video session stats for an appointment
+ */
+router.get('/:appointmentId/video/sessions', authenticateToken, async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const apptId = BigInt(appointmentId);
+
+    const sessions = await prisma.videoSession.findMany({
+      where: { appointmentId: apptId },
+      orderBy: { joinedAt: 'asc' }
+    });
+
+    const totalDurationSeconds = sessions.reduce((sum, s) => sum + (s.durationSeconds || 0), 0);
+    const participantStats = {};
+
+    sessions.forEach(s => {
+      const uid = s.userId.toString();
+      if (!participantStats[uid]) {
+        participantStats[uid] = { totalDuration: 0, sessionCount: 0 };
+      }
+      participantStats[uid].totalDuration += (s.durationSeconds || 0);
+      participantStats[uid].sessionCount += 1;
+    });
+
+    return res.json({
+      appointmentId: appointmentId.toString(),
+      totalDurationSeconds,
+      sessionCount: sessions.length,
+      sessions: sessions.map(s => ({
+        id: s.id.toString(),
+        userId: s.userId.toString(),
+        joinedAt: s.joinedAt,
+        leftAt: s.leftAt,
+        durationSeconds: s.durationSeconds
+      })),
+      participantStats
+    });
+  } catch (error) {
+    console.error('[Video] Error fetching sessions:', error);
+    return res.status(500).json({ error: 'Failed to fetch session history' });
+  }
+});
+
+/**
+ * @route GET /v1/appointments/:appointmentId/video/status
+ * @desc Check the status of a video room
+ */
+router.get('/:appointmentId/video/status', authenticateToken, async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const apptId = BigInt(appointmentId);
+
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: apptId },
+      select: { videoRoomRef: true, status: true }
+    });
+
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    return res.json({
+      roomName: appointment.videoRoomRef,
+      appointmentStatus: appointment.status,
+      isActive: appointment.status === 'scheduled' || appointment.status === 'confirmed'
+    });
+  } catch (error) {
+    console.error('[Video] Error in status endpoint:', error);
+    return res.status(500).json({ error: 'Failed to fetch video status' });
   }
 });
 

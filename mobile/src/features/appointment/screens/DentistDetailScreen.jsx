@@ -10,6 +10,10 @@ import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
@@ -30,7 +34,7 @@ const Section = ({ title, children, action, style }) => (
         marginBottom: 12,
       }}
     >
-      <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{title}</Text>
+      <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>{title}</Text>
       {action || null}
     </View>
     {children}
@@ -268,9 +272,9 @@ const DentistDetailScreen = () => {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={{ marginTop: 12, color: '#475569' }}>Memuat detail dokter...</Text>
+      <View style={{ flex: 1, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ ...TYPOGRAPHY.bodySmall, marginTop: 12, color: COLORS.textSecondary }}>Memuat detail dokter...</Text>
       </View>
     );
   }
@@ -280,24 +284,24 @@ const DentistDetailScreen = () => {
       <View
         style={{
           flex: 1,
-          backgroundColor: '#F8FAFC',
+          backgroundColor: COLORS.surface,
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
         }}
       >
-        <MaterialCommunityIcons name="alert-circle" size={64} color="#EF4444" />
-        <Text style={{ marginTop: 16, fontSize: 18, fontWeight: '700', color: '#0F172A' }}>
+        <MaterialCommunityIcons name="alert-circle" size={64} color={COLORS.error} />
+        <Text style={{ marginTop: 16, ...TYPOGRAPHY.h3, color: COLORS.textPrimary }}>
           Gagal Memuat Data
         </Text>
-        <Text style={{ marginTop: 8, color: '#64748B', textAlign: 'center' }}>
+        <Text style={{ marginTop: 8, color: COLORS.textSecondary, textAlign: 'center', ...TYPOGRAPHY.bodySmall }}>
           {error || 'Data dokter tidak ditemukan'}
         </Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={{
             marginTop: 20,
-            backgroundColor: theme.colors.primary,
+            backgroundColor: COLORS.primary,
             paddingHorizontal: 24,
             paddingVertical: 12,
             borderRadius: 12,
@@ -314,11 +318,11 @@ const DentistDetailScreen = () => {
       key={label}
       style={{
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: COLORS.surfaceElevated,
         borderRadius: 18,
         padding: 14,
         marginRight: 12,
-        shadowColor: '#6366F1',
+        shadowColor: COLORS.primary,
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.08,
         shadowRadius: 14,
@@ -331,22 +335,22 @@ const DentistDetailScreen = () => {
             width: 40,
             height: 40,
             borderRadius: 12,
-            backgroundColor: 'rgba(99,102,241,0.1)',
+            backgroundColor: withOpacity(COLORS.primary, 0.1),
             alignItems: 'center',
             justifyContent: 'center',
             marginRight: 10,
           }}
         >
-          <MaterialCommunityIcons name={icon} size={20} color={theme.colors.primary} />
+          <MaterialCommunityIcons name={icon} size={20} color={COLORS.primary} />
         </View>
-        <Text style={{ fontSize: 13, color: '#94A3B8', fontWeight: '600' }}>{label}</Text>
+        <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '600' }}>{label}</Text>
       </View>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{value}</Text>
+      <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>{value}</Text>
     </View>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       <View
@@ -354,7 +358,7 @@ const DentistDetailScreen = () => {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
       >
         <LinearGradient
-          colors={[theme.colors.primary, '#7F1DFF']}
+          colors={[COLORS.primary, COLORS.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
@@ -379,26 +383,26 @@ const DentistDetailScreen = () => {
                 width: 44,
                 height: 44,
                 borderRadius: 22,
-                backgroundColor: 'rgba(255,255,255,0.2)',
+                backgroundColor: withOpacity(COLORS.white, 0.2),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name="arrow-left" size={22} color="white" />
+              <MaterialCommunityIcons name="arrow-left" size={22} color={COLORS.white} />
             </TouchableOpacity>
-            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>Profil Dokter</Text>
+            <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h3 }}>Profil Dokter</Text>
             <TouchableOpacity
               onPress={handleMessage}
               style={{
                 width: 44,
                 height: 44,
                 borderRadius: 22,
-                backgroundColor: 'rgba(255,255,255,0.25)',
+                backgroundColor: withOpacity(COLORS.white, 0.25),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name="message-text" size={20} color="white" />
+              <MaterialCommunityIcons name="message-text" size={20} color={COLORS.white} />
             </TouchableOpacity>
           </View>
 
@@ -408,20 +412,20 @@ const DentistDetailScreen = () => {
               style={{ width: 96, height: 96, borderRadius: 28, marginRight: 16 }}
             />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>{dentist.name}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 4 }}>
+              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h2 }}>{dentist.name}</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.85), ...TYPOGRAPHY.body, marginTop: 4 }}>
                 {dentist.specialty}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                <MaterialCommunityIcons name="star" color="#FACC15" size={18} />
-                <Text style={{ color: 'white', marginLeft: 6, fontWeight: '600' }}>
+                <MaterialCommunityIcons name="star" color={COLORS.warning} size={18} />
+                <Text style={{ color: COLORS.white, marginLeft: 6, fontWeight: '600', ...TYPOGRAPHY.bodySmall }}>
                   {(dentist.rating || 0).toFixed(1)} · {dentist.reviews || 0} ulasan
                 </Text>
               </View>
               {distanceText ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                  <MaterialCommunityIcons name="map-marker-distance" color="white" size={16} />
-                  <Text style={{ color: 'white', marginLeft: 4 }}>
+                  <MaterialCommunityIcons name="map-marker-distance" color={COLORS.white} size={16} />
+                  <Text style={{ color: COLORS.white, marginLeft: 4, ...TYPOGRAPHY.caption }}>
                     {distanceText} • {dentist.clinic}
                   </Text>
                 </View>
@@ -434,7 +438,7 @@ const DentistDetailScreen = () => {
               onPress={handleBook}
               style={{
                 flex: 1,
-                backgroundColor: 'white',
+                backgroundColor: COLORS.white,
                 paddingVertical: 12,
                 borderRadius: 20,
                 alignItems: 'center',
@@ -443,8 +447,8 @@ const DentistDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name="calendar-check" size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: '700', color: theme.colors.primary }}>
+              <MaterialCommunityIcons name="calendar-check" size={20} color={COLORS.primary} />
+              <Text style={{ marginLeft: 8, fontWeight: '700', color: COLORS.primary, ...TYPOGRAPHY.body }}>
                 Pesan Jadwal
               </Text>
             </TouchableOpacity>
@@ -454,12 +458,12 @@ const DentistDetailScreen = () => {
                 width: 52,
                 height: 52,
                 borderRadius: 26,
-                backgroundColor: 'rgba(255,255,255,0.25)',
+                backgroundColor: withOpacity(COLORS.white, 0.25),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name="phone" size={22} color="white" />
+              <MaterialCommunityIcons name="phone" size={22} color={COLORS.white} />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -479,7 +483,7 @@ const DentistDetailScreen = () => {
           </ScrollView>
 
           <Section title="Tentang Dokter" style={{ marginTop: 24 }}>
-            <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22 }}>{dentist.bio}</Text>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, lineHeight: 22 }}>{dentist.bio}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14 }}>
               {dentist.languages?.map((lang) => (
                 <Chip key={lang} style={{ marginRight: 8, marginBottom: 8 }} textStyle={{ fontWeight: '600' }}>
@@ -493,17 +497,8 @@ const DentistDetailScreen = () => {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {dentist.specialties?.map((item) => (
                 <View
-                  key={item}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 16,
-                    backgroundColor: '#EEF2FF',
-                    marginRight: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>{item}</Text>
+                  >
+                  <Text style={{ color: COLORS.primary, fontWeight: '600', ...TYPOGRAPHY.bodySmall }}>{item}</Text>
                 </View>
               ))}
             </View>
@@ -518,17 +513,16 @@ const DentistDetailScreen = () => {
                   justifyContent: 'space-between',
                   paddingVertical: 12,
                   borderBottomWidth: 1,
-                  borderBottomColor: '#E2E8F0',
+                  borderBottomColor: COLORS.border,
                 }}
               >
-                <Text style={{ fontWeight: '600', color: '#0F172A' }}>{service.name}</Text>
-                <Text style={{ color: '#475569' }}>{formatRupiah(service.price)}</Text>
+                <Text style={{ fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{service.name}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{formatRupiah(service.price)}</Text>
               </View>
             ))}
           </Section>
 
           <Section title="Ketersediaan Jadwal">
-            {dentist.availability?.map((slot) => (
               <View
                 key={slot.day}
                 style={{
@@ -537,8 +531,8 @@ const DentistDetailScreen = () => {
                   paddingVertical: 10,
                 }}
               >
-                <Text style={{ fontWeight: '600', color: '#0F172A' }}>{slot.day}</Text>
-                <Text style={{ color: '#475569' }}>{slot.slots.join(' • ')}</Text>
+                <Text style={{ fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{slot.day}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{slot.slots.join(' • ')}</Text>
               </View>
             ))}
           </Section>
@@ -546,9 +540,9 @@ const DentistDetailScreen = () => {
           <Section title="Pencapaian">
             {dentist.achievements?.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                <MaterialCommunityIcons name="trophy" size={18} color="#FACC15" />
-                <Text style={{ marginLeft: 10, fontWeight: '600', color: '#0F172A' }}>{ach.title}</Text>
-                <Text style={{ marginLeft: 6, color: '#94A3B8' }}>{ach.year}</Text>
+                <MaterialCommunityIcons name="trophy" size={18} color={COLORS.warning} />
+                <Text style={{ marginLeft: 10, fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{ach.title}</Text>
+                <Text style={{ marginLeft: 6, color: COLORS.textMuted, ...TYPOGRAPHY.caption }}>{ach.year}</Text>
               </View>
             ))}
           </Section>
@@ -558,11 +552,11 @@ const DentistDetailScreen = () => {
               <View
                 key={story.patient}
                 style={{
-                  backgroundColor: 'white',
+                  backgroundColor: COLORS.surfaceElevated,
                   borderRadius: 16,
                   padding: 16,
                   marginBottom: 12,
-                  shadowColor: '#94A3B8',
+                  shadowColor: COLORS.textPrimary,
                   shadowOffset: { width: 0, height: 8 },
                   shadowOpacity: 0.08,
                   shadowRadius: 12,
@@ -570,13 +564,13 @@ const DentistDetailScreen = () => {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <MaterialCommunityIcons name="account-circle" size={26} color="#94A3B8" />
+                  <MaterialCommunityIcons name="account-circle" size={26} color={COLORS.textMuted} />
                   <View style={{ marginLeft: 10 }}>
-                    <Text style={{ fontWeight: '600', color: '#0F172A' }}>{story.patient}</Text>
-                    <Text style={{ color: '#F59E0B', fontWeight: '600' }}>{story.rating} ★</Text>
+                    <Text style={{ fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{story.patient}</Text>
+                    <Text style={{ color: COLORS.warning, fontWeight: '600', ...TYPOGRAPHY.caption }}>{story.rating} ★</Text>
                   </View>
                 </View>
-                <Text style={{ color: '#475569' }}>{story.summary}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{story.summary}</Text>
               </View>
             ))}
           </Section>
@@ -594,18 +588,18 @@ const DentistDetailScreen = () => {
           </Section>
 
           <Section title="Kontak">
-            <View style={{ backgroundColor: 'white', borderRadius: 18, padding: 16 }}>
+            <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 18, padding: 16 }}>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-                <MaterialCommunityIcons name="phone" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#475569' }}>{dentist.contact?.phone}</Text>
+                <MaterialCommunityIcons name="phone" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{dentist.contact?.phone}</Text>
               </View>
               <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-                <MaterialCommunityIcons name="email" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#475569' }}>{dentist.contact?.email}</Text>
+                <MaterialCommunityIcons name="email" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{dentist.contact?.email}</Text>
               </View>
               <View style={{ flexDirection: 'row' }}>
-                <MaterialCommunityIcons name="map-marker" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#475569', flex: 1 }}>{dentist.contact?.address}</Text>
+                <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textSecondary, flex: 1, ...TYPOGRAPHY.bodySmall }}>{dentist.contact?.address}</Text>
               </View>
             </View>
           </Section>
@@ -617,12 +611,11 @@ const DentistDetailScreen = () => {
           position: 'absolute',
           left: 0,
           right: 0,
-          bottom: 0,
-          padding: 20,
-          backgroundColor: 'rgba(248,250,252,0.95)',
+              padding: 20,
+          backgroundColor: withOpacity(COLORS.surface, 0.95),
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
-          shadowColor: '#0F172A',
+          shadowColor: COLORS.textPrimary,
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.05,
           shadowRadius: 12,
@@ -631,8 +624,8 @@ const DentistDetailScreen = () => {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Konsultasi mulai dari</Text>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
+            <Text style={{ color: COLORS.textMuted, ...TYPOGRAPHY.caption }}>Konsultasi mulai dari</Text>
+            <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.textPrimary }}>
               {formatRupiah(dentist.price)}
             </Text>
           </View>
@@ -641,18 +634,17 @@ const DentistDetailScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: theme.colors.primary,
+              backgroundColor: COLORS.primary,
               paddingHorizontal: 28,
               paddingVertical: 12,
               borderRadius: 24,
             }}
           >
-            <MaterialCommunityIcons name="calendar-plus" size={20} color="white" />
-            <Text style={{ color: 'white', fontWeight: '700', marginLeft: 8 }}>Pesan sekarang</Text>
+            <MaterialCommunityIcons name="calendar-plus" size={20} color={COLORS.white} />
+            <Text style={{ color: COLORS.white, fontWeight: '700', marginLeft: 8, ...TYPOGRAPHY.body }}>Pesan sekarang</Text>
           </TouchableOpacity>
         </View>
       </View>
-
       <ValidationToast
         visible={toast.visible}
         message={toast.message}

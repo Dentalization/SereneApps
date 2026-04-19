@@ -6,6 +6,8 @@ import {
   getProfileAppointments,
   getMedicalHistory,
   updateMedicalHistory,
+  getTreatmentPlans,
+  getHealthHistory,
   deleteAccount
 } from '../controllers/profileController.js';
 import { authenticateToken } from '../utils/tokens.js';
@@ -32,6 +34,12 @@ router.get('/medical-history', getMedicalHistory);
 
 // PATCH /v1/profile/medical-history - Update medical history (patients only)
 router.patch('/medical-history', updateMedicalHistory);
+
+// GET /v1/profile/treatment-plans - Get treatment plans (patients only)
+router.get('/treatment-plans', getTreatmentPlans);
+
+// GET /v1/profile/health-history - Get aggregated health journey (patients only)
+router.get('/health-history', getHealthHistory);
 
 // DELETE /v1/profile - Delete account
 router.delete('/', deleteAccount);

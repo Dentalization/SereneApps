@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { messaging } from '../../../lib/firebase.js';
+import { queueNotificationEvent } from '../../notifications/index.js';
 
 const prisma = new PrismaClient();
 
@@ -54,47 +54,23 @@ export async function handlePaymentSettled(event) {
         }
       }
     });
+
+    // 5. Queue Notification Event inside transaction for consistency (optional, but safer)
+    await queueNotificationEvent({
+      eventType: 'appointment_confirmed',
+      appointmentId: apptIdBigInt,
+      payload: {
+        amount: grossAmount,
+        provider
+      }
+    }).catch(err => console.error(`[handlePaymentSettled] Notification queuing failed:`, err.message));
   });
 
-  // 5. External async task (provisions Twilio hooks autonomously)
+  // 6. External async task (provisions Twilio hooks autonomously)
   try {
     await provisionConversationForAppointment(appointmentId);
   } catch (error) {
     console.error(`[handlePaymentSettled] Failed to provision conversation for appointment ${appointmentId}:`, error.message);
-  }
-
-  // 6 & 7. FCM Push broadcast for Patient & Dentist simultaneously
-  try {
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: apptIdBigInt },
-      select: { patientId: true, dentistId: true }
-    });
-
-    if (appointment) {
-      const devices = await prisma.notificationDevice.findMany({
-        where: {
-          userId: { in: [appointment.patientId, appointment.dentistId] }
-        }
-      });
-
-      const tokens = devices.map(d => d.fcmToken).filter(Boolean);
-
-      if (tokens.length > 0) {
-        await messaging.sendEachForMulticast({
-          tokens,
-          notification: {
-            title: 'Janji temu dikonfirmasi',
-            body: 'Pembayaran berhasil. Jadwal konsultasi Anda telah terkonfirmasi.'
-          },
-          data: {
-            type: 'appointment_confirmed',
-            appointmentId: String(appointmentId)
-          }
-        });
-      }
-    }
-  } catch (error) {
-    console.warn(`[handlePaymentSettled] Failed to send push notification for appointment ${appointmentId}:`, error.message);
   }
 
   // 8. Log mapping footprint cleanly
@@ -134,37 +110,14 @@ export async function handlePaymentFailed(event) {
         metadata: { correlationId }
       }
     });
+
+    // Queue failure notification
+    await queueNotificationEvent({
+      eventType: 'appointment_payment_failed',
+      appointmentId: apptIdBigInt,
+      payload: { correlationId }
+    }).catch(err => console.error(`[handlePaymentFailed] Notification queuing failed:`, err.message));
   });
-
-  try {
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: apptIdBigInt },
-      select: { patientId: true }
-    });
-
-    if (appointment) {
-      const devices = await prisma.notificationDevice.findMany({
-        where: { userId: appointment.patientId }
-      });
-      const tokens = devices.map(d => d.fcmToken).filter(Boolean);
-
-      if (tokens.length > 0) {
-        await messaging.sendEachForMulticast({
-          tokens,
-          notification: {
-            title: 'Pembayaran gagal',
-            body: 'Silakan coba lagi atau gunakan metode pembayaran lain.'
-          },
-          data: {
-             type: 'payment_failed',
-             appointmentId: String(appointmentId)
-          }
-        });
-      }
-    }
-  } catch (error) {
-    console.warn(`[handlePaymentFailed] Failed to send push notification:`, error.message);
-  }
 
   console.log(`[handlePaymentFailed] Successfully processed payment_failed. Correlation: ${correlationId}`);
 }

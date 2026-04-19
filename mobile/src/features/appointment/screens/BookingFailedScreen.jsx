@@ -7,6 +7,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency } from '../../../utils/formatters';
 
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
+
 const ERROR_MESSAGES = {
   payment_failed: {
     title: 'Pembayaran Gagal',
@@ -127,8 +132,8 @@ const BookingFailedScreen = () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FEF2F2' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEF2F2" />
+    <View style={{ flex: 1, backgroundColor: withOpacity(COLORS.error, 0.05) }}>
+      <StatusBar barStyle="dark-content" backgroundColor={withOpacity(COLORS.error, 0.05)} />
 
       <ScrollView
         contentContainerStyle={{
@@ -151,21 +156,21 @@ const BookingFailedScreen = () => {
           }}
         >
           <LinearGradient
-            colors={['#EF4444', '#DC2626']}
+            colors={[COLORS.error, withOpacity(COLORS.error, 0.8)]}
             style={{
               width: 100,
               height: 100,
               borderRadius: 50,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: '#EF4444',
+              shadowColor: COLORS.error,
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.3,
               shadowRadius: 16,
               elevation: 8,
             }}
           >
-            <MaterialCommunityIcons name={errorInfo.icon} size={50} color="white" />
+            <MaterialCommunityIcons name={errorInfo.icon} size={50} color={COLORS.surfaceElevated} />
           </LinearGradient>
         </Animated.View>
 
@@ -178,23 +183,23 @@ const BookingFailedScreen = () => {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          <Text style={{ fontSize: 26, fontWeight: '700', color: '#0F172A', textAlign: 'center' }}>
+          <Text style={{ ...TYPOGRAPHY.h1, color: COLORS.textPrimary, textAlign: 'center' }}>
             {errorInfo.title}
           </Text>
-          <Text style={{ color: '#64748B', marginTop: 8, textAlign: 'center', lineHeight: 22, paddingHorizontal: 20 }}>
+          <Text style={{ color: COLORS.textSecondary, marginTop: 8, textAlign: 'center', lineHeight: 22, paddingHorizontal: 20 }}>
             {errorMessage || errorInfo.description}
           </Text>
           {errorCode && (
             <View
               style={{
                 marginTop: 12,
-                backgroundColor: '#FEE2E2',
+                backgroundColor: withOpacity(COLORS.error, 0.1),
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 8,
               }}
             >
-              <Text style={{ color: '#991B1B', fontSize: 12, fontFamily: 'monospace' }}>
+              <Text style={{ color: COLORS.error, fontSize: 12, fontFamily: 'monospace' }}>
                 Kode Error: {errorCode}
               </Text>
             </View>
@@ -205,11 +210,11 @@ const BookingFailedScreen = () => {
         {dentist && (
           <Animated.View
             style={{
-              backgroundColor: 'white',
+              backgroundColor: COLORS.white,
               borderRadius: 24,
               padding: 20,
               marginBottom: 20,
-              shadowColor: '#0F172A',
+              shadowColor: COLORS.textPrimary,
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.06,
               shadowRadius: 12,
@@ -217,12 +222,12 @@ const BookingFailedScreen = () => {
               opacity: fadeAnim,
               transform: [{ translateY: slideAnim }],
               borderWidth: 1,
-              borderColor: '#FEE2E2',
+              borderColor: withOpacity(COLORS.error, 0.15),
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-              <MaterialCommunityIcons name="calendar-clock" size={18} color="#94A3B8" />
-              <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: '600', color: '#64748B' }}>
+              <MaterialCommunityIcons name="calendar-clock" size={18} color={COLORS.textMuted} />
+              <Text style={{ marginLeft: 8, ...TYPOGRAPHY.bodySmall, fontWeight: '600', color: COLORS.textSecondary }}>
                 Detail Booking yang Gagal
               </Text>
             </View>
@@ -234,36 +239,36 @@ const BookingFailedScreen = () => {
                   width: 48,
                   height: 48,
                   borderRadius: 16,
-                  backgroundColor: '#FEE2E2',
+                  backgroundColor: withOpacity(COLORS.error, 0.1),
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 12,
                 }}
               >
-                <MaterialCommunityIcons name="doctor" size={24} color="#EF4444" />
+                <MaterialCommunityIcons name="doctor" size={24} color={COLORS.error} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '600', color: '#0F172A' }}>
+                <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>
                   {dentist?.name}
                 </Text>
-                <Text style={{ color: '#64748B', fontSize: 13 }}>{dentist?.specialty}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.caption }}>{dentist?.specialty}</Text>
               </View>
             </View>
 
             {/* Details */}
-            <View style={{ borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }}>
+            <View style={{ borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 }}>
               <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                <MaterialCommunityIcons name="calendar" size={16} color="#94A3B8" />
-                <Text style={{ marginLeft: 8, color: '#64748B', flex: 1 }}>{dateLabel}</Text>
+                <MaterialCommunityIcons name="calendar" size={16} color={COLORS.textMuted} />
+                <Text style={{ marginLeft: 8, ...TYPOGRAPHY.caption, color: COLORS.textSecondary, flex: 1 }}>{dateLabel}</Text>
               </View>
               <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                <MaterialCommunityIcons name="clock-outline" size={16} color="#94A3B8" />
-                <Text style={{ marginLeft: 8, color: '#64748B', flex: 1 }}>{slotTime} WIB</Text>
+                <MaterialCommunityIcons name="clock-outline" size={16} color={COLORS.textMuted} />
+                <Text style={{ marginLeft: 8, ...TYPOGRAPHY.caption, color: COLORS.textSecondary, flex: 1 }}>{slotTime} WIB</Text>
               </View>
               {fee > 0 && (
                 <View style={{ flexDirection: 'row' }}>
-                  <MaterialCommunityIcons name="cash" size={16} color="#94A3B8" />
-                  <Text style={{ marginLeft: 8, color: '#64748B', flex: 1 }}>{formatCurrency(fee)}</Text>
+                  <MaterialCommunityIcons name="cash" size={16} color={COLORS.textMuted} />
+                  <Text style={{ marginLeft: 8, ...TYPOGRAPHY.caption, color: COLORS.textSecondary, flex: 1 }}>{formatCurrency(fee)}</Text>
                 </View>
               )}
             </View>
@@ -273,7 +278,7 @@ const BookingFailedScreen = () => {
         {/* Troubleshooting Tips */}
         <Animated.View
           style={{
-            backgroundColor: '#FFFBEB',
+            backgroundColor: withOpacity(COLORS.warning, 0.1),
             borderRadius: 16,
             padding: 16,
             marginBottom: 20,
@@ -282,12 +287,12 @@ const BookingFailedScreen = () => {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <MaterialCommunityIcons name="lightbulb-outline" size={20} color="#D97706" />
-            <Text style={{ marginLeft: 8, fontWeight: '600', color: '#92400E' }}>
+            <MaterialCommunityIcons name="lightbulb-outline" size={20} color={COLORS.warning} />
+            <Text style={{ marginLeft: 8, ...TYPOGRAPHY.h5, color: COLORS.warning }}>
               Yang Bisa Anda Coba
             </Text>
           </View>
-          <Text style={{ color: '#A16207', fontSize: 13, lineHeight: 22 }}>
+          <Text style={{ color: COLORS.warning, ...TYPOGRAPHY.caption, lineHeight: 22 }}>
             • Periksa koneksi internet Anda{'\n'}
             • Pastikan saldo/limit kartu mencukupi{'\n'}
             • Coba metode pembayaran lain{'\n'}
@@ -319,9 +324,9 @@ const BookingFailedScreen = () => {
             mode="outlined"
             icon="calendar-edit"
             onPress={handleChangeSlot}
-            style={{ marginBottom: 12, borderRadius: 16, borderColor: '#E2E8F0' }}
+            style={{ marginBottom: 12, borderRadius: 16, borderColor: COLORS.border }}
             contentStyle={{ paddingVertical: 6 }}
-            labelStyle={{ fontWeight: '600', color: '#475569' }}
+            labelStyle={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '600', color: COLORS.textSecondary }}
           >
             Pilih Jadwal Lain
           </Button>
@@ -332,14 +337,14 @@ const BookingFailedScreen = () => {
               onPress={handleContactSupport}
               style={{ paddingHorizontal: 16, paddingVertical: 8 }}
             >
-              <Text style={{ color: '#7C3AED', fontWeight: '600' }}>Hubungi Bantuan</Text>
+              <Text style={{ color: COLORS.primary, fontWeight: '600' }}>Hubungi Bantuan</Text>
             </TouchableOpacity>
-            <Text style={{ color: '#CBD5E1', alignSelf: 'center' }}>|</Text>
+            <Text style={{ color: COLORS.border, alignSelf: 'center' }}>|</Text>
             <TouchableOpacity
               onPress={handleGoHome}
               style={{ paddingHorizontal: 16, paddingVertical: 8 }}
             >
-              <Text style={{ color: '#64748B', fontWeight: '600' }}>Kembali ke Beranda</Text>
+              <Text style={{ color: COLORS.textSecondary, fontWeight: '600' }}>Kembali ke Beranda</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -354,9 +359,9 @@ const BookingFailedScreen = () => {
           bottom: 0,
           padding: 16,
           paddingBottom: insets.bottom + 16,
-          backgroundColor: 'white',
+          backgroundColor: COLORS.surfaceElevated,
           borderTopWidth: 1,
-          borderTopColor: '#F1F5F9',
+          borderTopColor: COLORS.border,
         }}
       >
         <TouchableOpacity
@@ -365,16 +370,16 @@ const BookingFailedScreen = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: '#F8FAFC',
+            backgroundColor: COLORS.surface,
             paddingVertical: 12,
             borderRadius: 12,
           }}
         >
-          <MaterialCommunityIcons name="headphones" size={20} color="#64748B" />
-          <Text style={{ marginLeft: 8, color: '#475569', fontWeight: '500' }}>
+          <MaterialCommunityIcons name="headphones" size={20} color={COLORS.textSecondary} />
+          <Text style={{ marginLeft: 8, color: COLORS.textSecondary, fontWeight: '500' }}>
             Butuh bantuan? Hubungi Customer Service
           </Text>
-          <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" style={{ marginLeft: 4 }} />
+          <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </View>
     </View>

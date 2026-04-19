@@ -644,3 +644,143 @@ export const deleteAccount = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * GET /v1/profile/treatment-plans
+ * Get patient's treatment plans and items
+ */
+export const getTreatmentPlans = async (req, res, next) => {
+  try {
+    const user_id = req.user.id;
+    const user_role = req.user.role;
+
+    if (user_role !== 'patient') {
+      throw new APIError(
+        ERROR_CODES.AUTH_FORBIDDEN.code,
+        'AUTH_FORBIDDEN',
+        'Hanya pasien yang dapat mengakses rencana perawatan'
+      );
+    }
+
+    // Fetch plans
+    const plansQuery = `
+      SELECT 
+        tp.id, tp.title, tp.description, tp.priority, tp.status, 
+        tp.progress, tp.estimated_cost, tp.actual_cost, 
+        tp.target_completion, tp.completed_at, tp.notes, tp.created_at,
+        u.name as dentist_name,
+        u.avatar_url as dentist_avatar
+      FROM treatment_plans tp
+      JOIN users u ON u.id = tp.dentist_id
+      WHERE tp.patient_id = $1
+      ORDER BY tp.created_at DESC
+    `;
+    const plansResult = await query(plansQuery, [user_id]);
+
+    if (plansResult.rows.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const planIds = plansResult.rows.map(p => p.id);
+    
+    // Fetch items for these plans
+    const itemsQuery = `
+      SELECT * FROM treatment_items
+      WHERE treatment_plan_id = ANY($1)
+      ORDER BY sort_order ASC
+    `;
+    const itemsResult = await query(itemsQuery, [planIds]);
+
+    // Group items by plan
+    const itemsByPlan = itemsResult.rows.reduce((acc, item) => {
+      const planId = item.treatment_plan_id.toString();
+      if (!acc[planId]) acc[planId] = [];
+      acc[planId].push({
+        ...item,
+        id: item.id.toString(),
+        treatment_plan_id: item.treatment_plan_id.toString()
+      });
+      return acc;
+    }, {});
+
+    const plans = plansResult.rows.map(plan => ({
+      ...plan,
+      id: plan.id.toString(),
+      items: itemsByPlan[plan.id.toString()] || []
+    }));
+
+    res.json({
+      success: true,
+      data: plans
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /v1/profile/health-history
+ * Get aggregated health journey (Timeline)
+ */
+export const getHealthHistory = async (req, res, next) => {
+  try {
+    const user_id = req.user.id;
+    const user_role = req.user.role;
+
+    if (user_role !== 'patient') {
+      throw new APIError(
+        ERROR_CODES.AUTH_FORBIDDEN.code,
+        'AUTH_FORBIDDEN',
+        'Hanya pasien yang dapat mengakses riwayat kesehatan'
+      );
+    }
+
+    // 1. Fetch Appointments (completed/overdue/canceled)
+    const appointmentsQuery = `
+      SELECT 
+        id::text, 'appointment' as type, starts_at as date,
+        status, reason, notes,
+        (SELECT name FROM users WHERE id = dentist_id) as dentist_name
+      FROM appointments
+      WHERE patient_id = $1
+      ORDER BY starts_at DESC
+    `;
+    const appts = await query(appointmentsQuery, [user_id]);
+
+    // 2. Fetch AI Analysis Results
+    const aiResultsQuery = `
+      SELECT 
+        id::text, 'ai_analysis' as type, created_at as date,
+        overall_assessment as title, risk_level, confidence_score, findings
+      FROM ai_analysis_results
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `;
+    const aiResults = await query(aiResultsQuery, [user_id]);
+
+    // 3. Fetch Imaging Studies
+    const studiesQuery = `
+      SELECT 
+        id::text, 'imaging' as type, study_date as date,
+        description as title, modality, status
+      FROM imaging_studies
+      WHERE patient_id = $1
+      ORDER BY study_date DESC
+    `;
+    const studies = await query(studiesQuery, [user_id]);
+
+    // Aggregate and sort
+    const timeline = [
+      ...appts.rows,
+      ...aiResults.rows,
+      ...studies.rows
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.json({
+      success: true,
+      data: timeline
+    });
+  } catch (error) {
+    next(error);
+  }
+};

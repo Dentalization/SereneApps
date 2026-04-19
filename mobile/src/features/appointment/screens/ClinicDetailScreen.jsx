@@ -6,11 +6,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import useNearbyClinics from '../../../hooks/useNearbyClinics';
+import resolveMediaUrl from '../../../utils/media';
+import StatPill from '../../../components/shared/StatPill';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { API_BASE_URL } from '../../../services/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors as COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const DICEBEAR_BG = '8B5CF6';
 const API_BASE = API_BASE_URL.replace(/\/$/, '');
@@ -56,29 +61,14 @@ const formatClinicDistance = (distanceKm) => {
   return '—';
 };
 
-const StatPill = ({ icon, label, value }) => (
-  <View
-    style={{
-      flex: 1,
-      marginHorizontal: 6,
-      padding: 12,
-      borderRadius: 16,
-      backgroundColor: 'rgba(15,23,42,0.2)',
-      alignItems: 'center',
-    }}
-  >
-    <MaterialCommunityIcons name={icon} size={20} color="white" />
-    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 4 }}>{label}</Text>
-    <Text style={{ color: 'white', fontWeight: '700', marginTop: 2 }}>{value}</Text>
-  </View>
-);
+// Section Component
 
 const Section = ({ title, description, children, onLayout }) => (
   <View style={{ marginBottom: 24 }} onLayout={onLayout}>
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>{title}</Text>
+      <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>{title}</Text>
       {description ? (
-        <Text style={{ color: '#94A3B8', marginTop: 4 }}>{description}</Text>
+        <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 4 }}>{description}</Text>
       ) : null}
     </View>
     {children}
@@ -131,11 +121,11 @@ const ClinicDetailScreen = () => {
         console.log('🏥 [ClinicDetail] Loading clinic:', clinicId);
         const response = await fetchClinicById(clinicId);
         console.log('🏥 [ClinicDetail] Raw response:', response);
-        
+
         // Backend returns { success: true, data: {...} }
         const clinicData = response?.data || response;
         console.log('🏥 [ClinicDetail] Clinic data:', clinicData);
-        
+
         if (!clinicData) {
           throw new Error('Data klinik tidak ditemukan');
         }
@@ -251,32 +241,41 @@ const ClinicDetailScreen = () => {
     }
   };
 
-  const handleBook = () =>
-    navigation.navigate('AppointmentTab', {
-      screen: 'ClinicDetail',
-      params: { clinicId: clinic.id },
-    });
+  // 1. Auto-scroll effect when landing via "Booking" action
+  useEffect(() => {
+    if (route.params?.autoScrollToBooking && !loading && clinic) {
+      // Delay slightly to ensure layout is ready
+      const timer = setTimeout(() => {
+        scrollToSection('dokter');
+        // Clear param to avoid re-scroll on other updates
+        navigation.setParams({ autoScrollToBooking: undefined });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [route.params?.autoScrollToBooking, loading, clinic]);
+
+  const handleBook = () => scrollToSection('dokter');
 
   const handleCall = () => {
     if (clinic?.phone || clinic?.contact?.phone) {
-      Linking.openURL(`tel:${clinic?.phone || clinic?.contact?.phone}`).catch(() => {});
+      Linking.openURL(`tel:${clinic?.phone || clinic?.contact?.phone}`).catch(() => { });
     }
   };
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={{ marginTop: 16, color: '#64748B' }}>Memuat detail klinik...</Text>
+      <View style={{ flex: 1, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ marginTop: 16, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>Memuat detail klinik...</Text>
       </View>
     );
   }
 
   if (error || !clinic) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <MaterialCommunityIcons name="hospital-box-outline" size={64} color="#CBD5E1" />
-        <Text style={{ marginTop: 16, fontWeight: '700', fontSize: 18, color: '#0F172A' }}>
+      <View style={{ flex: 1, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <MaterialCommunityIcons name="hospital-box-outline" size={64} color={COLORS.textMuted} />
+        <Text style={{ marginTop: 16, ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>
           {error || 'Klinik tidak ditemukan'}
         </Text>
         <Button mode="contained" onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
@@ -287,7 +286,7 @@ const ClinicDetailScreen = () => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* HEADER / HERO */}
@@ -317,11 +316,13 @@ const ClinicDetailScreen = () => {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
+              accessibilityLabel="Kembali"
+              accessibilityRole="button"
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: 24,
-                backgroundColor: 'rgba(255,255,255,0.2)',
+                backgroundColor: withOpacity(COLORS.white, 0.2),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -331,11 +332,13 @@ const ClinicDetailScreen = () => {
             <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Detail Klinik</Text>
             <TouchableOpacity
               onPress={handleBook}
+              accessibilityLabel="Buat Janji Temu"
+              accessibilityRole="button"
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: 24,
-                backgroundColor: 'rgba(255,255,255,0.2)',
+                backgroundColor: withOpacity(COLORS.white, 0.2),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -354,21 +357,21 @@ const ClinicDetailScreen = () => {
             >
               <View
                 style={{
-                  backgroundColor: 'rgba(15,23,42,0.25)',
+                  backgroundColor: withOpacity(COLORS.textPrimary, 0.25),
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: 999,
                   marginRight: 8,
                 }}
               >
-                <Text style={{ color: 'white', fontWeight: '600' }}>
+                <Text style={{ color: COLORS.white, fontWeight: '600' }}>
                   {formatClinicDistance(clinic.distanceKm)}
                 </Text>
               </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)' }}>{clinic.city}</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.8) }}>{clinic.city}</Text>
             </View>
-            <Text style={{ color: 'white', fontSize: 28, fontWeight: '800' }}>{clinic.name}</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.85)', marginTop: 6 }}>{clinic.tagline}</Text>
+            <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h1 }}>{clinic.name}</Text>
+            <Text style={{ color: withOpacity(COLORS.white, 0.85), marginTop: 6, ...TYPOGRAPHY.body }}>{clinic.tagline}</Text>
             <View style={{ flexDirection: 'row', marginTop: 18 }}>
               <StatPill icon="star" label="Rating" value={`${clinic.rating?.toFixed(1)} (${clinic.reviews})`} />
               <StatPill icon="clock-outline" label="Jam" value={clinic.openStatus} />
@@ -391,13 +394,13 @@ const ClinicDetailScreen = () => {
           onLayout={(event) => setAnchorHeight(event.nativeEvent.layout.height)}
           style={{
             marginHorizontal: 16,
-            backgroundColor: 'white',
+            backgroundColor: COLORS.white,
             borderRadius: 28,
             borderWidth: 1,
-            borderColor: '#E2E8F0',
+            borderColor: COLORS.border,
             paddingVertical: 12,
             paddingHorizontal: 8,
-            shadowColor: '#0F172A',
+            shadowColor: COLORS.textPrimary,
             shadowOffset: { width: 0, height: 8 },
             shadowOpacity: 0.08,
             shadowRadius: 12,
@@ -419,7 +422,7 @@ const ClinicDetailScreen = () => {
                   marginRight: 8,
                   borderRadius: 20,
                   backgroundColor:
-                    activeSection === section.id ? theme.colors.primary : '#F1F5F9',
+                    activeSection === section.id ? COLORS.primary : COLORS.border,
                   flexDirection: 'row',
                   alignItems: 'center',
                 }}
@@ -427,12 +430,12 @@ const ClinicDetailScreen = () => {
                 <MaterialCommunityIcons
                   name={section.icon}
                   size={16}
-                  color={activeSection === section.id ? 'white' : '#64748B'}
+                  color={activeSection === section.id ? COLORS.white : COLORS.textSecondary}
                   style={{ marginRight: 6 }}
                 />
                 <Text
                   style={{
-                    color: activeSection === section.id ? 'white' : '#64748B',
+                    color: activeSection === section.id ? COLORS.white : COLORS.textSecondary,
                     fontWeight: activeSection === section.id ? '700' : '600',
                     fontSize: 13,
                   }}
@@ -452,24 +455,24 @@ const ClinicDetailScreen = () => {
           >
             <View
               style={{
-                backgroundColor: 'white',
+                backgroundColor: COLORS.surfaceElevated,
                 borderRadius: 20,
                 padding: 16,
                 borderWidth: 1,
-                borderColor: '#E2E8F0',
+                borderColor: COLORS.border,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <MaterialCommunityIcons name="map-marker" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#0F172A', flex: 1 }}>{clinic.address}</Text>
+                <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textPrimary, flex: 1 }}>{clinic.address}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <MaterialCommunityIcons name="phone" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#0F172A' }}>{clinic.phone}</Text>
+                <MaterialCommunityIcons name="phone" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textPrimary }}>{clinic.phone}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <MaterialCommunityIcons name="email" size={18} color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#0F172A' }}>{clinic.email}</Text>
+                <MaterialCommunityIcons name="email" size={18} color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textPrimary }}>{clinic.email}</Text>
               </View>
             </View>
           </Section>
@@ -483,21 +486,21 @@ const ClinicDetailScreen = () => {
               {(clinic.highlights || []).map((item, idx) => {
                 // Handle highlights with structure { highlight_text, icon }
                 const highlightText = item?.highlight_text;
-                
+
                 if (!highlightText) return null;
-                
+
                 return (
                   <View
                     key={`highlight-${item?.id || idx}`}
                     style={{
-                      backgroundColor: clinic.badgeColor || '#EEF2FF',
+                      backgroundColor: clinic.badgeColor || withOpacity(COLORS.primary, 0.1),
                       paddingHorizontal: 14,
                       paddingVertical: 10,
                       borderRadius: 18,
                       marginRight: 12,
                     }}
                   >
-                    <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>{highlightText}</Text>
+                    <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{highlightText}</Text>
                   </View>
                 );
               })}
@@ -512,12 +515,12 @@ const ClinicDetailScreen = () => {
               <View
                 key={service.id || service.name}
                 style={{
-                  backgroundColor: 'white',
+                  backgroundColor: COLORS.surfaceElevated,
                   borderRadius: 20,
                   padding: 16,
                   marginBottom: 12,
                   borderWidth: 1,
-                  borderColor: '#E2E8F0',
+                  borderColor: COLORS.border,
                 }}
               >
                 <View
@@ -528,10 +531,10 @@ const ClinicDetailScreen = () => {
                   }}
                 >
                   <View style={{ flex: 1, paddingRight: 16 }}>
-                    <Text style={{ fontWeight: '700', color: '#0F172A' }}>{service.name}</Text>
-                    <Text style={{ color: '#94A3B8', marginTop: 4 }}>{service.description}</Text>
+                    <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{service.name}</Text>
+                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 4 }}>{service.description}</Text>
                   </View>
-                  <Text style={{ fontWeight: '700', color: theme.colors.primary }}>
+                  <Text style={{ fontWeight: '700', color: COLORS.primary }}>
                     {formatCurrency(parseFloat(service.price || service.base_price || 0))}
                   </Text>
                 </View>
@@ -546,17 +549,17 @@ const ClinicDetailScreen = () => {
             {(clinic.doctors || []).map((doctor) => (
               <TouchableOpacity
                 key={doctor.id}
-                onPress={() => navigation.navigate('DentistDetail', { 
+                onPress={() => navigation.navigate('DentistDetail', {
                   dentistId: doctor.id,
                   dentist: doctor,
                 })}
                 style={{
-                  backgroundColor: 'white',
+                  backgroundColor: COLORS.surfaceElevated,
                   borderRadius: 20,
                   padding: 16,
                   marginBottom: 12,
                   borderWidth: 1,
-                  borderColor: '#E2E8F0',
+                  borderColor: COLORS.border,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -565,15 +568,15 @@ const ClinicDetailScreen = () => {
                     style={{ width: 64, height: 64, borderRadius: 16, marginRight: 16 }}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '700', color: '#0F172A' }}>{doctor.name}</Text>
-                    <Text style={{ color: '#94A3B8', marginTop: 2 }}>{doctor.specialty}</Text>
+                    <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{doctor.name}</Text>
+                    <Text style={{ color: COLORS.textMuted, marginTop: 2, ...TYPOGRAPHY.caption }}>{doctor.specialty}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                      <MaterialCommunityIcons name="star" size={16} color="#FACC15" />
-                      <Text style={{ marginLeft: 6, fontWeight: '600', color: '#475569' }}>
+                      <MaterialCommunityIcons name="star" size={16} color={COLORS.warning} />
+                      <Text style={{ marginLeft: 6, fontWeight: '600', color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>
                         {doctor.rating} · {doctor.experience}
                       </Text>
                     </View>
-                    <Text style={{ color: '#94A3B8', marginTop: 4 }}>
+                    <Text style={{ color: COLORS.textMuted, marginTop: 4, ...TYPOGRAPHY.caption }}>
                       Slot terdekat: {(doctor.slots || []).join(', ')}
                     </Text>
                   </View>
@@ -583,9 +586,9 @@ const ClinicDetailScreen = () => {
                   style={{ marginTop: 12 }}
                   onPress={(e) => {
                     e.stopPropagation();
-                    navigation.navigate('AppointmentTab', {
-                      screen: 'BookingSlot',
-                      params: { dentistId: doctor.id },
+                    navigation.navigate('BookingSlot', {
+                      dentistId: doctor.id,
+                      dentist: doctor,
                     });
                   }}
                 >
@@ -601,20 +604,20 @@ const ClinicDetailScreen = () => {
           >
             <View
               style={{
-                backgroundColor: 'white',
+                backgroundColor: COLORS.surfaceElevated,
                 borderRadius: 20,
                 padding: 16,
                 borderWidth: 1,
-                borderColor: '#E2E8F0',
+                borderColor: COLORS.border,
               }}
             >
               {(clinic.facilities || []).map((facility, index) => {
                 // Handle facilities with structure { facility_name, description, icon }
                 const facilityName = facility?.facility_name;
                 const facilityDesc = facility?.description;
-                
+
                 if (!facilityName) return null;
-                
+
                 return (
                   <View
                     key={`facility-${facility?.id || index}`}
@@ -629,7 +632,7 @@ const ClinicDetailScreen = () => {
                         width: 28,
                         height: 28,
                         borderRadius: 14,
-                        backgroundColor: '#EEF2FF',
+                        backgroundColor: withOpacity(COLORS.primary, 0.1),
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginRight: 10,
@@ -643,9 +646,9 @@ const ClinicDetailScreen = () => {
                       />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#0F172A', fontWeight: '600' }}>{facilityName}</Text>
+                      <Text style={{ color: COLORS.textPrimary, fontWeight: '600' }}>{facilityName}</Text>
                       {facilityDesc ? (
-                        <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>{facilityDesc}</Text>
+                        <Text style={{ color: COLORS.textMuted, ...TYPOGRAPHY.caption, marginTop: 2 }}>{facilityDesc}</Text>
                       ) : null}
                     </View>
                   </View>
@@ -662,9 +665,9 @@ const ClinicDetailScreen = () => {
               {(clinic.gallery || []).map((item, idx) => {
                 // Handle gallery items with structure { image_url, image_type, caption }
                 const imageUrl = item?.image_url;
-                
+
                 if (!imageUrl) return null;
-                
+
                 return (
                   <Image
                     key={`gallery-${item?.id || idx}`}
@@ -686,10 +689,10 @@ const ClinicDetailScreen = () => {
           right: 0,
           bottom: 0,
           padding: 20,
-          backgroundColor: 'white',
+          backgroundColor: COLORS.white,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
-          shadowColor: '#0F172A',
+          shadowColor: COLORS.textPrimary,
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.08,
           shadowRadius: 12,
@@ -702,6 +705,7 @@ const ClinicDetailScreen = () => {
             style={{ flex: 1, marginRight: 12 }}
             onPress={handleCall}
             icon="phone"
+            accessibilityLabel="Telepon Klinik"
           >
             Hubungi
           </Button>
@@ -710,6 +714,8 @@ const ClinicDetailScreen = () => {
             style={{ flex: 1 }}
             onPress={handleBook}
             icon="calendar"
+            buttonColor={COLORS.primary}
+            accessibilityLabel="Mulai Buat Janji"
           >
             Buat janji
           </Button>

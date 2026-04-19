@@ -11,6 +11,10 @@ import { DENTISTS, SLOT_AVAILABILITY } from '../data/appointments';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 const getUpcomingDates = (days = 5) => {
   const today = new Date();
@@ -386,7 +390,7 @@ const BookingSlotScreen = () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
       <View 
@@ -401,7 +405,7 @@ const BookingSlotScreen = () => {
         }}
       >
         <LinearGradient
-          colors={['#7C3AED', '#A855F7']}
+          colors={[COLORS.primary, COLORS.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ 
@@ -410,19 +414,24 @@ const BookingSlotScreen = () => {
             paddingBottom: 32, 
             borderBottomLeftRadius: 32, 
             borderBottomRightRadius: 32, 
-            shadowColor: '#000', 
+            shadowColor: COLORS.textPrimary, 
             shadowOffset: { width: 0, height: 8 }, 
             shadowOpacity: 0.12, 
             shadowRadius: 16 
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+            <TouchableOpacity 
+              onPress={() => navigation.goBack()} 
+              accessibilityLabel="Kembali"
+              accessibilityRole="button"
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.white, 0.2), alignItems: 'center', justifyContent: 'center' }}
+            >
+              <MaterialCommunityIcons name='arrow-left' size={22} color={COLORS.surfaceElevated} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>Langkah 1/3</Text>
-              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Pilih Jadwal</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.8), ...TYPOGRAPHY.caption }}>Langkah 1/3</Text>
+              <Text style={{ color: COLORS.surfaceElevated, ...TYPOGRAPHY.h3, marginTop: 4 }}>Pilih Jadwal</Text>
             </View>
             <TouchableOpacity
               onPress={() => {
@@ -438,19 +447,21 @@ const BookingSlotScreen = () => {
                   });
                 }
               }}
-              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Detail Klinik"
+              accessibilityRole="button"
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.white, 0.2), alignItems: 'center', justifyContent: 'center' }}
             >
-              <MaterialCommunityIcons name='share-variant' size={20} color='white' />
+              <MaterialCommunityIcons name='information-outline' size={20} color={COLORS.surfaceElevated} />
             </TouchableOpacity>
           </View>
 
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ backgroundColor: withOpacity(COLORS.white, 0.15), borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center' }}>
             <View
               style={{
                 width: 64,
                 height: 64,
                 borderRadius: 20,
-                backgroundColor: 'white',
+                backgroundColor: COLORS.surfaceElevated,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: 16,
@@ -464,17 +475,17 @@ const BookingSlotScreen = () => {
                   resizeMode='cover'
                 />
               ) : (
-                <MaterialCommunityIcons name='account-heart' size={30} color='#6366F1' />
+                <MaterialCommunityIcons name='account-heart' size={30} color={COLORS.primary} />
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: 'white' }}>{dentist?.name || 'Dokter'}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 }}>
+              <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.surfaceElevated }}>{dentist?.name || 'Dokter'}</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.8), fontWeight: '600', marginTop: 2, ...TYPOGRAPHY.bodySmall }}>
                 {dentist?.specialty}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                <MaterialCommunityIcons name='map-marker' size={14} color='rgba(255,255,255,0.7)' />
-                <Text style={{ color: 'rgba(255,255,255,0.7)', marginLeft: 4 }}>
+                <MaterialCommunityIcons name='map-marker' size={14} color={withOpacity(COLORS.white, 0.7)} />
+                <Text style={{ color: withOpacity(COLORS.white, 0.7), marginLeft: 4, ...TYPOGRAPHY.caption }}>
                   {dentist?.clinicContext?.address || dentist?.clinic?.address}
                 </Text>
               </View>
@@ -490,8 +501,8 @@ const BookingSlotScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
-        <View style={{ marginTop: 8 }}>
-          <Text style={{ marginLeft: 20, fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 }}>
+        <View style={{ marginTop: 24 }}>
+          <Text style={{ marginLeft: 20, ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 }}>
             Pilih tanggal
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 20 }}>
@@ -502,17 +513,20 @@ const BookingSlotScreen = () => {
                   setSelectedDate(date);
                   setSelectedSlot(null);
                 }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: selectedDate === date }}
+                accessibilityLabel={`Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}`}
                 style={{
                   paddingHorizontal: 16,
                   paddingVertical: 10,
                   borderRadius: 18,
-                  backgroundColor: selectedDate === date ? '#7C3AED' : 'white',
+                  backgroundColor: selectedDate === date ? COLORS.primary : COLORS.surfaceElevated,
                   borderWidth: 1,
-                  borderColor: selectedDate === date ? '#7C3AED' : '#E2E8F0',
+                  borderColor: selectedDate === date ? COLORS.primary : COLORS.border,
                   marginRight: 12,
                 }}
               >
-                <Text style={{ color: selectedDate === date ? 'white' : '#475569', fontWeight: '600' }}>
+                <Text style={{ color: selectedDate === date ? COLORS.surfaceElevated : COLORS.textSecondary, fontWeight: '600' }}>
                   {new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
                 </Text>
               </TouchableOpacity>
@@ -521,7 +535,7 @@ const BookingSlotScreen = () => {
         </View>
 
         <View style={{ marginTop: 24 }}>
-          <Text style={{ marginLeft: 20, fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 }}>
+          <Text style={{ marginLeft: 20, ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 }}>
             Jenis sesi
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 20 }}>
@@ -540,6 +554,9 @@ const BookingSlotScreen = () => {
                     setSelectedService(services[0]);
                   }
                 }}
+                accessibilityLabel={`Tipe Sesi ${option.label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: slotType === option.key }}
                 style={{
                   paddingHorizontal: 18,
                   paddingVertical: 12,
@@ -547,13 +564,13 @@ const BookingSlotScreen = () => {
                   marginRight: 12,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: slotType === option.key ? '#EEF2FF' : 'white',
+                  backgroundColor: slotType === option.key ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
                   borderWidth: 1,
-                  borderColor: slotType === option.key ? '#7C3AED' : '#E2E8F0',
+                  borderColor: slotType === option.key ? COLORS.primary : COLORS.border,
                 }}
               >
-                <MaterialCommunityIcons name={option.icon} size={18} color={slotType === option.key ? '#7C3AED' : '#94A3B8'} />
-                <Text style={{ marginLeft: 8, fontWeight: '600', color: slotType === option.key ? '#7C3AED' : '#475569' }}>{option.label}</Text>
+                <MaterialCommunityIcons name={option.icon} size={18} color={slotType === option.key ? COLORS.primary : COLORS.textMuted} />
+                <Text style={{ marginLeft: 8, fontWeight: '600', color: slotType === option.key ? COLORS.primary : COLORS.textSecondary }}>{option.label}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -561,16 +578,16 @@ const BookingSlotScreen = () => {
 
         {slotType === 'onsite' && (
           <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 }}>
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 }}>
               Pilih layanan
             </Text>
             {servicesLoading ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-                <ActivityIndicator animating color={theme.colors.primary} />
-                <Text style={{ marginLeft: 8, color: '#475569' }}>Memuat layanan klinik...</Text>
+                <ActivityIndicator animating color={COLORS.primary} />
+                <Text style={{ marginLeft: 8, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>Memuat layanan klinik...</Text>
               </View>
             ) : services.length === 0 ? (
-              <Text style={{ color: '#94A3B8' }}>Klinik belum menambahkan layanan.</Text>
+              <Text style={{ color: COLORS.textMuted, ...TYPOGRAPHY.bodySmall }}>Klinik belum menambahkan layanan.</Text>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {services.map((svc) => {
@@ -579,19 +596,22 @@ const BookingSlotScreen = () => {
                     <TouchableOpacity
                       key={svc.id || svc.name}
                       onPress={() => setSelectedService(svc)}
+                      accessibilityLabel={`Layanan ${svc.name}, Harga ${svc.price?.toLocaleString('id-ID')}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
                       style={{
                         paddingHorizontal: 16,
                         paddingVertical: 12,
                         borderRadius: 14,
                         marginRight: 12,
-                        backgroundColor: active ? '#EEF2FF' : 'white',
+                        backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
                         borderWidth: 1,
-                        borderColor: active ? '#7C3AED' : '#E2E8F0',
+                        borderColor: active ? COLORS.primary : COLORS.border,
                       }}
                     >
-                      <Text style={{ fontWeight: '700', color: active ? '#7C3AED' : '#0F172A' }}>{svc.name}</Text>
-                      <Text style={{ color: '#475569', marginTop: 4 }}>Rp {svc.price?.toLocaleString('id-ID')}</Text>
-                      <Text style={{ color: '#94A3B8', fontSize: 12 }}>{svc.durationMinutes || 60} menit</Text>
+                      <Text style={{ fontWeight: '700', color: active ? COLORS.primary : COLORS.textPrimary }}>{svc.name}</Text>
+                      <Text style={{ color: COLORS.textSecondary, marginTop: 4, ...TYPOGRAPHY.bodySmall }}>Rp {svc.price?.toLocaleString('id-ID')}</Text>
+                      <Text style={{ color: COLORS.textMuted, ...TYPOGRAPHY.caption }}>{svc.durationMinutes || 60} menit</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -602,21 +622,21 @@ const BookingSlotScreen = () => {
 
         <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
           {slotError ? (
-            <Text style={{ color: '#B91C1C', marginBottom: 8 }}>{slotError}</Text>
+            <Text style={{ color: COLORS.error, marginBottom: 8, ...TYPOGRAPHY.bodySmall }}>{slotError}</Text>
           ) : null}
 
           {slotsLoading ? (
             <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-              <ActivityIndicator animating color={theme.colors.primary} />
-              <Text style={{ marginTop: 8, color: '#475569' }}>Memuat jadwal...</Text>
+              <ActivityIndicator animating color={COLORS.primary} />
+              <Text style={{ marginTop: 8, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>Memuat jadwal...</Text>
             </View>
           ) : null}
 
           {!slotsLoading && !filteredSlots.length ? (
             <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-              <MaterialCommunityIcons name='calendar-remove' size={48} color='#CBD5F5' />
-              <Text style={{ fontWeight: '700', color: '#0F172A', marginTop: 12 }}>Belum ada jadwal</Text>
-              <Text style={{ color: '#94A3B8', textAlign: 'center', marginTop: 4 }}>
+              <MaterialCommunityIcons name='calendar-remove' size={48} color={withOpacity(COLORS.primary, 0.2)} />
+              <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary, marginTop: 12 }}>Belum ada jadwal</Text>
+              <Text style={{ color: COLORS.textSecondary, textAlign: 'center', marginTop: 4, ...TYPOGRAPHY.bodySmall }}>
                 Pilih tanggal lain atau ubah tipe sesi untuk melihat pilihan lain.
               </Text>
             </View>
@@ -624,28 +644,30 @@ const BookingSlotScreen = () => {
 
           {groupedSlots.map((group) => (
             <View key={group.key} style={{ marginBottom: 24 }}>
-              <Text style={{ fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>{group.label}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 }}>{group.label}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {group.data.map((slot) => {
                   const active = selectedSlot?.id === slot.id;
                   return (
                     <TouchableOpacity
                       key={slot.id}
                       onPress={() => setSelectedSlot(slot)}
+                      accessibilityLabel={`Pukul ${slot.time}, Durasi ${slot.duration} menit`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
                       style={{
-                        width: '30%',
-                        marginRight: '3%',
+                        width: '31%',
                         marginBottom: 12,
                         paddingVertical: 12,
                         borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: active ? '#7C3AED' : '#E2E8F0',
-                        backgroundColor: active ? '#EEF2FF' : 'white',
+                        borderColor: active ? COLORS.primary : COLORS.border,
+                        backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ fontWeight: '700', color: active ? '#7C3AED' : '#0F172A' }}>{slot.time}</Text>
-                      <Text style={{ fontSize: 12, color: '#94A3B8' }}>{slot.duration} menit</Text>
+                      <Text style={{ fontWeight: '700', color: active ? COLORS.primary : COLORS.textPrimary }}>{slot.time}</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.textMuted }}>{slot.duration} menit</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -655,8 +677,16 @@ const BookingSlotScreen = () => {
         </View>
       </ScrollView>
 
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
-        <Button mode='contained' icon='check' onPress={handleContinue} disabled={!selectedSlot}>
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: COLORS.textPrimary, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
+        <Button 
+          mode='contained' 
+          icon='check' 
+          onPress={handleContinue} 
+          disabled={!selectedSlot}
+          buttonColor={COLORS.primary}
+          labelStyle={{ fontWeight: '700' }}
+          accessibilityLabel="Lanjutkan Konfirmasi"
+        >
           Lanjutkan
         </Button>
       </View>
@@ -678,11 +708,11 @@ const InfoPill = ({ icon, label }) => (
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: withOpacity(COLORS.white, 0.15),
     marginRight: 12,
   }}>
-    <MaterialCommunityIcons name={icon} size={16} color='white' />
-    <Text style={{ marginLeft: 6, fontWeight: '600', color: 'white' }}>{label}</Text>
+    <MaterialCommunityIcons name={icon} size={16} color={COLORS.white} />
+    <Text style={{ marginLeft: 6, fontWeight: '600', color: COLORS.white, ...TYPOGRAPHY.bodySmall }}>{label}</Text>
   </View>
 );
 
