@@ -1,634 +1,319 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image, Linking } from 'react-native';
-import { Text, Button, RadioButton, useTheme, ActivityIndicator } from 'react-native-paper';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Linking, BackHandler, AppState } from 'react-native';
+import { Text, Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSelector } from 'react-redux';
 import { formatCurrency } from '../../../utils/formatters';
-import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import { createSnapTransaction, getPaymentStatus, reconcilePayment } from '../../../services/paymentService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
-import { createAppointment } from '../../../services/appointmentService';
-import { syncAIAnalysisHistory } from '../../../services/aiAnalysisSyncService';
-import { createSnapTransaction, getPaymentStatus } from '../../../services/paymentService';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
-const PAYMENT_METHODS = [
-  {
-    id: 'card',
-    category: 'Kartu',
-    icon: 'credit-card',
-    options: [
-      { id: 'visa', name: 'Visa / Mastercard', icon: 'credit-card-outline' },
-      { id: 'jcb', name: 'JCB', icon: 'credit-card' },
-    ],
-  },
-  {
-    id: 'ewallet',
-    category: 'E-Wallet',
-    icon: 'wallet',
-    options: [
-      { id: 'gopay', name: 'GoPay', color: '#00AED6' },
-      { id: 'ovo', name: 'OVO', color: '#4C3494' },
-      { id: 'dana', name: 'DANA', color: '#108EE9' },
-      { id: 'shopeepay', name: 'ShopeePay', color: '#EE4D2D' },
-    ],
-  },
-  {
-    id: 'va',
-    category: 'Virtual Account',
-    icon: 'bank',
-    options: [
-      { id: 'bca', name: 'BCA Virtual Account' },
-      { id: 'bni', name: 'BNI Virtual Account' },
-      { id: 'bri', name: 'BRI Virtual Account' },
-      { id: 'mandiri', name: 'Mandiri Virtual Account' },
-    ],
-  },
-  {
-    id: 'cash',
-    category: 'Bayar di Klinik',
-    icon: 'cash',
-    options: [
-      { id: 'cash', name: 'Bayar langsung di klinik' },
-    ],
-  },
-];
+const COLORS = THEME_COLORS;
 
 const PaymentScreen = () => {
-  const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
-
-  // Get AI analysis history from Redux store
-  const aiHistory = useSelector(state => state.ai?.history || []);
-
   const { toast, showToast, hideToast } = useToast();
 
-  // Data from BookingConfirmScreen
-  const dentist = route.params?.dentist;
-  const slot = route.params?.slot;
-  const selectedDate = route.params?.date;
-  const type = route.params?.type || 'onsite';
-  const service = route.params?.service || null;
-  const notes = route.params?.notes || '';
-  const reminder = route.params?.reminder || 30;
-  const fee = (service?.price != null ? service.price : null)
-    ?? route.params?.fee
-    ?? slot?.raw?.fee
-    ?? dentist?.consultationFee
-    ?? 350000;
-  const paymentMethodFromConfirm = route.params?.paymentMethod || 'card';
+  // Params from BookingConfirm
+  const { appointmentId, dentist, slot, date, fee, paymentMethod } = route.params || {};
 
-  const [selectedCategory, setSelectedCategory] = useState(paymentMethodFromConfirm);
-  const [selectedPayment, setSelectedPayment] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [countdown, setCountdown] = useState(null);
-  const [pollingState, setPollingState] = useState('idle');
+  // State
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState(null);
+  const [redirectUrl, setRedirectUrl] = useState(null);
+  const [status, setStatus] = useState('pending');
+  const [polling, setPolling] = useState(false);
 
-  const intervalRef = useRef(null);
+  const pollInterval = useRef(null);
+  const appState = useRef(AppState.currentState);
 
+  // 1. Initialize Transaction
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    const initPayment = async () => {
+      try {
+        setLoading(true);
+        const result = await createSnapTransaction(appointmentId);
+
+        setPaymentIntentId(result.paymentIntentId);
+        setRedirectUrl(result.redirectUrl);
+
+        // Auto-open if redirect URL exists
+        if (result.redirectUrl) {
+          Linking.openURL(result.redirectUrl);
+        }
+
+        setLoading(false);
+        // We don't start polling immediately; wait for user to return or manually check
+      } catch (error) {
+        console.error('[PaymentScreen] Init error:', error);
+        setLoading(false);
+        showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
+      }
     };
-  }, []);
 
-  const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(200);
+    if (appointmentId) initPayment();
+  }, [appointmentId]);
 
-  const summaryDate = new Date(selectedDate);
-  const dateLabel = summaryDate.toLocaleDateString('id-ID', { 
-    weekday: 'long', 
-    day: 'numeric', 
-    month: 'long',
-    year: 'numeric'
-  });
-  const slotTime = slot?.time || summaryDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  // 2. AppState Listener for Foreground Reconcile
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('[PaymentScreen] App came to foreground, reconciling...');
+        handleSync();
+      }
+      appState.current = nextAppState;
+    });
 
-  // Admin/service fee
-  const adminFee = 5000;
-  const totalFee = fee + adminFee;
+    return () => {
+      subscription.remove();
+    };
+  }, [paymentIntentId]);
 
-  const handlePayment = async () => {
-    if (!selectedPayment) {
-      showToast('Silakan pilih metode pembayaran', 'error');
-      return;
+  // 3. Status Polling (10s interval, only when active)
+  useEffect(() => {
+    if (polling && paymentIntentId) {
+      pollInterval.current = setInterval(async () => {
+        // Only poll if we are in foreground
+        if (AppState.currentState !== 'active') return;
+
+        try {
+          const result = await getPaymentStatus(paymentIntentId);
+          console.log('[PaymentScreen] Polling status:', result.status);
+          handleStatusChange(result.status);
+        } catch (error) {
+          console.log('[PaymentScreen] Poll error:', error.message);
+        }
+      }, 10000); // Increased to 10s
     }
 
-    setProcessing(true);
+    return () => stopPolling();
+  }, [polling, paymentIntentId]);
 
+  const stopPolling = () => {
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
+    }
+    setPolling(false);
+  };
+
+  const handleStatusChange = (newStatus) => {
+    const successStatuses = ['succeeded', 'settlement', 'capture'];
+    const failureStatuses = ['failed', 'deny', 'cancel', 'expire'];
+
+    if (successStatuses.includes(newStatus)) {
+      stopPolling();
+      setStatus('succeeded');
+      handleSuccess();
+      return true;
+    } else if (failureStatuses.includes(newStatus)) {
+      stopPolling();
+      setStatus('failed');
+      handleFailure(newStatus);
+      return true;
+    }
+    return false;
+  };
+
+  const handleSync = async () => {
+    if (!paymentIntentId || checking) return;
     try {
-      const bookingDate = new Date(selectedDate);
-      const dateStr = bookingDate.toISOString().split('T')[0];
-      const timeStr = slot?.time || bookingDate.toTimeString().slice(0, 5);
-
-      const dentistId = dentist?.id || dentist?.userId;
-      const clinicId = dentist?.clinicContext?.profileId || 
-                       dentist?.clinicContext?.branchId || 
-                       dentist?.clinicId || 
-                       dentist?.clinic?.id;
-
-      const isIndependentDentist = !clinicId;
-
-      if (!dentistId) throw new Error('Informasi dokter tidak lengkap');
-      if (!isIndependentDentist && !clinicId) throw new Error('Informasi klinik tidak lengkap');
-
-      const response = await createAppointment({
-        dentist_id: dentistId,
-        clinic_id: clinicId || null,
-        date: dateStr,
-        time: timeStr,
-        duration: service?.durationMinutes || service?.duration || 60,
-        type: type,
-        reason: service?.name || notes || 'Konsultasi Gigi',
-        notes: notes,
-        metadata: {
-          serviceId: service?.id || null,
-          serviceName: service?.name || null,
-          servicePrice: service?.price ?? null,
-          serviceDurationMinutes: service?.durationMinutes || service?.duration || null,
-          paymentMethod: selectedPayment,
-        },
-      });
-
-      if (aiHistory.length > 0) {
-        try {
-          await syncAIAnalysisHistory(aiHistory.slice(0, 5));
-        } catch (syncError) {
-          console.warn('[Payment] Failed to sync AI analysis:', syncError.message);
-        }
-      }
-
-      const appointmentId = response.data?.id;
-      if (!appointmentId) throw new Error('Gagal mendapatkan ID janji temu');
-      const bookingCode = `SRN-${String(appointmentId).padStart(6, '0')}`;
-
-      // --- MIDTRANS INTEGRATION ---
-      const { redirectUrl, paymentIntentId: newPaymentIntentId } = await createSnapTransaction(appointmentId);
+      setChecking(true);
+      // Try reconciliation first (checks with provider)
+      console.log('[PaymentScreen] Syncing transaction...');
+      const result = await reconcilePayment(paymentIntentId);
       
-      setPaymentIntentId(newPaymentIntentId);
-      setPollingState('waiting');
-      setProcessing(false);
-
-      if (redirectUrl) {
-         await Linking.openURL(redirectUrl);
+      const wasFinal = handleStatusChange(result.newStatus);
+      
+      if (!wasFinal) {
+        // If still pending after sync, start/resume lower-freq polling
+        if (!polling) setPolling(true);
       }
-
-      let attempts = 0;
-      intervalRef.current = setInterval(async () => {
-        attempts += 1;
-        
-        try {
-          const { status } = await getPaymentStatus(newPaymentIntentId);
-          
-          if (status === 'succeeded') {
-            clearInterval(intervalRef.current);
-            setPollingState('done');
-            navigation.navigate('BookingSuccess', {
-              dentist, slot, date: selectedDate, type, service, notes, reminder,
-              fee: totalFee, paymentMethod: selectedPayment, bookingId: bookingCode,
-              appointmentData: response.data,
-            });
-          } else if (status === 'failed') {
-            clearInterval(intervalRef.current);
-            setPollingState('done');
-            navigation.navigate('BookingFailed', {
-              dentist, slot, date: selectedDate, type, fee: totalFee,
-              errorType: 'payment_failed', errorCode: 'PAY_FAILED', errorMessage: 'Pembayaran gagal atau dibatalkan.'
-            });
-          }
-        } catch (pollErr) {
-           console.warn('Polling error:', pollErr.message);
-        }
-
-        if (attempts >= 100) {
-          clearInterval(intervalRef.current);
-          navigation.navigate('BookingFailed', {
-            dentist, slot, date: selectedDate, type, fee: totalFee,
-            errorType: 'timeout', errorCode: 'TMO_001', errorMessage: 'Waktu tunggu pembayaran habis'
-          });
-        }
-      }, 3000);
-
     } catch (error) {
-      setProcessing(false);
-      
-      const backendCode = error.code || '';
-      let errorType = 'payment_failed';
-      let errorCode = 'PAY_001';
-      let friendlyMessage = error.message;
-      
-      if (backendCode === 'cannot_book_past') {
-        errorType = 'slot_unavailable'; errorCode = 'SLT_002'; friendlyMessage = error.message;
-      } else if (backendCode === 'slot_taken') {
-        errorType = 'slot_unavailable'; errorCode = 'SLT_001';
-      } else if (backendCode === 'invalid_time' || backendCode === 'invalid_duration') {
-        errorType = 'slot_unavailable'; errorCode = 'SLT_003';
-      } else if (error.message?.includes('network') || error.message?.includes('Network')) {
-        errorType = 'network_error'; errorCode = 'NET_001';
-      } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
-        errorType = 'timeout'; errorCode = 'TMO_001';
-      } else if (error.message?.includes('slot') || error.message?.includes('unavailable')) {
-        errorType = 'slot_unavailable'; errorCode = 'SLT_001';
-      }
-      
-      navigation.navigate('BookingFailed', {
-        dentist, slot, date: selectedDate, type, fee: totalFee, errorType, errorCode, errorMessage: friendlyMessage,
-      });
+      console.error('[PaymentScreen] Sync error:', error);
+      // Fallback to simple status check
+      try {
+        const result = await getPaymentStatus(paymentIntentId);
+        handleStatusChange(result.status);
+      } catch (e) {}
+    } finally {
+      setChecking(false);
     }
   };
 
-  const selectedCategoryData = PAYMENT_METHODS.find(m => m.id === selectedCategory);
+  const handleSuccess = () => {
+    navigation.navigate('BookingSuccess', {
+      appointmentId,
+      dentist,
+      slot,
+      date,
+      fee,
+      bookingId: `SRN-${appointmentId.toString().slice(-6).toUpperCase()}`,
+    });
+  };
+
+  const handleFailure = (reason) => {
+    navigation.navigate('BookingFailed', {
+      errorType: 'payment_failed',
+      errorCode: reason,
+      dentist,
+      slot,
+      date,
+      fee,
+    });
+  };
+
+  const handleOpenPayment = () => {
+    if (redirectUrl) Linking.openURL(redirectUrl);
+  };
+
+  // Prevent accidental back navigation during active payment session
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = () => {
+        if (status === 'pending') {
+          showToast('Selesaikan pembayaran atau batalkan melalui dashboard', 'info');
+          return true;
+        }
+        return false;
+      };
+
+      BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+    }, [status])
+  );
+
+  if (loading && !paymentIntentId) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.surface }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ ...TYPOGRAPHY.bodyLarge, marginTop: 16 }}>Menyiapkan gerbang pembayaran...</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
+      <StatusBar barStyle='light-content' />
 
-      {/* Toast */}
-      <ValidationToast toast={toast} onDismiss={hideToast} />
-
-      {/* Header */}
-      <View
-        onLayout={handleHeaderLayout}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.primaryLight]}
+        style={{ paddingTop: insets.top + 20, paddingBottom: 40, paddingHorizontal: 20, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
       >
-        <LinearGradient
-          colors={['#7C3AED', '#A855F7']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            paddingTop: insets.top + 10,
-            paddingHorizontal: 20,
-            paddingBottom: 28,
-            borderBottomLeftRadius: 32,
-            borderBottomRightRadius: 32,
-          }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: 'rgba(255,255,255,0.2)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={22} color="white" />
-            </TouchableOpacity>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Langkah 3/3</Text>
-              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>
-                Pembayaran
-              </Text>
-            </View>
-            <View style={{ width: 44 }} />
-          </View>
-
-          {/* Progress Indicator */}
-          <View style={{ marginTop: 20 }}>
-            <ProgressIndicator current={3} />
-          </View>
-        </LinearGradient>
-      </View>
-
-      {/* Content */}
-      <ScrollView
-        contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 180 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ paddingHorizontal: 20 }}>
-          {/* Order Summary Card */}
-          <View
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 20,
-              padding: 16,
-              marginBottom: 20,
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.06,
-              shadowRadius: 12,
-              elevation: 3,
-            }}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Kembali"
+            accessibilityRole="button"
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.2), justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>
-              Ringkasan Pesanan
-            </Text>
-            
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 16,
-                  backgroundColor: '#EEF2FF',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 12,
-                }}
-              >
-                <MaterialCommunityIcons name="doctor" size={24} color="#7C3AED" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '600', color: '#0F172A' }}>{dentist?.name}</Text>
-                <Text style={{ color: '#64748B', fontSize: 13 }}>{dentist?.specialty}</Text>
-              </View>
-            </View>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.surfaceElevated} />
+          </TouchableOpacity>
+          <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.surfaceElevated, marginLeft: 16 }}>Pembayaran</Text>
+        </View>
 
-            <View style={{ borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }}>
-              <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                <MaterialCommunityIcons name="calendar" size={16} color="#64748B" />
-                <Text style={{ marginLeft: 8, color: '#475569', flex: 1 }}>{dateLabel}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                <MaterialCommunityIcons name="clock-outline" size={16} color="#64748B" />
-                <Text style={{ marginLeft: 8, color: '#475569', flex: 1 }}>{slotTime} WIB</Text>
-              </View>
-              <View style={{ flexDirection: 'row' }}>
-                <MaterialCommunityIcons 
-                  name={type === 'virtual' ? 'video' : 'map-marker'} 
-                  size={16} 
-                  color="#64748B" 
-                />
-                <Text style={{ marginLeft: 8, color: '#475569', flex: 1 }}>
-                  {type === 'virtual' ? 'Konsultasi Virtual' : 'Kunjungan Tatap Muka'}
-                </Text>
-              </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.white, 0.8), textTransform: 'uppercase', letterSpacing: 1 }}>TOTAL PEMBAYARAN</Text>
+          <Text style={{ ...TYPOGRAPHY.h1, color: COLORS.surfaceElevated, fontSize: 32, marginTop: 4 }}>{formatCurrency(fee)}</Text>
+        </View>
+      </LinearGradient>
+
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+        {/* Status Card */}
+        <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 24, padding: 20, marginBottom: 24, shadowColor: COLORS.textPrimary, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.primary, 0.1), justifyContent: 'center', alignItems: 'center' }}>
+              <MaterialCommunityIcons name="clock-outline" size={24} color={COLORS.primary} />
+            </View>
+            <View style={{ marginLeft: 16 }}>
+              <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>Menunggu Pembayaran</Text>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>Selesaikan pembayaran di jendela baru</Text>
             </View>
           </View>
 
-          {/* Payment Method Selection */}
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 16 }}>
-            Pilih Metode Pembayaran
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, lineHeight: 20 }}>
+            Silakan selesaikan pembayaran Anda menggunakan metode {paymentMethod === 'card' ? 'Kartu Kredit/Debit' : paymentMethod === 'va' ? 'Virtual Account' : 'yang dipilih'}.
           </Text>
 
-          {/* Category Tabs */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={{ marginBottom: 16 }}
+          <Button
+            mode="contained"
+            onPress={handleOpenPayment}
+            style={{ marginTop: 20, borderRadius: 12 }}
+            buttonColor={COLORS.primary}
+            contentStyle={{ height: 48 }}
+            accessibilityLabel="Buka Halaman Pembayaran di Browser"
           >
-            {PAYMENT_METHODS.map((method) => (
-              <TouchableOpacity
-                key={method.id}
-                onPress={() => {
-                  setSelectedCategory(method.id);
-                  setSelectedPayment(null);
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 20,
-                  backgroundColor: selectedCategory === method.id ? '#7C3AED' : 'white',
-                  marginRight: 10,
-                  borderWidth: 1,
-                  borderColor: selectedCategory === method.id ? '#7C3AED' : '#E2E8F0',
-                }}
-              >
-                <MaterialCommunityIcons
-                  name={method.icon}
-                  size={18}
-                  color={selectedCategory === method.id ? 'white' : '#64748B'}
-                />
-                <Text
-                  style={{
-                    marginLeft: 8,
-                    fontWeight: '600',
-                    color: selectedCategory === method.id ? 'white' : '#475569',
-                  }}
-                >
-                  {method.category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            Buka Halaman Pembayaran
+          </Button>
+        </View>
 
-          {/* Payment Options */}
-          <View
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 20,
-              padding: 4,
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.06,
-              shadowRadius: 12,
-              elevation: 3,
-            }}
-          >
-            {selectedCategoryData?.options.map((option, index) => (
-              <TouchableOpacity
-                key={option.id}
-                onPress={() => setSelectedPayment(option.id)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  padding: 16,
-                  borderBottomWidth: index < selectedCategoryData.options.length - 1 ? 1 : 0,
-                  borderBottomColor: '#F1F5F9',
-                  backgroundColor: selectedPayment === option.id ? '#F5F3FF' : 'transparent',
-                  borderRadius: 16,
-                }}
-              >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: option.color ? option.color + '20' : '#F1F5F9',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 12,
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name={option.icon || selectedCategoryData.icon}
-                    size={20}
-                    color={option.color || '#64748B'}
-                  />
-                </View>
-                <Text style={{ flex: 1, fontWeight: '500', color: '#0F172A' }}>
-                  {option.name}
-                </Text>
-                <View
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 11,
-                    borderWidth: 2,
-                    borderColor: selectedPayment === option.id ? '#7C3AED' : '#CBD5E1',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {selectedPayment === option.id && (
-                    <View
-                      style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: 6,
-                        backgroundColor: '#7C3AED',
-                      }}
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
+        {/* Order Summary */}
+        <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 16 }}>Ringkasan Pesanan</Text>
+
+        <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16, borderLeftWidth: 4, borderLeftColor: COLORS.primary }}>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>{dentist?.specialty}</Text>
+          <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginTop: 2 }}>{dentist?.name}</Text>
+          <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 12 }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <MaterialCommunityIcons name="calendar" size={16} color={COLORS.textSecondary} />
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 6 }}>{new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <MaterialCommunityIcons name="clock-outline" size={16} color={COLORS.textSecondary} />
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 6 }}>{slot?.time || '—'}</Text>
+            </View>
           </View>
+        </View>
 
-          {/* Fee Breakdown */}
-          <View
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 20,
-              padding: 16,
-              marginTop: 20,
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.06,
-              shadowRadius: 12,
-              elevation: 3,
-            }}
+        {/* Action Controls */}
+        <View style={{ marginTop: 32, alignItems: 'center' }}>
+          <Button
+            mode="outlined"
+            onPress={handleSync}
+            loading={checking}
+            disabled={checking}
+            style={{ borderRadius: 12, borderColor: COLORS.primary, borderWidth: 1.5, width: '100%' }}
+            labelStyle={{ fontWeight: '700', color: COLORS.primary }}
+            accessibilityLabel="Cek Status Pembayaran Manual"
           >
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>
-              Rincian Biaya
+            CEK STATUS PEMBAYARAN
+          </Button>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+            <ActivityIndicator animating={polling && !checking} size={12} color={COLORS.textMuted} style={{ marginRight: 8 }} />
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>
+              {polling ? 'Pengecekan otomatis berjalan (10s)...' : 'Gunakan tombol di atas jika sudah bayar'}
             </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ color: '#64748B' }}>Biaya konsultasi</Text>
-              <Text style={{ fontWeight: '500', color: '#0F172A' }}>{formatCurrency(fee)}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ color: '#64748B' }}>Biaya layanan</Text>
-              <Text style={{ fontWeight: '500', color: '#0F172A' }}>{formatCurrency(adminFee)}</Text>
-            </View>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                borderTopWidth: 1,
-                borderTopColor: '#F1F5F9',
-                paddingTop: 12,
-              }}
-            >
-              <Text style={{ fontWeight: '700', color: '#0F172A' }}>Total Pembayaran</Text>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#7C3AED' }}>
-                {formatCurrency(totalFee)}
-              </Text>
-            </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Bottom Payment Button */}
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: 20,
-          paddingBottom: insets.bottom + 20,
-          backgroundColor: 'white',
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          shadowColor: '#0F172A',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          elevation: 10,
-        }}
-      >
-        {pollingState === 'idle' ? (
-          <>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ color: '#64748B' }}>Total Pembayaran</Text>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
-                {formatCurrency(totalFee)}
-              </Text>
-            </View>
-            <Button
-              mode="contained"
-              icon={processing ? undefined : 'lock'}
-              onPress={handlePayment}
-              disabled={!selectedPayment || processing}
-              loading={processing}
-              style={{ borderRadius: 16 }}
-              contentStyle={{ paddingVertical: 6 }}
-              labelStyle={{ fontWeight: '700', fontSize: 16 }}
-            >
-              {processing ? 'Memproses...' : 'Bayar Sekarang'}
-            </Button>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
-              <MaterialCommunityIcons name="shield-check" size={14} color="#22C55E" />
-              <Text style={{ marginLeft: 6, fontSize: 12, color: '#64748B' }}>
-                Pembayaran aman & terenkripsi
-              </Text>
-            </View>
-          </>
-        ) : pollingState === 'waiting' ? (
-          <View style={{ alignItems: 'center', marginVertical: 8 }}>
-            <ActivityIndicator size="large" color="#7C3AED" />
-            <Text style={{ marginTop: 16, fontSize: 14, color: '#64748B', fontWeight: '500' }}>
-              Menunggu konfirmasi pembayaran...
-            </Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: '#94A3B8' }}>
-              Selesaikan pembayaran di browser Anda
-            </Text>
-            <TouchableOpacity 
-              style={{ marginTop: 20, padding: 8 }}
-              onPress={() => {
-                 if (intervalRef.current) clearInterval(intervalRef.current);
-                 navigation.goBack();
-              }}
-            >
-              <Text style={{ color: '#EF4444', fontWeight: '600' }}>Batalkan</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
+      {(loading || checking) && (
+        <View style={{ ...View.absoluteFillObject, backgroundColor: withOpacity(COLORS.white, 0.7), justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          {checking && <Text style={{ ...TYPOGRAPHY.bodySmall, marginTop: 12, color: COLORS.primary, fontWeight: '600' }}>Menyinkronkan status...</Text>}
+        </View>
+      )}
+
+      <ValidationToast
+        visible={toast.visible}
+        message={toast.message}
+        status={toast.status}
+        onDismiss={hideToast}
+      />
     </View>
   );
 };
-
-const ProgressIndicator = ({ current }) => (
-  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-    {['Pilih slot', 'Konfirmasi', 'Bayar'].map((label, index) => {
-      const step = index + 1;
-      const active = step <= current;
-      const completed = step < current;
-      return (
-        <View key={label} style={{ alignItems: 'center', flex: 1 }}>
-          <LinearGradient
-            colors={active ? ['#FDE68A', '#FBBF24'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {completed ? (
-              <MaterialCommunityIcons name="check" size={18} color="#78350F" />
-            ) : (
-              <Text style={{ color: active ? '#78350F' : '#E5E7EB', fontWeight: '700' }}>{step}</Text>
-            )}
-          </LinearGradient>
-          <Text style={{ marginTop: 6, fontSize: 12, color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>
-            {label}
-          </Text>
-        </View>
-      );
-    })}
-  </View>
-);
 
 export default PaymentScreen;

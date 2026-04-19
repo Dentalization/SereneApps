@@ -5,7 +5,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatCurrency } from '../../../utils/formatters';
+import { colors as THEME_COLORS } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 const BookingSuccessScreen = () => {
   const theme = useTheme();
@@ -88,8 +91,8 @@ const BookingSuccessScreen = () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
 
       <ScrollView
         contentContainerStyle={{
@@ -109,21 +112,21 @@ const BookingSuccessScreen = () => {
           }}
         >
           <LinearGradient
-            colors={['#22C55E', '#16A34A']}
+            colors={[COLORS.success, withOpacity(COLORS.success, 0.8)]}
             style={{
               width: 100,
               height: 100,
               borderRadius: 50,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: '#22C55E',
+              shadowColor: COLORS.success,
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.3,
               shadowRadius: 16,
               elevation: 8,
             }}
           >
-            <MaterialCommunityIcons name="check" size={50} color="white" />
+            <MaterialCommunityIcons name="check" size={50} color={COLORS.surfaceElevated} />
           </LinearGradient>
         </Animated.View>
 
@@ -136,10 +139,10 @@ const BookingSuccessScreen = () => {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          <Text style={{ fontSize: 26, fontWeight: '700', color: '#0F172A', textAlign: 'center' }}>
+          <Text style={{ ...TYPOGRAPHY.h1, color: COLORS.textPrimary, textAlign: 'center' }}>
             Booking Berhasil! 🎉
           </Text>
-          <Text style={{ color: '#64748B', marginTop: 8, textAlign: 'center', lineHeight: 22 }}>
+          <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall, marginTop: 8, textAlign: 'center', lineHeight: 22 }}>
             Janji temu Anda telah dikonfirmasi.{'\n'}Detail telah dikirim ke email Anda.
           </Text>
         </Animated.View>
@@ -152,7 +155,7 @@ const BookingSuccessScreen = () => {
           }}
         >
           <LinearGradient
-            colors={['#7C3AED', '#A855F7']}
+            colors={[COLORS.primary, COLORS.primaryLight]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{
@@ -162,13 +165,13 @@ const BookingSuccessScreen = () => {
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
+            <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.caption, marginBottom: 4 }}>
               KODE BOOKING
             </Text>
-            <Text style={{ color: 'white', fontSize: 24, fontWeight: '700', letterSpacing: 2 }}>
+            <Text style={{ color: COLORS.surfaceElevated, ...TYPOGRAPHY.h1, fontWeight: '700', letterSpacing: 2 }}>
               {bookingId}
             </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 8 }}>
+            <Text style={{ color: withOpacity(COLORS.white, 0.8), ...TYPOGRAPHY.caption, marginTop: 8 }}>
               Tunjukkan kode ini saat kedatangan
             </Text>
           </LinearGradient>
@@ -177,11 +180,11 @@ const BookingSuccessScreen = () => {
         {/* Appointment Details Card */}
         <Animated.View
           style={{
-            backgroundColor: 'white',
+            backgroundColor: COLORS.surfaceElevated,
             borderRadius: 24,
             padding: 20,
             marginBottom: 20,
-            shadowColor: '#0F172A',
+            shadowColor: COLORS.textPrimary,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.06,
             shadowRadius: 12,
@@ -190,7 +193,7 @@ const BookingSuccessScreen = () => {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 16 }}>
+          <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary, marginBottom: 16 }}>
             Detail Janji Temu
           </Text>
 
@@ -201,21 +204,21 @@ const BookingSuccessScreen = () => {
                 width: 56,
                 height: 56,
                 borderRadius: 18,
-                backgroundColor: '#EEF2FF',
+                backgroundColor: withOpacity(COLORS.primary, 0.1),
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: 14,
               }}
             >
-              <MaterialCommunityIcons name="doctor" size={28} color="#7C3AED" />
+              <MaterialCommunityIcons name="doctor" size={28} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>
+              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>
                 {dentist?.name}
               </Text>
-              <Text style={{ color: '#64748B', marginTop: 2 }}>{dentist?.specialty}</Text>
+              <Text style={{ color: COLORS.textSecondary, marginTop: 2, ...TYPOGRAPHY.bodySmall }}>{dentist?.specialty}</Text>
               {dentist?.clinic?.name && (
-                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                   {dentist.clinic.name}
                 </Text>
               )}
@@ -223,7 +226,7 @@ const BookingSuccessScreen = () => {
           </View>
 
           {/* Divider */}
-          <View style={{ height: 1, backgroundColor: '#F1F5F9', marginBottom: 16 }} />
+          <View style={{ height: 1, backgroundColor: COLORS.border, marginBottom: 16 }} />
 
           {/* Details Grid */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -250,12 +253,12 @@ const BookingSuccessScreen = () => {
           </View>
 
           {/* Divider */}
-          <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 }} />
+          <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 16 }} />
 
           {/* Total Paid */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: '#64748B' }}>Total Dibayar</Text>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#22C55E' }}>
+            <Text style={{ ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>Total Dibayar</Text>
+            <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.success }}>
               {formatCurrency(fee)}
             </Text>
           </View>
@@ -272,46 +275,50 @@ const BookingSuccessScreen = () => {
         >
           <TouchableOpacity
             onPress={handleAddToCalendar}
+            accessibilityLabel="Tambah ke Kalender"
+            accessibilityRole="button"
             style={{
               flex: 1,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: 'white',
+              backgroundColor: COLORS.surfaceElevated,
               paddingVertical: 14,
               borderRadius: 16,
               marginRight: 10,
               borderWidth: 1,
-              borderColor: '#E2E8F0',
+              borderColor: COLORS.border,
             }}
           >
-            <MaterialCommunityIcons name="calendar-plus" size={20} color="#7C3AED" />
-            <Text style={{ marginLeft: 8, fontWeight: '600', color: '#7C3AED' }}>
+            <MaterialCommunityIcons name="calendar-plus" size={20} color={COLORS.primary} />
+            <Text style={{ marginLeft: 8, fontWeight: '600', color: COLORS.primary }}>
               Tambah ke Kalender
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleShare}
+            accessibilityLabel="Bagikan Kode Booking"
+            accessibilityRole="button"
             style={{
               width: 52,
               height: 52,
               borderRadius: 16,
-              backgroundColor: 'white',
+              backgroundColor: COLORS.surfaceElevated,
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 1,
-              borderColor: '#E2E8F0',
+              borderColor: COLORS.border,
             }}
           >
-            <MaterialCommunityIcons name="share-variant" size={22} color="#64748B" />
+            <MaterialCommunityIcons name="share-variant" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </Animated.View>
 
         {/* Tips Card */}
         <Animated.View
           style={{
-            backgroundColor: '#FEF3C7',
+            backgroundColor: withOpacity(COLORS.warning, 0.15),
             borderRadius: 16,
             padding: 16,
             flexDirection: 'row',
@@ -320,12 +327,12 @@ const BookingSuccessScreen = () => {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          <MaterialCommunityIcons name="lightbulb-outline" size={20} color="#D97706" />
+          <MaterialCommunityIcons name="lightbulb-outline" size={20} color={COLORS.warning} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={{ fontWeight: '600', color: '#92400E', marginBottom: 4 }}>
+            <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.warning, marginBottom: 4 }}>
               Tips Sebelum Kunjungan
             </Text>
-            <Text style={{ color: '#A16207', fontSize: 13, lineHeight: 20 }}>
+            <Text style={{ color: COLORS.warning, ...TYPOGRAPHY.caption, lineHeight: 20 }}>
               • Datang 15 menit lebih awal{'\n'}
               • Bawa KTP dan kartu BPJS (jika ada){'\n'}
               • Siapkan riwayat kesehatan gigi
@@ -343,10 +350,10 @@ const BookingSuccessScreen = () => {
           bottom: 0,
           padding: 20,
           paddingBottom: insets.bottom + 20,
-          backgroundColor: 'white',
+          backgroundColor: COLORS.white,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
-          shadowColor: '#0F172A',
+          shadowColor: COLORS.textPrimary,
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.08,
           shadowRadius: 12,
@@ -357,9 +364,11 @@ const BookingSuccessScreen = () => {
           mode="contained"
           icon="calendar-check"
           onPress={handleGoToAppointments}
+          buttonColor={COLORS.primary}
           style={{ borderRadius: 16 }}
           contentStyle={{ paddingVertical: 6 }}
-          labelStyle={{ fontWeight: '700', fontSize: 16 }}
+          labelStyle={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700' }}
+          accessibilityLabel="Lihat Janji Temu Saya"
         >
           Lihat Janji Temu Saya
         </Button>
@@ -371,10 +380,10 @@ const BookingSuccessScreen = () => {
 const DetailItem = ({ icon, label, value }) => (
   <View style={{ width: '50%', marginBottom: 14 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-      <MaterialCommunityIcons name={icon} size={14} color="#94A3B8" />
-      <Text style={{ marginLeft: 6, fontSize: 12, color: '#94A3B8' }}>{label}</Text>
+      <MaterialCommunityIcons name={icon} size={14} color={COLORS.textMuted} />
+      <Text style={{ marginLeft: 6, fontSize: 12, color: COLORS.textMuted }}>{label}</Text>
     </View>
-    <Text style={{ fontWeight: '600', color: '#0F172A', marginLeft: 20 }}>{value}</Text>
+    <Text style={{ fontWeight: '600', color: COLORS.textPrimary, marginLeft: 20 }}>{value}</Text>
   </View>
 );
 

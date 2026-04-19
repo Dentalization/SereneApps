@@ -18,15 +18,11 @@ import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@
 import { useChat } from '../../../hooks/useChat';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
 // ─── Brand / Theme Constants ───────────────────────────────────────────────────
-const COLORS = {
-  primary: '#62109F', primaryLight: '#982BEA', primaryDark: '#450B71', secondary: '#00BFA6',
-  accent: '#FF6B9D', success: '#4CAF50', error: '#F44336', warning: '#FF9800', white: '#FFFFFF',
-  black: '#000000', gray50: '#FAFAFA', gray100: '#F5F5F5', gray200: '#EEEEEE',
-  gray300: '#E0E0E0', gray400: '#BDBDBD', gray500: '#9E9E9E', gray600: '#757575',
-  gray700: '#616161', gray800: '#424242', gray900: '#212121', background: '#F8FAFC',
-  chatUser: '#62109F', chatDentist: '#FFFFFF', chatSystem: '#F1F5F9', overlayDark: 'rgba(0,0,0,0.75)', overlayBlur: 'rgba(15,10,30,0.85)',
-};
+const COLORS = THEME_COLORS;
 
 // ─── Utility: Format appointment date for display ─────────────────────────────
 const formatAppointmentDateTime = (date) => {
@@ -218,8 +214,13 @@ const PatientTeledentistryScreen = () => {
         ])
       );
       pulse.start();
-      return () => pulse.stop();
+      return () => {
+        pulse.stop();
+        incomingCallAnim.stopAnimation();
+        pulseAnim.stopAnimation();
+      };
     } else {
+      incomingCallAnim.stopAnimation();
       Animated.timing(incomingCallAnim, {
         toValue: 0,
         duration: 250,
@@ -238,12 +239,14 @@ const PatientTeledentistryScreen = () => {
         useNativeDriver: true,
       }).start();
     } else {
+      videoCallAnim.stopAnimation();
       Animated.timing(videoCallAnim, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
       }).start();
     }
+    return () => videoCallAnim.stopAnimation();
   }, [callStatus, videoCallAnim]);
 
   // ─── Call Timer ────────────────a────────────────────────────────────────────
@@ -369,11 +372,13 @@ const PatientTeledentistryScreen = () => {
       {/* Back button */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
+        accessibilityLabel="Kembali"
+        accessibilityRole="button"
         style={{
           width: 40,
           height: 40,
           borderRadius: 20,
-          backgroundColor: 'rgba(255,255,255,0.15)',
+          backgroundColor: withOpacity(COLORS.white, 0.15),
           justifyContent: 'center',
           alignItems: 'center',
         }}
@@ -393,13 +398,13 @@ const PatientTeledentistryScreen = () => {
                 height: 40,
                 borderRadius: 20,
                 borderWidth: 2,
-                borderColor: 'rgba(255,255,255,0.3)',
+                borderColor: withOpacity(COLORS.white, 0.3),
               }}
               onError={() => setAvatarError(true)}
             />
           ) : (
             <LinearGradient
-              colors={['#B388FF', '#7C4DFF']}
+              colors={[COLORS.primaryLight, COLORS.primary]}
               style={{
                 width: 40,
                 height: 40,
@@ -407,10 +412,10 @@ const PatientTeledentistryScreen = () => {
                 justifyContent: 'center',
                 alignItems: 'center',
                 borderWidth: 2,
-                borderColor: 'rgba(255,255,255,0.3)',
+                borderColor: withOpacity(COLORS.white, 0.3),
               }}
             >
-              <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.white }}>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '700', color: COLORS.white }}>
                 {dentistInitials}
               </Text>
             </LinearGradient>
@@ -435,7 +440,7 @@ const PatientTeledentistryScreen = () => {
           <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.white }} numberOfLines={1}>
             {dentistName}
           </Text>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 12, color: withOpacity(COLORS.white, 0.7), marginTop: 1 }} numberOfLines={1}>
             {sessionStatus === 'ended'
               ? 'Sesi berakhir'
               : sessionStatus === 'upcoming'
@@ -446,35 +451,40 @@ const PatientTeledentistryScreen = () => {
       </View>
 
       {/* Call icons (disabled for patient) */}
+      {/* Call icons (disabled for patient) */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity
           style={{
             width: 40,
             height: 40,
             borderRadius: 20,
-            backgroundColor: 'rgba(255,255,255,0.08)',
+            backgroundColor: withOpacity(COLORS.white, 0.08),
             justifyContent: 'center',
             alignItems: 'center',
           }}
           disabled
           activeOpacity={1}
+          accessibilityLabel="Telepon (Hanya Dokter)"
+          accessibilityRole="image"
         >
-          <MaterialCommunityIcons name="phone" size={20} color="rgba(255,255,255,0.35)" />
+          <MaterialCommunityIcons name="phone" size={20} color={withOpacity(COLORS.white, 0.35)} />
         </TouchableOpacity>
         <TouchableOpacity
           style={{
             width: 40,
             height: 40,
             borderRadius: 20,
-            backgroundColor: 'rgba(255,255,255,0.08)',
+            backgroundColor: withOpacity(COLORS.white, 0.08),
             justifyContent: 'center',
             alignItems: 'center',
             marginLeft: 6,
           }}
           disabled
           activeOpacity={1}
+          accessibilityLabel="Video Call (Hanya Dokter)"
+          accessibilityRole="image"
         >
-          <MaterialCommunityIcons name="video" size={20} color="rgba(255,255,255,0.35)" />
+          <MaterialCommunityIcons name="video" size={20} color={withOpacity(COLORS.white, 0.35)} />
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -561,7 +571,7 @@ const PatientTeledentistryScreen = () => {
             style={{
               fontSize: 10,
               marginTop: 4,
-              color: isUser ? 'rgba(255,255,255,0.6)' : COLORS.gray400,
+              color: isUser ? withOpacity(COLORS.white, 0.6) : COLORS.gray400,
               textAlign: isUser ? 'right' : 'left',
             }}
           >
@@ -595,20 +605,20 @@ const PatientTeledentistryScreen = () => {
         <View style={{ marginTop: 16, marginBottom: 8, alignItems: 'center' }}>
           <View
             style={{
-              backgroundColor: '#EDE7F6',
+              backgroundColor: withOpacity(COLORS.primary, 0.15),
               borderRadius: 16,
               padding: 20,
               alignItems: 'center',
               width: '100%',
               borderWidth: 1,
-              borderColor: '#D1C4E9',
+              borderColor: withOpacity(COLORS.primary, 0.3),
             }}
           >
             <MaterialCommunityIcons name="calendar-clock" size={24} color={COLORS.primary} />
-            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.primaryDark, marginTop: 8 }}>
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.primaryDark, marginTop: 8 }}>
               Menunggu Jadwal Konsultasi
             </Text>
-            <Text style={{ fontSize: 13, color: COLORS.primary, marginTop: 4, textAlign: 'center', fontWeight: '600' }}>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.primary, marginTop: 4, textAlign: 'center', fontWeight: '600' }}>
               {formatAppointmentDateTime(resolvedAppointmentDate)}
             </Text>
           </View>
@@ -620,20 +630,20 @@ const PatientTeledentistryScreen = () => {
         <View style={{ marginTop: 16, marginBottom: 8, alignItems: 'center' }}>
           <View
             style={{
-              backgroundColor: '#E8F5E9',
+              backgroundColor: withOpacity(COLORS.success, 0.15),
               borderRadius: 16,
               padding: 20,
               alignItems: 'center',
               width: '100%',
               borderWidth: 1,
-              borderColor: '#A5D6A7',
+              borderColor: withOpacity(COLORS.success, 0.3),
             }}
           >
-            <MaterialCommunityIcons name="check-decagram" size={24} color={COLORS.secondary} />
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#2E7D32', marginTop: 8 }}>
+            <MaterialCommunityIcons name="check-decagram" size={24} color={COLORS.success} />
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.success, marginTop: 8 }}>
               Sesi konsultasi telah selesai
             </Text>
-            <Text style={{ fontSize: 12, color: '#4CAF50', marginTop: 4, textAlign: 'center' }}>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.success, marginTop: 4, textAlign: 'center' }}>
               Riwayat chat di atas disimpan untuk referensi Anda.
             </Text>
           </View>
@@ -663,8 +673,10 @@ const PatientTeledentistryScreen = () => {
         <TouchableOpacity
           style={{ width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 4 }}
           activeOpacity={0.7}
+          accessibilityLabel="Unggah Lampiran"
+          accessibilityRole="button"
         >
-          <MaterialCommunityIcons name="paperclip" size={22} color={COLORS.gray500} />
+          <MaterialCommunityIcons name="paperclip" size={22} color={COLORS.textMuted || COLORS.gray500} />
         </TouchableOpacity>
 
         {/* Text Input */}
@@ -733,10 +745,13 @@ const PatientTeledentistryScreen = () => {
         }}
         pointerEvents={callStatus === 'incoming' ? 'auto' : 'none'}
       >
-        <LinearGradient colors={['#1A0A30', '#2D1155', '#1A0A30']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <LinearGradient 
+          colors={[COLORS.primaryDark || '#1A0A30', COLORS.primary || '#2D1155', COLORS.primaryDark || '#1A0A30']} 
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        >
           {/* Decorative rings */}
-          <Animated.View style={{ position: 'absolute', borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(152,43,234,0.25)', width: 260, height: 260, transform: [{ scale: pulseAnim }] }} />
-          <Animated.View style={{ position: 'absolute', borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(152,43,234,0.4)', width: 200, height: 200, transform: [{ scale: pulseAnim }] }} />
+          <Animated.View style={{ position: 'absolute', borderRadius: 999, borderWidth: 1.5, borderColor: withOpacity(COLORS.primary, 0.25), width: 260, height: 260, transform: [{ scale: pulseAnim }] }} />
+          <Animated.View style={{ position: 'absolute', borderRadius: 999, borderWidth: 1.5, borderColor: withOpacity(COLORS.primary, 0.4), width: 200, height: 200, transform: [{ scale: pulseAnim }] }} />
 
           {/* Caller Info */}
           <View style={{ alignItems: 'center', marginBottom: 80 }}>
@@ -744,21 +759,21 @@ const PatientTeledentistryScreen = () => {
               {resolvedAvatar ? (
                 <Image
                   source={{ uri: resolvedAvatar }}
-                  style={{ width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: 'rgba(255,255,255,0.2)' }}
+                  style={{ width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: withOpacity(COLORS.white, 0.2) }}
                   onError={() => setAvatarError(true)}
                 />
               ) : (
                 <LinearGradient
                   colors={[COLORS.primaryLight, COLORS.primary]}
-                  style={{ width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: 'rgba(255,255,255,0.2)' }}
+                  style={{ width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: withOpacity(COLORS.white, 0.2) }}
                 >
                   <Text style={{ fontSize: 40, fontWeight: '700', color: COLORS.white }}>{dentistInitials}</Text>
                 </LinearGradient>
               )}
             </View>
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>Video Call Masuk</Text>
+            <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.6), letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>Video Call Masuk</Text>
             <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.white, textAlign: 'center', marginBottom: 4 }}>{dentistName}</Text>
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>{displaySpecialty}</Text>
+            <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.5) }}>{displaySpecialty}</Text>
           </View>
 
           {/* Accept / Reject Buttons */}
@@ -769,10 +784,12 @@ const PatientTeledentistryScreen = () => {
                 style={{ width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, backgroundColor: COLORS.error }}
                 onPress={handleRejectCall}
                 activeOpacity={0.8}
+                accessibilityLabel="Tolak Panggilan"
+                accessibilityRole="button"
               >
                 <MaterialCommunityIcons name="phone-hangup" size={32} color={COLORS.white} />
               </TouchableOpacity>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', marginTop: 10 }}>Tolak</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.bodySmall, fontWeight: '600', marginTop: 10 }}>Tolak</Text>
             </View>
 
             {/* Accept (with pulse) */}
@@ -782,11 +799,13 @@ const PatientTeledentistryScreen = () => {
                   style={{ width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, backgroundColor: COLORS.success }}
                   onPress={handleAcceptCall}
                   activeOpacity={0.8}
+                  accessibilityLabel="Terima Panggilan"
+                  accessibilityRole="button"
                 >
                   <MaterialCommunityIcons name="video" size={32} color={COLORS.white} />
                 </TouchableOpacity>
               </Animated.View>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', marginTop: 10 }}>Terima</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.bodySmall, fontWeight: '600', marginTop: 10 }}>Terima</Text>
             </View>
           </View>
         </LinearGradient>
@@ -819,7 +838,7 @@ const PatientTeledentistryScreen = () => {
         <View style={StyleSheet.absoluteFill}>
           {remoteParticipantSids.length > 0 ? (
             <TwilioVideoParticipantView
-              style={{ flex: 1, backgroundColor: '#000' }}
+              style={{ flex: 1, backgroundColor: COLORS.black }}
               trackIdentifier={{
                 participantSid: remoteParticipantSids[0],
                 videoTrackSid: ''
@@ -829,14 +848,14 @@ const PatientTeledentistryScreen = () => {
             <LinearGradient colors={['#0F172A', '#1E293B']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <View style={{ position: 'relative' }}>
                 {resolvedAvatar ? (
-                  <Image source={{ uri: resolvedAvatar }} style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', marginBottom: 16 }} onError={() => setAvatarError(true)} />
+                  <Image source={{ uri: resolvedAvatar }} style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: withOpacity(COLORS.white, 0.2), marginBottom: 16 }} onError={() => setAvatarError(true)} />
                 ) : (
                   <LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={{ width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
                     <Text style={{ fontSize: 36, fontWeight: '700', color: COLORS.white }}>{dentistInitials}</Text>
                   </LinearGradient>
                 )}
                 <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{dentistName}</Text>
-                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4, textAlign: 'center' }}>{displaySpecialty}</Text>
+                <Text style={{ fontSize: 13, color: withOpacity(COLORS.white, 0.5), marginTop: 4, textAlign: 'center' }}>{displaySpecialty}</Text>
                 <Text style={{ fontSize: 14, color: COLORS.accent, marginTop: 12, textAlign: 'center' }}>Menunggu terhubung...</Text>
               </View>
             </LinearGradient>
@@ -846,25 +865,25 @@ const PatientTeledentistryScreen = () => {
         {/* Top Bar: Timer + Back */}
         <SafeAreaView style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }} onPress={handleEndCall}>
+            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} onPress={handleEndCall}>
               <MaterialCommunityIcons name="arrow-left" size={22} color={COLORS.white} />
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: withOpacity(COLORS.white, 0.15), paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.error, marginRight: 8 }} />
               <Text style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{formatCallDuration(callDuration)}</Text>
             </View>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }} />
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} />
           </View>
         </SafeAreaView>
 
         {/* PIP (Patient Camera) */}
-        <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60, backgroundColor: '#263238' }}>
+        <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: withOpacity(COLORS.white, 0.3), elevation: 10, shadowColor: COLORS.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60, backgroundColor: '#263238' }}>
           {isVideoEnabled ? (
             <TwilioVideoLocalView enabled={true} style={{ flex: 1 }} />
           ) : (
             <LinearGradient colors={['#37474F', '#263238']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <MaterialCommunityIcons name="camera-off" size={32} color="rgba(255,255,255,0.6)" />
-              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, marginTop: 4 }}>Kamera Mati</Text>
+              <MaterialCommunityIcons name="camera-off" size={32} color={withOpacity(COLORS.white, 0.6)} />
+              <Text style={{ color: withOpacity(COLORS.white, 0.5), fontSize: 10, marginTop: 4 }}>Kamera Mati</Text>
             </LinearGradient>
           )}
         </View>
@@ -874,32 +893,38 @@ const PatientTeledentistryScreen = () => {
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, paddingHorizontal: 20 }}>
             {/* Mute */}
             <TouchableOpacity
-              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isAudioEnabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
+              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isAudioEnabled ? withOpacity(COLORS.white, 0.3) : withOpacity(COLORS.white, 0.15), paddingTop: 6 }}
               onPress={toggleAudio}
               activeOpacity={0.8}
+              accessibilityLabel={!isAudioEnabled ? "Nyalakan Mikrofon" : "Matikan Mikrofon"}
+              accessibilityRole="button"
             >
               <MaterialCommunityIcons name={!isAudioEnabled ? 'microphone-off' : 'microphone'} size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
+              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.caption, fontWeight: '500', marginTop: 4 }}>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
             </TouchableOpacity>
 
             {/* Camera Toggle */}
             <TouchableOpacity
-              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isVideoEnabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', paddingTop: 6 }}
+              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: !isVideoEnabled ? withOpacity(COLORS.white, 0.3) : withOpacity(COLORS.white, 0.15), paddingTop: 6 }}
               onPress={toggleVideo}
               activeOpacity={0.8}
+              accessibilityLabel={!isVideoEnabled ? "Nyalakan Kamera" : "Matikan Kamera"}
+              accessibilityRole="button"
             >
               <MaterialCommunityIcons name={!isVideoEnabled ? 'camera-off' : 'camera'} size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>{!isVideoEnabled ? 'Nyalakan' : 'Matikan'}</Text>
+              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.caption, fontWeight: '500', marginTop: 4 }}>{!isVideoEnabled ? 'Nyalakan' : 'Matikan'}</Text>
             </TouchableOpacity>
 
             {/* Switch Camera */}
             <TouchableOpacity
-              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', paddingTop: 6 }}
+              style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), paddingTop: 6 }}
               onPress={flipCamera}
               activeOpacity={0.8}
+              accessibilityLabel="Ganti Kamera"
+              accessibilityRole="button"
             >
               <MaterialCommunityIcons name="camera-flip-outline" size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>Flip</Text>
+              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.caption, fontWeight: '500', marginTop: 4 }}>Flip</Text>
             </TouchableOpacity>
 
             {/* End Call */}
@@ -907,9 +932,11 @@ const PatientTeledentistryScreen = () => {
               style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 76, borderRadius: 20, backgroundColor: COLORS.error, paddingTop: 6 }}
               onPress={handleEndCall}
               activeOpacity={0.8}
+              accessibilityLabel="Akhiri Panggilan"
+              accessibilityRole="button"
             >
               <MaterialCommunityIcons name="phone-hangup" size={24} color={COLORS.white} />
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '500', marginTop: 4 }}>Akhiri</Text>
+              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.caption, fontWeight: '500', marginTop: 4 }}>Akhiri</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -928,7 +955,7 @@ const PatientTeledentistryScreen = () => {
       {renderHeader()}
 
       {!socketConnected && (
-        <View style={{ backgroundColor: '#F59E0B', paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ backgroundColor: COLORS.warning, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
           <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.white} style={{ marginRight: 8 }} />
           <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>Koneksi terputus. Menghubungkan kembali...</Text>
         </View>
@@ -936,8 +963,8 @@ const PatientTeledentistryScreen = () => {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         {renderChatView()}
         {renderInputBar()}

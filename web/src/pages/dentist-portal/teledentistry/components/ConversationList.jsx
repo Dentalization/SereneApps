@@ -27,11 +27,14 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
   return (
     <div className="flex-1 overflow-y-auto">
       {conversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-          <div className="w-12 h-12 bg-surface-elevated rounded-lg flex items-center justify-center mb-3 border border-primary/10">
-            <Icon name="MessageCircle" size={20} className="text-muted" />
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-in fade-in zoom-in duration-500">
+          <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-6 border border-primary/10 shadow-inner">
+            <Icon name="MessageSquare" size={32} className="text-primary/40" />
           </div>
-          <p className="text-sm text-muted">No conversations</p>
+          <h3 className="text-lg font-semibold text-primary mb-2">No active sessions</h3>
+          <p className="text-sm text-secondary max-w-[200px] leading-relaxed">
+            Your consultation queue is currently empty. Incoming calls will appear here.
+          </p>
         </div>
       ) : (
         <div className="space-y-1 px-2 pt-4">
@@ -42,13 +45,15 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
             const online = isOnline(conversation);
 
             return (
-              <div
+              <button
                 key={conversation.appointmentId}
                 onClick={() => onConversationSelect(conversation)}
-                className={`mx-2 mb-1 rounded-xl cursor-pointer theme-transition relative transition-all duration-200 ${
+                aria-selected={active}
+                role="tab"
+                className={`mx-2 mb-1 rounded-xl cursor-pointer theme-transition relative transition-all duration-200 w-[calc(100%-2rem)] text-left ${
                   active
                     ? 'bg-gradient-to-r from-accent/10 to-accent/5 border border-accent/20 shadow-lg shadow-accent/10'
-                    : 'hover:bg-surface/50 hover:shadow-sm'
+                    : 'hover:bg-surface/50 hover:shadow-sm border border-transparent'
                 }`}
               >
                 <div className="px-4 py-3">
@@ -113,7 +118,7 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
                     </div>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

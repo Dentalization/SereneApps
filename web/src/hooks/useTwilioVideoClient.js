@@ -14,6 +14,7 @@ export function useTwilioVideoClient() {
   const [isConnected, setIsConnected] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
+  const [networkQuality, setNetworkQuality] = useState(5); // 0-5
 
   const detachFromElement = (track, element) => {
     if (!track) return;
@@ -101,6 +102,7 @@ export function useTwilioVideoClient() {
       try {
         room = await connect(token, {
           name: roomName,
+          networkQuality: true,
           ...DEFAULT_VIDEO_SETTINGS
         });
       } catch (error) {
@@ -115,6 +117,11 @@ export function useTwilioVideoClient() {
       setIsConnected(true);
       setAudioEnabled(true);
       setVideoEnabled(true);
+      setNetworkQuality(room.localParticipant.networkQualityLevel || 5);
+
+      room.localParticipant.on('networkQualityLevelChanged', (level) => {
+        setNetworkQuality(level);
+      });
 
       const attachLocalTracks = () => {
         const videoPublication = Array.from(room.localParticipant.videoTracks.values())[0];
@@ -165,6 +172,7 @@ export function useTwilioVideoClient() {
     isJoined: isConnected,
     audioEnabled,
     videoEnabled,
+    networkQuality,
     toggleAudio,
     toggleVideo
   };

@@ -57,6 +57,7 @@ const ChatInterface = ({
   messages,
   currentUserId,
   presence,
+  loading = false,
   onSendText,
   onUploadAttachment,
   onStartVideoCall
@@ -214,6 +215,7 @@ const ChatInterface = ({
             onClick={() => fileInputRef.current?.click()}
             className="p-1.5 text-muted hover:text-primary hover:bg-surface rounded-lg theme-transition"
             title="Share file"
+            aria-label="Upload file attachment"
           >
             <Icon name="Paperclip" size={16} />
           </button>
@@ -221,8 +223,20 @@ const ChatInterface = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map(renderMessage)}
-        <div ref={messagesEndRef} />
+        {loading ? (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                <div className={`w-2/3 h-16 rounded-2xl bg-primary/5 animate-pulse border border-primary/5`} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {messages.map(renderMessage)}
+            <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
       <div className="border-t border-primary/10 p-3 bg-surface-elevated theme-transition">
@@ -248,6 +262,7 @@ const ChatInterface = ({
             onClick={handleSubmit}
             disabled={!message.trim()}
             className="p-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed theme-transition"
+            aria-label="Send message"
           >
             <Icon name="Send" size={16} />
           </button>

@@ -9,6 +9,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
   const acceptBtnRef = useRef(null);
   const declineBtnRef = useRef(null);
   const countdownRef = useRef(null);
+  const previousActiveElement = useRef(null);
 
   // Use remoteParticipant if provided, otherwise fall back to conversation.patient
   const remote = remoteParticipant || conversation?.patient || {};
@@ -66,9 +67,13 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
     [onDecline]
   );
 
-  // Auto-focus accept button on mount
+  // Auto-focus accept button on mount & save previous focus
   useEffect(() => {
+    previousActiveElement.current = document.activeElement;
     acceptBtnRef.current?.focus();
+    return () => {
+      previousActiveElement.current?.focus();
+    };
   }, []);
 
   // Attach keydown listener
@@ -113,9 +118,15 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
           <h3 className="text-lg font-semibold text-primary theme-transition">{patientName}</h3>
           <p className="text-sm text-muted theme-transition mt-1">Incoming video consultation</p>
 
-          {/* Countdown */}
-          <p className="text-xs text-muted/70 mt-2 theme-transition">
-            Auto-declining in <span className="font-mono font-semibold text-warning">{countdown}s</span>
+          {/* Countdown Progress Bar */}
+          <div className="w-full h-1 bg-primary/5 rounded-full overflow-hidden mt-4">
+            <div 
+              className="h-full bg-warning transition-all duration-1000 ease-linear"
+              style={{ width: `${(countdown / AUTO_DECLINE_SECONDS) * 100}%` }}
+            />
+          </div>
+          <p className="text-[10px] uppercase tracking-wider text-muted/60 mt-2 font-bold">
+            Auto-declining in {countdown}s
           </p>
         </div>
 

@@ -2,136 +2,90 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { verifyMidtransSignature } from '../services/payments/midtrans.js';
 import { applyPaymentStatus } from '../services/payments/status.js';
-import {
-  beginWebhookProcessing,
-  markWebhookFailed,
-  markWebhookProcessed
-} from '../services/webhooks/idempotency.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-router.post('/midtrans', express.json({ type: '*/*' }), async (req, res) => {
-  let receipt = null;
+/**
+ * @route POST /v1/payments/webhooks
+ * @desc Midtrans Notification Webhook
+ */
+router.post('/', async (req, res) => {
   try {
-    const body = req.body || {};
-    const {
-      order_id: orderId,
-      transaction_id: transactionId,
-      transaction_status: transactionStatus,
-      fraud_status: fraudStatus,
-      status_code: statusCode,
-      gross_amount: grossAmount,
-      signature_key: signatureKey
-    } = body;
-
-    if (!orderId || !signatureKey || !statusCode || !grossAmount) {
-      return res.status(400).json({ error: 'invalid payload' });
-    }
-
-    const validSignature = verifyMidtransSignature({
-      orderId,
-      statusCode,
-      grossAmount,
-      signatureKey
+    const notification = req.body;
+    
+    // 1. Log notification for debugging
+    console.log('[PaymentWebhook] Received Midtrans notification:', {
+      order_id: notification.order_id,
+      transaction_status: notification.transaction_status,
+      timestamp: new Date().toISOString()
     });
 
-    if (!validSignature) {
-      return res.status(400).json({ error: 'invalid signature' });
-    }
-
-    const guard = await beginWebhookProcessing({
-      provider: 'midtrans',
-      source: 'snap_callback',
-      deliveryKey: transactionId || `${orderId}:${transactionStatus}:${fraudStatus || 'none'}`,
-      eventType: transactionStatus,
-      resourceId: orderId,
-      signature: signatureKey,
-      rawBody: body,
-      headers: req.headers,
-      correlationId: req.get('X-Correlation-Id') || req.get('X-Request-Id') || null
+    // 2. Verify Signature
+    const isVerified = verifyMidtransSignature({
+      orderId: notification.order_id,
+      statusCode: notification.status_code,
+      grossAmount: notification.gross_amount,
+      signatureKey: notification.signature_key
     });
 
-    receipt = guard.receipt;
-    if (guard.decision === 'skip') {
-      return res.json({ ok: true, duplicate: true });
+    if (!isVerified) {
+      console.warn('[PaymentWebhook] ⚠️ Signature verification failed for order:', notification.order_id);
+      return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    const paymentIntent = await prisma.paymentIntent.findFirst({
-      where: {
-        OR: [
-          { providerOrderId: orderId },
-          { providerPaymentId: transactionId || body.token || orderId }
-        ]
-      },
-      select: { id: true }
-    });
+    // 3. Extract IDs from order_id (format: appointment-{id}-intent-{id})
+    const orderId = notification.order_id || '';
+    const intentMatch = orderId.match(/intent-(\d+)/);
+    const intentIdStr = intentMatch ? intentMatch[1] : null;
 
-    if (!paymentIntent) {
-      return res.status(404).json({ error: 'payment intent not found' });
+    if (!intentIdStr) {
+      console.error('[PaymentWebhook] ❌ Failed to parse paymentIntentId from order_id:', orderId);
+      return res.status(400).json({ error: 'Invalid order_id format' });
     }
 
-    let mappedStatus = 'pending';
-    switch (transactionStatus) {
-      case 'capture':
-      case 'settlement':
-        mappedStatus = 'succeeded';
-        break;
-      case 'pending':
-        mappedStatus = 'requires_action';
-        break;
-      case 'deny':
-      case 'cancel':
-      case 'expire':
-        mappedStatus = 'failed';
-        break;
-      default:
-        mappedStatus = 'pending';
-    }
+    const paymentIntentId = BigInt(intentIdStr);
 
-    if (transactionStatus === 'capture' && fraudStatus === 'challenge') {
-      mappedStatus = 'requires_action';
-    }
+    // 4. Map Midtrans status to internal status
+    const midtransStatus = notification.transaction_status;
+    const fraudStatus = notification.fraud_status;
 
-    const result = await applyPaymentStatus({
-      paymentIntentId: paymentIntent.id,
-      newStatus: mappedStatus,
-      providerPaymentId: transactionId || body.token || orderId,
-      providerResponse: body
-    });
+    let internalStatus = 'pending';
+    let failureReason = null;
 
-    await prisma.paymentIntent.update({
-      where: { id: paymentIntent.id },
-      data: {
-        providerOrderId: orderId,
-        callbackVerifiedAt: new Date(),
-        reconciliationStatus: mappedStatus === 'succeeded' ? 'verified' : 'pending'
+    if (midtransStatus === 'capture') {
+      if (fraudStatus === 'challenge') {
+        internalStatus = 'requires_action';
+      } else if (fraudStatus === 'accept') {
+        internalStatus = 'succeeded';
       }
-    });
-
-    if (receipt) {
-      await markWebhookProcessed({ receiptId: receipt.id });
+    } else if (midtransStatus === 'settlement') {
+      internalStatus = 'succeeded';
+    } else if (midtransStatus === 'cancel' || midtransStatus === 'deny' || midtransStatus === 'expire') {
+      internalStatus = midtransStatus === 'cancel' ? 'cancelled' : 'failed';
+      failureReason = midtransStatus;
+    } else if (midtransStatus === 'pending') {
+      internalStatus = 'pending';
     }
 
-    return res.json({
-      paymentIntent: result.paymentIntent.id.toString(),
-      appointmentStatus: result.appointmentStatus,
-      duplicate: result.noOp === true
+    // 5. Apply Status Update
+    console.log(`[PaymentWebhook] Mapping "${midtransStatus}" -> "${internalStatus}" for intent ${paymentIntentId}`);
+    
+    await applyPaymentStatus({
+      paymentIntentId,
+      newStatus: internalStatus,
+      providerPaymentId: notification.transaction_id,
+      providerResponse: notification,
+      failureReason
     });
+
+    // 6. Respond to Midtrans (they expect 200 OK)
+    return res.status(200).json({ status: 'OK' });
   } catch (error) {
-    console.error('Midtrans webhook error:', error);
-    if (receipt?.id) {
-      await markWebhookFailed({
-        receiptId: receipt.id,
-        errorMessage: error.message
-      }).catch((markError) => {
-        console.error('Failed to update webhook receipt status:', markError);
-      });
-    }
-    if (error.status) {
-      return res.status(error.status).json({ error: error.message.toLowerCase() });
-    }
-    return res.status(500).json({ error: 'failed to process webhook' });
+    console.error('[PaymentWebhook] ❌ Error processing webhook:', error);
+    // Even on error, we might want to return 200 to prevent Midtrans from retrying infinitely 
+    // if the error is unrecoverable, but 500 is safer for transient database issues.
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

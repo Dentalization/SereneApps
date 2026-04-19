@@ -27,6 +27,7 @@ export function useChat() {
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
+  const notificationSound = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'));
 
   const clientRef = useRef(null);
   const convRef = useRef(null);
@@ -230,6 +231,12 @@ export function useChat() {
               if (c.appointmentId === appointmentId) {
                 found = true;
                 const isOwn = formatted.senderId === user?.id?.toString();
+                
+                // Play notification sound if message is from patient
+                if (!isOwn) {
+                  notificationSound.current.play().catch(() => {});
+                }
+
                 return {
                   ...c,
                   lastMessage: formatted,

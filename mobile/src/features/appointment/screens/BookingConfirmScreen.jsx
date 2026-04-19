@@ -8,6 +8,10 @@ import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 const BookingConfirmScreen = () => {
   const theme = useTheme();
@@ -30,6 +34,8 @@ const BookingConfirmScreen = () => {
   const [notes, setNotes] = useState('');
   const [reminder, setReminder] = useState(30);
   const [payment, setPayment] = useState('card');
+  const isReschedule = route.params?.isReschedule === true;
+  const originalAppointmentId = route.params?.originalAppointmentId || null;
 
   const summaryDate = new Date(selectedDate);
   const dateLabel = summaryDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -45,6 +51,8 @@ const BookingConfirmScreen = () => {
       reminder,
       fee,
       paymentMethod: payment,
+      isReschedule,
+      originalAppointmentId,
     });
   };
 
@@ -52,7 +60,7 @@ const BookingConfirmScreen = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
       <View
@@ -60,7 +68,7 @@ const BookingConfirmScreen = () => {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10 }}
       >
         <LinearGradient
-          colors={['#7C3AED', '#A855F7']}
+          colors={[COLORS.primary, COLORS.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ paddingTop: insets.top + 10, paddingHorizontal: 20, paddingBottom: 32, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
@@ -68,13 +76,17 @@ const BookingConfirmScreen = () => {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Kembali"
+              accessibilityRole="button"
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.white, 0.2), alignItems: 'center', justifyContent: 'center' }}
             >
-              <MaterialCommunityIcons name='arrow-left' size={22} color='white' />
+              <MaterialCommunityIcons name='arrow-left' size={22} color={COLORS.surfaceElevated} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Langkah 2/3</Text>
-              <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 4 }}>Konfirmasi jadwal</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.caption }}>Langkah 2/3</Text>
+              <Text style={{ color: COLORS.surfaceElevated, ...TYPOGRAPHY.h3, marginTop: 4 }}>
+                {isReschedule ? 'Ubah Jadwal' : 'Konfirmasi jadwal'}
+              </Text>
             </View>
             {/* Show clinic info button only if dentist has a clinic (not independent) */}
             {(dentist?.clinicContext?.branchId || dentist?.clinicContext?.profileId || dentist?.clinic?.id) ? (
@@ -92,16 +104,18 @@ const BookingConfirmScreen = () => {
                     });
                   }
                 }}
-                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
+                accessibilityLabel="Detail Klinik"
+                accessibilityRole="button"
+                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.white, 0.2), alignItems: 'center', justifyContent: 'center' }}
               >
-                <MaterialCommunityIcons name='information-outline' size={22} color='white' />
+                <MaterialCommunityIcons name='information-outline' size={22} color={COLORS.surfaceElevated} />
               </TouchableOpacity>
             ) : (
               <View style={{ width: 48 }} />
             )}
           </View>
           <View style={{ marginTop: 20 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.8)' }}>Periksa kembali detail pemesanan sebelum konfirmasi.</Text>
+            <Text style={{ color: withOpacity(COLORS.white, 0.8) }}>Periksa kembali detail pemesanan sebelum konfirmasi.</Text>
             <View style={{ marginTop: 20 }}>
               <ProgressIndicator current={2} />
             </View>
@@ -114,8 +128,8 @@ const BookingConfirmScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A' }}>Konfirmasi janji</Text>
-          <Text style={{ color: '#94A3B8', marginBottom: 20 }}>
+          <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.textPrimary }}>Konfirmasi janji</Text>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginBottom: 20 }}>
             Periksa kembali detail sebelum kamu menyelesaikan pemesanan.
           </Text>
 
@@ -134,6 +148,9 @@ const BookingConfirmScreen = () => {
               value={notes}
               onChangeText={setNotes}
               multiline
+              outlineColor={COLORS.border}
+              activeOutlineColor={COLORS.primary}
+              style={{ backgroundColor: COLORS.surfaceElevated }}
             />
           </Section>
 
@@ -144,8 +161,8 @@ const BookingConfirmScreen = () => {
                   key={value}
                   selected={reminder === value}
                   onPress={() => setReminder(value)}
-                  style={{ marginRight: 8, marginBottom: 8, backgroundColor: reminder === value ? theme.colors.primary : '#E2E8F0' }}
-                  textStyle={{ color: reminder === value ? 'white' : '#475569' }}
+                  style={{ marginRight: 8, marginBottom: 8, backgroundColor: reminder === value ? COLORS.primary : COLORS.border }}
+                  textStyle={{ color: reminder === value ? COLORS.surfaceElevated : COLORS.textSecondary }}
                 >
                   {value} menit sebelumnya
                 </Chip>
@@ -164,8 +181,8 @@ const BookingConfirmScreen = () => {
                   key={option.key}
                   selected={payment === option.key}
                   onPress={() => setPayment(option.key)}
-                  style={{ marginRight: 8, marginBottom: 8, backgroundColor: payment === option.key ? theme.colors.primary : '#E2E8F0' }}
-                  textStyle={{ color: payment === option.key ? 'white' : '#475569' }}
+                  style={{ marginRight: 8, marginBottom: 8, backgroundColor: payment === option.key ? COLORS.primary : COLORS.border }}
+                  textStyle={{ color: payment === option.key ? COLORS.surfaceElevated : COLORS.textSecondary }}
                 >
                   {option.label}
                 </Chip>
@@ -173,22 +190,47 @@ const BookingConfirmScreen = () => {
             </View>
           </Section>
 
-          <Section title='Ringkasan biaya'>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ color: '#475569' }}>Biaya konsultasi</Text>
-              <Text style={{ fontWeight: '600', color: '#0F172A' }}>{formatCurrency(fee)}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: '#475569' }}>Total dibayar</Text>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>{formatCurrency(fee)}</Text>
+          {/* DIBUNGKUS DENGAN SECTION BARU AGAR RAPI DAN MEMPERBAIKI SYNTAX ERROR SEBELUMNYA */}
+          {/* Cost Summary */}
+          <Section title='Ringkasan Biaya'>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodyLarge }}>Total dibayar</Text>
+              <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.primary }}>{formatCurrency(fee)}</Text>
             </View>
           </Section>
+
+          {/* Cancellation Policy */}
+          <View style={{
+            backgroundColor: withOpacity(COLORS.warning, 0.1),
+            borderRadius: 16,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.warning, 0.2),
+            flexDirection: 'row',
+            marginBottom: 24
+          }}>
+            <MaterialCommunityIcons name="information" size={20} color={COLORS.warning} style={{ marginTop: 2 }} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.warning, marginBottom: 4 }}>Kebijakan Pembatalan</Text>
+              <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.warning, 0.8), lineHeight: 18 }}>
+                Pembatalan kurang dari 24 jam sebelum jadwal akan dikenakan biaya administrasi 50%. Dana akan dikembalikan melalui metode pembayaran asal.
+              </Text>
+            </View>
+          </View>
         </View>
       </ScrollView>
 
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
-        <Button mode='contained' icon='arrow-right' onPress={handleConfirm}>
-          Lanjut ke Pembayaran
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: COLORS.textPrimary, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
+        <Button
+          mode='contained'
+          icon='arrow-right'
+          onPress={handleConfirm}
+          buttonColor={COLORS.primary}
+          contentStyle={{ paddingVertical: 6 }}
+          labelStyle={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700' }}
+          accessibilityLabel={isReschedule ? 'Ubah Jadwal' : 'Lanjut ke Pembayaran'}
+        >
+          {isReschedule ? 'Ubah Jadwal' : 'Lanjut ke Pembayaran'}
         </Button>
       </View>
     </View>
@@ -204,7 +246,7 @@ const ProgressIndicator = ({ current }) => (
       return (
         <View key={label} style={{ alignItems: 'center', flex: 1 }}>
           <LinearGradient
-            colors={active ? ['#FDE68A', '#FBBF24'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+            colors={active ? [COLORS.warning, withOpacity(COLORS.warning, 0.8)] : [withOpacity(COLORS.primary, 0.1), withOpacity(COLORS.primary, 0.05)]}
             style={{
               width: 32,
               height: 32,
@@ -214,12 +256,12 @@ const ProgressIndicator = ({ current }) => (
             }}
           >
             {completed ? (
-              <MaterialCommunityIcons name="check" size={18} color="#78350F" />
+              <MaterialCommunityIcons name="check" size={18} color={COLORS.textPrimary} />
             ) : (
-              <Text style={{ color: active ? '#78350F' : '#E5E7EB', fontWeight: '700' }}>{step}</Text>
+              <Text style={{ color: active ? COLORS.textPrimary : COLORS.textMuted, fontWeight: '700' }}>{step}</Text>
             )}
           </LinearGradient>
-          <Text style={{ marginTop: 6, fontSize: 12, color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>{label}</Text>
+          <Text style={{ marginTop: 6, ...TYPOGRAPHY.caption, color: active ? COLORS.white : withOpacity(COLORS.white, 0.7) }}>{label}</Text>
         </View>
       );
     })}
@@ -227,38 +269,37 @@ const ProgressIndicator = ({ current }) => (
 );
 
 const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
-  // For independent dentists, use their practice name/address
   const isIndependent = dentist?.dentistType === 'independent' || !dentist?.clinicContext?.profileId;
-  const locationName = clinic?.name || 
-                       dentist?.clinicContext?.name || 
-                       dentist?.clinicName || 
-                       (isIndependent ? 'Praktik Mandiri' : 'Lokasi belum ditentukan');
-  
+  const locationName = clinic?.name ||
+    dentist?.clinicContext?.name ||
+    dentist?.clinicName ||
+    (isIndependent ? 'Praktik Mandiri' : 'Lokasi belum ditentukan');
+
   return (
     <LinearGradient
-      colors={['#EEF2FF', '#FFFFFF']}
-      style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
+      colors={[withOpacity(COLORS.primary, 0.05), COLORS.surfaceElevated]}
+      style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
         <View>
-          <Text style={{ fontWeight: '700', color: '#0F172A' }}>{dateLabel}</Text>
-          <Text style={{ color: '#5F6B7C' }}>{timeLabel} WIB</Text>
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{dateLabel}</Text>
+          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>{timeLabel} WIB</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: '#94A3B8' }}>{type === 'virtual' ? 'Virtual visit' : 'Tatap muka'}</Text>
-          <Text style={{ marginTop: 4, fontWeight: '700', color: '#0F172A' }}>{locationName}</Text>
+          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{type === 'virtual' ? 'Virtual visit' : 'Tatap muka'}</Text>
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary, marginTop: 4 }}>{locationName}</Text>
           {isIndependent && (
-            <Text style={{ fontSize: 10, color: '#7C3AED', marginTop: 2 }}>Dokter Mandiri</Text>
+            <Text style={{ ...TYPOGRAPHY.overline, color: COLORS.primary, marginTop: 2 }}>Dokter Mandiri</Text>
           )}
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ width: 52, height: 52, borderRadius: 20, backgroundColor: 'rgba(124,58,237,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-          <MaterialCommunityIcons name='account-heart' size={26} color='#7C3AED' />
+        <View style={{ width: 52, height: 52, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.1), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+          <MaterialCommunityIcons name='account-heart' size={26} color={COLORS.primary} />
         </View>
         <View>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>{dentist?.name}</Text>
-          <Text style={{ color: '#5F6B7C' }}>{dentist?.specialty}</Text>
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{dentist?.name}</Text>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 2 }}>{dentist?.specialty}</Text>
         </View>
       </View>
     </LinearGradient>
@@ -267,7 +308,7 @@ const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
 
 const Section = ({ title, children }) => (
   <View style={{ marginBottom: 24 }}>
-    <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 12 }}>{title}</Text>
+    <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary, marginBottom: 12 }}>{title}</Text>
     {children}
   </View>
 );

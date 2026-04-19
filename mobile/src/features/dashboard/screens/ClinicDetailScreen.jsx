@@ -13,6 +13,7 @@ import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import StatPill from '../../../components/shared/StatPill';
 import { API_BASE_URL } from '../../../services/api';
 
 const DICEBEAR_BG = '8B5CF6';
@@ -51,22 +52,7 @@ const pickDoctorAvatar = (source = {}) =>
   source?.profile_picture ||
   null;
 
-const StatPill = ({ icon, label, value }) => (
-  <View
-    style={{
-      flex: 1,
-      marginHorizontal: 6,
-      padding: 12,
-      borderRadius: 16,
-      backgroundColor: 'rgba(15,23,42,0.2)',
-      alignItems: 'center',
-    }}
-  >
-    <MaterialCommunityIcons name={icon} size={20} color="white" />
-    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 4 }}>{label}</Text>
-    <Text style={{ color: 'white', fontWeight: '700', marginTop: 2 }}>{value}</Text>
-  </View>
-);
+// Section component
 
 const Section = ({ title, description, children, onLayout }) => (
   <View style={{ marginBottom: 24 }} onLayout={onLayout}>

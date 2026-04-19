@@ -23,9 +23,53 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
     isJoined,
     audioEnabled,
     videoEnabled,
+    networkQuality,
     toggleAudio,
     toggleVideo
   } = useTwilioVideoClient();
+
+  // PIP Dragging logic
+  const [pipPos, setPipPos] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
+  const offsetRef = useRef({ x: 0, y: 0 });
+
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    offsetRef.current = {
+      x: e.clientX - pipPos.x,
+      y: e.clientY - pipPos.y,
+    };
+  };
+
+  useEffect(() => {
+    const handleDragMove = (e) => {
+      if (!isDragging) return;
+      const container = document.getElementById('video-call-container');
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      
+      // Calculate new position within bounds (right and top fixed for simplicity, or relative to container)
+      // I'll stick to fixed from TOP and RIGHT.
+      const newX = rect.right - e.clientX;
+      const newY = e.clientY - rect.top;
+
+      setPipPos({
+        x: Math.max(8, Math.min(newX - offsetRef.current.x, rect.width - 200)),
+        y: Math.max(8, Math.min(newY - offsetRef.current.y, rect.height - 150)),
+      });
+    };
+
+    const handleDragEnd = () => setIsDragging(false);
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleDragMove);
+      window.addEventListener('mouseup', handleDragEnd);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [isDragging]);
 
   useEffect(() => {
     let durationTimer;
@@ -87,7 +131,8 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
 
   return (
     <div
-      className="relative h-full bg-black flex flex-col"
+      id="video-call-container"
+      className="relative h-full bg-black flex flex-col overflow-hidden"
       onMouseMove={resetControlsTimer}
       onTouchMove={resetControlsTimer}
       onTouchStart={resetControlsTimer}
@@ -103,7 +148,20 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
               </span>
             </div>
             <div>
-              <h3 className="text-sm font-medium">{remoteName}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium">{remoteName}</h3>
+                <div className="flex items-center gap-0.5" title={`Signal quality: ${networkQuality}/5`}>
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <div
+                      key={level}
+                      className={`w-1 h-3 rounded-full ${
+                        level <= networkQuality ? 'bg-emerald-500' : 'bg-white/20'
+                      }`}
+                      style={{ height: `${level * 20 + 20}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
               <p className="text-xs text-gray-300">
                 {isJoined ? 'Connected' : 'Connecting'} • {formatDuration(callDuration)}
               </p>
@@ -128,7 +186,18 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
           </div>
         </div>
 
-        <div className="absolute top-4 right-4 w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border-2 border-white/20">
+        <div 
+          onMouseDown={handleDragStart}
+          style={{ 
+            top: `${pipPos.y}px`, 
+            right: `${pipPos.x}px`,
+            cursor: isDragging ? 'grabbing' : 'grab'
+          }}
+          className="absolute w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border-2 border-white/20 shadow-2xl z-20 group"
+        >
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+            <Icon name="Move" size={20} className="text-white" />
+          </div>
           <video ref={localVideoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
           {!videoEnabled && (
             <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">

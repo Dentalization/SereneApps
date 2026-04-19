@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { appointmentConfig, millisecondsFromHours } from '../services/appointments/config.js';
 import { recordStatusChange } from '../services/appointments/audit.js';
 import { emitAppointmentEvent } from '../services/communications.js';
+import videoRouter from './communications/video.js';
 
 const router = express.Router();
 const prisma = new PrismaClient({
@@ -1235,7 +1236,8 @@ router.patch(
   }
 );
 
-export default router;
+router.use('/', videoRouter);
+
 router.get(
   '/',
   authenticateToken,
@@ -1494,3 +1496,5 @@ router.get(
     }
   }
 );
+
+export default router;

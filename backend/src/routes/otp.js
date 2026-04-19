@@ -56,7 +56,7 @@ router.post('/requests', otpLimiter, validate(otpRequestSchema), async (req, res
 
   try {
     const result = await requestOtp({
-      identifier: req.body.channel === 'email' ? req.body.email : req.body.phone_number,
+      identifier: req.body.identifier || (req.body.channel === 'email' ? req.body.email : req.body.phone_number),
       channel: req.body.channel || 'sms',
       purpose: req.body.purpose || 'login',
       requestIp: req.ip,

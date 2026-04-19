@@ -22,7 +22,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
 import resolveMediaUrl from '../../../utils/media';
+import StatPill from '../../../components/shared/StatPill';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
+const COLORS = THEME_COLORS;
 const filters = [
   { key: 'all', label: 'Semua' },
   { key: 'nearby', label: 'Terdekat' },
@@ -55,7 +59,7 @@ const StatChip = ({ icon, label }) => (
     style={{
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'rgba(255,255,255,0.2)',
+      backgroundColor: withOpacity(COLORS.white, 0.2),
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: 999,
@@ -65,9 +69,9 @@ const StatChip = ({ icon, label }) => (
     <MaterialCommunityIcons name={icon} size={14} color="white" />
     <Text
       style={{
-        color: 'white',
+        color: COLORS.white,
         marginLeft: 6,
-        fontSize: 12,
+        ...TYPOGRAPHY.caption,
         fontWeight: '600',
       }}
     >
@@ -88,23 +92,23 @@ const ActionButton = ({ label, icon, onPress, variant }) => {
         justifyContent: 'center',
         paddingVertical: 10,
         borderRadius: 999,
-        backgroundColor: isFilled ? 'white' : 'rgba(255,255,255,0.15)',
+        backgroundColor: isFilled ? COLORS.white : withOpacity(COLORS.white, 0.15),
         borderWidth: isFilled ? 0 : 1,
-        borderColor: 'rgba(255,255,255,0.4)',
+        borderColor: withOpacity(COLORS.white, 0.4),
         marginLeft: isFilled ? 12 : 0,
       }}
     >
       <MaterialCommunityIcons
         name={icon}
         size={16}
-        color={isFilled ? '#1D1B20' : 'white'}
+        color={isFilled ? COLORS.textPrimary : COLORS.white}
       />
       <Text
         style={{
-          color: isFilled ? '#1D1B20' : 'white',
+          color: isFilled ? COLORS.textPrimary : COLORS.white,
           fontWeight: '700',
           marginLeft: 6,
-          fontSize: 13,
+          ...TYPOGRAPHY.bodySmall,
         }}
       >
         {label}
@@ -217,7 +221,7 @@ const ClinicSearchScreen = () => {
   }, [clinics]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar
         barStyle="light-content"
         backgroundColor="transparent"
@@ -235,7 +239,7 @@ const ClinicSearchScreen = () => {
         }}
       >
         <LinearGradient
-          colors={['#7C3AED', '#9D5DF5']}
+          colors={[COLORS.primary, COLORS.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, { paddingTop: insets.top + 2 }]}
@@ -248,14 +252,14 @@ const ClinicSearchScreen = () => {
               <MaterialCommunityIcons
                 name="arrow-left"
                 size={22}
-                color="white"
+                color={COLORS.white}
               />
             </TouchableOpacity>
             <View style={{ alignItems: 'center' }}>
               <Text
                 style={{
-                  color: 'rgba(255,255,255,0.7)',
-                  fontSize: 12,
+                  color: withOpacity(COLORS.white, 0.7),
+                  ...TYPOGRAPHY.caption,
                 }}
               >
                 Penjelajah
@@ -288,11 +292,13 @@ const ClinicSearchScreen = () => {
 
           <View style={styles.heroStats}>
             <StatPill
+              variant="horizontal"
               icon="map-marker"
               label="Dekat Anda"
               value={`${stats.nearby} klinik`}
             />
             <StatPill
+              variant="horizontal"
               icon="star"
               label="Rating rata-rata"
               value={`${stats.avgRating}/5`}
@@ -304,8 +310,9 @@ const ClinicSearchScreen = () => {
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.heroSearch}
-            inputStyle={{ color: '#0F172A' }}
-            iconColor="#94A3B8"
+            inputStyle={{ color: COLORS.textPrimary, ...TYPOGRAPHY.body }}
+            iconColor={COLORS.textMuted}
+            accessibilityLabel="Cari klinik"
           />
         </LinearGradient>
       </View>
@@ -332,15 +339,17 @@ const ClinicSearchScreen = () => {
                 key={filter.key}
                 selected={active}
                 onPress={() => setSelectedFilter(filter.key)}
+                accessibilityLabel={`Filter ${filter.label}`}
+                accessibilityRole="button"
                 style={{
                   marginRight: 10,
                   height: 38,
-                  backgroundColor: active ? '#EEF2FF' : 'white',
-                  borderColor: active ? '#7C3AED' : '#E2E8F0',
+                  backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
+                  borderColor: active ? COLORS.primary : COLORS.border,
                   borderWidth: 1,
                 }}
                 textStyle={{
-                  color: active ? '#7C3AED' : '#475569',
+                  color: active ? COLORS.primary : COLORS.textSecondary,
                   fontWeight: '600',
                 }}
               >
@@ -355,26 +364,28 @@ const ClinicSearchScreen = () => {
             <TouchableOpacity
               onPress={refresh}
               style={{
-                backgroundColor: '#FEE2E2',
+                backgroundColor: withOpacity(COLORS.error, 0.15),
                 borderRadius: 16,
                 padding: 16,
                 marginBottom: 16,
                 borderWidth: 1,
-                borderColor: '#FECACA',
+                borderColor: withOpacity(COLORS.error, 0.3),
               }}
             >
               <Text
                 style={{
-                  color: '#B91C1C',
+                  color: COLORS.error,
                   fontWeight: '700',
+                  ...TYPOGRAPHY.h5,
                 }}
               >
                 Tidak dapat memuat klinik
               </Text>
               <Text
                 style={{
-                  color: '#B91C1C',
+                  color: COLORS.error,
                   marginTop: 4,
+                  ...TYPOGRAPHY.bodySmall,
                 }}
               >
                 Ketuk untuk coba lagi
@@ -387,12 +398,12 @@ const ClinicSearchScreen = () => {
               <MaterialCommunityIcons
                 name="hospital-box-outline"
                 size={56}
-                color="#CBD5F5"
+                color={withOpacity(COLORS.primary, 0.2)}
               />
               <Text
                 style={{
-                  fontWeight: '700',
-                  color: '#0F172A',
+                  ...TYPOGRAPHY.h4,
+                  color: COLORS.textPrimary,
                   marginTop: 12,
                 }}
               >
@@ -400,9 +411,10 @@ const ClinicSearchScreen = () => {
               </Text>
               <Text
                 style={{
-                  color: '#475569',
+                  color: COLORS.textSecondary,
                   textAlign: 'center',
                   marginTop: 4,
+                  ...TYPOGRAPHY.bodySmall,
                 }}
               >
                 Coba ubah kata kunci atau filter pencarian Anda.
@@ -419,10 +431,10 @@ const ClinicSearchScreen = () => {
             >
               <ActivityIndicator
                 animating
-                color={theme.colors.primary}
+                color={COLORS.primary}
               />
               <Text
-                style={{ marginTop: 12, color: '#475569' }}
+                style={{ marginTop: 12, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}
               >
                 Memuat klinik terdekat...
               </Text>
@@ -461,6 +473,8 @@ const ClinicSearchScreen = () => {
                     coords: location,
                   })
                 }
+                accessibilityLabel={`Klinik ${clinic.name}, Jarak ${formatDistance(clinic)}, Rating ${clinic.rating || 4.8}`}
+                accessibilityRole="button"
                 style={{ marginBottom: 20 }}
                 activeOpacity={0.9}
               >
@@ -476,8 +490,8 @@ const ClinicSearchScreen = () => {
                 >
                   <LinearGradient
                     colors={[
-                      'rgba(0,0,0,0.1)',
-                      'rgba(0,0,0,0.75)',
+                      withOpacity(COLORS.textPrimary, 0.1),
+                      withOpacity(COLORS.textPrimary, 0.75),
                     ]}
                     style={{
                       flex: 1,
@@ -494,7 +508,7 @@ const ClinicSearchScreen = () => {
                     >
                       <View
                         style={{
-                          backgroundColor: 'rgba(255,255,255,0.95)',
+                          backgroundColor: withOpacity(COLORS.white, 0.95),
                           paddingHorizontal: 14,
                           paddingVertical: 8,
                           borderRadius: 999,
@@ -505,14 +519,14 @@ const ClinicSearchScreen = () => {
                         <MaterialCommunityIcons
                           name="map-marker-distance"
                           size={16}
-                          color="#7C3AED"
+                          color={COLORS.primary}
                         />
                         <Text
                           style={{
-                            color: '#1D1B20',
+                            color: COLORS.textPrimary,
                             fontWeight: '700',
                             marginLeft: 6,
-                            fontSize: 13,
+                            ...TYPOGRAPHY.caption,
                           }}
                         >
                           {formatDistance(clinic)}
@@ -521,7 +535,7 @@ const ClinicSearchScreen = () => {
 
                       <View
                         style={{
-                          backgroundColor: 'rgba(255,255,255,0.95)',
+                          backgroundColor: withOpacity(COLORS.white, 0.95),
                           paddingHorizontal: 12,
                           paddingVertical: 6,
                           borderRadius: 999,
@@ -532,14 +546,14 @@ const ClinicSearchScreen = () => {
                         <MaterialCommunityIcons
                           name="star"
                           size={14}
-                          color="#F59E0B"
+                          color={COLORS.warning}
                         />
                         <Text
                           style={{
-                            color: '#1D1B20',
+                            color: COLORS.textPrimary,
                             fontWeight: '700',
                             marginLeft: 4,
-                            fontSize: 13,
+                            ...TYPOGRAPHY.caption,
                           }}
                         >
                           {(clinic.rating || 4.8).toFixed(1)}
@@ -550,9 +564,8 @@ const ClinicSearchScreen = () => {
                     <View>
                       <Text
                         style={{
-                          color: 'white',
-                          fontSize: 20,
-                          fontWeight: '800',
+                          color: COLORS.white,
+                          ...TYPOGRAPHY.h3,
                           marginBottom: 6,
                         }}
                       >
@@ -560,8 +573,8 @@ const ClinicSearchScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          color: 'rgba(255,255,255,0.9)',
-                          fontSize: 14,
+                          color: withOpacity(COLORS.white, 0.9),
+                          ...TYPOGRAPHY.bodySmall,
                           marginBottom: 14,
                         }}
                       >
@@ -613,6 +626,7 @@ const ClinicSearchScreen = () => {
                               clinicId: clinic.id,
                               clinic,
                               coords: location,
+                              autoScrollToBooking: true,
                             })
                           }
                           variant="filled"
@@ -630,40 +644,15 @@ const ClinicSearchScreen = () => {
   );
 };
 
-const StatPill = ({ icon, label, value }) => (
-  <View style={styles.statPill}>
-    <MaterialCommunityIcons name={icon} size={18} color="white" />
-    <View style={{ marginLeft: 8 }}>
-      <Text
-        style={{
-          color: 'rgba(255,255,255,0.7)',
-          fontSize: 12,
-        }}
-      >
-        {label}
-      </Text>
-      <Text
-        style={{
-          color: 'white',
-          fontWeight: '700',
-          marginTop: 2,
-        }}
-      >
-        {value}
-      </Text>
-    </View>
-  </View>
-);
-
 const InfoChip = ({ icon, label }) => (
   <View style={styles.infoChip}>
-    <MaterialCommunityIcons name={icon} size={14} color="#4C1D95" />
+    <MaterialCommunityIcons name={icon} size={14} color={COLORS.primary} />
     <Text
       style={{
         marginLeft: 6,
-        color: '#4C1D95',
+        color: COLORS.primary,
         fontWeight: '600',
-        fontSize: 12,
+        ...TYPOGRAPHY.caption,
       }}
     >
       {label}
@@ -687,29 +676,21 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: withOpacity(COLORS.white, 0.2),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroTitle: { color: 'white', fontSize: 20, fontWeight: '700' },
+  heroTitle: { color: COLORS.white, ...TYPOGRAPHY.h3 },
   heroSubtitle: {
-    color: 'rgba(255,255,255,0.85)',
+    color: withOpacity(COLORS.white, 0.85),
     marginTop: 10,
+    ...TYPOGRAPHY.bodySmall,
     lineHeight: 20,
   },
   heroStats: { flexDirection: 'row', marginTop: 18 },
-  statPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginRight: 12,
-  },
   heroSearch: {
     marginTop: 18,
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 18,
   },
   card: {
@@ -718,8 +699,8 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#EEF2FF',
-    shadowColor: '#4C1D95',
+    borderColor: COLORS.border,
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -734,7 +715,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 24,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -743,14 +724,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  cardSubtitle: { color: '#94A3B8', fontSize: 13, marginBottom: 4 },
+  cardTitle: { ...TYPOGRAPHY.h4, color: COLORS.textPrimary },
+  cardSubtitle: { color: COLORS.textMuted, ...TYPOGRAPHY.caption, marginBottom: 4 },
   ratingBadge: {
     alignItems: 'flex-end',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surface,
   },
   metaRow: {
     flexDirection: 'row',
@@ -758,9 +739,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   metaText: {
-    color: '#94A3B8',
+    color: COLORS.textMuted,
     marginLeft: 6,
-    fontSize: 12,
+    ...TYPOGRAPHY.caption,
     flex: 1,
   },
   infoChips: { flexDirection: 'row', marginTop: 14 },
@@ -770,20 +751,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: '#F5F3FF',
+    backgroundColor: withOpacity(COLORS.primary, 0.05),
     marginRight: 10,
   },
   facilityChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: COLORS.surface,
     marginRight: 10,
   },
   cardActions: {
     marginTop: 18,
     borderTopWidth: 1,
-    borderTopColor: '#EEF2FF',
+    borderTopColor: COLORS.border,
     paddingTop: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -792,11 +773,11 @@ const styles = StyleSheet.create({
   detailButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: COLORS.primary,
     borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 10,
-    shadowColor: '#7C3AED',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,

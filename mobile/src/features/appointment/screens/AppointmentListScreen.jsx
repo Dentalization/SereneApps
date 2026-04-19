@@ -8,6 +8,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppointments } from '../../../services/appointmentService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 // Dimensi Layar
 const { width } = Dimensions.get('window');
@@ -18,15 +22,15 @@ const { width } = Dimensions.get('window');
 const ModernEmptyState = ({ title, description, icon, action }) => (
   <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 60, paddingHorizontal: 40 }}>
     <View style={{
-      width: 100, height: 100, borderRadius: 50, backgroundColor: '#EEF2FF',
+      width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.surface,
       alignItems: 'center', justifyContent: 'center', marginBottom: 24
     }}>
-      <MaterialCommunityIcons name={icon} size={48} color="#6366F1" />
+      <MaterialCommunityIcons name={icon} size={48} color={COLORS.primary} />
     </View>
-    <Text style={{ fontSize: 20, fontWeight: '700', color: '#1E293B', marginBottom: 8, textAlign: 'center' }}>
+    <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary, marginBottom: 8, textAlign: 'center' }}>
       {title}
     </Text>
-    <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22, marginBottom: 32 }}>
+    <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 32 }}>
       {description}
     </Text>
     {action}
@@ -48,14 +52,14 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
   // Backend sudah auto-mark status 'overdue' untuk jadwal lewat & belum bayar
   const isOverdue = appointment.status === 'overdue';
 
-  // Status Color Logic
+  // Status Color Logic using Theme Tokens
   const getStatusColor = (status) => {
     switch (status) {
-      case 'overdue': return { bg: '#FEF2F2', text: '#DC2626', icon: 'close-circle-outline' };
-      case 'upcoming': return { bg: '#EEF2FF', text: '#4F46E5', icon: 'clock-outline' };
-      case 'completed': return { bg: '#ECFDF5', text: '#059669', icon: 'check-circle-outline' };
-      case 'cancelled': return { bg: '#FEF2F2', text: '#DC2626', icon: 'close-circle-outline' };
-      default: return { bg: '#F1F5F9', text: '#64748B', icon: 'help-circle-outline' };
+      case 'overdue': return { bg: withOpacity(COLORS.error, 0.1), text: COLORS.error, icon: 'close-circle-outline' };
+      case 'upcoming': return { bg: withOpacity(COLORS.primary, 0.1), text: COLORS.primary, icon: 'clock-outline' };
+      case 'completed': return { bg: withOpacity(COLORS.success, 0.1), text: COLORS.success, icon: 'check-circle-outline' };
+      case 'cancelled': return { bg: withOpacity(COLORS.error, 0.1), text: COLORS.error, icon: 'close-circle-outline' };
+      default: return { bg: COLORS.surface, text: COLORS.textSecondary, icon: 'help-circle-outline' };
     }
   };
 
@@ -65,37 +69,39 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Janji temu dengan ${appointment.dentist?.name}, ${appointment.status}`}
       style={{
-        backgroundColor: 'white',
+        backgroundColor: COLORS.surfaceElevated,
         borderRadius: 24,
         marginBottom: 20,
-        shadowColor: isOverdue ? '#DC2626' : '#64748B',
+        shadowColor: isOverdue ? COLORS.error : COLORS.textSecondary,
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: isOverdue ? 0.12 : 0.08,
         shadowRadius: 16,
         elevation: 4,
         overflow: 'hidden',
         borderWidth: isOverdue ? 1.5 : 0,
-        borderColor: isOverdue ? '#FECACA' : 'transparent',
+        borderColor: isOverdue ? withOpacity(COLORS.error, 0.3) : 'transparent',
       }}
     >
       {/* Top Header: Booking ID & Status */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: isOverdue ? '#FEE2E2' : '#F1F5F9'
+        borderBottomWidth: 1, borderBottomColor: isOverdue ? withOpacity(COLORS.error, 0.2) : COLORS.border
       }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isOverdue ? '#FEF2F2' : '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
-          <MaterialCommunityIcons name="ticket-outline" size={14} color={isOverdue ? '#DC2626' : '#64748B'} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: isOverdue ? '#DC2626' : '#64748B', marginLeft: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isOverdue ? withOpacity(COLORS.error, 0.1) : COLORS.surface, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+          <MaterialCommunityIcons name="ticket-outline" size={14} color={isOverdue ? COLORS.error : COLORS.textSecondary} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isOverdue ? COLORS.error : COLORS.textSecondary, marginLeft: 6 }}>
             {appointment.bookingCode}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {/* Badge BELUM BAYAR (non-overdue) */}
           {!isPaid && !isOverdue && appointment.status !== 'cancelled' && (
-            <View style={{ marginRight: 8, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#FFF7ED', borderRadius: 6 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: '#EA580C' }}>BELUM BAYAR</Text>
+            <View style={{ marginRight: 8, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: withOpacity(COLORS.warning, 0.1), borderRadius: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.warning }}>BELUM BAYAR</Text>
             </View>
           )}
           {/* Status Badge */}
@@ -112,12 +118,12 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
       {isOverdue && (
         <View style={{
           flexDirection: 'row', alignItems: 'flex-start',
-          backgroundColor: '#FEF2F2', paddingHorizontal: 16, paddingVertical: 12,
+          backgroundColor: withOpacity(COLORS.error, 0.1), paddingHorizontal: 16, paddingVertical: 12,
           marginHorizontal: 12, marginTop: 12, borderRadius: 12,
-          borderWidth: 1, borderColor: '#FECACA',
+          borderWidth: 1, borderColor: withOpacity(COLORS.error, 0.2),
         }}>
-          <MaterialCommunityIcons name="alert-outline" size={18} color="#DC2626" style={{ marginTop: 1 }} />
-          <Text style={{ flex: 1, fontSize: 12, color: '#991B1B', lineHeight: 18, marginLeft: 8, fontWeight: '500' }}>
+          <MaterialCommunityIcons name="alert-outline" size={18} color={COLORS.error} style={{ marginTop: 1 }} />
+          <Text style={{ flex: 1, fontSize: 12, color: COLORS.error, lineHeight: 18, marginLeft: 8, fontWeight: '500' }}>
             Jadwal ini telah terlewat dan pembayaran belum diselesaikan. Silakan hubungi admin atau lakukan pembayaran segera.
           </Text>
         </View>
@@ -128,33 +134,33 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
         {/* Left: Date Block */}
         <View style={{
           alignItems: 'center', justifyContent: 'center',
-          backgroundColor: isOverdue ? '#FEF2F2' : '#F8FAFC', borderRadius: 16,
+          backgroundColor: isOverdue ? withOpacity(COLORS.error, 0.1) : COLORS.background, borderRadius: 16,
           width: 60, height: 70, marginRight: 16,
-          borderWidth: 1, borderColor: isOverdue ? '#FECACA' : '#E2E8F0'
+          borderWidth: 1, borderColor: isOverdue ? COLORS.error : COLORS.border
         }}>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: isOverdue ? '#DC2626' : '#1E293B' }}>{dayNumber}</Text>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: isOverdue ? '#F87171' : '#64748B', textTransform: 'uppercase' }}>{monthShort}</Text>
+          <Text style={{ ...TYPOGRAPHY.h2, color: isOverdue ? COLORS.error : COLORS.textPrimary }}>{dayNumber}</Text>
+          <Text style={{ ...TYPOGRAPHY.caption, fontWeight: '600', color: isOverdue ? COLORS.error : COLORS.textSecondary, textTransform: 'uppercase' }}>{monthShort}</Text>
         </View>
 
         {/* Right: Info */}
         <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 4 }}>
+          <Text numberOfLines={1} style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 }}>
             {appointment.dentist?.name}
           </Text>
-          <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 8 }}>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginBottom: 8 }}>
             {appointment.dentist?.specialty || 'Dokter Gigi Umum'} • {appointment.clinic.name}
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
-              <MaterialCommunityIcons name="clock-time-four-outline" size={14} color={isOverdue ? '#DC2626' : '#6366F1'} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: isOverdue ? '#DC2626' : '#6366F1', marginLeft: 4 }}>
+              <MaterialCommunityIcons name="clock-time-four-outline" size={14} color={isOverdue ? COLORS.error : COLORS.primaryLight} />
+              <Text style={{ ...TYPOGRAPHY.caption, fontWeight: '600', color: isOverdue ? COLORS.error : COLORS.primaryLight, marginLeft: 4 }}>
                 {timeText} WIB
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <MaterialCommunityIcons name={isVirtual ? "video-outline" : "map-marker-outline"} size={14} color="#64748B" />
-              <Text style={{ fontSize: 13, color: '#64748B', marginLeft: 4 }}>
+              <MaterialCommunityIcons name={isVirtual ? "video-outline" : "map-marker-outline"} size={14} color={COLORS.textSecondary} />
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginLeft: 4 }}>
                 {isVirtual ? 'Konsultasi Online' : 'Kunjungan Klinik'}
               </Text>
             </View>
@@ -167,22 +173,24 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
         {isOverdue ? (
           <Button
             mode="outlined"
-            textColor="#DC2626"
-            style={{ borderRadius: 12, elevation: 0, borderColor: '#DC2626', borderWidth: 1.5 }}
+            textColor={COLORS.error}
+            style={{ borderRadius: 12, elevation: 0, borderColor: COLORS.error, borderWidth: 1.5 }}
             labelStyle={{ fontWeight: '700', fontSize: 13 }}
             icon="alert-circle-outline"
             onPress={onPress}
+            accessibilityLabel="Selesaikan Pembayaran Sekarang"
           >
             Selesaikan Pembayaran
           </Button>
         ) : (
           <Button
             mode="contained"
-            buttonColor="#EEF2FF"
-            textColor="#4F46E5"
+            buttonColor={withOpacity(COLORS.primary, 0.15)}
+            textColor={COLORS.primary}
             style={{ borderRadius: 12, elevation: 0 }}
             labelStyle={{ fontWeight: '700', fontSize: 13 }}
             onPress={onPress}
+            accessibilityLabel="Lihat Detail Janji Temu dan Pembayaran"
           >
             Lihat Detail & Pembayaran
           </Button>
@@ -190,9 +198,11 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
       </View>
 
       {/* Chat Nudge Row */}
-      {(appointment.status === 'upcoming' || appointment.status === 'scheduled') && (
+      {(appointment.status === 'upcoming' || appointment.status === 'scheduled' || appointment.status === 'confirmed') && (
         <TouchableOpacity
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={unreadCount > 0 ? `Buka chat, ada ${unreadCount} pesan baru` : "Buka chat dengan dokter"}
           onPress={() => {
             const dentistData = appointment.dentist || {};
             navigation.navigate('PatientTeledentistry', {
@@ -209,6 +219,7 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
                 .toUpperCase(),
               appointmentDate: appointment.startsAt,
               roomRef: appointment.videoRoomRef,
+              isVirtual: appointment.type === 'virtual' || !!appointment.videoRoomRef,
             });
           }}
           style={{
@@ -217,17 +228,17 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
             paddingHorizontal: 20,
             paddingVertical: 12,
             borderTopWidth: 1,
-            borderTopColor: '#F1F5F9',
+            borderTopColor: COLORS.border,
           }}
         >
-          <MaterialCommunityIcons name="chat-processing-outline" size={16} color="#6366F1" />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#6366F1', marginLeft: 8, flex: 1 }}>
-            {unreadCount > 0 ? `${unreadCount} pesan belum dibaca` : 'Mulai chat'}
+          <MaterialCommunityIcons name="chat-processing-outline" size={16} color={COLORS.primary} />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary, marginLeft: 8, flex: 1 }}>
+            {unreadCount > 0 ? `${unreadCount} pesan baru` : 'Mulai chat'}
           </Text>
           {unreadCount > 0 && (
             <View
               style={{
-                backgroundColor: '#DC2626',
+                backgroundColor: COLORS.error,
                 borderRadius: 10,
                 minWidth: 20,
                 height: 20,
@@ -236,13 +247,14 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
                 paddingHorizontal: 6,
                 marginRight: 4,
               }}
+              accessibilityLabel={`${unreadCount} pesan belum dibaca`}
             >
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.surfaceElevated }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Text>
             </View>
           )}
-          <MaterialCommunityIcons name="chevron-right" size={16} color="#94A3B8" />
+          <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
     </TouchableOpacity>
@@ -296,7 +308,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           bookingCode: apt.bookingCode || `SRN-${String(apt.id).padStart(6, '0')}`,
           startsAt: apt.startsAt,
           endsAt: apt.endsAt,
-          status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
+          status: (apt.status === 'scheduled' || apt.status === 'confirmed') ? 'upcoming' : apt.status,
           type: apt.metadata?.appointmentType || apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
           reason: apt.reason || 'Konsultasi gigi',
           videoRoomRef: apt.videoRoomRef,
@@ -344,49 +356,66 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
 
   const onRefresh = () => { setRefreshing(true); fetchAppointments(false); };
 
-  // Filter Logic — overdue masuk ke tab Riwayat
+  // Filter Logic — overdue atau waktu sudah lewat masuk ke tab Riwayat (sesuai request)
   const filteredAppointments = appointments
     .filter(apt => {
-      if (tab === 'upcoming') return apt.status === 'upcoming' || apt.status === 'scheduled';
-      return apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'overdue';
+      const isPast = new Date(apt.startsAt) < new Date();
+      if (tab === 'upcoming') {
+        // Hanya tampilkan jika belum lewat DAN statusnya masih aktif
+        return !isPast && (apt.status === 'upcoming' || apt.status === 'scheduled' || apt.status === 'confirmed');
+      }
+      // Pindahkan ke riwayat jika statusnya riwayat ATAU waktu sudah lewat
+      return isPast || apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'overdue';
     })
     .sort((a, b) => {
-      // Dalam tab riwayat, overdue ditaruh paling atas
-      if (tab !== 'upcoming') {
-        const aOverdue = a.status === 'overdue' ? 1 : 0;
-        const bOverdue = b.status === 'overdue' ? 1 : 0;
-        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+      // Tab Upcoming: Urutkan dari yang PALING DEKAT (ASC)
+      if (tab === 'upcoming') {
+        return new Date(a.startsAt) - new Date(b.startsAt);
       }
-      return new Date(a.startsAt) - new Date(b.startsAt);
+      // Tab Riwayat: Urutkan dari yang PALING BARU (DESC)
+      // Overdue tetap ditaruh paling atas karena masih butuh atensi
+      const aOverdue = a.status === 'overdue' ? 1 : 0;
+      const bOverdue = b.status === 'overdue' ? 1 : 0;
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+      return new Date(b.startsAt) - new Date(a.startsAt);
     });
 
-  const upcomingCount = appointments.filter(apt => apt.status === 'upcoming' || apt.status === 'scheduled').length;
-  const historyCount = appointments.filter(apt => apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'overdue').length;
+  const upcomingCount = appointments.filter(apt => {
+    const isPast = new Date(apt.startsAt) < new Date();
+    return !isPast && (apt.status === 'upcoming' || apt.status === 'scheduled' || apt.status === 'confirmed');
+  }).length;
+  const historyCount = appointments.filter(apt => {
+    const isPast = new Date(apt.startsAt) < new Date();
+    return isPast || apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'overdue';
+  }).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
 
       {/* --- HEADER --- */}
       <LinearGradient
-        colors={[theme.colors.primary, '#8B5CF6']}
+        colors={[COLORS.primary, COLORS.primaryLight]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ paddingTop: 60, paddingBottom: 30, paddingHorizontal: 24, borderBottomRightRadius: 32, borderBottomLeftRadius: 32 }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', letterSpacing: 0.5 }}>JADWAL KONSULTASI</Text>
-            <Text style={{ color: 'white', fontSize: 28, fontWeight: '800', marginTop: 4 }}>Janji Temu</Text>
+            <Text style={{ color: withOpacity(COLORS.surfaceElevated, 0.8), ...TYPOGRAPHY.caption, fontWeight: '600', letterSpacing: 0.5 }}>JADWAL KONSULTASI</Text>
+            <Text style={{ color: COLORS.surfaceElevated, ...TYPOGRAPHY.h1, marginTop: 4 }}>Janji Temu</Text>
           </View>
           {/* Floating Add Button */}
           <TouchableOpacity
             onPress={() => navigation.navigate('ClinicSearch')}
+            accessibilityLabel="Cari Klinik dan Buat Janji"
+            accessibilityRole="button"
             style={{
-              backgroundColor: 'rgba(255,255,255,0.2)', width: 48, height: 48, borderRadius: 24,
-              alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)'
+              backgroundColor: withOpacity(COLORS.surfaceElevated, 0.2), width: 48, height: 48, borderRadius: 24,
+              alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: withOpacity(COLORS.surfaceElevated, 0.3)
             }}
           >
-            <MaterialCommunityIcons name="plus" size={28} color="white" />
+            <MaterialCommunityIcons name="plus" size={28} color={COLORS.surfaceElevated} />
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -394,18 +423,24 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
       {/* --- CONTENT CONTAINER --- */}
       <View style={{ flex: 1, marginTop: -20 }}>
         {/* Floating Tabs */}
-        <View style={{ flexDirection: 'row', marginHorizontal: 24, backgroundColor: 'white', borderRadius: 20, padding: 6, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 }}>
+        <View style={{ flexDirection: 'row', marginHorizontal: 24, backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 6, marginBottom: 16, shadowColor: COLORS.textPrimary, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 }}>
           <TouchableOpacity
             onPress={() => setTab('upcoming')}
-            style={{ flex: 1, paddingVertical: 10, borderRadius: 16, backgroundColor: tab === 'upcoming' ? '#EEF2FF' : 'transparent', alignItems: 'center' }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'upcoming' }}
+            accessibilityLabel={`Tab Akan Datang, ${upcomingCount} janji`}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 16, backgroundColor: tab === 'upcoming' ? withOpacity(COLORS.primary, 0.1) : 'transparent', alignItems: 'center' }}
           >
-            <Text style={{ fontWeight: '700', color: tab === 'upcoming' ? '#4F46E5' : '#94A3B8' }}>Akan Datang ({upcomingCount})</Text>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '700', color: tab === 'upcoming' ? COLORS.primary : COLORS.textMuted }}>Akan Datang ({upcomingCount})</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setTab('history')}
-            style={{ flex: 1, paddingVertical: 10, borderRadius: 16, backgroundColor: tab === 'history' ? '#EEF2FF' : 'transparent', alignItems: 'center' }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'history' }}
+            accessibilityLabel={`Tab Riwayat, ${historyCount} janji`}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 16, backgroundColor: tab === 'history' ? withOpacity(COLORS.primary, 0.1) : 'transparent', alignItems: 'center' }}
           >
-            <Text style={{ fontWeight: '700', color: tab === 'history' ? '#4F46E5' : '#94A3B8' }}>Riwayat ({historyCount})</Text>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '700', color: tab === 'history' ? COLORS.primary : COLORS.textMuted }}>Riwayat ({historyCount})</Text>
           </TouchableOpacity>
         </View>
 
@@ -416,8 +451,8 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         >
           {loading || isLoggedIn === null ? (
             <View style={{ marginTop: 50, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color={theme.colors.primary} />
-              <Text style={{ marginTop: 16, color: '#94A3B8', fontWeight: '500' }}>Sinkronisasi jadwal...</Text>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={{ marginTop: 16, color: COLORS.textMuted, fontWeight: '500' }}>Sinkronisasi jadwal...</Text>
             </View>
           ) : isLoggedIn === false ? (
             <ModernEmptyState

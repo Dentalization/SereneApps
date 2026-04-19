@@ -2,6 +2,10 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
+import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+
+const COLORS = THEME_COLORS;
 
 const resolveAvatarUrl = (raw) => {
   if (!raw || typeof raw !== 'string') return null;
@@ -50,13 +54,13 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: isChatReady ? '#F0FDF4' : '#F8FAFC',
+        backgroundColor: isChatReady ? withOpacity(COLORS.success, 0.1) : COLORS.surface,
         borderRadius: 14,
         paddingVertical: 14,
         paddingHorizontal: 16,
         marginTop: 16,
         borderWidth: 1,
-        borderColor: isChatReady ? '#BBF7D0' : '#E2E8F0',
+        borderColor: isChatReady ? withOpacity(COLORS.success, 0.3) : COLORS.border,
       }}
     >
       {/* Dentist Avatar */}
@@ -69,12 +73,12 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
               height: 40,
               borderRadius: 12,
               borderWidth: 2,
-              borderColor: isChatReady ? '#86EFAC' : '#E2E8F0',
+              borderColor: isChatReady ? withOpacity(COLORS.success, 0.5) : COLORS.border,
             }}
           />
         ) : (
           <LinearGradient
-            colors={isChatReady ? ['#86EFAC', '#4ADE80'] : ['#CBD5E1', '#94A3B8']}
+            colors={isChatReady ? [withOpacity(COLORS.success, 0.4), withOpacity(COLORS.success, 0.6)] : [COLORS.border, COLORS.textMuted]}
             style={{
               width: 40,
               height: 40,
@@ -83,7 +87,7 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
               alignItems: 'center',
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{initials}</Text>
+            <Text style={{ ...TYPOGRAPHY.caption, fontWeight: '700', color: COLORS.white }}>{initials}</Text>
           </LinearGradient>
         )}
         {isChatReady && (
@@ -95,9 +99,9 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
               width: 12,
               height: 12,
               borderRadius: 6,
-              backgroundColor: '#22C55E',
+              backgroundColor: COLORS.success,
               borderWidth: 2,
-              borderColor: '#F0FDF4',
+              borderColor: isChatReady ? withOpacity(COLORS.success, 0.1) : COLORS.surface,
             }}
           />
         )}
@@ -107,19 +111,19 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
       <View style={{ flex: 1, marginLeft: 12 }}>
         {isChatReady ? (
           <>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#166534' }}>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '600', color: withOpacity(COLORS.success, 0.85) }}>
               Chat dengan {dentistName.split(',')[0]}
             </Text>
-            <Text style={{ fontSize: 12, color: '#4ADE80', marginTop: 2, fontWeight: '500' }}>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.success, marginTop: 2, fontWeight: '500' }}>
               Chat tersedia • Ketuk untuk mulai
             </Text>
           </>
         ) : (
           <>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748B' }}>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '600', color: COLORS.textSecondary }}>
               Chat dengan {dentistName.split(',')[0]}
             </Text>
-            <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 2 }}>
               Dibuka {timeLabel}
             </Text>
           </>
@@ -130,7 +134,7 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
       {isChatReady && unreadCount > 0 && (
         <View
           style={{
-            backgroundColor: '#DC2626',
+            backgroundColor: COLORS.error,
             borderRadius: 10,
             minWidth: 20,
             height: 20,
@@ -140,7 +144,7 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
             marginRight: 8,
           }}
         >
-          <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>
+          <Text style={{ ...TYPOGRAPHY.overline, fontWeight: '700', color: COLORS.white }}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </Text>
         </View>
@@ -150,7 +154,7 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
       <MaterialCommunityIcons
         name="chevron-right"
         size={20}
-        color={isChatReady ? '#22C55E' : '#CBD5E1'}
+        color={isChatReady ? COLORS.success : COLORS.border}
       />
     </TouchableOpacity>
   );

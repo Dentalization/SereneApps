@@ -10,33 +10,24 @@ const registry = new Map([
 
 async function processNextBatch() {
   try {
-    const events = await prisma.domainEventOutbox.findMany({
-      where: {
-        status: 'pending',
-        availableAt: { lte: new Date() }
-      },
-      orderBy: { availableAt: 'asc' },
-      take: 10
-    });
+    // 1. Atomically lock and fetch available events using PostgreSQL FOR UPDATE SKIP LOCKED
+    // This allows multiple workers to run safely in parallel without overlapping work.
+    const events = await prisma.$queryRaw`
+      SELECT * FROM domain_event_outbox
+      WHERE status = 'pending' AND available_at <= NOW()
+      ORDER BY available_at ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    `;
 
     if (events.length === 0) return;
 
     await Promise.allSettled(events.map(async (event) => {
-      // Row level 'processing' status pseudo-lock handling overlapping worker triggers securely using native DB atomics
-      const lockedEvent = await prisma.domainEventOutbox.updateMany({
-        where: {
-          id: event.id,
-          status: 'pending' // Only intercepts strictly untouched structures
-        },
-        data: {
-          status: 'processing'
-        }
+      // 2. Mark as processing immediately to release the row lock while we work
+      await prisma.domainEventOutbox.update({
+        where: { id: event.id },
+        data: { status: 'processing' }
       });
-
-      if (lockedEvent.count === 0) {
-        // Skips execution natively if another concurrent container already tagged the pending payload asynchronously.
-        return;
-      }
 
       const consumer = registry.get(event.eventType);
 
@@ -44,7 +35,7 @@ async function processNextBatch() {
         console.warn(`[Outbox] no consumer for eventType: ${event.eventType}. Marking as failed.`);
         await prisma.domainEventOutbox.update({
           where: { id: event.id },
-          data: { status: 'failed' }
+          data: { status: 'failed', lastError: 'No consumer registered' }
         });
         return;
       }
@@ -56,11 +47,11 @@ async function processNextBatch() {
           where: { id: event.id },
           data: {
             status: 'processed',
-            processedAt: new Date()
+            publishedAt: new Date()
           }
         });
       } catch (error) {
-        const attempts = event.attempts + 1;
+        const attempts = (event.attempts || 0) + 1;
         const status = attempts >= 5 ? 'failed' : 'pending';
         
         const backoffMs = Math.min((2 ** attempts) * 30000, 1800000); // 30 mins cap exponentially
@@ -71,7 +62,8 @@ async function processNextBatch() {
           data: {
             attempts,
             status,
-            availableAt: status === 'pending' ? nextAvailableAt : event.availableAt
+            availableAt: status === 'pending' ? nextAvailableAt : event.availableAt,
+            lastError: error.message
           }
         });
 
