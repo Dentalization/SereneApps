@@ -2,6 +2,9 @@ import React, { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { ANNOTATION_COLORS, drawAnnotations } from '../utils/reportUtils';
 
 const MIN_POINTER_DISTANCE = 0.008;
+const HIT_TEST_EPSILON_PX = 1;
+
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   {
@@ -11,14 +14,23 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     tool,
     annotations,
     onChange,
+    sourceWidth,
+    sourceHeight,
+    zoom = 1,
+    pan = { x: 0, y: 0 },
+    viewportSize,
+    imageBounds,
     className = '',
     style = {},
   },
   forwardedRef
 ) {
   const canvasRef = useRef(null);
+  const textInputRef = useRef(null);
   const [draftAnnotation, setDraftAnnotation] = useState(null);
   const [textDraft, setTextDraft] = useState(null);
+  const annotationWidth = sourceWidth || width;
+  const annotationHeight = sourceHeight || height;
 
   const hasVisibleCanvas = useMemo(
     () => active || annotations.length > 0 || !!draftAnnotation,
@@ -39,16 +51,34 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    drawAnnotations(ctx, annotations, width, height);
+    const drawInImageSpace = (items) => {
+      if (!items.length) return;
+
+      if (imageBounds && annotationWidth && annotationHeight) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(imageBounds.x, imageBounds.y, imageBounds.width, imageBounds.height);
+        ctx.clip();
+        ctx.translate(imageBounds.x, imageBounds.y);
+        ctx.scale(imageBounds.width / annotationWidth, imageBounds.height / annotationHeight);
+        drawAnnotations(ctx, items, annotationWidth, annotationHeight);
+        ctx.restore();
+        return;
+      }
+
+      drawAnnotations(ctx, items, annotationWidth, annotationHeight);
+    };
+
+    drawInImageSpace(annotations);
 
     if (draftAnnotation) {
-      drawAnnotations(ctx, [draftAnnotation], width, height);
+      drawInImageSpace([draftAnnotation]);
     }
   };
 
   useEffect(() => {
     drawCanvas();
-  }, [annotations, draftAnnotation, height, width]);
+  }, [annotationHeight, annotationWidth, annotations, draftAnnotation, height, imageBounds, width]);
 
   useEffect(() => {
     if (!active) {
@@ -57,15 +87,86 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     }
   }, [active]);
 
+  useEffect(() => {
+    if (!active || !textDraft) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const input = textInputRef.current;
+      if (!input) return;
+      input.focus();
+      const valueLength = input.value?.length || 0;
+      input.setSelectionRange?.(valueLength, valueLength);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [active, textDraft]);
+
   const normalizePoint = (event) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || !rect.width || !rect.height) {
-      return { x: 0, y: 0 };
+      return null;
+    }
+
+    const pointerX = ((event.clientX - rect.left) / rect.width) * width;
+    const pointerY = ((event.clientY - rect.top) / rect.height) * height;
+
+    if (imageBounds && imageBounds.width > 0 && imageBounds.height > 0 && annotationWidth && annotationHeight) {
+      const imageX = ((pointerX - imageBounds.x) / imageBounds.width) * annotationWidth;
+      const imageY = ((pointerY - imageBounds.y) / imageBounds.height) * annotationHeight;
+
+      if (
+        imageX < -HIT_TEST_EPSILON_PX
+        || imageY < -HIT_TEST_EPSILON_PX
+        || imageX > annotationWidth + HIT_TEST_EPSILON_PX
+        || imageY > annotationHeight + HIT_TEST_EPSILON_PX
+      ) {
+        return null;
+      }
+
+      return {
+        x: clamp01(imageX / annotationWidth),
+        y: clamp01(imageY / annotationHeight),
+      };
+    }
+
+    if (annotationWidth && annotationHeight && zoom > 0) {
+      const effectiveViewportWidth = viewportSize?.width || width;
+      const effectiveViewportHeight = viewportSize?.height || height;
+      const imageX = (pointerX - (effectiveViewportWidth / 2) - pan.x) / zoom + (annotationWidth / 2);
+      const imageY = (pointerY - (effectiveViewportHeight / 2) - pan.y) / zoom + (annotationHeight / 2);
+
+      if (
+        imageX < -HIT_TEST_EPSILON_PX
+        || imageY < -HIT_TEST_EPSILON_PX
+        || imageX > annotationWidth + HIT_TEST_EPSILON_PX
+        || imageY > annotationHeight + HIT_TEST_EPSILON_PX
+      ) {
+        return null;
+      }
+
+      return {
+        x: clamp01(imageX / annotationWidth),
+        y: clamp01(imageY / annotationHeight),
+      };
     }
 
     return {
-      x: (event.clientX - rect.left) / rect.width,
-      y: (event.clientY - rect.top) / rect.height,
+      x: pointerX / width,
+      y: pointerY / height,
+    };
+  };
+
+  const getCanvasPoint = (point) => {
+    if (imageBounds) {
+      return {
+        x: imageBounds.x + (point.x * imageBounds.width),
+        y: imageBounds.y + (point.y * imageBounds.height),
+      };
+    }
+
+    return {
+      x: point.x * width,
+      y: point.y * height,
     };
   };
 
@@ -93,8 +194,9 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     if (!active || tool === 'text' || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
     const point = normalizePoint(event);
+    if (!point) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
 
     setDraftAnnotation({
       id: 'draft',
@@ -107,6 +209,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const handlePointerMove = (event) => {
     if (!active || !draftAnnotation) return;
     const point = normalizePoint(event);
+    if (!point) return;
     setDraftAnnotation((current) => current ? {
       ...current,
       coordinates: {
@@ -143,8 +246,11 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     event.preventDefault();
     event.stopPropagation();
     const point = normalizePoint(event);
+    if (!point) return;
     setTextDraft({ ...point, label: '' });
   };
+
+  const textDraftPosition = textDraft ? getCanvasPoint(textDraft) : null;
 
   return (
     <>
@@ -163,6 +269,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
           style={{
             ...style,
             pointerEvents: active ? 'auto' : 'none',
+            touchAction: active ? 'none' : undefined,
           }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -171,26 +278,41 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         />
       )}
 
-      {active && textDraft && (
+      {active && textDraft && textDraftPosition && (
         <div
-          className="absolute z-30 -translate-y-1/2"
+          className="absolute z-[80] -translate-y-1/2"
           style={{
-            left: `${textDraft.x * width}px`,
-            top: `${textDraft.y * height}px`,
+            left: `${textDraftPosition.x}px`,
+            top: `${textDraftPosition.y}px`,
+          }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
           }}
         >
           <input
-            autoFocus
+            ref={textInputRef}
             type="text"
             value={textDraft.label}
             onChange={(event) => setTextDraft((current) => current ? { ...current, label: event.target.value } : current)}
             onBlur={(event) => commitTextDraft(event.target.value)}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
+                event.stopPropagation();
                 commitTextDraft(textDraft.label);
               }
               if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
                 setTextDraft(null);
               }
             }}

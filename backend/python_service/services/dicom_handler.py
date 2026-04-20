@@ -576,3 +576,40 @@ class DicomHandler:
 
         metadata.update(extra_metadata)
         return metadata
+
+    def get_raw_tags(self):
+        """
+        Return top-level raw DICOM tags from the first file in the selected series.
+
+        Pixel data is intentionally skipped so this stays safe for browser use.
+        """
+        if not self.files:
+            raise ValueError("No DICOM files found for raw tag extraction")
+
+        return self.read_raw_tags_from_file(self.files[0])
+
+    @staticmethod
+    def read_raw_tags_from_file(file_path):
+        ds = pydicom.dcmread(file_path, force=True, stop_before_pixels=True)
+        tags = []
+
+        for elem in ds:
+            if elem.tag.group == 0x7FE0 and elem.tag.element == 0x0010:
+                continue
+
+            try:
+                value = str(elem.value)
+            except Exception as exc:
+                value = f"<unreadable: {exc}>"
+
+            tags.append({
+                "tag": str(elem.tag),
+                "keyword": elem.keyword or "",
+                "vr": elem.VR,
+                "value": value[:200],
+            })
+
+        return {
+            "total_tags": len(tags),
+            "tags": tags,
+        }

@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PY_API_BASE } from '../../../../config/api';
 
 function buildConversionSocketUrl() {
-    const apiUrl = new URL(PY_API_BASE, window.location.origin);
+    // In local dev, bypass Vite WS proxy for conversion socket to reduce proxy reset noise.
+    const isRelativePyApiBase = typeof PY_API_BASE === 'string' && PY_API_BASE.startsWith('/');
+    const socketBase = import.meta.env.DEV && isRelativePyApiBase
+        ? `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${window.location.hostname}:8000`
+        : PY_API_BASE;
+
+    const apiUrl = new URL(socketBase, window.location.origin);
     apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     apiUrl.pathname = `${apiUrl.pathname.replace(/\/$/, '')}/ws/conversion-status`;
     apiUrl.search = '';

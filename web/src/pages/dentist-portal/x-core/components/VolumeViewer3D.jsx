@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import '@kitware/vtk.js/favicon';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
-import { VOLUME_PRESETS } from '../config/volumePresets';
+import { VOLUME_PRESETS, WL_LUTS } from '../config/volumePresets';
 import { VOLUME_CACHE_VERSION, volumeCache } from '../utils/volumeCache';
 import { toothOverlayCache } from '../utils/toothOverlayCache';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
@@ -68,6 +68,31 @@ const BG_COLORS = {
     mip:  [0.0,  0.0,  0.0],
     xray: [0.0,  0.0,  0.0],
 };
+
+const VOLUME_MODE_LUTS = {
+    bone: 'dental',
+    soft: 'softTissue',
+    mip: 'implant',
+    xray: 'mtaFilling',
+};
+
+function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+}
+
+function addGrayscaleLutPoints(ctfun, lutName, isInverted = false, windowOptions = null) {
+    const lut = WL_LUTS[lutName] || WL_LUTS.dental;
+    const useDisplayWindow = windowOptions?.wWidth > 0;
+    const low = useDisplayWindow ? windowOptions.wCenter - (windowOptions.wWidth / 2) : 0;
+
+    lut.forEach(([value, gray]) => {
+        let level = useDisplayWindow ? clamp01((gray - low) / windowOptions.wWidth) : gray;
+        if (isInverted) {
+            level = 1 - level;
+        }
+        ctfun.addRGBPoint(value, level, level, level);
+    });
+}
 
 function hslToRgb(h, s, l) {
     const hue = ((h % 360) + 360) % 360;
@@ -139,6 +164,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     const pendingVtkRef = useRef(null);
     const overlayAbortRef = useRef(null);
     const overlayBuildIdRef = useRef(0);
+    const autoToothLoadKeyRef = useRef(null);
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -173,6 +199,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     const [teethLoading, setTeethLoading] = useState(false);
     const [teethError, setTeethError] = useState(null);
     const [toothOverlayLoaded, setToothOverlayLoaded] = useState(false);
+    const [toothOverlayAvailable, setToothOverlayAvailable] = useState(false);
 
     // Stable study key for caching
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
@@ -186,7 +213,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         return series.find((item) => item.series_uid === seriesUid) || null;
     }, [study?.series, seriesUid]);
     const knownLabelCount = Number(currentSeriesInfo?.num_labels || 0);
-    const canLoadTeethOverlay = Boolean(currentSeriesInfo?.has_labels && knownLabelCount > 0);
+    const canLoadTeethOverlay = Boolean((currentSeriesInfo?.has_labels && knownLabelCount > 0) || toothOverlayAvailable || toothOverlayLoaded || teethLoading);
     const shouldShowTeethToggle = Boolean(currentSeriesInfo && currentSeriesInfo.classification !== '2D');
     const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
         enabled: !!studyKey,
@@ -299,33 +326,27 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         const lo = Math.min(dMin, -0.05);
         const hi = Math.max(dMax, 1.05);
 
+        const lutName = VOLUME_MODE_LUTS[presetName] || 'dental';
+        const useDisplayWindow = presetName === 'mip' || presetName === 'xray';
+        addGrayscaleLutPoints(ctfun, lutName, isInverted, useDisplayWindow ? {
+            wCenter: opts.wCenter !== undefined ? opts.wCenter : 0.5,
+            wWidth: opts.wWidth !== undefined ? opts.wWidth : 1.0,
+        } : null);
+
         console.log('[VolumeViewer3D] applyPreset:', presetName,
+            '| LUT:', lutName,
             '| range:', dMin.toFixed(3), '→', dMax.toFixed(3),
             '| MONAI normalized [0,1]');
 
         if (presetName === 'bone') {
             const preset = VOLUME_PRESETS.bone;
-            preset.color.forEach(([v, r, g, b]) => ctfun.addRGBPoint(v, r, g, b));
             preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
         } else if (presetName === 'soft') {
             const preset = VOLUME_PRESETS.soft;
-            preset.color.forEach(([v, r, g, b]) => ctfun.addRGBPoint(v, r, g, b));
             preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
         } else if (presetName === 'mip') {
             // ── MIP (Maximum Intensity Projection) ──
-            // W/L-parameterized grayscale
-            const wCenter = opts.wCenter !== undefined ? opts.wCenter : 0.5;
-            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : 1.0;
-            const lower = wCenter - wWidth / 2;
-            const upper = wCenter + wWidth / 2;
-
-            if (isInverted) {
-                ctfun.addRGBPoint(lower, 1.0, 1.0, 1.0);
-                ctfun.addRGBPoint(upper, 0.0, 0.0, 0.0);
-            } else {
-                ctfun.addRGBPoint(lower, 0.0, 0.0, 0.0);
-                ctfun.addRGBPoint(upper, 1.0, 1.0, 1.0);
-            }
+            // Implant LUT highlights dense metal while opacity keeps air transparent.
 
             // Threshold — air transparent, bone/teeth visible
             ofun.addPoint(lo,          0.0);
@@ -338,18 +359,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         } else if (presetName === 'xray') {
             // ── X-RAY DRR (Digital Radiograph Reconstruction) ──
             // Very low opacity, Composite blend accumulates through volume
-            const wCenter = opts.wCenter !== undefined ? opts.wCenter : 0.45;
-            const wWidth  = opts.wWidth  !== undefined ? opts.wWidth  : 0.9;
-            const lower = wCenter - wWidth / 2;
-            const upper = wCenter + wWidth / 2;
-
-            if (isInverted) {
-                ctfun.addRGBPoint(lower, 1.0, 1.0, 1.0);
-                ctfun.addRGBPoint(upper, 0.0, 0.0, 0.0);
-            } else {
-                ctfun.addRGBPoint(lower, 0.0, 0.0, 0.0);
-                ctfun.addRGBPoint(upper, 1.0, 1.0, 1.0);
-            }
+            // Filling-material LUT emphasizes very dense restorations in projection.
 
             // DRR: air fully transparent, tissue/bone barely opaque (accumulates)
             ofun.addPoint(lo,          0.0);
@@ -447,9 +457,11 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             setTeethLoading(false);
             setTeethError(null);
             setToothOverlayLoaded(false);
+            setToothOverlayAvailable(false);
             overlayAbortRef.current?.abort();
             overlayAbortRef.current = null;
             overlayBuildIdRef.current += 1;
+            autoToothLoadKeyRef.current = null;
             setLoadingProgress(isCached ? 85 : 0);
             setLoadingStage(isCached ? 'Restoring from cache...' : 'Connecting...');
 
@@ -717,7 +729,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 vtkContextRef.current = null;
             }
         };
-    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset, canLoadTeethOverlay]);
+    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset]);
 
     const attachToothActors = useCallback((actors, visible) => {
         const ctx = vtkContextRef.current;
@@ -735,16 +747,18 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         return true;
     }, []);
 
-    const loadToothOverlay = useCallback(async () => {
+    const loadToothOverlay = useCallback(async (options = {}) => {
+        const { visibleOnLoad = true, silent = false } = options;
         const ctx = vtkContextRef.current;
-        if (!ctx || teethLoading || !canLoadTeethOverlay) return;
+        if (!ctx || teethLoading) return;
 
         const cachedOverlay = toothOverlayCache.get(cacheKey);
         if (cachedOverlay?.actors?.length) {
-            attachToothActors(cachedOverlay.actors, true);
+            attachToothActors(cachedOverlay.actors, visibleOnLoad);
+            setToothOverlayAvailable(true);
             setToothOverlayLoaded(true);
             setTeethError(null);
-            setShowTeethOverlay(true);
+            setShowTeethOverlay(visibleOnLoad);
             return;
         }
 
@@ -793,7 +807,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 onActor: (actor) => {
                     const activeCtx = vtkContextRef.current;
                     if (!activeCtx || controller.signal.aborted || overlayBuildIdRef.current !== buildId) return;
-                    actor.setVisibility(true);
+                    actor.setVisibility(visibleOnLoad);
                     activeCtx.renderer.addActor(actor);
                     activeCtx.labelActors = [...(activeCtx.labelActors || []), actor];
                     activeCtx.renderWindow.render();
@@ -814,17 +828,20 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             const activeCtx = vtkContextRef.current;
             if (activeCtx) {
                 activeCtx.labelActors = builtActors;
-                builtActors.forEach((actor) => actor.setVisibility(true));
+                builtActors.forEach((actor) => actor.setVisibility(visibleOnLoad));
                 activeCtx.renderWindow.render();
             }
 
+            setToothOverlayAvailable(true);
             setToothOverlayLoaded(true);
-            setShowTeethOverlay(true);
+            setShowTeethOverlay(visibleOnLoad);
             console.log('[VolumeViewer3D] Tooth overlays built:', builtActors.length);
         } catch (overlayError) {
             if (overlayError?.name !== 'AbortError') {
                 console.warn('[VolumeViewer3D] Failed to load tooth overlays:', overlayError);
-                setTeethError(overlayError.message || 'Failed to load tooth overlays');
+                if (!silent) {
+                    setTeethError(overlayError.message || 'Failed to load tooth overlays');
+                }
             }
         } finally {
             if (overlayAbortRef.current === controller) {
@@ -837,7 +854,6 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     }, [
         attachToothActors,
         cacheKey,
-        canLoadTeethOverlay,
         createToothOverlayActors,
         seriesUid,
         study,
@@ -860,8 +876,16 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
             return;
         }
 
-        loadToothOverlay();
+        loadToothOverlay({ visibleOnLoad: true, silent: false });
     }, [attachToothActors, loadToothOverlay, showTeethOverlay, toothOverlayLoaded]);
+
+    useEffect(() => {
+        if (loading || error || teethLoading || toothOverlayLoaded || !vtkContextRef.current || !studyKey) return;
+        if (autoToothLoadKeyRef.current === cacheKey) return;
+
+        autoToothLoadKeyRef.current = cacheKey;
+        loadToothOverlay({ visibleOnLoad: false, silent: true });
+    }, [cacheKey, error, loadToothOverlay, loading, studyKey, teethLoading, toothOverlayLoaded]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -1083,22 +1107,32 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     // ═══════════════════════════════════════════════════════════════════
     // Screenshot Export
     // ═══════════════════════════════════════════════════════════════════
-    const captureScreenshot = useCallback(() => {
+    const captureScreenshot = useCallback(async () => {
         const ctx = vtkContextRef.current;
-        if (!ctx) return;
+        if (!ctx?.renderWindow?.captureImages) return null;
 
-        ctx.renderWindow.render();
+        try {
+            const captures = ctx.renderWindow.captureImages('image/png', {
+                scale: Math.max(window.devicePixelRatio || 1, 2),
+            });
+            if (!Array.isArray(captures) || captures.length === 0) return null;
 
-        const canvas = containerRef.current?.querySelector('canvas');
-        if (!canvas) return;
+            const dataURL = await captures[0];
+            if (typeof dataURL !== 'string' || !dataURL.startsWith('data:image')) {
+                return null;
+            }
 
-        const dataURL = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = 'xcore-' + preset + '-' + Date.now() + '.png';
-        link.href = dataURL;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            const link = document.createElement('a');
+            link.download = 'xcore-' + preset + '-' + Date.now() + '.png';
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            return dataURL;
+        } catch (captureError) {
+            console.warn('[VolumeViewer3D] Screenshot capture failed:', captureError);
+            return null;
+        }
     }, [preset]);
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1188,7 +1222,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     return (
         <div ref={wrapperRef} tabIndex={0} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 outline-none">
             {/* ─── Header Toolbar ─────────────────────────────────── */}
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-900/95 border-b border-slate-800 backdrop-blur-sm">
+            <div className="relative z-[100] flex items-center justify-between overflow-visible px-4 py-3 bg-slate-900/95 border-b border-slate-800 backdrop-blur-sm">
                 {/* Left: Back + Title */}
                 <div className="flex items-center gap-3">
                     {showBack && (
@@ -1561,6 +1595,9 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     metadata={metadata}
                     loading={metadataLoading}
                     error={metadataError}
+                    study={study}
+                    studyKey={studyKey}
+                    seriesUid={seriesUid}
                     title="DICOM Info"
                 />
 

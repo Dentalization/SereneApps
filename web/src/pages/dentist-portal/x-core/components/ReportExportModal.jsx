@@ -16,6 +16,7 @@ const ReportExportModal = ({
   initialValues,
   exporting = false,
   clinicName,
+  warningMessage = '',
 }) => {
   const [form, setForm] = useState(DEFAULT_FORM);
 
@@ -81,6 +82,12 @@ const ReportExportModal = ({
               placeholder="Implant planning observations, pathology notes, treatment recommendation..."
             />
           </label>
+
+          {warningMessage ? (
+            <div className="rounded-xl border border-amber-500/35 bg-amber-950/35 px-3 py-2 text-xs text-amber-200">
+              {warningMessage}
+            </div>
+          ) : null}
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
             <div className="mb-3 text-[11px] uppercase tracking-wide text-slate-500">Include</div>

@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
@@ -133,6 +134,44 @@ class DicomWindowingTests(unittest.TestCase):
         self.assertEqual(metadata['FieldOfViewDimensions'], '80.0')
         self.assertEqual(metadata['series'][0]['series_description'], 'Primary CBCT')
         self.assertEqual(metadata['series'][0]['type'], '3D Volume')
+
+    def test_raw_tags_skip_pixel_data_and_include_private_tags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, 'slice.dcm')
+            file_meta = pydicom.dataset.FileMetaDataset()
+            file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+            file_meta.MediaStorageSOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
+            file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
+            file_meta.ImplementationClassUID = pydicom.uid.generate_uid()
+            dataset = pydicom.dataset.FileDataset(file_path, {}, file_meta=file_meta, preamble=b'\0' * 128)
+            dataset.SOPClassUID = file_meta.MediaStorageSOPClassUID
+            dataset.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+            dataset.PatientName = 'Jane^Doe'
+            dataset.PatientID = 'P-42'
+            dataset.SeriesInstanceUID = '1.2.3.4'
+            dataset.add_new((0x0019, 0x1001), 'LO', 'Morita private marker')
+            dataset.Rows = 1
+            dataset.Columns = 1
+            dataset.BitsAllocated = 8
+            dataset.BitsStored = 8
+            dataset.HighBit = 7
+            dataset.SamplesPerPixel = 1
+            dataset.PhotometricInterpretation = 'MONOCHROME2'
+            dataset.PixelData = b'\0'
+            dataset.save_as(file_path, enforce_file_format=True)
+
+            handler = DicomHandler.__new__(DicomHandler)
+            handler.files = [file_path]
+
+            payload = handler.get_raw_tags()
+            tags_by_keyword = {item['keyword']: item for item in payload['tags']}
+            tag_numbers = {item['tag'] for item in payload['tags']}
+
+            self.assertEqual(payload['total_tags'], len(payload['tags']))
+            self.assertIn('PatientName', tags_by_keyword)
+            self.assertEqual(tags_by_keyword['PatientName']['vr'], 'PN')
+            self.assertIn('(0019,1001)', {tag.replace(' ', '') for tag in tag_numbers})
+            self.assertNotIn('(7FE0,0010)', {tag.replace(' ', '').upper() for tag in tag_numbers})
 
 
 if __name__ == '__main__':
