@@ -1,13 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { PY_API_BASE } from '../../../../config/api';
 import useStudyMetadata from '../hooks/useStudyMetadata';
 import AnnotationCanvas from './AnnotationCanvas';
 import ReportExportModal from './ReportExportModal';
 import { exportPdfReport, drawAnnotations } from '../utils/reportUtils';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
+import ShortcutHelpButton from './ShortcutHelpButton';
 
 const MEASUREMENT_COLOR = '#1D9E75';
+const IMAGE_SHORTCUTS = [
+    { key: '+ / =', label: 'Zoom in' },
+    { key: '-', label: 'Zoom out' },
+    { key: '0', label: 'Fit to screen' },
+    { key: 'I', label: 'Invert image' },
+    { key: 'F', label: 'Fullscreen' },
+];
 
 const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
 
@@ -84,9 +92,13 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
     const studyKey = study?.folderName || study?.id || '';
     const seriesUid = seriesInfo?.series_uid || study?.selectedSeriesUid || '';
     const { metadata } = useStudyMetadata(study, { enabled: !!studyKey && !!seriesUid });
+    const showBack = typeof onBack === 'function';
+    const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
 
-    const baseImageUrl = `${PY_API_BASE}/image/${studyKey}/${seriesUid}`;
-    const imageUrl = `${baseImageUrl}?retry=${retryCount}`;
+    const imageUrl = buildImagingUrl(
+        `/image/${studyKey}/${seriesUid}`,
+        buildStudyAssetParams(study, { retry: retryCount })
+    );
     const seriesTitle = seriesInfo?.series_description || seriesInfo?.title || 'Panoramic Image';
     const modality = seriesInfo?.modality || 'OPG';
     const dentistName = useMemo(() => buildDentistName(user), [user]);
@@ -207,6 +219,37 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         }
         document.exitFullscreen();
     }, []);
+
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            const activeTag = document.activeElement?.tagName?.toLowerCase();
+            const isTextInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+            const viewerFocused = wrapperRef.current?.contains(document.activeElement);
+            if (isTextInput) return;
+            if (document.activeElement !== document.body && !viewerFocused) return;
+
+            const key = event.key.toLowerCase();
+            if (key === '+' || key === '=') {
+                event.preventDefault();
+                zoomIn();
+            } else if (key === '-') {
+                event.preventDefault();
+                zoomOut();
+            } else if (key === '0') {
+                event.preventDefault();
+                fitToScreen();
+            } else if (key === 'i') {
+                event.preventDefault();
+                setInverted((current) => !current);
+            } else if (key === 'f') {
+                event.preventDefault();
+                toggleFullscreen();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [fitToScreen, toggleFullscreen, zoomIn, zoomOut]);
 
     const captureCurrentViewDataUrl = useCallback(() => {
         const viewport = containerRef.current;
@@ -363,12 +406,14 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
     }, [captureCurrentViewDataUrl, clinicName, metadata]);
 
     return (
-        <div ref={wrapperRef} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+        <div ref={wrapperRef} tabIndex={0} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
             <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
                 <div className="flex items-center gap-3">
-                    <button onClick={onBack} className="rounded-lg bg-slate-800 p-2 text-white transition hover:bg-slate-700">
-                        <AppIcon name="ArrowLeft" size={18} />
-                    </button>
+                    {showBack && (
+                        <button onClick={onBack} className="rounded-lg bg-slate-800 p-2 text-white transition hover:bg-slate-700">
+                            <AppIcon name="ArrowLeft" size={18} />
+                        </button>
+                    )}
                     <div>
                         <h2 className="text-base font-semibold leading-tight text-white">{seriesTitle}</h2>
                         <p className="text-xs text-gray-500">{modality} — 2D Image</p>
@@ -501,7 +546,9 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
                         <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={18} />
                     </button>
 
-                    {onSwitchSeries && (
+                    <ShortcutHelpButton shortcuts={IMAGE_SHORTCUTS} />
+
+                    {allowSeriesSwitch && (
                         <>
                             <div className="mx-1 h-6 w-px bg-slate-700" />
                             <button onClick={onSwitchSeries} className="flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white transition shadow-lg shadow-purple-600/20 hover:bg-purple-500">

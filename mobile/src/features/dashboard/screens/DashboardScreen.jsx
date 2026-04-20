@@ -82,8 +82,9 @@ const DashboardScreen = () => {
   const mountAnim = useRef(new Animated.Value(0)).current;
 
   // Modern UI Gradient: Base Ungu (#982598) dengan sedikit sentuhan dimensi
-  const primaryPurple = '#982598';
-  const gradientColors = ['#A82CA8', '#821C82'];
+  // Modern UI Gradient: Brand Violet
+  const primaryPurple = '#62109F';
+  const gradientColors = ['#62109F', '#7C3AED'];
 
   // Run entrance animation on mount
   useEffect(() => {
@@ -194,6 +195,9 @@ const DashboardScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
+      {/* TOP OVER-SCROLL FILLER (Purple) */}
+      <View style={styles.topOverscrollFiller} />
+
       {/* FIXED GRADIENT BACKGROUND */}
       <LinearGradient
         colors={gradientColors}
@@ -210,6 +214,12 @@ const DashboardScreen = () => {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
+
+        {/* Decorative Background Accents */}
+        <View style={styles.bubbleContainer}>
+          <View style={[styles.bubble, { width: 180, height: 180, borderRadius: 90, top: -60, right: -60, backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+          <View style={[styles.bubble, { width: 120, height: 120, borderRadius: 60, top: 40, left: -40, backgroundColor: 'rgba(255,255,255,0.05)' }]} />
+        </View>
 
         <View style={styles.profileRow}>
           <View style={styles.profileInfo}>
@@ -358,12 +368,12 @@ const DashboardScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F1F5F9', // Slightly cooler background to match modern UI
+    backgroundColor: '#F8FAFC', // Neutral background for the bottom/overscroll
   },
   topGradient: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
-    height: height * 0.45,
+    height: height * 0.65, // Extended to cover search and categories without gaps
   },
   fixedTopBar: {
     position: 'absolute',
@@ -434,7 +444,7 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     paddingHorizontal: 20,
-    paddingBottom: 45,
+    paddingBottom: 35, // Reduced to tighten the gap to the white sheet
   },
 
   // Modern Search Bar
@@ -447,9 +457,9 @@ const styles = StyleSheet.create({
     paddingLeft: 18,
     paddingRight: 10,
     marginBottom: 24,
-    shadowColor: '#982598',
+    shadowColor: '#62109F',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
   },
@@ -501,6 +511,21 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     letterSpacing: 0.3,
   },
+  // New Decorative Elements
+  topOverscrollFiller: {
+    position: 'absolute',
+    top: -height,
+    left: 0, right: 0,
+    height: height,
+    backgroundColor: '#62109F', // Matches the start of the gradient
+  },
+  bubbleContainer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  bubble: {
+    position: 'absolute',
+  },
 
   // WHITE SHEET
   whiteSheet: {
@@ -509,7 +534,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 36,
     paddingHorizontal: 4, // Dipertahankan lebar
     paddingTop: 12,
-    marginTop: -30,
+    marginTop: -25, // Refined overlap
     paddingBottom: 40,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },

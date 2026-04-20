@@ -208,7 +208,9 @@ export const getNearbyClinics = async (req, res, next) => {
         LEFT JOIN LATERAL (
           SELECT COALESCE(COUNT(*), 0) AS dentist_count
           FROM clinic_staff cs
+          JOIN dentist_profiles dp ON cs.user_id = dp.user_id
           WHERE cs.clinic_profile_id = cb.clinic_profile_id
+            AND cs.assigned_branch_id = cb.id
             AND cs.role = 'dentist'
             AND cs.is_active = true
         ) stats ON true
@@ -503,11 +505,13 @@ export const getClinicById = async (req, res, next) => {
         const statsQuery = `
           SELECT COALESCE(COUNT(*), 0) AS dentist_count
           FROM clinic_staff cs
+          JOIN dentist_profiles dp ON cs.user_id = dp.user_id
           WHERE cs.clinic_profile_id = $1
+            AND cs.assigned_branch_id = $2
             AND cs.role = 'dentist'
             AND cs.is_active = true
         `;
-        const statsResult = await query(statsQuery, [row.clinic_profile_id]);
+        const statsResult = await query(statsQuery, [row.clinic_profile_id, row.branch_id]);
         const dentistCount = statsResult.rows[0]?.dentist_count || 0;
         console.log('✅ [getClinicById] Found', dentistCount, 'dentists');
         

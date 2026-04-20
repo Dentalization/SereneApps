@@ -4,6 +4,7 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 const execAsync = promisify(exec);
@@ -11,10 +12,118 @@ const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
+const PY_SERVICE_BASE_URL = process.env.XCORE_PY_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+const ALLOWED_SHARE_EXPIRY_HOURS = new Set([24, 48, 72, 168]);
 
 // Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+function serializeJson(payload) {
+    return JSON.parse(JSON.stringify(payload, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    ));
+}
+
+function buildPublicAppBaseUrl(req) {
+    const configured =
+        process.env.XCORE_SHARE_BASE_URL ||
+        process.env.APP_BASE_URL ||
+        process.env.FRONTEND_BASE_URL;
+
+    if (configured) {
+        return configured.replace(/\/$/, '');
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const protocol = (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(',')[0]
+        || req.protocol
+        || 'http';
+    const host = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) || req.get('host');
+    return `${protocol}://${host}`;
+}
+
+function cleanPatientName(name, fallback = 'Patient') {
+    if (!name || typeof name !== 'string') return fallback;
+    const normalized = name.replace(/\^/g, ' ').trim();
+    return normalized || fallback;
+}
+
+function sanitizeSeriesPayload(series) {
+    return {
+        series_uid: series.series_uid,
+        title: series.title || 'Unknown Series',
+        type: series.type || '3D Volume',
+        classification: series.classification || (series.type === '2D Image' ? '2D' : '3D'),
+        modality: series.modality || 'CT',
+        num_slices: Number(series.num_slices || 0),
+        status: series.status || 'ready',
+        has_vti: Boolean(series.has_vti),
+        has_image: Boolean(series.has_image),
+        has_thumb: Boolean(series.has_thumb),
+        has_labels: Boolean(series.has_labels),
+        num_labels: Number(series.num_labels || 0),
+        segmentation_method: series.segmentation_method || null,
+        segmentation_status: series.segmentation_status || (series.has_labels ? 'ready' : 'missing'),
+    };
+}
+
+async function fetchStudySeriesForShare(folderName) {
+    const response = await fetch(`${PY_SERVICE_BASE_URL}/gallery/${encodeURIComponent(folderName)}`);
+    if (!response.ok) {
+        throw new Error(`Imaging service returned ${response.status} while loading shared series`);
+    }
+
+    const payload = await response.json();
+    return (payload.series || []).map(sanitizeSeriesPayload);
+}
+
+function getShareSecret() {
+    if (!process.env.SHARE_SECRET) {
+        throw new Error('SHARE_SECRET is not configured');
+    }
+    return process.env.SHARE_SECRET;
+}
+
+async function resolveStudyShareRecord(token, options = {}) {
+    const { includeStudy = false } = options;
+    let decoded;
+
+    try {
+        decoded = jwt.verify(token, getShareSecret());
+    } catch (error) {
+        if (error?.name === 'TokenExpiredError') {
+            return { error: 'expired', detail: 'Share link expired' };
+        }
+        return { error: 'invalid', detail: 'Invalid share token' };
+    }
+
+    const shareRecord = await prisma.studyShare.findUnique({
+        where: { token },
+        include: includeStudy ? {
+            study: {
+                include: {
+                    patient: { select: { name: true } },
+                },
+            },
+        } : undefined,
+    });
+
+    if (!shareRecord) {
+        return { error: 'missing', detail: 'Share link not found' };
+    }
+
+    if (shareRecord.expiresAt <= new Date()) {
+        return { error: 'expired', detail: 'Share link expired', shareRecord };
+    }
+
+    if (String(decoded.studyId) !== String(shareRecord.studyId)) {
+        return { error: 'invalid', detail: 'Share token study mismatch' };
+    }
+
+    return { decoded, shareRecord };
 }
 
 /**
@@ -162,14 +271,12 @@ export const uploadStudy = async (req, res) => {
         });
 
         // Handle BigInt serialization
-        const response = JSON.parse(JSON.stringify(result, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
+        const response = serializeJson(result);
 
         // Trigger background VTI conversion (fire-and-forget)
         // This pre-computes the 3D .vti file so it's ready when user opens the viewer
         try {
-            fetch(`http://127.0.0.1:8000/convert/${batchId}`, { method: 'POST' })
+            fetch(`${PY_SERVICE_BASE_URL}/convert/${batchId}`, { method: 'POST' })
                 .then(r => r.json())
                 .then(data => console.log(`[X-Core] VTI conversion triggered: ${JSON.stringify(data)}`))
                 .catch(err => console.warn(`[X-Core] VTI conversion trigger failed (non-critical): ${err.message}`));
@@ -202,10 +309,7 @@ export const getStudies = async (req, res) => {
         });
         console.log(`[X-Core] Found ${studies.length} studies for user ${userId}`);
 
-        const response = JSON.parse(JSON.stringify(studies, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
-        res.json(response);
+        res.json(serializeJson(studies));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -369,5 +473,130 @@ export const deleteStudy = async (req, res) => {
     } catch (error) {
         console.error('Delete Study Error:', error);
         res.status(500).json({ error: 'Failed to delete study: ' + error.message });
+    }
+};
+
+export const createStudyShare = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const studyId = BigInt(id);
+        const expiresInHours = Number(req.body?.expiresInHours);
+
+        if (!ALLOWED_SHARE_EXPIRY_HOURS.has(expiresInHours)) {
+            return res.status(400).json({ error: 'expiresInHours must be one of 24, 48, 72, or 168' });
+        }
+
+        const study = await prisma.imagingStudy.findUnique({
+            where: { id: studyId },
+            include: {
+                patient: { select: { name: true } },
+            },
+        });
+
+        if (!study) {
+            return res.status(404).json({ error: 'Study not found' });
+        }
+
+        if (study.dentistId !== BigInt(req.user.id)) {
+            return res.status(403).json({ error: 'You do not have permission to share this study' });
+        }
+
+        const expiresAt = new Date(Date.now() + (expiresInHours * 60 * 60 * 1000));
+        const token = jwt.sign(
+            {
+                studyId: study.id.toString(),
+                folderId: study.folderName,
+            },
+            getShareSecret(),
+            { expiresIn: `${expiresInHours}h` }
+        );
+
+        await prisma.studyShare.create({
+            data: {
+                studyId: study.id,
+                token,
+                expiresAt,
+            },
+        });
+
+        const baseUrl = buildPublicAppBaseUrl(req);
+        const shareUrl = `${baseUrl}/shared/${token}`;
+
+        res.json({
+            shareUrl,
+            token,
+            expiresAt: expiresAt.toISOString(),
+            patientName: cleanPatientName(study.metadata?.PatientName, study.patient?.name || study.originalName || 'Patient'),
+        });
+    } catch (error) {
+        console.error('Create Study Share Error:', error);
+        res.status(500).json({ error: error.message || 'Failed to create study share' });
+    }
+};
+
+export const validateStudyShareToken = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { error, detail, shareRecord } = await resolveStudyShareRecord(token, { includeStudy: true });
+
+        if (error === 'expired') {
+            return res.status(410).json({ error: detail });
+        }
+        if (error) {
+            return res.status(404).json({ error: detail });
+        }
+
+        res.json({
+            valid: true,
+            studyId: shareRecord.studyId.toString(),
+            folderName: shareRecord.study.folderName,
+            expiresAt: shareRecord.expiresAt.toISOString(),
+        });
+    } catch (error) {
+        console.error('Validate Study Share Error:', error);
+        res.status(500).json({ error: 'Failed to validate share token' });
+    }
+};
+
+export const getSharedStudy = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const resolved = await resolveStudyShareRecord(token, { includeStudy: true });
+
+        if (resolved.error === 'expired') {
+            return res.status(410).json({ error: resolved.detail });
+        }
+        if (resolved.error) {
+            return res.status(404).json({ error: resolved.detail });
+        }
+
+        const { shareRecord } = resolved;
+        const study = shareRecord.study;
+
+        let series = [];
+        try {
+            series = await fetchStudySeriesForShare(study.folderName);
+        } catch (seriesError) {
+            console.warn('[X-Core] Shared study series fetch failed:', seriesError.message);
+        }
+
+        const patientName = cleanPatientName(
+            study.metadata?.PatientName,
+            study.patient?.name || study.originalName || 'Patient'
+        );
+
+        res.json({
+            folderName: study.folderName,
+            patientName,
+            studyDate: study.studyDate,
+            description: study.description || study.metadata?.StudyDescription || null,
+            modality: study.modality,
+            expiresAt: shareRecord.expiresAt.toISOString(),
+            token,
+            series,
+        });
+    } catch (error) {
+        console.error('Get Shared Study Error:', error);
+        res.status(500).json({ error: 'Failed to load shared study' });
     }
 };

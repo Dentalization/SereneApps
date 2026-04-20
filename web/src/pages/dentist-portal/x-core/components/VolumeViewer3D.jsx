@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import '@kitware/vtk.js/favicon';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
-import { PY_API_BASE } from '../../../../config/api';
 import { VOLUME_PRESETS } from '../config/volumePresets';
 import { VOLUME_CACHE_VERSION, volumeCache } from '../utils/volumeCache';
+import { toothOverlayCache } from '../utils/toothOverlayCache';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import useStudyMetadata from '../hooks/useStudyMetadata';
 
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
@@ -14,9 +15,15 @@ import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransf
 import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
 import vtkXMLImageDataReader from '@kitware/vtk.js/IO/XML/XMLImageDataReader';
 import vtkPlane from '@kitware/vtk.js/Common/DataModel/Plane';
+import vtkImageMarchingCubes from '@kitware/vtk.js/Filters/General/ImageMarchingCubes';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import AppIcon from '../../../../components/AppIcon';
 import MetadataPanel from './MetadataPanel';
 import SeriesSidebar from './SeriesSidebar';
+import ShortcutHelpButton from './ShortcutHelpButton';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const SAMPLE_DISTANCE_INTERACTIVE = 1.0;
@@ -24,6 +31,16 @@ const SAMPLE_DISTANCE_STILL = 0.5;
 const SLAB_MIN_MM = 1;
 const SLAB_MAX_MM = 100;
 const SLAB_DEFAULT_MM = 20;
+const VOLUME_SHORTCUTS = [
+    { key: 'B', label: 'Bone preset' },
+    { key: 'T', label: 'Soft tissue preset' },
+    { key: 'M', label: 'MIP preset' },
+    { key: 'X', label: 'X-ray preset' },
+    { key: 'R', label: 'Auto-rotate' },
+    { key: 'I', label: 'Invert MIP/X-ray' },
+    { key: 'Space', label: 'Reset camera' },
+    { key: 'F', label: 'Fullscreen' },
+];
 
 // Window/Level defaults per render mode
 // Data is MONAI-normalized [0.0, 1.0] where 0.0=Air(-1000HU), 0.25=Water(0HU), 1.0=Metal(3000HU)
@@ -52,11 +69,76 @@ const BG_COLORS = {
     xray: [0.0,  0.0,  0.0],
 };
 
+function hslToRgb(h, s, l) {
+    const hue = ((h % 360) + 360) % 360;
+    const c = (1 - Math.abs((2 * l) - 1)) * s;
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = l - (c / 2);
+
+    let r = 0;
+    let g = 0;
+    let b = 0;
+
+    if (hue < 60) [r, g, b] = [c, x, 0];
+    else if (hue < 120) [r, g, b] = [x, c, 0];
+    else if (hue < 180) [r, g, b] = [0, c, x];
+    else if (hue < 240) [r, g, b] = [0, x, c];
+    else if (hue < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+
+    return [r + m, g + m, b + m];
+}
+
+function getToothColor(labelIndex) {
+    return hslToRgb((labelIndex * 37) % 360, 0.68, 0.58);
+}
+
+function waitForNextFrame() {
+    return new Promise((resolve) => {
+        if (typeof window === 'undefined' || !window.requestAnimationFrame) {
+            setTimeout(resolve, 0);
+            return;
+        }
+        window.requestAnimationFrame(() => resolve());
+    });
+}
+
+function createBinaryMaskImage(sourceImageData, labelValue) {
+    const scalars = sourceImageData.getPointData()?.getScalars();
+    const values = scalars?.getData?.();
+    if (!values?.length) return null;
+
+    const maskValues = new Uint8Array(values.length);
+    let voxelCount = 0;
+    for (let index = 0; index < values.length; index += 1) {
+        if (values[index] === labelValue) {
+            maskValues[index] = 1;
+            voxelCount += 1;
+        }
+    }
+
+    if (voxelCount === 0) return null;
+
+    const maskImage = vtkImageData.newInstance();
+    maskImage.setDimensions(...sourceImageData.getDimensions());
+    maskImage.setSpacing(...sourceImageData.getSpacing());
+    maskImage.setOrigin(...sourceImageData.getOrigin());
+    maskImage.getPointData().setScalars(vtkDataArray.newInstance({
+        name: `ToothLabel${labelValue}`,
+        numberOfComponents: 1,
+        values: maskValues,
+    }));
+
+    return { maskImage, voxelCount };
+}
+
 const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) => {
     const containerRef = useRef(null);
     const wrapperRef = useRef(null);
     const vtkContextRef = useRef(null);
     const pendingVtkRef = useRef(null);
+    const overlayAbortRef = useRef(null);
+    const overlayBuildIdRef = useRef(0);
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -87,14 +169,100 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
     // Series panel
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
     const [showMetadataPanel, setShowMetadataPanel] = useState(false);
+    const [showTeethOverlay, setShowTeethOverlay] = useState(false);
+    const [teethLoading, setTeethLoading] = useState(false);
+    const [teethError, setTeethError] = useState(null);
+    const [toothOverlayLoaded, setToothOverlayLoaded] = useState(false);
 
     // Stable study key for caching
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
     const seriesUid = useMemo(() => study?.selectedSeriesUid || '', [study]);
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
+    const showBack = typeof onBack === 'function';
+    const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
+    const currentSeriesInfo = useMemo(() => {
+        const series = Array.isArray(study?.series) ? study.series : [];
+        if (!seriesUid) return series.find((item) => item.classification === '3D') || null;
+        return series.find((item) => item.series_uid === seriesUid) || null;
+    }, [study?.series, seriesUid]);
+    const knownLabelCount = Number(currentSeriesInfo?.num_labels || 0);
+    const canLoadTeethOverlay = Boolean(currentSeriesInfo?.has_labels && knownLabelCount > 0);
+    const shouldShowTeethToggle = Boolean(currentSeriesInfo && currentSeriesInfo.classification !== '2D');
     const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
         enabled: !!studyKey,
     });
+
+    const createToothOverlayActors = useCallback(async (labelImageData, labelIds = [], options = {}) => {
+        const scalars = labelImageData.getPointData()?.getScalars();
+        const values = scalars?.getData?.();
+        if (!values?.length) return [];
+
+        const uniqueLabels = labelIds.length
+            ? labelIds.map((value) => Number(value)).filter((value) => value > 0)
+            : (() => {
+                const labelSet = new Set();
+                for (let index = 0; index < values.length; index += 1) {
+                    const value = values[index];
+                    if (value > 0) {
+                        labelSet.add(value);
+                    }
+                }
+                return Array.from(labelSet).sort((a, b) => a - b);
+            })();
+
+        const ensureActive = () => {
+            if (options.signal?.aborted || (options.buildId && overlayBuildIdRef.current !== options.buildId)) {
+                const abortError = new Error('Tooth overlay load cancelled');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
+        };
+
+        const actors = [];
+
+        for (let index = 0; index < uniqueLabels.length; index += 1) {
+            ensureActive();
+            const labelValue = uniqueLabels[index];
+            const maskPayload = createBinaryMaskImage(labelImageData, labelValue);
+            if (!maskPayload || maskPayload.voxelCount < 24) {
+                continue;
+            }
+
+            const marching = vtkImageMarchingCubes.newInstance({
+                contourValue: 0.5,
+                computeNormals: true,
+                mergePoints: true,
+            });
+            marching.setInputData(maskPayload.maskImage);
+            marching.update();
+
+            const mapper = vtkMapper.newInstance();
+            mapper.setInputConnection(marching.getOutputPort());
+
+            const actor = vtkActor.newInstance();
+            actor.setMapper(mapper);
+            actor.setVisibility(false);
+
+            const [r, g, b] = getToothColor(index + 1);
+            const property = actor.getProperty();
+            property.setColor(r, g, b);
+            property.setOpacity(0.78);
+            property.setAmbient(0.25);
+            property.setDiffuse(0.75);
+            property.setSpecular(0.18);
+            property.setSpecularPower(18);
+
+            actors.push(actor);
+            if (typeof options.onActor === 'function') {
+                options.onActor(actor);
+            }
+            if (index < uniqueLabels.length - 1) {
+                await waitForNextFrame();
+            }
+        }
+
+        return actors;
+    }, []);
 
     // ═══════════════════════════════════════════════════════════════════
     // Transfer Function Presets — MONAI-Normalized [0.0, 1.0] Range
@@ -275,6 +443,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         const loadVolume = async () => {
             setLoading(true);
             setError(null);
+            setShowTeethOverlay(false);
+            setTeethLoading(false);
+            setTeethError(null);
+            setToothOverlayLoaded(false);
+            overlayAbortRef.current?.abort();
+            overlayAbortRef.current = null;
+            overlayBuildIdRef.current += 1;
             setLoadingProgress(isCached ? 85 : 0);
             setLoadingStage(isCached ? 'Restoring from cache...' : 'Connecting...');
 
@@ -286,10 +461,16 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     imageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[VolumeViewer3D] ❌ Cache MISS:', cacheKey, '| Cached keys:', [...volumeCache.keys()]);
-                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? '?series_uid=' + seriesUid : ''}${seriesUid ? '&' : '?'}v=${VOLUME_CACHE_VERSION}`;
+                    const url = buildImagingUrl(
+                        `/volume/${studyKey}`,
+                        buildStudyAssetParams(study, {
+                            series_uid: seriesUid || undefined,
+                            v: VOLUME_CACHE_VERSION,
+                        })
+                    );
                     console.log('[VolumeViewer3D] Fetching VTI from:', url);
 
-                    setLoadingStage('Downloading 3D volume...');
+                    setLoadingStage('Connecting...');
                     setLoadingProgress(5);
 
                     const response = await fetch(url);
@@ -323,7 +504,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
 
                     if (cancelled) return;
 
-                    setLoadingStage('Decompressing volume...');
+                    setLoadingStage('Decompressing...');
                     setLoadingProgress(70);
 
                     const fullBuffer = new Uint8Array(receivedBytes);
@@ -333,8 +514,8 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                         offset += chunk.length;
                     }
 
-                    setLoadingStage('Parsing 3D data...');
-                    setLoadingProgress(75);
+                    setLoadingStage('Decompressing...');
+                    setLoadingProgress(78);
 
                     const vtiReader = vtkXMLImageDataReader.newInstance();
                     vtiReader.parseAsArrayBuffer(fullBuffer.buffer);
@@ -362,7 +543,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
 
                 setVolumeInfo({ dimensions: dims, spacing, voxels: dims[0] * dims[1] * dims[2] });
 
-                setLoadingStage('Initializing 3D renderer...');
+                setLoadingStage('Building 3D scene...');
                 setLoadingProgress(85);
 
                 const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
@@ -434,7 +615,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     }, 200);
                 });
 
-                setLoadingStage('Rendering 3D view...');
+                setLoadingStage('Rendering...');
                 setLoadingProgress(95);
 
                 renderer.addVolume(actor);
@@ -456,6 +637,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 camera.elevation(15);
                 camera.zoom(1.3);
 
+                const labelActors = [];
                 renderWindow.render();
 
                 vtkContextRef.current = {
@@ -470,7 +652,8 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                     dataRange,
                     imageData,
                     slabPlanes,
-                    sharpenTimer
+                    sharpenTimer,
+                    labelActors,
                 };
 
                 setLoadingProgress(100);
@@ -520,6 +703,9 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
 
         return () => {
             cancelled = true;
+            overlayAbortRef.current?.abort();
+            overlayAbortRef.current = null;
+            overlayBuildIdRef.current += 1;
             clearTimeout(timer);
             if (pendingVtkRef.current) {
                 try { pendingVtkRef.current.delete(); } catch (_) {}
@@ -531,7 +717,159 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 vtkContextRef.current = null;
             }
         };
-    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset]);
+    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset, canLoadTeethOverlay]);
+
+    const attachToothActors = useCallback((actors, visible) => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || !Array.isArray(actors) || actors.length === 0) return false;
+
+        const currentActors = new Set(ctx.labelActors || []);
+        actors.forEach((actor) => {
+            if (!currentActors.has(actor)) {
+                ctx.renderer.addActor(actor);
+            }
+            actor.setVisibility(visible);
+        });
+        ctx.labelActors = actors;
+        ctx.renderWindow.render();
+        return true;
+    }, []);
+
+    const loadToothOverlay = useCallback(async () => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || teethLoading || !canLoadTeethOverlay) return;
+
+        const cachedOverlay = toothOverlayCache.get(cacheKey);
+        if (cachedOverlay?.actors?.length) {
+            attachToothActors(cachedOverlay.actors, true);
+            setToothOverlayLoaded(true);
+            setTeethError(null);
+            setShowTeethOverlay(true);
+            return;
+        }
+
+        overlayAbortRef.current?.abort();
+        const controller = new AbortController();
+        overlayAbortRef.current = controller;
+        const buildId = overlayBuildIdRef.current + 1;
+        overlayBuildIdRef.current = buildId;
+
+        setTeethLoading(true);
+        setTeethError(null);
+
+        try {
+            const assetParams = buildStudyAssetParams(study, {
+                series_uid: seriesUid || undefined,
+                v: VOLUME_CACHE_VERSION,
+            });
+
+            const manifestUrl = buildImagingUrl(`/labels-manifest/${studyKey}`, assetParams);
+            const manifestResponse = await fetch(manifestUrl, { signal: controller.signal });
+            if (!manifestResponse.ok) {
+                throw new Error(`No tooth labels available (${manifestResponse.status})`);
+            }
+            const manifest = await manifestResponse.json();
+            const labelIds = Array.isArray(manifest?.label_ids) ? manifest.label_ids : [];
+            if (labelIds.length === 0) {
+                throw new Error('Tooth label manifest has no labels');
+            }
+
+            const labelUrl = buildImagingUrl(`/labels/${studyKey}`, assetParams);
+            const labelResponse = await fetch(labelUrl, { signal: controller.signal });
+            if (!labelResponse.ok) {
+                throw new Error(`Tooth label volume failed to load (${labelResponse.status})`);
+            }
+
+            const labelBuffer = await labelResponse.arrayBuffer();
+            if (controller.signal.aborted || overlayBuildIdRef.current !== buildId) return;
+
+            const labelReader = vtkXMLImageDataReader.newInstance();
+            labelReader.parseAsArrayBuffer(labelBuffer);
+            const labelImageData = labelReader.getOutputData(0);
+
+            const builtActors = await createToothOverlayActors(labelImageData, labelIds, {
+                signal: controller.signal,
+                buildId,
+                onActor: (actor) => {
+                    const activeCtx = vtkContextRef.current;
+                    if (!activeCtx || controller.signal.aborted || overlayBuildIdRef.current !== buildId) return;
+                    actor.setVisibility(true);
+                    activeCtx.renderer.addActor(actor);
+                    activeCtx.labelActors = [...(activeCtx.labelActors || []), actor];
+                    activeCtx.renderWindow.render();
+                },
+            });
+
+            if (controller.signal.aborted || overlayBuildIdRef.current !== buildId) return;
+            if (!builtActors.length) {
+                throw new Error('No tooth overlay meshes could be generated');
+            }
+
+            toothOverlayCache.set(cacheKey, {
+                manifest,
+                labelImageData,
+                actors: builtActors,
+            });
+
+            const activeCtx = vtkContextRef.current;
+            if (activeCtx) {
+                activeCtx.labelActors = builtActors;
+                builtActors.forEach((actor) => actor.setVisibility(true));
+                activeCtx.renderWindow.render();
+            }
+
+            setToothOverlayLoaded(true);
+            setShowTeethOverlay(true);
+            console.log('[VolumeViewer3D] Tooth overlays built:', builtActors.length);
+        } catch (overlayError) {
+            if (overlayError?.name !== 'AbortError') {
+                console.warn('[VolumeViewer3D] Failed to load tooth overlays:', overlayError);
+                setTeethError(overlayError.message || 'Failed to load tooth overlays');
+            }
+        } finally {
+            if (overlayAbortRef.current === controller) {
+                overlayAbortRef.current = null;
+            }
+            if (!controller.signal.aborted) {
+                setTeethLoading(false);
+            }
+        }
+    }, [
+        attachToothActors,
+        cacheKey,
+        canLoadTeethOverlay,
+        createToothOverlayActors,
+        seriesUid,
+        study,
+        studyKey,
+        teethLoading,
+    ]);
+
+    const handleToggleTeeth = useCallback(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx) return;
+
+        if (showTeethOverlay) {
+            setShowTeethOverlay(false);
+            return;
+        }
+
+        if (ctx.labelActors?.length || toothOverlayLoaded) {
+            attachToothActors(ctx.labelActors || [], true);
+            setShowTeethOverlay(true);
+            return;
+        }
+
+        loadToothOverlay();
+    }, [attachToothActors, loadToothOverlay, showTeethOverlay, toothOverlayLoaded]);
+
+    useEffect(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx?.labelActors?.length) return;
+
+        ctx.labelActors.forEach((actor) => actor.setVisibility(showTeethOverlay));
+        ctx.renderWindow.render();
+    }, [showTeethOverlay]);
 
     // Auto-rotate
     useEffect(() => {
@@ -802,23 +1140,65 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
         setInverted(prev => !prev);
     }, []);
 
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            const activeTag = document.activeElement?.tagName?.toLowerCase();
+            const isTextInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+            const viewerFocused = wrapperRef.current?.contains(document.activeElement);
+            if (isTextInput) return;
+            if (document.activeElement !== document.body && !viewerFocused) return;
+
+            const key = event.key.toLowerCase();
+            if (key === 'b') {
+                event.preventDefault();
+                changePreset('bone');
+            } else if (key === 't') {
+                event.preventDefault();
+                changePreset('soft');
+            } else if (key === 'm') {
+                event.preventDefault();
+                changePreset('mip');
+            } else if (key === 'x') {
+                event.preventDefault();
+                changePreset('xray');
+            } else if (key === 'r') {
+                event.preventDefault();
+                setAutoRotate((current) => !current);
+            } else if (key === 'f') {
+                event.preventDefault();
+                toggleFullscreen();
+            } else if (event.code === 'Space') {
+                event.preventDefault();
+                resetCamera();
+            } else if (key === 'i' && (preset === 'mip' || preset === 'xray')) {
+                event.preventDefault();
+                toggleInvert();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [changePreset, preset, resetCamera, toggleFullscreen, toggleInvert]);
+
     // ═══════════════════════════════════════════════════════════════════
     // Render
     // ═══════════════════════════════════════════════════════════════════
     const isMipOrXray = preset === 'mip' || preset === 'xray';
 
     return (
-        <div ref={wrapperRef} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800">
+        <div ref={wrapperRef} tabIndex={0} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 outline-none">
             {/* ─── Header Toolbar ─────────────────────────────────── */}
             <div className="flex items-center justify-between px-4 py-3 bg-slate-900/95 border-b border-slate-800 backdrop-blur-sm">
                 {/* Left: Back + Title */}
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={onBack}
-                        className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white transition"
-                    >
-                        <AppIcon name="ArrowLeft" size={18} />
-                    </button>
+                    {showBack && (
+                        <button
+                            onClick={onBack}
+                            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white transition"
+                        >
+                            <AppIcon name="ArrowLeft" size={18} />
+                        </button>
+                    )}
                     <div>
                         <h2 className="text-white font-semibold text-base leading-tight">
                             3D Volume Rendering
@@ -910,6 +1290,8 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                         <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={18} />
                     </button>
 
+                    <ShortcutHelpButton shortcuts={VOLUME_SHORTCUTS} />
+
                     <div className="h-6 w-px bg-slate-700 mx-1" />
 
                     <button
@@ -927,18 +1309,42 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                         <AppIcon name="Info" size={18} />
                     </button>
 
-                    <button
-                        onClick={() => setShowSeriesPanel(prev => !prev)}
-                        className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition shadow-lg ' + (
-                            showSeriesPanel
-                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-cyan-500/10'
-                                : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
-                        )}
-                        title="Switch Series"
-                    >
-                        <AppIcon name="Layers" size={16} />
-                        <span>Series</span>
-                    </button>
+                    {shouldShowTeethToggle && (
+                        <button
+                            onClick={handleToggleTeeth}
+                            disabled={!canLoadTeethOverlay || teethLoading}
+                            className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition shadow-lg ' + (
+                                canLoadTeethOverlay
+                                    ? (showTeethOverlay
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-emerald-500/10'
+                                        : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700')
+                                    : 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+                            )}
+                            title={
+                                canLoadTeethOverlay
+                                    ? (teethLoading ? 'Loading tooth overlays...' : 'Toggle tooth overlay')
+                                    : 'No tooth labels available for this series'
+                            }
+                        >
+                            <AppIcon name={teethLoading ? 'Loader2' : 'Bone'} size={16} className={teethLoading ? 'animate-spin' : ''} />
+                            <span>Teeth{knownLabelCount > 0 ? ` ${knownLabelCount}` : ''}</span>
+                        </button>
+                    )}
+
+                    {allowSeriesSwitch && (
+                        <button
+                            onClick={() => setShowSeriesPanel(prev => !prev)}
+                            className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition shadow-lg ' + (
+                                showSeriesPanel
+                                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-cyan-500/10'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
+                            )}
+                            title="Switch Series"
+                        >
+                            <AppIcon name="Layers" size={16} />
+                            <span>Series</span>
+                        </button>
+                    )}
 
                     <button
                         onClick={onSwitchToSliceMode}
@@ -1009,6 +1415,13 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                 {/* ─── Left Tool Panel ───────────────────────────── */}
                 {!loading && !error && (
                     <div className="absolute top-3 left-3 z-20 flex flex-col gap-2 w-56">
+                        {teethError && (
+                            <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
+                                <div className="font-semibold mb-1">Tooth overlay unavailable</div>
+                                <div className="text-red-200/80">{teethError}</div>
+                            </div>
+                        )}
+
                         {/* Window/Level Panel (MIP & X-Ray only) */}
                         {isMipOrXray && (
                             <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
@@ -1137,7 +1550,7 @@ const VolumeViewer3D = ({ study, onBack, onSwitchToSliceMode, onSwitchSeries }) 
                             onSwitchSeries(series);
                         }
                     }}
-                    visible={showSeriesPanel}
+                    visible={allowSeriesSwitch && showSeriesPanel}
                     onClose={() => setShowSeriesPanel(false)}
                     position="right"
                 />

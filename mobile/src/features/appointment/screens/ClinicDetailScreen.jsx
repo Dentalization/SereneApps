@@ -31,26 +31,22 @@ const normalizeDicebear = (url, seed) => {
 
 // Resolve avatar URL from backend or use Dicebear fallback
 const resolveAvatar = (path, seed = 'dentist') => {
-  if (!path) {
+  if (!path || typeof path !== 'string') {
     return `https://api.dicebear.com/7.x/avataaars/png?seed=${seed}&backgroundColor=${DICEBEAR_BG}&size=256`;
   }
-  if (/^https?:\/\//i.test(path)) {
-    return normalizeDicebear(path, seed);
-  }
-  const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return `${API_BASE}/${normalized}`;
+  return resolveMediaUrl(path) || `https://api.dicebear.com/7.x/avataaars/png?seed=${seed}&backgroundColor=${DICEBEAR_BG}&size=256`;
 };
 
 const pickDoctorAvatar = (source = {}) =>
-  source?.avatarUrl ||
   source?.avatar_url ||
+  source?.avatarUrl ||
+  source?.user?.avatar_url ||
+  source?.user?.avatarUrl ||
+  source?.dentist?.avatar_url ||
   source?.avatar ||
   source?.image ||
   source?.imageUrl ||
   source?.photo ||
-  source?.photo_url ||
-  source?.profilePicture ||
-  source?.profile_picture ||
   null;
 
 // Format clinic distance
@@ -171,7 +167,7 @@ const ClinicDetailScreen = () => {
             slots: doctor.slots || [],
           })),
           operatingHours: clinicData.operatingHours,
-          dentistCount: clinicData.dentistCount,
+          dentistCount: clinicData.doctors?.length || 0,
           treatmentRooms: clinicData.treatmentRooms,
           badgeColor: '#EEF2FF',
         };
@@ -302,17 +298,31 @@ const ClinicDetailScreen = () => {
         }}
       >
         <LinearGradient
-          colors={[theme.colors.primary, '#7C3AED']}
+          colors={COLORS.headerGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             paddingTop: insets.top + 2,
             paddingHorizontal: 20,
             paddingBottom: 32,
-            borderBottomLeftRadius: 32,
-            borderBottomRightRadius: 32,
+            borderBottomLeftRadius: 36,
+            borderBottomRightRadius: 36,
+            overflow: 'hidden',
           }}
         >
+          {/* Decorative Background Accent */}
+          <View
+            style={{
+              position: 'absolute',
+              left: -40,
+              top: -40,
+              width: 180,
+              height: 180,
+              borderRadius: 90,
+              backgroundColor: withOpacity(COLORS.white, 0.04),
+            }}
+          />
+
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -370,12 +380,12 @@ const ClinicDetailScreen = () => {
               </View>
               <Text style={{ color: withOpacity(COLORS.white, 0.8) }}>{clinic.city}</Text>
             </View>
-            <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h1 }}>{clinic.name}</Text>
-            <Text style={{ color: withOpacity(COLORS.white, 0.85), marginTop: 6, ...TYPOGRAPHY.body }}>{clinic.tagline}</Text>
+            <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h1, fontWeight: '800' }}>{clinic.name}</Text>
+            <Text style={{ color: COLORS.whiteSecondary, marginTop: 8, ...TYPOGRAPHY.body, fontWeight: '500' }}>{clinic.tagline}</Text>
             <View style={{ flexDirection: 'row', marginTop: 18 }}>
               <StatPill icon="star" label="Rating" value={`${clinic.rating?.toFixed(1)} (${clinic.reviews})`} />
+              <StatPill icon="account-group" label="Dokter" value={`${clinic.dentistCount} Ahli`} />
               <StatPill icon="clock-outline" label="Jam" value={clinic.openStatus} />
-              <StatPill icon="account-group" label="Antrian" value={clinic.queue} />
             </View>
           </View>
         </LinearGradient>
@@ -543,7 +553,7 @@ const ClinicDetailScreen = () => {
           </Section>
 
           <Section
-            title="Tim dokter"
+            title={`Tim dokter (${clinic.dentistCount})`}
             onLayout={(e) => handleSectionLayout('dokter', e)}
           >
             {(clinic.doctors || []).map((doctor) => (

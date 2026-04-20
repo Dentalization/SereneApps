@@ -21,12 +21,14 @@ Frontend receives data in [0.0, 1.0] range where:
 
 import os
 import sys
+import json
 import numpy as np
 import pydicom
 from pydicom.uid import ExplicitVRLittleEndian
 import glob
 from collections import defaultdict
 import time
+from typing import Optional
 
 
 # ── Strict 2D / 3D Classification Constants ──
@@ -34,6 +36,17 @@ import time
 NATIVE_2D_MODALITIES = {'DX', 'PX', 'CR', 'IO', 'RG', 'MG', 'XA'}
 # Native 3D modalities: volumetric datasets (CT, CBCT, MR, etc.)
 NATIVE_3D_MODALITIES = {'CT', 'MR', 'PT', 'NM', 'US'}
+
+TOOTH_SEGMENT_THRESHOLD = 0.45
+TOOTH_SEGMENT_MAX_LABELS = 32
+TOOTH_SEGMENT_MIN_COMPONENT_VOXELS = 120
+TOOTH_SEGMENT_EROSION_STEPS = 1
+TOOTH_SEGMENT_METHOD = "heuristic_v2"
+_NEIGHBOR_OFFSETS_6 = (
+    (-1, 0, 0), (1, 0, 0),
+    (0, -1, 0), (0, 1, 0),
+    (0, 0, -1), (0, 0, 1),
+)
 
 
 def classify_series(num_files: int, modality: str) -> str:
@@ -57,7 +70,7 @@ def classify_series(num_files: int, modality: str) -> str:
     return '3D' if num_files > 10 else '2D'
 
 
-def scan_dicom_series(study_path: str) -> dict:
+def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
     """
     Scan folder and group DICOM files by SeriesInstanceUID.
     Handles both standard DICOM extensions and extensionless files (common in dental CBCT).
@@ -71,6 +84,9 @@ def scan_dicom_series(study_path: str) -> dict:
             'series_description': str,
         }
     }
+
+    If include_sr=True, returns (series_groups, sr_series). SR objects are kept
+    out of image-series conversion paths because they do not contain slices.
     """
     extensions = ['*.dcm', '*.DCM', '*.dcom', '*.DCOM', '*.dicom', '*.DICOM', '*.ima', '*.IMA']
     all_files = []
@@ -94,6 +110,7 @@ def scan_dicom_series(study_path: str) -> dict:
     
     # Temporary accumulator: {series_uid: {'files': [...], 'modality': str, 'description': str}}
     _temp = defaultdict(lambda: {'files': [], 'modality': '', 'description': ''})
+    _sr_temp = defaultdict(lambda: {'files': [], 'modality': 'SR', 'description': ''})
     
     for fp in all_files:
         try:
@@ -105,17 +122,24 @@ def scan_dicom_series(study_path: str) -> dict:
             
             series_uid = str(getattr(ds, 'SeriesInstanceUID', 'unknown'))
             instance_num = int(getattr(ds, 'InstanceNumber', 0))
+            modality = str(getattr(ds, 'Modality', '')).strip()
             
             # Also grab z-position for sorting if available
             z_pos = 0.0
             if hasattr(ds, 'ImagePositionPatient') and ds.ImagePositionPatient:
                 z_pos = float(ds.ImagePositionPatient[2])
+
+            if modality.upper() == 'SR':
+                _sr_temp[series_uid]['files'].append((instance_num, z_pos, fp))
+                if not _sr_temp[series_uid]['description']:
+                    _sr_temp[series_uid]['description'] = str(getattr(ds, 'SeriesDescription', 'Structured Report')).strip()
+                continue
             
             _temp[series_uid]['files'].append((instance_num, z_pos, fp))
 
             # Read modality & description from first file encountered for this series
             if not _temp[series_uid]['modality']:
-                _temp[series_uid]['modality'] = str(getattr(ds, 'Modality', '')).strip()
+                _temp[series_uid]['modality'] = modality
             if not _temp[series_uid]['description']:
                 _temp[series_uid]['description'] = str(getattr(ds, 'SeriesDescription', 'Unknown Series')).strip()
         except Exception as e:
@@ -135,7 +159,21 @@ def scan_dicom_series(study_path: str) -> dict:
             'series_description': data['description'],
         }
         print(f"[VTI] Series {series_uid[:30]}... → {num_files} files, Modality={modality}, Class={classification}")
-    
+
+    sr_series = {}
+    for series_uid, data in _sr_temp.items():
+        data['files'].sort(key=lambda item: (item[0], item[1]))
+        sr_series[series_uid] = {
+            'files': data['files'],
+            'modality': 'SR',
+            'classification': 'SR',
+            'num_files': len(data['files']),
+            'series_description': data['description'] or 'Structured Report',
+        }
+        print(f"[VTI] SR series {series_uid[:30]}... → {len(data['files'])} report files")
+
+    if include_sr:
+        return series_groups, sr_series
     return series_groups
 
 
@@ -343,6 +381,313 @@ def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientat
     return result, final_spacing, new_origin
 
 
+def _binary_erode(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
+    """
+    Lightweight 3D erosion using 6-connectivity.
+
+    This helps break thin bridges between teeth and adjacent jaw bone before the
+    coarse connected-component pass. It is intentionally dependency-free so the
+    optional segmentation step does not require scipy/skimage.
+    """
+    eroded = mask.astype(bool, copy=True)
+
+    for _ in range(max(0, iterations)):
+        if not eroded.any() or min(eroded.shape) < 3:
+            break
+
+        core = eroded[1:-1, 1:-1, 1:-1].copy()
+        core &= eroded[:-2, 1:-1, 1:-1]
+        core &= eroded[2:, 1:-1, 1:-1]
+        core &= eroded[1:-1, :-2, 1:-1]
+        core &= eroded[1:-1, 2:, 1:-1]
+        core &= eroded[1:-1, 1:-1, :-2]
+        core &= eroded[1:-1, 1:-1, 2:]
+
+        next_mask = np.zeros_like(eroded, dtype=bool)
+        next_mask[1:-1, 1:-1, 1:-1] = core
+        eroded = next_mask
+
+    return eroded
+
+
+def _binary_dilate(mask: np.ndarray, iterations: int = 1, clip_mask: np.ndarray = None) -> np.ndarray:
+    """Lightweight 3D dilation using one-voxel 6-connectivity."""
+    dilated = mask.astype(bool, copy=True)
+
+    for _ in range(max(0, iterations)):
+        if not dilated.any():
+            break
+
+        expanded = dilated.copy()
+        expanded[1:, :, :] |= dilated[:-1, :, :]
+        expanded[:-1, :, :] |= dilated[1:, :, :]
+        expanded[:, 1:, :] |= dilated[:, :-1, :]
+        expanded[:, :-1, :] |= dilated[:, 1:, :]
+        expanded[:, :, 1:] |= dilated[:, :, :-1]
+        expanded[:, :, :-1] |= dilated[:, :, 1:]
+
+        if clip_mask is not None:
+            expanded &= clip_mask.astype(bool, copy=False)
+        dilated = expanded
+
+    return dilated
+
+
+def _component_metadata(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, shape: tuple) -> dict:
+    min_x, max_x = int(xs.min()), int(xs.max())
+    min_y, max_y = int(ys.min()), int(ys.max())
+    min_z, max_z = int(zs.min()), int(zs.max())
+
+    return {
+        "voxels": (xs, ys, zs),
+        "size": int(xs.size),
+        "centroid": [
+            float(xs.mean()),
+            float(ys.mean()),
+            float(zs.mean()),
+        ],
+        "bounds": [
+            [min_x, max_x],
+            [min_y, max_y],
+            [min_z, max_z],
+        ],
+        "touches_border": (
+            min_x == 0 or min_y == 0 or min_z == 0
+            or max_x == shape[0] - 1
+            or max_y == shape[1] - 1
+            or max_z == shape[2] - 1
+        ),
+    }
+
+
+def _extract_connected_components(mask: np.ndarray) -> list[dict]:
+    """
+    Extract 6-connected 3D components with deterministic scan-order seeds.
+
+    MONAI's connected-component helpers in this environment require skimage,
+    which is not installed in the Python service venv. This dependency-light
+    fallback keeps the heuristic path predictable and leaves a clear insertion
+    point for a future nnU-Net instance model.
+    """
+    working = mask.astype(bool, copy=True)
+    components = []
+    shape_x, shape_y, shape_z = working.shape
+    flat = working.reshape(-1)
+
+    while True:
+        candidates = np.flatnonzero(flat)
+        if candidates.size == 0:
+            break
+
+        start = np.unravel_index(int(candidates[0]), working.shape)
+        stack = [start]
+        working[start] = False
+        xs = []
+        ys = []
+        zs = []
+
+        while stack:
+            x, y, z = stack.pop()
+            xs.append(x)
+            ys.append(y)
+            zs.append(z)
+
+            for dx, dy, dz in _NEIGHBOR_OFFSETS_6:
+                nx = x + dx
+                ny = y + dy
+                nz = z + dz
+                if nx < 0 or ny < 0 or nz < 0:
+                    continue
+                if nx >= shape_x or ny >= shape_y or nz >= shape_z:
+                    continue
+                if not working[nx, ny, nz]:
+                    continue
+                working[nx, ny, nz] = False
+                stack.append((nx, ny, nz))
+
+        components.append(_component_metadata(
+            np.asarray(xs, dtype=np.int32),
+            np.asarray(ys, dtype=np.int32),
+            np.asarray(zs, dtype=np.int32),
+            working.shape,
+        ))
+
+    return components
+
+
+def _empty_segmentation_manifest(status: str = "missing") -> dict:
+    return {
+        "segmentation_method": TOOTH_SEGMENT_METHOD,
+        "segmentation_status": status,
+        "num_labels": 0,
+        "label_ids": [],
+        "voxel_counts": {},
+        "centroids": {},
+        "bounds": {},
+    }
+
+
+def _build_label_manifest(label_volume: np.ndarray, status: str = "ready") -> dict:
+    label_ids = [
+        int(label_id)
+        for label_id in np.unique(label_volume)
+        if int(label_id) > 0
+    ]
+
+    manifest = {
+        "segmentation_method": TOOTH_SEGMENT_METHOD,
+        "segmentation_status": status,
+        "num_labels": len(label_ids),
+        "label_ids": label_ids,
+        "voxel_counts": {},
+        "centroids": {},
+        "bounds": {},
+    }
+
+    for label_id in label_ids:
+        xs, ys, zs = np.where(label_volume == label_id)
+        metadata = _component_metadata(
+            xs.astype(np.int32),
+            ys.astype(np.int32),
+            zs.astype(np.int32),
+            label_volume.shape,
+        )
+        key = str(label_id)
+        manifest["voxel_counts"][key] = metadata["size"]
+        manifest["centroids"][key] = metadata["centroid"]
+        manifest["bounds"][key] = metadata["bounds"]
+
+    return manifest
+
+
+def _component_regrows_to_boundary(component: dict, shape: tuple, clip_mask: np.ndarray) -> bool:
+    seed_component = np.zeros(shape, dtype=bool)
+    xs, ys, zs = component["voxels"]
+    seed_component[xs, ys, zs] = True
+    grown_component = _binary_dilate(seed_component, iterations=1, clip_mask=clip_mask)
+    return (
+        grown_component[0, :, :].any()
+        or grown_component[-1, :, :].any()
+        or grown_component[:, 0, :].any()
+        or grown_component[:, -1, :].any()
+        or grown_component[:, :, 0].any()
+        or grown_component[:, :, -1].any()
+    )
+
+
+def _build_heuristic_tooth_labels(volume: np.ndarray) -> tuple[Optional[np.ndarray], dict]:
+    """
+    Deterministic threshold-based tooth candidate labels.
+
+    Fixed sequence: threshold → one 6-connected erosion → 6-connected labeling
+    → border/small-component rejection → largest 32 → centroid renumbering →
+    one 6-connected regrowth clipped to the original threshold mask.
+    """
+    hard_tissue_mask = volume > TOOTH_SEGMENT_THRESHOLD
+    if not hard_tissue_mask.any():
+        return None, _empty_segmentation_manifest()
+
+    seed_mask = _binary_erode(hard_tissue_mask, TOOTH_SEGMENT_EROSION_STEPS)
+    if not seed_mask.any():
+        return None, _empty_segmentation_manifest()
+
+    components = _extract_connected_components(seed_mask)
+    filtered = [
+        component
+        for component in components
+        if component["size"] >= TOOTH_SEGMENT_MIN_COMPONENT_VOXELS
+        and not component["touches_border"]
+        and not _component_regrows_to_boundary(component, volume.shape, hard_tissue_mask)
+    ]
+
+    if not filtered:
+        return None, _empty_segmentation_manifest()
+
+    largest = sorted(filtered, key=lambda component: component["size"], reverse=True)[:TOOTH_SEGMENT_MAX_LABELS]
+    ordered = sorted(
+        largest,
+        key=lambda component: (
+            component["centroid"][0],
+            component["centroid"][1],
+            component["centroid"][2],
+        ),
+    )
+
+    label_volume = np.zeros(volume.shape, dtype=np.uint16)
+    next_label_id = 1
+    for component in ordered:
+        seed_component = np.zeros(volume.shape, dtype=bool)
+        xs, ys, zs = component["voxels"]
+        seed_component[xs, ys, zs] = True
+
+        grown_component = _binary_dilate(seed_component, iterations=1, clip_mask=hard_tissue_mask)
+        grown_component &= label_volume == 0
+        if not grown_component.any():
+            continue
+
+        label_volume[grown_component] = next_label_id
+        next_label_id += 1
+
+    if int(label_volume.max()) == 0:
+        return None, _empty_segmentation_manifest()
+
+    return label_volume, _build_label_manifest(label_volume)
+
+
+def _label_manifest_path(study_path: str, safe_uid: str) -> str:
+    return os.path.join(study_path, f"labels_{safe_uid}.json")
+
+
+def write_label_manifest(study_path: str, safe_uid: str, manifest: dict) -> str:
+    manifest_path = _label_manifest_path(study_path, safe_uid)
+    with open(manifest_path, "w") as manifest_file:
+        json.dump(manifest, manifest_file, indent=2)
+    print(f"[SEG] Written manifest: {manifest_path}")
+    return manifest_path
+
+
+def read_label_manifest(study_path: str, safe_uid: str) -> Optional[dict]:
+    manifest_path = _label_manifest_path(study_path, safe_uid)
+    if not os.path.exists(manifest_path):
+        return None
+
+    try:
+        with open(manifest_path, "r") as manifest_file:
+            return json.load(manifest_file)
+    except Exception as exc:
+        print(f"[SEG] Warning: failed to read manifest {manifest_path}: {exc}")
+        return None
+
+
+def get_segmentation_metadata(study_path: str, safe_uid: str) -> dict:
+    labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+    manifest = read_label_manifest(study_path, safe_uid)
+    labels_exist = os.path.exists(labels_path)
+
+    if labels_exist:
+        return {
+            "has_labels": True,
+            "num_labels": int(manifest.get("num_labels", 0)) if manifest else 0,
+            "segmentation_method": manifest.get("segmentation_method") if manifest else None,
+            "segmentation_status": "ready",
+        }
+
+    if manifest:
+        return {
+            "has_labels": False,
+            "num_labels": int(manifest.get("num_labels", 0) or 0),
+            "segmentation_method": manifest.get("segmentation_method"),
+            "segmentation_status": manifest.get("segmentation_status") or "missing",
+        }
+
+    return {
+        "has_labels": False,
+        "num_labels": 0,
+        "segmentation_method": None,
+        "segmentation_status": "missing",
+    }
+
+
 def write_vti_vtk(volume: np.ndarray, spacing: tuple, origin: tuple, output_path: str) -> dict:
     """
     Write a 3D numpy volume to VTI using VTK's vtkXMLImageDataWriter with ZLib compression.
@@ -417,6 +762,96 @@ def write_vti_vtk(volume: np.ndarray, spacing: tuple, origin: tuple, output_path
         "normalized": True,
         "pipeline": "MONAI"
     }
+
+
+def write_label_vti_vtk(label_volume: np.ndarray, spacing: tuple, origin: tuple, output_path: str) -> dict:
+    """
+    Write an integer label map VTI aligned to the processed MONAI volume grid.
+    """
+    import vtkmodules.vtkIOXML as vtkIOXML
+    import vtkmodules.vtkCommonDataModel as vtkDataModel
+    from vtkmodules.util.numpy_support import numpy_to_vtk
+
+    nx, ny, nz = label_volume.shape
+
+    image_data = vtkDataModel.vtkImageData()
+    image_data.SetDimensions(nx, ny, nz)
+    image_data.SetSpacing(spacing[0], spacing[1], spacing[2])
+    image_data.SetOrigin(origin[0], origin[1], origin[2])
+
+    flat_data = label_volume.flatten(order='F').astype(np.uint16)
+    vtk_array = numpy_to_vtk(flat_data, deep=True)
+    vtk_array.SetName("Labels")
+    vtk_array.SetNumberOfComponents(1)
+    image_data.GetPointData().SetScalars(vtk_array)
+
+    writer = vtkIOXML.vtkXMLImageDataWriter()
+    writer.SetFileName(output_path)
+    writer.SetInputData(image_data)
+    writer.SetCompressorTypeToZLib()
+    writer.SetDataModeToAppended()
+    writer.SetEncodeAppendedData(True)
+    writer.Write()
+
+    file_size = os.path.getsize(output_path)
+    label_count = int(label_volume.max()) if label_volume.size else 0
+
+    print(f"[SEG] Written labels: {output_path} | labels={label_count} | size={file_size / 1048576:.1f}MB")
+
+    return {
+        "path": output_path,
+        "dimensions": [nx, ny, nz],
+        "spacing": list(spacing),
+        "origin": list(origin),
+        "file_size_bytes": file_size,
+        "num_labels": label_count,
+    }
+
+
+def run_tooth_segmentation(
+    volume: np.ndarray,
+    spacing: tuple,
+    study_path: str,
+    safe_uid: str,
+    origin: tuple = (0.0, 0.0, 0.0),
+    strategy: str = "heuristic",
+) -> Optional[dict]:
+    """
+    Build a coarse threshold-based tooth label map from the MONAI-normalized volume.
+
+    TODO(nnU-Net): replace the threshold/erosion seed mask with model logits and
+    keep the same `labels_{safe_uid}.vti` output contract for the frontend.
+    """
+    if strategy != "heuristic":
+        raise ValueError(f"Unsupported tooth segmentation strategy: {strategy}")
+
+    labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+    label_volume, manifest = _build_heuristic_tooth_labels(volume)
+
+    if label_volume is None:
+        if os.path.exists(labels_path):
+            os.remove(labels_path)
+        write_label_manifest(study_path, safe_uid, manifest)
+        print(f"[SEG] {TOOTH_SEGMENT_METHOD}: no tooth-like clusters found for {safe_uid}")
+        return None
+
+    label_ids = manifest["label_ids"]
+    component_sizes = [manifest["voxel_counts"][str(label_id)] for label_id in label_ids]
+    print(
+        f"[SEG] {TOOTH_SEGMENT_METHOD}: Threshold>{TOOTH_SEGMENT_THRESHOLD:.2f} → {len(component_sizes)} clusters "
+        f"({', '.join(str(size) for size in component_sizes[:8])}{'...' if len(component_sizes) > 8 else ''})"
+    )
+    info = write_label_vti_vtk(label_volume, spacing, origin, labels_path)
+    write_label_manifest(study_path, safe_uid, manifest)
+    info.update({
+        "segmentation_method": manifest["segmentation_method"],
+        "segmentation_status": manifest["segmentation_status"],
+        "label_ids": manifest["label_ids"],
+        "voxel_counts": manifest["voxel_counts"],
+        "centroids": manifest["centroids"],
+        "bounds": manifest["bounds"],
+    })
+    return info
 
 
 def generate_2d_image(file_list: list, output_path: str) -> dict:
@@ -515,7 +950,101 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
         return False
 
 
-def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
+def generate_study_thumbnails(study_path: str, force: bool = False) -> dict:
+    """
+    Fast gallery-first pass: generate only per-series thumbnails.
+
+    This avoids lazy thumbnail generation from /thumbnail while the heavier
+    MONAI VTI conversion continues in the background.
+    """
+    print(f"[THUMB] Pre-generating study thumbnails: {study_path}")
+    series_groups = scan_dicom_series(study_path)
+    results = {}
+
+    for series_uid, series_info in series_groups.items():
+        files_with_meta = series_info.get('files', [])
+        if not files_with_meta:
+            continue
+
+        safe_uid = series_uid.replace('.', '_')[:50]
+        thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
+        if os.path.exists(thumb_path) and not force:
+            results[series_uid] = {"status": "exists", "path": thumb_path}
+            continue
+
+        files_with_meta.sort(key=lambda item: (item[0], item[1]))
+        sorted_files = [fp for _, _, fp in files_with_meta]
+        generated = generate_thumbnail(sorted_files, thumb_path)
+        results[series_uid] = {
+            "status": "success" if generated else "error",
+            "path": thumb_path,
+        }
+
+    print(f"[THUMB] Thumbnail pass complete: {sum(1 for item in results.values() if item['status'] in ('success', 'exists'))}/{len(results)}")
+    return results
+
+
+def _sr_concept_label(item) -> str:
+    sequence = getattr(item, 'ConceptNameCodeSequence', None)
+    if sequence:
+        concept = sequence[0]
+        return str(getattr(concept, 'CodeMeaning', '') or getattr(concept, 'CodeValue', '') or 'Unnamed')
+    return 'Unnamed'
+
+
+def parse_sr_report(file_path: str) -> list[dict]:
+    """
+    Parse a DICOM Structured Report content tree into plain nested findings.
+    """
+    ds = pydicom.dcmread(file_path, force=True, stop_before_pixels=True)
+
+    def parse_item(item) -> dict:
+        node = {
+            "label": _sr_concept_label(item),
+            "value": None,
+            "unit": None,
+            "text": str(getattr(item, 'TextValue', '') or '') or None,
+            "children": [],
+        }
+
+        measured_values = getattr(item, 'MeasuredValueSequence', None)
+        if measured_values:
+            measured = measured_values[0]
+            node["value"] = str(getattr(measured, 'NumericValue', '') or '')
+            unit_sequence = getattr(measured, 'MeasurementUnitsCodeSequence', None)
+            if unit_sequence:
+                unit = unit_sequence[0]
+                node["unit"] = str(getattr(unit, 'CodeMeaning', '') or getattr(unit, 'CodeValue', '') or '')
+
+        content_sequence = getattr(item, 'ContentSequence', None)
+        if content_sequence:
+            node["children"] = [parse_item(child) for child in content_sequence]
+
+        return node
+
+    content_sequence = getattr(ds, 'ContentSequence', None)
+    if not content_sequence:
+        return []
+
+    return [parse_item(item) for item in content_sequence]
+
+
+def _emit_progress(progress_callback, event: dict) -> None:
+    if not progress_callback:
+        return
+    try:
+        progress_callback(event)
+    except Exception as exc:
+        print(f"[VTI] Progress callback failed: {exc}")
+
+
+def convert_study_to_vti(
+    study_path: str,
+    force: bool = False,
+    segment: bool = False,
+    progress_callback=None,
+    study_id: str = None,
+) -> dict:
     """
     Main entry point: Convert a DICOM study folder to output files.
 
@@ -534,10 +1063,12 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
         Dict with conversion results per series
     """
     start_time = time.time()
+    study_identifier = study_id or os.path.basename(os.path.normpath(study_path))
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] MONAI Pipeline — Converting study: {study_path}")
     print(f"[VTI] Strict 2D/3D classification enabled")
     print(f"[VTI] ═══════════════════════════════════════════")
+    _emit_progress(progress_callback, {"studyId": study_identifier, "status": "started"})
 
     results = {}
     series_groups = scan_dicom_series(study_path)
@@ -586,24 +1117,42 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
         #  NO image_{uid}.jpg will be generated here
         # ════════════════════════════════════════════
         vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
+        labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+        labels_manifest_path = _label_manifest_path(study_path, safe_uid)
         default_vti = os.path.join(study_path, "volume.vti")
+        default_labels = os.path.join(study_path, "labels.vti")
+        default_labels_manifest = os.path.join(study_path, "labels.json")
+        needs_segmentation = segment and (force or not os.path.exists(labels_path))
 
-        if os.path.exists(vti_path) and not force:
+        if os.path.exists(vti_path) and not force and not needs_segmentation:
             print(f"[VTI] Already exists: {vti_path}")
+            segmentation_metadata = get_segmentation_metadata(study_path, safe_uid)
             results[series_uid] = {
                 "status": "exists", "type": "3d", "path": vti_path,
                 "modality": modality, "classification": classification,
+                **segmentation_metadata,
             }
             # Still update default volume.vti if this is the first 3D series
             if is_first_3d and not os.path.exists(default_vti):
                 import shutil
                 shutil.copy2(vti_path, default_vti)
+                if os.path.exists(labels_path):
+                    shutil.copy2(labels_path, default_labels)
+                if os.path.exists(labels_manifest_path):
+                    shutil.copy2(labels_manifest_path, default_labels_manifest)
                 is_first_3d = False
             continue
 
         try:
             print(f"[VTI] Processing 3D series {series_uid[:30]}... "
                   f"({num_files} files, Modality={modality})")
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier,
+                "seriesUid": series_uid,
+                "status": "processing",
+                "stage": "MONAI",
+                "progress": 40,
+            })
 
             # Step 1: Robust DICOM loading with pydicom (handles force=True)
             volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
@@ -643,17 +1192,51 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
 
             # Step 3: Write VTI using VTK writer with ZLib compression
             info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier,
+                "seriesUid": series_uid,
+                "status": "ready",
+                "vtiPath": vti_path,
+            })
             info["status"] = "success"
             info["type"] = "3d"
             info["path"] = vti_path
             info["modality"] = modality
             info["classification"] = classification
+
+            if segment:
+                segmentation_info = None
+                try:
+                    segmentation_info = run_tooth_segmentation(
+                        processed,
+                        new_spacing,
+                        study_path,
+                        safe_uid,
+                        new_origin,
+                    )
+                except Exception as segmentation_error:
+                    failed_manifest = _empty_segmentation_manifest(status="failed")
+                    failed_manifest["error"] = str(segmentation_error)
+                    if os.path.exists(labels_path):
+                        os.remove(labels_path)
+                    write_label_manifest(study_path, safe_uid, failed_manifest)
+                    print(f"[SEG] FAILED for {safe_uid}: {segmentation_error}")
+                info.update(get_segmentation_metadata(study_path, safe_uid))
+                if segmentation_info:
+                    info["labels_path"] = segmentation_info["path"]
+            else:
+                info.update(get_segmentation_metadata(study_path, safe_uid))
+
             results[series_uid] = info
 
             # Copy as default volume.vti for first 3D series processed
             if is_first_3d:
                 import shutil
                 shutil.copy2(vti_path, default_vti)
+                if os.path.exists(labels_path):
+                    shutil.copy2(labels_path, default_labels)
+                if os.path.exists(labels_manifest_path):
+                    shutil.copy2(labels_manifest_path, default_labels_manifest)
                 is_first_3d = False
                 print(f"[VTI] Default volume.vti updated from {os.path.basename(vti_path)}")
 
@@ -673,6 +1256,16 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
         has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
         has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
         has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+        segmentation_metadata = (
+            get_segmentation_metadata(study_path, safe_uid)
+            if classification == '3D'
+            else {
+                "has_labels": False,
+                "num_labels": 0,
+                "segmentation_method": None,
+                "segmentation_status": "missing",
+            }
+        )
         
         if classification == '3D':
             series_status = 'ready' if has_vti else 'pending'
@@ -690,6 +1283,7 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
             "has_vti": has_vti,
             "has_image": has_image,
             "has_thumb": has_thumb,
+            **segmentation_metadata,
             "status": series_status,
         })
     
@@ -705,6 +1299,7 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
     for uid, r in results.items():
         print(f"[VTI]   {uid[:30]}... → {r.get('classification','?')}/{r.get('type','?')} [{r.get('status','?')}]")
     print(f"[VTI] ═══════════════════════════════════════════\n")
+    _emit_progress(progress_callback, {"studyId": study_identifier, "status": "complete"})
 
     return results
 
@@ -712,17 +1307,18 @@ def convert_study_to_vti(study_path: str, force: bool = False) -> dict:
 # CLI entry point for manual conversion
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python vti_converter.py <study_path> [--force]")
+        print("Usage: python vti_converter.py <study_path> [--force] [--segment]")
         sys.exit(1)
     
     study_path = sys.argv[1]
     force = '--force' in sys.argv
+    segment = '--segment' in sys.argv
     
     if not os.path.exists(study_path):
         print(f"Error: Path not found: {study_path}")
         sys.exit(1)
     
-    results = convert_study_to_vti(study_path, force=force)
+    results = convert_study_to_vti(study_path, force=force, segment=segment)
     
     import json
     print("\nResults:")

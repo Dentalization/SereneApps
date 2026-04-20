@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PY_API_BASE } from '../../../../config/api';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
 const EMPTY_RESULT = {
   metadata: null,
@@ -35,12 +35,12 @@ export default function useStudyMetadata(study, options = {}) {
       setLoading(true);
       setError(null);
 
-      try {
-        const params = new URLSearchParams();
-        if (seriesUid) params.set('series_uid', seriesUid);
-
+        try {
         const response = await fetch(
-          `${PY_API_BASE}/metadata/${studyKey}${params.toString() ? `?${params.toString()}` : ''}`
+          buildImagingUrl(
+            `/metadata/${studyKey}`,
+            buildStudyAssetParams(study, seriesUid ? { series_uid: seriesUid } : {})
+          )
         );
 
         if (!response.ok) {
@@ -68,7 +68,7 @@ export default function useStudyMetadata(study, options = {}) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, refreshToken, seriesUid, studyKey]);
+  }, [enabled, refreshToken, seriesUid, study?.shareToken, studyKey]);
 
   if (!enabled) {
     return EMPTY_RESULT;

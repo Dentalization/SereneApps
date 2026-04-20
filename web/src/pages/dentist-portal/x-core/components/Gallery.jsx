@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { PY_API_BASE } from '../../../../config/api';
+import useConversionSocket from '../hooks/useConversionSocket';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
     const results = [];
@@ -149,7 +151,7 @@ function hasIncompleteSeries(study) {
     );
 }
 
-const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded }) => {
+const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded, onCompareSelected }) => {
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
     const [studies, setStudies] = useState([]);
@@ -158,8 +160,16 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
     const [fetchingSeries, setFetchingSeries] = useState(false);
     const [error, setError] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [shareTarget, setShareTarget] = useState(null);
+    const [shareExpiryHours, setShareExpiryHours] = useState(48);
+    const [shareLoading, setShareLoading] = useState(false);
+    const [shareError, setShareError] = useState(null);
+    const [shareResult, setShareResult] = useState(null);
+    const [compareMode, setCompareMode] = useState(false);
+    const [selectedCompareIds, setSelectedCompareIds] = useState([]);
     const scrollRef = useRef(null);
     const onStudiesLoadedRef = useRef(onStudiesLoaded);
+    const { latestEvent, connectionStatus } = useConversionSocket();
 
     useEffect(() => {
         onStudiesLoadedRef.current = onStudiesLoaded;
@@ -287,23 +297,68 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         studiesRef.current = studiesWithSeries;
     }, [studiesWithSeries]);
 
-    const convertingKey = useMemo(() => (
-        studiesWithSeries
-            .map((study) => {
-                const studyIdentifier = study.id || getStudyKey(study);
-                const statusKey = (study.series || [])
-                    .map((series) => series.status || '')
-                    .join('|');
-                return `${studyIdentifier}:${statusKey}`;
-            })
-            .join(',')
-    ), [studiesWithSeries]);
-
-    // Auto-refresh while any series is still converting
     useEffect(() => {
+        if (!latestEvent?.studyId) return;
+
+        let shouldRefreshStudy = false;
+        setStudiesWithSeries((currentStudies) => {
+            const nextStudies = currentStudies.map((study) => {
+                if (String(getStudyKey(study)) !== String(latestEvent.studyId)) return study;
+
+                if (latestEvent.status === 'complete') {
+                    shouldRefreshStudy = true;
+                    return study;
+                }
+
+                const nextSeries = (study.series || []).map((series) => {
+                    if (latestEvent.seriesUid && series.series_uid !== latestEvent.seriesUid) {
+                        return series;
+                    }
+
+                    if (latestEvent.status === 'started') {
+                        return series.status === 'ready' ? series : { ...series, status: 'converting' };
+                    }
+
+                    if (latestEvent.status === 'processing') {
+                        return { ...series, status: 'converting', conversionStage: latestEvent.stage, conversionProgress: latestEvent.progress };
+                    }
+
+                    if (latestEvent.status === 'ready') {
+                        return { ...series, status: 'ready', has_vti: true, conversionStage: null, conversionProgress: 100 };
+                    }
+
+                    return series;
+                });
+
+                return { ...study, series: nextSeries };
+            });
+
+            if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(nextStudies);
+            return nextStudies;
+        });
+
+        if (shouldRefreshStudy) {
+            const matchingStudy = studiesRef.current.find((study) => String(getStudyKey(study)) === String(latestEvent.studyId));
+            if (matchingStudy) {
+                fetchStudySeries(matchingStudy).then((updatedStudy) => {
+                    setStudiesWithSeries((currentStudies) => {
+                        const nextStudies = currentStudies.map((study) =>
+                            String(getStudyKey(study)) === String(latestEvent.studyId) ? updatedStudy : study
+                        );
+                        if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(nextStudies);
+                        return nextStudies;
+                    });
+                }).catch((error) => console.error('[Gallery] WebSocket completion refresh failed:', error));
+            }
+        }
+    }, [latestEvent]);
+
+    // Fallback polling while disconnected from the live conversion socket.
+    useEffect(() => {
+        if (connectionStatus === 'connected') return undefined;
         const hasConverting = studiesWithSeries.some(hasIncompleteSeries);
 
-        if (!hasConverting) return;
+        if (!hasConverting) return undefined;
 
         const interval = setInterval(async () => {
             const current = studiesRef.current;
@@ -326,10 +381,10 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
             if (!updated.some(hasIncompleteSeries)) {
                 clearInterval(interval);
             }
-        }, 4000);
+        }, 10000);
 
         return () => clearInterval(interval);
-    }, [convertingKey]);
+    }, [connectionStatus, studiesWithSeries]);
 
     const filteredStudies = studiesWithSeries.filter(s =>
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -344,18 +399,64 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
 
     // Flatten to series cards for gallery display (Smart Series Grouping)
     const seriesCards = healthyStudies.flatMap(study =>
-        (study.series || []).map(series => ({
-            ...series,
-            study: study,
-            // Use series info to build card
-            id: `${study.id}-${series.series_uid}`,
-            patientName: study.patientName,
-            patientIdDisplay: study.patientIdDisplay,
-            dateDisplay: study.dateDisplay,
-            statusDisplay: study.statusDisplay,
-            thumbnailUrl: `${PY_API_BASE}/thumbnail/${study.folderName || study.id}/${series.series_uid}`
-        }))
+        (study.series || []).map(series => {
+            const thumbnailPath = series.thumbnail_url || `/thumbnail/${study.folderName || study.id}/${series.series_uid}`;
+            return {
+                ...series,
+                study: study,
+                // Use series info to build card
+                id: `${study.id}-${series.series_uid}`,
+                patientName: study.patientName,
+                patientIdDisplay: study.patientIdDisplay,
+                dateDisplay: study.dateDisplay,
+                statusDisplay: study.statusDisplay,
+                thumbnailUrl: buildImagingUrl(thumbnailPath, buildStudyAssetParams(study))
+            };
+        })
     );
+
+    const readyVtiPrefetchKey = useMemo(() => (
+        seriesCards
+            .filter((card) => card.status === 'ready' && card.type === '3D Volume')
+            .map((card) => `${getStudyKey(card.study)}:${card.series_uid}`)
+            .join('|')
+    ), [seriesCards]);
+
+    useEffect(() => {
+        const readyCards = seriesCards.filter((card) => card.status === 'ready' && card.type === '3D Volume');
+        readyCards.slice(0, 8).forEach((card) => {
+            const vtiUrl = buildImagingUrl(
+                `/volume/${getStudyKey(card.study)}`,
+                buildStudyAssetParams(card.study, { series_uid: card.series_uid })
+            );
+            fetch(vtiUrl, { method: 'HEAD' }).catch(() => {});
+        });
+    }, [readyVtiPrefetchKey]);
+
+    const selectedCompareCards = seriesCards.filter((card) => selectedCompareIds.includes(card.id));
+    const buildStudyFromCard = (card) => ({
+        ...card.study,
+        selectedSeriesUid: card.series_uid,
+        selectedSeriesType: card.type,
+        comparisonTitle: card.title,
+        comparisonPatientName: card.patientName,
+    });
+    const toggleCompareSelection = (card) => {
+        if (card.status !== 'ready') return;
+        setSelectedCompareIds((current) => {
+            if (current.includes(card.id)) {
+                return current.filter((id) => id !== card.id);
+            }
+            if (current.length >= 2) {
+                return [current[1], card.id];
+            }
+            return [...current, card.id];
+        });
+    };
+    const handleCompareSelected = () => {
+        if (selectedCompareCards.length !== 2 || !onCompareSelected) return;
+        onCompareSelected(selectedCompareCards.map(buildStudyFromCard));
+    };
 
     const emptyState = (() => {
         if (serviceErrorStudies.length > 0) {
@@ -415,6 +516,59 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         }
     };
 
+    const openShareModal = (study) => {
+        setShareTarget(study);
+        setShareExpiryHours(48);
+        setShareError(null);
+        setShareResult(null);
+    };
+
+    const handleCreateShare = async () => {
+        if (!shareTarget) return;
+
+        try {
+            setShareLoading(true);
+            setShareError(null);
+
+            const token = getAccessToken();
+            const response = await fetch(`/api/v1/x-core/studies/${shareTarget.id}/share`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ expiresInHours: shareExpiryHours }),
+            });
+
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || `Share request failed (${response.status})`);
+            }
+
+            setShareResult(payload);
+        } catch (nextError) {
+            console.error('[Gallery] Share failed:', nextError);
+            setShareError(nextError.message || 'Failed to create share link');
+        } finally {
+            setShareLoading(false);
+        }
+    };
+
+    const handleCopyShareUrl = async () => {
+        if (!shareResult?.shareUrl) return;
+        try {
+            await navigator.clipboard.writeText(shareResult.shareUrl);
+        } catch (copyError) {
+            console.error('[Gallery] Copy share link failed:', copyError);
+        }
+    };
+
+    const formatShareExpiry = (expiresAt) => {
+        if (!expiresAt) return '';
+        const date = new Date(expiresAt);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+    };
+
     return (
         <div className="space-y-6" ref={scrollRef}>
             {/* Header Actions */}
@@ -430,6 +584,12 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                     />
                 </div>
                 <div className="flex gap-2">
+                    {connectionStatus === 'connected' && (
+                        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+                            Live
+                        </div>
+                    )}
                     <button
                         onClick={() => setViewMode('grid')}
                         className={`p-2 rounded-lg border ${viewMode === 'grid' ? 'bg-accent/10 border-accent text-accent' : 'border-primary/20 text-muted'}`}
@@ -442,6 +602,25 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                     >
                         <AppIcon name="List" size={20} />
                     </button>
+                    <button
+                        onClick={() => {
+                            setCompareMode((current) => !current);
+                            setSelectedCompareIds([]);
+                        }}
+                        className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${compareMode ? 'border-cyan-500 bg-cyan-500/10 text-cyan-600' : 'border-primary/20 text-muted hover:text-primary'}`}
+                    >
+                        <AppIcon name="Columns2" size={18} />
+                        <span>Compare</span>
+                    </button>
+                    {compareMode && selectedCompareCards.length === 2 && (
+                        <button
+                            onClick={handleCompareSelected}
+                            className="flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500"
+                        >
+                            <AppIcon name="GitCompare" size={18} />
+                            <span>Compare Selected</span>
+                        </button>
+                    )}
                     <button
                         onClick={onUploadClick}
                         className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-sm"
@@ -573,20 +752,35 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                             ) : seriesCards.map(card => {
                                 const isReady = card.status === 'ready';
                                 const isConverting = card.status === 'converting' || card.status === 'pending';
+                                const isCompareSelected = selectedCompareIds.includes(card.id);
 
                                 return (
                                     <div
                                         key={card.id}
-                                        onClick={() => isReady && onSelectStudy({
-                                            ...card.study,
-                                            selectedSeriesUid: card.series_uid,
-                                            selectedSeriesType: card.type
-                                        })}
-                                        className={`group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden transition ${isReady
+                                        onClick={() => {
+                                            if (!isReady) return;
+                                            if (compareMode) {
+                                                toggleCompareSelection(card);
+                                                return;
+                                            }
+                                            onSelectStudy(buildStudyFromCard(card));
+                                        }}
+                                        className={`group relative bg-surface-elevated rounded-2xl border overflow-hidden transition ${isCompareSelected ? 'border-cyan-500 ring-2 ring-cyan-500/20' : 'border-primary/10'} ${isReady
                                             ? 'hover:shadow-theme-lg cursor-pointer'
                                             : 'opacity-75 cursor-not-allowed'
                                             }`}
                                     >
+                                        {compareMode && (
+                                            <div className="absolute right-3 top-3 z-20 rounded-xl border border-white/20 bg-black/65 p-2 backdrop-blur">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isCompareSelected}
+                                                    readOnly
+                                                    className="h-4 w-4 accent-cyan-500"
+                                                    aria-label="Select for comparison"
+                                                />
+                                            </div>
+                                        )}
                                         {/* Series Thumbnail */}
                                         <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
                                             {isReady ? (
@@ -657,6 +851,16 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                                         {isConverting ? 'Processing' : card.statusDisplay}
                                                     </span>
                                                     <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openShareModal(card.study);
+                                                        }}
+                                                        className="p-1 hover:bg-emerald-50 hover:text-emerald-600 rounded transition text-muted"
+                                                        title="Share Study"
+                                                    >
+                                                        <AppIcon name="Share2" size={14} />
+                                                    </button>
+                                                    <button
                                                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(card.study); }}
                                                         className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
                                                         title="Delete Study"
@@ -694,7 +898,9 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-primary/5">
-                                    {seriesCards.map(card => (
+                                    {seriesCards.map(card => {
+                                        const isCompareSelected = selectedCompareIds.includes(card.id);
+                                        return (
                                         <tr key={card.id} className="hover:bg-primary/5 transition">
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
@@ -717,19 +923,34 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                             <td className="px-6 py-4 text-secondary">{card.num_slices}</td>
                                             <td className="px-6 py-4 text-secondary">{card.dateDisplay}</td>
                                             <td className="px-6 py-4">
+                                                {compareMode ? (
+                                                    <button
+                                                        onClick={() => toggleCompareSelection(card)}
+                                                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${isCompareSelected ? 'bg-cyan-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-cyan-50 hover:text-cyan-600'}`}
+                                                    >
+                                                        <AppIcon name={isCompareSelected ? 'CheckSquare' : 'Square'} size={16} />
+                                                        Select
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => onSelectStudy(buildStudyFromCard(card))}
+                                                        className="p-1.5 hover:bg-accent/10 rounded text-accent transition"
+                                                        title="Open Study"
+                                                    >
+                                                        <AppIcon name="ExternalLink" size={18} />
+                                                    </button>
+                                                )}
                                                 <button
-                                                    onClick={() => onSelectStudy({
-                                                        ...card.study,
-                                                        selectedSeriesUid: card.series_uid,
-                                                        selectedSeriesType: card.type
-                                                    })}
-                                                    className="p-1.5 hover:bg-accent/10 rounded text-accent transition"
+                                                    onClick={() => openShareModal(card.study)}
+                                                    className="ml-2 p-1.5 hover:bg-emerald-50 hover:text-emerald-600 rounded text-muted transition"
+                                                    title="Share Study"
                                                 >
-                                                    <AppIcon name="ExternalLink" size={18} />
+                                                    <AppIcon name="Share2" size={18} />
                                                 </button>
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -760,6 +981,93 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                 className="px-5 py-2.5 rounded-xl font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 transition"
                             >
                                 Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {shareTarget !== null && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setShareTarget(null)}>
+                    <div className="w-full max-w-md rounded-3xl border border-primary/10 bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-5 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">Share Study</h3>
+                                <p className="mt-1 text-sm text-gray-600">
+                                    Generate a read-only link for {shareTarget.patientName || 'this patient'}.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShareTarget(null)}
+                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                            >
+                                <AppIcon name="X" size={18} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Link Expiry</div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[24, 48, 72, 168].map((hours) => (
+                                        <button
+                                            key={hours}
+                                            onClick={() => setShareExpiryHours(hours)}
+                                            className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                                                shareExpiryHours === hours
+                                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                                                    : 'border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700'
+                                            }`}
+                                        >
+                                            {hours}h
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="mt-2 text-xs text-gray-500">Link expires in {shareExpiryHours} hours.</p>
+                            </div>
+
+                            {shareError && (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                                    {shareError}
+                                </div>
+                            )}
+
+                            {shareResult?.shareUrl && (
+                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Share URL</div>
+                                    <div className="break-all rounded-xl bg-white px-3 py-2 font-mono text-xs text-gray-700">
+                                        {shareResult.shareUrl}
+                                    </div>
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                        <span className="text-xs text-emerald-700">
+                                            Expires: {formatShareExpiry(shareResult.expiresAt)}
+                                        </span>
+                                        <button
+                                            onClick={handleCopyShareUrl}
+                                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                                        >
+                                            <AppIcon name="Copy" size={14} />
+                                            Copy Link
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                onClick={() => setShareTarget(null)}
+                                className="rounded-xl px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-gray-100"
+                            >
+                                Close
+                            </button>
+                            <button
+                                onClick={handleCreateShare}
+                                disabled={shareLoading}
+                                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <AppIcon name={shareLoading ? 'Loader2' : 'Share2'} size={16} className={shareLoading ? 'animate-spin' : ''} />
+                                <span>{shareLoading ? 'Generating...' : 'Generate Link'}</span>
                             </button>
                         </div>
                     </div>

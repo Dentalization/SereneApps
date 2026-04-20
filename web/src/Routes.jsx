@@ -20,6 +20,7 @@ import DentistSettings from './pages/dentist-portal/dentist-settings';
 import Reports from './pages/dentist-portal/reports';
 import AIAnalysis from './pages/dentist-portal/ai';
 import XCore from './pages/dentist-portal/x-core';
+import SharedStudyView from './pages/dentist-portal/x-core/SharedStudyView';
 import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
 import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
@@ -82,6 +83,7 @@ const Routes = () => {
           <Route path="/auth/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/auth/register" element={<Register />} />
+          <Route path="/shared/:token" element={<SharedStudyView />} />
 
           {/* Protected app routes */}
           <Route element={<ProtectedRoute allow={["dentist"]} />}>

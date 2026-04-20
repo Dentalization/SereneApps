@@ -251,6 +251,9 @@ export const colors = {
   warning: '#F59E0B',
   error: '#DC2626',
   border: '#E2E8F0',
+  white: '#FFFFFF',
+  whiteSecondary: 'rgba(255, 255, 255, 0.7)',
+  headerGradient: ['#62109F', '#7C3AED'],
 };
 
 /**

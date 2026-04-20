@@ -197,9 +197,13 @@ const normalizeClinic = (clinic, index = 0) => {
         ? Number(clinic.reviews)
         : clinic?.reviewCount || clinic?.reviewsCount || 0,
     dentistCount:
-      typeof clinic?.dentistCount === 'number'
-        ? clinic.dentistCount
-        : Number(clinic?.dentistCount) || Number(clinic?.dentists) || 0,
+      (Array.isArray(clinic?.doctors) && clinic.doctors.length > 0)
+        ? clinic.doctors.length
+        : Number(clinic?.dentistCount) || 
+          Number(clinic?.doctorCount) || 
+          Number(clinic?.doctor_count) || 
+          Number(clinic?.dentists) || 
+          0,
   };
 };
 
