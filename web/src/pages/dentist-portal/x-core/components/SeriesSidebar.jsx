@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
-import { PY_API_BASE } from '../../../../config/api';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
 /**
  * SeriesSidebar — Reusable series selection panel
@@ -35,7 +35,7 @@ const SeriesSidebar = ({
         const fetchSeries = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`${PY_API_BASE}/gallery/${studyKey}`);
+                const res = await fetch(buildImagingUrl(`/gallery/${studyKey}`, buildStudyAssetParams(study)));
                 if (!res.ok) throw new Error('Failed to fetch series');
                 const data = await res.json();
                 setSeriesList(data.series || []);
@@ -48,7 +48,7 @@ const SeriesSidebar = ({
         };
 
         fetchSeries();
-    }, [studyKey]);
+    }, [study?.shareToken, studyKey]);
 
     if (!visible) return null;
 
@@ -90,7 +90,10 @@ const SeriesSidebar = ({
                     seriesList.map((series) => {
                         const isActive = series.series_uid === currentSeriesUid;
                         const is3D = series.type === '3D Volume';
-                        const thumbUrl = `${PY_API_BASE}/thumb/${studyKey}/${series.series_uid}`;
+                        const thumbUrl = buildImagingUrl(
+                            `/thumb/${studyKey}/${series.series_uid}`,
+                            buildStudyAssetParams(study)
+                        );
 
                         return (
                             <button

@@ -4,15 +4,18 @@ import SideBar from '../ui/SideBar';
 import Gallery from './components/Gallery';
 import Uploader from './components/Uploader';
 import Viewer3D from './components/Viewer3D';
+import ComparisonViewer from './components/ComparisonViewer';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 
 const XCore = () => {
     const [showUploader, setShowUploader] = useState(false);
     const [activeStudy, setActiveStudy] = useState(null);
+    const [comparisonStudies, setComparisonStudies] = useState(null);
     const [studiesCache, setStudiesCache] = useState(null);
 
     const handleStudySelect = (study) => {
+        setComparisonStudies(null);
         setActiveStudy(study);
         // Navigate to viewer or show details (Phase 2)
         console.log('Selected study:', study);
@@ -93,7 +96,13 @@ const XCore = () => {
                     </div>
 
                     {/* Views */}
-                    {!activeStudy ? (
+                    {comparisonStudies?.length === 2 ? (
+                        <div className="h-[calc(100vh-200px)]">
+                            <ErrorBoundary onCleanup={() => { window.__volumeCache?.clear?.(); }}>
+                                <ComparisonViewer studies={comparisonStudies} onExit={() => setComparisonStudies(null)} />
+                            </ErrorBoundary>
+                        </div>
+                    ) : !activeStudy ? (
                         <ErrorBoundary>
                             <Gallery
                                 onSelectStudy={handleStudySelect}
@@ -106,6 +115,10 @@ const XCore = () => {
                                 }}
                                 cachedStudies={studiesCache}
                                 onStudiesLoaded={setStudiesCache}
+                                onCompareSelected={(studies) => {
+                                    setActiveStudy(null);
+                                    setComparisonStudies(studies);
+                                }}
                             />
                         </ErrorBoundary>
                     ) : (

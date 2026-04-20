@@ -792,12 +792,26 @@ model ImagingStudy {
   sizeInBytes  BigInt          @default(0) @map("size_in_bytes")
   originalName String?         @map("original_name")
   series       ImagingSeries[]
+  shares       StudyShare[]
   dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
   patient      User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId], map: "idx_imaging_studies_patient")
   @@index([studyDate], map: "idx_imaging_studies_date")
   @@map("imaging_studies")
+}
+
+model StudyShare {
+  id        BigInt       @id @default(autoincrement())
+  studyId   BigInt       @map("study_id")
+  token     String       @unique
+  expiresAt DateTime     @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  study     ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  @@index([studyId], map: "idx_study_shares_study")
+  @@index([expiresAt], map: "idx_study_shares_expires_at")
+  @@map("study_shares")
 }
 
 model ImagingSeries {

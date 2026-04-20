@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getDentistById } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
+import resolveMediaUrl from '../../../utils/media';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
@@ -55,15 +56,23 @@ const normalizeDicebear = (url = '', fallbackSeed) => {
 };
 
 const resolveAvatar = (path, fallbackSeed) => {
-  if (!path) {
+  if (!path || typeof path !== 'string') {
     return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
   }
-  if (/^https?:\/\//i.test(path)) {
-    return normalizeDicebear(path, fallbackSeed);
-  }
-  const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return `${API_BASE}/${normalized}`;
+  return resolveMediaUrl(path) || `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
 };
+
+const pickDoctorAvatar = (source = {}) =>
+  source?.avatar_url ||
+  source?.avatarUrl ||
+  source?.user?.avatar_url ||
+  source?.user?.avatarUrl ||
+  source?.dentist?.avatar_url ||
+  source?.avatar ||
+  source?.image ||
+  source?.imageUrl ||
+  source?.photo ||
+  null;
 
 const DentistDetailScreen = () => {
   const theme = useTheme();
@@ -147,7 +156,7 @@ const DentistDetailScreen = () => {
           name: dentistData.name,
           specialty: dentistData.specialization,
           title: dentistData.title,
-          image: resolveAvatar(dentistData.avatar_url, dentistData.id),
+          image: resolveAvatar(pickDoctorAvatar(dentistData), dentistData.id),
           rating: 4.8, // TODO: Get from reviews table
           reviews: 0, // TODO: Get from reviews table
           experience: `${dentistData.years_of_experience || 0} tahun`,

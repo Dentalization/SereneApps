@@ -1,3 +1,7 @@
+import React from 'react';
+import { View } from 'react-native';
+import { Text } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors as COLORS, withOpacity } from '../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../theme/dimensions';
 
@@ -29,7 +33,7 @@ const StatPill = ({ icon, label, value, variant = 'vertical', containerStyle }) 
       ]}
     >
       <MaterialCommunityIcons name={icon} size={isVertical ? 20 : 18} color={COLORS.white} />
-      <View style={{ 
+      <View style={{
         marginLeft: isVertical ? 0 : 8,
         alignItems: isVertical ? 'center' : 'flex-start',
         marginTop: isVertical ? 4 : 0,

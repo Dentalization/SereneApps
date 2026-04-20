@@ -239,11 +239,24 @@ const ClinicSearchScreen = () => {
         }}
       >
         <LinearGradient
-          colors={[COLORS.primary, COLORS.primaryLight]}
+          colors={COLORS.headerGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, { paddingTop: insets.top + 2 }]}
         >
+          {/* Decorative Accent */}
+          <View 
+            style={{
+              position: 'absolute',
+              right: -50,
+              top: -50,
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: withOpacity(COLORS.white, 0.05),
+            }} 
+          />
+
           <View style={styles.heroHeader}>
             <TouchableOpacity
               style={styles.heroBack}
@@ -680,12 +693,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroTitle: { color: COLORS.white, ...TYPOGRAPHY.h3 },
+  heroTitle: { color: COLORS.white, ...TYPOGRAPHY.h3, fontWeight: '800' },
   heroSubtitle: {
-    color: withOpacity(COLORS.white, 0.85),
-    marginTop: 10,
+    color: COLORS.whiteSecondary,
+    marginTop: 12,
     ...TYPOGRAPHY.bodySmall,
     lineHeight: 20,
+    fontWeight: '500',
   },
   heroStats: { flexDirection: 'row', marginTop: 18 },
   heroSearch: {

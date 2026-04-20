@@ -1,16 +1,30 @@
-from fastapi import FastAPI, HTTPException, Response, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
+import asyncio
 import os
 import sys
 import threading
+import time
 import numpy as np
 import json
+from collections import OrderedDict
+from datetime import datetime, timezone
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 from services.dicom_handler import DicomHandler
 from services.morita_handler import MoritaHandler
-from services.vti_converter import convert_study_to_vti
+from services.vti_converter import (
+    convert_study_to_vti,
+    generate_study_thumbnails,
+    get_segmentation_metadata,
+    parse_sr_report,
+    read_label_manifest,
+    scan_dicom_series,
+)
 
 app = FastAPI(title="X-Core Intelligent Streamer")
 
@@ -31,7 +45,12 @@ app.add_middleware(
         "X-Volume-Shape", 
         "X-Slice-Index",
         "X-Window-Center",
-        "X-Window-Width"
+        "X-Window-Width",
+        "X-Segmentation-Status",
+        "X-Segmentation-Method",
+        "X-Labels-Count",
+        "Accept-Ranges",
+        "Content-Range",
     ],
 )
 
@@ -49,6 +68,46 @@ _conversion_failures = {}
 _conversion_waiters = {}
 _CONVERSION_WAIT_TIMEOUT_SECONDS = 300
 
+# Shared viewer assets fan out into many Python requests. Cache successful
+# Node share-token validations until JWT expiry to avoid re-validating every
+# VTI/image/thumb/metadata/gallery asset request.
+_share_validation_cache_lock = threading.Lock()
+_share_validation_cache = OrderedDict()
+_SHARE_VALIDATION_CACHE_MAX = 256
+_conversion_ws_clients = set()
+_conversion_ws_lock = threading.Lock()
+_conversion_ws_loop = None
+
+
+@app.on_event("startup")
+async def _capture_event_loop():
+    global _conversion_ws_loop
+    _conversion_ws_loop = asyncio.get_running_loop()
+
+
+async def _broadcast_conversion_status(event: dict) -> None:
+    stale_clients = []
+    with _conversion_ws_lock:
+        clients = list(_conversion_ws_clients)
+
+    for websocket in clients:
+        try:
+            await websocket.send_json(event)
+        except Exception:
+            stale_clients.append(websocket)
+
+    if stale_clients:
+        with _conversion_ws_lock:
+            for websocket in stale_clients:
+                _conversion_ws_clients.discard(websocket)
+
+
+def _emit_conversion_status(event: dict) -> None:
+    loop = _conversion_ws_loop
+    if not loop or not loop.is_running():
+        return
+    asyncio.run_coroutine_threadsafe(_broadcast_conversion_status(event), loop)
+
 
 def _is_conversion_in_progress(study_path: str) -> bool:
     with _conversion_state_lock:
@@ -56,7 +115,225 @@ def _is_conversion_in_progress(study_path: str) -> bool:
         return event is not None and not event.is_set()
 
 
-def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wait: bool = True) -> bool:
+def _study_has_segmentation_outputs(study_path: str) -> bool:
+    try:
+        return any(
+            name in ("labels.vti", "labels.json")
+            or (name.startswith("labels_") and (name.endswith(".vti") or name.endswith(".json")))
+            for name in os.listdir(study_path)
+        )
+    except FileNotFoundError:
+        return False
+
+
+def _share_validation_url(token: str) -> str:
+    configured_base = os.environ.get("XCORE_NODE_API_BASE_URL")
+    if configured_base:
+        base = configured_base.rstrip("/")
+    else:
+        api_version = os.environ.get("API_VERSION", "v1").strip("/")
+        base = f"http://127.0.0.1:4000/{api_version}"
+    quoted_token = urllib_parse.quote(token, safe="")
+    return f"{base}/x-core/share/{quoted_token}/validate"
+
+
+def _parse_expires_at(value: str) -> float | None:
+    if not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        expires_at = datetime.fromisoformat(normalized)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return expires_at.timestamp()
+    except Exception:
+        return None
+
+
+def _prune_share_validation_cache_locked(now_ts: float = None) -> None:
+    now_ts = now_ts if now_ts is not None else time.time()
+    expired_tokens = [
+        token for token, entry in _share_validation_cache.items()
+        if entry.get("expires_ts", 0) <= now_ts
+    ]
+    for token in expired_tokens:
+        _share_validation_cache.pop(token, None)
+
+    while len(_share_validation_cache) > _SHARE_VALIDATION_CACHE_MAX:
+        _share_validation_cache.popitem(last=False)
+
+
+def _get_cached_share_validation(study_id: str, share_token: str) -> dict | None:
+    now_ts = time.time()
+    with _share_validation_cache_lock:
+        _prune_share_validation_cache_locked(now_ts)
+        entry = _share_validation_cache.get(share_token)
+        if not entry:
+            return None
+
+        payload = entry.get("payload") or {}
+        if payload.get("folderName") != study_id:
+            return None
+
+        _share_validation_cache.move_to_end(share_token)
+        return payload
+
+
+def _store_share_validation_cache(share_token: str, payload: dict) -> None:
+    expires_ts = _parse_expires_at(payload.get("expiresAt"))
+    if not expires_ts or expires_ts <= time.time():
+        return
+
+    with _share_validation_cache_lock:
+        _prune_share_validation_cache_locked()
+        _share_validation_cache[share_token] = {
+            "payload": payload,
+            "expires_ts": expires_ts,
+        }
+        _share_validation_cache.move_to_end(share_token)
+        _prune_share_validation_cache_locked()
+
+
+def _validate_share_token(study_id: str, share_token: str) -> dict:
+    cached = _get_cached_share_validation(study_id, share_token)
+    if cached:
+        return cached
+
+    validate_url = _share_validation_url(share_token)
+    request = urllib_request.Request(validate_url, headers={"Accept": "application/json"})
+
+    try:
+        with urllib_request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore") if hasattr(exc, "read") else ""
+        raise HTTPException(
+            status_code=exc.code if exc.code in (401, 403, 404, 410) else 401,
+            detail=detail or "Invalid or expired share token",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Share validation failed: {exc}") from exc
+
+    folder_name = payload.get("folderName")
+    if folder_name != study_id:
+        raise HTTPException(status_code=403, detail="Share token does not grant access to this study")
+
+    _store_share_validation_cache(share_token, payload)
+    return payload
+
+
+def _clear_share_validation_cache_for_tests() -> None:
+    with _share_validation_cache_lock:
+        _share_validation_cache.clear()
+
+
+def _load_json_file(path: str) -> dict | None:
+    if not os.path.exists(path):
+        return None
+    with open(path, "r") as file:
+        return json.load(file)
+
+
+def _iter_file_range(path: str, start: int, end: int, chunk_size: int = 512 * 1024):
+    with open(path, "rb") as file:
+        file.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = file.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+
+    range_spec = range_header.replace("bytes=", "", 1).split(",", 1)[0].strip()
+    if "-" not in range_spec:
+        return None
+
+    start_raw, end_raw = range_spec.split("-", 1)
+    try:
+        if start_raw == "":
+            suffix_length = int(end_raw)
+            if suffix_length <= 0:
+                return None
+            return max(file_size - suffix_length, 0), file_size - 1
+
+        start = int(start_raw)
+        end = int(end_raw) if end_raw else file_size - 1
+        if start < 0 or start >= file_size or end < start:
+            return None
+        return start, min(end, file_size - 1)
+    except ValueError:
+        return None
+
+
+def _stream_vti_file(request: Request, file_path: str, filename: str, head_only: bool = False):
+    file_size = os.path.getsize(file_path)
+    base_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=86400",
+        "Content-Encoding": "identity",
+        "X-VTI-Size": str(file_size),
+    }
+
+    range_header = request.headers.get("range")
+    parsed_range = _parse_range_header(range_header, file_size) if range_header else None
+
+    if range_header and parsed_range is None:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{file_size}", **base_headers},
+        )
+
+    if parsed_range:
+        start, end = parsed_range
+        content_length = end - start + 1
+        headers = {
+            **base_headers,
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Content-Length": str(content_length),
+            "Content-Disposition": f'inline; filename="{filename}"',
+        }
+        if head_only:
+            return Response(status_code=206, headers=headers, media_type="application/xml")
+        return StreamingResponse(
+            _iter_file_range(file_path, start, end),
+            status_code=206,
+            media_type="application/xml",
+            headers=headers,
+        )
+
+    headers = {
+        **base_headers,
+        "Content-Length": str(file_size),
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+    if head_only:
+        return Response(status_code=200, headers=headers, media_type="application/xml")
+    return StreamingResponse(
+        _iter_file_range(file_path, 0, file_size - 1),
+        media_type="application/xml",
+        headers=headers,
+    )
+
+
+def _authorize_study_access(study_id: str, share_token: str = None) -> dict | None:
+    if not share_token:
+        return None
+    return _validate_share_token(study_id, share_token)
+
+
+def _ensure_vti_conversion_singleflight(
+    study_path: str,
+    force: bool = False,
+    wait: bool = True,
+    segment: bool = False,
+) -> bool:
     """
     Ensure at most one conversion runs per study.
 
@@ -65,13 +342,18 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
         False if conversion was already done or handled by another in-flight request.
     """
     volume_path = os.path.join(study_path, "volume.vti")
-    if os.path.exists(volume_path) and not force:
+    segmentation_ready = _study_has_segmentation_outputs(study_path)
+    if os.path.exists(volume_path) and not force and (not segment or segmentation_ready):
         return False
 
     should_run = False
     registered_waiter = False
     with _conversion_state_lock:
         event = _conversion_events.get(study_path)
+        if event is not None and event.is_set() and _conversion_waiters.get(study_path, 0) == 0:
+            _conversion_events.pop(study_path, None)
+            _conversion_failures.pop(study_path, None)
+            event = None
 
         if event is None:
             event = threading.Event()
@@ -87,7 +369,13 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
         failure_message = None
 
         try:
-            convert_study_to_vti(study_path, force)
+            convert_study_to_vti(
+                study_path,
+                force=force,
+                segment=segment,
+                progress_callback=_emit_conversion_status,
+                study_id=os.path.basename(os.path.normpath(study_path)),
+            )
             return True
         except Exception as exc:
             conversion_failed = True
@@ -103,6 +391,10 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
                 done_event = _conversion_events.get(study_path)
                 if done_event:
                     done_event.set()
+                if _conversion_waiters.get(study_path, 0) == 0:
+                    _conversion_events.pop(study_path, None)
+                    if not conversion_failed:
+                        _conversion_failures.pop(study_path, None)
 
     if not wait:
         return False
@@ -131,7 +423,8 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
                     _conversion_waiters[study_path] = remaining_waiters
                 else:
                     _conversion_waiters.pop(study_path, None)
-                    if not os.path.exists(volume_path):
+                    event = _conversion_events.get(study_path)
+                    if event is None or event.is_set():
                         _conversion_events.pop(study_path, None)
                         _conversion_failures.pop(study_path, None)
 
@@ -139,8 +432,28 @@ def _ensure_vti_conversion_singleflight(study_path: str, force: bool = False, wa
 def health_check():
     return {"status": "online", "service": "x-core-streamer"}
 
+
+@app.websocket("/ws/conversion-status")
+async def conversion_status_websocket(websocket: WebSocket):
+    global _conversion_ws_loop
+    await websocket.accept()
+    _conversion_ws_loop = asyncio.get_running_loop()
+    with _conversion_ws_lock:
+        _conversion_ws_clients.add(websocket)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        with _conversion_ws_lock:
+            _conversion_ws_clients.discard(websocket)
+
+
 @app.get("/gallery/{study_id}")
-def get_study_gallery(study_id: str):
+def get_study_gallery(study_id: str, share_token: str = None):
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -161,9 +474,16 @@ def get_study_gallery(study_id: str):
                 if card['classification'] == '3D':
                     card['has_vti'] = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
                     card['status'] = 'ready' if card['has_vti'] else ('converting' if is_converting else 'pending')
+                    card.update(get_segmentation_metadata(study_path, safe_uid))
                 else:
                     card['has_image'] = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
                     card['status'] = 'ready' if card['has_image'] else ('converting' if is_converting else 'pending')
+                    card.update({
+                        "has_labels": False,
+                        "num_labels": 0,
+                        "segmentation_method": None,
+                        "segmentation_status": "missing",
+                    })
                 card['has_thumb'] = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
                 card['thumbnail_url'] = f"/thumb/{study_id}/{card['series_uid']}" if card['has_thumb'] else f"/thumbnail/{study_id}/{card['series_uid']}"
             
@@ -179,7 +499,6 @@ def get_study_gallery(study_id: str):
         # This path should only happen briefly during the first gallery load after upload
         print(f"[Gallery] No manifest for {study_id}, scanning DICOM files...")
         
-        from services.vti_converter import scan_dicom_series
         series_groups = scan_dicom_series(study_path)
         
         if not series_groups:
@@ -201,6 +520,16 @@ def get_study_gallery(study_id: str):
             has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
             has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg")) if classification == '2D' else False
             has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+            segmentation_metadata = (
+                get_segmentation_metadata(study_path, safe_uid)
+                if classification == '3D'
+                else {
+                    "has_labels": False,
+                    "num_labels": 0,
+                    "segmentation_method": None,
+                    "segmentation_status": "missing",
+                }
+            )
             
             if classification == '3D':
                 series_status = 'ready' if has_vti else ('converting' if is_converting else 'pending')
@@ -218,6 +547,7 @@ def get_study_gallery(study_id: str):
                 "has_vti": has_vti,
                 "has_image": has_image,
                 "has_thumb": has_thumb,
+                **segmentation_metadata,
                 "status": series_status,
                 "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
             })
@@ -238,11 +568,12 @@ def get_study_gallery(study_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/status/{study_id}")
-def get_study_status(study_id: str):
+def get_study_status(study_id: str, share_token: str = None):
     """
     Returns current conversion status for a study.
     Used by frontend to poll until conversion completes.
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -267,12 +598,13 @@ def get_study_status(study_id: str):
     }
 
 @app.get("/thumbnail/{study_id}/{series_uid}")
-def get_series_thumbnail(study_id: str, series_uid: str):
+def get_series_thumbnail(study_id: str, series_uid: str, share_token: str = None):
     """
     Generate thumbnail for series card (middle slice for 3D, first slice for 2D)
     
     Used in gallery to show preview of each series
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -297,34 +629,21 @@ def get_series_thumbnail(study_id: str, series_uid: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/volume/{study_id}")
-def get_volume_vti(study_id: str, series_uid: str = None):
-    """
-    Serve pre-computed .vti file for instant 3D rendering.
-    
-    The frontend uses vtkXMLImageDataReader to load this single file
-    instead of reconstructing 300+ slices on the fly.
-    
-    If .vti doesn't exist yet, triggers conversion first (blocking for first request,
-    subsequent requests are instant).
-    """
+def _resolve_or_create_volume_path(study_id: str, series_uid: str = None, create_if_missing: bool = True) -> tuple[str, str]:
     study_path = os.path.join(UPLOAD_DIR, study_id)
-    
+
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
-    
-    # Determine which .vti file to serve
+
     if series_uid:
         safe_uid = series_uid.replace('.', '_')[:50]
         vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
-        # Fallback to default
         if not os.path.exists(vti_path):
             vti_path = os.path.join(study_path, "volume.vti")
     else:
         vti_path = os.path.join(study_path, "volume.vti")
-    
-    # If .vti doesn't exist, generate it now (first-time conversion)
-    if not os.path.exists(vti_path):
+
+    if not os.path.exists(vti_path) and create_if_missing:
         print(f"[Volume] VTI not found, generating on-demand for {study_id}...")
         try:
             _ensure_vti_conversion_singleflight(study_path)
@@ -332,39 +651,122 @@ def get_volume_vti(study_id: str, series_uid: str = None):
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"VTI conversion failed: {str(e)}")
-        
-        # Re-check with series_uid
+
         if series_uid:
             safe_uid = series_uid.replace('.', '_')[:50]
             vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
             if not os.path.exists(vti_path):
                 vti_path = os.path.join(study_path, "volume.vti")
-        
-        if not os.path.exists(vti_path):
-            raise HTTPException(status_code=404, detail="No 3D volume found in this study")
+
+    if not os.path.exists(vti_path):
+        raise HTTPException(status_code=404, detail="No 3D volume found in this study")
+
+    return study_path, vti_path
+
+
+@app.head("/volume/{study_id}")
+def head_volume_vti(request: Request, study_id: str, series_uid: str = None, share_token: str = None):
+    _authorize_study_access(study_id, share_token)
+    _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=False)
+    return _stream_vti_file(request, vti_path, f"volume_{study_id}.vti", head_only=True)
+
+
+@app.get("/volume/{study_id}")
+def get_volume_vti(request: Request, study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Serve pre-computed .vti file for instant 3D rendering.
+
+    The frontend uses vtkXMLImageDataReader to load this single file
+    instead of reconstructing 300+ slices on the fly.
+
+    If .vti doesn't exist yet, triggers conversion first (blocking for first request,
+    subsequent requests are instant).
+    """
+    _authorize_study_access(study_id, share_token)
+    _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
     
     file_size = os.path.getsize(vti_path)
     print(f"[Volume] Serving VTI: {vti_path} ({file_size / (1024*1024):.1f}MB)")
-    
+    return _stream_vti_file(request, vti_path, f"volume_{study_id}.vti")
+
+
+@app.get("/labels/{study_id}")
+def get_volume_labels(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Serve an optional coarse tooth label-map VTI aligned with the MONAI volume.
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    if series_uid:
+        safe_uid = series_uid.replace('.', '_')[:50]
+        labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+        manifest = read_label_manifest(study_path, safe_uid)
+        if not os.path.exists(labels_path):
+            labels_path = os.path.join(study_path, "labels.vti")
+            manifest_path = os.path.join(study_path, "labels.json")
+            manifest = _load_json_file(manifest_path) or manifest
+    else:
+        labels_path = os.path.join(study_path, "labels.vti")
+        manifest_path = os.path.join(study_path, "labels.json")
+        manifest = _load_json_file(manifest_path)
+
+    if not os.path.exists(labels_path):
+        raise HTTPException(status_code=404, detail="No tooth segmentation labels found for this study")
+
+    file_size = os.path.getsize(labels_path)
+    print(f"[Labels] Serving labels: {labels_path} ({file_size / (1024*1024):.1f}MB)")
+
     return FileResponse(
-        path=vti_path,
+        path=labels_path,
         media_type="application/xml",
-        filename=f"volume_{study_id}.vti",
+        filename=f"labels_{study_id}.vti",
         headers={
             "Content-Length": str(file_size),
-            "Cache-Control": "public, max-age=86400",  # Cache for 24h
-            "X-VTI-Size": str(file_size)
-        }
+            "Cache-Control": "public, max-age=86400",
+            "X-VTI-Size": str(file_size),
+            "X-Segmentation-Status": str(manifest.get("segmentation_status", "ready") if manifest else "ready"),
+            "X-Segmentation-Method": str(manifest.get("segmentation_method", "") if manifest else ""),
+            "X-Labels-Count": str(manifest.get("num_labels", 0) if manifest else 0),
+        },
     )
 
 
+@app.get("/labels-manifest/{study_id}")
+def get_volume_labels_manifest(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Serve the lightweight tooth-label sidecar manifest used to gate lazy overlays.
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    if series_uid:
+        safe_uid = series_uid.replace('.', '_')[:50]
+        manifest = read_label_manifest(study_path, safe_uid)
+    else:
+        manifest_path = os.path.join(study_path, "labels.json")
+        manifest = _load_json_file(manifest_path)
+
+    if not manifest:
+        raise HTTPException(status_code=404, detail="No tooth segmentation manifest found for this study")
+
+    return manifest
+
+
 @app.get("/image/{study_id}/{series_uid}")
-def get_2d_image(study_id: str, series_uid: str):
+def get_2d_image(study_id: str, series_uid: str, share_token: str = None):
     """
     Serve a pre-generated 2D DICOM image (Panoramic, Cephalometric, etc.) as JPEG.
     If not pre-generated, generates on-demand — but ONLY for native 2D series.
     Rejects requests for 3D series (no fake 2D slices from volumes).
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
@@ -420,11 +822,12 @@ def get_2d_image(study_id: str, series_uid: str):
 
 
 @app.get("/thumb/{study_id}/{series_uid}")
-def get_series_thumb(study_id: str, series_uid: str):
+def get_series_thumb(study_id: str, series_uid: str, share_token: str = None):
     """
     Serve pre-generated thumbnail (fast, 256x256 JPEG).
     Falls back to on-demand thumbnail generation via DicomHandler.
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
@@ -457,8 +860,9 @@ def get_series_thumb(study_id: str, series_uid: str):
 
 
 @app.get("/volume-status/{study_id}")
-def get_volume_status(study_id: str):
+def get_volume_status(study_id: str, share_token: str = None):
     """Check if pre-computed .vti file exists for a study."""
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -475,7 +879,12 @@ def get_volume_status(study_id: str):
 
 
 @app.post("/convert/{study_id}")
-def trigger_vti_conversion(study_id: str, background_tasks: BackgroundTasks, force: bool = False):
+def trigger_vti_conversion(
+    study_id: str,
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+    segment: bool = False,
+):
     """
     Manually trigger VTI conversion for a study.
     Called by Node.js backend after upload completes.
@@ -487,19 +896,29 @@ def trigger_vti_conversion(study_id: str, background_tasks: BackgroundTasks, for
     
     vti_path = os.path.join(study_path, "volume.vti")
     
-    if os.path.exists(vti_path) and not force:
+    if os.path.exists(vti_path) and not force and (not segment or _study_has_segmentation_outputs(study_path)):
         return {"status": "already_exists", "study_id": study_id}
 
     if _is_conversion_in_progress(study_path):
         return {"status": "converting", "study_id": study_id, "message": "VTI conversion already in progress"}
+
+    try:
+        generate_study_thumbnails(study_path, force=force)
+    except Exception as thumb_error:
+        print(f"[THUMB] Pre-generation failed for {study_id}: {thumb_error}")
     
     # Run conversion in background so the upload response returns immediately
-    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True)
+    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True, segment)
     
-    return {"status": "converting", "study_id": study_id, "message": "VTI conversion started in background"}
+    return {
+        "status": "converting",
+        "study_id": study_id,
+        "message": "VTI conversion started in background",
+        "segment": segment,
+    }
 
 @app.get("/series/{study_id}")
-def list_series(study_id: str):
+def list_series(study_id: str, share_token: str = None):
     """
     List all DICOM series found in the study folder (The Acteon Way)
     
@@ -510,6 +929,7 @@ def list_series(study_id: str):
     Returns:
         List of series with: series_uid, description, type (2D/3D), num_slices
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -528,7 +948,7 @@ def list_series(study_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/stream/{study_id}/{view}/{index}")
-def stream_slice(study_id: str, view: str, index: int, series_uid: str = None):
+def stream_slice(study_id: str, view: str, index: int, series_uid: str = None, share_token: str = None):
     """
     Stream a single slice with multi-series support
     
@@ -538,6 +958,7 @@ def stream_slice(study_id: str, view: str, index: int, series_uid: str = None):
         index: Slice index
         series_uid: Optional - specific series to load (defaults to first series)
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -560,7 +981,7 @@ def stream_slice(study_id: str, view: str, index: int, series_uid: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metadata/{study_id}")
-def get_metadata(study_id: str, series_uid: str = None):
+def get_metadata(study_id: str, series_uid: str = None, share_token: str = None):
     """
     Get metadata with multi-series detection (The Acteon Way)
     
@@ -573,6 +994,7 @@ def get_metadata(study_id: str, series_uid: str = None):
         study_id: Folder name
         series_uid: Optional - specific series (defaults to first)
     """
+    _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
     if not os.path.exists(study_path):
@@ -589,6 +1011,82 @@ def get_metadata(study_id: str, series_uid: str = None):
         return handler.get_metadata()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _flatten_sr_nodes(nodes: list[dict]) -> tuple[list[dict], list[dict]]:
+    findings = []
+    measurements = []
+
+    def walk(node: dict):
+        if node.get("value") not in (None, ""):
+            measurements.append({
+                "label": node.get("label") or "Measurement",
+                "value": node.get("value"),
+                "unit": node.get("unit") or "",
+            })
+        if node.get("text"):
+            findings.append({
+                "label": node.get("label") or "Finding",
+                "text": node.get("text"),
+            })
+        for child in node.get("children") or []:
+            walk(child)
+
+    for root_node in nodes:
+        walk(root_node)
+
+    return findings, measurements
+
+
+@app.get("/sr/{study_id}")
+def get_structured_report(study_id: str, share_token: str = None):
+    """
+    Return DICOM Structured Report findings and measurements if present.
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    try:
+        _, sr_series = scan_dicom_series(study_path, include_sr=True)
+        findings = []
+        measurements = []
+        reports = []
+        manufacturer = None
+
+        for series_uid, series_info in sr_series.items():
+            for _, _, file_path in series_info.get("files", []):
+                try:
+                    nodes = parse_sr_report(file_path)
+                    file_findings, file_measurements = _flatten_sr_nodes(nodes)
+                    findings.extend(file_findings)
+                    measurements.extend(file_measurements)
+                    reports.append({
+                        "seriesUid": series_uid,
+                        "description": series_info.get("series_description") or "Structured Report",
+                        "file": os.path.basename(file_path),
+                        "content": nodes,
+                    })
+
+                    if manufacturer is None:
+                        import pydicom
+                        sr_ds = pydicom.dcmread(file_path, force=True, stop_before_pixels=True)
+                        manufacturer = str(getattr(sr_ds, "Manufacturer", "") or "") or manufacturer
+                except Exception as sr_error:
+                    print(f"[SR] Failed to parse {file_path}: {sr_error}")
+
+        return {
+            "hasReport": bool(findings or measurements or reports),
+            "findings": findings,
+            "measurements": measurements,
+            "reports": reports,
+            "manufacturer": manufacturer or None,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

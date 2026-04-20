@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistById } from '../../../services/dentistService';
 import { API_BASE_URL } from '../../../services/api';
+import resolveMediaUrl from '../../../utils/media';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
@@ -58,12 +59,20 @@ const resolveAvatar = (path, fallbackSeed) => {
   if (!path || typeof path !== 'string') {
     return `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
   }
-  if (/^https?:\/\//i.test(path)) {
-    return normalizeDicebear(path, fallbackSeed);
-  }
-  const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return `${API_BASE}/${normalized}`;
+  return resolveMediaUrl(path) || `https://api.dicebear.com/7.x/avataaars/png?seed=${fallbackSeed || 'dentist'}&backgroundColor=${DICEBEAR_BG}&size=256`;
 };
+
+const pickDoctorAvatar = (source = {}) =>
+  source?.avatar_url ||
+  source?.avatarUrl ||
+  source?.user?.avatar_url ||
+  source?.user?.avatarUrl ||
+  source?.dentist?.avatar_url ||
+  source?.avatar ||
+  source?.image ||
+  source?.imageUrl ||
+  source?.photo ||
+  null;
 
 const DentistDetailScreen = () => {
   const theme = useTheme();
@@ -158,7 +167,7 @@ const DentistDetailScreen = () => {
           name: dentistData.name,
           specialty: dentistData.specialization,
           title: dentistData.title,
-          image: resolveAvatar(dentistData.avatarUrl || dentistData.avatar_url, dentistData.id),
+          image: resolveAvatar(pickDoctorAvatar(dentistData), dentistData.id),
           rating: 4.8, // TODO: Get from reviews table
           reviews: 0, // TODO: Get from reviews table
           experience: `${dentistData.years_of_experience || 0} tahun`,
@@ -358,17 +367,31 @@ const DentistDetailScreen = () => {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
       >
         <LinearGradient
-          colors={[COLORS.primary, COLORS.primaryLight]}
+          colors={COLORS.headerGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             paddingTop: insets.top + 2,
             paddingBottom: 32,
-            borderBottomLeftRadius: 32,
-            borderBottomRightRadius: 32,
+            borderBottomLeftRadius: 36,
+            borderBottomRightRadius: 36,
             paddingHorizontal: 20,
+            overflow: 'hidden',
           }}
         >
+          {/* Decorative Background Accent */}
+          <View 
+            style={{
+              position: 'absolute',
+              right: -40,
+              top: -40,
+              width: 160,
+              height: 160,
+              borderRadius: 80,
+              backgroundColor: withOpacity(COLORS.white, 0.04),
+            }} 
+          />
+
           <View
             style={{
               flexDirection: 'row',
@@ -412,10 +435,10 @@ const DentistDetailScreen = () => {
               style={{ width: 96, height: 96, borderRadius: 28, marginRight: 16 }}
             />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h2 }}>{dentist.name}</Text>
-              <Text style={{ color: withOpacity(COLORS.white, 0.85), ...TYPOGRAPHY.body, marginTop: 4 }}>
-                {dentist.specialty}
-              </Text>
+            <Text style={{ color: COLORS.white, ...TYPOGRAPHY.h2, fontWeight: '800' }}>{dentist.name}</Text>
+            <Text style={{ color: COLORS.whiteSecondary, ...TYPOGRAPHY.body, marginTop: 4, fontWeight: '500' }}>
+              {dentist.specialty}
+            </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                 <MaterialCommunityIcons name="star" color={COLORS.warning} size={18} />
                 <Text style={{ color: COLORS.white, marginLeft: 6, fontWeight: '600', ...TYPOGRAPHY.bodySmall }}>
@@ -476,10 +499,10 @@ const DentistDetailScreen = () => {
         <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {[
-              statCard('Pengalaman', dentist.experience || '—', 'medal-outline'),
-              statCard('Pasien terbantu', dentist.patientsHelped || '1.200+', 'account-group'),
-              statCard('Respon rata-rata', dentist.responseTime || '<2 jam', 'clock-fast'),
-            ]}
+              { label: 'Pengalaman', value: dentist.experience || '—', icon: 'medal-outline' },
+              { label: 'Pasien terbantu', value: dentist.patientsHelped || '1.200+', icon: 'account-group' },
+              { label: 'Respon rata-rata', value: dentist.responseTime || '<2 jam', icon: 'clock-fast' },
+            ].map((stat) => statCard(stat.label, stat.value, stat.icon))}
           </ScrollView>
 
           <Section title="Tentang Dokter" style={{ marginTop: 24 }}>
@@ -497,7 +520,16 @@ const DentistDetailScreen = () => {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {dentist.specialties?.map((item) => (
                 <View
-                  >
+                  key={item}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 16,
+                    backgroundColor: '#EEF2FF',
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                >
                   <Text style={{ color: COLORS.primary, fontWeight: '600', ...TYPOGRAPHY.bodySmall }}>{item}</Text>
                 </View>
               ))}
@@ -523,6 +555,7 @@ const DentistDetailScreen = () => {
           </Section>
 
           <Section title="Ketersediaan Jadwal">
+            {dentist.workingHours?.map((slot) => (
               <View
                 key={slot.day}
                 style={{

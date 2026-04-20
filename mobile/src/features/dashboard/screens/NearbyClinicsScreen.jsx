@@ -57,9 +57,9 @@ const NearbyClinicsScreen = () => {
   const backendCenterLabel =
     searchMeta?.backendSearch?.latitude !== undefined
       ? formatCoords({
-          latitude: Number(searchMeta.backendSearch.latitude),
-          longitude: Number(searchMeta.backendSearch.longitude),
-        })
+        latitude: Number(searchMeta.backendSearch.latitude),
+        longitude: Number(searchMeta.backendSearch.longitude),
+      })
       : null;
 
   const handleClinicPress = (clinic) => navigation.navigate('ClinicDetail', { clinicId: clinic.id || clinic.branchId });
@@ -74,24 +74,38 @@ const NearbyClinicsScreen = () => {
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
 
       <LinearGradient
-        colors={[theme.colors.primary, '#7C3AED']}
+        colors={colors.headerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
           paddingHorizontal: 20,
-          paddingTop: 52,
+          paddingTop: insets.top + 8,
           paddingBottom: 32,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
+          borderBottomLeftRadius: 36,
+          borderBottomRightRadius: 36,
+          overflow: 'hidden',
         }}
       >
+        {/* Decorative Background Accent */}
+        <View 
+          style={{
+            position: 'absolute',
+            right: -40,
+            top: -40,
+            width: 180,
+            height: 180,
+            borderRadius: 90,
+            backgroundColor: withOpacity(colors.white, 0.05),
+          }} 
+        />
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>Eksplor Klinik</Text>
-            <Text style={{ color: 'white', fontSize: 26, fontWeight: '700', marginTop: 6 }}>
+            <Text style={{ color: colors.whiteSecondary, fontSize: 13, fontWeight: '600' }}>Eksplor Klinik</Text>
+            <Text style={{ color: colors.white, fontSize: 28, fontWeight: '800', marginTop: 6 }}>
               Klinik Terdekat
             </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 6 }}>
+            <Text style={{ color: colors.whiteSecondary, marginTop: 4, fontWeight: '500' }}>
               {clinics.length} klinik dalam radius {radius} km
             </Text>
           </View>
@@ -101,12 +115,12 @@ const NearbyClinicsScreen = () => {
               width: 44,
               height: 44,
               borderRadius: 22,
-              backgroundColor: 'rgba(255,255,255,0.2)',
+              backgroundColor: withOpacity(colors.white, 0.2),
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <MaterialCommunityIcons name="close" size={22} color="white" />
+            <MaterialCommunityIcons name="close" size={22} color={colors.white} />
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -162,11 +176,11 @@ const NearbyClinicsScreen = () => {
           title={`Klinik Terdekat`}
           subtitle={`${clinics.length} klinik dalam radius ${radius} km`}
           onClinicPress={handleClinicPress}
-      onBook={handleBook}
-      onSeeAll={() => {}}
-      loading={loading}
-      theme={theme}
-    />
+          onBook={handleBook}
+          onSeeAll={() => { }}
+          loading={loading}
+          theme={theme}
+        />
       </ScrollView>
     </View>
   );

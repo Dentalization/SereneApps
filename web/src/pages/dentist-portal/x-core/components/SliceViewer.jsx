@@ -19,15 +19,16 @@ import { SlicingMode } from '@kitware/vtk.js/Rendering/Core/ImageMapper/Constant
 
 import AppIcon from '../../../../components/AppIcon';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { PY_API_BASE } from '../../../../config/api';
 import { VOLUME_PRESETS } from '../config/volumePresets';
 import useStudyMetadata from '../hooks/useStudyMetadata';
 import { volumeCache } from '../utils/volumeCache';
+import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import { exportPdfReport } from '../utils/reportUtils';
 import AnnotationCanvas from './AnnotationCanvas';
 import MetadataPanel from './MetadataPanel';
 import ReportExportModal from './ReportExportModal';
 import SeriesSidebar from './SeriesSidebar';
+import ShortcutHelpButton from './ShortcutHelpButton';
 
 const AXIS = {
     axial: {
@@ -92,6 +93,16 @@ const MEASUREMENT_COLOR = '#1D9E75';
 const MEASUREMENT_RGB = [29, 158, 117];
 const SINGLE_CAMERA_ZOOM = 1.3;
 const QUAD_CAMERA_ZOOM = 1.05;
+const SLICE_SHORTCUTS = [
+    { key: '↑ / ←', label: 'Previous slice' },
+    { key: '↓ / →', label: 'Next slice' },
+    { key: 'A', label: 'Axial plane' },
+    { key: 'C', label: 'Coronal plane' },
+    { key: 'S', label: 'Sagittal plane' },
+    { key: 'I', label: 'Invert image' },
+    { key: '1-4', label: 'W/L presets' },
+    { key: 'F', label: 'Fullscreen' },
+];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -130,7 +141,7 @@ const drawMeasurementPillToCanvas = (ctx, label) => {
     ctx.restore();
 };
 
-const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
+const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
     const { user } = useAuth();
     const wrapperRef = useRef(null);
     const viewerAreaRef = useRef(null);
@@ -142,6 +153,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     const quadVolumeRef = useRef(null);
     const quadRefs = useRef({ axial: null, coronal: null, sagittal: null, volume: null });
     const measurementStoreRef = useRef({ axial: [], coronal: [], sagittal: [] });
+    const comparisonSyncGuardRef = useRef(false);
 
     const [axis, setAxis] = useState('axial');
     const [sliceIndex, setSliceIndex] = useState(0);
@@ -177,6 +189,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
     const seriesUid = useMemo(() => study?.selectedSeriesUid || '', [study]);
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
+    const showBack = typeof onBack === 'function';
+    const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
     const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
         enabled: !!studyKey,
     });
@@ -644,6 +658,55 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
         }
     }, []);
 
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            const activeTag = document.activeElement?.tagName?.toLowerCase();
+            const isTextInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+            const viewerFocused = wrapperRef.current?.contains(document.activeElement);
+            if (isTextInput) return;
+            if (document.activeElement !== document.body && !viewerFocused) return;
+
+            const key = event.key.toLowerCase();
+            if (['arrowup', 'arrowleft'].includes(key)) {
+                event.preventDefault();
+                goToSlice((current) => current - 1);
+            } else if (['arrowdown', 'arrowright'].includes(key)) {
+                event.preventDefault();
+                goToSlice((current) => current + 1);
+            } else if (key === 'a') {
+                event.preventDefault();
+                switchAxis('axial');
+            } else if (key === 'c') {
+                event.preventDefault();
+                switchAxis('coronal');
+            } else if (key === 's') {
+                event.preventDefault();
+                switchAxis('sagittal');
+            } else if (key === 'i') {
+                event.preventDefault();
+                setInverted((current) => !current);
+            } else if (key === '1') {
+                event.preventDefault();
+                selectWlPreset('dental');
+            } else if (key === '2') {
+                event.preventDefault();
+                selectWlPreset('bone');
+            } else if (key === '3') {
+                event.preventDefault();
+                selectWlPreset('soft');
+            } else if (key === '4') {
+                event.preventDefault();
+                selectWlPreset('full');
+            } else if (key === 'f') {
+                event.preventDefault();
+                toggleFullscreen();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [goToSlice, selectWlPreset, switchAxis, toggleFullscreen]);
+
     const handleToggleQuadView = useCallback(() => {
         clearAllMeasurements();
         if (quadView) {
@@ -761,6 +824,39 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     }, [axis, dimensions, sliceIndices]);
 
     useEffect(() => {
+        if (!comparisonSyncEnabled || comparisonPaneId == null || comparisonSyncGuardRef.current) return;
+
+        const maxForAxis = Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0);
+        const currentIndex = sliceIndices[axis] ?? 0;
+        window.dispatchEvent(new CustomEvent('xcore:comparison-slice', {
+            detail: {
+                sourcePaneId: comparisonPaneId,
+                axis,
+                ratio: maxForAxis > 0 ? currentIndex / maxForAxis : 0,
+            },
+        }));
+    }, [axis, comparisonPaneId, comparisonSyncEnabled, dimensions, sliceIndices]);
+
+    useEffect(() => {
+        if (!comparisonSyncEnabled || comparisonPaneId == null) return undefined;
+
+        const handleComparisonSlice = (event) => {
+            const detail = event.detail || {};
+            if (detail.sourcePaneId === comparisonPaneId || !detail.axis || detail.axis !== axis) return;
+
+            const maxForAxis = Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0);
+            comparisonSyncGuardRef.current = true;
+            setSliceForAxis(axis, Math.round((detail.ratio || 0) * maxForAxis));
+            window.setTimeout(() => {
+                comparisonSyncGuardRef.current = false;
+            }, 50);
+        };
+
+        window.addEventListener('xcore:comparison-slice', handleComparisonSlice);
+        return () => window.removeEventListener('xcore:comparison-slice', handleComparisonSlice);
+    }, [axis, comparisonPaneId, comparisonSyncEnabled, dimensions, setSliceForAxis]);
+
+    useEffect(() => {
         clearAllMeasurements();
         setMeasurementMode(false);
         setMeasurementTool('distance');
@@ -793,9 +889,12 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                     nextImageData = volumeCache.get(cacheKey);
                 } else {
                     console.log('[SliceViewer] Cache MISS:', cacheKey, '| Downloading VTI...');
-                    const url = `${PY_API_BASE}/volume/${studyKey}${seriesUid ? `?series_uid=${seriesUid}` : ''}`;
+                    const url = buildImagingUrl(
+                        `/volume/${studyKey}`,
+                        buildStudyAssetParams(study, { series_uid: seriesUid || undefined })
+                    );
 
-                    setLoadingStage('Downloading 3D volume...');
+                    setLoadingStage('Connecting...');
                     setLoadingProgress(5);
 
                     const response = await fetch(url);
@@ -842,8 +941,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                         buffer = await response.arrayBuffer();
                     }
 
-                    setLoadingStage('Parsing VTI...');
-                    setLoadingProgress(80);
+                    setLoadingStage('Decompressing...');
+                    setLoadingProgress(78);
 
                     const reader = vtkXMLImageDataReader.newInstance();
                     reader.parseAsArrayBuffer(buffer);
@@ -873,8 +972,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                 setSliceIndices(centeredSlices);
                 setSliceIndex(centeredSlices.axial);
                 setMaxSlice(Math.max(dims[2] - 1, 0));
-                setLoadingStage('Initializing viewer...');
+                setLoadingStage('Building 3D scene...');
                 setLoadingProgress(95);
+                setLoadingStage('Rendering...');
                 setLoading(false);
 
                 console.log('[SliceViewer] Volume ready:', { dims, spacing: nextSpacing, dataRange });
@@ -1217,12 +1317,14 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
     ), [annotateMode, measurementMode, renderMeasurementPills, renderPaneLabel, renderQuadCrosshair]);
 
     return (
-        <div ref={wrapperRef} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+        <div ref={wrapperRef} tabIndex={0} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
             <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 p-3 backdrop-blur">
                 <div className="flex items-center gap-3">
-                    <button onClick={onBack} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
-                        <AppIcon name="ArrowLeft" size={20} />
-                    </button>
+                    {showBack && (
+                        <button onClick={onBack} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+                            <AppIcon name="ArrowLeft" size={20} />
+                        </button>
+                    )}
                     <div>
                         <h2 className="text-sm font-bold text-white">{study?.patientName || study?.originalName || 'Patient'}</h2>
                         <p className="text-[10px] text-slate-500">MPR Slice Viewer • {study?.folderName}</p>
@@ -1418,20 +1520,22 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                         <AppIcon name="Info" size={16} />
                     </button>
 
-                    <button
-                        onClick={() => {
-                            setShowMetadataPanel(false);
-                            setShowSeriesPanel((current) => !current);
-                        }}
-                        className={`rounded-lg p-1.5 transition ${
-                            showSeriesPanel
-                                ? 'border border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
-                        }`}
-                        title="Series Panel"
-                    >
-                        <AppIcon name="Layers" size={16} />
-                    </button>
+                    {allowSeriesSwitch && (
+                        <button
+                            onClick={() => {
+                                setShowMetadataPanel(false);
+                                setShowSeriesPanel((current) => !current);
+                            }}
+                            className={`rounded-lg p-1.5 transition ${
+                                showSeriesPanel
+                                    ? 'border border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
+                                    : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
+                            }`}
+                            title="Series Panel"
+                        >
+                            <AppIcon name="Layers" size={16} />
+                        </button>
+                    )}
 
                     <button
                         onClick={handleToggleQuadView}
@@ -1469,6 +1573,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                     <button onClick={toggleFullscreen} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white" title="Fullscreen">
                         <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={16} />
                     </button>
+                    <ShortcutHelpButton shortcuts={SLICE_SHORTCUTS} />
                 </div>
             </div>
 
@@ -1591,7 +1696,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries }) => {
                         setShowSeriesPanel(false);
                         if (onSwitchSeries) onSwitchSeries(series);
                     }}
-                    visible={showSeriesPanel}
+                    visible={allowSeriesSwitch && showSeriesPanel}
                     onClose={() => setShowSeriesPanel(false)}
                     position="right"
                 />
