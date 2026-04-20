@@ -261,19 +261,58 @@ def read_dicom_volume(file_list: list) -> tuple:
     return volume, spacing, origin, orientation
 
 
-def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientation_cosines: list = None) -> tuple:
+def _slice_normal_z_sign(orientation_cosines: list = None) -> float:
+    """
+    Return the sign of the DICOM slice normal's patient-Z component.
+
+    ImageOrientationPatient stores row and column direction cosines. Their cross
+    product is the slice normal, which tells MONAI whether dim0 advances toward
+    superior (+Z) or inferior (-Z) patient space.
+    """
+    if not orientation_cosines or len(orientation_cosines) < 6:
+        return 1.0
+
+    try:
+        row = [float(v) for v in orientation_cosines[0:3]]
+        col = [float(v) for v in orientation_cosines[3:6]]
+    except (TypeError, ValueError):
+        return 1.0
+
+    normal_z = (row[0] * col[1]) - (row[1] * col[0])
+    return -1.0 if normal_z < 0 else 1.0
+
+
+def _crop_margin_voxels_for_spacing(spacing: tuple, physical_margin_mm: float = 10.0) -> int:
+    try:
+        pixel_spacing = float(spacing[0])
+    except (TypeError, ValueError, IndexError):
+        pixel_spacing = 1.0
+
+    if pixel_spacing <= 0:
+        pixel_spacing = 1.0
+
+    return max(6, int(physical_margin_mm / pixel_spacing))
+
+
+def monai_preprocess(
+    volume: np.ndarray,
+    spacing: tuple,
+    origin: tuple,
+    orientation_cosines: list = None,
+    target_spacing: tuple | None = (0.5, 0.5, 0.5),
+) -> tuple:
     """
     MONAI preprocessing pipeline for dental CBCT volumes.
 
     Pipeline:
       1. Build diagonal affine matrix (dim0→Z, dim1→Y, dim2→X)
       2. Orientation("RAS") — reorder axes to Right-Anterior-Superior
-      3. Spacing(0.5mm isotropic) — resample to uniform voxels
+      3. Spacing(target) — resample to requested voxel quality, or preserve native spacing
       4. ScaleIntensityRange(-1000→3000 mapped to 0.0→1.0) — universal normalizer
-      5. CropForeground(threshold=0.1, margin=10) — cylinder/box artifact killer
+      5. CropForeground(threshold=0.07, adaptive physical margin) — preserves soft tissue
 
     Input:  numpy (Z, Y, X) in Hounsfield Units
-    Output: numpy (X, Y, Z) in [0.0, 1.0] float32, isotropic 0.5mm spacing
+    Output: numpy (X, Y, Z) in [0.0, 1.0] float32, with requested/native spacing
 
     CRITICAL: The affine MUST correctly tell MONAI which numpy axis is which
     patient axis, so Orientation("RAS") can reorder them properly.
@@ -303,14 +342,16 @@ def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientat
 
     sx, sy, sz = spacing  # sx=PixelSpacing[0], sy=PixelSpacing[1], sz=SliceThickness
 
+    z_sign = _slice_normal_z_sign(orientation_cosines)
+
     affine = np.zeros((4, 4), dtype=np.float64)
     affine[0, 2] = sx    # dim2 (X in volume) → X-world (Right)
     affine[1, 1] = sy    # dim1 (Y in volume) → Y-world (Anterior)
-    affine[2, 0] = sz    # dim0 (Z in volume) → Z-world (Superior)
+    affine[2, 0] = z_sign * sz  # dim0 (Z in volume) → patient Z, corrected for scanner slice normal
     affine[3, 3] = 1.0
     affine[:3, 3] = [origin[0], origin[1], origin[2]]
 
-    print(f"[MONAI] Affine: dim0→Z(sz={sz}), dim1→Y(sy={sy}), dim2→X(sx={sx})")
+    print(f"[MONAI] Affine: dim0→Z(sz={z_sign * sz}, z_sign={z_sign}), dim1→Y(sy={sy}), dim2→X(sx={sx})")
 
     # ── Step 2: Convert to MONAI MetaTensor ──
     tensor = torch.from_numpy(volume.copy()).unsqueeze(0).float()  # (1, Z, Y, X)
@@ -325,13 +366,16 @@ def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientat
     except Exception as e:
         print(f"[MONAI] ⚠️  Orientation failed (using original): {e}")
 
-    # ── Step 4: Spacing(0.5mm isotropic) — Resample ──
-    try:
-        spacing_transform = Spacing(pixdim=(0.5, 0.5, 0.5), mode="bilinear")
-        meta_tensor = spacing_transform(meta_tensor)
-        print(f"[MONAI] After Spacing(0.5mm): shape={meta_tensor.shape}")
-    except Exception as e:
-        print(f"[MONAI] ⚠️  Spacing failed (using original): {e}")
+    # ── Step 4: Spacing — Resample, unless native spacing was requested ──
+    if target_spacing is not None:
+        try:
+            spacing_transform = Spacing(pixdim=target_spacing, mode="bilinear")
+            meta_tensor = spacing_transform(meta_tensor)
+            print(f"[MONAI] After Spacing{target_spacing}: shape={meta_tensor.shape}")
+        except Exception as e:
+            print(f"[MONAI] ⚠️  Spacing failed (using original): {e}")
+    else:
+        print("[MONAI] Native spacing preserved — no resampling")
 
     # ── Step 5: ScaleIntensityRange — Normalize HU → [0.0, 1.0] ──
     try:
@@ -347,17 +391,32 @@ def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientat
 
     # ── Step 6: CropForeground — Remove surrounding air/cylinder ──
     try:
-        crop_transform = CropForeground(
-            select_fn=lambda x: x > 0.1,
-            margin=10
-        )
+        pre_crop_tensor = meta_tensor.clone()
         pre_crop_shape = meta_tensor.shape
+        margin_voxels = _crop_margin_voxels_for_spacing(spacing)
+        crop_threshold = 0.07
+        print(
+            f"[MONAI] CropForeground: threshold={crop_threshold}, "
+            f"margin={margin_voxels} voxels (10.0mm physical)"
+        )
+        try:
+            crop_transform = CropForeground(
+                select_fn=lambda x: x > crop_threshold,
+                margin=margin_voxels,
+                allow_smaller=True,
+            )
+        except TypeError:
+            crop_transform = CropForeground(
+                select_fn=lambda x: x > crop_threshold,
+                margin=margin_voxels,
+            )
         meta_tensor = crop_transform(meta_tensor)
         print(f"[MONAI] After CropForeground: {pre_crop_shape} → {meta_tensor.shape}")
 
-        if meta_tensor.numel() < 1000:
-            print(f"[MONAI] ⚠️  Crop produced tiny volume — reverting")
-            raise ValueError("Crop too aggressive")
+        spatial_shape = tuple(int(value) for value in meta_tensor.shape[1:])
+        if min(spatial_shape) < 64:
+            print(f"[MONAI] ⚠️  Crop too aggressive ({meta_tensor.shape}) — reverting to pre-crop volume")
+            meta_tensor = pre_crop_tensor
     except Exception as e:
         print(f"[MONAI] ⚠️  CropForeground skipped: {e}")
 
@@ -366,7 +425,7 @@ def monai_preprocess(volume: np.ndarray, spacing: tuple, origin: tuple, orientat
     # This is exactly what write_vti_vtk expects: shape (nx, ny, nz)
     result = meta_tensor.squeeze(0).detach().cpu().numpy().astype(np.float32)
 
-    final_spacing = (0.5, 0.5, 0.5)
+    final_spacing = tuple(float(value) for value in (target_spacing if target_spacing is not None else spacing))
 
     # Get updated origin from MONAI affine
     if hasattr(meta_tensor, 'affine') and meta_tensor.affine is not None:
@@ -854,6 +913,95 @@ def run_tooth_segmentation(
     return info
 
 
+def detect_mandibular_canal(volume: np.ndarray, spacing: tuple, origin: tuple = (0.0, 0.0, 0.0)) -> Optional[dict]:
+    """
+    Heuristic inferior alveolar canal candidate detection.
+
+    This is intentionally conservative and dependency-light. It looks for a
+    low-density tubular corridor in the inferior half of the MONAI-normalized
+    CBCT volume and returns a smoothed centerline in world-space millimeters.
+
+    TODO(nnU-Net): replace this heuristic with a trained mandibular canal model
+    while preserving the JSON contract consumed by the frontend.
+    """
+    if volume is None or volume.size == 0 or volume.ndim != 3:
+        return None
+
+    sx, sy, sz = (tuple(spacing) + (1.0, 1.0, 1.0))[:3] if isinstance(spacing, tuple) else (1.0, 1.0, 1.0)
+    ox, oy, oz = (tuple(origin) + (0.0, 0.0, 0.0))[:3] if isinstance(origin, tuple) else (0.0, 0.0, 0.0)
+    nx, ny, nz = volume.shape
+
+    canal_mask = (volume > 0.15) & (volume < 0.23)
+
+    # MONAI output axes are X,Y,Z in RAS space; mandibular canal sits in the
+    # inferior part of the volume, so ignore the superior half by Z index.
+    superior_cut = max(1, int(nz * 0.58))
+    canal_mask[:, :, superior_cut:] = False
+
+    # Bound the search to the hard-tissue mandible envelope to avoid air pockets.
+    hard_tissue = volume > 0.42
+    inferior_hard = hard_tissue[:, :, :superior_cut]
+    if inferior_hard.any():
+        hx, hy, hz = np.where(inferior_hard)
+        margin_vox = max(4, int(round(8.0 / max(float(sx), 0.1))))
+        x0, x1 = max(0, int(hx.min()) - margin_vox), min(nx - 1, int(hx.max()) + margin_vox)
+        y0, y1 = max(0, int(hy.min()) - margin_vox), min(ny - 1, int(hy.max()) + margin_vox)
+        z0, z1 = max(0, int(hz.min()) - margin_vox), min(superior_cut - 1, int(hz.max()) + margin_vox)
+        bounded = np.zeros_like(canal_mask, dtype=bool)
+        bounded[x0:x1 + 1, y0:y1 + 1, z0:z1 + 1] = True
+        canal_mask &= bounded
+
+    if int(np.count_nonzero(canal_mask)) < 20:
+        return None
+
+    raw_points = []
+    min_voxels_per_sample = 3
+    for x_idx in range(nx):
+        ys, zs = np.where(canal_mask[x_idx, :, :])
+        if ys.size < min_voxels_per_sample:
+            continue
+        raw_points.append([
+            float(x_idx),
+            float(np.median(ys)),
+            float(np.median(zs)),
+        ])
+
+    if len(raw_points) < 6:
+        return None
+
+    raw = np.asarray(raw_points, dtype=np.float32)
+
+    # Smooth centerline with a small moving median/mean window and downsample to
+    # keep payloads small.
+    smoothed = []
+    for idx in range(raw.shape[0]):
+        lo = max(0, idx - 2)
+        hi = min(raw.shape[0], idx + 3)
+        smoothed.append(np.mean(raw[lo:hi], axis=0))
+    smoothed = np.asarray(smoothed, dtype=np.float32)
+
+    max_points = 96
+    if smoothed.shape[0] > max_points:
+        sample_idx = np.linspace(0, smoothed.shape[0] - 1, max_points).astype(np.int32)
+        smoothed = smoothed[sample_idx]
+
+    centerline = [
+        [
+            round(ox + float(point[0]) * float(sx), 3),
+            round(oy + float(point[1]) * float(sy), 3),
+            round(oz + float(point[2]) * float(sz), 3),
+        ]
+        for point in smoothed
+    ]
+
+    confidence = min(0.85, max(0.2, len(centerline) / 90.0))
+    return {
+        "centerline": centerline,
+        "radius_mm": 1.2,
+        "confidence": round(float(confidence), 3),
+    }
+
+
 def generate_2d_image(file_list: list, output_path: str) -> dict:
     """
     Convert a 2D DICOM series (1-10 slices) to a high-quality JPEG.
@@ -1044,6 +1192,7 @@ def convert_study_to_vti(
     segment: bool = False,
     progress_callback=None,
     study_id: str = None,
+    quality: str = "standard",
 ) -> dict:
     """
     Main entry point: Convert a DICOM study folder to output files.
@@ -1064,9 +1213,21 @@ def convert_study_to_vti(
     """
     start_time = time.time()
     study_identifier = study_id or os.path.basename(os.path.normpath(study_path))
+    target_spacing_map = {
+        "fast": (1.0, 1.0, 1.0),
+        "standard": (0.5, 0.5, 0.5),
+        "high": (0.3, 0.3, 0.3),
+        "native": None,
+    }
+    if quality not in target_spacing_map:
+        print(f"[VTI] Unknown conversion quality '{quality}', using standard")
+        quality = "standard"
+    target_spacing = target_spacing_map[quality]
+
     print(f"\n[VTI] ═══════════════════════════════════════════")
     print(f"[VTI] MONAI Pipeline — Converting study: {study_path}")
     print(f"[VTI] Strict 2D/3D classification enabled")
+    print(f"[VTI] Conversion quality={quality}, target_spacing={target_spacing or 'native'}")
     print(f"[VTI] ═══════════════════════════════════════════")
     _emit_progress(progress_callback, {"studyId": study_identifier, "status": "started"})
 
@@ -1161,7 +1322,11 @@ def convert_study_to_vti(
             # Step 2: MONAI preprocessing pipeline
             try:
                 processed, new_spacing, new_origin = monai_preprocess(
-                    volume, spacing, origin, orientation
+                    volume,
+                    spacing,
+                    origin,
+                    orientation,
+                    target_spacing=target_spacing,
                 )
                 print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
             except Exception as monai_err:
@@ -1307,18 +1472,22 @@ def convert_study_to_vti(
 # CLI entry point for manual conversion
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python vti_converter.py <study_path> [--force] [--segment]")
+        print("Usage: python vti_converter.py <study_path> [--force] [--segment] [--quality=fast|standard|high|native]")
         sys.exit(1)
     
     study_path = sys.argv[1]
     force = '--force' in sys.argv
     segment = '--segment' in sys.argv
+    quality = "standard"
+    for arg in sys.argv[2:]:
+        if arg.startswith("--quality="):
+            quality = arg.split("=", 1)[1]
     
     if not os.path.exists(study_path):
         print(f"Error: Path not found: {study_path}")
         sys.exit(1)
     
-    results = convert_study_to_vti(study_path, force=force, segment=segment)
+    results = convert_study_to_vti(study_path, force=force, segment=segment, quality=quality)
     
     import json
     print("\nResults:")

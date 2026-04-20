@@ -19,6 +19,7 @@ from services.dicom_handler import DicomHandler
 from services.morita_handler import MoritaHandler
 from services.vti_converter import (
     convert_study_to_vti,
+    detect_mandibular_canal,
     generate_study_thumbnails,
     get_segmentation_metadata,
     parse_sr_report,
@@ -333,6 +334,7 @@ def _ensure_vti_conversion_singleflight(
     force: bool = False,
     wait: bool = True,
     segment: bool = False,
+    quality: str = "standard",
 ) -> bool:
     """
     Ensure at most one conversion runs per study.
@@ -375,6 +377,7 @@ def _ensure_vti_conversion_singleflight(
                 segment=segment,
                 progress_callback=_emit_conversion_status,
                 study_id=os.path.basename(os.path.normpath(study_path)),
+                quality=quality,
             )
             return True
         except Exception as exc:
@@ -664,6 +667,84 @@ def _resolve_or_create_volume_path(study_id: str, series_uid: str = None, create
     return study_path, vti_path
 
 
+def _compute_density_histogram(values, bins=None) -> dict:
+    scalar_values = np.asarray(values, dtype=np.float32).ravel()
+    scalar_values = scalar_values[np.isfinite(scalar_values)]
+    if bins is None:
+        bins = np.linspace(0.0, 1.0, 33, dtype=np.float32)
+
+    counts, bin_edges = np.histogram(scalar_values, bins=bins)
+    bone_values = scalar_values[scalar_values >= 0.30]
+    total_bone = int(bone_values.size)
+
+    def pct(mask) -> float:
+        if total_bone == 0:
+            return 0.0
+        return round((int(np.count_nonzero(mask)) / total_bone) * 100.0, 2)
+
+    d4_mask = (bone_values >= 0.30) & (bone_values < 0.3375)
+    d3_mask = (bone_values >= 0.3375) & (bone_values < 0.4625)
+    d2_mask = (bone_values >= 0.4625) & (bone_values < 0.5625)
+    d1_mask = bone_values >= 0.5625
+
+    return {
+        "bins": [float(value) for value in bin_edges.tolist()],
+        "counts": [int(value) for value in counts.tolist()],
+        "total_voxels": int(scalar_values.size),
+        "density_voxel_count": total_bone,
+        "d1_pct": pct(d1_mask),
+        "d2_pct": pct(d2_mask),
+        "d3_pct": pct(d3_mask),
+        "d4_pct": pct(d4_mask),
+    }
+
+
+def _read_vti_scalar_values(vti_path: str) -> np.ndarray:
+    try:
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
+
+    reader = vtk.vtkXMLImageDataReader()
+    reader.SetFileName(vti_path)
+    reader.Update()
+    image_data = reader.GetOutput()
+    if image_data is None:
+        raise HTTPException(status_code=500, detail="Failed to read VTI image data")
+
+    scalars = image_data.GetPointData().GetScalars()
+    if scalars is None:
+        raise HTTPException(status_code=500, detail="VTI file has no scalar data")
+
+    return vtk_to_numpy(scalars)
+
+
+def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
+    try:
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
+
+    reader = vtk.vtkXMLImageDataReader()
+    reader.SetFileName(vti_path)
+    reader.Update()
+    image_data = reader.GetOutput()
+    if image_data is None:
+        raise HTTPException(status_code=500, detail="Failed to read VTI image data")
+
+    scalars = image_data.GetPointData().GetScalars()
+    if scalars is None:
+        raise HTTPException(status_code=500, detail="VTI file has no scalar data")
+
+    dims = image_data.GetDimensions()
+    values = vtk_to_numpy(scalars).reshape((dims[0], dims[1], dims[2]), order="F")
+    spacing = tuple(float(value) for value in image_data.GetSpacing())
+    origin = tuple(float(value) for value in image_data.GetOrigin())
+    return values, spacing, origin
+
+
 @app.head("/volume/{study_id}")
 def head_volume_vti(request: Request, study_id: str, series_uid: str = None, share_token: str = None):
     _authorize_study_access(study_id, share_token)
@@ -688,6 +769,99 @@ def get_volume_vti(request: Request, study_id: str, series_uid: str = None, shar
     file_size = os.path.getsize(vti_path)
     print(f"[Volume] Serving VTI: {vti_path} ({file_size / (1024*1024):.1f}MB)")
     return _stream_vti_file(request, vti_path, f"volume_{study_id}.vti")
+
+
+@app.get("/density-histogram/{study_id}")
+def get_bone_density_histogram(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Compute a Misch D1-D4 bone-density histogram from a MONAI-normalized VTI.
+    Percentages are computed over density-candidate voxels only (>= 0.30).
+    """
+    _authorize_study_access(study_id, share_token)
+    _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
+    values = _read_vti_scalar_values(vti_path)
+    histogram = _compute_density_histogram(values)
+    return {
+        "study_id": study_id,
+        "series_uid": series_uid,
+        **histogram,
+    }
+
+
+@app.get("/nerve-canal/{study_id}")
+def get_nerve_canal(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Return a heuristic mandibular canal centerline if one can be detected.
+    """
+    _authorize_study_access(study_id, share_token)
+    _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
+    volume, spacing, origin = _read_vti_volume(vti_path)
+    canal = detect_mandibular_canal(volume, spacing, origin)
+
+    if not canal:
+        return {
+            "study_id": study_id,
+            "series_uid": series_uid,
+            "detected": False,
+            "centerline": [],
+            "radius_mm": 0,
+            "confidence": 0,
+        }
+
+    return {
+        "study_id": study_id,
+        "series_uid": series_uid,
+        "detected": True,
+        **canal,
+    }
+
+
+@app.get("/ai-findings/{study_id}")
+def get_ai_findings(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Aggregate lightweight structured CBCT analysis outputs for an LLM prompt.
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
+
+    safe_uid = series_uid.replace('.', '_')[:50] if series_uid else None
+    manifest = read_label_manifest(study_path, safe_uid) if safe_uid else _load_json_file(os.path.join(study_path, "labels.json"))
+
+    try:
+        volume, spacing, origin = _read_vti_volume(vti_path)
+        histogram = _compute_density_histogram(volume.ravel())
+        dimensions = list(volume.shape)
+        spacing_values = list(spacing)
+        canal = detect_mandibular_canal(volume, spacing, origin)
+    except Exception:
+        values = _read_vti_scalar_values(vti_path)
+        histogram = _compute_density_histogram(values)
+        dimensions = []
+        spacing_values = []
+        canal = None
+
+    return {
+        "study_id": study_id,
+        "series_uid": series_uid,
+        "tooth_count": int(manifest.get("num_labels", 0)) if manifest else 0,
+        "tooth_centroids": manifest.get("centroids", {}) if manifest else {},
+        "segmentation_status": manifest.get("segmentation_status", "missing") if manifest else "missing",
+        "bone_density": {
+            "d1_pct": histogram["d1_pct"],
+            "d2_pct": histogram["d2_pct"],
+            "d3_pct": histogram["d3_pct"],
+            "d4_pct": histogram["d4_pct"],
+            "density_voxel_count": histogram["density_voxel_count"],
+        },
+        "volume_dimensions": dimensions,
+        "spacing": spacing_values,
+        "nerve_canal": {
+            "detected": bool(canal),
+            "confidence": canal.get("confidence", 0) if canal else 0,
+            "radius_mm": canal.get("radius_mm", 0) if canal else 0,
+            "points": len(canal.get("centerline", [])) if canal else 0,
+        },
+    }
 
 
 @app.get("/labels/{study_id}")
@@ -884,6 +1058,7 @@ def trigger_vti_conversion(
     background_tasks: BackgroundTasks,
     force: bool = False,
     segment: bool = False,
+    quality: str = "standard",
 ):
     """
     Manually trigger VTI conversion for a study.
@@ -908,13 +1083,14 @@ def trigger_vti_conversion(
         print(f"[THUMB] Pre-generation failed for {study_id}: {thumb_error}")
     
     # Run conversion in background so the upload response returns immediately
-    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True, segment)
+    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True, segment, quality)
     
     return {
         "status": "converting",
         "study_id": study_id,
         "message": "VTI conversion started in background",
         "segment": segment,
+        "quality": quality,
     }
 
 @app.get("/series/{study_id}")
