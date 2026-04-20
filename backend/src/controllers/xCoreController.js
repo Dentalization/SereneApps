@@ -123,6 +123,10 @@ async function resolveStudyShareRecord(token, options = {}) {
         return { error: 'invalid', detail: 'Share token study mismatch' };
     }
 
+    if (!decoded.folderId || (shareRecord.study?.folderName && String(decoded.folderId) !== String(shareRecord.study.folderName))) {
+        return { error: 'invalid', detail: 'Share token folder mismatch' };
+    }
+
     return { decoded, shareRecord };
 }
 
@@ -549,6 +553,7 @@ export const validateStudyShareToken = async (req, res) => {
         res.json({
             valid: true,
             studyId: shareRecord.studyId.toString(),
+            folderId: shareRecord.study.folderName,
             folderName: shareRecord.study.folderName,
             expiresAt: shareRecord.expiresAt.toISOString(),
         });
@@ -593,6 +598,7 @@ export const getSharedStudy = async (req, res) => {
             modality: study.modality,
             expiresAt: shareRecord.expiresAt.toISOString(),
             token,
+            shareToken: token,
             series,
         });
     } catch (error) {

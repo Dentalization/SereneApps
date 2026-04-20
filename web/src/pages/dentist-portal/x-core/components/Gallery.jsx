@@ -353,10 +353,16 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         }
     }, [latestEvent]);
 
+    const fallbackPollingKey = useMemo(() => (
+        studiesWithSeries
+            .map((study) => `${getStudyKey(study)}:${(study.series || []).map((series) => `${series.series_uid}:${series.status}`).join(',')}`)
+            .join('|')
+    ), [studiesWithSeries]);
+
     // Fallback polling while disconnected from the live conversion socket.
     useEffect(() => {
         if (connectionStatus === 'connected') return undefined;
-        const hasConverting = studiesWithSeries.some(hasIncompleteSeries);
+        const hasConverting = studiesRef.current.some(hasIncompleteSeries);
 
         if (!hasConverting) return undefined;
 
@@ -384,7 +390,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
         }, 10000);
 
         return () => clearInterval(interval);
-    }, [connectionStatus, studiesWithSeries]);
+    }, [connectionStatus, fallbackPollingKey]);
 
     const filteredStudies = studiesWithSeries.filter(s =>
         s.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||

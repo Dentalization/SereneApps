@@ -19,11 +19,12 @@ import { SlicingMode } from '@kitware/vtk.js/Rendering/Core/ImageMapper/Constant
 
 import AppIcon from '../../../../components/AppIcon';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { VOLUME_PRESETS } from '../config/volumePresets';
+import { VOLUME_PRESETS, WL_LUT_LABELS, WL_LUTS } from '../config/volumePresets';
 import useStudyMetadata from '../hooks/useStudyMetadata';
 import { volumeCache } from '../utils/volumeCache';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
-import { exportPdfReport } from '../utils/reportUtils';
+import { drawAnnotations, exportPdfReport } from '../utils/reportUtils';
+import { computeSyncedSliceIndices, quantizeDisplayCoordinate } from '../utils/sliceSyncMath';
 import AnnotationCanvas from './AnnotationCanvas';
 import MetadataPanel from './MetadataPanel';
 import ReportExportModal from './ReportExportModal';
@@ -81,26 +82,31 @@ const CROSSHAIR_COLORS = {
     },
 };
 
-const WL_PRESETS = {
-    dental: { center: 0.38, width: 0.70, label: 'Dental' },
-    bone: { center: 0.45, width: 0.50, label: 'Bone' },
-    soft: { center: 0.28, width: 0.30, label: 'Soft Tissue' },
-    full: { center: 0.50, width: 1.00, label: 'Full Range' },
-};
-
 const AXIS_ORDER = ['axial', 'coronal', 'sagittal'];
 const MEASUREMENT_COLOR = '#1D9E75';
 const MEASUREMENT_RGB = [29, 158, 117];
 const SINGLE_CAMERA_ZOOM = 1.3;
 const QUAD_CAMERA_ZOOM = 1.05;
+const WL_DRAG_SENSITIVITY = 0.005;
+const DEFAULT_WINDOW_LEVEL = { center: 0.38, width: 0.70 };
+const LUT_OPTION_KEYS = Object.keys(WL_LUTS);
+const COMPARISON_RATIO_EPSILON = 1e-4;
+const SLICE_WL_SHORTCUT_PRESETS = {
+    '1': { label: 'Dental W/L', lut: 'dental' },
+    '2': { label: 'Bone W/L', center: 0.40, width: 0.60 },
+    '3': { label: 'Soft W/L', center: 0.28, width: 0.25 },
+    '4': { label: 'Full W/L', center: 0.50, width: 1.00 },
+};
 const SLICE_SHORTCUTS = [
     { key: '↑ / ←', label: 'Previous slice' },
     { key: '↓ / →', label: 'Next slice' },
     { key: 'A', label: 'Axial plane' },
     { key: 'C', label: 'Coronal plane' },
     { key: 'S', label: 'Sagittal plane' },
+    { key: '1 / 2 / 3 / 4', label: 'Dental / Bone / Soft / Full W/L' },
+    { key: 'Ctrl/Cmd + Z', label: 'Undo annotation/measurement' },
     { key: 'I', label: 'Invert image' },
-    { key: '1-4', label: 'W/L presets' },
+    { key: 'Right-drag', label: 'Window/Level adjust' },
     { key: 'F', label: 'Fullscreen' },
 ];
 
@@ -154,6 +160,12 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const quadRefs = useRef({ axial: null, coronal: null, sagittal: null, volume: null });
     const measurementStoreRef = useRef({ axial: [], coronal: [], sagittal: [] });
     const comparisonSyncGuardRef = useRef(false);
+    const comparisonSyncGuardFrameRef = useRef(null);
+    const comparisonLastBroadcastRef = useRef({
+        axial: { slice: null, ratio: null },
+        coronal: { slice: null, ratio: null },
+        sagittal: { slice: null, ratio: null },
+    });
 
     const [axis, setAxis] = useState('axial');
     const [sliceIndex, setSliceIndex] = useState(0);
@@ -165,8 +177,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [error, setError] = useState(null);
     const [wlPreset, setWlPreset] = useState('dental');
-    const [windowCenter, setWindowCenter] = useState(WL_PRESETS.dental.center);
-    const [windowWidth, setWindowWidth] = useState(WL_PRESETS.dental.width);
+    const [windowCenter, setWindowCenter] = useState(DEFAULT_WINDOW_LEVEL.center);
+    const [windowWidth, setWindowWidth] = useState(DEFAULT_WINDOW_LEVEL.width);
+    const [windowLevelDrag, setWindowLevelDrag] = useState(null);
     const [inverted, setInverted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
@@ -184,6 +197,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [annotations, setAnnotations] = useState([]);
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
+    const [reportWarningMessage, setReportWarningMessage] = useState('');
     const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
 
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
@@ -205,21 +219,36 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         includeMetadataSummary: true,
     }), [dentistName, patientName]);
 
-    const buildColorFunction = useCallback((center, width, invert) => {
+    const buildColorFunctionFromLut = useCallback((lut, invert) => {
+        const ctf = vtkColorTransferFunction.newInstance();
+        const stops = Array.isArray(lut) && lut.length ? lut : WL_LUTS.dental;
+
+        stops.forEach(([value, gray]) => {
+            const level = invert ? 1 - gray : gray;
+            ctf.addRGBPoint(value, level, level, level);
+        });
+
+        return ctf;
+    }, []);
+
+    const buildLinearColorFunction = useCallback((center, width, invert) => {
         const ctf = vtkColorTransferFunction.newInstance();
         const low = center - width / 2;
         const high = center + width / 2;
 
-        if (invert) {
-            ctf.addRGBPoint(low, 1.0, 1.0, 1.0);
-            ctf.addRGBPoint(high, 0.0, 0.0, 0.0);
-        } else {
-            ctf.addRGBPoint(low, 0.0, 0.0, 0.0);
-            ctf.addRGBPoint(high, 1.0, 1.0, 1.0);
-        }
+        ctf.addRGBPoint(low, invert ? 1.0 : 0.0, invert ? 1.0 : 0.0, invert ? 1.0 : 0.0);
+        ctf.addRGBPoint(high, invert ? 0.0 : 1.0, invert ? 0.0 : 1.0, invert ? 0.0 : 1.0);
 
         return ctf;
     }, []);
+
+    const buildSliceColorFunction = useCallback((presetName, center, width, invert) => {
+        const lut = WL_LUTS[presetName];
+        if (lut) {
+            return buildColorFunctionFromLut(lut, invert);
+        }
+        return buildLinearColorFunction(center, width, invert);
+    }, [buildColorFunctionFromLut, buildLinearColorFunction]);
 
     const buildOpacityFunction = useCallback(() => {
         const ofun = vtkPiecewiseFunction.newInstance();
@@ -228,25 +257,25 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         return ofun;
     }, []);
 
-    const applyWindowLevelToActor = useCallback((actor, center, width, invert) => {
+    const applyWindowLevelToActor = useCallback((actor, presetName, center, width, invert) => {
         if (!actor) return;
 
-        const ctf = buildColorFunction(center, width, invert);
+        const ctf = buildSliceColorFunction(presetName, center, width, invert);
         actor.getProperty().setRGBTransferFunction(0, ctf);
 
         const ofun = buildOpacityFunction();
         actor.getProperty().setPiecewiseFunction(0, ofun);
         actor.getProperty().setUseLookupTableScalarRange(true);
-    }, [buildColorFunction, buildOpacityFunction]);
+    }, [buildOpacityFunction, buildSliceColorFunction]);
 
-    const applyWindowLevel = useCallback((center, width, invert) => {
+    const applyWindowLevel = useCallback((presetName, center, width, invert) => {
         const ctx = vtkRef.current;
         if (!ctx?.actor) return;
-        applyWindowLevelToActor(ctx.actor, center, width, invert);
+        applyWindowLevelToActor(ctx.actor, presetName, center, width, invert);
         ctx.renderWindow.render();
     }, [applyWindowLevelToActor]);
 
-    const createSlicePaneContext = useCallback((container, nextImageData, axisName, zoomFactor, center, width, invert) => {
+    const createSlicePaneContext = useCallback((container, nextImageData, axisName, zoomFactor, presetName, center, width, invert) => {
         if (!container || !nextImageData) return null;
 
         const grw = vtkGenericRenderWindow.newInstance({ listenWindowResize: false });
@@ -268,7 +297,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const actor = vtkImageSlice.newInstance();
         actor.setMapper(mapper);
         actor.getProperty().setInterpolationTypeToLinear();
-        applyWindowLevelToActor(actor, center, width, invert);
+        applyWindowLevelToActor(actor, presetName, center, width, invert);
 
         renderer.addActor(actor);
 
@@ -407,8 +436,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         }
 
         return {
-            x: displayPoint[0] / dpr,
-            y: (viewportSize[1] - displayPoint[1]) / dpr,
+            x: quantizeDisplayCoordinate(displayPoint[0] / dpr),
+            y: quantizeDisplayCoordinate((viewportSize[1] - displayPoint[1]) / dpr),
             z: displayPoint[2],
             width: ctx.container.clientWidth,
             height: ctx.container.clientHeight,
@@ -476,15 +505,24 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         AXIS_ORDER.forEach((axisName) => syncMeasurementLabelForAxis(axisName));
     }, [syncMeasurementLabelForAxis]);
 
-    const removeMeasurementsForAxis = useCallback((axisName) => {
-        const ctx = getPaneContext(axisName);
+    const removeMeasurementsForAxis = useCallback((axisName, paneContext = null) => {
+        const ctx = paneContext || getPaneContext(axisName);
         const items = measurementStoreRef.current[axisName] || [];
+
+        if (items.length === 0) {
+            setMeasurementLabels((current) => ({ ...current, [axisName]: [] }));
+            return;
+        }
 
         items.forEach((item) => {
             try { item.subscription?.unsubscribe?.(); } catch (_) {}
             try { ctx?.widgetManager?.removeWidget?.(item.viewWidget || item.factory); } catch (_) {}
             try { item.factory?.delete?.(); } catch (_) {}
         });
+
+        if (!ctx && items.length > 0) {
+            console.debug('[SliceViewer] Measurement cleanup ran without pane context:', axisName, items.length);
+        }
 
         measurementStoreRef.current[axisName] = [];
         setMeasurementLabels((current) => ({ ...current, [axisName]: [] }));
@@ -493,6 +531,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const clearAllMeasurements = useCallback(() => {
         AXIS_ORDER.forEach((axisName) => removeMeasurementsForAxis(axisName));
     }, [removeMeasurementsForAxis]);
+
+    const resetMeasurementState = useCallback(() => {
+        measurementStoreRef.current = { axial: [], coronal: [], sagittal: [] };
+        setMeasurementLabels(emptyMeasurementLabels());
+    }, []);
 
     const configureWidgetColor = useCallback((factory) => {
         try {
@@ -586,17 +629,56 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, [dimensions]);
 
     const syncSlicesFromWorldPoint = useCallback((sourceAxis, worldPoint) => {
-        if (!imageData) return;
+        if (!imageData || !worldPoint) return;
 
         const dims = imageData.getDimensions();
         const indexPoint = imageData.worldToIndex(worldPoint);
 
-        setSliceIndices((current) => ({
-            axial: sourceAxis === 'axial' ? current.axial : clamp(Math.round(indexPoint[2]), 0, dims[2] - 1),
-            coronal: sourceAxis === 'coronal' ? current.coronal : clamp(Math.round(indexPoint[1]), 0, dims[1] - 1),
-            sagittal: sourceAxis === 'sagittal' ? current.sagittal : clamp(Math.round(indexPoint[0]), 0, dims[0] - 1),
-        }));
+        if (!Array.isArray(indexPoint) || indexPoint.some((value) => !Number.isFinite(value))) {
+            return;
+        }
+
+        setSliceIndices((current) => {
+            const nextIndices = computeSyncedSliceIndices({
+                sourceAxis,
+                currentIndices: current,
+                worldIndexPoint: indexPoint,
+                dimensions: dims,
+            });
+
+            if (
+                nextIndices.axial === current.axial
+                && nextIndices.coronal === current.coronal
+                && nextIndices.sagittal === current.sagittal
+            ) {
+                return current;
+            }
+
+            return nextIndices;
+        });
     }, [imageData]);
+
+    const handleUndoMeasurement = useCallback(() => {
+        const axisPriority = [axis, ...AXIS_ORDER.filter((axisName) => axisName !== axis)];
+        const targetAxis = axisPriority.find((axisName) => (measurementStoreRef.current[axisName] || []).length > 0);
+        if (!targetAxis) return;
+
+        const items = measurementStoreRef.current[targetAxis];
+        const lastItem = items[items.length - 1];
+        const ctx = getPaneContext(targetAxis);
+
+        try { lastItem?.subscription?.unsubscribe?.(); } catch (_) {}
+        try { ctx?.widgetManager?.removeWidget?.(lastItem?.viewWidget || lastItem?.factory); } catch (_) {}
+        try { lastItem?.factory?.delete?.(); } catch (_) {}
+
+        measurementStoreRef.current[targetAxis] = items.slice(0, -1);
+        syncMeasurementLabelForAxis(targetAxis);
+        ctx?.renderWindow?.render?.();
+    }, [axis, getPaneContext, syncMeasurementLabelForAxis]);
+
+    const handleUndoAnnotation = useCallback(() => {
+        setAnnotations((current) => current.slice(0, -1));
+    }, []);
 
     const handleQuadPaneClick = useCallback((axisName, event) => {
         if (!imageData || !currentWorldPoint || event.button !== 0) return;
@@ -640,12 +722,48 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         setSliceForAxis(axis, (current) => current + delta);
     }, [axis, setSliceForAxis]);
 
-    const selectWlPreset = useCallback((key) => {
-        const preset = WL_PRESETS[key];
-        setWlPreset(key);
-        setWindowCenter(preset.center);
-        setWindowWidth(preset.width);
+    const updateWindowLevelFromDrag = useCallback((event, dragState) => {
+        const dx = event.clientX - dragState.startX;
+        const dy = event.clientY - dragState.startY;
+        setWlPreset('custom');
+        setWindowCenter(clamp(dragState.startCenter - (dy * WL_DRAG_SENSITIVITY), 0, 1));
+        setWindowWidth(clamp(dragState.startWidth + (dx * WL_DRAG_SENSITIVITY), 0.05, 2.0));
     }, []);
+
+    const startWindowLevelDrag = useCallback((event) => {
+        if (event.button !== 2 || loading || error) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        setWindowLevelDrag({
+            startX: event.clientX,
+            startY: event.clientY,
+            startCenter: windowCenter,
+            startWidth: windowWidth,
+        });
+        return true;
+    }, [error, loading, windowCenter, windowWidth]);
+
+    const selectWlPreset = useCallback((key) => {
+        if (!WL_LUTS[key]) return;
+        setWlPreset(key);
+        setWindowCenter(DEFAULT_WINDOW_LEVEL.center);
+        setWindowWidth(DEFAULT_WINDOW_LEVEL.width);
+    }, []);
+
+    const selectWlShortcutPreset = useCallback((key) => {
+        const shortcutPreset = SLICE_WL_SHORTCUT_PRESETS[key];
+        if (!shortcutPreset) return false;
+
+        if (shortcutPreset.lut) {
+            selectWlPreset(shortcutPreset.lut);
+            return true;
+        }
+
+        setWlPreset('custom');
+        setWindowCenter(shortcutPreset.center);
+        setWindowWidth(shortcutPreset.width);
+        return true;
+    }, [selectWlPreset]);
 
     const toggleFullscreen = useCallback(() => {
         if (!document.fullscreenElement && wrapperRef.current) {
@@ -667,6 +785,17 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
+            if ((event.ctrlKey || event.metaKey) && key === 'z') {
+                if (!measurementMode && !annotateMode) return;
+                event.preventDefault();
+                if (annotateMode) {
+                    handleUndoAnnotation();
+                } else {
+                    handleUndoMeasurement();
+                }
+                return;
+            }
+
             if (['arrowup', 'arrowleft'].includes(key)) {
                 event.preventDefault();
                 goToSlice((current) => current - 1);
@@ -685,18 +814,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             } else if (key === 'i') {
                 event.preventDefault();
                 setInverted((current) => !current);
-            } else if (key === '1') {
+            } else if (selectWlShortcutPreset(key)) {
                 event.preventDefault();
-                selectWlPreset('dental');
-            } else if (key === '2') {
-                event.preventDefault();
-                selectWlPreset('bone');
-            } else if (key === '3') {
-                event.preventDefault();
-                selectWlPreset('soft');
-            } else if (key === '4') {
-                event.preventDefault();
-                selectWlPreset('full');
             } else if (key === 'f') {
                 event.preventDefault();
                 toggleFullscreen();
@@ -705,7 +824,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [goToSlice, selectWlPreset, switchAxis, toggleFullscreen]);
+    }, [annotateMode, goToSlice, handleUndoAnnotation, handleUndoMeasurement, measurementMode, selectWlShortcutPreset, switchAxis, toggleFullscreen]);
 
     const handleToggleQuadView = useCallback(() => {
         clearAllMeasurements();
@@ -715,7 +834,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         setQuadView((current) => !current);
     }, [clearAllMeasurements, quadView]);
 
-    const captureCurrentViewDataUrl = useCallback(() => {
+    const captureCurrentViewDataUrl = useCallback(async () => {
         const viewerArea = viewerAreaRef.current;
         if (!viewerArea || loading || error) return null;
 
@@ -723,49 +842,103 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const height = viewerArea.clientHeight;
         if (!width || !height) return null;
 
+        const capturePaneImage = async (paneContext) => {
+            if (!paneContext?.renderWindow?.captureImages) return null;
+            try {
+                const captures = paneContext.renderWindow.captureImages('image/png', {
+                    scale: Math.max(window.devicePixelRatio || 1, 2),
+                });
+                if (!Array.isArray(captures) || captures.length === 0) return null;
+                const dataUrl = await captures[0];
+                return typeof dataUrl === 'string' && dataUrl.startsWith('data:image') ? dataUrl : null;
+            } catch (captureError) {
+                console.warn('[SliceViewer] Failed to capture VTK pane image:', captureError);
+                return null;
+            }
+        };
+
+        const loadImageFromDataUrl = (dataUrl) => new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('Unable to decode captured pane image'));
+            image.src = dataUrl;
+        });
+
         const scale = Math.max(window.devicePixelRatio || 1, 2);
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(width * scale);
         canvas.height = Math.round(height * scale);
         const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
         ctx.scale(scale, scale);
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
 
-        const surfaceRect = viewerArea.getBoundingClientRect();
-        const canvases = Array.from(viewerArea.querySelectorAll('canvas'));
-
-        canvases.forEach((canvasNode) => {
-            const rect = canvasNode.getBoundingClientRect();
-            if (!rect.width || !rect.height) return;
-            ctx.drawImage(
-                canvasNode,
-                rect.left - surfaceRect.left,
-                rect.top - surfaceRect.top,
-                rect.width,
-                rect.height
-            );
-        });
-
         if (quadView) {
+            const paneContexts = {
+                axial: quadRefs.current.axial,
+                coronal: quadRefs.current.coronal,
+                sagittal: quadRefs.current.sagittal,
+                volume: quadRefs.current.volume,
+            };
+
+            const capturedImages = await Promise.all([
+                capturePaneImage(paneContexts.axial),
+                capturePaneImage(paneContexts.coronal),
+                capturePaneImage(paneContexts.sagittal),
+                capturePaneImage(paneContexts.volume),
+            ]);
+
+            if (capturedImages.some((value) => !value)) {
+                return null;
+            }
+
+            let decodedImages;
+            try {
+                decodedImages = await Promise.all(capturedImages.map((dataUrl) => loadImageFromDataUrl(dataUrl)));
+            } catch (decodeError) {
+                console.warn('[SliceViewer] Failed to decode captured pane images:', decodeError);
+                return null;
+            }
+
+            const panePadding = 1;
+            const paneGap = 1;
+            const paneWidth = (width - (panePadding * 2) - paneGap) / 2;
+            const paneHeight = (height - (panePadding * 2) - paneGap) / 2;
+            const paneLayout = {
+                axial: { x: panePadding, y: panePadding, width: paneWidth, height: paneHeight },
+                coronal: { x: panePadding + paneWidth + paneGap, y: panePadding, width: paneWidth, height: paneHeight },
+                sagittal: { x: panePadding, y: panePadding + paneHeight + paneGap, width: paneWidth, height: paneHeight },
+                volume: { x: panePadding + paneWidth + paneGap, y: panePadding + paneHeight + paneGap, width: paneWidth, height: paneHeight },
+            };
+
+            ctx.drawImage(decodedImages[0], paneLayout.axial.x, paneLayout.axial.y, paneLayout.axial.width, paneLayout.axial.height);
+            ctx.drawImage(decodedImages[1], paneLayout.coronal.x, paneLayout.coronal.y, paneLayout.coronal.width, paneLayout.coronal.height);
+            ctx.drawImage(decodedImages[2], paneLayout.sagittal.x, paneLayout.sagittal.y, paneLayout.sagittal.width, paneLayout.sagittal.height);
+            ctx.drawImage(decodedImages[3], paneLayout.volume.x, paneLayout.volume.y, paneLayout.volume.width, paneLayout.volume.height);
+
             AXIS_ORDER.forEach((axisName) => {
                 const position = quadCrosshairPositions[axisName];
+                const pane = paneLayout[axisName];
+                if (!pane) return;
                 if (!position) return;
                 const colors = CROSSHAIR_COLORS[axisName];
+                const x = pane.x + position.x;
+                const y = pane.y + position.y;
 
                 ctx.save();
                 ctx.strokeStyle = colors.vertical;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 4]);
                 ctx.beginPath();
-                ctx.moveTo(position.x, 0);
-                ctx.lineTo(position.x, position.height);
+                ctx.moveTo(x, pane.y);
+                ctx.lineTo(x, pane.y + pane.height);
                 ctx.stroke();
 
                 ctx.strokeStyle = colors.horizontal;
                 ctx.beginPath();
-                ctx.moveTo(0, position.y);
-                ctx.lineTo(position.width, position.y);
+                ctx.moveTo(pane.x, y);
+                ctx.lineTo(pane.x + pane.width, y);
                 ctx.stroke();
 
                 ctx.setLineDash([]);
@@ -773,26 +946,52 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                 ctx.strokeStyle = AXIS[axisName].colorHex;
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.arc(position.x, position.y, 4, 0, Math.PI * 2);
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
                 ctx.restore();
             });
 
             AXIS_ORDER.forEach((axisName) => {
-                (measurementLabels[axisName] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
+                const pane = paneLayout[axisName];
+                if (!pane) return;
+                (measurementLabels[axisName] || []).forEach((label) => {
+                    ctx.save();
+                    ctx.translate(pane.x, pane.y);
+                    drawMeasurementPillToCanvas(ctx, label);
+                    ctx.restore();
+                });
             });
         } else {
+            const singlePaneDataUrl = await capturePaneImage(getPaneContext(axis) || vtkRef.current);
+            if (!singlePaneDataUrl) return null;
+
+            let singlePaneImage;
+            try {
+                singlePaneImage = await loadImageFromDataUrl(singlePaneDataUrl);
+            } catch (decodeError) {
+                console.warn('[SliceViewer] Failed to decode captured image:', decodeError);
+                return null;
+            }
+
+            ctx.drawImage(singlePaneImage, 0, 0, width, height);
             (measurementLabels[axis] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
         }
 
+        if (annotations.length > 0) {
+            drawAnnotations(ctx, annotations, width, height);
+        }
+
         return canvas.toDataURL('image/png');
-    }, [axis, error, loading, measurementLabels, quadCrosshairPositions, quadView]);
+    }, [annotations, axis, error, getPaneContext, loading, measurementLabels, quadCrosshairPositions, quadView]);
 
     const handleExportReport = useCallback(async (formValues) => {
         try {
             setExportingReport(true);
-            const screenshotDataUrl = formValues.includeScreenshot ? captureCurrentViewDataUrl() : null;
+            setReportWarningMessage('');
+            const screenshotDataUrl = formValues.includeScreenshot
+                ? await captureCurrentViewDataUrl()
+                : null;
 
             exportPdfReport({
                 clinicName,
@@ -804,7 +1003,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                 includeMetadataSummary: formValues.includeMetadataSummary,
             });
 
-            setReportModalOpen(false);
+            if (formValues.includeScreenshot && !screenshotDataUrl) {
+                setReportWarningMessage('Screenshot could not be captured on this browser. The report will be exported without an image.');
+            } else {
+                setReportModalOpen(false);
+            }
         } catch (reportError) {
             console.error('[SliceViewer] Report export failed:', reportError);
         } finally {
@@ -819,6 +1022,27 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, []);
 
     useEffect(() => {
+        if (!windowLevelDrag) return undefined;
+
+        const handleDocumentMouseMove = (event) => {
+            event.preventDefault();
+            updateWindowLevelFromDrag(event, windowLevelDrag);
+        };
+
+        const handleDocumentMouseUp = () => {
+            setWindowLevelDrag(null);
+        };
+
+        document.addEventListener('mousemove', handleDocumentMouseMove);
+        document.addEventListener('mouseup', handleDocumentMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleDocumentMouseMove);
+            document.removeEventListener('mouseup', handleDocumentMouseUp);
+        };
+    }, [updateWindowLevelFromDrag, windowLevelDrag]);
+
+    useEffect(() => {
         setSliceIndex(sliceIndices[axis] ?? 0);
         setMaxSlice(Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0));
     }, [axis, dimensions, sliceIndices]);
@@ -828,11 +1052,24 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
         const maxForAxis = Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0);
         const currentIndex = sliceIndices[axis] ?? 0;
+        const ratio = maxForAxis > 0 ? currentIndex / maxForAxis : 0;
+        const previous = comparisonLastBroadcastRef.current[axis] || { slice: null, ratio: null };
+        if (
+            previous.slice === currentIndex
+            && previous.ratio != null
+            && Math.abs(previous.ratio - ratio) < COMPARISON_RATIO_EPSILON
+        ) {
+            return;
+        }
+
+        comparisonLastBroadcastRef.current[axis] = { slice: currentIndex, ratio };
+
         window.dispatchEvent(new CustomEvent('xcore:comparison-slice', {
             detail: {
                 sourcePaneId: comparisonPaneId,
                 axis,
-                ratio: maxForAxis > 0 ? currentIndex / maxForAxis : 0,
+                ratio,
+                slice: currentIndex,
             },
         }));
     }, [axis, comparisonPaneId, comparisonSyncEnabled, dimensions, sliceIndices]);
@@ -845,30 +1082,61 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             if (detail.sourcePaneId === comparisonPaneId || !detail.axis || detail.axis !== axis) return;
 
             const maxForAxis = Math.max((dimensions[AXIS[axis].dimIndex] || 1) - 1, 0);
+            const currentSlice = sliceIndices[axis] ?? 0;
+            const hasExplicitSlice = Number.isFinite(detail.slice);
+            const hasRatio = Number.isFinite(detail.ratio);
+            const ratioValue = hasRatio ? clamp(detail.ratio, 0, 1) : null;
+            const nextSlice = hasExplicitSlice
+                ? clamp(Math.round(detail.slice), 0, maxForAxis)
+                : hasRatio
+                    ? clamp(Math.round(ratioValue * maxForAxis), 0, maxForAxis)
+                    : null;
+
+            if (nextSlice == null || nextSlice === currentSlice) return;
+
             comparisonSyncGuardRef.current = true;
-            setSliceForAxis(axis, Math.round((detail.ratio || 0) * maxForAxis));
-            window.setTimeout(() => {
+
+            if (comparisonSyncGuardFrameRef.current != null) {
+                window.cancelAnimationFrame(comparisonSyncGuardFrameRef.current);
+            }
+
+            comparisonLastBroadcastRef.current[axis] = {
+                slice: nextSlice,
+                ratio: maxForAxis > 0 ? nextSlice / maxForAxis : 0,
+            };
+
+            setSliceForAxis(axis, nextSlice);
+            comparisonSyncGuardFrameRef.current = window.requestAnimationFrame(() => {
                 comparisonSyncGuardRef.current = false;
-            }, 50);
+                comparisonSyncGuardFrameRef.current = null;
+            });
         };
 
         window.addEventListener('xcore:comparison-slice', handleComparisonSlice);
-        return () => window.removeEventListener('xcore:comparison-slice', handleComparisonSlice);
-    }, [axis, comparisonPaneId, comparisonSyncEnabled, dimensions, setSliceForAxis]);
+        return () => {
+            window.removeEventListener('xcore:comparison-slice', handleComparisonSlice);
+            if (comparisonSyncGuardFrameRef.current != null) {
+                window.cancelAnimationFrame(comparisonSyncGuardFrameRef.current);
+                comparisonSyncGuardFrameRef.current = null;
+            }
+            comparisonSyncGuardRef.current = false;
+        };
+    }, [axis, comparisonPaneId, comparisonSyncEnabled, dimensions, setSliceForAxis, sliceIndices]);
 
     useEffect(() => {
-        clearAllMeasurements();
+        resetMeasurementState();
         setMeasurementMode(false);
         setMeasurementTool('distance');
-        setMeasurementLabels(emptyMeasurementLabels());
         setQuadCrosshairPositions({});
         setAnnotateMode(false);
         setAnnotationTool('arrow');
         setAnnotations([]);
+        setWindowLevelDrag(null);
         setReportModalOpen(false);
+        setReportWarningMessage('');
         setShowSeriesPanel(false);
         setShowMetadataPanel(false);
-    }, [cacheKey, clearAllMeasurements]);
+    }, [cacheKey, resetMeasurementState]);
 
     useEffect(() => {
         if (!study) return undefined;
@@ -1000,6 +1268,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         if (quadView) {
             const singleContext = vtkRef.current;
             vtkRef.current = null;
+            removeMeasurementsForAxis(singleContext?.axisName || axis, singleContext);
             destroyPaneContext(singleContext);
             return undefined;
         }
@@ -1011,6 +1280,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             imageData,
             axis,
             SINGLE_CAMERA_ZOOM,
+            wlPreset,
             windowCenter,
             windowWidth,
             inverted
@@ -1021,16 +1291,20 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             if (vtkRef.current === ctx) {
                 vtkRef.current = null;
             }
+            removeMeasurementsForAxis(ctx.axisName || axis, ctx);
             destroyPaneContext(ctx);
         };
-    }, [createSlicePaneContext, destroyPaneContext, imageData, quadView]);
+    }, [axis, createSlicePaneContext, destroyPaneContext, imageData, quadView, removeMeasurementsForAxis]);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         if (!quadView) {
             const existing = { ...quadRefs.current };
             quadRefs.current = { axial: null, coronal: null, sagittal: null, volume: null };
-            AXIS_ORDER.forEach((axisName) => destroyPaneContext(existing[axisName]));
+            AXIS_ORDER.forEach((axisName) => {
+                removeMeasurementsForAxis(axisName, existing[axisName]);
+                destroyPaneContext(existing[axisName]);
+            });
             destroyPaneContext(existing.volume);
             return undefined;
         }
@@ -1044,6 +1318,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             imageData,
             'axial',
             QUAD_CAMERA_ZOOM,
+            wlPreset,
             windowCenter,
             windowWidth,
             inverted
@@ -1053,6 +1328,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             imageData,
             'coronal',
             QUAD_CAMERA_ZOOM,
+            wlPreset,
             windowCenter,
             windowWidth,
             inverted
@@ -1062,6 +1338,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             imageData,
             'sagittal',
             QUAD_CAMERA_ZOOM,
+            wlPreset,
             windowCenter,
             windowWidth,
             inverted
@@ -1078,24 +1355,27 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         return () => {
             const existing = { ...quadRefs.current };
             quadRefs.current = { axial: null, coronal: null, sagittal: null, volume: null };
-            AXIS_ORDER.forEach((axisName) => destroyPaneContext(existing[axisName]));
+            AXIS_ORDER.forEach((axisName) => {
+                removeMeasurementsForAxis(axisName, existing[axisName]);
+                destroyPaneContext(existing[axisName]);
+            });
             destroyPaneContext(existing.volume);
         };
-    }, [createSlicePaneContext, createVolumePreviewContext, destroyPaneContext, imageData, quadView]);
+    }, [createSlicePaneContext, createVolumePreviewContext, destroyPaneContext, imageData, quadView, removeMeasurementsForAxis]);
 
     useEffect(() => {
         if (!quadView) {
-            applyWindowLevel(windowCenter, windowWidth, inverted);
+            applyWindowLevel(wlPreset, windowCenter, windowWidth, inverted);
             return;
         }
 
         AXIS_ORDER.forEach((axisName) => {
             const ctx = quadRefs.current[axisName];
             if (!ctx?.actor) return;
-            applyWindowLevelToActor(ctx.actor, windowCenter, windowWidth, inverted);
+            applyWindowLevelToActor(ctx.actor, wlPreset, windowCenter, windowWidth, inverted);
             ctx.renderWindow.render();
         });
-    }, [applyWindowLevel, applyWindowLevelToActor, inverted, quadView, windowCenter, windowWidth]);
+    }, [applyWindowLevel, applyWindowLevelToActor, inverted, quadView, windowCenter, windowWidth, wlPreset]);
 
     useEffect(() => {
         if (quadView || !vtkRef.current || !imageData) return;
@@ -1159,20 +1439,30 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const element = vtkContainerRef.current;
         if (!element || quadView) return undefined;
 
-        const handleMouseDownCapture = () => {
-            if (measurementMode) {
+        const handleContextMenu = (event) => {
+            event.preventDefault();
+        };
+
+        const handleMouseDownCapture = (event) => {
+            if (startWindowLevelDrag(event)) {
+                return;
+            }
+
+            if (measurementMode && event.button === 0) {
                 ensureMeasurementWidget(axis);
             }
         };
 
         element.addEventListener('wheel', handleSingleWheel, { passive: false, capture: true });
+        element.addEventListener('contextmenu', handleContextMenu, true);
         element.addEventListener('mousedown', handleMouseDownCapture, true);
 
         return () => {
             element.removeEventListener('wheel', handleSingleWheel, { capture: true });
+            element.removeEventListener('contextmenu', handleContextMenu, true);
             element.removeEventListener('mousedown', handleMouseDownCapture, true);
         };
-    }, [axis, ensureMeasurementWidget, handleSingleWheel, measurementMode, quadView]);
+    }, [axis, ensureMeasurementWidget, handleSingleWheel, measurementMode, quadView, startWindowLevelDrag]);
 
     useEffect(() => {
         if (!quadView) return undefined;
@@ -1194,33 +1484,51 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             };
 
             const handlePaneMouseDown = (event) => {
-                if (measurementMode) {
+                if (startWindowLevelDrag(event)) {
+                    return;
+                }
+
+                if (measurementMode && event.button === 0) {
                     ensureMeasurementWidget(axisName);
                     return;
                 }
                 handleQuadPaneClick(axisName, event);
             };
 
+            const handlePaneContextMenu = (event) => {
+                event.preventDefault();
+            };
+
             element.addEventListener('wheel', handlePaneWheel, { passive: false, capture: true });
+            element.addEventListener('contextmenu', handlePaneContextMenu, true);
             element.addEventListener('mousedown', handlePaneMouseDown, true);
 
             return () => {
                 element.removeEventListener('wheel', handlePaneWheel, { capture: true });
+                element.removeEventListener('contextmenu', handlePaneContextMenu, true);
                 element.removeEventListener('mousedown', handlePaneMouseDown, true);
             };
         });
 
         return () => cleanups.forEach((cleanup) => cleanup());
-    }, [ensureMeasurementWidget, handleQuadPaneClick, measurementMode, quadView, setSliceForAxis]);
+    }, [ensureMeasurementWidget, handleQuadPaneClick, measurementMode, quadView, setSliceForAxis, startWindowLevelDrag]);
 
     useEffect(() => {
         return () => {
             clearAllMeasurements();
+            if (comparisonSyncGuardFrameRef.current != null) {
+                window.cancelAnimationFrame(comparisonSyncGuardFrameRef.current);
+                comparisonSyncGuardFrameRef.current = null;
+            }
+            comparisonSyncGuardRef.current = false;
         };
     }, [clearAllMeasurements]);
 
     const axisDef = AXIS[axis];
-    const measurementHint = annotateMode
+    const currentLutLabel = WL_LUTS[wlPreset] ? (WL_LUT_LABELS[wlPreset] || wlPreset) : 'Custom W/L';
+    const measurementHint = windowLevelDrag
+        ? 'Right-drag to adjust window/level'
+        : annotateMode
         ? annotationTool === 'text'
             ? 'Click to place a text note'
             : `Drag to place a ${annotationTool}`
@@ -1308,13 +1616,13 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, [dimensions, sliceIndices]);
 
     const renderQuadPane = useCallback((axisName, ref) => (
-        <div className={`relative overflow-hidden border ${AXIS[axisName].paneBorderClass} bg-black`} style={{ cursor: annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}>
+        <div className={`relative overflow-hidden border ${AXIS[axisName].paneBorderClass} bg-black`} style={{ cursor: windowLevelDrag || annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}>
             <div ref={ref} className="absolute inset-0" />
             {renderQuadCrosshair(axisName)}
             {renderPaneLabel(axisName)}
             {renderMeasurementPills(axisName)}
         </div>
-    ), [annotateMode, measurementMode, renderMeasurementPills, renderPaneLabel, renderQuadCrosshair]);
+    ), [annotateMode, measurementMode, renderMeasurementPills, renderPaneLabel, renderQuadCrosshair, windowLevelDrag]);
 
     return (
         <div ref={wrapperRef} tabIndex={0} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
@@ -1348,20 +1656,21 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
                     {!quadView && <div className="mx-1 h-5 w-px bg-slate-800" />}
 
-                    {Object.entries(WL_PRESETS).map(([key, preset]) => (
-                        <button
-                            key={key}
-                            onClick={() => selectWlPreset(key)}
-                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
-                                wlPreset === key
-                                    ? 'border border-amber-500/50 bg-amber-500/20 text-amber-400'
-                                    : 'border border-transparent bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300'
-                            }`}
-                            title={preset.label}
+                    <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
+                        <span className="uppercase tracking-wide text-slate-500">LUT</span>
+                        <select
+                            value={WL_LUTS[wlPreset] ? wlPreset : 'custom'}
+                            onChange={(event) => selectWlPreset(event.target.value)}
+                            className="bg-transparent font-semibold text-amber-300 outline-none"
                         >
-                            {preset.label}
-                        </button>
-                    ))}
+                            {!WL_LUTS[wlPreset] && <option value="custom">Custom W/L</option>}
+                            {LUT_OPTION_KEYS.map((key) => (
+                                <option key={key} value={key}>
+                                    {WL_LUT_LABELS[key] || key}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
 
                     <div className="mx-1 h-5 w-px bg-slate-800" />
 
@@ -1487,7 +1796,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                                 <AppIcon name="Type" size={16} />
                             </button>
                             <button
-                                onClick={() => setAnnotations((current) => current.slice(0, -1))}
+                                onClick={handleUndoAnnotation}
                                 className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
                                 title="Undo last annotation"
                             >
@@ -1551,7 +1860,10 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </button>
 
                     <button
-                        onClick={() => setReportModalOpen(true)}
+                        onClick={() => {
+                            setReportWarningMessage('');
+                            setReportModalOpen(true);
+                        }}
                         className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
                         title="Export Report"
                     >
@@ -1582,7 +1894,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     <div
                         ref={vtkContainerRef}
                         className="absolute inset-0"
-                        style={{ cursor: annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}
+                        style={{ cursor: windowLevelDrag || annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}
                     />
                 )}
 
@@ -1621,7 +1933,13 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
                 {!loading && !error && (
                     <div className="pointer-events-none absolute bottom-14 left-1/2 z-10 -translate-x-1/2 rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-slate-500">
-                        W/L: {windowWidth.toFixed(3)} / {windowCenter.toFixed(3)}{inverted ? ' (Inv)' : ''} • {measurementHint}
+                        {WL_LUTS[wlPreset] ? `LUT: ${currentLutLabel}` : `W/L: ${windowWidth.toFixed(3)} / ${windowCenter.toFixed(3)}`}{inverted ? ' (Inv)' : ''} • {measurementHint}
+                    </div>
+                )}
+
+                {!loading && !error && windowLevelDrag && (
+                    <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-full border border-amber-400/40 bg-slate-950/90 px-4 py-2 font-mono text-xs font-semibold text-white shadow-2xl backdrop-blur">
+                        W: {windowWidth.toFixed(3)}&nbsp;&nbsp;L: {windowCenter.toFixed(3)}
                     </div>
                 )}
 
@@ -1633,7 +1951,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         tool={annotationTool}
                         annotations={annotations}
                         onChange={setAnnotations}
-                        className="absolute inset-0 z-[15]"
+                        className="absolute inset-0 z-[70]"
                     />
                 )}
 
@@ -1707,6 +2025,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     metadata={metadata}
                     loading={metadataLoading}
                     error={metadataError}
+                    study={study}
+                    studyKey={studyKey}
+                    seriesUid={seriesUid}
                     title="DICOM Info"
                 />
 
@@ -1718,11 +2039,15 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
                 <ReportExportModal
                     visible={reportModalOpen}
-                    onClose={() => setReportModalOpen(false)}
+                    onClose={() => {
+                        setReportWarningMessage('');
+                        setReportModalOpen(false);
+                    }}
                     onConfirm={handleExportReport}
                     initialValues={reportInitialValues}
                     exporting={exportingReport}
                     clinicName={clinicName}
+                    warningMessage={reportWarningMessage}
                 />
             </div>
         </div>

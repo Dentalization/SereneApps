@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
 import { emitToastEvent } from './toastBus';
 
-const ENABLE_CONSOLE_TOASTS = import.meta.env.VITE_ENABLE_CONSOLE_TOASTS !== 'false';
-const ENABLE_ALERT_TOASTS = import.meta.env.VITE_ENABLE_ALERT_TOASTS !== 'false';
+const ENABLE_CONSOLE_TOASTS = import.meta.env.VITE_ENABLE_CONSOLE_TOASTS === 'true';
+const ENABLE_ALERT_TOASTS = import.meta.env.VITE_ENABLE_ALERT_TOASTS === 'true';
 const FORCE_ALL_LOGS = import.meta.env.VITE_CONSOLE_TOAST_ALL === 'true';
 const DUPLICATE_WINDOW_MS = 1200;
 

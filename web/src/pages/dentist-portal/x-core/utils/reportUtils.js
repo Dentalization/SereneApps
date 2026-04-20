@@ -199,7 +199,17 @@ export const exportPdfReport = ({
   const margin = 16;
   const contentWidth = pageWidth - (margin * 2);
   const reportDate = new Date();
+  const footerReserve = 8;
+  const contentBottom = pageHeight - margin - footerReserve;
   let cursorY = 18;
+
+  const lineHeightFor = (fontSize) => Math.max(4.2, fontSize * 0.3528 * 1.2);
+  const ensurePageSpace = (requiredHeight = 0, nextPageTop = 18) => {
+    if (cursorY + requiredHeight > contentBottom) {
+      doc.addPage();
+      cursorY = nextPageTop;
+    }
+  };
 
   doc.setFillColor(15, 23, 42);
   doc.roundedRect(margin, cursorY - 6, contentWidth, 20, 4, 4, 'F');
@@ -219,7 +229,9 @@ export const exportPdfReport = ({
   cursorY += 6;
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10.5);
+  const infoFontSize = 10.5;
+  doc.setFontSize(infoFontSize);
+  const infoLineHeight = lineHeightFor(infoFontSize);
   const infoRows = [
     ['Patient', patientName || '—'],
     ['Dentist', dentistName || '—'],
@@ -227,51 +239,56 @@ export const exportPdfReport = ({
     ['Institution', metadata?.InstitutionName || clinicName || '—'],
   ];
   infoRows.forEach(([label, value]) => {
+    const wrappedValue = doc.splitTextToSize(String(value || '—'), contentWidth - 30);
+    const rowHeight = Math.max(infoLineHeight, wrappedValue.length * infoLineHeight);
+    ensurePageSpace(rowHeight + 1.5);
+
     doc.setTextColor(100, 116, 139);
     doc.text(`${label}:`, margin, cursorY);
     doc.setTextColor(15, 23, 42);
-    doc.text(String(value || '—'), margin + 30, cursorY);
-    cursorY += 5.5;
+    doc.text(wrappedValue, margin + 30, cursorY);
+    cursorY += rowHeight + 1.5;
   });
 
   cursorY += 3;
 
   if (screenshotDataUrl) {
+    const imageProps = doc.getImageProperties(screenshotDataUrl);
+    const imageHeight = Math.min((imageProps.height * contentWidth) / imageProps.width, 110);
+    ensurePageSpace(4 + imageHeight + 8);
+
     doc.setTextColor(31, 41, 55);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text('Annotated View', margin, cursorY);
     cursorY += 4;
 
-    const imageProps = doc.getImageProperties(screenshotDataUrl);
-    const imageHeight = Math.min((imageProps.height * contentWidth) / imageProps.width, 110);
     doc.addImage(screenshotDataUrl, 'PNG', margin, cursorY, contentWidth, imageHeight);
     cursorY += imageHeight + 8;
-  }
-
-  if (cursorY > pageHeight - 70) {
-    doc.addPage();
-    cursorY = 18;
   }
 
   doc.setTextColor(31, 41, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
+  ensurePageSpace(12);
   doc.text('Clinical Notes', margin, cursorY);
   cursorY += 6;
+
+  const notesFontSize = 10.5;
+  const notesLineHeight = lineHeightFor(notesFontSize);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10.5);
+  doc.setFontSize(notesFontSize);
   const notes = clinicalNotes?.trim() || 'No clinical notes provided.';
   const wrappedNotes = doc.splitTextToSize(notes, contentWidth);
-  doc.text(wrappedNotes, margin, cursorY);
-  cursorY += (wrappedNotes.length * 5) + 6;
+  wrappedNotes.forEach((line) => {
+    ensurePageSpace(notesLineHeight);
+    doc.text(line, margin, cursorY);
+    cursorY += notesLineHeight;
+  });
+  cursorY += 6;
 
   if (includeMetadataSummary) {
-    if (cursorY > pageHeight - 90) {
-      doc.addPage();
-      cursorY = 18;
-    }
-
+    ensurePageSpace(14);
     doc.setTextColor(31, 41, 55);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
@@ -280,10 +297,7 @@ export const exportPdfReport = ({
 
     const sections = buildMetadataSections(metadata);
     sections.forEach((section) => {
-      if (cursorY > pageHeight - 36) {
-        doc.addPage();
-        cursorY = 18;
-      }
+      ensurePageSpace(10);
 
       doc.setFillColor(241, 245, 249);
       doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
@@ -293,23 +307,34 @@ export const exportPdfReport = ({
       doc.text(section.title, margin + 3, cursorY);
       cursorY += 6;
 
+      const metadataFontSize = 9.5;
+      const metadataLineHeight = lineHeightFor(metadataFontSize);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9.5);
+      doc.setFontSize(metadataFontSize);
       section.rows.forEach(([label, value]) => {
-        if (cursorY > pageHeight - 12) {
-          doc.addPage();
-          cursorY = 18;
-        }
+        const wrappedValue = doc.splitTextToSize(String(value || '—'), contentWidth - 34);
+        const rowHeight = Math.max(metadataLineHeight, wrappedValue.length * metadataLineHeight);
+        ensurePageSpace(rowHeight + 1.2);
+
         doc.setTextColor(100, 116, 139);
         doc.text(`${label}:`, margin, cursorY);
         doc.setTextColor(15, 23, 42);
-        const wrappedValue = doc.splitTextToSize(String(value || '—'), contentWidth - 34);
         doc.text(wrappedValue, margin + 34, cursorY);
-        cursorY += Math.max(5, wrappedValue.length * 4.5);
+        cursorY += rowHeight + 1.2;
       });
 
       cursorY += 3;
     });
+  }
+
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Generated ${reportDate.toLocaleString()}`, margin, pageHeight - 6);
+    doc.text(`Page ${page} of ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
   }
 
   const fileName = `report_${sanitizeFilename(patientName)}_${formatDateForFilename(reportDate)}.pdf`;

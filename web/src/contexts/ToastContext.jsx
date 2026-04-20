@@ -23,6 +23,12 @@ const INTERNAL_DEBUG_PATTERNS = [
   /✅\s+(services|gallery|highlights|facilities)/i,
   /✅\s+[A-Za-z\s]+response/i,
   /\{[\s\S]*"clinic_branch_id"/i,
+  /^\[VolumeViewer3D\]/i,
+  /^\[SliceViewer\]/i,
+  /^\[useConversionSocket\]/i,
+  /ws proxy socket error/i,
+  /Maximum update depth exceeded/i,
+  /Cannot update a component while rendering a different component/i,
 ];
 
 export const shouldSuppressToastMessage = (message = '') => {

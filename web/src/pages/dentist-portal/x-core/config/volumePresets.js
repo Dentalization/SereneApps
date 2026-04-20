@@ -1,6 +1,74 @@
 // All values are MONAI-normalized [0.0, 1.0]
 // hu(v) = (v + 1000) / 4000
 
+export const WL_LUTS = {
+  dental: [
+    [0.0, 0.0],
+    [0.35, 0.0],
+    [0.42, 0.15],
+    [0.50, 0.65],
+    [0.70, 0.95],
+    [1.0, 1.0],
+  ],
+  enamel: [
+    [0.0, 0.0],
+    [0.50, 0.0],
+    [0.55, 0.5],
+    [0.65, 1.0],
+    [0.75, 0.5],
+    [1.0, 0.0],
+  ],
+  implant: [
+    [0.0, 0.0],
+    [0.70, 0.0],
+    [0.75, 0.3],
+    [0.85, 0.8],
+    [1.0, 1.0],
+  ],
+  nerveCanal: [
+    [0.0, 0.0],
+    [0.22, 0.0],
+    [0.24, 0.6],
+    [0.28, 1.0],
+    [0.32, 0.6],
+    [1.0, 0.0],
+  ],
+  sinus: [
+    [0.0, 0.0],
+    [0.05, 0.5],
+    [0.10, 1.0],
+    [0.15, 0.5],
+    [1.0, 0.0],
+  ],
+  softTissue: [
+    [0.0, 0.0],
+    [0.18, 0.0],
+    [0.22, 0.25],
+    [0.28, 0.85],
+    [0.35, 1.0],
+    [0.50, 0.35],
+    [1.0, 0.1],
+  ],
+  mtaFilling: [
+    [0.0, 0.0],
+    [0.58, 0.0],
+    [0.66, 0.35],
+    [0.76, 1.0],
+    [0.90, 0.75],
+    [1.0, 0.2],
+  ],
+};
+
+export const WL_LUT_LABELS = {
+  dental: 'Dental Balanced',
+  enamel: 'Enamel Isolation',
+  implant: 'Implant',
+  nerveCanal: 'Nerve Canal',
+  sinus: 'Sinus',
+  softTissue: 'Soft Tissue',
+  mtaFilling: 'MTA / Filling Material',
+};
+
 export const VOLUME_PRESETS = {
   bone: {
     color: [

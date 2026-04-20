@@ -19,11 +19,11 @@ const ShortcutHelpButton = ({ shortcuts = [], align = 'right' }) => {
     }, [open]);
 
     return (
-        <div ref={wrapperRef} className="relative">
+        <div ref={wrapperRef} className="relative z-[120]">
             <button
                 type="button"
                 onClick={() => setOpen((current) => !current)}
-                className="rounded-lg bg-slate-800 px-2.5 py-2 text-xs font-bold text-gray-400 transition hover:bg-slate-700 hover:text-white"
+                className="rounded-lg border border-slate-600 bg-slate-800/95 px-2.5 py-2 text-xs font-bold text-slate-100 shadow-lg shadow-black/20 transition hover:border-cyan-400/60 hover:bg-slate-700 hover:text-white"
                 title="Keyboard shortcuts"
             >
                 ?
@@ -31,7 +31,7 @@ const ShortcutHelpButton = ({ shortcuts = [], align = 'right' }) => {
 
             {open && (
                 <div
-                    className={`absolute top-full z-50 mt-2 w-72 rounded-2xl border border-slate-700 bg-slate-950/95 p-4 text-slate-100 shadow-2xl backdrop-blur ${align === 'left' ? 'left-0' : 'right-0'}`}
+                    className={`absolute top-full z-[9999] mt-2 w-72 rounded-2xl border border-slate-700 bg-slate-950/95 p-4 text-slate-100 shadow-2xl shadow-black/50 backdrop-blur ${align === 'left' ? 'left-0' : 'right-0'}`}
                 >
                     <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
                         <AppIcon name="Keyboard" size={14} />

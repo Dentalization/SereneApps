@@ -9,13 +9,18 @@ import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import ShortcutHelpButton from './ShortcutHelpButton';
 
 const MEASUREMENT_COLOR = '#1D9E75';
+const WL_DRAG_SENSITIVITY = 0.005;
 const IMAGE_SHORTCUTS = [
     { key: '+ / =', label: 'Zoom in' },
     { key: '-', label: 'Zoom out' },
     { key: '0', label: 'Fit to screen' },
+    { key: 'Ctrl/Cmd + Z', label: 'Undo annotation/measurement' },
+    { key: 'Right-drag', label: 'Window/Level adjust' },
     { key: 'I', label: 'Invert image' },
     { key: 'F', label: 'Fullscreen' },
 ];
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
 
@@ -73,6 +78,9 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [windowCenter, setWindowCenter] = useState(0.5);
+    const [windowWidth, setWindowWidth] = useState(1.0);
+    const [windowLevelDrag, setWindowLevelDrag] = useState(null);
     const [inverted, setInverted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
@@ -84,6 +92,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
     const [annotations, setAnnotations] = useState([]);
     const [pixelSpacing, setPixelSpacing] = useState(null);
     const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+    const [imageBounds, setImageBounds] = useState(null);
     const [measurements, setMeasurements] = useState([]);
     const [pendingPoint, setPendingPoint] = useState(null);
     const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -113,6 +123,52 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         includeMetadataSummary: true,
     }), [dentistName, patientName]);
 
+    const imageFilter = useMemo(() => {
+        const brightness = windowCenter / 0.5;
+        const contrast = 1 / windowWidth;
+        return [
+            `brightness(${brightness.toFixed(2)})`,
+            `contrast(${contrast.toFixed(2)})`,
+            inverted ? 'invert(1)' : '',
+        ].filter(Boolean).join(' ');
+    }, [inverted, windowCenter, windowWidth]);
+
+    const syncImageBounds = useCallback(() => {
+        const viewport = containerRef.current;
+        const image = imgRef.current;
+        if (!viewport || !image || !imageSize.width || !imageSize.height) {
+            setImageBounds(null);
+            return;
+        }
+
+        const viewportRect = viewport.getBoundingClientRect();
+        const imageRect = image.getBoundingClientRect();
+        if (!viewportRect.width || !viewportRect.height || !imageRect.width || !imageRect.height) {
+            setImageBounds(null);
+            return;
+        }
+
+        const nextBounds = {
+            x: imageRect.left - viewportRect.left,
+            y: imageRect.top - viewportRect.top,
+            width: imageRect.width,
+            height: imageRect.height,
+        };
+
+        setImageBounds((current) => {
+            if (
+                current
+                && Math.abs(current.x - nextBounds.x) < 0.5
+                && Math.abs(current.y - nextBounds.y) < 0.5
+                && Math.abs(current.width - nextBounds.width) < 0.5
+                && Math.abs(current.height - nextBounds.height) < 0.5
+            ) {
+                return current;
+            }
+            return nextBounds;
+        });
+    }, [imageSize.height, imageSize.width]);
+
     useEffect(() => {
         setRetryCount(0);
         setImageLoaded(false);
@@ -124,6 +180,10 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         setAnnotateMode(false);
         setAnnotationTool('arrow');
         setAnnotations([]);
+        setImageBounds(null);
+        setWindowCenter(0.5);
+        setWindowWidth(1.0);
+        setWindowLevelDrag(null);
         setReportModalOpen(false);
     }, [studyKey, seriesUid]);
 
@@ -161,6 +221,49 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         }
     }, [metadata, pixelSpacing]);
 
+    useEffect(() => {
+        const element = containerRef.current;
+        if (!element) return undefined;
+
+        const syncViewportSize = () => {
+            setViewportSize({
+                width: element.clientWidth,
+                height: element.clientHeight,
+            });
+        };
+
+        syncViewportSize();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(syncViewportSize);
+            observer.observe(element);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener('resize', syncViewportSize);
+        return () => window.removeEventListener('resize', syncViewportSize);
+    }, []);
+
+    useEffect(() => {
+        if (!imageLoaded) {
+            setImageBounds(null);
+            return undefined;
+        }
+
+        const frameId = window.requestAnimationFrame(syncImageBounds);
+        return () => window.cancelAnimationFrame(frameId);
+    }, [
+        imageLoaded,
+        imageSize.height,
+        imageSize.width,
+        pan.x,
+        pan.y,
+        syncImageBounds,
+        viewportSize.height,
+        viewportSize.width,
+        zoom,
+    ]);
+
     const handleWheel = useCallback((event) => {
         event.preventDefault();
         const delta = event.deltaY > 0 ? -0.1 : 0.1;
@@ -174,23 +277,50 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         setPan({ x: 0, y: 0 });
     }, []);
 
+    const updateWindowLevelFromDrag = useCallback((event, dragState) => {
+        const dx = event.clientX - dragState.startX;
+        const dy = event.clientY - dragState.startY;
+        setWindowCenter(clamp(dragState.startCenter - (dy * WL_DRAG_SENSITIVITY), 0, 1));
+        setWindowWidth(clamp(dragState.startWidth + (dx * WL_DRAG_SENSITIVITY), 0.05, 2.0));
+    }, []);
+
     const handleMouseDown = useCallback((event) => {
+        if (event.button === 2) {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsDragging(false);
+            setWindowLevelDrag({
+                startX: event.clientX,
+                startY: event.clientY,
+                startCenter: windowCenter,
+                startWidth: windowWidth,
+            });
+            return;
+        }
+
         if (measureMode || annotateMode) return;
         if (event.button !== 0) return;
         setIsDragging(true);
         setDragStart({ x: event.clientX - pan.x, y: event.clientY - pan.y });
-    }, [annotateMode, measureMode, pan]);
+    }, [annotateMode, measureMode, pan, windowCenter, windowWidth]);
 
     const handleMouseMove = useCallback((event) => {
+        if (windowLevelDrag) {
+            event.preventDefault();
+            updateWindowLevelFromDrag(event, windowLevelDrag);
+            return;
+        }
+
         if (!isDragging) return;
         setPan({
             x: event.clientX - dragStart.x,
             y: event.clientY - dragStart.y,
         });
-    }, [dragStart, isDragging]);
+    }, [dragStart, isDragging, updateWindowLevelFromDrag, windowLevelDrag]);
 
     const handleMouseUp = useCallback(() => {
         setIsDragging(false);
+        setWindowLevelDrag(null);
     }, []);
 
     useEffect(() => {
@@ -204,6 +334,27 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         document.addEventListener('mouseup', handleMouseUp);
         return () => document.removeEventListener('mouseup', handleMouseUp);
     }, [handleMouseUp]);
+
+    useEffect(() => {
+        if (!windowLevelDrag) return undefined;
+
+        const handleDocumentMouseMove = (event) => {
+            event.preventDefault();
+            updateWindowLevelFromDrag(event, windowLevelDrag);
+        };
+
+        const handleDocumentMouseUp = () => {
+            setWindowLevelDrag(null);
+        };
+
+        document.addEventListener('mousemove', handleDocumentMouseMove);
+        document.addEventListener('mouseup', handleDocumentMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleDocumentMouseMove);
+            document.removeEventListener('mouseup', handleDocumentMouseUp);
+        };
+    }, [updateWindowLevelFromDrag, windowLevelDrag]);
 
     useEffect(() => {
         const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -229,7 +380,19 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
-            if (key === '+' || key === '=') {
+            if ((event.ctrlKey || event.metaKey) && key === 'z') {
+                if (!annotateMode && !measureMode) return;
+                event.preventDefault();
+                if (annotateMode) {
+                    setAnnotations((current) => current.slice(0, -1));
+                } else {
+                    if (pendingPoint) {
+                        setPendingPoint(null);
+                    } else {
+                        setMeasurements((current) => current.slice(0, -1));
+                    }
+                }
+            } else if (key === '+' || key === '=') {
                 event.preventDefault();
                 zoomIn();
             } else if (key === '-') {
@@ -249,7 +412,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [fitToScreen, toggleFullscreen, zoomIn, zoomOut]);
+    }, [annotateMode, fitToScreen, measureMode, pendingPoint, toggleFullscreen, zoomIn, zoomOut]);
 
     const captureCurrentViewDataUrl = useCallback(() => {
         const viewport = containerRef.current;
@@ -276,9 +439,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         const drawY = (height / 2) + pan.y - (drawHeight / 2);
 
         ctx.save();
-        if (inverted) {
-            ctx.filter = 'invert(1)';
-        }
+        ctx.filter = imageFilter;
         ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
         ctx.restore();
 
@@ -290,7 +451,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         ctx.restore();
 
         return canvas.toDataURL('image/png');
-    }, [annotations, imageLoaded, imageSize.height, imageSize.width, inverted, measurements, pan.x, pan.y, pixelSpacing, zoom]);
+    }, [annotations, imageFilter, imageLoaded, imageSize.height, imageSize.width, measurements, pan.x, pan.y, pixelSpacing, zoom]);
 
     const captureScreenshot = useCallback(() => {
         const dataUrl = captureCurrentViewDataUrl();
@@ -313,6 +474,10 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
         setMeasurements((current) => current.slice(0, -1));
     }, [pendingPoint]);
 
+    const handleUndoAnnotation = useCallback(() => {
+        setAnnotations((current) => current.slice(0, -1));
+    }, []);
+
     const handleClearMeasurements = useCallback(() => {
         setMeasurements([]);
         setPendingPoint(null);
@@ -320,6 +485,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
 
     const handleMeasurementClick = useCallback((event) => {
         if (!measureMode || !imageLoaded || !imageSize.width || !imageSize.height) return;
+        if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
 
@@ -524,7 +690,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
                             >
                                 <AppIcon name="Type" size={18} />
                             </button>
-                            <button onClick={() => setAnnotations((current) => current.slice(0, -1))} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Undo Annotation">
+                            <button onClick={handleUndoAnnotation} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Undo Annotation">
                                 <AppIcon name="Undo2" size={18} />
                             </button>
                             <button onClick={() => setAnnotations([])} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Clear Annotations">
@@ -563,9 +729,10 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
             <div
                 ref={containerRef}
                 className="relative flex-1 select-none overflow-hidden bg-black"
-                style={{ cursor: annotateMode || measureMode ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'), minHeight: '400px' }}
+                style={{ cursor: windowLevelDrag || annotateMode || measureMode ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'), minHeight: '400px' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
+                onContextMenu={(event) => event.preventDefault()}
             >
                 {!imageLoaded && !imageError && (
                     <div className="absolute inset-0 z-10 flex items-center justify-center">
@@ -632,7 +799,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
                         style={{
                             maxWidth: 'none',
                             maxHeight: 'none',
-                            filter: inverted ? 'invert(1)' : 'none',
+                            filter: imageFilter,
                             imageRendering: zoom > 2 ? 'pixelated' : 'auto',
                         }}
                     />
@@ -675,19 +842,27 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
                                     />
                                 )}
                             </svg>
-
-                            <AnnotationCanvas
-                                width={imageSize.width}
-                                height={imageSize.height}
-                                active={annotateMode}
-                                tool={annotationTool}
-                                annotations={annotations}
-                                onChange={setAnnotations}
-                                className="absolute inset-0 z-20"
-                            />
                         </>
                     )}
                 </div>
+
+                {imageLoaded && imageBounds && viewportSize.width > 0 && viewportSize.height > 0 && (
+                    <AnnotationCanvas
+                        width={viewportSize.width}
+                        height={viewportSize.height}
+                        sourceWidth={imageSize.width}
+                        sourceHeight={imageSize.height}
+                        zoom={zoom}
+                        pan={pan}
+                        viewportSize={viewportSize}
+                        imageBounds={imageBounds}
+                        active={annotateMode}
+                        tool={annotationTool}
+                        annotations={annotations}
+                        onChange={setAnnotations}
+                        className="absolute inset-0 z-[70]"
+                    />
+                )}
 
                 {imageLoaded && (
                     <div className="absolute right-3 top-3 z-20">
@@ -699,15 +874,27 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries }) => {
                 )}
 
                 {imageLoaded && (
+                    <div className="absolute left-1/2 top-4 z-30 -translate-x-1/2">
+                        {windowLevelDrag && (
+                            <div className="rounded-full border border-amber-400/40 bg-slate-950/90 px-4 py-2 font-mono text-xs font-semibold text-white shadow-2xl backdrop-blur">
+                                W: {windowWidth.toFixed(3)}&nbsp;&nbsp;L: {windowCenter.toFixed(3)}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {imageLoaded && (
                     <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-black/60 px-5 py-2 text-[11px] text-white shadow-2xl backdrop-blur-md">
                         <span className="flex items-center gap-3">
                             <span className="text-gray-400">
-                                {annotateMode ? 'Drag/Click: Annotate' : measureMode ? 'Click: Measure' : 'Drag: Pan'}
+                                {windowLevelDrag ? 'Right-drag: Window/Level' : annotateMode ? 'Drag/Click: Annotate' : measureMode ? 'Click: Measure' : 'Drag: Pan'}
                             </span>
                             <span className="text-white/20">{'\u2022'}</span>
                             <span className="text-gray-400">Scroll: Zoom</span>
                             <span className="text-white/20">{'\u2022'}</span>
                             <span className="text-cyan-400/80">Zoom: {Math.round(zoom * 100)}%</span>
+                            <span className="text-white/20">{'\u2022'}</span>
+                            <span className="text-amber-300/90">W/L: {windowWidth.toFixed(3)} / {windowCenter.toFixed(3)}</span>
                             {pixelSpacing && (
                                 <>
                                     <span className="text-white/20">{'\u2022'}</span>
