@@ -3,6 +3,8 @@ import jsPDF from 'jspdf';
 export const ANNOTATION_COLORS = {
   arrow: '#E24B4A',
   circle: '#EF9F27',
+  freehand: '#E24B4A',
+  region: '#E24B4A',
   text: '#FFFFFF',
 };
 
@@ -64,16 +66,32 @@ export const buildMetadataSections = (metadata) => SECTION_DEFINITIONS.map((sect
   rows: section.rows.map(([label, key]) => [label, formatValue(metadata?.[key], key)]),
 }));
 
-export const drawArrow = (ctx, start, end, color, strokeWidth = 3) => {
+const styleForScale = (options = {}) => {
+  const displayScale = Math.max(0.1, Number(options.displayScale) || 1);
+  return {
+    displayScale,
+    strokeWidth: Number(options.strokeWidth) || (1.35 / displayScale),
+    regionStrokeWidth: Number(options.regionStrokeWidth) || (1.25 / displayScale),
+    fontSize: Number(options.fontSize) || (10 / displayScale),
+    textPaddingX: 6 / displayScale,
+    textHeight: 16 / displayScale,
+    textRadius: 7 / displayScale,
+    arrowHeadMin: 5 / displayScale,
+    arrowHeadMax: 11 / displayScale,
+  };
+};
+
+export const drawArrow = (ctx, start, end, color, strokeWidth = 2, options = {}) => {
+  const style = styleForScale(options);
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const angle = Math.atan2(dy, dx);
-  const headLength = Math.max(12, Math.min(24, Math.hypot(dx, dy) * 0.18));
+  const headLength = Math.max(style.arrowHeadMin, Math.min(style.arrowHeadMax, Math.hypot(dx, dy) * 0.14));
 
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = strokeWidth;
+  ctx.lineWidth = strokeWidth || style.strokeWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -97,7 +115,7 @@ export const drawArrow = (ctx, start, end, color, strokeWidth = 3) => {
   ctx.restore();
 };
 
-export const drawCircleAnnotation = (ctx, start, end, color, strokeWidth = 3) => {
+export const drawCircleAnnotation = (ctx, start, end, color, strokeWidth = 2) => {
   const centerX = (start.x + end.x) / 2;
   const centerY = (start.y + end.y) / 2;
   const radiusX = Math.abs(end.x - start.x) / 2;
@@ -112,34 +130,67 @@ export const drawCircleAnnotation = (ctx, start, end, color, strokeWidth = 3) =>
   ctx.restore();
 };
 
-export const drawTextAnnotation = (ctx, point, label, color) => {
+export const drawTextAnnotation = (ctx, point, label, color, options = {}) => {
   if (!label) return;
 
+  const style = styleForScale(options);
   ctx.save();
-  ctx.font = '600 14px monospace';
+  ctx.font = `600 ${style.fontSize}px monospace`;
   ctx.textBaseline = 'middle';
   const metrics = ctx.measureText(label);
-  const width = metrics.width + 14;
-  const height = 22;
+  const width = metrics.width + (style.textPaddingX * 2);
+  const height = style.textHeight;
   const x = point.x;
   const y = point.y;
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = Math.max(0.5 / style.displayScale, 0.15);
   ctx.beginPath();
-  ctx.roundRect(x - 6, y - (height / 2), width, height, 10);
+  ctx.roundRect(x - style.textPaddingX, y - (height / 2), width, height, style.textRadius);
   ctx.fill();
   ctx.stroke();
 
   ctx.fillStyle = color;
-  ctx.fillText(label, x + 1, y + 0.5);
+  ctx.fillText(label, x, y + (0.4 / style.displayScale));
   ctx.restore();
 };
 
-export const drawAnnotations = (ctx, annotations, width, height) => {
+export const drawRegionAnnotation = (ctx, path, color, width, height, opacity = 1, options = {}) => {
+  if (!Array.isArray(path) || path.length < 3) return;
+
+  const style = styleForScale(options);
+  ctx.save();
+  ctx.beginPath();
+  path.forEach((point, index) => {
+    const x = (point?.x || 0) * width;
+    const y = (point?.y || 0) * height;
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.closePath();
+  ctx.globalAlpha = opacity * 0.25;
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.globalAlpha = opacity;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = style.regionStrokeWidth;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.restore();
+};
+
+export const drawAnnotations = (ctx, annotations, width, height, options = {}) => {
+  const style = styleForScale(options);
   annotations.forEach((annotation) => {
     const color = annotation.color || ANNOTATION_COLORS[annotation.type] || '#ffffff';
+    const opacity = annotation.displayOpacity ?? annotation.opacity ?? 1;
+
+    ctx.save();
+    ctx.globalAlpha = opacity;
 
     if (annotation.type === 'text') {
       drawTextAnnotation(
@@ -149,8 +200,21 @@ export const drawAnnotations = (ctx, annotations, width, height) => {
           y: annotation.coordinates.y * height,
         },
         annotation.label,
-        color
+        color,
+        style
       );
+      ctx.restore();
+      return;
+    }
+
+    if (annotation.type === 'region' || annotation.type === 'freehand') {
+      drawRegionAnnotation(ctx, annotation.coordinates?.path, color, width, height, opacity, style);
+      ctx.restore();
+      return;
+    }
+
+    if (!annotation.coordinates?.start || !annotation.coordinates?.end) {
+      ctx.restore();
       return;
     }
 
@@ -164,13 +228,15 @@ export const drawAnnotations = (ctx, annotations, width, height) => {
     };
 
     if (annotation.type === 'arrow') {
-      drawArrow(ctx, start, end, color);
+      drawArrow(ctx, start, end, color, style.strokeWidth, style);
+      ctx.restore();
       return;
     }
 
     if (annotation.type === 'circle') {
-      drawCircleAnnotation(ctx, start, end, color);
+      drawCircleAnnotation(ctx, start, end, color, style.strokeWidth);
     }
+    ctx.restore();
   });
 };
 
@@ -184,6 +250,102 @@ const sanitizeFilename = (value) => {
 
 const formatDateForFilename = (date) => date.toISOString().slice(0, 10);
 
+const summarizeCoordinates = (annotation) => {
+  if (annotation.type === 'text') {
+    return `x=${Number(annotation.coordinates?.x || 0).toFixed(3)}, y=${Number(annotation.coordinates?.y || 0).toFixed(3)}`;
+  }
+  if (annotation.type === 'region' || annotation.type === 'freehand') {
+    const path = annotation.coordinates?.path || [];
+    const area = annotation.metadata?.lesion_area_px;
+    return `${path.length} pts${area ? `, area ${area} px²` : ''}`;
+  }
+  const start = annotation.coordinates?.start;
+  const end = annotation.coordinates?.end;
+  if (!start || !end) return '—';
+  return `(${Number(start.x || 0).toFixed(3)}, ${Number(start.y || 0).toFixed(3)}) → (${Number(end.x || 0).toFixed(3)}, ${Number(end.y || 0).toFixed(3)})`;
+};
+
+const makeExportId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const buildTrainingAnnotation = (annotation, exportId, options = {}) => {
+  const metadata = annotation.metadata || {};
+  const type = annotation.type || annotation.annotation_type;
+  return {
+    export_id: exportId,
+    annotation_id: annotation.id,
+    type,
+    geometry: annotation.coordinates || {},
+    coordinate_system: 'image_normalized_0_1',
+    source: {
+      width: metadata.source_width || options.sourceWidth || null,
+      height: metadata.source_height || options.sourceHeight || null,
+      study_id: options.studyId || null,
+      study_key: options.studyKey || null,
+      series_uid: annotation.series_uid || options.seriesUid || null,
+      viewer_type: annotation.viewer_type || options.viewerType || null,
+      slice_axis: annotation.slice_axis ?? annotation.sliceAxis ?? null,
+      slice_index: annotation.slice_index ?? annotation.sliceIndex ?? null,
+    },
+    label: {
+      finding_type: metadata.finding_type || null,
+      severity: metadata.severity || null,
+      tooth_number: metadata.tooth_number || null,
+      surface: metadata.surface || null,
+      lesion_area_px: metadata.lesion_area_px || null,
+      text: annotation.label || null,
+    },
+    review: {
+      status: annotation.review_status || 'draft',
+      reviewed_by: annotation.reviewed_by ?? null,
+      reviewed_at: annotation.reviewed_at || null,
+      reviewer_comment: annotation.reviewer_comment || null,
+      confidence_score: annotation.confidence_score ?? 0.7,
+    },
+  };
+};
+
+export const exportAnnotationsJson = (annotations, studyMetadata, options = {}) => {
+  const patient = options.patientName || studyMetadata?.PatientName || 'Patient';
+  const exportedAt = new Date();
+  const exportedAnnotations = (annotations || []).map((annotation) => ({
+    ...annotation,
+    _export_id: makeExportId(),
+  }));
+  const payload = {
+    export_version: '1.1',
+    dataset_schema: 'xcore_annotation_training_v1',
+    study: {
+      id: options.studyId || null,
+      folder: options.studyKey || null,
+      series_uid: options.seriesUid || null,
+      viewer_type: options.viewerType || null,
+      patient,
+      date: studyMetadata?.StudyDate || null,
+      institution: studyMetadata?.InstitutionName || null,
+    },
+    exported_at: exportedAt.toISOString(),
+    coordinate_system: 'image_normalized_0_1',
+    annotations: exportedAnnotations,
+    training_annotations: exportedAnnotations.map((annotation) => buildTrainingAnnotation(annotation, annotation._export_id, options)),
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `annotations_${sanitizeFilename(patient)}_${formatDateForFilename(exportedAt)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return payload;
+};
+
 export const exportPdfReport = ({
   clinicName,
   dentistName,
@@ -195,6 +357,7 @@ export const exportPdfReport = ({
   implantPlacements = [],
   densityHistogram = null,
   aiReport = '',
+  annotations = [],
 }) => {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -328,6 +491,48 @@ export const exportPdfReport = ({
 
       cursorY += 3;
     });
+  }
+
+  if (Array.isArray(annotations) && annotations.length > 0) {
+    ensurePageSpace(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Structured Annotations', margin, cursorY);
+    cursorY += 7;
+
+    const annotationFontSize = 8.2;
+    const annotationLineHeight = lineHeightFor(annotationFontSize);
+    doc.setFontSize(annotationFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
+    doc.setTextColor(51, 65, 85);
+    doc.text('#', margin + 2, cursorY);
+    doc.text('Type', margin + 10, cursorY);
+    doc.text('Label', margin + 32, cursorY);
+    doc.text('Finding', margin + 72, cursorY);
+    doc.text('Severity', margin + 112, cursorY);
+    doc.text('Conf.', margin + 134, cursorY);
+    doc.text('Coordinates', margin + 150, cursorY);
+    cursorY += 7;
+
+    doc.setFont('helvetica', 'normal');
+    annotations.forEach((annotation, index) => {
+      ensurePageSpace(annotationLineHeight + 2);
+      const metadata = annotation.metadata || {};
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(index + 1), margin + 2, cursorY);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(annotation.type || annotation.annotation_type || '—').slice(0, 12), margin + 10, cursorY);
+      doc.text(String(annotation.label || '—').slice(0, 22), margin + 32, cursorY);
+      doc.text(String(metadata.finding_type || '—').slice(0, 18), margin + 72, cursorY);
+      doc.text(String(metadata.severity || '—').slice(0, 8), margin + 112, cursorY);
+      doc.text(String(annotation.confidence_score ?? '—').slice(0, 4), margin + 134, cursorY);
+      doc.text(summarizeCoordinates(annotation).slice(0, 26), margin + 150, cursorY);
+      cursorY += annotationLineHeight + 2;
+    });
+    cursorY += 4;
   }
 
   if (Array.isArray(implantPlacements) && implantPlacements.length > 0) {
