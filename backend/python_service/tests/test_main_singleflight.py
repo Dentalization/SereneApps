@@ -32,12 +32,13 @@ class SingleflightConversionTests(unittest.TestCase):
             release_leader = threading.Event()
             errors = {}
 
-            def failing_convert(path, force=False, segment=False, progress_callback=None, study_id=None):
+            def failing_convert(path, force=False, segment=False, progress_callback=None, study_id=None, quality="standard"):
                 self.assertEqual(path, study_path)
                 self.assertFalse(force)
                 self.assertFalse(segment)
                 self.assertIsNotNone(progress_callback)
                 self.assertEqual(study_id, os.path.basename(study_path))
+                self.assertEqual(quality, "standard")
                 leader_started.set()
                 release_leader.wait(timeout=1)
                 raise RuntimeError('boom')
@@ -97,6 +98,7 @@ class SingleflightConversionTests(unittest.TestCase):
             self.assertTrue(kwargs['segment'])
             self.assertIsNotNone(kwargs['progress_callback'])
             self.assertEqual(kwargs['study_id'], os.path.basename(study_path))
+            self.assertEqual(kwargs['quality'], 'standard')
 
 
 if __name__ == '__main__':

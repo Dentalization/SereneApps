@@ -192,6 +192,9 @@ export const exportPdfReport = ({
   metadata,
   screenshotDataUrl,
   includeMetadataSummary,
+  implantPlacements = [],
+  densityHistogram = null,
+  aiReport = '',
 }) => {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -325,6 +328,95 @@ export const exportPdfReport = ({
 
       cursorY += 3;
     });
+  }
+
+  if (Array.isArray(implantPlacements) && implantPlacements.length > 0) {
+    ensurePageSpace(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Implant Planning', margin, cursorY);
+    cursorY += 7;
+
+    const tableFontSize = 8.8;
+    const tableLineHeight = lineHeightFor(tableFontSize);
+    doc.setFontSize(tableFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
+    doc.setTextColor(51, 65, 85);
+    doc.text('#', margin + 2, cursorY);
+    doc.text('Brand', margin + 12, cursorY);
+    doc.text('Size', margin + 48, cursorY);
+    doc.text('Position (mm)', margin + 78, cursorY);
+    cursorY += 7;
+
+    doc.setFont('helvetica', 'normal');
+    implantPlacements.forEach((placement, index) => {
+      ensurePageSpace(tableLineHeight + 2);
+      const position = Array.isArray(placement.position)
+        ? placement.position.map((value) => Number(value).toFixed(1)).join(', ')
+        : '—';
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(index + 1), margin + 2, cursorY);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(placement.brand || 'Implant'), margin + 12, cursorY);
+      doc.text(`${placement.diameter || '—'} × ${placement.length || '—'} mm`, margin + 48, cursorY);
+      doc.text(position, margin + 78, cursorY);
+      cursorY += tableLineHeight + 2;
+    });
+    cursorY += 4;
+  }
+
+  if (densityHistogram) {
+    ensurePageSpace(20);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Bone Density Summary', margin, cursorY);
+    cursorY += 7;
+
+    const densityRows = [
+      ['D1 dense cortical', `${densityHistogram.d1_pct ?? 0}%`],
+      ['D2 good bone', `${densityHistogram.d2_pct ?? 0}%`],
+      ['D3 adequate bone', `${densityHistogram.d3_pct ?? 0}%`],
+      ['D4 poor density', `${densityHistogram.d4_pct ?? 0}%`],
+      ['Candidate voxels', String(densityHistogram.density_voxel_count ?? 0)],
+    ];
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    densityRows.forEach(([label, value]) => {
+      ensurePageSpace(5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${label}:`, margin, cursorY);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(value), margin + 50, cursorY);
+      cursorY += 5;
+    });
+    cursorY += 3;
+  }
+
+  if (aiReport) {
+    ensurePageSpace(14);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('AI Preliminary Assessment', margin, cursorY);
+    cursorY += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const aiLines = doc.splitTextToSize(String(aiReport), contentWidth);
+    aiLines.forEach((line) => {
+      ensurePageSpace(5);
+      doc.text(line, margin, cursorY);
+      cursorY += 5;
+    });
+    cursorY += 2;
+    doc.setTextColor(180, 83, 9);
+    doc.setFontSize(8.8);
+    doc.text('AI-generated preliminary assessment — requires radiologist review.', margin, cursorY);
+    cursorY += 5;
   }
 
   const totalPages = doc.getNumberOfPages();

@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 websockets
+wsproto
 pydicom
 opencv-python-headless
 numpy

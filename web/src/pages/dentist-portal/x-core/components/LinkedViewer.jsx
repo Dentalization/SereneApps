@@ -1,0 +1,54 @@
+import React, { useState } from 'react';
+
+import AppIcon from '../../../../components/AppIcon';
+import VolumeViewer3D from './VolumeViewer3D';
+import SliceViewerMini from './SliceViewerMini';
+
+const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
+    const [sharedImageData, setSharedImageData] = useState(null);
+    const [crosshairWorld, setCrosshairWorld] = useState(null);
+
+    const title = study?.patientName || study?.originalName || study?.folderName || 'Linked Study';
+
+    return (
+        <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onExit || onBack}
+                        className="rounded-lg bg-slate-800 p-2 text-white transition hover:bg-slate-700"
+                    >
+                        <AppIcon name="ArrowLeft" size={18} />
+                    </button>
+                    <div>
+                        <h2 className="text-sm font-semibold text-white">Linked 3D + MPR</h2>
+                        <p className="text-xs text-slate-400">{title}</p>
+                    </div>
+                </div>
+                <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">
+                    Click 3D to move MPR crosshair
+                </div>
+            </div>
+
+            <div className="grid min-h-0 flex-1 grid-cols-[2fr_1fr] gap-1 p-1">
+                <div className="min-h-0">
+                    <VolumeViewer3D
+                        study={study}
+                        onBack={undefined}
+                        onSwitchSeries={onSwitchSeries}
+                        onVolumeLoaded={setSharedImageData}
+                        onSurfaceClick={setCrosshairWorld}
+                        linkedMode
+                    />
+                </div>
+                <div className="grid min-h-0 grid-rows-3 gap-1">
+                    <SliceViewerMini axis="axial" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
+                    <SliceViewerMini axis="coronal" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
+                    <SliceViewerMini axis="sagittal" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default LinkedViewer;

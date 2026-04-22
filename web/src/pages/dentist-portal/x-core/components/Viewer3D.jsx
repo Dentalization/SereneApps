@@ -5,6 +5,7 @@ import VolumeViewer3D from './VolumeViewer3D';
 import ImageViewer2D from './ImageViewer2D';
 import SliceViewer from './SliceViewer';
 import SeriesSidebar from './SeriesSidebar';
+import LinkedViewer from './LinkedViewer';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
 const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
@@ -174,9 +175,21 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
                 study={activeStudy}
                 onBack={onBack}
                 onSwitchToSliceMode={() => setViewMode('slice')}
+                onSwitchToLinkedMode={() => setViewMode('linked')}
                 onSwitchSeries={handleSwitchSeries}
                 comparisonPaneId={comparisonPaneId}
                 comparisonSyncEnabled={comparisonSyncEnabled}
+            />
+        );
+    }
+
+    if (viewMode === 'linked' && activeStudy?.selectedSeriesType === '3D Volume') {
+        return renderWithStructuredReport(
+            <LinkedViewer
+                study={activeStudy}
+                onBack={onBack}
+                onExit={() => setViewMode('3d')}
+                onSwitchSeries={handleSwitchSeries}
             />
         );
     }
