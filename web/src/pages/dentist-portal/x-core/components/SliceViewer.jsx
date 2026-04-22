@@ -169,6 +169,7 @@ const drawMeasurementPillToCanvas = (ctx, label) => {
 const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
     const { user } = useAuth();
     const wrapperRef = useRef(null);
+    const moreToolsMenuRef = useRef(null);
     const viewerAreaRef = useRef(null);
     const vtkContainerRef = useRef(null);
     const vtkRef = useRef(null);
@@ -206,6 +207,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
     const [showMetadataPanel, setShowMetadataPanel] = useState(false);
+    const [showMoreTools, setShowMoreTools] = useState(false);
     const [volumeInfo, setVolumeInfo] = useState(null);
     const [imageData, setImageData] = useState(null);
     const [quadView, setQuadView] = useState(false);
@@ -1210,6 +1212,29 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             refreshSnapshots();
         }
     }, [historyOpen, refreshSnapshots]);
+
+    useEffect(() => {
+        if (!showMoreTools) return undefined;
+
+        const handlePointerDown = (event) => {
+            if (!moreToolsMenuRef.current?.contains(event.target)) {
+                setShowMoreTools(false);
+            }
+        };
+
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setShowMoreTools(false);
+            }
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showMoreTools]);
 
     const handleQuadPaneClick = useCallback((axisName, event) => {
         if (!imageData || !currentWorldPoint || event.button !== 0) return;
@@ -2302,7 +2327,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex min-w-0 items-center gap-1.5">
                     {!quadView && Object.entries(AXIS).map(([key, def]) => (
                         <button
                             key={key}
@@ -2319,7 +2344,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
                     {!quadView && <div className="mx-1 h-5 w-px bg-slate-800" />}
 
-                    <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
+                    <label className="flex min-w-[220px] items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
                         <span className="uppercase tracking-wide text-slate-500">LUT</span>
                         <select
                             value={WL_LUTS[wlPreset] ? wlPreset : 'custom'}
@@ -2336,18 +2361,6 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </label>
 
                     <div className="mx-1 h-5 w-px bg-slate-800" />
-
-                    <button
-                        onClick={() => setInverted((current) => !current)}
-                        className={`rounded-lg p-1.5 transition ${
-                            inverted
-                                ? 'bg-yellow-500/20 text-yellow-400'
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
-                        }`}
-                        title="Invert (Film Negative)"
-                    >
-                        <AppIcon name="SunMoon" size={16} />
-                    </button>
 
                     <button
                         onClick={() => {
@@ -2391,167 +2404,6 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         <span>Annotate</span>
                     </button>
 
-                    {measurementMode && (
-                        <>
-                            <button
-                                onClick={() => setMeasurementTool('distance')}
-                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                                    measurementTool === 'distance'
-                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                            >
-                                Distance
-                            </button>
-                            <button
-                                onClick={() => setMeasurementTool('angle')}
-                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                                    measurementTool === 'angle'
-                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                            >
-                                Angle
-                            </button>
-                            <button
-                                onClick={clearAllMeasurements}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Clear measurements"
-                            >
-                                <AppIcon name="Trash2" size={16} />
-                            </button>
-                        </>
-                    )}
-
-                    {annotateMode && (
-                        <>
-                            <button
-                                onClick={() => setAnnotationTool('select')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'select'
-                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Select/Edit Annotation"
-                            >
-                                <AppIcon name="MousePointer2" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('arrow')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'arrow'
-                                        ? 'border border-red-500/40 bg-red-500/20 text-red-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Arrow Annotation"
-                            >
-                                <AppIcon name="ArrowRight" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('circle')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'circle'
-                                        ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Circle Annotation"
-                            >
-                                <AppIcon name="Circle" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('freehand')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'freehand'
-                                        ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Freehand Region"
-                            >
-                                <AppIcon name="PenLine" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('text')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'text'
-                                        ? 'border border-slate-500/40 bg-slate-700 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Text Annotation"
-                            >
-                                <AppIcon name="Type" size={16} />
-                            </button>
-                            <button
-                                onClick={handleUndoAnnotation}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Undo last annotation"
-                            >
-                                <AppIcon name="Undo2" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotations([])}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Clear annotations"
-                            >
-                                <AppIcon name="Trash2" size={16} />
-                            </button>
-                            {annotationPersistence.saving && (
-                                <span className="px-1 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
-                            )}
-                            {annotationPersistence.error && (
-                                <span className="px-1 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
-                                    Local
-                                </span>
-                            )}
-                        </>
-                    )}
-
-                    <div className="mx-1 h-5 w-px bg-slate-800" />
-
-                    <button
-                        onClick={() => {
-                            setShowSeriesPanel(false);
-                            setShowMetadataPanel((current) => !current);
-                        }}
-                        className={`rounded-lg p-1.5 transition ${
-                            showMetadataPanel
-                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
-                        }`}
-                        title="DICOM Info"
-                    >
-                        <AppIcon name="Info" size={16} />
-                    </button>
-
-                    {allowSeriesSwitch && (
-                        <button
-                            onClick={() => {
-                                setShowMetadataPanel(false);
-                                setShowSeriesPanel((current) => !current);
-                            }}
-                            className={`rounded-lg p-1.5 transition ${
-                                showSeriesPanel
-                                    ? 'border border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
-                                    : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
-                            }`}
-                            title="Series Panel"
-                        >
-                            <AppIcon name="Layers" size={16} />
-                        </button>
-                    )}
-
-                    <button
-                        onClick={handleToggleQuadView}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                            quadView
-                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                        }`}
-                        title="Quad View"
-                    >
-                        <AppIcon name="LayoutGrid" size={16} />
-                        <span>Quad</span>
-                    </button>
-
                     <button
                         onClick={() => {
                             setReportWarningMessage('');
@@ -2564,62 +2416,6 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         <span>Export Report</span>
                     </button>
 
-                    <button
-                        onClick={handleExportAnnotationsJson}
-                        className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                        title="Export Annotation JSON"
-                    >
-                        <AppIcon name="Braces" size={16} />
-                        <span>Export JSON</span>
-                    </button>
-
-                    {(annotations.length > 0 || measurementCount > 0) && !study?.readOnly && (
-                        <>
-                            <button
-                                onClick={() => {
-                                    setSessionError('');
-                                    setSessionModalMode('save');
-                                }}
-                                className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                                title="Save Annotation Session"
-                            >
-                                <AppIcon name="Save" size={16} />
-                                <span>Save Session</span>
-                            </button>
-                            <button
-                                onClick={handleSubmitAnnotationsForReview}
-                                className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                                title="Submit Annotations for Review"
-                            >
-                                <AppIcon name="Send" size={16} />
-                                <span>Submit Review</span>
-                            </button>
-                        </>
-                    )}
-
-                    {!study?.readOnly && (
-                        <>
-                            <button
-                                onClick={() => {
-                                    setSessionError('');
-                                    setSessionModalMode('new');
-                                }}
-                                className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                                title="Start New Annotation Session"
-                            >
-                                <AppIcon name="PlusCircle" size={16} />
-                                <span>New Session</span>
-                            </button>
-                            <button
-                                onClick={() => setHistoryOpen(true)}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                                title="Annotation History"
-                            >
-                                <AppIcon name="History" size={16} />
-                            </button>
-                        </>
-                    )}
-
                     {study?.selectedSeriesType === '3D Volume' && (
                         <button
                             onClick={onSwitchTo3D}
@@ -2631,10 +2427,145 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         </button>
                     )}
 
-                    <button onClick={toggleFullscreen} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white" title="Fullscreen">
-                        <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={16} />
-                    </button>
                     <ShortcutHelpButton shortcuts={SLICE_SHORTCUTS} />
+
+                    <div className="relative" ref={moreToolsMenuRef}>
+                        <button
+                            onClick={() => setShowMoreTools((current) => !current)}
+                            className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                            title="More tools"
+                        >
+                            <span>More</span>
+                            <AppIcon name={showMoreTools ? 'ChevronUp' : 'ChevronDown'} size={14} />
+                        </button>
+
+                        {showMoreTools && (
+                            <div className="absolute right-0 top-full z-[140] mt-2 w-60 rounded-xl border border-slate-700 bg-slate-900/98 p-2 shadow-2xl">
+                                <button
+                                    onClick={() => {
+                                        setInverted((current) => !current);
+                                        setShowMoreTools(false);
+                                    }}
+                                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                        inverted
+                                            ? 'bg-amber-500/20 text-amber-300'
+                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-2"><AppIcon name="SunMoon" size={14} /> Invert</span>
+                                    <span>{inverted ? 'On' : 'Off'}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setShowSeriesPanel(false);
+                                        setShowMetadataPanel((current) => !current);
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name="Info" size={14} /> DICOM info
+                                </button>
+
+                                {allowSeriesSwitch && (
+                                    <button
+                                        onClick={() => {
+                                            setShowMetadataPanel(false);
+                                            setShowSeriesPanel((current) => !current);
+                                            setShowMoreTools(false);
+                                        }}
+                                        className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                    >
+                                        <AppIcon name="Layers" size={14} /> Series
+                                    </button>
+                                )}
+
+                                <button
+                                    onClick={() => {
+                                        handleToggleQuadView();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                        quadView
+                                            ? 'bg-cyan-500/20 text-cyan-300'
+                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-2"><AppIcon name="LayoutGrid" size={14} /> Quad view</span>
+                                    <span>{quadView ? 'On' : 'Off'}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        handleExportAnnotationsJson();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name="Braces" size={14} /> Export JSON
+                                </button>
+
+                                {(annotations.length > 0 || measurementCount > 0) && !study?.readOnly && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setSessionError('');
+                                                setSessionModalMode('save');
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="Save" size={14} /> Save session
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleSubmitAnnotationsForReview();
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="Send" size={14} /> Submit review
+                                        </button>
+                                    </>
+                                )}
+
+                                {!study?.readOnly && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setSessionError('');
+                                                setSessionModalMode('new');
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="PlusCircle" size={14} /> New session
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setHistoryOpen(true);
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="History" size={14} /> Session history
+                                        </button>
+                                    </>
+                                )}
+
+                                <button
+                                    onClick={() => {
+                                        toggleFullscreen();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={14} />
+                                    {isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -2651,6 +2582,90 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             )}
 
             <div ref={viewerAreaRef} className="relative flex-1 bg-black">
+                {(measurementMode || annotateMode) && (
+                    <div className="absolute left-1/2 top-4 z-[75] flex -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-700 bg-slate-950/90 p-1.5 shadow-2xl backdrop-blur">
+                        {measurementMode && (
+                            <>
+                                <button
+                                    onClick={() => setMeasurementTool('distance')}
+                                    className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition ${
+                                        measurementTool === 'distance'
+                                            ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-300'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    Distance
+                                </button>
+                                <button
+                                    onClick={() => setMeasurementTool('angle')}
+                                    className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition ${
+                                        measurementTool === 'angle'
+                                            ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-300'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    Angle
+                                </button>
+                                <button
+                                    onClick={clearAllMeasurements}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear measurements"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                            </>
+                        )}
+
+                        {annotateMode && (
+                            <>
+                                {[
+                                    ['select', 'MousePointer2', 'Select'],
+                                    ['arrow', 'ArrowRight', 'Arrow'],
+                                    ['circle', 'Circle', 'Circle'],
+                                    ['freehand', 'PenLine', 'Region'],
+                                    ['text', 'Type', 'Text'],
+                                ].map(([toolName, iconName, label]) => (
+                                    <button
+                                        key={toolName}
+                                        onClick={() => setAnnotationTool(toolName)}
+                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
+                                            annotationTool === toolName
+                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                        title={`${label} annotation`}
+                                    >
+                                        <AppIcon name={iconName} size={14} />
+                                        <span>{label}</span>
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={handleUndoAnnotation}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Undo last annotation"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    onClick={() => setAnnotations([])}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear annotations"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                                {annotationPersistence.saving && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
+                                )}
+                                {annotationPersistence.error && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
+                                        Local
+                                    </span>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+
                 {!quadView && (
                     <div
                         ref={vtkContainerRef}
