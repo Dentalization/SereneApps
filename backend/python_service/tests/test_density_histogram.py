@@ -30,9 +30,12 @@ class DensityHistogramTests(unittest.TestCase):
         self.assertEqual(histogram["d3_pct"], 40.0)
         self.assertEqual(histogram["d2_pct"], 20.0)
         self.assertEqual(histogram["d1_pct"], 20.0)
+        self.assertEqual(histogram["categories"]["D4"]["voxel_count"], 1)
+        self.assertEqual(histogram["categories"]["D1"]["volume_ml"], 0.0)
+        self.assertEqual(histogram["version"], main.DENSITY_HISTOGRAM_VERSION)
 
     def test_density_percentages_are_zero_when_no_bone_candidates_exist(self):
-        histogram = main._compute_density_histogram(np.array([0.0, 0.12, 0.29], dtype=np.float32))
+        histogram = main._compute_density_histogram(np.array([0.0, 0.02, 0.09, 0.29], dtype=np.float32))
 
         self.assertEqual(histogram["density_voxel_count"], 0)
         self.assertEqual(histogram["d1_pct"], 0.0)

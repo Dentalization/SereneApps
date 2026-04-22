@@ -38,6 +38,7 @@ import ReportExportModal from './ReportExportModal';
 import SeriesSidebar from './SeriesSidebar';
 import ShortcutHelpButton from './ShortcutHelpButton';
 import ImplantPlanner from './ImplantPlanner';
+import SinusVolumePanel from './SinusVolumePanel';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { exportPdfReport } from '../utils/reportUtils';
 
@@ -61,7 +62,7 @@ const VOLUME_SHORTCUTS = [
     { key: 'M', label: 'MIP preset' },
     { key: 'X', label: 'X-ray preset' },
     { key: 'N', label: 'Sinus preset' },
-    { key: 'D', label: 'Density preset' },
+    { key: 'D', label: 'Density map preset' },
     { key: 'R', label: 'Auto-rotate' },
     { key: 'I', label: 'Invert MIP/X-ray' },
     { key: 'Space', label: 'Reset camera' },
@@ -74,9 +75,9 @@ const WL_DEFAULTS = {
     bone: { center: 0.40,  width: 0.60  },
     soft: { center: 0.28,  width: 0.25  },
     mip:  { center: 0.46,  width: 0.42  },
-    xray: { center: 0.34,  width: 0.58  },
-    sinus: { center: 0.18, width: 0.35 },
-    density: { center: 0.48, width: 0.36 },
+    xray: { center: 0.45,  width: 0.90  },
+    sinus: { center: 0.35, width: 0.80 },
+    density: { center: 0.45, width: 0.90 },
 };
 
 // Camera view presets (dental CBCT anatomical conventions)
@@ -95,22 +96,22 @@ const BG_COLORS = {
     soft: [0.08, 0.08, 0.12],
     mip:  [0.0,  0.0,  0.0],
     xray: [0.0,  0.0,  0.0],
-    sinus: [0.02, 0.04, 0.08],
-    density: [0.04, 0.05, 0.08],
+    sinus: [0.04, 0.06, 0.14],
+    density: [0.06, 0.06, 0.10],
 };
 
 const VOLUME_MODE_LUTS = {
     bone: 'dental',
     soft: 'softTissue',
     mip: 'implant',
-    xray: 'dental',
+    xray: 'mtaFilling',
     sinus: 'sinus',
     density: 'densityMap',
 };
 
 const PROJECTION_PRESETS = {
     mip: { slabMm: 28, view: 'right', zoom: 1.35 },
-    xray: { slabMm: 55, view: 'front', zoom: 1.45 },
+    xray: { slabMm: 35, view: 'front', zoom: 1.35 },
 };
 
 const DENSITY_LEGEND = [
@@ -123,6 +124,7 @@ const MEASUREMENT_COLOR = [0.113, 0.62, 0.459];
 const NERVE_COLOR = [1.0, 0.82, 0.18];
 const PICK_SURFACE_CONTOUR = 0.42;
 const overlayResourceMap = new WeakMap();
+const fovSuppressedImageData = new WeakSet();
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
@@ -183,6 +185,26 @@ function applyOpacityUnitDistance(actor, imageData, multiplier = 1) {
     actor?.getProperty?.()?.setScalarOpacityUnitDistance?.(0, computeOpacityUnitDistance(imageData, multiplier));
 }
 
+function getAverageSpacing(imageData) {
+    const spacing = imageData?.getSpacing?.() || [1, 1, 1];
+    const values = spacing.map((value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    });
+    return (values[0] + values[1] + values[2]) / 3;
+}
+
+function getDensityCategoryData(histogram, key) {
+    if (!histogram) return null;
+    const category = histogram.categories?.[key];
+    const lower = key.toLowerCase();
+    return {
+        percentage: category?.percentage ?? histogram[`${lower}_pct`] ?? 0,
+        volumeMl: category?.volume_ml,
+        voxelCount: category?.voxel_count,
+    };
+}
+
 function applyBoneMaterial(actor) {
     const property = actor?.getProperty?.();
     if (!property) return;
@@ -202,6 +224,9 @@ function addGrayscaleLutPoints(ctfun, lutName, isInverted = false, windowOptions
     const lut = WL_LUTS[lutName] || WL_LUTS.dental;
     const useDisplayWindow = windowOptions?.wWidth > 0;
     const low = useDisplayWindow ? windowOptions.wCenter - (windowOptions.wWidth / 2) : 0;
+    const black = isInverted ? 1 : 0;
+
+    ctfun.addRGBPoint(-0.05, black, black, black);
 
     lut.forEach(([value, gray]) => {
         let level = useDisplayWindow ? clamp01((gray - low) / windowOptions.wWidth) : gray;
@@ -244,6 +269,115 @@ function addColorPresetPoints(ctfun, colorPoints, isInverted = false) {
     });
 }
 
+function suppressFovBackgroundInPlace(imageData) {
+    const scalars = imageData?.getPointData?.()?.getScalars?.();
+    const values = scalars?.getData?.();
+    const dims = imageData?.getDimensions?.();
+    const spacing = imageData?.getSpacing?.() || [1, 1, 1];
+
+    if (!values || !dims || dims.length < 3 || fovSuppressedImageData.has(imageData)) return;
+
+    const [nx, ny, nz] = dims;
+    if (!nx || !ny || !nz) return;
+
+    const boneThreshold = 0.34;
+    const marginMm = 32;
+    const zWindowMm = 10;
+    const sx = Math.max(Number(spacing[0]) || 1, 0.1);
+    const sy = Math.max(Number(spacing[1]) || 1, 0.1);
+    const sz = Math.max(Number(spacing[2]) || 1, 0.1);
+    const marginX = Math.max(10, Math.round(marginMm / sx));
+    const marginY = Math.max(10, Math.round(marginMm / sy));
+    const zWindow = Math.max(2, Math.round(zWindowMm / sz));
+    const sliceBounds = Array.from({ length: nz }, () => null);
+    let candidateVoxels = 0;
+
+    for (let z = 0; z < nz; z += 1) {
+        let minX = nx;
+        let minY = ny;
+        let maxX = -1;
+        let maxY = -1;
+        const zOffset = nx * ny * z;
+        for (let y = 0; y < ny; y += 1) {
+            const rowOffset = zOffset + nx * y;
+            for (let x = 0; x < nx; x += 1) {
+                if (values[rowOffset + x] >= boneThreshold) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    candidateVoxels += 1;
+                }
+            }
+        }
+        if (maxX >= 0) {
+            sliceBounds[z] = { minX, maxX, minY, maxY };
+        }
+    }
+
+    if (candidateVoxels < Math.max(400, nx * ny * nz * 0.0001)) {
+        fovSuppressedImageData.add(imageData);
+        return;
+    }
+
+    let suppressed = 0;
+    for (let z = 0; z < nz; z += 1) {
+        let minX = nx;
+        let minY = ny;
+        let maxX = -1;
+        let maxY = -1;
+        const z0 = Math.max(0, z - zWindow);
+        const z1 = Math.min(nz - 1, z + zWindow);
+        for (let zz = z0; zz <= z1; zz += 1) {
+            const bounds = sliceBounds[zz];
+            if (!bounds) continue;
+            minX = Math.min(minX, bounds.minX);
+            maxX = Math.max(maxX, bounds.maxX);
+            minY = Math.min(minY, bounds.minY);
+            maxY = Math.max(maxY, bounds.maxY);
+        }
+
+        const zOffset = nx * ny * z;
+        if (maxX < 0) {
+            for (let i = zOffset; i < zOffset + nx * ny; i += 1) {
+                if (values[i] > 0.02) suppressed += 1;
+                values[i] = 0;
+            }
+            continue;
+        }
+
+        minX = Math.max(0, minX - marginX);
+        maxX = Math.min(nx - 1, maxX + marginX);
+        minY = Math.max(0, minY - marginY);
+        maxY = Math.min(ny - 1, maxY + marginY);
+
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const rx = Math.max((maxX - minX) / 2, 1);
+        const ry = Math.max((maxY - minY) / 2, 1);
+        const rx2 = rx * rx;
+        const ry2 = ry * ry;
+
+        for (let y = 0; y < ny; y += 1) {
+            const dy = y - cy;
+            const dy2 = dy * dy;
+            const rowOffset = zOffset + nx * y;
+            for (let x = 0; x < nx; x += 1) {
+                const dx = x - cx;
+                if (((dx * dx) / rx2) + (dy2 / ry2) <= 1) continue;
+                const idx = rowOffset + x;
+                if (values[idx] > 0.02) suppressed += 1;
+                values[idx] = 0;
+            }
+        }
+    }
+
+    scalars.modified?.();
+    imageData.modified?.();
+    fovSuppressedImageData.add(imageData);
+    console.log('[VolumeViewer3D] Suppressed scan FOV background voxels:', suppressed.toLocaleString());
+}
+
 function applyMapperQuality(mapper, qualityKey, presetName) {
     if (!mapper) return;
     const q = QUALITY_SETTINGS[qualityKey] || QUALITY_SETTINGS.standard;
@@ -254,19 +388,6 @@ function applyMapperQuality(mapper, qualityKey, presetName) {
     }
     mapper.setSampleDistance(q.sampleDist);
     mapper.setMaximumSamplesPerRay(q.maxSamples);
-}
-
-function setMapperToXrayProjection(mapper) {
-    if (!mapper) return;
-    if (typeof mapper.setBlendModeToRadonTransform === 'function') {
-        mapper.setBlendModeToRadonTransform();
-        return;
-    }
-    if (typeof mapper.setBlendModeToAdditiveIntensity === 'function') {
-        mapper.setBlendModeToAdditiveIntensity();
-        return;
-    }
-    mapper.setBlendModeToAverageIntensity();
 }
 
 function arraysNearlyEqual(a, b, epsilon = 1e-3) {
@@ -722,6 +843,8 @@ const VolumeViewer3D = ({
     const [densityHistogram, setDensityHistogram] = useState(null);
     const [densityLoading, setDensityLoading] = useState(false);
     const [densityError, setDensityError] = useState(null);
+    const [showMischPanel, setShowMischPanel] = useState(true);
+    const [showSinusPanel, setShowSinusPanel] = useState(false);
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
     const [reportWarningMessage, setReportWarningMessage] = useState('');
@@ -912,28 +1035,22 @@ const VolumeViewer3D = ({
         const dMin = dataRange[0];
         const dMax = dataRange[1];
 
-        // Map HU → normalized value
-        const hu = (v) => (v + 1000) / 4000;
-
         // Safe bounds
         const lo = Math.min(dMin, -0.05);
         const hi = Math.max(dMax, 1.05);
 
         const lutName = VOLUME_MODE_LUTS[presetName] || 'dental';
         if (presetName === 'sinus') {
-            ctfun.addRGBPoint(0.0, 0.0, 0.4, 0.85);
-            ctfun.addRGBPoint(0.08, 0.0, 0.5, 0.90);
-            ctfun.addRGBPoint(0.14, 0.8, 0.8, 0.9);
-            ctfun.addRGBPoint(0.42, 0.95, 0.90, 0.82);
-            ctfun.addRGBPoint(1.0, 1.0, 0.98, 0.95);
+            const preset = VOLUME_PRESETS.sinus;
+            preset.color.forEach(([v, r, g, b]) => ctfun.addRGBPoint(v, r, g, b));
         } else if (presetName === 'density') {
-            ctfun.addRGBPoint(0.00, 0.0, 0.0, 0.0);
-            ctfun.addRGBPoint(0.32, 0.0, 0.0, 0.0);
-            ctfun.addRGBPoint(0.338, 0.92, 0.18, 0.18);
-            ctfun.addRGBPoint(0.395, 0.93, 0.72, 0.10);
-            ctfun.addRGBPoint(0.462, 0.15, 0.78, 0.35);
-            ctfun.addRGBPoint(0.563, 0.10, 0.35, 0.90);
-            ctfun.addRGBPoint(1.0, 0.08, 0.28, 0.78);
+            ctfun.addRGBPoint(-0.05, 0, 0, 0);
+            ctfun.addRGBPoint(0.30, 0, 0, 0);
+            ctfun.addRGBPoint(0.335, 0.95, 0.20, 0.10);
+            ctfun.addRGBPoint(0.462, 0.98, 0.80, 0.10);
+            ctfun.addRGBPoint(0.563, 0.15, 0.85, 0.35);
+            ctfun.addRGBPoint(0.700, 0.15, 0.45, 0.98);
+            ctfun.addRGBPoint(1.00, 0.10, 0.35, 0.90);
         } else if (presetName === 'mip' || presetName === 'xray') {
             addProjectionWindowPoints(ctfun, presetName, isInverted, {
                 wCenter: opts.wCenter !== undefined ? opts.wCenter : WL_DEFAULTS[presetName].center,
@@ -969,33 +1086,26 @@ const VolumeViewer3D = ({
 
         } else if (presetName === 'xray') {
             // ── X-RAY DRR (Digital Radiograph Reconstruction) ──
-            // Radon/additive projection needs enough opacity through dentin and bone;
-            // the scalar window controls brightness/contrast instead of hiding anatomy.
-            ofun.addPoint(lo,       0.0);
-            ofun.addPoint(hu(-700), 0.0);
-            ofun.addPoint(hu(-200), 0.03);
-            ofun.addPoint(hu(0),    0.10);
-            ofun.addPoint(hu(300),  0.26);
-            ofun.addPoint(hu(700),  0.52);
-            ofun.addPoint(hu(1200), 0.78);
-            ofun.addPoint(hi,       1.0);
+            // Air stays black; tissue accumulates faintly through the slab.
+            ofun.addPoint(lo,   0.0);
+            ofun.addPoint(0.10, 0.0);
+            ofun.addPoint(0.20, 0.002);
+            ofun.addPoint(0.30, 0.006);
+            ofun.addPoint(0.45, 0.018);
+            ofun.addPoint(0.65, 0.040);
+            ofun.addPoint(hi,   0.055);
         } else if (presetName === 'sinus') {
-            ofun.addPoint(0.0,  0.0);
-            ofun.addPoint(0.04, 0.55);
-            ofun.addPoint(0.10, 0.40);
-            ofun.addPoint(0.14, 0.02);
-            ofun.addPoint(0.40, 0.0);
-            ofun.addPoint(0.43, 0.35);
-            ofun.addPoint(0.55, 0.72);
-            ofun.addPoint(1.0,  0.88);
+            const preset = VOLUME_PRESETS.sinus;
+            preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
         } else if (presetName === 'density') {
-            ofun.addPoint(0.00, 0.0);
-            ofun.addPoint(0.32, 0.0);
-            ofun.addPoint(0.338, 0.28);
-            ofun.addPoint(0.395, 0.42);
-            ofun.addPoint(0.462, 0.56);
-            ofun.addPoint(0.563, 0.72);
-            ofun.addPoint(1.0, 0.82);
+            ofun.addPoint(-0.05, 0.0);
+            ofun.addPoint(0.30, 0.0);
+            ofun.addPoint(0.335, 0.0);
+            ofun.addPoint(0.350, 0.20);
+            ofun.addPoint(0.462, 0.46);
+            ofun.addPoint(0.563, 0.70);
+            ofun.addPoint(0.700, 0.86);
+            ofun.addPoint(1.00, 0.92);
         }
     }, []);
 
@@ -1097,6 +1207,8 @@ const VolumeViewer3D = ({
             setAiReportOpen(false);
             setDensityHistogram(null);
             setDensityError(null);
+            setShowMischPanel(true);
+            setShowSinusPanel(false);
             setReportModalOpen(false);
             setReportWarningMessage('');
             setToothOverlayLoaded(false);
@@ -1220,6 +1332,7 @@ const VolumeViewer3D = ({
 
                 if (cancelled) return;
 
+                suppressFovBackgroundInPlace(imageData);
                 const scalars = imageData.getPointData().getScalars();
                 const dataRange = scalars.getRange();
                 const dims = imageData.getDimensions();
@@ -1802,6 +1915,10 @@ const VolumeViewer3D = ({
         fullScreenRenderer.getRenderer().setBackground(bg[0], bg[1], bg[2]);
         presetRef.current = presetName;
         applyMapperQuality(mapper, qualityRef.current, presetName);
+        if (presetName === 'density') {
+            setShowMischPanel(true);
+        }
+        setShowSinusPanel(presetName === 'sinus');
 
         if (presetName === 'bone') {
             mapper.setBlendModeToComposite();
@@ -1823,9 +1940,9 @@ const VolumeViewer3D = ({
             actor.getProperty().setUseGradientOpacity(0, true);
             actor.getProperty().setGradientOpacityMinimumValue(0, 0);
             actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-            actor.getProperty().setGradientOpacityMaximumValue(0, 0.03);
-            actor.getProperty().setGradientOpacityMaximumOpacity(0, 1.0);
-            applyOpacityUnitDistance(actor, ctx.imageData, 1);
+            actor.getProperty().setGradientOpacityMaximumValue(0, 0.065);
+            actor.getProperty().setGradientOpacityMaximumOpacity(0, 0.72);
+            applyOpacityUnitDistance(actor, ctx.imageData, 1.8);
             setSlabEnabled(false);
             slabEnabledRef.current = false;
             ctx.slabClippingActive = false;
@@ -1850,51 +1967,53 @@ const VolumeViewer3D = ({
 
         } else if (presetName === 'xray') {
             const projection = PROJECTION_PRESETS.xray;
-            setMapperToXrayProjection(mapper);
+            mapper.setBlendModeToComposite();
             applyMapperQuality(mapper, qualityRef.current, 'xray');
             actor.getProperty().setShade(false);
             actor.getProperty().setAmbient(1.0);
             actor.getProperty().setDiffuse(0.0);
             actor.getProperty().setSpecular(0.0);
             actor.getProperty().setUseGradientOpacity(0, false);
-            applyOpacityUnitDistance(actor, ctx.imageData, 0.85);
+            actor.getProperty().setScalarOpacityUnitDistance(0, getAverageSpacing(ctx.imageData));
             setSlabEnabled(true);
             setSlabThickness(projection.slabMm);
             slabEnabledRef.current = true;
             slabThicknessRef.current = projection.slabMm;
-            positionCameraForView(ctx, projection.view, projection.zoom);
-            updateSlabClipping(projection.slabMm);
+            setTimeout(() => {
+                positionCameraForView(ctx, projection.view, projection.zoom);
+                setTimeout(() => updateSlabClipping(slabThicknessRef.current), 60);
+            }, 50);
         } else if (presetName === 'sinus') {
             mapper.setBlendModeToComposite();
             actor.getProperty().setShade(true);
-            actor.getProperty().setAmbient(0.4);
-            actor.getProperty().setDiffuse(0.7);
-            actor.getProperty().setSpecular(0.1);
-            actor.getProperty().setSpecularPower(8);
+            actor.getProperty().setAmbient(0.40);
+            actor.getProperty().setDiffuse(0.65);
+            actor.getProperty().setSpecular(0.15);
+            actor.getProperty().setSpecularPower(12);
             actor.getProperty().setUseGradientOpacity(0, true);
             actor.getProperty().setGradientOpacityMinimumValue(0, 0);
             actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-            actor.getProperty().setGradientOpacityMaximumValue(0, 0.04);
-            actor.getProperty().setGradientOpacityMaximumOpacity(0, 0.9);
-            applyOpacityUnitDistance(actor, ctx.imageData, 0.9);
+            actor.getProperty().setGradientOpacityMaximumValue(0, 0.065);
+            actor.getProperty().setGradientOpacityMaximumOpacity(0, 0.78);
+            actor.getProperty().setScalarOpacityUnitDistance(0, getAverageSpacing(ctx.imageData) * 3.2);
             setSlabEnabled(false);
             slabEnabledRef.current = false;
             ctx.slabClippingActive = false;
             syncMapperClipping(ctx, false);
-            positionCameraForView(ctx, 'front', 1.25);
+            setTimeout(() => positionCameraForView(ctx, 'front', 1.25), 50);
         } else if (presetName === 'density') {
             mapper.setBlendModeToComposite();
             actor.getProperty().setShade(true);
-            actor.getProperty().setAmbient(0.35);
-            actor.getProperty().setDiffuse(0.72);
-            actor.getProperty().setSpecular(0.12);
+            actor.getProperty().setAmbient(0.3);
+            actor.getProperty().setDiffuse(0.7);
+            actor.getProperty().setSpecular(0.2);
             actor.getProperty().setSpecularPower(10);
             actor.getProperty().setUseGradientOpacity(0, true);
             actor.getProperty().setGradientOpacityMinimumValue(0, 0);
             actor.getProperty().setGradientOpacityMinimumOpacity(0, 0.0);
-            actor.getProperty().setGradientOpacityMaximumValue(0, 0.05);
-            actor.getProperty().setGradientOpacityMaximumOpacity(0, 0.85);
-            applyOpacityUnitDistance(actor, ctx.imageData, 1);
+            actor.getProperty().setGradientOpacityMaximumValue(0, 0.07);
+            actor.getProperty().setGradientOpacityMaximumOpacity(0, 0.80);
+            actor.getProperty().setScalarOpacityUnitDistance(0, getAverageSpacing(ctx.imageData) * 2.8);
             setSlabEnabled(false);
             slabEnabledRef.current = false;
             ctx.slabClippingActive = false;
@@ -1914,10 +2033,10 @@ const VolumeViewer3D = ({
 
         if (!positionCameraForView(ctx, viewName, 1.3)) return;
 
-        if (slabEnabled) {
-            setTimeout(() => updateSlabClipping(slabThickness), 50);
+        if (slabEnabledRef.current) {
+            setTimeout(() => updateSlabClipping(slabThicknessRef.current), 80);
         }
-    }, [slabEnabled, slabThickness, updateSlabClipping]);
+    }, [updateSlabClipping]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Screenshot Export
@@ -2034,10 +2153,10 @@ const VolumeViewer3D = ({
         camera.zoom(1.3);
         renderWindow.render();
 
-        if (slabEnabled) {
-            setTimeout(() => updateSlabClipping(slabThickness), 50);
+        if (slabEnabledRef.current) {
+            setTimeout(() => updateSlabClipping(slabThicknessRef.current), 80);
         }
-    }, [slabEnabled, slabThickness, updateSlabClipping]);
+    }, [updateSlabClipping]);
 
     // Slab handlers
     const handleSlabChange = useCallback((e) => {
@@ -2521,7 +2640,7 @@ const VolumeViewer3D = ({
         loadNerveOverlay();
     }, [loadNerveOverlay, showNerveOverlay]);
 
-    const loadDensityHistogram = useCallback(async () => {
+    const loadDensityHistogram = useCallback(async (options = {}) => {
         if (!studyKey || densityLoading) return null;
         setDensityLoading(true);
         setDensityError(null);
@@ -2529,7 +2648,10 @@ const VolumeViewer3D = ({
         try {
             const response = await fetch(buildImagingUrl(
                 `/density-histogram/${studyKey}`,
-                buildStudyAssetParams(study, { series_uid: seriesUid || undefined })
+                buildStudyAssetParams(study, {
+                    series_uid: seriesUid || undefined,
+                    refresh: options.refresh ? 'true' : undefined,
+                })
             ));
             if (!response.ok) {
                 throw new Error(`Density histogram unavailable (${response.status})`);
@@ -3383,39 +3505,67 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             </div>
                         </div>
 
-                        {preset === 'density' && (
+                        <SinusVolumePanel
+                            imageData={vtkContextRef.current?.imageData || null}
+                            visible={preset === 'sinus' && showSinusPanel && !loading && !error}
+                        />
+
+                        {preset === 'density' && showMischPanel && (
                             <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                        <AppIcon name="Activity" size={14} className="text-blue-300" />
+                                        <AppIcon name="BarChart2" size={14} className="text-orange-400" />
                                         <span className="text-xs font-semibold uppercase tracking-wider text-white">Misch Density</span>
                                     </div>
                                     <button
-                                        onClick={loadDensityHistogram}
+                                        onClick={() => {
+                                            setDensityHistogram(null);
+                                            loadDensityHistogram({ refresh: true });
+                                        }}
                                         disabled={densityLoading}
                                         className="rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:cursor-wait disabled:opacity-50"
                                     >
                                         {densityLoading ? 'Loading' : 'Refresh'}
                                     </button>
                                 </div>
-                                <div className="space-y-1.5">
-                                    {DENSITY_LEGEND.map((item) => (
-                                        <div key={item.label} className="flex items-center gap-2 rounded-lg bg-slate-900/60 px-2 py-1.5">
-                                            <span className={`h-3 w-3 rounded-full ${item.className}`} />
-                                            <span className="w-6 text-xs font-bold text-white">{item.label}</span>
-                                            <span className="flex-1 text-[10px] text-slate-400">{item.range}</span>
-                                            {densityHistogram && (
-                                                <span className="font-mono text-[10px] text-white">
-                                                    {densityHistogram[`${item.label.toLowerCase()}_pct`] ?? 0}%
-                                                </span>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                                {densityHistogram && (
-                                    <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/70 px-2 py-1.5 text-[10px] text-slate-400">
-                                        Candidate voxels: <span className="font-mono text-slate-200">{densityHistogram.density_voxel_count}</span>
+
+                                {densityLoading ? (
+                                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                                        <AppIcon name="Loader2" size={12} className="animate-spin text-orange-400" />
+                                        Computing...
                                     </div>
+                                ) : densityHistogram ? (
+                                    <>
+                                        <div className="space-y-1.5">
+                                            {DENSITY_LEGEND.map((item) => {
+                                                const category = getDensityCategoryData(densityHistogram, item.label);
+                                                return (
+                                                    <div key={item.label} className="rounded-lg bg-slate-900/60 px-2 py-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`h-3 w-3 rounded-full ${item.className}`} />
+                                                            <span className="w-6 text-xs font-bold text-white">{item.label}</span>
+                                                            <span className="flex-1 text-[10px] text-slate-400">{item.range}</span>
+                                                            <span className="font-mono text-[10px] text-white">
+                                                                {category?.percentage ?? 0}%
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-1 flex items-center justify-between pl-5 text-[10px] text-slate-500">
+                                                            <span>{category?.voxelCount?.toLocaleString?.() || 0} vox</span>
+                                                            <span className="font-mono text-slate-300">{category?.volumeMl ?? 0} mL</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/70 px-2 py-1.5 text-[10px] text-slate-400">
+                                            Candidate voxels:{' '}
+                                            <span className="font-mono text-slate-200">
+                                                {(densityHistogram.candidate_voxels ?? densityHistogram.density_voxel_count ?? 0).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="text-xs text-slate-500">No density data available.</p>
                                 )}
                                 {densityError && (
                                     <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-200">

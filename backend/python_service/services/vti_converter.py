@@ -282,7 +282,7 @@ def _slice_normal_z_sign(orientation_cosines: list = None) -> float:
     return -1.0 if normal_z < 0 else 1.0
 
 
-def _crop_margin_voxels_for_spacing(spacing: tuple, physical_margin_mm: float = 10.0) -> int:
+def _crop_margin_voxels_for_spacing(spacing: tuple, physical_margin_mm: float = 12.0) -> int:
     try:
         pixel_spacing = float(spacing[0])
     except (TypeError, ValueError, IndexError):
@@ -291,7 +291,88 @@ def _crop_margin_voxels_for_spacing(spacing: tuple, physical_margin_mm: float = 
     if pixel_spacing <= 0:
         pixel_spacing = 1.0
 
-    return max(6, int(physical_margin_mm / pixel_spacing))
+    return max(8, int(physical_margin_mm / pixel_spacing))
+
+
+def suppress_fov_background(
+    volume: np.ndarray,
+    spacing: tuple,
+    bone_threshold: float = 0.34,
+    margin_mm: float = 32.0,
+    z_window_mm: float = 10.0,
+) -> np.ndarray:
+    """
+    Remove the scanner field-of-view cylinder from MONAI-normalized CBCT data.
+
+    Dental CBCT exports often contain non-air values across the whole cylindrical
+    acquisition FOV. Soft/sinus/density render modes then show the scan tube as
+    anatomy. This keeps a generous per-slice elliptical ROI around hard tissue
+    and zeroes low-value FOV background outside it.
+    """
+    if volume is None or volume.ndim != 3:
+        return volume
+
+    try:
+        sx, sy, sz = (float(spacing[0]), float(spacing[1]), float(spacing[2]))
+    except (TypeError, ValueError, IndexError):
+        sx, sy, sz = (1.0, 1.0, 1.0)
+
+    sx = sx if sx > 0 else 1.0
+    sy = sy if sy > 0 else 1.0
+    sz = sz if sz > 0 else 1.0
+
+    nx, ny, nz = volume.shape
+    bone_mask = np.isfinite(volume) & (volume >= bone_threshold)
+    candidate_voxels = int(np.count_nonzero(bone_mask))
+    min_candidates = max(400, int(volume.size * 0.0001))
+    if candidate_voxels < min_candidates:
+        print(f"[FOV] Suppression skipped: only {candidate_voxels} bone-candidate voxels")
+        return volume
+
+    margin_x = max(10, int(round(margin_mm / sx)))
+    margin_y = max(10, int(round(margin_mm / sy)))
+    z_window = max(2, int(round(z_window_mm / sz)))
+    slice_bounds: list[tuple[int, int, int, int] | None] = []
+
+    for z in range(nz):
+        xs, ys = np.where(bone_mask[:, :, z])
+        if xs.size == 0:
+            slice_bounds.append(None)
+            continue
+        slice_bounds.append((int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())))
+
+    cleaned = volume.copy()
+    x_grid = np.arange(nx, dtype=np.float32)[:, None]
+    y_grid = np.arange(ny, dtype=np.float32)[None, :]
+    suppressed = 0
+
+    for z in range(nz):
+        merged_bounds = [b for b in slice_bounds[max(0, z - z_window):min(nz, z + z_window + 1)] if b]
+        if not merged_bounds:
+            slice_values = cleaned[:, :, z]
+            suppressed += int(np.count_nonzero(slice_values > 0.02))
+            slice_values[:] = 0.0
+            continue
+
+        min_x = max(0, min(b[0] for b in merged_bounds) - margin_x)
+        max_x = min(nx - 1, max(b[1] for b in merged_bounds) + margin_x)
+        min_y = max(0, min(b[2] for b in merged_bounds) - margin_y)
+        max_y = min(ny - 1, max(b[3] for b in merged_bounds) + margin_y)
+
+        cx = (min_x + max_x) / 2.0
+        cy = (min_y + max_y) / 2.0
+        rx = max((max_x - min_x) / 2.0, 1.0)
+        ry = max((max_y - min_y) / 2.0, 1.0)
+        outside_roi = (((x_grid - cx) ** 2) / (rx ** 2)) + (((y_grid - cy) ** 2) / (ry ** 2)) > 1.0
+        slice_values = cleaned[:, :, z]
+        suppressed += int(np.count_nonzero((slice_values > 0.02) & outside_roi))
+        slice_values[outside_roi] = 0.0
+
+    print(
+        f"[FOV] Suppressed {suppressed:,} scan-background voxels "
+        f"(bone_candidates={candidate_voxels:,}, margin={margin_mm}mm)"
+    )
+    return cleaned.astype(np.float32, copy=False)
 
 
 def monai_preprocess(
@@ -309,7 +390,7 @@ def monai_preprocess(
       2. Orientation("RAS") — reorder axes to Right-Anterior-Superior
       3. Spacing(target) — resample to requested voxel quality, or preserve native spacing
       4. ScaleIntensityRange(-1000→3000 mapped to 0.0→1.0) — universal normalizer
-      5. CropForeground(threshold=0.07, adaptive physical margin) — preserves soft tissue
+      5. CropForeground(threshold=0.05, adaptive physical margin) — preserves sinus air/soft tissue
 
     Input:  numpy (Z, Y, X) in Hounsfield Units
     Output: numpy (X, Y, Z) in [0.0, 1.0] float32, with requested/native spacing
@@ -393,11 +474,12 @@ def monai_preprocess(
     try:
         pre_crop_tensor = meta_tensor.clone()
         pre_crop_shape = meta_tensor.shape
-        margin_voxels = _crop_margin_voxels_for_spacing(spacing)
-        crop_threshold = 0.07
+        crop_spacing = target_spacing if target_spacing is not None else spacing
+        margin_voxels = _crop_margin_voxels_for_spacing(crop_spacing)
+        crop_threshold = 0.05
         print(
             f"[MONAI] CropForeground: threshold={crop_threshold}, "
-            f"margin={margin_voxels} voxels (10.0mm physical)"
+            f"margin={margin_voxels} voxels (12.0mm physical)"
         )
         try:
             crop_transform = CropForeground(
@@ -1354,6 +1436,8 @@ def convert_study_to_vti(
                 new_spacing = spacing
                 new_origin = origin
                 print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
+
+            processed = suppress_fov_background(processed, new_spacing)
 
             # Step 3: Write VTI using VTK writer with ZLib compression
             info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)

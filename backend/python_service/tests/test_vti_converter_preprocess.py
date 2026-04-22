@@ -20,9 +20,9 @@ class VtiPreprocessGeometryTests(unittest.TestCase):
         self.assertEqual(_slice_normal_z_sign(None), 1.0)
         self.assertEqual(_slice_normal_z_sign([1, 0, 0, 0, 1, 0]), 1.0)
 
-    def test_crop_margin_uses_10mm_physical_margin_with_safe_minimum(self):
-        self.assertEqual(_crop_margin_voxels_for_spacing((0.4, 0.4, 1.0)), 25)
-        self.assertEqual(_crop_margin_voxels_for_spacing((2.0, 2.0, 1.0)), 6)
+    def test_crop_margin_uses_12mm_physical_margin_with_safe_minimum(self):
+        self.assertEqual(_crop_margin_voxels_for_spacing((0.4, 0.4, 1.0)), 30)
+        self.assertEqual(_crop_margin_voxels_for_spacing((2.0, 2.0, 1.0)), 8)
 
 
 if __name__ == '__main__':
