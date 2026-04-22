@@ -11,6 +11,12 @@ import {
     createStudyShare,
     getSharedStudy,
     validateStudyShareToken,
+    createAnnotationSnapshot,
+    deleteAnnotationSnapshot,
+    getAnnotationSnapshots,
+    getStudyAnnotations,
+    reviewStudyAnnotations,
+    saveStudyAnnotations,
 } from '../controllers/xCoreController.js';
 import { streamSlice } from '../controllers/xCoreStreamController.js';
 import { analyzeStudy } from '../controllers/xCoreAIController.js';
@@ -47,6 +53,12 @@ router.use(authMiddleware);
 router.post('/upload', upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);
 router.post('/studies/:id/share', createStudyShare);
+router.get('/studies/:id/annotations', getStudyAnnotations);
+router.post('/studies/:id/annotations', express.json({ limit: '2mb' }), saveStudyAnnotations);
+router.post('/studies/:id/annotations/review', express.json({ limit: '1mb' }), reviewStudyAnnotations);
+router.get('/studies/:id/annotation-snapshots', getAnnotationSnapshots);
+router.post('/studies/:id/annotation-snapshots', express.json({ limit: '4mb' }), createAnnotationSnapshot);
+router.delete('/studies/:id/annotation-snapshots/:snapshotId', deleteAnnotationSnapshot);
 router.get('/stream-slice/:studyId/:viewType/:index', streamSlice);
 router.post('/analyze', analyzeStudy);
 router.get('/storage', getStorageStats);

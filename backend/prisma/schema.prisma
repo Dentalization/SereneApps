@@ -44,6 +44,9 @@ model User {
   user_devices                                                   UserDevice[]
   createdTreatmentPlans                                          TreatmentPlan[]            @relation("DentistTreatmentPlans")
   patientTreatmentPlans                                          TreatmentPlan[]            @relation("PatientTreatmentPlans")
+  createdStudyAnnotations                                        StudyAnnotation[]          @relation("StudyAnnotationCreator")
+  reviewedStudyAnnotations                                       StudyAnnotation[]          @relation("StudyAnnotationReviewer")
+  createdAnnotationSnapshots                                     AnnotationSnapshot[]       @relation("AnnotationSnapshotCreator")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -793,6 +796,8 @@ model ImagingStudy {
   originalName String?         @map("original_name")
   series       ImagingSeries[]
   shares       StudyShare[]
+  annotations  StudyAnnotation[]
+  annotationSnapshots AnnotationSnapshot[]
   dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
   patient      User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -812,6 +817,55 @@ model StudyShare {
   @@index([studyId], map: "idx_study_shares_study")
   @@index([expiresAt], map: "idx_study_shares_expires_at")
   @@map("study_shares")
+}
+
+model StudyAnnotation {
+  id          String       @id @default(cuid())
+  studyId     BigInt       @map("study_id")
+  seriesUid   String       @map("series_uid")
+  viewerType  String       @map("viewer_type")
+  sliceAxis   String?      @map("slice_axis")
+  sliceIndex  Int?         @map("slice_index")
+  type        String
+  coordinates Json
+  label       String?
+  color       String?
+  metadata    Json?        @default("{}")
+  reviewStatus String       @default("draft") @map("review_status")
+  reviewedBy   BigInt?      @map("reviewed_by")
+  reviewedAt   DateTime?    @map("reviewed_at") @db.Timestamptz(6)
+  reviewerComment String?   @map("reviewer_comment")
+  confidenceScore Float     @default(0.7) @map("confidence_score")
+  createdBy   BigInt       @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  study       ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  creator     User         @relation("StudyAnnotationCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  reviewer    User?        @relation("StudyAnnotationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([studyId, seriesUid, viewerType], map: "idx_study_annotations_scope")
+  @@index([studyId, seriesUid, viewerType, sliceAxis, sliceIndex], map: "idx_study_annotations_slice")
+  @@index([createdBy], map: "idx_study_annotations_created_by")
+  @@index([reviewStatus], map: "idx_study_annotations_review_status")
+  @@index([reviewedBy], map: "idx_study_annotations_reviewed_by")
+  @@map("study_annotations")
+}
+
+model AnnotationSnapshot {
+  id          String       @id @default(cuid())
+  studyId     BigInt       @map("study_id")
+  seriesUid   String       @map("series_uid")
+  snapshotAt  DateTime     @default(now()) @map("snapshot_at") @db.Timestamptz(6)
+  createdBy   BigInt       @map("created_by")
+  note        String?
+  annotations Json
+  featureState Json         @default("{}") @map("feature_state")
+  study       ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  creator     User         @relation("AnnotationSnapshotCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([studyId, seriesUid, snapshotAt], map: "idx_annotation_snapshots_scope")
+  @@index([createdBy], map: "idx_annotation_snapshots_created_by")
+  @@map("annotation_snapshots")
 }
 
 model ImagingSeries {

@@ -1,10 +1,12 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
+import { validateAnnotationPayload } from '../utils/xCoreAnnotationValidation.js';
 
 const prisma = new PrismaClient();
 const execAsync = promisify(exec);
@@ -14,6 +16,8 @@ const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
 const PY_SERVICE_BASE_URL = process.env.XCORE_PY_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 const ALLOWED_SHARE_EXPIRY_HOURS = new Set([24, 48, 72, 168]);
+const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region']);
+const REVIEW_STATUSES = new Set(['draft', 'submitted', 'approved', 'rejected']);
 
 // Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -49,6 +53,129 @@ function cleanPatientName(name, fallback = 'Patient') {
     if (!name || typeof name !== 'string') return fallback;
     const normalized = name.replace(/\^/g, ' ').trim();
     return normalized || fallback;
+}
+
+function parseBigIntId(value) {
+    try {
+        return BigInt(value);
+    } catch {
+        return null;
+    }
+}
+
+function normalizeReviewStatus(value, fallback = 'draft') {
+    const normalized = String(value || fallback).toLowerCase();
+    return REVIEW_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function confidenceForStatus(status, explicitValue) {
+    const parsed = Number(explicitValue);
+    if (Number.isFinite(parsed)) {
+        return Math.max(0, Math.min(1, parsed));
+    }
+
+    if (status === 'approved') return 1.0;
+    if (status === 'rejected') return 0.0;
+    return 0.7;
+}
+
+function normalizeAnnotationInput(annotation, defaults = {}) {
+    const viewerType = String(annotation.viewer_type || annotation.viewerType || defaults.viewer_type || defaults.viewerType || '').toLowerCase();
+    const type = String(annotation.annotation_type || annotation.type || '').toLowerCase();
+    const seriesUid = String(annotation.series_uid || annotation.seriesUid || defaults.series_uid || defaults.seriesUid || '');
+    const sliceAxis = annotation.slice_axis ?? annotation.sliceAxis ?? defaults.slice_axis ?? defaults.sliceAxis ?? null;
+    const sliceIndexValue = annotation.slice_index ?? annotation.sliceIndex ?? defaults.slice_index ?? defaults.sliceIndex ?? null;
+    const sliceIndex = sliceIndexValue === null || sliceIndexValue === undefined || sliceIndexValue === ''
+        ? null
+        : Number(sliceIndexValue);
+    const reviewStatus = normalizeReviewStatus(annotation.review_status || annotation.reviewStatus);
+    const reviewedBy = annotation.reviewed_by || annotation.reviewedBy
+        ? parseBigIntId(annotation.reviewed_by || annotation.reviewedBy)
+        : null;
+    const reviewedAt = annotation.reviewed_at || annotation.reviewedAt
+        ? new Date(annotation.reviewed_at || annotation.reviewedAt)
+        : null;
+    const metadata = annotation.metadata && typeof annotation.metadata === 'object' ? { ...annotation.metadata } : {};
+    if (type !== 'text') {
+        metadata.finding_type = metadata.finding_type || 'other';
+        metadata.severity = metadata.severity || 'S1';
+    }
+
+    return {
+        id: annotation.id && String(annotation.id).length <= 120 ? String(annotation.id) : randomUUID(),
+        seriesUid,
+        viewerType,
+        sliceAxis: sliceAxis ? String(sliceAxis) : null,
+        sliceIndex: Number.isInteger(sliceIndex) ? sliceIndex : null,
+        type,
+        coordinates: annotation.coordinates && typeof annotation.coordinates === 'object' ? annotation.coordinates : {},
+        label: annotation.label ? String(annotation.label).slice(0, 1000) : null,
+        color: annotation.color ? String(annotation.color).slice(0, 32) : null,
+        metadata,
+        reviewStatus,
+        reviewedBy,
+        reviewedAt,
+        reviewerComment: annotation.reviewer_comment || annotation.reviewerComment
+            ? String(annotation.reviewer_comment || annotation.reviewerComment).slice(0, 1000)
+            : null,
+        confidenceScore: confidenceForStatus(reviewStatus, annotation.confidence_score ?? annotation.confidenceScore),
+        createdAt: annotation.created_at || annotation.createdAt ? new Date(annotation.created_at || annotation.createdAt) : new Date(),
+        updatedAt: annotation.updated_at || annotation.updatedAt ? new Date(annotation.updated_at || annotation.updatedAt) : null,
+    };
+}
+
+function serializeAnnotationRow(row) {
+    return serializeJson({
+        id: row.id,
+        series_uid: row.series_uid,
+        viewer_type: row.viewer_type,
+        slice_axis: row.slice_axis,
+        slice_index: row.slice_index,
+        annotation_type: row.type,
+        type: row.type,
+        coordinates: row.coordinates || {},
+        label: row.label,
+        color: row.color,
+        metadata: row.metadata || {},
+        review_status: row.review_status || 'draft',
+        reviewed_by: row.reviewed_by,
+        reviewed_at: row.reviewed_at,
+        reviewer_comment: row.reviewer_comment,
+        confidence_score: row.confidence_score ?? 0.7,
+        created_by: row.created_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    });
+}
+
+function serializeSnapshotRow(row) {
+    return serializeJson({
+        id: row.id,
+        study_id: row.study_id,
+        series_uid: row.series_uid,
+        snapshot_at: row.snapshot_at,
+        created_by: row.created_by,
+        note: row.note,
+        annotations: row.annotations || [],
+        feature_state: row.feature_state || {},
+    });
+}
+
+async function requireOwnedStudy(studyId, userId) {
+    const study = await prisma.imagingStudy.findUnique({
+        where: { id: studyId },
+        select: { id: true, dentistId: true },
+    });
+
+    if (!study) {
+        return { error: { status: 404, message: 'Study not found' } };
+    }
+
+    if (study.dentistId !== userId) {
+        return { error: { status: 403, message: 'You do not have permission to access this study' } };
+    }
+
+    return { study };
 }
 
 function sanitizeSeriesPayload(series) {
@@ -316,6 +443,546 @@ export const getStudies = async (req, res) => {
         res.json(serializeJson(studies));
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+};
+
+export const getStudyAnnotations = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        if (!studyId || !userId) {
+            return res.status(400).json({ error: 'Invalid study id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const filters = [Prisma.sql`study_id = ${studyId}`];
+        if (req.query.series_uid) {
+            filters.push(Prisma.sql`series_uid = ${String(req.query.series_uid)}`);
+        }
+        if (req.query.viewer_type) {
+            filters.push(Prisma.sql`viewer_type = ${String(req.query.viewer_type).toLowerCase()}`);
+        }
+        if (req.query.slice_axis) {
+            filters.push(Prisma.sql`slice_axis = ${String(req.query.slice_axis)}`);
+        }
+        if (req.query.tooth) {
+            filters.push(Prisma.sql`metadata->>'tooth_number' = ${String(req.query.tooth)}`);
+        }
+        if (req.query.review_status) {
+            filters.push(Prisma.sql`review_status = ${normalizeReviewStatus(req.query.review_status)}`);
+        }
+
+        const rows = await prisma.$queryRaw(Prisma.sql`
+            SELECT
+              id,
+              series_uid,
+              viewer_type,
+              slice_axis,
+              slice_index,
+              type,
+              coordinates,
+              label,
+              color,
+              metadata,
+              review_status,
+              reviewed_by,
+              reviewed_at,
+              reviewer_comment,
+              confidence_score,
+              created_by,
+              created_at,
+              updated_at
+            FROM study_annotations
+            WHERE ${Prisma.join(filters, ' AND ')}
+            ORDER BY created_at ASC
+        `);
+
+        res.json({ annotations: rows.map(serializeAnnotationRow) });
+    } catch (error) {
+        console.error('Get Study Annotations Error:', error);
+        res.status(500).json({ error: 'Failed to load annotations' });
+    }
+};
+
+export const saveStudyAnnotations = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        if (!studyId || !userId) {
+            return res.status(400).json({ error: 'Invalid study id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const annotationsPayload = Array.isArray(req.body) ? req.body : req.body?.annotations;
+        if (!Array.isArray(annotationsPayload)) {
+            return res.status(400).json({ error: 'Body must be an annotation array or { annotations: [] }' });
+        }
+
+        const defaults = Array.isArray(req.body) ? req.query : { ...req.query, ...req.body };
+        const scopeSeriesUid = String(defaults.series_uid || defaults.seriesUid || annotationsPayload[0]?.series_uid || annotationsPayload[0]?.seriesUid || '');
+        const scopeViewerType = String(defaults.viewer_type || defaults.viewerType || annotationsPayload[0]?.viewer_type || annotationsPayload[0]?.viewerType || '').toLowerCase();
+
+        if (!scopeSeriesUid || !scopeViewerType) {
+            return res.status(400).json({ error: 'series_uid and viewer_type are required for annotation save scope' });
+        }
+
+        if (!['2d', 'slice', '3d'].includes(scopeViewerType)) {
+            return res.status(400).json({ error: 'viewer_type must be one of 2d, slice, or 3d' });
+        }
+
+        const normalized = annotationsPayload
+            .map((annotation) => normalizeAnnotationInput(annotation, {
+                series_uid: scopeSeriesUid,
+                viewer_type: scopeViewerType,
+            }));
+        const validationErrors = normalized
+            .map((annotation) => ({
+                id: annotation.id,
+                errors: validateAnnotationPayload(annotation).errors,
+            }))
+            .filter((item) => item.errors.length > 0);
+
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                error: 'Invalid annotation payload',
+                details: validationErrors,
+            });
+        }
+
+        const scopeMismatches = normalized
+            .filter((annotation) => annotation.seriesUid !== scopeSeriesUid || annotation.viewerType !== scopeViewerType)
+            .map((annotation) => ({
+                id: annotation.id,
+                series_uid: annotation.seriesUid,
+                viewer_type: annotation.viewerType,
+            }));
+
+        if (scopeMismatches.length > 0) {
+            return res.status(400).json({
+                error: 'Annotation payload contains records outside the requested save scope',
+                details: scopeMismatches,
+            });
+        }
+
+        const scopedAnnotations = normalized.filter((annotation) => (
+            annotation.seriesUid === scopeSeriesUid
+            && annotation.viewerType === scopeViewerType
+            && ANNOTATION_TYPES.has(annotation.type)
+        ));
+        const deletedAnnotationIds = Array.isArray(req.body?.deleted_annotation_ids || req.body?.deletedAnnotationIds)
+            ? (req.body.deleted_annotation_ids || req.body.deletedAnnotationIds).map((id) => String(id)).filter(Boolean).slice(0, 1000)
+            : [];
+        const upsertIds = scopedAnnotations.map((annotation) => annotation.id);
+        const existingRows = upsertIds.length > 0
+            ? await prisma.$queryRaw(Prisma.sql`
+                SELECT id, study_id, series_uid, viewer_type, updated_at
+                FROM study_annotations
+                WHERE id IN (${Prisma.join(upsertIds)})
+            `)
+            : [];
+        const existingById = new Map(existingRows.map((row) => [row.id, row]));
+        const conflicts = [];
+
+        for (const annotation of scopedAnnotations) {
+            const existing = existingById.get(annotation.id);
+            if (!existing) continue;
+
+            if (existing.study_id !== studyId) {
+                conflicts.push({ id: annotation.id, reason: 'Annotation id already belongs to another study' });
+                continue;
+            }
+            if (existing.series_uid !== scopeSeriesUid || existing.viewer_type !== scopeViewerType) {
+                conflicts.push({ id: annotation.id, reason: 'Annotation scope mismatch' });
+                continue;
+            }
+            if (
+                annotation.updatedAt
+                && !Number.isNaN(annotation.updatedAt.getTime())
+                && existing.updated_at
+                && new Date(existing.updated_at).getTime() > annotation.updatedAt.getTime() + 5
+            ) {
+                conflicts.push({ id: annotation.id, reason: 'Annotation was modified by another save' });
+            }
+        }
+
+        if (conflicts.length > 0) {
+            return res.status(409).json({
+                error: 'Annotation save conflict',
+                conflicts,
+            });
+        }
+
+        const savedRows = await prisma.$transaction(async (tx) => {
+            if (deletedAnnotationIds.length > 0) {
+                await tx.$executeRaw(Prisma.sql`
+                    DELETE FROM study_annotations
+                    WHERE study_id = ${studyId}
+                      AND series_uid = ${scopeSeriesUid}
+                      AND viewer_type = ${scopeViewerType}
+                      AND id IN (${Prisma.join(deletedAnnotationIds)})
+                `);
+            }
+
+            const rows = [];
+            for (const annotation of scopedAnnotations) {
+                const createdAt = Number.isNaN(annotation.createdAt.getTime()) ? new Date() : annotation.createdAt;
+                const [savedRow] = await tx.$queryRaw`
+                    INSERT INTO study_annotations (
+                      id,
+                      study_id,
+                      series_uid,
+                      viewer_type,
+                      slice_axis,
+                      slice_index,
+                      type,
+                      coordinates,
+                      label,
+                      color,
+                      metadata,
+                      review_status,
+                      reviewed_by,
+                      reviewed_at,
+                      reviewer_comment,
+                      confidence_score,
+                      created_by,
+                      created_at
+                    ) VALUES (
+                      ${annotation.id},
+                      ${studyId},
+                      ${annotation.seriesUid},
+                      ${annotation.viewerType},
+                      ${annotation.sliceAxis},
+                      ${annotation.sliceIndex},
+                      ${annotation.type},
+                      ${JSON.stringify(annotation.coordinates)}::jsonb,
+                      ${annotation.label},
+                      ${annotation.color},
+                      ${JSON.stringify(annotation.metadata)}::jsonb,
+                      ${annotation.reviewStatus},
+                      ${annotation.reviewedBy},
+                      ${annotation.reviewedAt && !Number.isNaN(annotation.reviewedAt.getTime()) ? annotation.reviewedAt : null},
+                      ${annotation.reviewerComment},
+                      ${annotation.confidenceScore},
+                      ${userId},
+                      ${createdAt}
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                      slice_axis = EXCLUDED.slice_axis,
+                      slice_index = EXCLUDED.slice_index,
+                      type = EXCLUDED.type,
+                      coordinates = EXCLUDED.coordinates,
+                      label = EXCLUDED.label,
+                      color = EXCLUDED.color,
+                      metadata = EXCLUDED.metadata,
+                      updated_at = NOW()
+                    RETURNING
+                      id,
+                      series_uid,
+                      viewer_type,
+                      slice_axis,
+                      slice_index,
+                      type,
+                      coordinates,
+                      label,
+                      color,
+                      metadata,
+                      review_status,
+                      reviewed_by,
+                      reviewed_at,
+                      reviewer_comment,
+                      confidence_score,
+                      created_by,
+                      created_at,
+                      updated_at
+                `;
+                rows.push(savedRow);
+            }
+            return rows;
+        });
+
+        res.json({
+            saved: savedRows.length,
+            deleted: deletedAnnotationIds.length,
+            annotations: savedRows.map(serializeAnnotationRow),
+        });
+    } catch (error) {
+        console.error('Save Study Annotations Error:', error);
+        res.status(500).json({ error: 'Failed to save annotations' });
+    }
+};
+
+export const createAnnotationSnapshot = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        if (!studyId || !userId) {
+            return res.status(400).json({ error: 'Invalid study id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const seriesUid = String(req.body?.series_uid || req.body?.seriesUid || req.query.series_uid || '');
+        if (!seriesUid) {
+            return res.status(400).json({ error: 'series_uid is required' });
+        }
+
+        const annotationsPayload = Array.isArray(req.body?.annotations) ? req.body.annotations : [];
+        const normalized = annotationsPayload
+            .map((annotation) => normalizeAnnotationInput(annotation, { series_uid: seriesUid }))
+            .filter((annotation) => annotation.seriesUid === seriesUid && ANNOTATION_TYPES.has(annotation.type));
+        const validationErrors = normalized
+            .map((annotation) => ({
+                id: annotation.id,
+                errors: validateAnnotationPayload(annotation).errors,
+            }))
+            .filter((item) => item.errors.length > 0);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                error: 'Invalid annotation snapshot payload',
+                details: validationErrors,
+            });
+        }
+        const snapshotId = randomUUID();
+        const note = req.body?.note ? String(req.body.note).slice(0, 1000) : null;
+        const featureState = req.body?.feature_state && typeof req.body.feature_state === 'object'
+            ? req.body.feature_state
+            : {};
+
+        const rows = await prisma.$queryRaw`
+            INSERT INTO annotation_snapshots (
+              id,
+              study_id,
+              series_uid,
+              created_by,
+              note,
+              annotations,
+              feature_state
+            ) VALUES (
+              ${snapshotId},
+              ${studyId},
+              ${seriesUid},
+              ${userId},
+              ${note},
+              ${JSON.stringify(normalized.map((annotation) => ({
+                  id: annotation.id,
+                  series_uid: annotation.seriesUid,
+                  viewer_type: annotation.viewerType,
+                  slice_axis: annotation.sliceAxis,
+                  slice_index: annotation.sliceIndex,
+                  annotation_type: annotation.type,
+                  type: annotation.type,
+                  coordinates: annotation.coordinates,
+                  label: annotation.label,
+                  color: annotation.color,
+                  metadata: annotation.metadata,
+                  review_status: annotation.reviewStatus,
+                  confidence_score: annotation.confidenceScore,
+                  created_at: annotation.createdAt,
+              })))}::jsonb,
+              ${JSON.stringify(featureState)}::jsonb
+            )
+            RETURNING id, study_id, series_uid, snapshot_at, created_by, note, annotations, feature_state
+        `;
+
+        res.status(201).json({ snapshot: serializeSnapshotRow(rows[0]) });
+    } catch (error) {
+        console.error('Create Annotation Snapshot Error:', error);
+        res.status(500).json({ error: 'Failed to create annotation snapshot' });
+    }
+};
+
+export const getAnnotationSnapshots = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        if (!studyId || !userId) {
+            return res.status(400).json({ error: 'Invalid study id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const filters = [Prisma.sql`study_id = ${studyId}`];
+        if (req.query.series_uid) {
+            filters.push(Prisma.sql`series_uid = ${String(req.query.series_uid)}`);
+        }
+
+        const rows = await prisma.$queryRaw(Prisma.sql`
+            SELECT id, study_id, series_uid, snapshot_at, created_by, note, annotations, feature_state
+            FROM annotation_snapshots
+            WHERE ${Prisma.join(filters, ' AND ')}
+            ORDER BY snapshot_at DESC
+        `);
+
+        res.json({ snapshots: rows.map(serializeSnapshotRow) });
+    } catch (error) {
+        console.error('Get Annotation Snapshots Error:', error);
+        res.status(500).json({ error: 'Failed to load annotation snapshots' });
+    }
+};
+
+export const deleteAnnotationSnapshot = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        const snapshotId = String(req.params.snapshotId || '');
+        if (!studyId || !userId || !snapshotId) {
+            return res.status(400).json({ error: 'Invalid study or snapshot id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const rows = await prisma.$queryRaw`
+            DELETE FROM annotation_snapshots
+            WHERE id = ${snapshotId}
+              AND study_id = ${studyId}
+            RETURNING id
+        `;
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Annotation snapshot not found' });
+        }
+
+        res.json({ deleted: 1, id: snapshotId });
+    } catch (error) {
+        console.error('Delete Annotation Snapshot Error:', error);
+        res.status(500).json({ error: 'Failed to delete annotation snapshot' });
+    }
+};
+
+export const reviewStudyAnnotations = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.id);
+        const userId = parseBigIntId(req.user?.id);
+        if (!studyId || !userId) {
+            return res.status(400).json({ error: 'Invalid study id' });
+        }
+
+        const ownership = await requireOwnedStudy(studyId, userId);
+        if (ownership.error) {
+            return res.status(ownership.error.status).json({ error: ownership.error.message });
+        }
+
+        const reviewStatus = normalizeReviewStatus(req.body?.review_status || req.body?.reviewStatus, null);
+        if (!reviewStatus) {
+            return res.status(400).json({ error: 'review_status must be draft, submitted, approved, or rejected' });
+        }
+
+        const rawIds = req.body?.annotation_ids || req.body?.annotationIds || [];
+        const annotationIds = Array.isArray(rawIds)
+            ? rawIds.map((id) => String(id)).filter(Boolean).slice(0, 500)
+            : [];
+        const seriesUid = req.body?.series_uid || req.body?.seriesUid ? String(req.body.series_uid || req.body.seriesUid) : '';
+        const viewerType = req.body?.viewer_type || req.body?.viewerType ? String(req.body.viewer_type || req.body.viewerType).toLowerCase() : '';
+        const reviewerComment = req.body?.reviewer_comment || req.body?.reviewerComment
+            ? String(req.body.reviewer_comment || req.body.reviewerComment).slice(0, 1000)
+            : null;
+        const confidenceScore = confidenceForStatus(reviewStatus);
+        const reviewedBy = reviewStatus === 'approved' || reviewStatus === 'rejected' ? userId : null;
+        const reviewedAt = reviewStatus === 'approved' || reviewStatus === 'rejected' ? new Date() : null;
+
+        let whereClause;
+        if (annotationIds.length > 0) {
+            whereClause = Prisma.sql`study_id = ${studyId} AND id IN (${Prisma.join(annotationIds)})`;
+        } else if (seriesUid && viewerType) {
+            whereClause = Prisma.sql`study_id = ${studyId} AND series_uid = ${seriesUid} AND viewer_type = ${viewerType}`;
+        } else {
+            return res.status(400).json({ error: 'annotation_ids or series_uid + viewer_type are required' });
+        }
+
+        if (reviewStatus === 'submitted' || reviewStatus === 'approved') {
+            const candidates = await prisma.$queryRaw(Prisma.sql`
+                SELECT
+                  id,
+                  series_uid,
+                  viewer_type,
+                  slice_axis,
+                  slice_index,
+                  type,
+                  coordinates,
+                  label,
+                  color,
+                  metadata,
+                  ${reviewStatus}::text AS review_status,
+                  reviewed_by,
+                  reviewed_at,
+                  reviewer_comment,
+                  confidence_score,
+                  created_by,
+                  created_at,
+                  updated_at
+                FROM study_annotations
+                WHERE ${whereClause}
+            `);
+            const validationErrors = candidates
+                .map((row) => ({
+                    id: row.id,
+                    errors: validateAnnotationPayload({
+                        ...serializeAnnotationRow(row),
+                        seriesUid: row.series_uid,
+                        viewerType: row.viewer_type,
+                        reviewStatus,
+                    }).errors,
+                }))
+                .filter((item) => item.errors.length > 0);
+
+            if (validationErrors.length > 0) {
+                return res.status(400).json({
+                    error: 'Annotations are not ready for review',
+                    details: validationErrors,
+                });
+            }
+        }
+
+        const rows = await prisma.$queryRaw(Prisma.sql`
+            UPDATE study_annotations
+            SET review_status = ${reviewStatus},
+                reviewed_by = ${reviewedBy},
+                reviewed_at = ${reviewedAt},
+                reviewer_comment = ${reviewerComment},
+                confidence_score = ${confidenceScore}
+            WHERE ${whereClause}
+            RETURNING
+              id,
+              series_uid,
+              viewer_type,
+              slice_axis,
+              slice_index,
+              type,
+              coordinates,
+              label,
+              color,
+              metadata,
+              review_status,
+              reviewed_by,
+              reviewed_at,
+              reviewer_comment,
+              confidence_score,
+              created_by,
+              created_at,
+              updated_at
+        `);
+
+        res.json({ updated: rows.length, annotations: rows.map(serializeAnnotationRow) });
+    } catch (error) {
+        console.error('Review Study Annotations Error:', error);
+        res.status(500).json({ error: 'Failed to update annotation review status' });
     }
 };
 

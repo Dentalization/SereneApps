@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
@@ -21,11 +21,29 @@ import AppIcon from '../../../../components/AppIcon';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { VOLUME_PRESETS, WL_LUT_LABELS, WL_LUTS } from '../config/volumePresets';
 import useStudyMetadata from '../hooks/useStudyMetadata';
+import usePersistentAnnotations from '../hooks/usePersistentAnnotations';
 import { volumeCache } from '../utils/volumeCache';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
-import { drawAnnotations, exportPdfReport } from '../utils/reportUtils';
+import { drawAnnotations, exportAnnotationsJson, exportPdfReport } from '../utils/reportUtils';
+import {
+    deleteAnnotationSnapshot,
+    loadAnnotationSnapshots,
+    normalizeAnnotationForPersistence,
+    reviewStudyAnnotations,
+    saveAnnotationSnapshot,
+} from '../utils/annotationApi';
+import {
+    deleteLocalAnnotationSession,
+    loadLocalAnnotationSessions,
+    mergeAnnotationSessions,
+    saveLocalAnnotationSession,
+} from '../utils/annotationSessions.mjs';
+import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { computeSyncedSliceIndices, quantizeDisplayCoordinate } from '../utils/sliceSyncMath';
+import { buildProjectedImageBounds, isProjectionFrameCurrent } from '../utils/annotationProjection.mjs';
 import AnnotationCanvas from './AnnotationCanvas';
+import AnnotationHistoryPanel from './AnnotationHistoryPanel';
+import AnnotationSessionModal from './AnnotationSessionModal';
 import MetadataPanel from './MetadataPanel';
 import ReportExportModal from './ReportExportModal';
 import SeriesSidebar from './SeriesSidebar';
@@ -91,6 +109,7 @@ const WL_DRAG_SENSITIVITY = 0.005;
 const DEFAULT_WINDOW_LEVEL = { center: 0.38, width: 0.70 };
 const LUT_OPTION_KEYS = Object.keys(WL_LUTS);
 const COMPARISON_RATIO_EPSILON = 1e-4;
+const SLICE_TOLERANCE = 2;
 const SLICE_WL_SHORTCUT_PRESETS = {
     '1': { label: 'Dental W/L', lut: 'dental' },
     '2': { label: 'Bone W/L', center: 0.40, width: 0.60 },
@@ -150,6 +169,7 @@ const drawMeasurementPillToCanvas = (ctx, label) => {
 const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
     const { user } = useAuth();
     const wrapperRef = useRef(null);
+    const moreToolsMenuRef = useRef(null);
     const viewerAreaRef = useRef(null);
     const vtkContainerRef = useRef(null);
     const vtkRef = useRef(null);
@@ -159,6 +179,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const quadVolumeRef = useRef(null);
     const quadRefs = useRef({ axial: null, coronal: null, sagittal: null, volume: null });
     const measurementStoreRef = useRef({ axial: [], coronal: [], sagittal: [] });
+    const projectionRefreshFrameRef = useRef(null);
+    const projectionRefreshFrame2Ref = useRef(null);
+    const resizeObserverFrameRef = useRef(null);
     const comparisonSyncGuardRef = useRef(false);
     const comparisonSyncGuardFrameRef = useRef(null);
     const comparisonLastBroadcastRef = useRef({
@@ -184,6 +207,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
     const [showMetadataPanel, setShowMetadataPanel] = useState(false);
+    const [showMoreTools, setShowMoreTools] = useState(false);
     const [volumeInfo, setVolumeInfo] = useState(null);
     const [imageData, setImageData] = useState(null);
     const [quadView, setQuadView] = useState(false);
@@ -195,14 +219,73 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [annotateMode, setAnnotateMode] = useState(false);
     const [annotationTool, setAnnotationTool] = useState('arrow');
     const [annotations, setAnnotations] = useState([]);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [snapshots, setSnapshots] = useState([]);
+    const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+    const [snapshotOverlay, setSnapshotOverlay] = useState(null);
+    const [sessionModalMode, setSessionModalMode] = useState(null);
+    const [sessionSaving, setSessionSaving] = useState(false);
+    const [sessionError, setSessionError] = useState('');
+    const [reviewError, setReviewError] = useState('');
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
     const [reportWarningMessage, setReportWarningMessage] = useState('');
     const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
+    const [projectionRefreshTick, setProjectionRefreshTick] = useState(0);
+    const [projectionReady, setProjectionReady] = useState(false);
+    const reviewMode = useMemo(() => new URLSearchParams(window.location.search).get('mode') === 'review', []);
+
+    const scheduleProjectionRefresh = useCallback(() => {
+        if (projectionRefreshFrameRef.current != null) {
+            window.cancelAnimationFrame(projectionRefreshFrameRef.current);
+            projectionRefreshFrameRef.current = null;
+        }
+        if (projectionRefreshFrame2Ref.current != null) {
+            window.cancelAnimationFrame(projectionRefreshFrame2Ref.current);
+            projectionRefreshFrame2Ref.current = null;
+        }
+
+        setProjectionReady(false);
+        projectionRefreshFrameRef.current = window.requestAnimationFrame(() => {
+            projectionRefreshFrame2Ref.current = window.requestAnimationFrame(() => {
+                setProjectionRefreshTick((current) => current + 1);
+                setProjectionReady(true);
+                projectionRefreshFrameRef.current = null;
+                projectionRefreshFrame2Ref.current = null;
+            });
+        });
+    }, []);
+
+    useEffect(() => () => {
+        if (projectionRefreshFrameRef.current != null) {
+            window.cancelAnimationFrame(projectionRefreshFrameRef.current);
+        }
+        if (projectionRefreshFrame2Ref.current != null) {
+            window.cancelAnimationFrame(projectionRefreshFrame2Ref.current);
+        }
+        if (resizeObserverFrameRef.current != null) {
+            window.cancelAnimationFrame(resizeObserverFrameRef.current);
+        }
+    }, []);
 
     const studyKey = useMemo(() => study?.folderName || study?.id || '', [study]);
-    const seriesUid = useMemo(() => study?.selectedSeriesUid || '', [study]);
+    const seriesUid = useMemo(() => (
+        study?.selectedSeriesUid
+        || study?.series_uid
+        || study?.seriesUid
+        || study?.selectedSeries?.series_uid
+        || study?.series?.[0]?.series_uid
+        || study?.seriesList?.[0]?.series_uid
+        || ''
+    ), [study]);
     const cacheKey = useMemo(() => `${studyKey}__${seriesUid}`, [studyKey, seriesUid]);
+    const canUseBackendSessions = useMemo(() => /^\d+$/.test(String(study?.id || '')), [study?.id]);
+    const sessionScope = useMemo(() => ({
+        study,
+        studyKey,
+        seriesUid,
+        viewerType: 'slice',
+    }), [seriesUid, study, studyKey]);
     const showBack = typeof onBack === 'function';
     const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
     const { metadata, loading: metadataLoading, error: metadataError } = useStudyMetadata(study, {
@@ -218,6 +301,63 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         includeScreenshot: true,
         includeMetadataSummary: true,
     }), [dentistName, patientName]);
+    const annotationPersistenceScope = useMemo(() => ({
+        sourceWidth: viewerSize.width,
+        sourceHeight: viewerSize.height,
+    }), [viewerSize.height, viewerSize.width]);
+    const annotationPersistence = usePersistentAnnotations({
+        study,
+        seriesUid,
+        viewerType: 'slice',
+        annotations,
+        setAnnotations,
+        enabled: !loading && !error && !!imageData && !!seriesUid,
+        scope: annotationPersistenceScope,
+    });
+    const getVisibleAnnotationsFromList = useCallback((items, axisName, currentSliceIndex, baseOpacity = 1, tolerance = SLICE_TOLERANCE) => (items || [])
+        .filter((annotation) => {
+            const annotationAxis = annotation.slice_axis || annotation.sliceAxis || axisName;
+            const annotationSlice = annotation.slice_index ?? annotation.sliceIndex ?? currentSliceIndex;
+            return annotationAxis === axisName && Math.abs(Number(annotationSlice) - currentSliceIndex) <= tolerance;
+        })
+        .map((annotation) => {
+            const annotationSlice = annotation.slice_index ?? annotation.sliceIndex ?? currentSliceIndex;
+            const offset = Math.abs(Number(annotationSlice) - currentSliceIndex);
+            return {
+                ...annotation,
+                displayOpacity: (offset === 0 ? 1 : 0.4) * baseOpacity,
+            };
+        }), []);
+    const getCurrentSliceAnnotationsForAxis = useCallback(
+        (axisName, currentSliceIndex) => getVisibleAnnotationsFromList(annotations, axisName, currentSliceIndex, 1, 0),
+        [annotations, getVisibleAnnotationsFromList]
+    );
+    const getNeighborAnnotationsForAxis = useCallback(
+        (axisName, currentSliceIndex) => getVisibleAnnotationsFromList(annotations, axisName, currentSliceIndex)
+            .filter((annotation) => (annotation.displayOpacity ?? 1) < 1),
+        [annotations, getVisibleAnnotationsFromList]
+    );
+    const visibleAnnotations = useMemo(
+        () => getCurrentSliceAnnotationsForAxis(axis, sliceIndex),
+        [axis, getCurrentSliceAnnotationsForAxis, sliceIndex]
+    );
+    const neighborAnnotations = useMemo(
+        () => getNeighborAnnotationsForAxis(axis, sliceIndex),
+        [axis, getNeighborAnnotationsForAxis, sliceIndex]
+    );
+    const visibleSnapshotAnnotations = useMemo(
+        () => getVisibleAnnotationsFromList(snapshotOverlay?.annotations || [], axis, sliceIndex, 0.5),
+        [axis, getVisibleAnnotationsFromList, sliceIndex, snapshotOverlay]
+    );
+    const measurementCount = useMemo(() => (
+        AXIS_ORDER.reduce((total, axisName) => total + (measurementLabels[axisName] || []).length, 0)
+    ), [measurementLabels]);
+
+    useEffect(() => {
+        if (!annotationPersistence.loading && !loading && !error && imageData) {
+            scheduleProjectionRefresh();
+        }
+    }, [annotationPersistence.loading, annotations.length, error, imageData, loading, scheduleProjectionRefresh]);
 
     const buildColorFunctionFromLut = useCallback((lut, invert) => {
         const ctf = vtkColorTransferFunction.newInstance();
@@ -429,6 +569,26 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const view = ctx.apiSpecificRenderWindow;
         const viewportSize = view.getViewportSize(ctx.renderer);
         const dpr = view.getComputedDevicePixelRatio?.() || window.devicePixelRatio || 1;
+        const containerWidth = ctx.container?.clientWidth || 0;
+        const containerHeight = ctx.container?.clientHeight || 0;
+        const viewportWidthCss = viewportSize?.[0] ? viewportSize[0] / dpr : 0;
+        const viewportHeightCss = viewportSize?.[1] ? viewportSize[1] / dpr : 0;
+
+        if (
+            containerWidth <= 0
+            || containerHeight <= 0
+            || viewportWidthCss <= 0
+            || viewportHeightCss <= 0
+        ) {
+            return null;
+        }
+
+        const frameCurrent = isProjectionFrameCurrent({
+            containerWidth,
+            containerHeight,
+            viewportWidthCss,
+            viewportHeightCss,
+        });
         const displayPoint = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], ctx.renderer);
 
         if (!Number.isFinite(displayPoint?.[0]) || !Number.isFinite(displayPoint?.[1])) {
@@ -439,12 +599,120 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             x: quantizeDisplayCoordinate(displayPoint[0] / dpr),
             y: quantizeDisplayCoordinate((viewportSize[1] - displayPoint[1]) / dpr),
             z: displayPoint[2],
-            width: ctx.container.clientWidth,
-            height: ctx.container.clientHeight,
+            width: containerWidth,
+            height: containerHeight,
             dpr,
             viewportHeight: viewportSize[1],
+            frameCurrent,
         };
     }, []);
+
+    const getAxisSourceDimensions = useCallback((axisName) => {
+        if (!imageData) {
+            return {
+                width: Math.max(1, viewerSize.width || 1),
+                height: Math.max(1, viewerSize.height || 1),
+            };
+        }
+
+        const dims = imageData.getDimensions();
+        if (axisName === 'axial') {
+            return { width: Math.max(1, dims[0] || 1), height: Math.max(1, dims[1] || 1) };
+        }
+        if (axisName === 'coronal') {
+            return { width: Math.max(1, dims[0] || 1), height: Math.max(1, dims[2] || 1) };
+        }
+        return { width: Math.max(1, dims[1] || 1), height: Math.max(1, dims[2] || 1) };
+    }, [imageData, viewerSize.height, viewerSize.width]);
+
+    const getSliceWorldCorners = useCallback((axisName, currentSliceIndex) => {
+        if (!imageData) return null;
+
+        const dims = imageData.getDimensions();
+        const spacing = imageData.getSpacing();
+        const origin = imageData.getOrigin();
+
+        const maxI = Math.max((dims[0] || 1) - 1, 0);
+        const maxJ = Math.max((dims[1] || 1) - 1, 0);
+        const maxK = Math.max((dims[2] || 1) - 1, 0);
+
+        const coord = (index, axisIndex) => origin[axisIndex] + (index * spacing[axisIndex]);
+
+        if (axisName === 'axial') {
+            const k = clamp(currentSliceIndex, 0, maxK);
+            const z = coord(k, 2);
+            const x0 = coord(0, 0);
+            const x1 = coord(maxI, 0);
+            const y0 = coord(0, 1);
+            const y1 = coord(maxJ, 1);
+            return [
+                [x0, y0, z],
+                [x1, y0, z],
+                [x1, y1, z],
+                [x0, y1, z],
+            ];
+        }
+
+        if (axisName === 'coronal') {
+            const j = clamp(currentSliceIndex, 0, maxJ);
+            const y = coord(j, 1);
+            const x0 = coord(0, 0);
+            const x1 = coord(maxI, 0);
+            const z0 = coord(0, 2);
+            const z1 = coord(maxK, 2);
+            return [
+                [x0, y, z0],
+                [x1, y, z0],
+                [x1, y, z1],
+                [x0, y, z1],
+            ];
+        }
+
+        const i = clamp(currentSliceIndex, 0, maxI);
+        const x = coord(i, 0);
+        const y0 = coord(0, 1);
+        const y1 = coord(maxJ, 1);
+        const z0 = coord(0, 2);
+        const z1 = coord(maxK, 2);
+        return [
+            [x, y0, z0],
+            [x, y1, z0],
+            [x, y1, z1],
+            [x, y0, z1],
+        ];
+    }, [imageData]);
+
+    const getAnnotationProjectionForPane = useCallback((axisName, currentSliceIndex, paneSize) => {
+        const ctx = getPaneContext(axisName);
+        if (!ctx) return null;
+
+        const corners = getSliceWorldCorners(axisName, currentSliceIndex);
+        if (!corners || corners.length < 4) return null;
+
+        const projectedCorners = corners
+            .map((corner) => getPaneDisplayPosition(ctx, corner))
+            .filter(Boolean);
+
+        const fallbackWidth = Math.max(1, paneSize?.width || ctx.container?.clientWidth || viewerSize.width || 1);
+        const fallbackHeight = Math.max(1, paneSize?.height || ctx.container?.clientHeight || viewerSize.height || 1);
+        const imageBounds = buildProjectedImageBounds({
+            projectedCorners,
+            viewportWidth: fallbackWidth,
+            viewportHeight: fallbackHeight,
+        });
+        if (!imageBounds) return null;
+        const sourceSize = getAxisSourceDimensions(axisName);
+
+        return {
+            sourceWidth: sourceSize.width,
+            sourceHeight: sourceSize.height,
+            viewportSize: {
+                width: fallbackWidth,
+                height: fallbackHeight,
+            },
+            imageBounds,
+        };
+    }, [getAxisSourceDimensions, getPaneContext, getPaneDisplayPosition, getSliceWorldCorners, viewerSize.height, viewerSize.width]);
 
     const syncMeasurementLabelForAxis = useCallback((axisName) => {
         const ctx = getPaneContext(axisName);
@@ -585,6 +853,20 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         ctx.renderWindow.render();
     }, [configureWidgetColor, getPaneContext, measurementMode, measurementTool, syncMeasurementLabelForAxis]);
 
+    useEffect(() => {
+        if (!measurementMode || !imageData) return undefined;
+
+        const frameId = window.requestAnimationFrame(() => {
+            if (quadView) {
+                AXIS_ORDER.forEach((axisName) => ensureMeasurementWidget(axisName));
+            } else {
+                ensureMeasurementWidget(axis);
+            }
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [axis, ensureMeasurementWidget, imageData, measurementMode, measurementTool, quadView]);
+
     const currentWorldPoint = useMemo(() => {
         if (!imageData) return null;
         return imageData.indexToWorld([
@@ -626,7 +908,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                 [axisName]: clamped,
             };
         });
-    }, [dimensions]);
+        scheduleProjectionRefresh();
+    }, [dimensions, scheduleProjectionRefresh]);
 
     const syncSlicesFromWorldPoint = useCallback((sourceAxis, worldPoint) => {
         if (!imageData || !worldPoint) return;
@@ -638,6 +921,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             return;
         }
 
+        setProjectionReady(false);
         setSliceIndices((current) => {
             const nextIndices = computeSyncedSliceIndices({
                 sourceAxis,
@@ -656,7 +940,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
             return nextIndices;
         });
-    }, [imageData]);
+        scheduleProjectionRefresh();
+    }, [imageData, scheduleProjectionRefresh]);
 
     const handleUndoMeasurement = useCallback(() => {
         const axisPriority = [axis, ...AXIS_ORDER.filter((axisName) => axisName !== axis)];
@@ -679,6 +964,277 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const handleUndoAnnotation = useCallback(() => {
         setAnnotations((current) => current.slice(0, -1));
     }, []);
+
+    const handleAxisAnnotationsChange = useCallback((axisName, currentSliceIndex, nextVisibleAnnotations) => {
+        const currentVisible = getCurrentSliceAnnotationsForAxis(axisName, currentSliceIndex);
+        const visibleIds = new Set(currentVisible.map((annotation) => annotation.id));
+        const sourceSize = getAxisSourceDimensions(axisName);
+        const scopedNext = nextVisibleAnnotations.map((annotation) => ({
+            ...annotation,
+            displayOpacity: undefined,
+            slice_axis: annotation.slice_axis || axisName,
+            slice_index: annotation.slice_index ?? currentSliceIndex,
+            viewer_type: 'slice',
+            series_uid: annotation.series_uid || seriesUid,
+            metadata: {
+                ...(annotation.metadata || {}),
+                source_width: annotation.metadata?.source_width || sourceSize.width,
+                source_height: annotation.metadata?.source_height || sourceSize.height,
+            },
+        }));
+
+        setAnnotations((current) => [
+            ...current.filter((annotation) => !visibleIds.has(annotation.id)),
+            ...scopedNext,
+        ]);
+    }, [getAxisSourceDimensions, getCurrentSliceAnnotationsForAxis, seriesUid]);
+
+    const handleVisibleAnnotationsChange = useCallback((nextVisibleAnnotations) => {
+        handleAxisAnnotationsChange(axis, sliceIndex, nextVisibleAnnotations, viewerSize);
+    }, [axis, handleAxisAnnotationsChange, sliceIndex, viewerSize]);
+
+    const handleExportAnnotationsJson = useCallback(() => {
+        exportAnnotationsJson(annotations, metadata, {
+            patientName,
+            studyId: study?.id,
+            studyKey,
+            seriesUid,
+            viewerType: 'slice',
+        });
+    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey]);
+
+    const buildSessionAnnotations = useCallback(() => annotations.map((annotation) => normalizeAnnotationForPersistence(annotation, {
+        seriesUid,
+        viewerType: 'slice',
+        sourceWidth: viewerSize.width,
+        sourceHeight: viewerSize.height,
+    })), [annotations, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const buildSessionFeatureState = useCallback(() => ({
+        viewer_type: 'slice',
+        axis,
+        slice_index: sliceIndex,
+        slice_indices: sliceIndices,
+        measurement_labels: measurementLabels,
+        dimensions,
+        spacing,
+    }), [axis, dimensions, measurementLabels, sliceIndex, sliceIndices, spacing]);
+
+    const refreshSnapshots = useCallback(async () => {
+        if (!seriesUid) return;
+        setSnapshotsLoading(true);
+        const localItems = loadLocalAnnotationSessions(sessionScope);
+        let serverItems = [];
+
+        if (canUseBackendSessions) {
+            try {
+                serverItems = await loadAnnotationSnapshots(study.id, { seriesUid });
+            } catch (error) {
+                console.warn('[SliceViewer] Failed to load backend annotation snapshots:', error);
+            }
+        }
+
+        setSnapshots(mergeAnnotationSessions(serverItems, localItems));
+        setSnapshotsLoading(false);
+    }, [canUseBackendSessions, seriesUid, sessionScope, study?.id]);
+
+    const persistAnnotationSession = useCallback(async ({ note = '', source = 'manual' } = {}) => {
+        if (!seriesUid) return null;
+        const normalized = buildSessionAnnotations();
+        const featureState = buildSessionFeatureState();
+        const localSnapshot = saveLocalAnnotationSession(sessionScope, {
+            note,
+            annotations: normalized,
+            featureState,
+            source,
+        });
+
+        if (canUseBackendSessions) {
+            try {
+                const response = await saveAnnotationSnapshot(study.id, {
+                    seriesUid,
+                    note,
+                    annotations: normalized,
+                    featureState,
+                });
+                if (response?.snapshot?.id) {
+                    deleteLocalAnnotationSession(sessionScope, localSnapshot.id);
+                }
+            } catch (error) {
+                console.warn('[SliceViewer] Backend session snapshot failed; local snapshot kept:', error);
+            }
+        }
+
+        await refreshSnapshots();
+        return localSnapshot;
+    }, [buildSessionAnnotations, buildSessionFeatureState, canUseBackendSessions, refreshSnapshots, seriesUid, sessionScope, study?.id]);
+
+    const handleSaveAnnotationSession = useCallback(async ({ note = '' } = {}) => {
+        try {
+            setSessionSaving(true);
+            setSessionError('');
+            await persistAnnotationSession({ note, source: 'save' });
+            setSessionModalMode(null);
+            setHistoryOpen(true);
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to save annotation session:', error);
+            setSessionError(error.message || 'Failed to save annotation session');
+        } finally {
+            setSessionSaving(false);
+        }
+    }, [persistAnnotationSession]);
+
+    const handleStartNewSession = useCallback(async ({ note = '', saveBeforeClear = true } = {}) => {
+        try {
+            setSessionSaving(true);
+            setSessionError('');
+            const hasWork = annotations.length > 0 || measurementCount > 0;
+            if (saveBeforeClear && hasWork) {
+                await persistAnnotationSession({ note, source: 'new-session' });
+            }
+            setAnnotations([]);
+            clearAllMeasurements();
+            setSnapshotOverlay(null);
+            setAnnotateMode(false);
+            setMeasurementMode(false);
+            setSessionModalMode(null);
+            setHistoryOpen(true);
+            await refreshSnapshots();
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to start new annotation session:', error);
+            setSessionError(error.message || 'Failed to start new session');
+        } finally {
+            setSessionSaving(false);
+        }
+    }, [annotations.length, clearAllMeasurements, measurementCount, persistAnnotationSession, refreshSnapshots]);
+
+    const handleRestoreAnnotationSession = useCallback((snapshot) => {
+        const nextAnnotations = (snapshot?.annotations || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
+            seriesUid,
+            viewerType: 'slice',
+            sourceWidth: viewerSize.width,
+            sourceHeight: viewerSize.height,
+        }));
+        const featureState = snapshot?.feature_state || snapshot?.featureState || {};
+        setAnnotations(nextAnnotations);
+        setSnapshotOverlay(null);
+        if (featureState.axis && AXIS[featureState.axis]) {
+            setAxis(featureState.axis);
+        }
+        if (Number.isInteger(featureState.slice_index)) {
+            const nextAxis = featureState.axis && AXIS[featureState.axis] ? featureState.axis : axis;
+            setSliceIndex(featureState.slice_index);
+            setSliceIndices((current) => ({
+                ...current,
+                [nextAxis]: featureState.slice_index,
+            }));
+        }
+        if (featureState.slice_indices && typeof featureState.slice_indices === 'object') {
+            setSliceIndices((current) => ({
+                ...current,
+                ...featureState.slice_indices,
+            }));
+        }
+        setHistoryOpen(false);
+        scheduleProjectionRefresh();
+    }, [axis, scheduleProjectionRefresh, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const handleDeleteAnnotationSession = useCallback(async (snapshot) => {
+        if (!snapshot?.id) return;
+        try {
+            if (snapshot.local) {
+                deleteLocalAnnotationSession(sessionScope, snapshot.id);
+            } else if (canUseBackendSessions) {
+                await deleteAnnotationSnapshot(study.id, snapshot.id);
+            }
+            if (snapshotOverlay?.id === snapshot.id) {
+                setSnapshotOverlay(null);
+            }
+            await refreshSnapshots();
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to delete annotation session:', error);
+        }
+    }, [canUseBackendSessions, refreshSnapshots, sessionScope, snapshotOverlay?.id, study?.id]);
+
+    const handleReviewAnnotation = useCallback(async (annotationId, reviewStatus, reviewerComment = '') => {
+        if (!study?.id || !annotationId) return;
+        const reviewedAt = new Date().toISOString();
+        const localPatch = {
+            review_status: reviewStatus,
+            reviewed_at: reviewStatus === 'approved' || reviewStatus === 'rejected' ? reviewedAt : null,
+            reviewer_comment: reviewerComment || null,
+            confidence_score: reviewStatus === 'approved' ? 1 : reviewStatus === 'rejected' ? 0 : 0.7,
+        };
+
+        setAnnotations((current) => current.map((annotation) => (
+            annotation.id === annotationId ? { ...annotation, ...localPatch } : annotation
+        )));
+
+        try {
+            await reviewStudyAnnotations(study.id, {
+                annotationIds: [annotationId],
+                reviewStatus,
+                reviewerComment,
+            });
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to update annotation review:', error);
+        }
+    }, [study?.id]);
+
+    const handleSubmitAnnotationsForReview = useCallback(async () => {
+        if (!study?.id || !annotations.length) return;
+        const reviewIssues = getAnnotationReviewIssues(annotations);
+        if (reviewIssues.length > 0) {
+            setReviewError(`Cannot submit yet. Fix ${reviewIssues.length} annotation(s): ${reviewIssues[0].errors.join(', ')}`);
+            return;
+        }
+        setReviewError('');
+        const ids = annotations.map((annotation) => annotation.id).filter(Boolean);
+        setAnnotations((current) => current.map((annotation) => ({
+            ...annotation,
+            review_status: 'submitted',
+            confidence_score: annotation.confidence_score ?? 0.7,
+        })));
+        try {
+            await reviewStudyAnnotations(study.id, {
+                annotationIds: ids,
+                seriesUid,
+                viewerType: 'slice',
+                reviewStatus: 'submitted',
+            });
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to submit annotations:', error);
+        }
+    }, [annotations, seriesUid, study?.id]);
+
+    useEffect(() => {
+        if (historyOpen) {
+            refreshSnapshots();
+        }
+    }, [historyOpen, refreshSnapshots]);
+
+    useEffect(() => {
+        if (!showMoreTools) return undefined;
+
+        const handlePointerDown = (event) => {
+            if (!moreToolsMenuRef.current?.contains(event.target)) {
+                setShowMoreTools(false);
+            }
+        };
+
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setShowMoreTools(false);
+            }
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showMoreTools]);
 
     const handleQuadPaneClick = useCallback((axisName, event) => {
         if (!imageData || !currentWorldPoint || event.button !== 0) return;
@@ -707,6 +1263,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
     const switchAxis = useCallback((nextAxis) => {
         if (quadView || nextAxis === axis) return;
+        setProjectionReady(false);
         removeMeasurementsForAxis(axis);
         setAxis(nextAxis);
     }, [axis, quadView, removeMeasurementsForAxis]);
@@ -828,6 +1385,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
     const handleToggleQuadView = useCallback(() => {
         clearAllMeasurements();
+        setProjectionReady(false);
         if (quadView) {
             setAxis('axial');
         }
@@ -978,12 +1536,12 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             (measurementLabels[axis] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
         }
 
-        if (annotations.length > 0) {
-            drawAnnotations(ctx, annotations, width, height);
+        if (visibleAnnotations.length > 0) {
+            drawAnnotations(ctx, visibleAnnotations, width, height);
         }
 
         return canvas.toDataURL('image/png');
-    }, [annotations, axis, error, getPaneContext, loading, measurementLabels, quadCrosshairPositions, quadView]);
+    }, [axis, error, getPaneContext, loading, measurementLabels, quadCrosshairPositions, quadView, visibleAnnotations]);
 
     const handleExportReport = useCallback(async (formValues) => {
         try {
@@ -1001,6 +1559,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                 metadata,
                 screenshotDataUrl,
                 includeMetadataSummary: formValues.includeMetadataSummary,
+                annotations,
             });
 
             if (formValues.includeScreenshot && !screenshotDataUrl) {
@@ -1013,13 +1572,20 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         } finally {
             setExportingReport(false);
         }
-    }, [captureCurrentViewDataUrl, clinicName, metadata]);
+    }, [annotations, captureCurrentViewDataUrl, clinicName, metadata]);
 
     useEffect(() => {
-        const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+        const onFullscreenChange = () => {
+            setIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+            scheduleProjectionRefresh();
+        };
         document.addEventListener('fullscreenchange', onFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-    }, []);
+        document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', onFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+        };
+    }, [scheduleProjectionRefresh]);
 
     useEffect(() => {
         if (!windowLevelDrag) return undefined;
@@ -1134,6 +1700,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         setWindowLevelDrag(null);
         setReportModalOpen(false);
         setReportWarningMessage('');
+        setHistoryOpen(false);
+        setSnapshots([]);
+        setSnapshotOverlay(null);
         setShowSeriesPanel(false);
         setShowMetadataPanel(false);
     }, [cacheKey, resetMeasurementState]);
@@ -1383,10 +1952,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         updateSlicePaneContext(vtkRef.current, axis, sliceIndices[axis] ?? 0, SINGLE_CAMERA_ZOOM);
         const frameId = window.requestAnimationFrame(() => {
             syncMeasurementLabelForAxis(axis);
+            scheduleProjectionRefresh();
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [axis, imageData, quadView, sliceIndices, syncMeasurementLabelForAxis, updateSlicePaneContext]);
+    }, [axis, imageData, quadView, scheduleProjectionRefresh, sliceIndices, syncMeasurementLabelForAxis, updateSlicePaneContext]);
 
     useEffect(() => {
         if (!quadView || !imageData) return;
@@ -1398,42 +1968,74 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const frameId = window.requestAnimationFrame(() => {
             syncAllMeasurementLabels();
             syncQuadCrosshairs();
+            scheduleProjectionRefresh();
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [imageData, quadView, sliceIndices, syncAllMeasurementLabels, syncQuadCrosshairs, updateSlicePaneContext]);
+    }, [imageData, quadView, scheduleProjectionRefresh, sliceIndices, syncAllMeasurementLabels, syncQuadCrosshairs, updateSlicePaneContext]);
 
-    useEffect(() => {
+    const syncRenderableLayout = useCallback(() => {
+        const viewerArea = viewerAreaRef.current;
+        if (viewerArea) {
+            const nextSize = {
+                width: Math.round(viewerArea.clientWidth),
+                height: Math.round(viewerArea.clientHeight),
+            };
+
+            setViewerSize((current) => (
+                current.width === nextSize.width && current.height === nextSize.height
+                    ? current
+                    : nextSize
+            ));
+        }
+
+        if (quadView) {
+            AXIS_ORDER.forEach((axisName) => resizePaneContext(quadRefs.current[axisName]));
+            resizePaneContext(quadRefs.current.volume);
+            syncAllMeasurementLabels();
+            syncQuadCrosshairs();
+            scheduleProjectionRefresh();
+            return;
+        }
+
+        resizePaneContext(vtkRef.current);
+        if (vtkRef.current) {
+            updateSlicePaneContext(vtkRef.current, axis, sliceIndices[axis] ?? 0, SINGLE_CAMERA_ZOOM);
+            syncMeasurementLabelForAxis(axis);
+            scheduleProjectionRefresh();
+        }
+    }, [axis, quadView, resizePaneContext, scheduleProjectionRefresh, sliceIndices, syncAllMeasurementLabels, syncMeasurementLabelForAxis, syncQuadCrosshairs, updateSlicePaneContext]);
+
+    useLayoutEffect(() => {
         const onResize = () => {
-            const viewerArea = viewerAreaRef.current;
-            if (viewerArea) {
-                setViewerSize({
-                    width: viewerArea.clientWidth,
-                    height: viewerArea.clientHeight,
-                });
+            if (resizeObserverFrameRef.current != null) {
+                window.cancelAnimationFrame(resizeObserverFrameRef.current);
             }
-
-            if (quadView) {
-                AXIS_ORDER.forEach((axisName) => resizePaneContext(quadRefs.current[axisName]));
-                resizePaneContext(quadRefs.current.volume);
-                window.requestAnimationFrame(() => {
-                    syncAllMeasurementLabels();
-                    syncQuadCrosshairs();
-                });
-                return;
-            }
-
-            resizePaneContext(vtkRef.current);
-            if (vtkRef.current) {
-                updateSlicePaneContext(vtkRef.current, axis, sliceIndices[axis] ?? 0, SINGLE_CAMERA_ZOOM);
-                window.requestAnimationFrame(() => syncMeasurementLabelForAxis(axis));
-            }
+            resizeObserverFrameRef.current = window.requestAnimationFrame(() => {
+                resizeObserverFrameRef.current = null;
+                syncRenderableLayout();
+            });
         };
+
+        const viewerArea = viewerAreaRef.current;
+        let observer = null;
+
+        if (viewerArea && typeof ResizeObserver !== 'undefined') {
+            observer = new ResizeObserver(onResize);
+            observer.observe(viewerArea);
+        }
 
         onResize();
         window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
-    }, [axis, quadView, resizePaneContext, sliceIndices, syncAllMeasurementLabels, syncMeasurementLabelForAxis, syncQuadCrosshairs, updateSlicePaneContext]);
+        return () => {
+            if (resizeObserverFrameRef.current != null) {
+                window.cancelAnimationFrame(resizeObserverFrameRef.current);
+                resizeObserverFrameRef.current = null;
+            }
+            observer?.disconnect?.();
+            window.removeEventListener('resize', onResize);
+        };
+    }, [syncRenderableLayout]);
 
     useEffect(() => {
         const element = vtkContainerRef.current;
@@ -1615,17 +2217,103 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         );
     }, [dimensions, sliceIndices]);
 
-    const renderQuadPane = useCallback((axisName, ref) => (
-        <div className={`relative overflow-hidden border ${AXIS[axisName].paneBorderClass} bg-black`} style={{ cursor: windowLevelDrag || annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}>
-            <div ref={ref} className="absolute inset-0" />
-            {renderQuadCrosshair(axisName)}
-            {renderPaneLabel(axisName)}
-            {renderMeasurementPills(axisName)}
-        </div>
-    ), [annotateMode, measurementMode, renderMeasurementPills, renderPaneLabel, renderQuadCrosshair, windowLevelDrag]);
+    const renderQuadPane = useCallback((axisName, ref) => {
+        const paneElement = ref?.current;
+        const paneSize = {
+            width: Math.max(1, paneElement?.clientWidth || Math.floor((viewerSize.width - 3) / 2)),
+            height: Math.max(1, paneElement?.clientHeight || Math.floor((viewerSize.height - 3) / 2)),
+        };
+        const paneSlice = sliceIndices[axisName] ?? 0;
+        const annotationProjection = projectionReady ? getAnnotationProjectionForPane(axisName, paneSlice, paneSize) : null;
+        const hasAnnotationProjection = projectionReady && !!annotationProjection?.imageBounds;
+
+        return (
+            <div className={`relative overflow-hidden border ${AXIS[axisName].paneBorderClass} bg-black`} style={{ cursor: windowLevelDrag || annotateMode || measurementMode ? 'crosshair' : 'crosshair' }}>
+                <div ref={ref} className="absolute inset-0" />
+                {renderQuadCrosshair(axisName)}
+                {renderPaneLabel(axisName)}
+                {renderMeasurementPills(axisName)}
+                {snapshotOverlay?.annotations?.length > 0 && paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && (
+                    <AnnotationCanvas
+                        width={paneSize.width}
+                        height={paneSize.height}
+                        sourceWidth={annotationProjection.sourceWidth}
+                        sourceHeight={annotationProjection.sourceHeight}
+                        viewportSize={annotationProjection.viewportSize}
+                        imageBounds={annotationProjection.imageBounds}
+                        active={false}
+                        tool="select"
+                        annotations={getVisibleAnnotationsFromList(snapshotOverlay.annotations, axisName, paneSlice, 0.5).map((annotation) => ({
+                            ...annotation,
+                            color: '#22c55e',
+                        }))}
+                        onChange={() => {}}
+                        className="absolute inset-0 z-[65]"
+                    />
+                )}
+                {annotateMode && paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && getNeighborAnnotationsForAxis(axisName, paneSlice).length > 0 && (
+                    <AnnotationCanvas
+                        width={paneSize.width}
+                        height={paneSize.height}
+                        sourceWidth={annotationProjection.sourceWidth}
+                        sourceHeight={annotationProjection.sourceHeight}
+                        viewportSize={annotationProjection.viewportSize}
+                        imageBounds={annotationProjection.imageBounds}
+                        active={false}
+                        tool="select"
+                        annotations={getNeighborAnnotationsForAxis(axisName, paneSlice)}
+                        onChange={() => {}}
+                        className="absolute inset-0 z-[66]"
+                    />
+                )}
+                {annotateMode && paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && (
+                    <AnnotationCanvas
+                        width={paneSize.width}
+                        height={paneSize.height}
+                        sourceWidth={annotationProjection.sourceWidth}
+                        sourceHeight={annotationProjection.sourceHeight}
+                        viewportSize={annotationProjection.viewportSize}
+                        imageBounds={annotationProjection.imageBounds}
+                        active={annotateMode}
+                        tool={annotationTool}
+                        annotations={getCurrentSliceAnnotationsForAxis(axisName, paneSlice)}
+                        onChange={(nextAnnotations) => handleAxisAnnotationsChange(axisName, paneSlice, nextAnnotations)}
+                        reviewMode={reviewMode}
+                        onReviewAnnotation={handleReviewAnnotation}
+                        className="absolute inset-0 z-[70]"
+                    />
+                )}
+            </div>
+        );
+    }, [
+        annotateMode,
+        annotationTool,
+        getCurrentSliceAnnotationsForAxis,
+        getNeighborAnnotationsForAxis,
+        getAnnotationProjectionForPane,
+        getVisibleAnnotationsFromList,
+        handleAxisAnnotationsChange,
+        handleReviewAnnotation,
+        measurementMode,
+        renderMeasurementPills,
+        renderPaneLabel,
+        renderQuadCrosshair,
+        projectionReady,
+        reviewMode,
+        sliceIndices,
+        snapshotOverlay,
+        viewerSize.height,
+        viewerSize.width,
+        windowLevelDrag,
+    ]);
+
+    const singlePaneAnnotationProjection = useMemo(
+        () => (projectionReady ? getAnnotationProjectionForPane(axis, sliceIndex, viewerSize) : null),
+        [axis, getAnnotationProjectionForPane, projectionReady, projectionRefreshTick, sliceIndex, viewerSize]
+    );
 
     return (
-        <div ref={wrapperRef} tabIndex={0} className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
+        <div ref={wrapperRef} tabIndex={0} className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
             <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 p-3 backdrop-blur">
                 <div className="flex items-center gap-3">
                     {showBack && (
@@ -1639,7 +2327,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex min-w-0 items-center gap-1.5">
                     {!quadView && Object.entries(AXIS).map(([key, def]) => (
                         <button
                             key={key}
@@ -1656,7 +2344,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
                     {!quadView && <div className="mx-1 h-5 w-px bg-slate-800" />}
 
-                    <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
+                    <label className="flex min-w-[220px] items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
                         <span className="uppercase tracking-wide text-slate-500">LUT</span>
                         <select
                             value={WL_LUTS[wlPreset] ? wlPreset : 'custom'}
@@ -1673,18 +2361,6 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </label>
 
                     <div className="mx-1 h-5 w-px bg-slate-800" />
-
-                    <button
-                        onClick={() => setInverted((current) => !current)}
-                        className={`rounded-lg p-1.5 transition ${
-                            inverted
-                                ? 'bg-yellow-500/20 text-yellow-400'
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
-                        }`}
-                        title="Invert (Film Negative)"
-                    >
-                        <AppIcon name="SunMoon" size={16} />
-                    </button>
 
                     <button
                         onClick={() => {
@@ -1728,137 +2404,6 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         <span>Annotate</span>
                     </button>
 
-                    {measurementMode && (
-                        <>
-                            <button
-                                onClick={() => setMeasurementTool('distance')}
-                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                                    measurementTool === 'distance'
-                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                            >
-                                Distance
-                            </button>
-                            <button
-                                onClick={() => setMeasurementTool('angle')}
-                                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                                    measurementTool === 'angle'
-                                        ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                            >
-                                Angle
-                            </button>
-                            <button
-                                onClick={clearAllMeasurements}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Clear measurements"
-                            >
-                                <AppIcon name="Trash2" size={16} />
-                            </button>
-                        </>
-                    )}
-
-                    {annotateMode && (
-                        <>
-                            <button
-                                onClick={() => setAnnotationTool('arrow')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'arrow'
-                                        ? 'border border-red-500/40 bg-red-500/20 text-red-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Arrow Annotation"
-                            >
-                                <AppIcon name="ArrowRight" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('circle')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'circle'
-                                        ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Circle Annotation"
-                            >
-                                <AppIcon name="Circle" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('text')}
-                                className={`rounded-lg p-1.5 transition ${
-                                    annotationTool === 'text'
-                                        ? 'border border-slate-500/40 bg-slate-700 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                }`}
-                                title="Text Annotation"
-                            >
-                                <AppIcon name="Type" size={16} />
-                            </button>
-                            <button
-                                onClick={handleUndoAnnotation}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Undo last annotation"
-                            >
-                                <AppIcon name="Undo2" size={16} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotations([])}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                title="Clear annotations"
-                            >
-                                <AppIcon name="Trash2" size={16} />
-                            </button>
-                        </>
-                    )}
-
-                    <div className="mx-1 h-5 w-px bg-slate-800" />
-
-                    <button
-                        onClick={() => {
-                            setShowSeriesPanel(false);
-                            setShowMetadataPanel((current) => !current);
-                        }}
-                        className={`rounded-lg p-1.5 transition ${
-                            showMetadataPanel
-                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
-                        }`}
-                        title="DICOM Info"
-                    >
-                        <AppIcon name="Info" size={16} />
-                    </button>
-
-                    {allowSeriesSwitch && (
-                        <button
-                            onClick={() => {
-                                setShowMetadataPanel(false);
-                                setShowSeriesPanel((current) => !current);
-                            }}
-                            className={`rounded-lg p-1.5 transition ${
-                                showSeriesPanel
-                                    ? 'border border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
-                                    : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'
-                            }`}
-                            title="Series Panel"
-                        >
-                            <AppIcon name="Layers" size={16} />
-                        </button>
-                    )}
-
-                    <button
-                        onClick={handleToggleQuadView}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                            quadView
-                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                        }`}
-                        title="Quad View"
-                    >
-                        <AppIcon name="LayoutGrid" size={16} />
-                        <span>Quad</span>
-                    </button>
-
                     <button
                         onClick={() => {
                             setReportWarningMessage('');
@@ -1882,14 +2427,245 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         </button>
                     )}
 
-                    <button onClick={toggleFullscreen} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white" title="Fullscreen">
-                        <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={16} />
-                    </button>
                     <ShortcutHelpButton shortcuts={SLICE_SHORTCUTS} />
+
+                    <div className="relative" ref={moreToolsMenuRef}>
+                        <button
+                            onClick={() => setShowMoreTools((current) => !current)}
+                            className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                            title="More tools"
+                        >
+                            <span>More</span>
+                            <AppIcon name={showMoreTools ? 'ChevronUp' : 'ChevronDown'} size={14} />
+                        </button>
+
+                        {showMoreTools && (
+                            <div className="absolute right-0 top-full z-[140] mt-2 w-60 rounded-xl border border-slate-700 bg-slate-900/98 p-2 shadow-2xl">
+                                <button
+                                    onClick={() => {
+                                        setInverted((current) => !current);
+                                        setShowMoreTools(false);
+                                    }}
+                                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                        inverted
+                                            ? 'bg-amber-500/20 text-amber-300'
+                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-2"><AppIcon name="SunMoon" size={14} /> Invert</span>
+                                    <span>{inverted ? 'On' : 'Off'}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setShowSeriesPanel(false);
+                                        setShowMetadataPanel((current) => !current);
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name="Info" size={14} /> DICOM info
+                                </button>
+
+                                {allowSeriesSwitch && (
+                                    <button
+                                        onClick={() => {
+                                            setShowMetadataPanel(false);
+                                            setShowSeriesPanel((current) => !current);
+                                            setShowMoreTools(false);
+                                        }}
+                                        className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                    >
+                                        <AppIcon name="Layers" size={14} /> Series
+                                    </button>
+                                )}
+
+                                <button
+                                    onClick={() => {
+                                        handleToggleQuadView();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                        quadView
+                                            ? 'bg-cyan-500/20 text-cyan-300'
+                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-2"><AppIcon name="LayoutGrid" size={14} /> Quad view</span>
+                                    <span>{quadView ? 'On' : 'Off'}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        handleExportAnnotationsJson();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name="Braces" size={14} /> Export JSON
+                                </button>
+
+                                {(annotations.length > 0 || measurementCount > 0) && !study?.readOnly && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setSessionError('');
+                                                setSessionModalMode('save');
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="Save" size={14} /> Save session
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleSubmitAnnotationsForReview();
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="Send" size={14} /> Submit review
+                                        </button>
+                                    </>
+                                )}
+
+                                {!study?.readOnly && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setSessionError('');
+                                                setSessionModalMode('new');
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="PlusCircle" size={14} /> New session
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setHistoryOpen(true);
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="History" size={14} /> Session history
+                                        </button>
+                                    </>
+                                )}
+
+                                <button
+                                    onClick={() => {
+                                        toggleFullscreen();
+                                        setShowMoreTools(false);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                >
+                                    <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={14} />
+                                    {isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
+            {reviewError && (
+                <div className="absolute left-1/2 top-20 z-[120] max-w-lg -translate-x-1/2 rounded-2xl border border-amber-500/30 bg-amber-500/15 px-4 py-3 text-sm text-amber-100 shadow-2xl backdrop-blur">
+                    <div className="flex items-start gap-3">
+                        <AppIcon name="AlertTriangle" size={16} className="mt-0.5 shrink-0 text-amber-300" />
+                        <div className="flex-1">{reviewError}</div>
+                        <button type="button" onClick={() => setReviewError('')} className="rounded-lg p-1 text-amber-200/70 hover:bg-amber-500/15 hover:text-white">
+                            <AppIcon name="X" size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div ref={viewerAreaRef} className="relative flex-1 bg-black">
+                {(measurementMode || annotateMode) && (
+                    <div className="absolute left-1/2 top-4 z-[75] flex -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-700 bg-slate-950/90 p-1.5 shadow-2xl backdrop-blur">
+                        {measurementMode && (
+                            <>
+                                <button
+                                    onClick={() => setMeasurementTool('distance')}
+                                    className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition ${
+                                        measurementTool === 'distance'
+                                            ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-300'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    Distance
+                                </button>
+                                <button
+                                    onClick={() => setMeasurementTool('angle')}
+                                    className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition ${
+                                        measurementTool === 'angle'
+                                            ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-300'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    Angle
+                                </button>
+                                <button
+                                    onClick={clearAllMeasurements}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear measurements"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                            </>
+                        )}
+
+                        {annotateMode && (
+                            <>
+                                {[
+                                    ['select', 'MousePointer2', 'Select'],
+                                    ['arrow', 'ArrowRight', 'Arrow'],
+                                    ['circle', 'Circle', 'Circle'],
+                                    ['freehand', 'PenLine', 'Region'],
+                                    ['text', 'Type', 'Text'],
+                                ].map(([toolName, iconName, label]) => (
+                                    <button
+                                        key={toolName}
+                                        onClick={() => setAnnotationTool(toolName)}
+                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
+                                            annotationTool === toolName
+                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                        title={`${label} annotation`}
+                                    >
+                                        <AppIcon name={iconName} size={14} />
+                                        <span>{label}</span>
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={handleUndoAnnotation}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Undo last annotation"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    onClick={() => setAnnotations([])}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear annotations"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                                {annotationPersistence.saving && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
+                                )}
+                                {annotationPersistence.error && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
+                                        Local
+                                    </span>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+
                 {!quadView && (
                     <div
                         ref={vtkContainerRef}
@@ -1943,16 +2719,59 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     </div>
                 )}
 
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
-                    <AnnotationCanvas
-                        width={viewerSize.width}
-                        height={viewerSize.height}
-                        active={annotateMode}
-                        tool={annotationTool}
-                        annotations={annotations}
-                        onChange={setAnnotations}
-                        className="absolute inset-0 z-[70]"
-                    />
+                {!loading && !error && !quadView && viewerSize.width > 0 && viewerSize.height > 0 && (
+                    <>
+                        {visibleSnapshotAnnotations.length > 0 && singlePaneAnnotationProjection?.imageBounds && (
+                            <AnnotationCanvas
+                                width={viewerSize.width}
+                                height={viewerSize.height}
+                                sourceWidth={singlePaneAnnotationProjection.sourceWidth}
+                                sourceHeight={singlePaneAnnotationProjection.sourceHeight}
+                                viewportSize={singlePaneAnnotationProjection.viewportSize}
+                                imageBounds={singlePaneAnnotationProjection.imageBounds}
+                                active={false}
+                                tool="select"
+                                annotations={visibleSnapshotAnnotations.map((annotation) => ({
+                                    ...annotation,
+                                    color: '#22c55e',
+                                }))}
+                                onChange={() => {}}
+                                className="absolute inset-0 z-[65]"
+                            />
+                        )}
+                        {neighborAnnotations.length > 0 && singlePaneAnnotationProjection?.imageBounds && (
+                            <AnnotationCanvas
+                                width={viewerSize.width}
+                                height={viewerSize.height}
+                                sourceWidth={singlePaneAnnotationProjection.sourceWidth}
+                                sourceHeight={singlePaneAnnotationProjection.sourceHeight}
+                                viewportSize={singlePaneAnnotationProjection.viewportSize}
+                                imageBounds={singlePaneAnnotationProjection.imageBounds}
+                                active={false}
+                                tool="select"
+                                annotations={neighborAnnotations}
+                                onChange={() => {}}
+                                className="absolute inset-0 z-[66]"
+                            />
+                        )}
+                        {singlePaneAnnotationProjection?.imageBounds && (
+                            <AnnotationCanvas
+                                width={viewerSize.width}
+                                height={viewerSize.height}
+                                sourceWidth={singlePaneAnnotationProjection.sourceWidth}
+                                sourceHeight={singlePaneAnnotationProjection.sourceHeight}
+                                viewportSize={singlePaneAnnotationProjection.viewportSize}
+                                imageBounds={singlePaneAnnotationProjection.imageBounds}
+                                active={annotateMode}
+                                tool={annotationTool}
+                                annotations={visibleAnnotations}
+                                onChange={handleVisibleAnnotationsChange}
+                                reviewMode={reviewMode}
+                                onReviewAnnotation={handleReviewAnnotation}
+                                className="absolute inset-0 z-[70]"
+                            />
+                        )}
+                    </>
                 )}
 
                 {!loading && !error && !quadView && maxSlice > 0 && (
@@ -2036,6 +2855,39 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         Spacing: {spacing.map((value) => value.toFixed(2)).join(' × ')} mm
                     </div>
                 )}
+
+                <AnnotationHistoryPanel
+                    visible={historyOpen}
+                    snapshots={snapshots}
+                    loading={snapshotsLoading}
+                    selectedSnapshotId={snapshotOverlay?.id || ''}
+                    onClose={() => setHistoryOpen(false)}
+                    onRefresh={refreshSnapshots}
+                    onSelectSnapshot={(snapshot) => setSnapshotOverlay(snapshot)}
+                    onRestoreSnapshot={handleRestoreAnnotationSession}
+                    onDeleteSnapshot={handleDeleteAnnotationSession}
+                    onNewSession={() => {
+                        setSessionError('');
+                        setSessionModalMode('new');
+                    }}
+                    onClearOverlay={() => setSnapshotOverlay(null)}
+                />
+
+                <AnnotationSessionModal
+                    visible={Boolean(sessionModalMode)}
+                    mode={sessionModalMode || 'save'}
+                    annotationCount={annotations.length}
+                    measurementCount={measurementCount}
+                    loading={sessionSaving}
+                    error={sessionError}
+                    onClose={() => {
+                        if (!sessionSaving) {
+                            setSessionModalMode(null);
+                            setSessionError('');
+                        }
+                    }}
+                    onConfirm={sessionModalMode === 'new' ? handleStartNewSession : handleSaveAnnotationSession}
+                />
 
                 <ReportExportModal
                     visible={reportModalOpen}
