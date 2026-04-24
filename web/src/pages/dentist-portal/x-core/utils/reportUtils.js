@@ -283,6 +283,17 @@ const summarizeCoordinates = (annotation) => {
     return `x=${Number(annotation.coordinates?.x || 0).toFixed(3)}, y=${Number(annotation.coordinates?.y || 0).toFixed(3)}`;
   }
   if (annotation.type === 'region' || annotation.type === 'freehand') {
+    const worldPath = annotation.coordinates?.world_path || [];
+    if (Array.isArray(worldPath) && worldPath.length >= 3) {
+      const areaMm2 = annotation.metadata?.lesion_area_mm2;
+      return `${worldPath.length} world pts${areaMm2 ? `, area ${areaMm2} mm²` : ''}`;
+    }
+    const worldBrush = annotation.coordinates?.world_brush;
+    if (Array.isArray(worldBrush?.centers) && worldBrush.centers.length >= 1) {
+      const volumeMm3 = annotation.metadata?.lesion_volume_mm3;
+      const radiusMm = Number(worldBrush.radius_mm || 0);
+      return `${worldBrush.centers.length} brush stamps${radiusMm ? `, r ${radiusMm} mm` : ''}${volumeMm3 ? `, vol ${volumeMm3} mm³` : ''}`;
+    }
     const path = annotation.coordinates?.path || [];
     const area = annotation.metadata?.lesion_area_px;
     return `${path.length} pts${area ? `, area ${area} px²` : ''}`;
@@ -303,12 +314,16 @@ const makeExportId = () => {
 const buildTrainingAnnotation = (annotation, exportId, options = {}) => {
   const metadata = annotation.metadata || {};
   const type = annotation.type || annotation.annotation_type;
+  const isWorldGeometry = (
+    (Array.isArray(annotation.coordinates?.world_path) && annotation.coordinates.world_path.length >= 3)
+    || (Array.isArray(annotation.coordinates?.world_brush?.centers) && annotation.coordinates.world_brush.centers.length >= 1)
+  );
   return {
     export_id: exportId,
     annotation_id: annotation.id,
     type,
     geometry: annotation.coordinates || {},
-    coordinate_system: 'image_normalized_0_1',
+    coordinate_system: isWorldGeometry ? 'world_ras_mm' : 'image_normalized_0_1',
     source: {
       width: metadata.source_width || options.sourceWidth || null,
       height: metadata.source_height || options.sourceHeight || null,
@@ -325,6 +340,8 @@ const buildTrainingAnnotation = (annotation, exportId, options = {}) => {
       tooth_number: metadata.tooth_number || null,
       surface: metadata.surface || null,
       lesion_area_px: metadata.lesion_area_px || null,
+      lesion_area_mm2: metadata.lesion_area_mm2 || null,
+      lesion_volume_mm3: metadata.lesion_volume_mm3 || null,
       text: annotation.label || null,
     },
     review: {
@@ -344,6 +361,10 @@ export const exportAnnotationsJson = (annotations, studyMetadata, options = {}) 
     ...annotation,
     _export_id: makeExportId(),
   }));
+  const hasWorldGeometry = exportedAnnotations.some((annotation) => (
+    (Array.isArray(annotation.coordinates?.world_path) && annotation.coordinates.world_path.length >= 3)
+    || (Array.isArray(annotation.coordinates?.world_brush?.centers) && annotation.coordinates.world_brush.centers.length >= 1)
+  ));
   const payload = {
     export_version: '1.1',
     dataset_schema: 'xcore_annotation_training_v1',
@@ -357,7 +378,7 @@ export const exportAnnotationsJson = (annotations, studyMetadata, options = {}) 
       institution: studyMetadata?.InstitutionName || null,
     },
     exported_at: exportedAt.toISOString(),
-    coordinate_system: 'image_normalized_0_1',
+    coordinate_system: hasWorldGeometry ? 'mixed_viewer_native' : 'image_normalized_0_1',
     annotations: exportedAnnotations,
     training_annotations: exportedAnnotations.map((annotation) => buildTrainingAnnotation(annotation, annotation._export_id, options)),
   };

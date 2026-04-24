@@ -17,6 +17,32 @@ export const isNormalizedPoint = (point) => (
   && Number(point.y) <= 1
 );
 
+export const isWorldPoint3D = (point) => (
+  Array.isArray(point)
+  && point.length >= 3
+  && point.every((value) => Number.isFinite(Number(value)))
+);
+
+export const isWorldBrush3D = (brush) => (
+  isObject(brush)
+  && Array.isArray(brush.centers)
+  && brush.centers.length >= 1
+  && brush.centers.every(isWorldPoint3D)
+  && Number.isFinite(Number(brush.radius_mm))
+  && Number(brush.radius_mm) > 0
+);
+
+export const isWorldLine3D = (coordinates) => (
+  isObject(coordinates)
+  && isWorldPoint3D(coordinates.world_start)
+  && isWorldPoint3D(coordinates.world_end)
+);
+
+export const isWorldText3D = (coordinates) => (
+  isObject(coordinates)
+  && isWorldPoint3D(coordinates.world_point)
+);
+
 export const validateAnnotationPayload = (annotation) => {
   const errors = [];
   if (!annotation?.id || typeof annotation.id !== 'string') {
@@ -36,17 +62,29 @@ export const validateAnnotationPayload = (annotation) => {
   }
 
   if (annotation?.type === 'text') {
-    if (!isNormalizedPoint(annotation.coordinates)) {
-      errors.push('text coordinates must be {x,y} normalized to 0..1');
+    const hasNormalizedTextPoint = isNormalizedPoint(annotation.coordinates);
+    const hasWorldTextPoint = annotation?.viewerType === '3d' && isWorldText3D(annotation.coordinates);
+    if (!hasNormalizedTextPoint && !hasWorldTextPoint) {
+      errors.push('text coordinates must be normalized {x,y} or a 3d world_point');
     }
   } else if (annotation?.type === 'arrow' || annotation?.type === 'circle') {
-    if (!isNormalizedPoint(annotation.coordinates?.start) || !isNormalizedPoint(annotation.coordinates?.end)) {
-      errors.push(`${annotation.type} coordinates must include normalized start/end points`);
+    const hasNormalizedLine = isNormalizedPoint(annotation.coordinates?.start) && isNormalizedPoint(annotation.coordinates?.end);
+    const hasWorldLine = annotation?.viewerType === '3d' && isWorldLine3D(annotation.coordinates);
+    if (!hasNormalizedLine && !hasWorldLine) {
+      errors.push(`${annotation.type} coordinates must include normalized start/end points or 3d world_start/world_end points`);
     }
   } else if (annotation?.type === 'region' || annotation?.type === 'freehand') {
     const path = annotation.coordinates?.path;
-    if (!Array.isArray(path) || path.length < 3 || !path.every(isNormalizedPoint)) {
-      errors.push('region coordinates must include a normalized path with at least 3 points');
+    const worldPath = annotation.coordinates?.world_path;
+    const worldBrush = annotation.coordinates?.world_brush;
+    const hasNormalizedPath = Array.isArray(path) && path.length >= 3 && path.every(isNormalizedPoint);
+    const hasWorldPath = annotation?.viewerType === '3d'
+      && Array.isArray(worldPath)
+      && worldPath.length >= 3
+      && worldPath.every(isWorldPoint3D);
+    const hasWorldBrush = annotation?.viewerType === '3d' && isWorldBrush3D(worldBrush);
+    if (!hasNormalizedPath && !hasWorldPath && !hasWorldBrush) {
+      errors.push('region coordinates must include a normalized path, 3d world_path, or 3d world_brush geometry');
     }
   }
 
@@ -76,8 +114,13 @@ export const validateAnnotationPayload = (annotation) => {
           errors.push('metadata.surface is required before review');
         }
       }
-      if ((annotation.type === 'region' || annotation.type === 'freehand') && !(Number(metadata.lesion_area_px) > 0)) {
-        errors.push('metadata.lesion_area_px is required for region review');
+      if (
+        (annotation.type === 'region' || annotation.type === 'freehand')
+        && !(Number(metadata.lesion_area_px) > 0)
+        && !(Number(metadata.lesion_area_mm2) > 0)
+        && !(Number(metadata.lesion_volume_mm3) > 0)
+      ) {
+        errors.push('metadata.lesion_area_px, metadata.lesion_area_mm2, or metadata.lesion_volume_mm3 is required for region review');
       }
     }
   }

@@ -1,4 +1,4 @@
-const twilio = require('twilio');
+import twilio from 'twilio';
 
 class ConversationsAdapter {
   constructor() {
@@ -91,4 +91,4 @@ class ConversationsAdapter {
   }
 }
 
-module.exports = ConversationsAdapter;
+export default ConversationsAdapter;
