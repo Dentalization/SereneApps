@@ -44,6 +44,32 @@ import SinusVolumePanel from './SinusVolumePanel';
 import AnnotationCanvas from './AnnotationCanvas';
 import AnnotationHistoryPanel from './AnnotationHistoryPanel';
 import AnnotationSessionModal from './AnnotationSessionModal';
+import Volume3DInteractionLayer from './3D/Volume3DInteractionLayer';
+import Volume3DModeToolbar from './3D/Volume3DModeToolbar';
+import Volume3DOverlayLayer from './3D/Volume3DOverlayLayer';
+import {
+    arraysNearlyEqual,
+    BRUSH_RADIUS_DEFAULT_MM,
+    BRUSH_RADIUS_MAX_MM,
+    BRUSH_RADIUS_MIN_MM,
+    cameraStateApproximatelyMatches,
+    centroidOfWorldPath,
+    computeWorldPolygonAreaMm2,
+    createBrushMaskImage,
+    densifyWorldPoints,
+    distanceMm,
+    hexToRgbNormalized,
+    isWorldBrushAnnotation,
+    isWorldGeometryAnnotation,
+    isWorldOverlayAnnotation,
+    isWorldPathAnnotation,
+    isWorldPoint3D,
+    midpoint,
+    simplifyWorldPath,
+    simplifyWorldPoints,
+    stampBrushLabelToArray,
+    SURFACE_TRACE_MIN_STEP_MM,
+} from './3D/volume3DGeometry';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import {
     ANNOTATION_COLORS,
@@ -153,10 +179,6 @@ const PICK_SURFACE_CONTOUR = 0.42;
 const overlayResourceMap = new WeakMap();
 const overlayAnnotationMap = new WeakMap();
 const fovSuppressedImageData = new WeakSet();
-const SURFACE_TRACE_MIN_STEP_MM = 0.65;
-const BRUSH_RADIUS_MIN_MM = 0.8;
-const BRUSH_RADIUS_MAX_MM = 8;
-const BRUSH_RADIUS_DEFAULT_MM = 2.6;
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
@@ -430,11 +452,6 @@ function applyMapperQuality(mapper, qualityKey, presetName) {
     mapper.setMaximumSamplesPerRay(q.maxSamples);
 }
 
-function arraysNearlyEqual(a, b, epsilon = 1e-3) {
-    if (!a || !b || a.length !== b.length) return false;
-    return a.every((value, index) => Math.abs(value - b[index]) <= epsilon);
-}
-
 function setOverlayResources(actor, resources) {
     if (!actor || !resources) return;
     try {
@@ -516,130 +533,6 @@ function syncMapperClipping(ctx, includeSlab = false) {
         ctx.mapper.addClippingPlane(ctx.slabPlanes[1]);
     }
     ctx.renderWindow?.render?.();
-}
-
-function distanceMm(pointA, pointB) {
-    const dx = pointA[0] - pointB[0];
-    const dy = pointA[1] - pointB[1];
-    const dz = pointA[2] - pointB[2];
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-function midpoint(pointA, pointB) {
-    return [
-        (pointA[0] + pointB[0]) / 2,
-        (pointA[1] + pointB[1]) / 2,
-        (pointA[2] + pointB[2]) / 2,
-    ];
-}
-
-function isWorldPoint3D(point) {
-    return Array.isArray(point)
-        && point.length >= 3
-        && point.every((value) => Number.isFinite(Number(value)));
-}
-
-function isWorldPathAnnotation(annotation) {
-    return Array.isArray(annotation?.coordinates?.world_path)
-        && annotation.coordinates.world_path.length >= 3
-        && annotation.coordinates.world_path.every(isWorldPoint3D);
-}
-
-function isWorldBrushAnnotation(annotation) {
-    const centers = annotation?.coordinates?.world_brush?.centers;
-    return Array.isArray(centers)
-        && centers.length >= 1
-        && centers.every(isWorldPoint3D);
-}
-
-function isWorldLineAnnotation(annotation) {
-    return ['arrow', 'circle'].includes(annotation?.type)
-        && isWorldPoint3D(annotation?.coordinates?.world_start)
-        && isWorldPoint3D(annotation?.coordinates?.world_end);
-}
-
-function isWorldTextAnnotation(annotation) {
-    return annotation?.type === 'text'
-        && isWorldPoint3D(annotation?.coordinates?.world_point);
-}
-
-function isWorldOverlayAnnotation(annotation) {
-    return isWorldLineAnnotation(annotation) || isWorldTextAnnotation(annotation);
-}
-
-function isWorldGeometryAnnotation(annotation) {
-    return isWorldPathAnnotation(annotation) || isWorldBrushAnnotation(annotation) || isWorldOverlayAnnotation(annotation);
-}
-
-function simplifyWorldPoints(points, minStepMm = SURFACE_TRACE_MIN_STEP_MM) {
-    if (!Array.isArray(points) || points.length === 0) return [];
-    const simplified = [points[0]];
-    for (let index = 1; index < points.length - 1; index += 1) {
-        if (distanceMm(points[index], simplified[simplified.length - 1]) >= minStepMm) {
-            simplified.push(points[index]);
-        }
-    }
-    const lastPoint = points[points.length - 1];
-    if (!arraysNearlyEqual(lastPoint, simplified[simplified.length - 1], 1e-3)) {
-        simplified.push(lastPoint);
-    }
-    return simplified;
-}
-
-function simplifyWorldPath(points, minStepMm = SURFACE_TRACE_MIN_STEP_MM) {
-    const simplified = simplifyWorldPoints(points, minStepMm);
-    return simplified.length >= 3 ? simplified : [];
-}
-
-function computeWorldPolygonAreaMm2(points) {
-    if (!Array.isArray(points) || points.length < 3) return 0;
-    let nx = 0;
-    let ny = 0;
-    let nz = 0;
-    for (let index = 0; index < points.length; index += 1) {
-        const current = points[index];
-        const next = points[(index + 1) % points.length];
-        nx += (current[1] - next[1]) * (current[2] + next[2]);
-        ny += (current[2] - next[2]) * (current[0] + next[0]);
-        nz += (current[0] - next[0]) * (current[1] + next[1]);
-    }
-    return 0.5 * Math.sqrt((nx * nx) + (ny * ny) + (nz * nz));
-}
-
-function centroidOfWorldPath(points) {
-    if (!Array.isArray(points) || points.length === 0) return null;
-    const totals = points.reduce((accumulator, point) => ([
-        accumulator[0] + point[0],
-        accumulator[1] + point[1],
-        accumulator[2] + point[2],
-    ]), [0, 0, 0]);
-    return totals.map((value) => value / points.length);
-}
-
-function hexToRgbNormalized(hex, fallback = [0.886, 0.294, 0.290]) {
-    if (typeof hex !== 'string') return fallback;
-    const raw = hex.trim().replace('#', '');
-    const normalized = raw.length === 3 ? raw.split('').map((char) => char + char).join('') : raw;
-    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return fallback;
-    return [
-        parseInt(normalized.slice(0, 2), 16) / 255,
-        parseInt(normalized.slice(2, 4), 16) / 255,
-        parseInt(normalized.slice(4, 6), 16) / 255,
-    ];
-}
-
-function cameraStateApproximatelyMatches(expected, current, epsilon = 0.75) {
-    if (!expected || !current) return true;
-    const expectedPosition = expected.position || expected.camera_position;
-    const expectedFocalPoint = expected.focal_point || expected.focalPoint;
-    const expectedViewUp = expected.view_up || expected.viewUp;
-    const currentPosition = current.position || current.camera_position;
-    const currentFocalPoint = current.focal_point || current.focalPoint;
-    const currentViewUp = current.view_up || current.viewUp;
-
-    return arraysNearlyEqual(expectedPosition, currentPosition, epsilon)
-        && arraysNearlyEqual(expectedFocalPoint, currentFocalPoint, epsilon)
-        && arraysNearlyEqual(expectedViewUp, currentViewUp, 0.08);
 }
 
 function buildDentistName(user) {
@@ -945,209 +838,6 @@ function createBinaryMaskImage(sourceImageData, labelValue) {
     return { maskImage, voxelCount };
 }
 
-function densifyWorldPoints(points, maxStepMm) {
-    if (!Array.isArray(points) || points.length < 2) return Array.isArray(points) ? [...points] : [];
-    const safeStep = Math.max(Number(maxStepMm) || 0, 0.25);
-    const result = [points[0]];
-
-    for (let index = 1; index < points.length; index += 1) {
-        const previous = result[result.length - 1];
-        const current = points[index];
-        const segmentDistance = distanceMm(previous, current);
-        if (!Number.isFinite(segmentDistance) || segmentDistance <= safeStep) {
-            result.push(current);
-            continue;
-        }
-
-        const steps = Math.ceil(segmentDistance / safeStep);
-        for (let step = 1; step < steps; step += 1) {
-            const t = step / steps;
-            result.push([
-                previous[0] + ((current[0] - previous[0]) * t),
-                previous[1] + ((current[1] - previous[1]) * t),
-                previous[2] + ((current[2] - previous[2]) * t),
-            ]);
-        }
-        result.push(current);
-    }
-
-    return result;
-}
-
-function createBrushMaskImage(sourceImageData, centers, radiusMm) {
-    if (!sourceImageData || !Array.isArray(centers) || centers.length === 0) return null;
-
-    const spacing = (sourceImageData.getSpacing?.() || [1, 1, 1]).map((value) => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    });
-    const dims = sourceImageData.getDimensions?.() || [0, 0, 0];
-    if (!dims[0] || !dims[1] || !dims[2]) return null;
-
-    const brushRadiusMm = Math.max(BRUSH_RADIUS_MIN_MM, Number(radiusMm) || BRUSH_RADIUS_DEFAULT_MM);
-    const denseCenters = densifyWorldPoints(
-        centers.filter(isWorldPoint3D),
-        Math.max(brushRadiusMm * 0.45, Math.min(...spacing) * 0.9)
-    );
-    if (denseCenters.length === 0) return null;
-
-    const indexCenters = denseCenters
-        .map((center) => sourceImageData.worldToIndex?.(center))
-        .filter((point) => Array.isArray(point) && point.length >= 3 && point.every((value) => Number.isFinite(value)));
-    if (indexCenters.length === 0) return null;
-
-    const radiusInVoxels = [
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[0])),
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[1])),
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[2])),
-    ];
-
-    let minI = dims[0];
-    let minJ = dims[1];
-    let minK = dims[2];
-    let maxI = -1;
-    let maxJ = -1;
-    let maxK = -1;
-
-    indexCenters.forEach((point) => {
-        minI = Math.min(minI, Math.floor(point[0] - radiusInVoxels[0] - 1));
-        minJ = Math.min(minJ, Math.floor(point[1] - radiusInVoxels[1] - 1));
-        minK = Math.min(minK, Math.floor(point[2] - radiusInVoxels[2] - 1));
-        maxI = Math.max(maxI, Math.ceil(point[0] + radiusInVoxels[0] + 1));
-        maxJ = Math.max(maxJ, Math.ceil(point[1] + radiusInVoxels[1] + 1));
-        maxK = Math.max(maxK, Math.ceil(point[2] + radiusInVoxels[2] + 1));
-    });
-
-    minI = Math.max(0, minI);
-    minJ = Math.max(0, minJ);
-    minK = Math.max(0, minK);
-    maxI = Math.min(dims[0] - 1, maxI);
-    maxJ = Math.min(dims[1] - 1, maxJ);
-    maxK = Math.min(dims[2] - 1, maxK);
-
-    const localDims = [
-        (maxI - minI) + 1,
-        (maxJ - minJ) + 1,
-        (maxK - minK) + 1,
-    ];
-    if (localDims.some((value) => value <= 0)) return null;
-
-    const maskValues = new Uint8Array(localDims[0] * localDims[1] * localDims[2]);
-    const radiusSq = brushRadiusMm * brushRadiusMm;
-    let voxelCount = 0;
-
-    indexCenters.forEach((center) => {
-        const localCenter = [
-            center[0] - minI,
-            center[1] - minJ,
-            center[2] - minK,
-        ];
-
-        const iMin = Math.max(0, Math.floor(localCenter[0] - radiusInVoxels[0]));
-        const iMax = Math.min(localDims[0] - 1, Math.ceil(localCenter[0] + radiusInVoxels[0]));
-        const jMin = Math.max(0, Math.floor(localCenter[1] - radiusInVoxels[1]));
-        const jMax = Math.min(localDims[1] - 1, Math.ceil(localCenter[1] + radiusInVoxels[1]));
-        const kMin = Math.max(0, Math.floor(localCenter[2] - radiusInVoxels[2]));
-        const kMax = Math.min(localDims[2] - 1, Math.ceil(localCenter[2] + radiusInVoxels[2]));
-
-        for (let k = kMin; k <= kMax; k += 1) {
-            const dzMm = (k - localCenter[2]) * spacing[2];
-            const dzSq = dzMm * dzMm;
-            for (let j = jMin; j <= jMax; j += 1) {
-                const dyMm = (j - localCenter[1]) * spacing[1];
-                const dySq = dyMm * dyMm;
-                for (let i = iMin; i <= iMax; i += 1) {
-                    const dxMm = (i - localCenter[0]) * spacing[0];
-                    if ((dxMm * dxMm) + dySq + dzSq > radiusSq) continue;
-                    const idx = i + (localDims[0] * (j + (localDims[1] * k)));
-                    if (maskValues[idx]) continue;
-                    maskValues[idx] = 1;
-                    voxelCount += 1;
-                }
-            }
-        }
-    });
-
-    if (voxelCount === 0) return null;
-
-    const maskImage = vtkImageData.newInstance();
-    maskImage.setDimensions(...localDims);
-    maskImage.setSpacing(...spacing);
-    const origin = sourceImageData.indexToWorld?.([minI, minJ, minK]) || sourceImageData.getOrigin?.() || [0, 0, 0];
-    maskImage.setOrigin(...origin);
-    const direction = sourceImageData.getDirection?.();
-    if (direction && typeof maskImage.setDirection === 'function') {
-        try {
-            maskImage.setDirection(direction);
-        } catch (_) {}
-    }
-    maskImage.getPointData().setScalars(vtkDataArray.newInstance({
-        name: 'ManualBrushMask',
-        numberOfComponents: 1,
-        values: maskValues,
-    }));
-
-    return { maskImage, voxelCount };
-}
-
-function stampBrushLabelToArray(sourceImageData, targetValues, centers, radiusMm, labelValue) {
-    if (!sourceImageData || !targetValues || !Array.isArray(centers) || centers.length === 0) return 0;
-
-    const spacing = (sourceImageData.getSpacing?.() || [1, 1, 1]).map((value) => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    });
-    const dims = sourceImageData.getDimensions?.() || [0, 0, 0];
-    if (!dims[0] || !dims[1] || !dims[2]) return 0;
-
-    const brushRadiusMm = Math.max(BRUSH_RADIUS_MIN_MM, Number(radiusMm) || BRUSH_RADIUS_DEFAULT_MM);
-    const denseCenters = densifyWorldPoints(
-        centers.filter(isWorldPoint3D),
-        Math.max(brushRadiusMm * 0.45, Math.min(...spacing) * 0.9)
-    );
-    const indexCenters = denseCenters
-        .map((center) => sourceImageData.worldToIndex?.(center))
-        .filter((point) => Array.isArray(point) && point.length >= 3 && point.every((value) => Number.isFinite(value)));
-    if (indexCenters.length === 0) return 0;
-
-    const radiusInVoxels = [
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[0])),
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[1])),
-        Math.max(1, Math.ceil(brushRadiusMm / spacing[2])),
-    ];
-    const radiusSq = brushRadiusMm * brushRadiusMm;
-    let affected = 0;
-
-    indexCenters.forEach((center) => {
-        const iMin = Math.max(0, Math.floor(center[0] - radiusInVoxels[0]));
-        const iMax = Math.min(dims[0] - 1, Math.ceil(center[0] + radiusInVoxels[0]));
-        const jMin = Math.max(0, Math.floor(center[1] - radiusInVoxels[1]));
-        const jMax = Math.min(dims[1] - 1, Math.ceil(center[1] + radiusInVoxels[1]));
-        const kMin = Math.max(0, Math.floor(center[2] - radiusInVoxels[2]));
-        const kMax = Math.min(dims[2] - 1, Math.ceil(center[2] + radiusInVoxels[2]));
-
-        for (let k = kMin; k <= kMax; k += 1) {
-            const dzMm = (k - center[2]) * spacing[2];
-            const dzSq = dzMm * dzMm;
-            for (let j = jMin; j <= jMax; j += 1) {
-                const dyMm = (j - center[1]) * spacing[1];
-                const dySq = dyMm * dyMm;
-                for (let i = iMin; i <= iMax; i += 1) {
-                    const dxMm = (i - center[0]) * spacing[0];
-                    if ((dxMm * dxMm) + dySq + dzSq > radiusSq) continue;
-                    const idx = i + (dims[0] * (j + (dims[1] * k)));
-                    if (targetValues[idx] !== labelValue) {
-                        targetValues[idx] = labelValue;
-                        affected += 1;
-                    }
-                }
-            }
-        }
-    });
-
-    return affected;
-}
-
 const VolumeViewer3D = ({
     study,
     onBack,
@@ -1174,8 +864,13 @@ const VolumeViewer3D = ({
     const annotationHydrationKeyRef = useRef('');
     const surfaceTraceDraftRef = useRef([]);
     const surfaceTraceActiveRef = useRef(false);
+    const surfacePointerRef = useRef(null);
+    const surfaceMoveRafRef = useRef(0);
     const brushDraftCentersRef = useRef([]);
     const brushTraceActiveRef = useRef(false);
+    const brushPointerRef = useRef(null);
+    const brushMoveRafRef = useRef(0);
+    const interactorEventsBoundRef = useRef(true);
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -1554,6 +1249,11 @@ const VolumeViewer3D = ({
         ctx.renderWindow.render();
     }, [cacheKey, loading, quality, preset]);
 
+    useEffect(() => () => {
+        if (brushMoveRafRef.current) cancelAnimationFrame(brushMoveRafRef.current);
+        if (surfaceMoveRafRef.current) cancelAnimationFrame(surfaceMoveRafRef.current);
+    }, []);
+
     useEffect(() => {
         annotationHydrationKeyRef.current = '';
     }, [cacheKey]);
@@ -1608,16 +1308,35 @@ const VolumeViewer3D = ({
         ].join(', ')));
     }, []);
 
+    const getViewportPointerPoint = useCallback((event) => {
+        const container = containerRef.current;
+        if (!container || !event) return null;
+        const rect = container.getBoundingClientRect();
+        return {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+        };
+    }, []);
+
+    const stopViewportUiPropagation = useCallback((event) => {
+        event.stopPropagation();
+    }, []);
+
     useEffect(() => {
         const ctx = vtkContextRef.current;
         const interactor = ctx?.interactor;
-        if (!interactor) return undefined;
+        const container = containerRef.current;
+        if (!interactor || !container || loading || error) return undefined;
 
         try {
             if (viewportInteractionLocked) {
-                interactor.disable?.();
-            } else {
-                interactor.enable?.();
+                if (interactorEventsBoundRef.current) {
+                    interactor.unbindEvents?.(container);
+                    interactorEventsBoundRef.current = false;
+                }
+            } else if (!interactorEventsBoundRef.current) {
+                interactor.bindEvents?.(container);
+                interactorEventsBoundRef.current = true;
             }
         } catch (interactionError) {
             console.warn('[VolumeViewer3D] Failed to toggle interactor state:', interactionError);
@@ -1625,7 +1344,10 @@ const VolumeViewer3D = ({
 
         return () => {
             try {
-                interactor.enable?.();
+                if (!interactorEventsBoundRef.current) {
+                    interactor.bindEvents?.(container);
+                    interactorEventsBoundRef.current = true;
+                }
             } catch (_) {}
         };
     }, [viewportInteractionLocked, loading, error]);
@@ -2143,6 +1865,7 @@ const VolumeViewer3D = ({
                     orientationCube: orientation?.cubeActor || null,
                 };
                 vtkContextRef.current = volumeContext;
+                interactorEventsBoundRef.current = true;
                 pendingVtkRef.current = null;
                 positionCameraForView(volumeContext, 'right', 1.25);
                 onVolumeLoadedRef.current?.(imageData);
@@ -3264,6 +2987,22 @@ const VolumeViewer3D = ({
         }
 
         if (!isWorldPoint3D(payload.startWorld) || !isWorldPoint3D(payload.endWorld)) return null;
+        const screenStart = payload.startScreen || null;
+        const screenEnd = payload.endScreen || null;
+        const baseDimension = Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
+        if (type === 'arrow' && screenStart && screenEnd) {
+            baseMetadata.anchor_mode = 'world_callout';
+            baseMetadata.screen_tail_offset_norm = {
+                x: Number(((screenEnd.x - screenStart.x) / Math.max(viewerSize.width || 1, 1)).toFixed(6)),
+                y: Number(((screenEnd.y - screenStart.y) / Math.max(viewerSize.height || 1, 1)).toFixed(6)),
+            };
+        }
+        if (type === 'circle' && screenStart && screenEnd) {
+            baseMetadata.anchor_mode = 'world_callout';
+            baseMetadata.screen_radius_norm = Number((
+                Math.hypot(screenEnd.x - screenStart.x, screenEnd.y - screenStart.y) / baseDimension
+            ).toFixed(6));
+        }
         return {
             id: payload.id || `annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type,
@@ -3295,8 +3034,27 @@ const VolumeViewer3D = ({
         }
 
         if (annotation.type === 'arrow' || annotation.type === 'circle') {
-            const startScreen = projectWorldToViewport(annotation.coordinates?.world_start);
-            const endScreen = projectWorldToViewport(annotation.coordinates?.world_end);
+            const anchorScreen = projectWorldToViewport(annotation.coordinates?.world_start);
+            if (!anchorScreen) return null;
+            let startScreen = anchorScreen;
+            let endScreen = projectWorldToViewport(annotation.coordinates?.world_end);
+            const offsetNorm = annotation.metadata?.screen_tail_offset_norm;
+            const radiusNorm = annotation.metadata?.screen_radius_norm;
+            if (annotation.type === 'arrow' && offsetNorm && Number.isFinite(offsetNorm.x) && Number.isFinite(offsetNorm.y)) {
+                startScreen = {
+                    x: anchorScreen.x + (offsetNorm.x * Math.max(viewerSize.width || 1, 1)),
+                    y: anchorScreen.y + (offsetNorm.y * Math.max(viewerSize.height || 1, 1)),
+                };
+                endScreen = anchorScreen;
+            }
+            if (annotation.type === 'circle' && Number.isFinite(radiusNorm)) {
+                const radiusPx = radiusNorm * Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
+                startScreen = anchorScreen;
+                endScreen = {
+                    x: anchorScreen.x + radiusPx,
+                    y: anchorScreen.y,
+                };
+            }
             if (!startScreen || !endScreen) return null;
             return {
                 id: annotation.id,
@@ -3310,6 +3068,44 @@ const VolumeViewer3D = ({
 
         return null;
     }
+
+    useEffect(() => {
+        if (loading || error || !viewerSize.width || !viewerSize.height) return;
+
+        setAnnotations((current) => {
+            let didChange = false;
+            const baseDimension = Math.max(1, Math.min(viewerSize.width, viewerSize.height) || Math.max(viewerSize.width, viewerSize.height));
+            const nextAnnotations = current.map((annotation) => {
+                if (!['arrow', 'circle'].includes(annotation?.type)) return annotation;
+                if (annotation?.metadata?.anchor_mode === 'world_callout') return annotation;
+                if (!isWorldPoint3D(annotation.coordinates?.world_start) || !isWorldPoint3D(annotation.coordinates?.world_end)) return annotation;
+
+                const anchorScreen = projectWorldToViewport(annotation.coordinates.world_start);
+                const endScreen = projectWorldToViewport(annotation.coordinates.world_end);
+                if (!anchorScreen || !endScreen) return annotation;
+
+                const nextMetadata = { ...(annotation.metadata || {}), anchor_mode: 'world_callout' };
+                if (annotation.type === 'arrow') {
+                    nextMetadata.screen_tail_offset_norm = {
+                        x: Number(((endScreen.x - anchorScreen.x) / Math.max(viewerSize.width, 1)).toFixed(6)),
+                        y: Number(((endScreen.y - anchorScreen.y) / Math.max(viewerSize.height, 1)).toFixed(6)),
+                    };
+                } else {
+                    nextMetadata.screen_radius_norm = Number((
+                        Math.hypot(endScreen.x - anchorScreen.x, endScreen.y - anchorScreen.y) / baseDimension
+                    ).toFixed(6));
+                }
+
+                didChange = true;
+                return {
+                    ...annotation,
+                    metadata: nextMetadata,
+                };
+            });
+
+            return didChange ? nextAnnotations : current;
+        });
+    }, [error, loading, projectWorldToViewport, viewerSize.height, viewerSize.width]);
 
     const createMeasurementActors = useCallback((pointA, pointB) => {
         const sphereRadius = Math.max(0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 1.35);
@@ -4232,6 +4028,11 @@ const VolumeViewer3D = ({
         if (!(annotateMode && annotationTool === 'freehand')) {
             surfaceTraceActiveRef.current = false;
             surfaceTraceDraftRef.current = [];
+            surfacePointerRef.current = null;
+            if (surfaceMoveRafRef.current) {
+                cancelAnimationFrame(surfaceMoveRafRef.current);
+                surfaceMoveRafRef.current = 0;
+            }
             setSurfaceTraceActive(false);
             setSurfaceTraceDraft([]);
             setSurfaceTracePreview(null);
@@ -4240,6 +4041,11 @@ const VolumeViewer3D = ({
         if (!(annotateMode && annotationTool === 'brush')) {
             brushTraceActiveRef.current = false;
             brushDraftCentersRef.current = [];
+            brushPointerRef.current = null;
+            if (brushMoveRafRef.current) {
+                cancelAnimationFrame(brushMoveRafRef.current);
+                brushMoveRafRef.current = 0;
+            }
             setBrushTraceActive(false);
             setBrushDraftCenters([]);
             setBrushPreviewPoint(null);
@@ -4345,7 +4151,7 @@ const VolumeViewer3D = ({
     }, [clipStorageKey, clippingMode]);
 
     useEffect(() => {
-        const annotateNeedsSurfacePick = annotateMode && annotationTool !== 'select';
+        const annotateNeedsSurfacePick = annotateMode && (annotationTool === 'freehand' || annotationTool === 'brush');
         if ((measureMode3D || implantPlaceMode || linkedMode || annotateNeedsSurfacePick) && !loading && !error) {
             ensureSurfacePickActor();
         }
@@ -4682,11 +4488,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.stopPropagation();
             const point = pickAnnotationWorldPointFromPointer(event);
             if (!point) return;
+            const screenPoint = getViewportPointerPoint(event);
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             setWorldOverlayDraft({
                 type: annotationTool,
                 startWorld: point,
-                hoverWorld: point,
+                startScreen: screenPoint,
+                hoverScreen: screenPoint,
                 pointerId: event.pointerId,
             });
             setManualSegmentationError(null);
@@ -4754,6 +4562,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         implantDiameter,
         implantLength,
         implantPlaceMode,
+        getViewportPointerPoint,
         isViewportUiEvent,
         measureMode3D,
         pickAnnotationWorldPointFromPointer,
@@ -4762,63 +4571,85 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         pickWorldPointFromPointer,
     ]);
 
+    const processBrushPointerMove = useCallback(() => {
+        brushMoveRafRef.current = 0;
+        const pointer = brushPointerRef.current;
+        if (!pointer || !brushTraceActiveRef.current || !(annotateMode && annotationTool === 'brush')) return;
+
+        const point = pickSurfaceWorldPointFromPointer(pointer);
+        if (!point) {
+            setBrushPreviewPoint(null);
+            return;
+        }
+
+        setBrushPreviewPoint(point);
+        setBrushDraftCenters((current) => {
+            const activeDraft = current.length ? current : brushDraftCentersRef.current;
+            const lastPoint = activeDraft[activeDraft.length - 1];
+            const minStepMm = Math.max((brushRadiusMm || BRUSH_RADIUS_DEFAULT_MM) * 0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 0.8);
+            if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
+                return activeDraft;
+            }
+            const nextDraft = [...activeDraft, point];
+            brushDraftCentersRef.current = nextDraft;
+            return nextDraft;
+        });
+    }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer]);
+
+    const processSurfacePointerMove = useCallback(() => {
+        surfaceMoveRafRef.current = 0;
+        const pointer = surfacePointerRef.current;
+        if (!pointer || !surfaceTraceActiveRef.current || !(annotateMode && annotationTool === 'freehand')) return;
+
+        const point = pickSurfaceWorldPointFromPointer(pointer);
+        if (!point) {
+            setSurfaceTracePreview(null);
+            return;
+        }
+
+        setSurfaceTracePreview(point);
+        setSurfaceTraceDraft((current) => {
+            const activeDraft = current.length ? current : surfaceTraceDraftRef.current;
+            const lastPoint = activeDraft[activeDraft.length - 1];
+            const minStepMm = Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData));
+            if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
+                return activeDraft;
+            }
+            const nextDraft = [...activeDraft, point];
+            surfaceTraceDraftRef.current = nextDraft;
+            return nextDraft;
+        });
+    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer]);
+
     const handleViewportPointerMove = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && isViewportUiEvent(event)) return;
         if (brushTraceActiveRef.current && annotateMode && annotationTool === 'brush') {
-            const point = pickSurfaceWorldPointFromPointer(event);
-            if (!point) {
-                setBrushPreviewPoint(null);
-                return;
+            brushPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+            if (!brushMoveRafRef.current) {
+                brushMoveRafRef.current = requestAnimationFrame(processBrushPointerMove);
             }
-
-            setBrushPreviewPoint(point);
-            setBrushDraftCenters((current) => {
-                const activeDraft = current.length ? current : brushDraftCentersRef.current;
-                const lastPoint = activeDraft[activeDraft.length - 1];
-                const minStepMm = Math.max((brushRadiusMm || BRUSH_RADIUS_DEFAULT_MM) * 0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 0.8);
-                if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
-                    return activeDraft;
-                }
-                const nextDraft = [...activeDraft, point];
-                brushDraftCentersRef.current = nextDraft;
-                return nextDraft;
-            });
             return;
         }
 
         if (surfaceTraceActiveRef.current && annotateMode && annotationTool === 'freehand') {
-            const point = pickSurfaceWorldPointFromPointer(event);
-            if (!point) {
-                setSurfaceTracePreview(null);
-                return;
+            surfacePointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+            if (!surfaceMoveRafRef.current) {
+                surfaceMoveRafRef.current = requestAnimationFrame(processSurfacePointerMove);
             }
-
-            setSurfaceTracePreview(point);
-            setSurfaceTraceDraft((current) => {
-                const activeDraft = current.length ? current : surfaceTraceDraftRef.current;
-                const lastPoint = activeDraft[activeDraft.length - 1];
-                const minStepMm = Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData));
-                if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
-                    return activeDraft;
-                }
-                const nextDraft = [...activeDraft, point];
-                surfaceTraceDraftRef.current = nextDraft;
-                return nextDraft;
-            });
             return;
         }
 
         if (annotateMode && (annotationTool === 'arrow' || annotationTool === 'circle') && worldOverlayDraft?.startWorld) {
-            const point = pickAnnotationWorldPointFromPointer(event);
+            const screenPoint = getViewportPointerPoint(event);
             setWorldOverlayDraft((current) => {
                 if (!current?.startWorld) return current;
-                if (!point) {
-                    return current.hoverWorld ? { ...current, hoverWorld: null } : current;
+                if (!screenPoint) {
+                    return current.hoverScreen ? { ...current, hoverScreen: null } : current;
                 }
-                if (current.hoverWorld && arraysNearlyEqual(current.hoverWorld, point, 1e-3)) {
+                if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 0.5) {
                     return current;
                 }
-                return { ...current, hoverWorld: point };
+                return { ...current, hoverScreen: screenPoint };
             });
             return;
         }
@@ -4830,7 +4661,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
             return [...point];
         });
-    }, [annotateMode, annotationTool, brushRadiusMm, isViewportUiEvent, measureMode3D, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, worldOverlayDraft]);
+    }, [annotateMode, annotationTool, getViewportPointerPoint, isViewportUiEvent, measureMode3D, pickWorldPointFromPointer, processBrushPointerMove, processSurfacePointerMove, worldOverlayDraft]);
 
     const handleViewportPointerUp = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && !worldOverlayDraft?.startWorld && isViewportUiEvent(event)) return;
@@ -4863,15 +4694,21 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.preventDefault();
             event.stopPropagation();
             try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) {}
-            const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.hoverWorld || worldOverlayDraft.startWorld;
+            const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
+            const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
             const nextAnnotation = buildWorldOverlayAnnotation({
                 type: annotationTool,
                 startWorld: worldOverlayDraft.startWorld,
                 endWorld: releasePoint,
+                startScreen: worldOverlayDraft.startScreen,
+                endScreen: releaseScreen,
                 color: ANNOTATION_COLORS[annotationTool],
             });
             setWorldOverlayDraft(null);
-            if (!nextAnnotation || distanceMm(worldOverlayDraft.startWorld, releasePoint) < Math.max(0.35, getAverageSpacing(vtkContextRef.current?.imageData))) {
+            if (!nextAnnotation || !releaseScreen || !worldOverlayDraft.startScreen || Math.hypot(
+                releaseScreen.x - worldOverlayDraft.startScreen.x,
+                releaseScreen.y - worldOverlayDraft.startScreen.y,
+            ) < 6) {
                 return;
             }
             setAnnotations((current) => [...current, nextAnnotation]);
@@ -4925,7 +4762,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         };
 
         setAnnotations((current) => [...current, nextAnnotation]);
-    }, [annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildWorldOverlayAnnotation, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, worldOverlayDraft]);
+    }, [annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildWorldOverlayAnnotation, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, worldOverlayDraft]);
 
     const handleViewportPointerLeave = useCallback(() => {
         setMeasureHoverPoint(null);
@@ -5095,9 +4932,11 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     ), [currentCameraState, projectWorldOverlayAnnotation, seriesUid, snapshotOverlay?.annotations, viewerSize.height, viewerSize.width]);
     const worldOverlayPreview = useMemo(() => {
         if (!annotateMode || !worldOverlayDraft?.startWorld || !['arrow', 'circle'].includes(annotationTool)) return null;
-        const startScreen = projectWorldToViewport(worldOverlayDraft.startWorld);
-        const endScreen = projectWorldToViewport(worldOverlayDraft.hoverWorld || worldOverlayDraft.startWorld);
-        if (!startScreen || !endScreen) return null;
+        const anchorScreen = projectWorldToViewport(worldOverlayDraft.startWorld);
+        const hoverScreen = worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen || anchorScreen;
+        if (!anchorScreen || !hoverScreen) return null;
+        const startScreen = annotationTool === 'arrow' ? hoverScreen : anchorScreen;
+        const endScreen = annotationTool === 'arrow' ? anchorScreen : hoverScreen;
         return {
             type: annotationTool,
             startScreen,
@@ -5548,23 +5387,58 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 </div>
             )}
 
-            {/* ─── Main Viewport Area ────────────────────────────── */}
-            <div
-                ref={containerRef}
-                onPointerDown={handleViewportPointerDown}
-                onPointerMove={handleViewportPointerMove}
-                onPointerUp={handleViewportPointerUp}
-                onPointerLeave={handleViewportPointerLeave}
-                onClick={handleViewportClick}
-                className="flex-1 relative"
-                style={{
-                    minHeight: '400px',
-                    width: '100%',
-                    cursor: annotateMode
-                        ? (annotationTool === 'select' ? 'grab' : 'crosshair')
-                        : ((measureMode3D || implantPlaceMode) ? 'crosshair' : undefined),
-                }}
-            >
+            <div className="relative flex-1 min-h-[400px]">
+                {!loading && !error && (measureMode3D || annotateMode) && (
+                    <div data-xcore-ui="true" className="pointer-events-none absolute left-4 right-4 top-4 z-[90] flex justify-center">
+                        <div className="pointer-events-auto">
+                            <Volume3DModeToolbar
+                                annotateMode={annotateMode}
+                                annotationPersistence={annotationPersistence}
+                                annotationTool={annotationTool}
+                                brushOperation={brushOperation}
+                                brushRadiusMm={brushRadiusMm}
+                                clearAllAnnotations={clearAllAnnotations}
+                                clearMeasurements3D={clearMeasurements3D}
+                                deleteSelectedWorldAnnotation={deleteSelectedWorldAnnotation}
+                                handleUndoAnnotation={handleUndoAnnotation}
+                                isWorldBrushAnnotation={isWorldBrushAnnotation}
+                                measureMode3D={measureMode3D}
+                                selectedWorldAnnotation={selectedWorldAnnotation}
+                                setAnnotationTool={setAnnotationTool}
+                                setBrushOperation={setBrushOperation}
+                                setBrushRadiusMm={setBrushRadiusMm}
+                                setSelectedWorldAnnotationId={setSelectedWorldAnnotationId}
+                                undoMeasurement3D={undoMeasurement3D}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* ─── Main Viewport Area ────────────────────────────── */}
+                <div
+                    ref={containerRef}
+                    onPointerDown={handleViewportPointerDown}
+                    onPointerMove={handleViewportPointerMove}
+                    onPointerUp={handleViewportPointerUp}
+                    onPointerLeave={handleViewportPointerLeave}
+                    onClick={handleViewportClick}
+                    className="absolute inset-0"
+                    style={{
+                        cursor: annotateMode
+                            ? (annotationTool === 'select' ? 'grab' : 'crosshair')
+                            : ((measureMode3D || implantPlaceMode) ? 'crosshair' : undefined),
+                    }}
+                >
+                <Volume3DInteractionLayer
+                    active={!loading && !error && viewportInteractionLocked}
+                    cursor={annotateMode && annotationTool !== 'select' ? 'crosshair' : (measureMode3D || implantPlaceMode ? 'crosshair' : 'default')}
+                    onPointerDown={handleViewportPointerDown}
+                    onPointerMove={handleViewportPointerMove}
+                    onPointerUp={handleViewportPointerUp}
+                    onPointerLeave={handleViewportPointerLeave}
+                    onClick={handleViewportClick}
+                />
+
                 {/* Loading Overlay */}
                 {loading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950 z-10 overflow-hidden">
@@ -5627,142 +5501,17 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     </div>
                 )}
 
-                {!loading && !error && (measureMode3D || annotateMode) && (
-                    <div data-xcore-ui="true" className="absolute left-1/2 top-4 z-[80] flex -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-700 bg-slate-950/90 p-1.5 shadow-2xl backdrop-blur">
-                        {measureMode3D && (
-                            <>
-                                <span className="rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-200">
-                                    Distance
-                                </span>
-                                <button
-                                    onClick={undoMeasurement3D}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Undo last measurement"
-                                >
-                                    <AppIcon name="Undo2" size={15} />
-                                </button>
-                                <button
-                                    onClick={clearMeasurements3D}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Clear measurements"
-                                >
-                                    <AppIcon name="Trash2" size={15} />
-                                </button>
-                            </>
-                        )}
-
-                        {annotateMode && (
-                            <>
-                                {[
-                                    ['select', 'MousePointer2', 'Select'],
-                                    ['arrow', 'ArrowRight', 'Arrow'],
-                                    ['circle', 'Circle', 'Circle'],
-                                    ['freehand', 'PenLine', 'Surface'],
-                                    ['brush', 'Paintbrush', 'Brush'],
-                                    ['text', 'Type', 'Text'],
-                                ].map(([toolName, iconName, label]) => (
-                                    <button
-                                        key={toolName}
-                                        onClick={() => setAnnotationTool(toolName)}
-                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
-                                            annotationTool === toolName
-                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
-                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                        }`}
-                                        title={`${label} annotation`}
-                                    >
-                                        <AppIcon name={iconName} size={14} />
-                                        <span>{label}</span>
-                                    </button>
-                                ))}
-                                {annotationTool === 'brush' && (
-                                    <div className="ml-1 flex items-center gap-1 rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-1 text-[11px] font-bold text-cyan-100">
-                                        <button
-                                            onClick={() => setBrushOperation('add')}
-                                            className={`rounded-lg px-2 py-1 transition ${brushOperation === 'add' ? 'bg-cyan-400 text-slate-950' : 'bg-slate-900/70 text-cyan-200 hover:bg-slate-800 hover:text-white'}`}
-                                            title="Add to selected segment or create a new one"
-                                        >
-                                            Add
-                                        </button>
-                                        <button
-                                            onClick={() => setBrushOperation('subtract')}
-                                            className={`rounded-lg px-2 py-1 transition ${brushOperation === 'subtract' ? 'bg-rose-400 text-slate-950' : 'bg-slate-900/70 text-cyan-200 hover:bg-slate-800 hover:text-white'}`}
-                                            title="Subtract from selected segment or intersecting brush segments"
-                                        >
-                                            Subtract
-                                        </button>
-                                    </div>
-                                )}
-                                {annotationTool === 'brush' && (
-                                    <div className="ml-1 flex items-center gap-1 rounded-xl border border-amber-500/25 bg-amber-500/10 px-1.5 py-1 text-[11px] font-bold text-amber-100">
-                                        <button
-                                            onClick={() => setBrushRadiusMm((current) => Math.max(BRUSH_RADIUS_MIN_MM, Number((current - 0.2).toFixed(2))))}
-                                            className="rounded-lg bg-slate-900/70 p-1 text-amber-200 transition hover:bg-slate-800 hover:text-white"
-                                            title="Decrease brush radius"
-                                        >
-                                            <AppIcon name="Minus" size={13} />
-                                        </button>
-                                        <span className="min-w-[4.5rem] text-center font-mono">{brushRadiusMm.toFixed(1)} mm</span>
-                                        <button
-                                            onClick={() => setBrushRadiusMm((current) => Math.min(BRUSH_RADIUS_MAX_MM, Number((current + 0.2).toFixed(2))))}
-                                            className="rounded-lg bg-slate-900/70 p-1 text-amber-200 transition hover:bg-slate-800 hover:text-white"
-                                            title="Increase brush radius"
-                                        >
-                                            <AppIcon name="Plus" size={13} />
-                                        </button>
-                                    </div>
-                                )}
-                                {selectedWorldAnnotation && (
-                                    <div className="ml-1 flex items-center gap-1 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-1 text-[11px] font-bold text-emerald-100">
-                                        <span className="max-w-[9rem] truncate px-1">
-                                            {isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Brush segment selected' : 'Surface loop selected'}
-                                        </span>
-                                        <button
-                                            onClick={() => setSelectedWorldAnnotationId(null)}
-                                            className="rounded-lg bg-slate-900/70 p-1 text-emerald-200 transition hover:bg-slate-800 hover:text-white"
-                                            title="Clear selection"
-                                        >
-                                            <AppIcon name="X" size={13} />
-                                        </button>
-                                        <button
-                                            onClick={deleteSelectedWorldAnnotation}
-                                            className="rounded-lg bg-slate-900/70 p-1 text-rose-200 transition hover:bg-slate-800 hover:text-white"
-                                            title="Delete selected 3D segmentation"
-                                        >
-                                            <AppIcon name="Trash2" size={13} />
-                                        </button>
-                                    </div>
-                                )}
-                                <button
-                                    onClick={handleUndoAnnotation}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Undo last annotation"
-                                >
-                                    <AppIcon name="Undo2" size={15} />
-                                </button>
-                                <button
-                                    onClick={clearAllAnnotations}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Clear annotations"
-                                >
-                                    <AppIcon name="Trash2" size={15} />
-                                </button>
-                                {annotationPersistence.saving && (
-                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
-                                )}
-                                {annotationPersistence.error && (
-                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
-                                        Local
-                                    </span>
-                                )}
-                            </>
-                        )}
-                    </div>
-                )}
-
                 {/* ─── Left Tool Panel ───────────────────────────── */}
                 {!loading && !error && (
-                    <div data-xcore-ui="true" className="absolute top-3 left-3 z-20 flex flex-col gap-2 w-56">
+                    <div
+                        data-xcore-ui="true"
+                        onPointerDown={stopViewportUiPropagation}
+                        onPointerMove={stopViewportUiPropagation}
+                        onPointerUp={stopViewportUiPropagation}
+                        onClick={stopViewportUiPropagation}
+                        onWheel={stopViewportUiPropagation}
+                        className="absolute top-3 left-3 z-20 flex w-56 flex-col gap-2"
+                    >
                         {teethError && (
                             <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
                                 <div className="font-semibold mb-1">Tooth overlay unavailable</div>
@@ -6124,76 +5873,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     />
                 )}
 
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && projectedSnapshotWorldOverlayAnnotations.length > 0 && (
-                    <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[14]">
-                        <svg className="absolute inset-0 h-full w-full">
-                            {projectedSnapshotWorldOverlayAnnotations.map((annotation) => {
-                                if (annotation.type === 'arrow') {
-                                    return (
-                                        <g key={annotation.id} opacity={annotation.opacity ?? 1}>
-                                            <line
-                                                x1={annotation.startScreen.x}
-                                                y1={annotation.startScreen.y}
-                                                x2={annotation.endScreen.x}
-                                                y2={annotation.endScreen.y}
-                                                stroke={annotation.color}
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                            />
-                                            <polygon
-                                                points={(() => {
-                                                    const dx = annotation.endScreen.x - annotation.startScreen.x;
-                                                    const dy = annotation.endScreen.y - annotation.startScreen.y;
-                                                    const angle = Math.atan2(dy, dx);
-                                                    const head = Math.max(8, Math.min(14, Math.hypot(dx, dy) * 0.14));
-                                                    const leftX = annotation.endScreen.x - (head * Math.cos(angle - (Math.PI / 7)));
-                                                    const leftY = annotation.endScreen.y - (head * Math.sin(angle - (Math.PI / 7)));
-                                                    const rightX = annotation.endScreen.x - (head * Math.cos(angle + (Math.PI / 7)));
-                                                    const rightY = annotation.endScreen.y - (head * Math.sin(angle + (Math.PI / 7)));
-                                                    return `${annotation.endScreen.x},${annotation.endScreen.y} ${leftX},${leftY} ${rightX},${rightY}`;
-                                                })()}
-                                                fill={annotation.color}
-                                            />
-                                        </g>
-                                    );
-                                }
-                                if (annotation.type === 'circle') {
-                                    const radius = Math.max(2, Math.hypot(
-                                        annotation.endScreen.x - annotation.startScreen.x,
-                                        annotation.endScreen.y - annotation.startScreen.y
-                                    ));
-                                    return (
-                                        <circle
-                                            key={annotation.id}
-                                            cx={annotation.startScreen.x}
-                                            cy={annotation.startScreen.y}
-                                            r={radius}
-                                            stroke={annotation.color}
-                                            strokeWidth="2"
-                                            fill="none"
-                                            opacity={annotation.opacity ?? 1}
-                                        />
-                                    );
-                                }
-                                return null;
-                            })}
-                        </svg>
-                        {projectedSnapshotWorldOverlayAnnotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
-                            <div
-                                key={annotation.id}
-                                className="absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl"
-                                style={{
-                                    left: annotation.screenPoint.x,
-                                    top: annotation.screenPoint.y,
-                                    opacity: annotation.opacity ?? 1,
-                                }}
-                            >
-                                {annotation.label}
-                            </div>
-                        ))}
-                    </div>
-                )}
-
                 {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && visible3DAnnotations.length > 0 && (
                     <AnnotationCanvas
                         width={viewerSize.width}
@@ -6212,249 +5891,29 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     />
                 )}
 
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && projectedWorldOverlayAnnotations.length > 0 && (
-                    <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[15]">
-                        <svg className="absolute inset-0 h-full w-full">
-                            {projectedWorldOverlayAnnotations.map((annotation) => {
-                                if (annotation.type === 'arrow') {
-                                    return (
-                                        <g key={annotation.id} opacity={annotation.opacity ?? 1}>
-                                            <line
-                                                x1={annotation.startScreen.x}
-                                                y1={annotation.startScreen.y}
-                                                x2={annotation.endScreen.x}
-                                                y2={annotation.endScreen.y}
-                                                stroke={annotation.color}
-                                                strokeWidth="2.25"
-                                                strokeLinecap="round"
-                                            />
-                                            <polygon
-                                                points={(() => {
-                                                    const dx = annotation.endScreen.x - annotation.startScreen.x;
-                                                    const dy = annotation.endScreen.y - annotation.startScreen.y;
-                                                    const angle = Math.atan2(dy, dx);
-                                                    const head = Math.max(8, Math.min(14, Math.hypot(dx, dy) * 0.14));
-                                                    const leftX = annotation.endScreen.x - (head * Math.cos(angle - (Math.PI / 7)));
-                                                    const leftY = annotation.endScreen.y - (head * Math.sin(angle - (Math.PI / 7)));
-                                                    const rightX = annotation.endScreen.x - (head * Math.cos(angle + (Math.PI / 7)));
-                                                    const rightY = annotation.endScreen.y - (head * Math.sin(angle + (Math.PI / 7)));
-                                                    return `${annotation.endScreen.x},${annotation.endScreen.y} ${leftX},${leftY} ${rightX},${rightY}`;
-                                                })()}
-                                                fill={annotation.color}
-                                            />
-                                        </g>
-                                    );
-                                }
-                                if (annotation.type === 'circle') {
-                                    const radius = Math.max(2, Math.hypot(
-                                        annotation.endScreen.x - annotation.startScreen.x,
-                                        annotation.endScreen.y - annotation.startScreen.y
-                                    ));
-                                    return (
-                                        <circle
-                                            key={annotation.id}
-                                            cx={annotation.startScreen.x}
-                                            cy={annotation.startScreen.y}
-                                            r={radius}
-                                            stroke={annotation.color}
-                                            strokeWidth="2.25"
-                                            fill="none"
-                                            opacity={annotation.opacity ?? 1}
-                                        />
-                                    );
-                                }
-                                return null;
-                            })}
-                            {worldOverlayPreview && worldOverlayPreview.type === 'arrow' && (
-                                <g opacity="0.9">
-                                    <line
-                                        x1={worldOverlayPreview.startScreen.x}
-                                        y1={worldOverlayPreview.startScreen.y}
-                                        x2={worldOverlayPreview.endScreen.x}
-                                        y2={worldOverlayPreview.endScreen.y}
-                                        stroke={worldOverlayPreview.color}
-                                        strokeWidth="2"
-                                        strokeDasharray="6 5"
-                                        strokeLinecap="round"
-                                    />
-                                </g>
-                            )}
-                            {worldOverlayPreview && worldOverlayPreview.type === 'circle' && (
-                                <circle
-                                    cx={worldOverlayPreview.startScreen.x}
-                                    cy={worldOverlayPreview.startScreen.y}
-                                    r={Math.max(2, Math.hypot(
-                                        worldOverlayPreview.endScreen.x - worldOverlayPreview.startScreen.x,
-                                        worldOverlayPreview.endScreen.y - worldOverlayPreview.startScreen.y
-                                    ))}
-                                    stroke={worldOverlayPreview.color}
-                                    strokeWidth="2"
-                                    strokeDasharray="6 5"
-                                    fill="none"
-                                    opacity="0.9"
-                                />
-                            )}
-                        </svg>
-                        {projectedWorldOverlayAnnotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
-                            <div
-                                key={annotation.id}
-                                className="absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
-                                style={{
-                                    left: annotation.screenPoint.x,
-                                    top: annotation.screenPoint.y,
-                                    opacity: annotation.opacity ?? 1,
-                                }}
-                            >
-                                {annotation.label}
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {!loading && !error && textDraft3D && textDraftScreenPoint && (
-                    <div
-                        data-xcore-ui="true"
-                        className="absolute z-[82] -translate-y-1/2"
-                        style={{
-                            left: textDraftScreenPoint.x,
-                            top: textDraftScreenPoint.y,
-                        }}
-                    >
-                        <input
-                            type="text"
-                            value={textDraft3D.value}
-                            onChange={(event) => setTextDraft3D((current) => current ? { ...current, value: event.target.value } : current)}
-                            onBlur={(event) => commitTextDraft3D(event.target.value)}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    commitTextDraft3D(textDraft3D.value);
-                                }
-                                if (event.key === 'Escape') {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    setTextDraft3D(null);
-                                }
-                            }}
-                            placeholder="Add note"
-                            autoFocus
-                            className="w-40 rounded-lg border border-slate-600 bg-slate-900/95 px-3 py-1.5 text-xs text-white outline-none"
-                        />
-                    </div>
-                )}
-
-                {measurementLabels.map((item) => (
-                    <div
-                        key={item.id}
-                        className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/40"
-                        style={{ left: item.screen.x, top: item.screen.y }}
-                    >
-                        {item.distance.toFixed(2)} mm
-                    </div>
-                ))}
-
-                {measurementPreview && (
-                    <>
-                        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-                            <line
-                                x1={measurementPreview.startScreen.x}
-                                y1={measurementPreview.startScreen.y}
-                                x2={measurementPreview.endScreen.x}
-                                y2={measurementPreview.endScreen.y}
-                                stroke="rgba(29, 158, 117, 0.92)"
-                                strokeWidth="2"
-                                strokeDasharray="6 5"
-                                strokeLinecap="round"
-                            />
-                            <circle
-                                cx={measurementPreview.startScreen.x}
-                                cy={measurementPreview.startScreen.y}
-                                r="4.5"
-                                fill="rgba(29, 158, 117, 0.96)"
-                                stroke="rgba(255,255,255,0.92)"
-                                strokeWidth="1.5"
-                            />
-                            <circle
-                                cx={measurementPreview.endScreen.x}
-                                cy={measurementPreview.endScreen.y}
-                                r="4.5"
-                                fill="rgba(29, 158, 117, 0.96)"
-                                stroke="rgba(255,255,255,0.92)"
-                                strokeWidth="1.5"
-                            />
-                        </svg>
-                        <div
-                            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/80 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/30"
-                            style={{ left: measurementPreview.midpointScreen.x, top: measurementPreview.midpointScreen.y }}
-                        >
-                            {measurementPreview.distance.toFixed(2)} mm
-                        </div>
-                    </>
-                )}
-
-                {surfaceTraceScreenPath.length >= 2 && (
-                    <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-                        <polyline
-                            points={surfaceTraceScreenPath.map((point) => `${point.x},${point.y}`).join(' ')}
-                            fill="none"
-                            stroke="rgba(226, 75, 74, 0.96)"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        />
-                        {surfaceTraceScreenPath.map((point, index) => (
-                            <circle
-                                key={`${point.x}-${point.y}-${index}`}
-                                cx={point.x}
-                                cy={point.y}
-                                r={index === 0 ? 4.2 : 3}
-                                fill="rgba(226, 75, 74, 0.92)"
-                                stroke="rgba(255,255,255,0.9)"
-                                strokeWidth="1.25"
-                            />
-                        ))}
-                    </svg>
-                )}
-
-                {brushScreenPath.length >= 2 && (
-                    <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-                        <polyline
-                            points={brushScreenPath.map((point) => `${point.x},${point.y}`).join(' ')}
-                            fill="none"
-                            stroke="rgba(245, 158, 11, 0.92)"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeDasharray="8 6"
-                        />
-                    </svg>
-                )}
-
-                {measureMode3D && measurePoints.length === 1 && (
-                    <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur">
-                        First point set — move to preview, click second point
-                    </div>
-                )}
-
-                {annotateMode && annotationTool === 'freehand' && (
-                    <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-100 ring-1 ring-rose-400/35 backdrop-blur">
-                        Drag on the bone surface to trace a 3D segmentation loop
-                    </div>
-                )}
-
-                {annotateMode && annotationTool === 'brush' && (
-                    <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 ring-1 ring-amber-400/35 backdrop-blur">
-                        {brushOperation === 'subtract' ? 'Subtract from' : 'Paint on'} the bone surface {selectedWorldAnnotation && isWorldBrushAnnotation(selectedWorldAnnotation) ? 'for the selected 3D segment' : 'to create or update a 3D segment'} · Brush {brushRadiusMm.toFixed(1)} mm
-                    </div>
-                )}
-
-                {!annotateMode && hiddenAnnotationCount > 0 && (
-                    <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 ring-1 ring-amber-400/30 backdrop-blur">
-                        {hiddenAnnotationCount} annotation{hiddenAnnotationCount > 1 ? 's are' : ' is'} hidden until the saved camera view is restored
-                    </div>
+                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
+                    <Volume3DOverlayLayer
+                        annotateMode={annotateMode}
+                        annotationTool={annotationTool}
+                        brushOperation={brushOperation}
+                        brushRadiusMm={brushRadiusMm}
+                        brushScreenPath={brushScreenPath}
+                        commitTextDraft3D={commitTextDraft3D}
+                        hiddenAnnotationCount={hiddenAnnotationCount}
+                        isWorldBrushAnnotation={isWorldBrushAnnotation}
+                        measureMode3D={measureMode3D}
+                        measurePoints={measurePoints}
+                        measurementLabels={measurementLabels}
+                        measurementPreview={measurementPreview}
+                        projectedSnapshotWorldOverlayAnnotations={projectedSnapshotWorldOverlayAnnotations}
+                        projectedWorldOverlayAnnotations={projectedWorldOverlayAnnotations}
+                        selectedWorldAnnotation={selectedWorldAnnotation}
+                        setTextDraft3D={setTextDraft3D}
+                        surfaceTraceScreenPath={surfaceTraceScreenPath}
+                        textDraft3D={textDraft3D}
+                        textDraftScreenPoint={textDraftScreenPoint}
+                        worldOverlayPreview={worldOverlayPreview}
+                    />
                 )}
 
                 {showNerveOverlay && nerveInfo && (
@@ -6579,6 +6038,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         </span>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );
