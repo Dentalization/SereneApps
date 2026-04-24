@@ -18,8 +18,8 @@ import {
 const MIN_POINTER_DISTANCE = 0.008;
 const HIT_TEST_EPSILON_PX = 1;
 const HIT_RADIUS_PX = 12;
-const FREEHAND_POINT_DISTANCE_PX = 4;
-const FREEHAND_SIMPLIFY_EPSILON_PX = 2;
+const FREEHAND_POINT_DISTANCE_PX = 2.25;
+const FREEHAND_SIMPLIFY_EPSILON_PX = 0.85;
 const FINDING_TYPES = [
   ['caries', 'Caries'],
   ['bone_resorption', 'Bone resorption'],
@@ -91,11 +91,11 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   }, [annotationHeight, annotationWidth, imageBounds]);
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) || null;
   const freehandPointDistancePx = useMemo(
-    () => Math.max(1.25, Math.min(5, FREEHAND_POINT_DISTANCE_PX / imageDisplayScale)),
+    () => Math.max(0.75, Math.min(3, FREEHAND_POINT_DISTANCE_PX / imageDisplayScale)),
     [imageDisplayScale]
   );
   const freehandSimplifyEpsilonPx = useMemo(
-    () => Math.max(0.5, Math.min(2.25, FREEHAND_SIMPLIFY_EPSILON_PX / imageDisplayScale)),
+    () => Math.max(0.2, Math.min(1.2, FREEHAND_SIMPLIFY_EPSILON_PX / imageDisplayScale)),
     [imageDisplayScale]
   );
 
@@ -149,9 +149,9 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
           ctx.closePath();
           ctx.stroke();
           ctx.setLineDash([]);
-          path.filter((_, index) => index % Math.max(1, Math.ceil(path.length / 8)) === 0).forEach((point) => {
+          path.forEach((point, index) => {
             ctx.beginPath();
-            ctx.arc(point.x, point.y, 3 * invScale, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, (index === 0 ? 3.4 : 2.6) * invScale, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#0f172a';
             ctx.stroke();
@@ -354,7 +354,16 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
       if ((annotation.type === 'region' || annotation.type === 'freehand') && Array.isArray(annotation.coordinates?.path)) {
         const path = annotation.coordinates.path;
-        if (path.some((pathPoint) => distancePx(point, pathPoint) <= HIT_RADIUS_PX) || pointInPolygon(point, path)) {
+        const vertexIndex = path.findIndex((pathPoint) => distancePx(point, pathPoint) <= (HIT_RADIUS_PX * 0.9));
+        if (vertexIndex >= 0) {
+          return { annotation, handle: 'vertex', vertexIndex };
+        }
+        const isNearEdge = path.some((pathPoint, pathIndex) => {
+          const nextPoint = path[(pathIndex + 1) % path.length];
+          if (!nextPoint) return false;
+          return distanceToSegmentPx(point, pathPoint, nextPoint) <= HIT_RADIUS_PX;
+        });
+        if (isNearEdge || pointInPolygon(point, path)) {
           return { annotation, handle: 'move' };
         }
         continue;
@@ -455,6 +464,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
       setDragSelection({
         annotationId: hit.annotation.id,
         handle: hit.handle,
+        vertexIndex: hit.vertexIndex,
         startPoint: point,
         originalCoordinates: hit.annotation.coordinates,
       });
@@ -506,6 +516,17 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         }
 
         if ((annotation.type === 'region' || annotation.type === 'freehand') && Array.isArray(dragSelection.originalCoordinates.path)) {
+          if (dragSelection.handle === 'vertex' && Number.isInteger(dragSelection.vertexIndex)) {
+            return {
+              ...annotation,
+              coordinates: {
+                ...annotation.coordinates,
+                path: dragSelection.originalCoordinates.path.map((pathPoint, pathIndex) => (
+                  pathIndex === dragSelection.vertexIndex ? point : pathPoint
+                )),
+              },
+            };
+          }
           return {
             ...annotation,
             coordinates: moveCoordinates(dragSelection.originalCoordinates, { x: dx, y: dy }),
