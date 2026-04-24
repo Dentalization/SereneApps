@@ -11,6 +11,7 @@ import time
 import numpy as np
 import json
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
@@ -28,7 +29,15 @@ from services.vti_converter import (
     suppress_fov_background,
 )
 
-app = FastAPI(title="X-Core Intelligent Streamer")
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    global _conversion_ws_loop
+    _conversion_ws_loop = asyncio.get_running_loop()
+    yield
+
+
+app = FastAPI(title="X-Core Intelligent Streamer", lifespan=_app_lifespan)
 
 # Add GZip compression for large JSON responses (like volume data)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
@@ -80,12 +89,6 @@ _conversion_ws_clients = set()
 _conversion_ws_lock = threading.Lock()
 _conversion_ws_loop = None
 DENSITY_HISTOGRAM_VERSION = 2
-
-
-@app.on_event("startup")
-async def _capture_event_loop():
-    global _conversion_ws_loop
-    _conversion_ws_loop = asyncio.get_running_loop()
 
 
 async def _broadcast_conversion_status(event: dict) -> None:

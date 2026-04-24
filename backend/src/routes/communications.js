@@ -13,6 +13,9 @@ import {
   listChatRoomsForUser
 } from '../services/communications.js';
 import { emitChatMessage, emitChatRead } from '../sockets/chat.js';
+import ConversationsAdapter from '../services/communications/conversationsAdapter.js';
+
+const conversationsAdapter = new ConversationsAdapter();
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -308,6 +311,67 @@ router.post(
         return res.status(500).json({ error: 'Twilio video configuration missing on server' });
       }
       return res.status(500).json({ error: 'Failed to generate video token' });
+    }
+  }
+);
+
+/**
+ * GET /appointments/:appointmentId/token
+ * Generates an access token for Twilio Conversations (Chat).
+ * Used by the mobile app's useChat hook.
+ */
+router.get(
+  '/appointments/:appointmentId/token',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+      const userId = req.user.id;
+
+      // 1. Verify access
+      const chatRoom = await prisma.chatRoom.findUnique({
+        where: { appointmentId: toBigInt(appointmentId, 'appointmentId') },
+        include: { members: true }
+      });
+
+      if (!chatRoom) {
+        return res.status(404).json({ 
+          error: { 
+            code: 'CONVERSATION_NOT_PROVISIONED', 
+            message: 'Chat belum tersedia. Selesaikan pembayaran atau tunggu inisialisasi.' 
+          } 
+        });
+      }
+
+      const isMember = chatRoom.members.some(m => m.userId === toBigInt(userId, 'userId'));
+      if (!isMember) {
+        return res.status(403).json({ error: { code: 'CONVERSATION_ACCESS_DENIED' } });
+      }
+
+      if (!chatRoom.twilio_conversation_sid) {
+        return res.status(404).json({ 
+          error: { 
+            code: 'CONVERSATION_NOT_PROVISIONED', 
+            message: 'Twilio Conversation SID belum tersedia.' 
+          } 
+        });
+      }
+
+      // 2. Generate token
+      const tokenData = await conversationsAdapter.generateAccessToken({ 
+        identity: String(userId), 
+        ttl: 3600 
+      });
+
+      res.json({
+        token: tokenData.token,
+        conversationSid: chatRoom.twilio_conversation_sid,
+        identity: tokenData.identity,
+        expiresAt: tokenData.expiresAt
+      });
+    } catch (error) {
+      console.error('Error generating Conversations token:', error);
+      res.status(500).json({ error: 'Failed to generate chat token' });
     }
   }
 );

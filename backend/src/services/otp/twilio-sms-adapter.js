@@ -8,6 +8,7 @@ export function createTwilioSmsAdapter(env = process.env) {
   const accountSid = env.TWILIO_ACCOUNT_SID || '';
   const authToken = env.TWILIO_AUTH_TOKEN || '';
   const fromNumber = env.TWILIO_SMS_FROM_NUMBER || env.TWILIO_PHONE_NUMBER || '';
+  const verifyServiceSid = env.TWILIO_VERIFY_SERVICE_SID || '';
   const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
   async function sendOtpSms({ to, body }) {
@@ -46,9 +47,42 @@ export function createTwilioSmsAdapter(env = process.env) {
     };
   }
 
+  async function sendVerifyOtp(to, channel = 'sms') {
+    if (!client || !verifyServiceSid) {
+      throw new Error('TWILIO_VERIFY_NOT_CONFIGURED');
+    }
+
+    const verification = await client.verify.v2.services(verifyServiceSid)
+      .verifications
+      .create({ to, channel });
+
+    return {
+      sid: verification.sid,
+      status: verification.status
+    };
+  }
+
+  async function checkVerifyOtp(to, code) {
+    if (!client || !verifyServiceSid) {
+      throw new Error('TWILIO_VERIFY_NOT_CONFIGURED');
+    }
+
+    const check = await client.verify.v2.services(verifyServiceSid)
+      .verificationChecks
+      .create({ to, code });
+
+    return {
+      status: check.status,
+      valid: check.status === 'approved'
+    };
+  }
+
   return {
     isConfigured: () => Boolean(client && fromNumber),
-    sendOtpSms
+    isVerifyConfigured: () => Boolean(client && verifyServiceSid),
+    sendOtpSms,
+    sendVerifyOtp,
+    checkVerifyOtp
   };
 }
 

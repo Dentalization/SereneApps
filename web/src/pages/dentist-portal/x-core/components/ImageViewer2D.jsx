@@ -29,6 +29,8 @@ import ShortcutHelpButton from './ShortcutHelpButton';
 const MEASUREMENT_COLOR = '#1D9E75';
 const WL_DRAG_SENSITIVITY = 0.005;
 const SCALE_BAR_OPTIONS_MM = [5, 10, 20, 50, 100];
+const MEASUREMENT_HIT_RADIUS_SCREEN_PX = 14;
+const MEASUREMENT_DRAG_THRESHOLD_SCREEN_PX = 5;
 const IMAGE_SHORTCUTS = [
     { key: '+ / =', label: 'Zoom in' },
     { key: '-', label: 'Zoom out' },
@@ -40,6 +42,19 @@ const IMAGE_SHORTCUTS = [
 ];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const distanceBetweenPoints = (a, b) => Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+
+const distancePointToSegment = (point, start, end) => {
+    const dx = (end?.x || 0) - (start?.x || 0);
+    const dy = (end?.y || 0) - (start?.y || 0);
+    const lenSq = (dx * dx) + (dy * dy);
+    if (!lenSq) return distanceBetweenPoints(point, start);
+    const t = clamp((((point?.x || 0) - (start?.x || 0)) * dx + (((point?.y || 0) - (start?.y || 0)) * dy)) / lenSq, 0, 1);
+    return distanceBetweenPoints(point, {
+        x: (start?.x || 0) + (dx * t),
+        y: (start?.y || 0) + (dy * t),
+    });
+};
 
 const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
 
@@ -48,7 +63,7 @@ const drawMeasurementOverlay = (ctx, measurements, pixelSpacing) => {
     measurements.forEach((measurement) => {
         ctx.strokeStyle = MEASUREMENT_COLOR;
         ctx.fillStyle = MEASUREMENT_COLOR;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.25;
         ctx.lineCap = 'round';
 
         ctx.beginPath();
@@ -57,14 +72,14 @@ const drawMeasurementOverlay = (ctx, measurements, pixelSpacing) => {
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.arc(measurement.start.x, measurement.start.y, 3, 0, Math.PI * 2);
-        ctx.arc(measurement.end.x, measurement.end.y, 3, 0, Math.PI * 2);
+        ctx.arc(measurement.start.x, measurement.start.y, 2.5, 0, Math.PI * 2);
+        ctx.arc(measurement.end.x, measurement.end.y, 2.5, 0, Math.PI * 2);
         ctx.fill();
 
         const dx = measurement.end.x - measurement.start.x;
         const dy = measurement.end.y - measurement.start.y;
         const distancePx = Math.sqrt((dx * dx) + (dy * dy));
-        const distanceMm = effectivePixelSpacing ? distancePx * effectivePixelSpacing : null;
+        const distanceMm = pixelSpacing ? distancePx * pixelSpacing : null;
         const label = distanceMm != null ? `${distanceMm.toFixed(2)} mm` : `${distancePx.toFixed(1)} px`;
         const midX = (measurement.start.x + measurement.end.x) / 2;
         const midY = (measurement.start.y + measurement.end.y) / 2;
@@ -79,7 +94,7 @@ const drawMeasurementOverlay = (ctx, measurements, pixelSpacing) => {
         ctx.stroke();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = '600 12px sans-serif';
+        ctx.font = '600 11px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(label, midX, midY - 13);
@@ -160,7 +175,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const [imageBounds, setImageBounds] = useState(null);
     const [measurements, setMeasurements] = useState([]);
     const [pendingPoint, setPendingPoint] = useState(null);
-    const [measurementDragStart, setMeasurementDragStart] = useState(null);
+    const [selectedMeasurementId, setSelectedMeasurementId] = useState(null);
+    const [measurementDragState, setMeasurementDragState] = useState(null);
     const [previewPoint, setPreviewPoint] = useState(null);
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
@@ -292,6 +308,9 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setCalibrationLengthInput('10');
         setMeasurements([]);
         setPendingPoint(null);
+        setSelectedMeasurementId(null);
+        setMeasurementDragState(null);
+        setPreviewPoint(null);
         setMeasureMode(false);
         setAnnotateMode(false);
         setAnnotationTool('arrow');
@@ -305,6 +324,37 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setSnapshots([]);
         setSnapshotOverlay(null);
     }, [studyKey, seriesUid]);
+
+    useEffect(() => {
+        if (measureMode) return;
+        setPendingPoint(null);
+        setPreviewPoint(null);
+        setSelectedMeasurementId(null);
+        setMeasurementDragState(null);
+    }, [measureMode]);
+
+    useEffect(() => {
+        if (!selectedMeasurementId) return;
+        if (!measurements.some((measurement) => measurement.id === selectedMeasurementId)) {
+            setSelectedMeasurementId(null);
+        }
+    }, [measurements, selectedMeasurementId]);
+
+    useEffect(() => {
+        if (!measureMode || !selectedMeasurementId) return undefined;
+
+        const handleKeyDown = (event) => {
+            if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+            const activeTag = document.activeElement?.tagName?.toLowerCase();
+            if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+            event.preventDefault();
+            setMeasurements((current) => current.filter((measurement) => measurement.id !== selectedMeasurementId));
+            setSelectedMeasurementId(null);
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [measureMode, selectedMeasurementId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -601,10 +651,11 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         if (pendingPoint) {
             setPendingPoint(null);
             setPreviewPoint(null);
-            setMeasurementDragStart(null);
+            setMeasurementDragState(null);
             return;
         }
 
+        setSelectedMeasurementId(null);
         setMeasurements((current) => current.slice(0, -1));
     }, [pendingPoint]);
 
@@ -615,7 +666,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const handleClearMeasurements = useCallback(() => {
         setMeasurements([]);
         setPendingPoint(null);
-        setMeasurementDragStart(null);
+        setSelectedMeasurementId(null);
+        setMeasurementDragState(null);
         setPreviewPoint(null);
     }, []);
 
@@ -626,6 +678,37 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             y: ((event.clientY - rect.top) / rect.height) * imageSize.height,
         };
     }, [imageSize.height, imageSize.width]);
+
+    const measurementHitRadius = useMemo(
+        () => MEASUREMENT_HIT_RADIUS_SCREEN_PX / Math.max(zoom, 0.1),
+        [zoom]
+    );
+    const measurementDragThreshold = useMemo(
+        () => MEASUREMENT_DRAG_THRESHOLD_SCREEN_PX / Math.max(zoom, 0.1),
+        [zoom]
+    );
+
+    const updateMeasurementById = useCallback((measurementId, updater) => {
+        setMeasurements((current) => current.map((measurement) => (
+            measurement.id === measurementId ? updater(measurement) : measurement
+        )));
+    }, []);
+
+    const getMeasurementHit = useCallback((point) => {
+        for (let index = measurements.length - 1; index >= 0; index -= 1) {
+            const measurement = measurements[index];
+            if (distanceBetweenPoints(point, measurement.start) <= measurementHitRadius) {
+                return { measurement, handle: 'start' };
+            }
+            if (distanceBetweenPoints(point, measurement.end) <= measurementHitRadius) {
+                return { measurement, handle: 'end' };
+            }
+            if (distancePointToSegment(point, measurement.start, measurement.end) <= measurementHitRadius) {
+                return { measurement, handle: 'move' };
+            }
+        }
+        return null;
+    }, [measurementHitRadius, measurements]);
 
     const commitMeasurement = useCallback((start, end) => {
         const dx = end.x - start.x;
@@ -652,6 +735,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
 
         const nextPoint = getMeasurementPoint(event);
 
@@ -668,25 +752,53 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             });
             setCalibrationDraft(null);
             setCalibrationMode(false);
-            return;
-        }
-
-        if (pendingPoint) {
-            commitMeasurement(pendingPoint, nextPoint);
-            setPendingPoint(null);
             setPreviewPoint(null);
-            setMeasurementDragStart(null);
             return;
         }
 
-        setPendingPoint(nextPoint);
-        setMeasurementDragStart(nextPoint);
+        const hit = getMeasurementHit(nextPoint);
+        if (hit) {
+            setSelectedMeasurementId(hit.measurement.id);
+            setPreviewPoint(null);
+            setPendingPoint(null);
+            setMeasurementDragState({
+                type: 'edit',
+                measurementId: hit.measurement.id,
+                handle: hit.handle,
+                originPoint: nextPoint,
+                originalMeasurement: {
+                    ...hit.measurement,
+                    start: { ...hit.measurement.start },
+                    end: { ...hit.measurement.end },
+                },
+            });
+            return;
+        }
+
+        setSelectedMeasurementId(null);
+        if (pendingPoint) {
+            setMeasurementDragState({
+                type: 'create',
+                originPoint: pendingPoint,
+                pointerDownPoint: nextPoint,
+                usePendingPoint: true,
+            });
+            setPreviewPoint(nextPoint);
+            return;
+        }
+
+        setMeasurementDragState({
+            type: 'create',
+            originPoint: nextPoint,
+            pointerDownPoint: nextPoint,
+            usePendingPoint: false,
+        });
         setPreviewPoint(nextPoint);
     }, [
         calibrationDraft,
         calibrationMode,
-        commitMeasurement,
         getMeasurementPoint,
+        getMeasurementHit,
         imageLoaded,
         imageSize.height,
         imageSize.width,
@@ -695,26 +807,100 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     ]);
 
     const handleMeasurementPointerMove = useCallback((event) => {
-        if ((!measureMode && !calibrationMode) || (!measurementDragStart && !pendingPoint && !calibrationDraft)) return;
+        if ((!measureMode && !calibrationMode) || (!measurementDragState && !pendingPoint && !calibrationDraft)) return;
         event.preventDefault();
         event.stopPropagation();
-        setPreviewPoint(getMeasurementPoint(event));
-    }, [calibrationDraft, calibrationMode, getMeasurementPoint, measureMode, measurementDragStart, pendingPoint]);
+        const nextPoint = getMeasurementPoint(event);
+
+        if (measurementDragState?.type === 'edit') {
+            const { measurementId, handle, originPoint, originalMeasurement } = measurementDragState;
+            if (!originalMeasurement) return;
+            if (handle === 'start') {
+                updateMeasurementById(measurementId, (measurement) => ({
+                    ...measurement,
+                    start: nextPoint,
+                }));
+            } else if (handle === 'end') {
+                updateMeasurementById(measurementId, (measurement) => ({
+                    ...measurement,
+                    end: nextPoint,
+                }));
+            } else {
+                const dx = nextPoint.x - originPoint.x;
+                const dy = nextPoint.y - originPoint.y;
+                updateMeasurementById(measurementId, (measurement) => ({
+                    ...measurement,
+                    start: {
+                        x: originalMeasurement.start.x + dx,
+                        y: originalMeasurement.start.y + dy,
+                    },
+                    end: {
+                        x: originalMeasurement.end.x + dx,
+                        y: originalMeasurement.end.y + dy,
+                    },
+                }));
+            }
+            return;
+        }
+
+        setPreviewPoint(nextPoint);
+    }, [
+        calibrationDraft,
+        calibrationMode,
+        getMeasurementPoint,
+        measureMode,
+        measurementDragState,
+        pendingPoint,
+        updateMeasurementById,
+    ]);
 
     const handleMeasurementPointerUp = useCallback((event) => {
-        if ((!measureMode && !calibrationMode) || !measurementDragStart) return;
+        if ((!measureMode && !calibrationMode) || (!measurementDragState && !pendingPoint)) return;
         event.preventDefault();
         event.stopPropagation();
+        try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+
+        if (measurementDragState?.type === 'edit') {
+            setMeasurementDragState(null);
+            return;
+        }
+
+        if (!measurementDragState?.originPoint) return;
 
         const endPoint = getMeasurementPoint(event);
-        if (commitMeasurement(measurementDragStart, endPoint)) {
-            setPendingPoint(null);
-        }
-        setMeasurementDragStart(null);
-        setPreviewPoint(null);
-    }, [calibrationMode, commitMeasurement, getMeasurementPoint, measureMode, measurementDragStart]);
+        const pointerTravel = distanceBetweenPoints(endPoint, measurementDragState.pointerDownPoint || measurementDragState.originPoint);
 
-    const renderMeasurementLabel = useCallback((measurement) => {
+        if (measurementDragState.usePendingPoint) {
+            if (commitMeasurement(measurementDragState.originPoint, endPoint)) {
+                setPendingPoint(null);
+                setPreviewPoint(null);
+            } else {
+                setPendingPoint(measurementDragState.originPoint);
+                setPreviewPoint(endPoint);
+            }
+            setMeasurementDragState(null);
+            return;
+        }
+
+        if (pointerTravel >= measurementDragThreshold && commitMeasurement(measurementDragState.originPoint, endPoint)) {
+            setPendingPoint(null);
+            setPreviewPoint(null);
+        } else {
+            setPendingPoint(measurementDragState.originPoint);
+            setPreviewPoint(endPoint);
+        }
+        setMeasurementDragState(null);
+    }, [
+        calibrationMode,
+        commitMeasurement,
+        getMeasurementPoint,
+        measureMode,
+        measurementDragState,
+        measurementDragThreshold,
+        pendingPoint,
+    ]);
+
+    const renderMeasurementLabel = useCallback((measurement, options = {}) => {
         const dx = measurement.end.x - measurement.start.x;
         const dy = measurement.end.y - measurement.start.y;
         const distancePx = Math.sqrt((dx * dx) + (dy * dy));
@@ -722,26 +908,27 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         const label = distanceMm != null ? `${distanceMm.toFixed(2)} mm` : `${distancePx.toFixed(1)} px`;
         const midX = (measurement.start.x + measurement.end.x) / 2;
         const midY = (measurement.start.y + measurement.end.y) / 2;
-        const pillWidth = Math.max(60, label.length * 7 + 14);
+        const pillWidth = Math.max(56, label.length * 6.5 + 14);
         const invZoom = 1 / Math.max(zoom, 0.1);
+        const isPreview = Boolean(options.preview);
 
         return (
-            <g key={`${measurement.id}-label`}>
+            <g key={`${measurement.id}-${isPreview ? 'preview' : 'label'}`}>
                 <rect
                     x={midX - ((pillWidth * invZoom) / 2)}
-                    y={midY - (24 * invZoom)}
+                    y={midY - (22 * invZoom)}
                     width={pillWidth * invZoom}
-                    height={18 * invZoom}
-                    rx={9 * invZoom}
-                    fill="rgba(15, 23, 42, 0.92)"
-                    stroke="rgba(29, 158, 117, 0.55)"
+                    height={17 * invZoom}
+                    rx={8.5 * invZoom}
+                    fill={isPreview ? 'rgba(15, 23, 42, 0.82)' : 'rgba(15, 23, 42, 0.92)'}
+                    stroke={isPreview ? 'rgba(29, 158, 117, 0.35)' : 'rgba(29, 158, 117, 0.55)'}
                     strokeWidth={Math.max(0.5 * invZoom, 0.1)}
                 />
                 <text
                     x={midX}
-                    y={midY - (11 * invZoom)}
+                    y={midY - (10 * invZoom)}
                     fill="#ffffff"
-                    fontSize={11 * invZoom}
+                    fontSize={10 * invZoom}
                     fontWeight="600"
                     textAnchor="middle"
                     dominantBaseline="middle"
@@ -751,6 +938,16 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             </g>
         );
     }, [effectivePixelSpacing, zoom]);
+
+    const previewMeasurement = useMemo(() => {
+        if (!pendingPoint || !previewPoint) return null;
+        if (distanceBetweenPoints(pendingPoint, previewPoint) < 3) return null;
+        return {
+            id: 'measurement-preview',
+            start: pendingPoint,
+            end: previewPoint,
+        };
+    }, [pendingPoint, previewPoint]);
 
     const handleExportReport = useCallback(async (formValues) => {
         try {
@@ -1337,46 +1534,76 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                                 viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
                                 className="absolute inset-0"
                                 style={{ pointerEvents: measureMode || calibrationMode ? 'auto' : 'none' }}
-                                onMouseDown={handleMeasurementPointerDown}
-                                onMouseMove={handleMeasurementPointerMove}
-                                onMouseUp={handleMeasurementPointerUp}
+                                onPointerDown={handleMeasurementPointerDown}
+                                onPointerMove={handleMeasurementPointerMove}
+                                onPointerUp={handleMeasurementPointerUp}
+                                onPointerLeave={() => {
+                                    setPreviewPoint(pendingPoint || null);
+                                }}
                             >
                                 {measurements.map((measurement) => (
                                     <g key={measurement.id}>
-                                        <line
-                                            x1={measurement.start.x}
-                                            y1={measurement.start.y}
-                                            x2={measurement.end.x}
-                                            y2={measurement.end.y}
-                                            stroke={MEASUREMENT_COLOR}
-                                            strokeWidth={Math.max(1.35 / Math.max(zoom, 0.1), 0.2)}
-                                            strokeLinecap="round"
-                                        />
-                                        <circle cx={measurement.start.x} cy={measurement.start.y} r={Math.max(3 / Math.max(zoom, 0.1), 0.4)} fill={MEASUREMENT_COLOR} />
-                                        <circle cx={measurement.end.x} cy={measurement.end.y} r={Math.max(3 / Math.max(zoom, 0.1), 0.4)} fill={MEASUREMENT_COLOR} />
-                                        {renderMeasurementLabel(measurement)}
+                                        {(() => {
+                                            const isSelected = measurement.id === selectedMeasurementId;
+                                            const strokeWidth = Math.max((isSelected ? 1.75 : 1.15) / Math.max(zoom, 0.1), 0.22);
+                                            const handleRadius = Math.max((isSelected ? 3.4 : 2.6) / Math.max(zoom, 0.1), 0.38);
+                                            return (
+                                                <>
+                                                    <line
+                                                        x1={measurement.start.x}
+                                                        y1={measurement.start.y}
+                                                        x2={measurement.end.x}
+                                                        y2={measurement.end.y}
+                                                        stroke={MEASUREMENT_COLOR}
+                                                        strokeWidth={strokeWidth}
+                                                        strokeLinecap="round"
+                                                        opacity={isSelected ? 1 : 0.95}
+                                                    />
+                                                    <circle
+                                                        cx={measurement.start.x}
+                                                        cy={measurement.start.y}
+                                                        r={handleRadius}
+                                                        fill={MEASUREMENT_COLOR}
+                                                        stroke={isSelected ? '#ffffff' : 'rgba(15, 23, 42, 0.75)'}
+                                                        strokeWidth={Math.max(0.75 / Math.max(zoom, 0.1), 0.15)}
+                                                    />
+                                                    <circle
+                                                        cx={measurement.end.x}
+                                                        cy={measurement.end.y}
+                                                        r={handleRadius}
+                                                        fill={MEASUREMENT_COLOR}
+                                                        stroke={isSelected ? '#ffffff' : 'rgba(15, 23, 42, 0.75)'}
+                                                        strokeWidth={Math.max(0.75 / Math.max(zoom, 0.1), 0.15)}
+                                                    />
+                                                    {renderMeasurementLabel(measurement)}
+                                                </>
+                                            );
+                                        })()}
                                     </g>
                                 ))}
 
-                                {pendingPoint && previewPoint && (
-                                    <line
-                                        x1={pendingPoint.x}
-                                        y1={pendingPoint.y}
-                                        x2={previewPoint.x}
-                                        y2={previewPoint.y}
-                                        stroke={MEASUREMENT_COLOR}
-                                        strokeWidth={Math.max(1.2 / Math.max(zoom, 0.1), 0.2)}
-                                        strokeLinecap="round"
-                                        strokeDasharray={`${4 / Math.max(zoom, 0.1)} ${4 / Math.max(zoom, 0.1)}`}
-                                        opacity="0.75"
-                                    />
+                                {previewMeasurement && (
+                                    <>
+                                        <line
+                                            x1={previewMeasurement.start.x}
+                                            y1={previewMeasurement.start.y}
+                                            x2={previewMeasurement.end.x}
+                                            y2={previewMeasurement.end.y}
+                                            stroke={MEASUREMENT_COLOR}
+                                            strokeWidth={Math.max(1 / Math.max(zoom, 0.1), 0.18)}
+                                            strokeLinecap="round"
+                                            strokeDasharray={`${4 / Math.max(zoom, 0.1)} ${4 / Math.max(zoom, 0.1)}`}
+                                            opacity="0.75"
+                                        />
+                                        {renderMeasurementLabel(previewMeasurement, { preview: true })}
+                                    </>
                                 )}
 
                                 {pendingPoint && (
                                     <circle
                                         cx={pendingPoint.x}
                                         cy={pendingPoint.y}
-                                        r={Math.max(3.2 / Math.max(zoom, 0.1), 0.4)}
+                                        r={Math.max(2.9 / Math.max(zoom, 0.1), 0.38)}
                                         fill={MEASUREMENT_COLOR}
                                         stroke="#ffffff"
                                         strokeWidth={Math.max(1 / Math.max(zoom, 0.1), 0.15)}
@@ -1504,7 +1731,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                     <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-black/60 px-5 py-2 text-[11px] text-white shadow-2xl backdrop-blur-md">
                         <span className="flex items-center gap-3">
                             <span className="text-gray-400">
-                                {windowLevelDrag ? 'Right-drag: Window/Level' : calibrationMode ? 'Click two points: Calibrate' : annotateMode ? 'Drag/Click: Annotate' : measureMode ? 'Click: Measure' : 'Drag: Pan'}
+                                {windowLevelDrag ? 'Right-drag: Window/Level' : calibrationMode ? 'Click two points: Calibrate' : annotateMode ? 'Drag/Click: Annotate' : measureMode ? 'Click/drag: Measure • Drag handles: Edit' : 'Drag: Pan'}
                             </span>
                             <span className="text-white/20">{'\u2022'}</span>
                             <span className="text-gray-400">Scroll: Zoom</span>

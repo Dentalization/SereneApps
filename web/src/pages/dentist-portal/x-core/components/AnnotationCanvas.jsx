@@ -90,6 +90,14 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     );
   }, [annotationHeight, annotationWidth, imageBounds]);
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) || null;
+  const freehandPointDistancePx = useMemo(
+    () => Math.max(1.25, Math.min(5, FREEHAND_POINT_DISTANCE_PX / imageDisplayScale)),
+    [imageDisplayScale]
+  );
+  const freehandSimplifyEpsilonPx = useMemo(
+    () => Math.max(0.5, Math.min(2.25, FREEHAND_SIMPLIFY_EPSILON_PX / imageDisplayScale)),
+    [imageDisplayScale]
+  );
 
   const hasVisibleCanvas = useMemo(
     () => active || annotations.length > 0 || !!draftAnnotation,
@@ -529,7 +537,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         if (!current) return null;
         const path = current.coordinates?.path || [];
         const lastPoint = path[path.length - 1];
-        if (lastPoint && distancePx(point, lastPoint) < FREEHAND_POINT_DISTANCE_PX) {
+        if (lastPoint && distancePx(point, lastPoint) < freehandPointDistancePx) {
           return current;
         }
         return {
@@ -571,7 +579,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
       const rawPath = finalPoint
         ? [...(draftAnnotation.coordinates?.path || []), finalPoint]
         : (draftAnnotation.coordinates?.path || []);
-      const simplifiedPath = simplifyPath(rawPath, FREEHAND_SIMPLIFY_EPSILON_PX, geometryContext.imageSize)
+      const simplifiedPath = simplifyPath(rawPath, freehandSimplifyEpsilonPx, geometryContext.imageSize)
         .filter((point, index, path) => index === 0 || distancePx(point, path[index - 1]) >= 1);
 
       if (simplifiedPath.length >= 3) {
