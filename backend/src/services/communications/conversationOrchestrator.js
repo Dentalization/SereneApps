@@ -1,10 +1,10 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const ConversationsAdapter = require('./conversationsAdapter');
+import { PrismaClient } from '@prisma/client';
+import ConversationsAdapter from './conversationsAdapter.js';
 
+const prisma = new PrismaClient();
 const adapter = new ConversationsAdapter();
 
-async function provisionConversationForAppointment(appointmentId) {
+export async function provisionConversationForAppointment(appointmentId) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: BigInt(appointmentId) },
     include: {
@@ -99,7 +99,3 @@ async function provisionConversationForAppointment(appointmentId) {
     chatRoomId: chatRoom.id 
   };
 }
-
-module.exports = {
-  provisionConversationForAppointment
-};

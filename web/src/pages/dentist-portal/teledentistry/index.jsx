@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import ConversationList from './components/ConversationList';
@@ -15,6 +16,7 @@ import { useToast } from '../../../contexts/ToastContext';
 const MIN_LOADING_MS = 900;
 
 const Teledentistry = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const {
@@ -206,16 +208,12 @@ const Teledentistry = () => {
   // ── Fix 4: PatientInfoPanel quick action handlers ─────────────
   const handleScheduleAppointment = () => {
     if (!activeConversation) return;
-    toast.info(`Scheduling follow-up for ${activeConversation.patient?.name || 'patient'}…`);
-    // TODO: Navigate to appointment scheduling page or open scheduling modal
-    console.log('[Teledentistry] Schedule appointment for:', activeConversation.appointmentId);
+    navigate('/dentist-portal/schedule');
   };
 
   const handleViewMedicalHistory = () => {
-    if (!activeConversation) return;
-    toast.info(`Opening medical history for ${activeConversation.patient?.name || 'patient'}…`);
-    // TODO: Navigate to EMR/patient profile page
-    console.log('[Teledentistry] View medical history for:', activeConversation.patient?.id);
+    if (!activeConversation?.patient?.id) return;
+    navigate(`/dentist-portal/patient-emr/${activeConversation.patient.id}`);
   };
 
   // ── Fix 5: New Consultation modal ─────────────────────────────

@@ -70,15 +70,48 @@ const styleForScale = (options = {}) => {
   const displayScale = Math.max(0.1, Number(options.displayScale) || 1);
   return {
     displayScale,
-    strokeWidth: Number(options.strokeWidth) || (1.35 / displayScale),
-    regionStrokeWidth: Number(options.regionStrokeWidth) || (1.25 / displayScale),
-    fontSize: Number(options.fontSize) || (10 / displayScale),
-    textPaddingX: 6 / displayScale,
-    textHeight: 16 / displayScale,
-    textRadius: 7 / displayScale,
+    strokeWidth: Number(options.strokeWidth) || (1.2 / displayScale),
+    regionStrokeWidth: Number(options.regionStrokeWidth) || (1.1 / displayScale),
+    fontSize: Number(options.fontSize) || (9 / displayScale),
+    textPaddingX: 5.5 / displayScale,
+    textHeight: 15 / displayScale,
+    textRadius: 6 / displayScale,
     arrowHeadMin: 5 / displayScale,
     arrowHeadMax: 11 / displayScale,
   };
+};
+
+const traceSmoothClosedPath = (ctx, points) => {
+  if (!Array.isArray(points) || points.length < 3) return false;
+
+  if (points.length === 3) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    ctx.lineTo(points[1].x, points[1].y);
+    ctx.lineTo(points[2].x, points[2].y);
+    ctx.closePath();
+    return true;
+  }
+
+  const midPoint = (a, b) => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  });
+
+  ctx.beginPath();
+  const startMid = midPoint(points[0], points[1]);
+  ctx.moveTo(startMid.x, startMid.y);
+
+  for (let index = 1; index <= points.length; index += 1) {
+    const current = points[index % points.length];
+    const next = points[(index + 1) % points.length];
+    const control = current;
+    const end = midPoint(current, next);
+    ctx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+  }
+
+  ctx.closePath();
+  return true;
 };
 
 export const drawArrow = (ctx, start, end, color, strokeWidth = 2, options = {}) => {
@@ -160,18 +193,13 @@ export const drawRegionAnnotation = (ctx, path, color, width, height, opacity = 
   if (!Array.isArray(path) || path.length < 3) return;
 
   const style = styleForScale(options);
+  const points = path.map((point) => ({
+    x: (point?.x || 0) * width,
+    y: (point?.y || 0) * height,
+  }));
+
   ctx.save();
-  ctx.beginPath();
-  path.forEach((point, index) => {
-    const x = (point?.x || 0) * width;
-    const y = (point?.y || 0) * height;
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
-  ctx.closePath();
+  traceSmoothClosedPath(ctx, points);
   ctx.globalAlpha = opacity * 0.25;
   ctx.fillStyle = color;
   ctx.fill();

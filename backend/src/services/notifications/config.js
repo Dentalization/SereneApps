@@ -29,7 +29,7 @@ export const notificationConfig = {
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID || '',
     authToken: process.env.TWILIO_AUTH_TOKEN || '',
-    fromNumber: process.env.TWILIO_FROM_NUMBER || ''
+    fromNumber: process.env.TWILIO_SMS_FROM_NUMBER || process.env.TWILIO_FROM_NUMBER || ''
   },
   fcm: {
     serviceAccount: parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT_JSON || '')

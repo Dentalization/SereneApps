@@ -7,6 +7,7 @@ import { VOLUME_CACHE_VERSION, volumeCache } from '../utils/volumeCache';
 import { toothOverlayCache } from '../utils/toothOverlayCache';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import useStudyMetadata from '../hooks/useStudyMetadata';
+import usePersistentAnnotations from '../hooks/usePersistentAnnotations';
 
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
@@ -18,6 +19,7 @@ import vtkPlane from '@kitware/vtk.js/Common/DataModel/Plane';
 import vtkImageMarchingCubes from '@kitware/vtk.js/Filters/General/ImageMarchingCubes';
 import vtkWindowedSincPolyDataFilter from '@kitware/vtk.js/Filters/General/WindowedSincPolyDataFilter';
 import vtkLineSource from '@kitware/vtk.js/Filters/Sources/LineSource';
+import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource';
 import vtkCylinderSource from '@kitware/vtk.js/Filters/Sources/CylinderSource';
 import vtkTubeFilter from '@kitware/vtk.js/Filters/General/TubeFilter';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
@@ -39,8 +41,25 @@ import SeriesSidebar from './SeriesSidebar';
 import ShortcutHelpButton from './ShortcutHelpButton';
 import ImplantPlanner from './ImplantPlanner';
 import SinusVolumePanel from './SinusVolumePanel';
+import AnnotationCanvas from './AnnotationCanvas';
+import AnnotationHistoryPanel from './AnnotationHistoryPanel';
+import AnnotationSessionModal from './AnnotationSessionModal';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
-import { exportPdfReport } from '../utils/reportUtils';
+import { drawAnnotations, exportAnnotationsJson, exportPdfReport } from '../utils/reportUtils';
+import {
+    deleteAnnotationSnapshot,
+    loadAnnotationSnapshots,
+    normalizeAnnotationForPersistence,
+    reviewStudyAnnotations,
+    saveAnnotationSnapshot,
+} from '../utils/annotationApi';
+import {
+    deleteLocalAnnotationSession,
+    loadLocalAnnotationSessions,
+    mergeAnnotationSessions,
+    saveLocalAnnotationSession,
+} from '../utils/annotationSessions.mjs';
+import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const SAMPLE_DISTANCE_INTERACTIVE = 1.0;
@@ -474,6 +493,20 @@ function midpoint(pointA, pointB) {
     ];
 }
 
+function cameraStateApproximatelyMatches(expected, current, epsilon = 0.75) {
+    if (!expected || !current) return true;
+    const expectedPosition = expected.position || expected.camera_position;
+    const expectedFocalPoint = expected.focal_point || expected.focalPoint;
+    const expectedViewUp = expected.view_up || expected.viewUp;
+    const currentPosition = current.position || current.camera_position;
+    const currentFocalPoint = current.focal_point || current.focalPoint;
+    const currentViewUp = current.view_up || current.viewUp;
+
+    return arraysNearlyEqual(expectedPosition, currentPosition, epsilon)
+        && arraysNearlyEqual(expectedFocalPoint, currentFocalPoint, epsilon)
+        && arraysNearlyEqual(expectedViewUp, currentViewUp, 0.08);
+}
+
 function buildDentistName(user) {
     return [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
 }
@@ -800,6 +833,7 @@ const VolumeViewer3D = ({
     const implantSkipPersistRef = useRef(false);
     const measurementSkipPersistRef = useRef(false);
     const clipPlaneStateRef = useRef(null);
+    const annotationHydrationKeyRef = useRef('');
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -823,6 +857,7 @@ const VolumeViewer3D = ({
     const [clipError, setClipError] = useState(null);
     const [measureMode3D, setMeasureMode3D] = useState(false);
     const [measurePoints, setMeasurePoints] = useState([]);
+    const [measureHoverPoint, setMeasureHoverPoint] = useState(null);
     const [measurements3D, setMeasurements3D] = useState([]);
     const [measurementRevision, setMeasurementRevision] = useState(0);
     const [showNerveOverlay, setShowNerveOverlay] = useState(false);
@@ -848,6 +883,18 @@ const VolumeViewer3D = ({
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
     const [reportWarningMessage, setReportWarningMessage] = useState('');
+    const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
+    const [annotateMode, setAnnotateMode] = useState(false);
+    const [annotationTool, setAnnotationTool] = useState('arrow');
+    const [annotations, setAnnotations] = useState([]);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [snapshots, setSnapshots] = useState([]);
+    const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+    const [snapshotOverlay, setSnapshotOverlay] = useState(null);
+    const [sessionModalMode, setSessionModalMode] = useState(null);
+    const [sessionSaving, setSessionSaving] = useState(false);
+    const [sessionError, setSessionError] = useState('');
+    const [reviewError, setReviewError] = useState('');
 
     // Slab
     const [slabThickness, setSlabThickness] = useState(SLAB_DEFAULT_MM);
@@ -884,6 +931,15 @@ const VolumeViewer3D = ({
     const clipStorageKey = useMemo(() => `xcore.clipPlane.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const showBack = typeof onBack === 'function';
     const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
+    const reviewMode = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return new URLSearchParams(window.location.search).get('mode') === 'review';
+    }, []);
+    const measurementCount = measurements3D.length;
+    const canUseBackendSessions = useMemo(
+        () => /^\d+$/.test(String(study?.id || '')),
+        [study?.id]
+    );
     const currentSeriesInfo = useMemo(() => {
         const series = Array.isArray(study?.series) ? study.series : [];
         if (!seriesUid) return series.find((item) => item.classification === '3D') || null;
@@ -905,6 +961,132 @@ const VolumeViewer3D = ({
         includeScreenshot: true,
         includeMetadataSummary: true,
     }), [aiReport, dentistName, patientName]);
+    const sessionScope = useMemo(() => ({
+        study,
+        studyKey,
+        seriesUid,
+        viewerType: '3d',
+    }), [seriesUid, study, studyKey]);
+
+    const captureCurrentCameraState = useCallback(() => {
+        const ctx = vtkContextRef.current;
+        const camera = ctx?.renderer?.getActiveCamera?.();
+        if (!camera) return null;
+        return {
+            position: [...camera.getPosition()],
+            focal_point: [...camera.getFocalPoint()],
+            view_up: [...camera.getViewUp()],
+            clipping_range: [...camera.getClippingRange()],
+        };
+    }, []);
+
+    const applyCameraState = useCallback((cameraState) => {
+        const ctx = vtkContextRef.current;
+        const camera = ctx?.renderer?.getActiveCamera?.();
+        if (!ctx || !camera || !cameraState) return false;
+
+        const position = cameraState.position || cameraState.camera_position;
+        const focalPoint = cameraState.focal_point || cameraState.focalPoint;
+        const viewUp = cameraState.view_up || cameraState.viewUp;
+        const clippingRange = cameraState.clipping_range || cameraState.clippingRange;
+
+        if (Array.isArray(position) && position.length === 3) {
+            camera.setPosition(position[0], position[1], position[2]);
+        }
+        if (Array.isArray(focalPoint) && focalPoint.length === 3) {
+            camera.setFocalPoint(focalPoint[0], focalPoint[1], focalPoint[2]);
+        }
+        if (Array.isArray(viewUp) && viewUp.length === 3) {
+            camera.setViewUp(viewUp[0], viewUp[1], viewUp[2]);
+        }
+        if (Array.isArray(clippingRange) && clippingRange.length === 2) {
+            camera.setClippingRange(clippingRange[0], clippingRange[1]);
+        }
+        camera.orthogonalizeViewUp?.();
+        ctx.renderWindow.render();
+        if (slabEnabledRef.current) {
+            requestAnimationFrame(() => updateSlabClipping(slabThicknessRef.current));
+        }
+        return true;
+    }, [updateSlabClipping]);
+
+    const scheduleCameraStateRestore = useCallback((cameraState) => {
+        if (!cameraState) return;
+        requestAnimationFrame(() => {
+            window.setTimeout(() => {
+                applyCameraState(cameraState);
+            }, 160);
+        });
+    }, [applyCameraState]);
+
+    const decorate3DAnnotations = useCallback((nextAnnotations = []) => {
+        const cameraState = captureCurrentCameraState();
+        return nextAnnotations.map((annotation) => ({
+            ...annotation,
+            viewer_type: annotation.viewer_type || '3d',
+            series_uid: annotation.series_uid || seriesUid,
+            metadata: {
+                ...(annotation.metadata || {}),
+                source_width: annotation.metadata?.source_width || viewerSize.width,
+                source_height: annotation.metadata?.source_height || viewerSize.height,
+                camera_state: cameraState || annotation.metadata?.camera_state || null,
+            },
+        }));
+    }, [captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const handleAnnotationsChange = useCallback((nextAnnotations) => {
+        setAnnotations(decorate3DAnnotations(nextAnnotations));
+    }, [decorate3DAnnotations]);
+
+    const annotationPersistence = usePersistentAnnotations({
+        study,
+        seriesUid,
+        viewerType: '3d',
+        annotations,
+        setAnnotations,
+        enabled: Boolean(!loading && !error && seriesUid && viewerSize.width > 0 && viewerSize.height > 0),
+        scope: {
+            sourceWidth: viewerSize.width,
+            sourceHeight: viewerSize.height,
+        },
+    });
+
+    const snapshotOverlayAnnotations = useMemo(() => (
+        (snapshotOverlay?.annotations || []).map((annotation) => ({
+            ...normalizeAnnotationForPersistence(annotation, {
+                seriesUid,
+                viewerType: '3d',
+                sourceWidth: viewerSize.width,
+                sourceHeight: viewerSize.height,
+            }),
+            color: '#22c55e',
+            displayOpacity: 0.55,
+        }))
+    ), [seriesUid, snapshotOverlay?.annotations, viewerSize.height, viewerSize.width]);
+
+    useEffect(() => {
+        const element = containerRef.current;
+        if (!element) return undefined;
+
+        const updateSize = () => {
+            const rect = element.getBoundingClientRect();
+            setViewerSize({
+                width: Math.max(0, Math.round(rect.width)),
+                height: Math.max(0, Math.round(rect.height)),
+            });
+        };
+
+        updateSize();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', updateSize);
+            return () => window.removeEventListener('resize', updateSize);
+        }
+
+        const observer = new ResizeObserver(() => updateSize());
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [containerReady]);
 
     useEffect(() => {
         onVolumeLoadedRef.current = onVolumeLoaded;
@@ -921,6 +1103,28 @@ const VolumeViewer3D = ({
         applyMapperQuality(ctx.mapper, quality, presetRef.current);
         ctx.renderWindow.render();
     }, [cacheKey, loading, quality, preset]);
+
+    useEffect(() => {
+        annotationHydrationKeyRef.current = '';
+    }, [cacheKey]);
+
+    useEffect(() => {
+        if (loading || error || annotationPersistence.loading) return;
+        if (annotationHydrationKeyRef.current === cacheKey) return;
+
+        const cameraState = annotations.find((annotation) => annotation?.metadata?.camera_state)?.metadata?.camera_state || null;
+        annotationHydrationKeyRef.current = cacheKey;
+        if (cameraState) {
+            scheduleCameraStateRestore(cameraState);
+        }
+    }, [
+        annotationPersistence.loading,
+        annotations,
+        cacheKey,
+        error,
+        loading,
+        scheduleCameraStateRestore,
+    ]);
 
     const createToothOverlayActors = useCallback(async (labelImageData, labelIds = [], options = {}) => {
         const scalars = labelImageData.getPointData()?.getScalars();
@@ -1214,6 +1418,14 @@ const VolumeViewer3D = ({
             setToothOverlayLoaded(false);
             setToothOverlayAvailable(false);
             setPreset('bone');
+            setAnnotateMode(false);
+            setAnnotationTool('arrow');
+            setAnnotations([]);
+            setSnapshotOverlay(null);
+            setHistoryOpen(false);
+            setSessionModalMode(null);
+            setSessionError('');
+            setReviewError('');
             setWindowCenter(WL_DEFAULTS.bone.center);
             setWindowWidth(WL_DEFAULTS.bone.width);
             setInverted(false);
@@ -2056,7 +2268,32 @@ const VolumeViewer3D = ({
                 return null;
             }
 
-            return await addScreenshotWatermark(dataURL, {
+            let compositedDataURL = dataURL;
+            if (annotations.length > 0 && typeof Image !== 'undefined') {
+                try {
+                    const image = new Image();
+                    await new Promise((resolve, reject) => {
+                        image.onload = resolve;
+                        image.onerror = reject;
+                        image.src = dataURL;
+                    });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = image.width;
+                    canvas.height = image.height;
+                    const drawCtx = canvas.getContext('2d');
+                    if (drawCtx) {
+                        drawCtx.drawImage(image, 0, 0);
+                        drawAnnotations(drawCtx, annotations, canvas.width, canvas.height, {
+                            displayScale: Math.max(canvas.width / Math.max(viewerSize.width || canvas.width, 1), 1),
+                        });
+                        compositedDataURL = canvas.toDataURL('image/png');
+                    }
+                } catch (annotationCompositeError) {
+                    console.warn('[VolumeViewer3D] Failed to composite annotations into screenshot:', annotationCompositeError);
+                }
+            }
+
+            return await addScreenshotWatermark(compositedDataURL, {
                 patientName,
                 studyDate: metadata?.StudyDate,
                 preset,
@@ -2066,7 +2303,7 @@ const VolumeViewer3D = ({
             console.warn('[VolumeViewer3D] Screenshot capture failed:', captureError);
             return null;
         }
-    }, [clinicName, metadata?.StudyDate, patientName, preset]);
+    }, [annotations, clinicName, metadata?.StudyDate, patientName, preset, viewerSize.width]);
 
     const captureScreenshot = useCallback(async () => {
         const dataURL = await captureViewportImage();
@@ -2202,7 +2439,7 @@ const VolumeViewer3D = ({
 
         try {
             const picker = vtkCellPicker.newInstance();
-            picker.setTolerance?.(0.02);
+            picker.setTolerance?.(0.035);
             if (ctx.surfacePickActor) {
                 picker.setPickFromList(true);
                 picker.initializePickList();
@@ -2228,17 +2465,55 @@ const VolumeViewer3D = ({
         }
     }, []);
 
-    const createMeasurementActor = useCallback((pointA, pointB) => {
-        const source = vtkLineSource.newInstance({ point1: pointA, point2: pointB, resolution: 1 });
-        const mapper = vtkMapper.newInstance();
-        mapper.setInputConnection(source.getOutputPort());
-        const actor = vtkActor.newInstance();
-        actor.setMapper(mapper);
-        setOverlayResources(actor, { source });
-        actor.getProperty().setColor(...MEASUREMENT_COLOR);
-        actor.getProperty().setLineWidth(4);
-        actor.getProperty().setOpacity(0.95);
-        return actor;
+    const createMeasurementActors = useCallback((pointA, pointB) => {
+        const sphereRadius = Math.max(0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 1.35);
+
+        const lineSource = vtkLineSource.newInstance({ point1: pointA, point2: pointB, resolution: 1 });
+        const tube = vtkTubeFilter.newInstance({
+            radius: Math.max(0.18, sphereRadius * 0.42),
+            numberOfSides: 18,
+            capping: true,
+        });
+        tube.setInputConnection(lineSource.getOutputPort());
+
+        const lineMapper = vtkMapper.newInstance();
+        lineMapper.setInputConnection(tube.getOutputPort());
+        const lineActor = vtkActor.newInstance();
+        lineActor.setMapper(lineMapper);
+        setOverlayResources(lineActor, { source: lineSource, tube });
+        lineActor.getProperty().setColor(...MEASUREMENT_COLOR);
+        lineActor.getProperty().setOpacity(0.95);
+        lineActor.getProperty().setAmbient(0.25);
+        lineActor.getProperty().setDiffuse(0.75);
+        lineActor.getProperty().setSpecular(0.35);
+        lineActor.getProperty().setSpecularPower(18);
+
+        const createEndpointActor = (center) => {
+            const source = vtkSphereSource.newInstance({
+                center,
+                radius: sphereRadius,
+                thetaResolution: 18,
+                phiResolution: 18,
+            });
+            const mapper = vtkMapper.newInstance();
+            mapper.setInputConnection(source.getOutputPort());
+            const actor = vtkActor.newInstance();
+            actor.setMapper(mapper);
+            setOverlayResources(actor, { source });
+            actor.getProperty().setColor(...MEASUREMENT_COLOR);
+            actor.getProperty().setOpacity(0.98);
+            actor.getProperty().setAmbient(0.28);
+            actor.getProperty().setDiffuse(0.72);
+            actor.getProperty().setSpecular(0.45);
+            actor.getProperty().setSpecularPower(20);
+            return actor;
+        };
+
+        return [
+            lineActor,
+            createEndpointActor(pointA),
+            createEndpointActor(pointB),
+        ];
     }, []);
 
     const ensureSurfacePickActor = useCallback(async () => {
@@ -2289,6 +2564,7 @@ const VolumeViewer3D = ({
 
     const clearMeasurements3D = useCallback(() => {
         setMeasurePoints([]);
+        setMeasureHoverPoint(null);
         setMeasurements3D([]);
         setMeasurementRevision((value) => value + 1);
     }, []);
@@ -2297,6 +2573,272 @@ const VolumeViewer3D = ({
         setMeasurements3D((current) => current.slice(0, -1));
         setMeasurementRevision((value) => value + 1);
     }, []);
+
+    const handleUndoAnnotation = useCallback(() => {
+        setAnnotations((current) => current.slice(0, -1));
+    }, []);
+
+    const clearAllAnnotations = useCallback(() => {
+        setAnnotations([]);
+        setSnapshotOverlay(null);
+    }, []);
+
+    const handleExportAnnotationsJson = useCallback(() => {
+        exportAnnotationsJson(annotations, metadata, {
+            patientName,
+            studyId: study?.id,
+            studyKey,
+            seriesUid,
+            viewerType: '3d',
+        });
+    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey]);
+
+    const buildSessionAnnotations = useCallback(() => annotations.map((annotation) => normalizeAnnotationForPersistence(annotation, {
+        seriesUid,
+        viewerType: '3d',
+        sourceWidth: viewerSize.width,
+        sourceHeight: viewerSize.height,
+    })), [annotations, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const buildSessionFeatureState = useCallback(() => ({
+        viewer_type: '3d',
+        preset,
+        quality,
+        window_center: windowCenter,
+        window_width: windowWidth,
+        inverted,
+        slab_enabled: slabEnabled,
+        slab_thickness: slabThickness,
+        measurements3d,
+        camera: captureCurrentCameraState(),
+    }), [
+        captureCurrentCameraState,
+        inverted,
+        measurements3D,
+        preset,
+        quality,
+        slabEnabled,
+        slabThickness,
+        windowCenter,
+        windowWidth,
+    ]);
+
+    const refreshSnapshots = useCallback(async () => {
+        if (!seriesUid) return;
+        setSnapshotsLoading(true);
+        const localItems = loadLocalAnnotationSessions(sessionScope);
+        let serverItems = [];
+
+        if (canUseBackendSessions) {
+            try {
+                serverItems = await loadAnnotationSnapshots(study.id, { seriesUid });
+            } catch (snapshotError) {
+                console.warn('[VolumeViewer3D] Failed to load backend annotation snapshots:', snapshotError);
+            }
+        }
+
+        setSnapshots(mergeAnnotationSessions(serverItems, localItems));
+        setSnapshotsLoading(false);
+    }, [canUseBackendSessions, seriesUid, sessionScope, study?.id]);
+
+    const persistAnnotationSession = useCallback(async ({ note = '', source = 'manual' } = {}) => {
+        if (!seriesUid) return null;
+        const normalized = buildSessionAnnotations();
+        const featureState = buildSessionFeatureState();
+        const localSnapshot = saveLocalAnnotationSession(sessionScope, {
+            note,
+            annotations: normalized,
+            featureState,
+            source,
+        });
+
+        if (canUseBackendSessions) {
+            try {
+                const response = await saveAnnotationSnapshot(study.id, {
+                    seriesUid,
+                    note,
+                    annotations: normalized,
+                    featureState,
+                });
+                if (response?.snapshot?.id) {
+                    deleteLocalAnnotationSession(sessionScope, localSnapshot.id);
+                }
+            } catch (snapshotError) {
+                console.warn('[VolumeViewer3D] Backend session snapshot failed; local snapshot kept:', snapshotError);
+            }
+        }
+
+        await refreshSnapshots();
+        return localSnapshot;
+    }, [buildSessionAnnotations, buildSessionFeatureState, canUseBackendSessions, refreshSnapshots, seriesUid, sessionScope, study?.id]);
+
+    const handleSaveAnnotationSession = useCallback(async ({ note = '' } = {}) => {
+        try {
+            setSessionSaving(true);
+            setSessionError('');
+            await persistAnnotationSession({ note, source: 'save' });
+            setSessionModalMode(null);
+            setHistoryOpen(true);
+        } catch (saveError) {
+            console.warn('[VolumeViewer3D] Failed to save annotation session:', saveError);
+            setSessionError(saveError.message || 'Failed to save annotation session');
+        } finally {
+            setSessionSaving(false);
+        }
+    }, [persistAnnotationSession]);
+
+    const handleStartNewSession = useCallback(async ({ note = '', saveBeforeClear = true } = {}) => {
+        try {
+            setSessionSaving(true);
+            setSessionError('');
+            const hasWork = annotations.length > 0 || measurementCount > 0;
+            if (saveBeforeClear && hasWork) {
+                await persistAnnotationSession({ note, source: 'new-session' });
+            }
+            setAnnotations([]);
+            clearMeasurements3D();
+            setSnapshotOverlay(null);
+            setAnnotateMode(false);
+            setMeasureMode3D(false);
+            setAnnotationTool('arrow');
+            setSessionModalMode(null);
+            setHistoryOpen(true);
+            await refreshSnapshots();
+        } catch (sessionStartError) {
+            console.warn('[VolumeViewer3D] Failed to start new annotation session:', sessionStartError);
+            setSessionError(sessionStartError.message || 'Failed to start new session');
+        } finally {
+            setSessionSaving(false);
+        }
+    }, [annotations.length, clearMeasurements3D, measurementCount, persistAnnotationSession, refreshSnapshots]);
+
+    const handleRestoreAnnotationSession = useCallback((snapshot) => {
+        const nextAnnotations = (snapshot?.annotations || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
+            seriesUid,
+            viewerType: '3d',
+            sourceWidth: viewerSize.width,
+            sourceHeight: viewerSize.height,
+        }));
+        const featureState = snapshot?.feature_state || snapshot?.featureState || {};
+        const nextPreset = typeof featureState.preset === 'string' ? featureState.preset : null;
+
+        setAnnotations(nextAnnotations);
+        setSnapshotOverlay(null);
+        if (Array.isArray(featureState.measurements3d)) {
+            setMeasurements3D(featureState.measurements3d);
+        }
+        if (nextPreset && (BG_COLORS[nextPreset] || VOLUME_MODE_LUTS[nextPreset])) {
+            changePreset(nextPreset);
+        }
+        if (QUALITY_SETTINGS[featureState.quality]) {
+            setQuality(featureState.quality);
+        }
+        if (Number.isFinite(Number(featureState.window_center))) {
+            setWindowCenter(Number(featureState.window_center));
+        }
+        if (Number.isFinite(Number(featureState.window_width))) {
+            setWindowWidth(Number(featureState.window_width));
+        }
+        if (typeof featureState.inverted === 'boolean') {
+            setInverted(featureState.inverted);
+        }
+        if (typeof featureState.slab_enabled === 'boolean') {
+            setSlabEnabled(featureState.slab_enabled);
+        }
+        if (Number.isFinite(Number(featureState.slab_thickness))) {
+            setSlabThickness(Number(featureState.slab_thickness));
+        }
+        setHistoryOpen(false);
+        scheduleCameraStateRestore(
+            featureState.camera
+            || nextAnnotations.find((annotation) => annotation?.metadata?.camera_state)?.metadata?.camera_state
+            || null
+        );
+    }, [changePreset, scheduleCameraStateRestore, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const handleDeleteAnnotationSession = useCallback(async (snapshot) => {
+        if (!snapshot?.id) return;
+        try {
+            if (snapshot.local) {
+                deleteLocalAnnotationSession(sessionScope, snapshot.id);
+            } else if (canUseBackendSessions) {
+                await deleteAnnotationSnapshot(study.id, snapshot.id);
+            }
+            if (snapshotOverlay?.id === snapshot.id) {
+                setSnapshotOverlay(null);
+            }
+            await refreshSnapshots();
+        } catch (deleteError) {
+            console.warn('[VolumeViewer3D] Failed to delete annotation session:', deleteError);
+        }
+    }, [canUseBackendSessions, refreshSnapshots, sessionScope, snapshotOverlay?.id, study?.id]);
+
+    const handleReviewAnnotation = useCallback(async (annotationId, reviewStatus, reviewerComment = '') => {
+        if (!study?.id || !annotationId) return;
+        const reviewedAt = new Date().toISOString();
+        const localPatch = {
+            review_status: reviewStatus,
+            reviewed_at: reviewStatus === 'approved' || reviewStatus === 'rejected' ? reviewedAt : null,
+            reviewer_comment: reviewerComment || null,
+            confidence_score: reviewStatus === 'approved' ? 1 : reviewStatus === 'rejected' ? 0 : 0.7,
+        };
+
+        setAnnotations((current) => current.map((annotation) => (
+            annotation.id === annotationId ? { ...annotation, ...localPatch } : annotation
+        )));
+
+        try {
+            await reviewStudyAnnotations(study.id, {
+                annotationIds: [annotationId],
+                reviewStatus,
+                reviewerComment,
+            });
+        } catch (reviewUpdateError) {
+            console.warn('[VolumeViewer3D] Failed to update annotation review:', reviewUpdateError);
+        }
+    }, [study?.id]);
+
+    const handleSubmitAnnotationsForReview = useCallback(async () => {
+        if (!study?.id || !annotations.length) return;
+        const reviewIssues = getAnnotationReviewIssues(annotations);
+        if (reviewIssues.length > 0) {
+            setReviewError(`Cannot submit yet. Fix ${reviewIssues.length} annotation(s): ${reviewIssues[0].errors.join(', ')}`);
+            return;
+        }
+        setReviewError('');
+        const ids = annotations.map((annotation) => annotation.id).filter(Boolean);
+        setAnnotations((current) => current.map((annotation) => ({
+            ...annotation,
+            review_status: 'submitted',
+            confidence_score: annotation.confidence_score ?? 0.7,
+        })));
+        try {
+            await reviewStudyAnnotations(study.id, {
+                annotationIds: ids,
+                seriesUid,
+                viewerType: '3d',
+                reviewStatus: 'submitted',
+            });
+        } catch (submitError) {
+            console.warn('[VolumeViewer3D] Failed to submit annotations:', submitError);
+        }
+    }, [annotations, seriesUid, study?.id]);
+
+    const handleSelectSnapshotOverlay = useCallback((snapshot) => {
+        setSnapshotOverlay(snapshot);
+        const featureState = snapshot?.feature_state || snapshot?.featureState || {};
+        scheduleCameraStateRestore(
+            featureState.camera
+            || snapshot?.annotations?.find((annotation) => annotation?.metadata?.camera_state)?.metadata?.camera_state
+            || null
+        );
+    }, [scheduleCameraStateRestore]);
+
+    useEffect(() => {
+        if (historyOpen) {
+            refreshSnapshots();
+        }
+    }, [historyOpen, refreshSnapshots]);
 
     const disableClipWidget = useCallback(() => {
         const ctx = vtkContextRef.current;
@@ -2483,6 +3025,12 @@ const VolumeViewer3D = ({
     }, [measurementStorageKey, measurements3D]);
 
     useEffect(() => {
+        if (measureMode3D) return;
+        setMeasurePoints([]);
+        setMeasureHoverPoint(null);
+    }, [measureMode3D]);
+
+    useEffect(() => {
         const ctx = vtkContextRef.current;
         if (!ctx || loading || error) return;
 
@@ -2493,14 +3041,14 @@ const VolumeViewer3D = ({
 
         const actors = measurements3D
             .filter((item) => Array.isArray(item.pointA) && Array.isArray(item.pointB))
-            .map((item) => createMeasurementActor(item.pointA, item.pointB));
+            .flatMap((item) => createMeasurementActors(item.pointA, item.pointB));
 
         actors.forEach((actor) => ctx.renderer.addActor(actor));
         ctx.measurementActors = actors;
         ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
         ctx.renderWindow.render();
         setMeasurementRevision((value) => value + 1);
-    }, [cacheKey, createMeasurementActor, error, loading, measurements3D]);
+    }, [cacheKey, createMeasurementActors, error, loading, measurements3D]);
 
     useEffect(() => {
         if (!clipStorageKey) return;
@@ -2767,6 +3315,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 implantPlacements,
                 densityHistogram: histogram,
                 aiReport,
+                annotations,
             });
             setReportModalOpen(false);
         } catch (reportError) {
@@ -2783,6 +3332,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         implantPlacements,
         loadDensityHistogram,
         metadata,
+        annotations,
     ]);
 
     const handleViewportPointerDown = useCallback((event) => {
@@ -2826,6 +3376,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             };
             setMeasurements3D((items) => [...items, measurement]);
             setMeasurementRevision((value) => value + 1);
+            setMeasureHoverPoint(null);
             return [];
         });
     }, [
@@ -2837,14 +3388,28 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         pickWorldPointFromPointer,
     ]);
 
+    const handleViewportPointerMove = useCallback((event) => {
+        if (!measureMode3D) return;
+        const point = pickWorldPointFromPointer(event);
+        setMeasureHoverPoint((current) => {
+            if (!point) return current ? null : current;
+            if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
+            return [...point];
+        });
+    }, [measureMode3D, pickWorldPointFromPointer]);
+
+    const handleViewportPointerLeave = useCallback(() => {
+        setMeasureHoverPoint(null);
+    }, []);
+
     const handleViewportClick = useCallback((event) => {
         if (!linkedMode || typeof onSurfaceClick !== 'function') return;
-        if (measureMode3D || implantPlaceMode) return;
+        if (measureMode3D || implantPlaceMode || annotateMode) return;
         const point = pickWorldPointFromPointer(event);
         if (point) {
             onSurfaceClick(point);
         }
-    }, [implantPlaceMode, linkedMode, measureMode3D, onSurfaceClick, pickWorldPointFromPointer]);
+    }, [annotateMode, implantPlaceMode, linkedMode, measureMode3D, onSurfaceClick, pickWorldPointFromPointer]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -2896,11 +3461,36 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     // Render
     // ═══════════════════════════════════════════════════════════════════
     const isMipOrXray = preset === 'mip' || preset === 'xray';
+    const canSaveSessions = Boolean((annotations.length > 0 || measurementCount > 0) && !study?.readOnly);
+    const currentCameraState = useMemo(
+        () => captureCurrentCameraState(),
+        [captureCurrentCameraState, measurementRevision, preset, viewerSize.height, viewerSize.width]
+    );
+    const visible3DAnnotations = useMemo(() => annotations.filter((annotation) => {
+        const expectedCameraState = annotation?.metadata?.camera_state;
+        return cameraStateApproximatelyMatches(expectedCameraState, currentCameraState);
+    }), [annotations, currentCameraState]);
+    const hiddenAnnotationCount = Math.max(0, annotations.length - visible3DAnnotations.length);
     const measurementLabels = useMemo(() => measurements3D.map((measurement) => ({
         id: measurement.id,
         distance: measurement.distance,
         screen: projectWorldToViewport(measurement.midpoint),
     })).filter((item) => item.screen), [measurementRevision, measurements3D, projectWorldToViewport]);
+    const measurementPreview = useMemo(() => {
+        if (!measureMode3D || measurePoints.length !== 1 || !measureHoverPoint) return null;
+        const startPoint = measurePoints[0];
+        const endPoint = measureHoverPoint;
+        const startScreen = projectWorldToViewport(startPoint);
+        const endScreen = projectWorldToViewport(endPoint);
+        const midpointScreen = projectWorldToViewport(midpoint(startPoint, endPoint));
+        if (!startScreen || !endScreen || !midpointScreen) return null;
+        return {
+            startScreen,
+            endScreen,
+            midpointScreen,
+            distance: distanceMm(startPoint, endPoint),
+        };
+    }, [measureHoverPoint, measureMode3D, measurePoints, measurementRevision, projectWorldToViewport]);
 
     return (
         <div ref={wrapperRef} tabIndex={0} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 outline-none">
@@ -2989,6 +3579,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             onClick={() => {
                                 setMeasureMode3D((current) => !current);
                                 setImplantPlaceMode(false);
+                                setAnnotateMode(false);
                             }}
                             className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ' + (
                                 measureMode3D
@@ -2999,6 +3590,23 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         >
                             <AppIcon name="Ruler" size={16} />
                             <span>Measure 3D</span>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                setAnnotateMode((current) => !current);
+                                setMeasureMode3D(false);
+                                setImplantPlaceMode(false);
+                            }}
+                            className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ' + (
+                                annotateMode
+                                    ? 'bg-rose-500/20 text-rose-200 border border-rose-500/40'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
+                            )}
+                            title="Annotation mode"
+                        >
+                            <AppIcon name="PencilLine" size={16} />
+                            <span>Annotate</span>
                         </button>
 
                         <button
@@ -3210,6 +3818,64 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
                                     <button
                                         onClick={() => {
+                                            handleExportAnnotationsJson();
+                                            setShowMoreTools(false);
+                                        }}
+                                        className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                    >
+                                        <AppIcon name="Braces" size={14} /> Export JSON
+                                    </button>
+
+                                    {canSaveSessions && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    setSessionError('');
+                                                    setSessionModalMode('save');
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="Save" size={14} /> Save session
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    handleSubmitAnnotationsForReview();
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="Send" size={14} /> Submit review
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {!study?.readOnly && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    setSessionError('');
+                                                    setSessionModalMode('new');
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="PlusCircle" size={14} /> New session
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setHistoryOpen(true);
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="History" size={14} /> Session history
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <button
+                                        onClick={() => {
                                             toggleFullscreen();
                                             setShowMoreTools(false);
                                         }}
@@ -3225,13 +3891,27 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 </div>
             </div>
 
+            {reviewError && (
+                <div className="absolute left-1/2 top-20 z-[120] max-w-lg -translate-x-1/2 rounded-2xl border border-amber-500/30 bg-amber-500/15 px-4 py-3 text-sm text-amber-100 shadow-2xl backdrop-blur">
+                    <div className="flex items-start gap-3">
+                        <AppIcon name="AlertTriangle" size={16} className="mt-0.5 shrink-0 text-amber-300" />
+                        <div className="flex-1">{reviewError}</div>
+                        <button type="button" onClick={() => setReviewError('')} className="rounded-lg p-1 text-amber-200/70 hover:bg-amber-500/15 hover:text-white">
+                            <AppIcon name="X" size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* ─── Main Viewport Area ────────────────────────────── */}
             <div
                 ref={containerRef}
                 onPointerDownCapture={handleViewportPointerDown}
+                onPointerMoveCapture={handleViewportPointerMove}
+                onPointerLeave={handleViewportPointerLeave}
                 onClickCapture={handleViewportClick}
                 className="flex-1 relative"
-                style={{ minHeight: '400px', width: '100%', cursor: measureMode3D || implantPlaceMode ? 'crosshair' : undefined }}
+                style={{ minHeight: '400px', width: '100%', cursor: measureMode3D || implantPlaceMode || annotateMode ? 'crosshair' : undefined }}
             >
                 {/* Loading Overlay */}
                 {loading && (
@@ -3292,6 +3972,80 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {!loading && !error && (measureMode3D || annotateMode) && (
+                    <div className="absolute left-1/2 top-4 z-[80] flex -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-700 bg-slate-950/90 p-1.5 shadow-2xl backdrop-blur">
+                        {measureMode3D && (
+                            <>
+                                <span className="rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-200">
+                                    Distance
+                                </span>
+                                <button
+                                    onClick={undoMeasurement3D}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Undo last measurement"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    onClick={clearMeasurements3D}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear measurements"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                            </>
+                        )}
+
+                        {annotateMode && (
+                            <>
+                                {[
+                                    ['select', 'MousePointer2', 'Select'],
+                                    ['arrow', 'ArrowRight', 'Arrow'],
+                                    ['circle', 'Circle', 'Circle'],
+                                    ['freehand', 'PenLine', 'Region'],
+                                    ['text', 'Type', 'Text'],
+                                ].map(([toolName, iconName, label]) => (
+                                    <button
+                                        key={toolName}
+                                        onClick={() => setAnnotationTool(toolName)}
+                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
+                                            annotationTool === toolName
+                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                        title={`${label} annotation`}
+                                    >
+                                        <AppIcon name={iconName} size={14} />
+                                        <span>{label}</span>
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={handleUndoAnnotation}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Undo last annotation"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    onClick={clearAllAnnotations}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear annotations"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                                {annotationPersistence.saving && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
+                                )}
+                                {annotationPersistence.error && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
+                                        Local
+                                    </span>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -3384,6 +4138,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 onTogglePlaceMode={() => {
                                     setImplantPlaceMode((current) => !current);
                                     setMeasureMode3D(false);
+                                    setAnnotateMode(false);
                                 }}
                                 onClear={clearImplants}
                             />
@@ -3614,6 +4369,40 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     warningMessage={reportWarningMessage}
                 />
 
+                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && snapshotOverlayAnnotations.length > 0 && (
+                    <AnnotationCanvas
+                        width={viewerSize.width}
+                        height={viewerSize.height}
+                        sourceWidth={viewerSize.width}
+                        sourceHeight={viewerSize.height}
+                        viewportSize={viewerSize}
+                        imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
+                        active={false}
+                        tool="select"
+                        annotations={snapshotOverlayAnnotations}
+                        onChange={() => {}}
+                        className="pointer-events-none absolute inset-0 z-[14]"
+                    />
+                )}
+
+                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
+                    <AnnotationCanvas
+                        width={viewerSize.width}
+                        height={viewerSize.height}
+                        sourceWidth={viewerSize.width}
+                        sourceHeight={viewerSize.height}
+                        viewportSize={viewerSize}
+                        imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
+                        active={annotateMode}
+                        tool={annotationTool}
+                        annotations={visible3DAnnotations}
+                        onChange={handleAnnotationsChange}
+                        reviewMode={reviewMode}
+                        onReviewAnnotation={handleReviewAnnotation}
+                        className="absolute inset-0 z-[15]"
+                    />
+                )}
+
                 {measurementLabels.map((item) => (
                     <div
                         key={item.id}
@@ -3624,9 +4413,54 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     </div>
                 ))}
 
+                {measurementPreview && (
+                    <>
+                        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+                            <line
+                                x1={measurementPreview.startScreen.x}
+                                y1={measurementPreview.startScreen.y}
+                                x2={measurementPreview.endScreen.x}
+                                y2={measurementPreview.endScreen.y}
+                                stroke="rgba(29, 158, 117, 0.92)"
+                                strokeWidth="2"
+                                strokeDasharray="6 5"
+                                strokeLinecap="round"
+                            />
+                            <circle
+                                cx={measurementPreview.startScreen.x}
+                                cy={measurementPreview.startScreen.y}
+                                r="4.5"
+                                fill="rgba(29, 158, 117, 0.96)"
+                                stroke="rgba(255,255,255,0.92)"
+                                strokeWidth="1.5"
+                            />
+                            <circle
+                                cx={measurementPreview.endScreen.x}
+                                cy={measurementPreview.endScreen.y}
+                                r="4.5"
+                                fill="rgba(29, 158, 117, 0.96)"
+                                stroke="rgba(255,255,255,0.92)"
+                                strokeWidth="1.5"
+                            />
+                        </svg>
+                        <div
+                            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/80 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/30"
+                            style={{ left: measurementPreview.midpointScreen.x, top: measurementPreview.midpointScreen.y }}
+                        >
+                            {measurementPreview.distance.toFixed(2)} mm
+                        </div>
+                    </>
+                )}
+
                 {measureMode3D && measurePoints.length === 1 && (
                     <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur">
-                        First point set — click second point
+                        First point set — move to preview, click second point
+                    </div>
+                )}
+
+                {!annotateMode && hiddenAnnotationCount > 0 && (
+                    <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 ring-1 ring-amber-400/30 backdrop-blur">
+                        {hiddenAnnotationCount} annotation{hiddenAnnotationCount > 1 ? 's are' : ' is'} hidden until the saved camera view is restored
                     </div>
                 )}
 
@@ -3676,6 +4510,39 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         )}
                     </div>
                 )}
+
+                <AnnotationHistoryPanel
+                    visible={historyOpen}
+                    snapshots={snapshots}
+                    loading={snapshotsLoading}
+                    selectedSnapshotId={snapshotOverlay?.id || ''}
+                    onClose={() => setHistoryOpen(false)}
+                    onRefresh={refreshSnapshots}
+                    onSelectSnapshot={handleSelectSnapshotOverlay}
+                    onRestoreSnapshot={handleRestoreAnnotationSession}
+                    onDeleteSnapshot={handleDeleteAnnotationSession}
+                    onNewSession={() => {
+                        setSessionError('');
+                        setSessionModalMode('new');
+                    }}
+                    onClearOverlay={() => setSnapshotOverlay(null)}
+                />
+
+                <AnnotationSessionModal
+                    visible={Boolean(sessionModalMode)}
+                    mode={sessionModalMode || 'save'}
+                    annotationCount={annotations.length}
+                    measurementCount={measurementCount}
+                    loading={sessionSaving}
+                    error={sessionError}
+                    onClose={() => {
+                        if (!sessionSaving) {
+                            setSessionModalMode(null);
+                            setSessionError('');
+                        }
+                    }}
+                    onConfirm={sessionModalMode === 'new' ? handleStartNewSession : handleSaveAnnotationSession}
+                />
 
                 {/* ─── Mode Label Badge ──────────────────────────── */}
                 {!loading && !error && (

@@ -302,6 +302,49 @@ export async function requestOtp({
   try {
     const normalizedChannel = assertChannelAllowed(channel);
     assertIdentifierMatchesChannel(identifier, normalizedChannel);
+
+    // ── Twilio Verify Integration ───────────────────────────────────────────
+    if (normalizedChannel === 'sms' && twilioSmsOtpAdapter.isVerifyConfigured()) {
+      await enforceRequestThrottle({
+        identifier,
+        ipAddress: requestIp,
+        action: 'request',
+        correlationId,
+        channel: normalizedChannel,
+        userId
+      });
+
+      const verifyResult = await twilioSmsOtpAdapter.sendVerifyOtp(identifier, 'sms');
+
+      // We still persist a challenge entry to track status in our DB, 
+      // but 'otp' field will be empty/unused as Twilio manages it.
+      const challenge = await persistChallenge({
+        identifier,
+        channel: normalizedChannel,
+        otp: 'TWILIO_VERIFY_MANAGED', 
+        purpose,
+        requestIp
+      });
+
+      await recordOtpAttempt({
+        otpVerificationId: challenge.id,
+        action: 'request',
+        identifier,
+        ipAddress: requestIp,
+        channel: normalizedChannel,
+        outcome: 'accepted',
+        correlationId,
+        userId,
+        idempotencyKey,
+        metadata: { provider: 'twilio-verify', sid: verifyResult.sid }
+      });
+
+      return buildOtpResponse(challenge, {
+        provider: { name: 'twilio-verify', delivered: true }
+      });
+    }
+
+    // ── Legacy / Custom OTP Logic (Fallback) ───────────────────────────────
     const existingChallenge = await findIdempotentChallenge({
       identifier,
       channel: normalizedChannel,
@@ -440,6 +483,7 @@ export async function resendOtp({
 }
 
 function compareStoredOtp(storedValue, inputOtp) {
+  if (storedValue === 'TWILIO_VERIFY_MANAGED') return true; // Handled by checkVerifyOtp
   if (isLegacyPlaintextOtp(storedValue)) {
     return storedValue === inputOtp;
   }
@@ -511,33 +555,42 @@ export async function verifyOtp({
       throw createOtpError('EXPIRED');
     }
 
-    const matches = compareStoredOtp(challenge.otp, otp);
-    if (!matches) {
-      const policy = getOtpPolicy();
-      const nextAttempts = (challenge.attempts || 0) + 1;
-      const shouldLock = nextAttempts >= (challenge.maxAttempts || policy.maxVerifyAttempts);
-      await prisma.oTPVerification.update({
-        where: { identifier },
-        data: {
-          attempts: { increment: 1 },
-          lockedUntil: shouldLock
-            ? new Date(Date.now() + policy.lockoutMinutes * 60 * 1000)
-            : challenge.lockedUntil
-        }
-      });
-      await recordOtpAttempt({
-        otpVerificationId: challenge.id,
-        action: 'verify',
-        identifier,
-        ipAddress: requestIp,
-        channel: normalizedChannel,
-        outcome: 'rejected',
-        reason: shouldLock ? 'locked' : 'invalid',
-        correlationId,
-        userId
-      });
-
-      throw shouldLock ? createOtpError('LOCKED') : createOtpError('INVALID_CODE');
+    // ── Twilio Verify Check ────────────────────────────────────────────────
+    if (challenge.otp === 'TWILIO_VERIFY_MANAGED' && twilioSmsOtpAdapter.isVerifyConfigured()) {
+      const verifyResult = await twilioSmsOtpAdapter.checkVerifyOtp(identifier, otp);
+      if (!verifyResult.valid) {
+        const policy = getOtpPolicy();
+        const nextAttempts = (challenge.attempts || 0) + 1;
+        const shouldLock = nextAttempts >= (challenge.maxAttempts || policy.maxVerifyAttempts);
+        await prisma.oTPVerification.update({
+          where: { identifier },
+          data: {
+            attempts: { increment: 1 },
+            lockedUntil: shouldLock
+              ? new Date(Date.now() + policy.lockoutMinutes * 60 * 1000)
+              : challenge.lockedUntil
+          }
+        });
+        throw shouldLock ? createOtpError('LOCKED') : createOtpError('INVALID_CODE');
+      }
+    } else {
+      // ── Legacy Manual Check ───────────────────────────────────────────────
+      const matches = compareStoredOtp(challenge.otp, otp);
+      if (!matches) {
+        const policy = getOtpPolicy();
+        const nextAttempts = (challenge.attempts || 0) + 1;
+        const shouldLock = nextAttempts >= (challenge.maxAttempts || policy.maxVerifyAttempts);
+        await prisma.oTPVerification.update({
+          where: { identifier },
+          data: {
+            attempts: { increment: 1 },
+            lockedUntil: shouldLock
+              ? new Date(Date.now() + policy.lockoutMinutes * 60 * 1000)
+              : challenge.lockedUntil
+          }
+        });
+        throw shouldLock ? createOtpError('LOCKED') : createOtpError('INVALID_CODE');
+      }
     }
 
     await prisma.oTPVerification.update({
@@ -546,8 +599,7 @@ export async function verifyOtp({
         verified: true,
         verifiedAt: new Date(),
         lockedUntil: null,
-        cooldownUntil: null,
-        otp: hashOtpValue(otp)
+        cooldownUntil: null
       }
     });
 

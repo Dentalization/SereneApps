@@ -30,10 +30,12 @@ import dentistPortalRouter from './routes/dentist-portal.js';
 import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
 import xCoreRouter from './routes/xCoreRoutes.js';
+import webhooksRouter from './routes/webhooks.js';
 import { verify } from './utils/tokens.js';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
 import { start as startOutboxWorker } from './services/events/outboxWorker.js';
+import { startReminderWorker } from './services/appointments/reminderService.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
@@ -89,6 +91,7 @@ io.use((socket, next) => {
 registerChatGateway(io);
 startNotificationWorker();
 startOutboxWorker();
+startReminderWorker();
 
 app.use(cors(corsOptions));
 // Increase JSON body size limit to handle AI analysis payloads safely
@@ -192,6 +195,7 @@ app.use(`${prefix}/admin`, adminProfileRouter);
 app.use(`${prefix}/admin`, adminDentistsRouter);
 app.use(`${prefix}/admin`, adminRouter);
 app.use(`${prefix}/x-core`, xCoreRouter);
+app.use(`${prefix}/webhooks`, webhooksRouter);
 app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 
 // Global error handler (must be last middleware)

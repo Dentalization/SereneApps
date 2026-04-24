@@ -169,7 +169,7 @@ export function useChat({ userId } = {}) {
         client.on('connectionStateChanged', (state) => {
           setSocketConnected(state === 'connected');
         });
-        
+
         if (client.connectionState === 'connected') {
           setSocketConnected(true);
         }
@@ -179,7 +179,7 @@ export function useChat({ userId } = {}) {
 
       // 5. Subscribe to conversation
       const conversation = await client.getConversationBySid(conversationSid);
-      
+
       if (activeConversationRef.current) {
         activeConversationRef.current.removeAllListeners();
       }
@@ -247,7 +247,7 @@ export function useChat({ userId } = {}) {
           });
 
           if (!found) {
-            fetchConversations().then(setConversations).catch(() => {});
+            fetchConversations().then(setConversations).catch(() => { });
           }
           return updated;
         });
@@ -318,7 +318,7 @@ export function useChat({ userId } = {}) {
 
   const fetchVideoToken = useCallback(async (appointmentId) => {
     try {
-      const { data } = await api.post(`/appointments/${appointmentId}/video/token`, {
+      const { data } = await api.post(`/communications/appointments/${appointmentId}/video/token`, {
         role: 'publisher',
       });
       return {
