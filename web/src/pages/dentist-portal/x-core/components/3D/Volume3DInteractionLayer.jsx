@@ -19,6 +19,7 @@ export default function Volume3DInteractionLayer({
   return (
     <div
       data-xcore-ui="true"
+      data-xcore-interaction-layer="true"
       className="absolute inset-0 z-[12]"
       style={{ cursor }}
       onContextMenu={stopUiEvent}
@@ -27,7 +28,9 @@ export default function Volume3DInteractionLayer({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       onClick={onClick}
-      onWheelCapture={stopUiEvent}
+      onWheelCapture={(event) => {
+        event.stopPropagation();
+      }}
     />
   );
 }

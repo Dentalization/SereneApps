@@ -120,7 +120,11 @@ const VOLUME_SHORTCUTS = [
     { key: 'I', label: 'Invert MIP/X-ray' },
     { key: 'Space', label: 'Reset camera' },
     { key: 'F', label: 'Fullscreen' },
+    { key: 'A/C/P/K/L', label: 'Annotation tool switch' },
+    { key: 'Z', label: 'Undo last annotation' },
+    { key: 'Escape', label: 'Exit annotate/measure mode' },
 ];
+const MAX_UNDO_STEPS = 20;
 
 // Window/Level defaults per render mode
 // Data is MONAI-normalized [0.0, 1.0] where 0.0=Air(-1000HU), 0.25=Water(0HU), 1.0=Metal(3000HU)
@@ -870,6 +874,8 @@ const VolumeViewer3D = ({
     const brushTraceActiveRef = useRef(false);
     const brushPointerRef = useRef(null);
     const brushMoveRafRef = useRef(0);
+    const lastBrushRenderRef = useRef(0);
+    const annotationHistoryRef = useRef([]);
     const interactorEventsBoundRef = useRef(true);
 
     // Core state
@@ -877,6 +883,7 @@ const VolumeViewer3D = ({
     const [loadingStage, setLoadingStage] = useState('Connecting...');
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [previewImage, setPreviewImage] = useState(null);
+    const [volumeWasCached, setVolumeWasCached] = useState(false);
     const [error, setError] = useState(null);
     const [preset, setPreset] = useState('bone');
     const [autoRotate, setAutoRotate] = useState(false);
@@ -924,6 +931,8 @@ const VolumeViewer3D = ({
     const [annotateMode, setAnnotateMode] = useState(false);
     const [annotationTool, setAnnotationTool] = useState('arrow');
     const [annotations, setAnnotations] = useState([]);
+    const [annotationHistoryRevision, setAnnotationHistoryRevision] = useState(0);
+    const [activeAnnotationColor, setActiveAnnotationColor] = useState(ANNOTATION_COLORS.arrow);
     const [worldOverlayDraft, setWorldOverlayDraft] = useState(null);
     const [textDraft3D, setTextDraft3D] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -949,12 +958,23 @@ const VolumeViewer3D = ({
         [annotations, selectedWorldAnnotationId]
     );
 
+    const pushAnnotationChange = useCallback((updater) => {
+        setAnnotations((current) => {
+            annotationHistoryRef.current = [
+                ...annotationHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+                current,
+            ];
+            return typeof updater === 'function' ? updater(current) : updater;
+        });
+        setAnnotationHistoryRevision((value) => value + 1);
+    }, []);
+
     const deleteSelectedWorldAnnotation = useCallback(() => {
         if (!selectedWorldAnnotationId) return;
-        setAnnotations((current) => current.filter((annotation) => annotation.id !== selectedWorldAnnotationId));
+        pushAnnotationChange((current) => current.filter((annotation) => annotation.id !== selectedWorldAnnotationId));
         setSelectedWorldAnnotationId(null);
         setManualSegmentationError(null);
-    }, [selectedWorldAnnotationId]);
+    }, [pushAnnotationChange, selectedWorldAnnotationId]);
 
     const [manualSegmentationExporting, setManualSegmentationExporting] = useState(false);
     const [manualMaskExporting, setManualMaskExporting] = useState(false);
@@ -993,6 +1013,7 @@ const VolumeViewer3D = ({
     const implantStorageKey = useMemo(() => `xcore.implants.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const measurementStorageKey = useMemo(() => `xcore.measurements3d.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const clipStorageKey = useMemo(() => `xcore.clipPlane.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
+    const brushRadiusStorageKey = useMemo(() => `xcore.brushRadius.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const showBack = typeof onBack === 'function';
     const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
     const reviewMode = useMemo(() => {
@@ -1164,8 +1185,8 @@ const VolumeViewer3D = ({
     }, [captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
 
     const handleAnnotationsChange = useCallback((nextAnnotations) => {
-        setAnnotations(decorate3DAnnotations(nextAnnotations));
-    }, [decorate3DAnnotations]);
+        pushAnnotationChange(decorate3DAnnotations(nextAnnotations));
+    }, [decorate3DAnnotations, pushAnnotationChange]);
 
     const annotationPersistence = usePersistentAnnotations({
         study,
@@ -1179,6 +1200,26 @@ const VolumeViewer3D = ({
             sourceHeight: viewerSize.height,
         },
     });
+
+    useEffect(() => {
+        if (!brushRadiusStorageKey) return;
+        try {
+            const stored = localStorage.getItem(brushRadiusStorageKey);
+            const parsed = stored ? parseFloat(stored) : null;
+            if (Number.isFinite(parsed) && parsed >= BRUSH_RADIUS_MIN_MM && parsed <= BRUSH_RADIUS_MAX_MM) {
+                setBrushRadiusMm(parsed);
+            } else {
+                setBrushRadiusMm(BRUSH_RADIUS_DEFAULT_MM);
+            }
+        } catch (_) {}
+    }, [brushRadiusStorageKey]);
+
+    useEffect(() => {
+        if (!brushRadiusStorageKey) return;
+        try {
+            localStorage.setItem(brushRadiusStorageKey, String(brushRadiusMm));
+        } catch (_) {}
+    }, [brushRadiusMm, brushRadiusStorageKey]);
 
     const snapshotOverlayAnnotations = useMemo(() => (
         (snapshotOverlay?.annotations || []).map((annotation) => ({
@@ -1296,7 +1337,7 @@ const VolumeViewer3D = ({
     const isViewportUiEvent = useCallback((event) => {
         const target = event?.target;
         if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
-        return Boolean(target.closest([
+        const uiElement = target.closest([
             '[data-xcore-ui="true"]',
             '[data-annotation-popover="true"]',
             'button',
@@ -1305,7 +1346,15 @@ const VolumeViewer3D = ({
             'select',
             'label',
             'a',
-        ].join(', ')));
+        ].join(', '));
+        if (!uiElement) return false;
+        if (
+            uiElement === event.currentTarget
+            && uiElement.getAttribute('data-xcore-interaction-layer') === 'true'
+        ) {
+            return false;
+        }
+        return true;
     }, []);
 
     const getViewportPointerPoint = useCallback((event) => {
@@ -1576,6 +1625,7 @@ const VolumeViewer3D = ({
         let cancelled = false;
 
         const isCached = volumeCache.has(cacheKey);
+        setVolumeWasCached(isCached);
         console.log('[VolumeViewer3D] Mount | cacheKey:', cacheKey, '| cached:', isCached, '| globalCacheSize:', volumeCache.size);
 
         const loadVolume = async () => {
@@ -1610,6 +1660,9 @@ const VolumeViewer3D = ({
             setAnnotateMode(false);
             setAnnotationTool('arrow');
             setAnnotations([]);
+            annotationHistoryRef.current = [];
+            setAnnotationHistoryRevision((value) => value + 1);
+            setActiveAnnotationColor(ANNOTATION_COLORS.arrow);
             setWorldOverlayDraft(null);
             setTextDraft3D(null);
             setSnapshotOverlay(null);
@@ -2337,6 +2390,7 @@ const VolumeViewer3D = ({
         setWindowCenter(defaults.center);
         setWindowWidth(defaults.width);
         setInverted(false);
+        setBrushPreviewPoint(null);
 
         applyPreset(ctfun, ofun, presetName, dataRange, {
             wCenter: defaults.center,
@@ -2596,6 +2650,19 @@ const VolumeViewer3D = ({
         document.body.removeChild(link);
         return dataURL;
     }, [captureViewportImage, preset]);
+
+    const captureAnnotatedScreenshot = useCallback(async () => {
+        const dataURL = await captureViewportImage();
+        if (!dataURL) return null;
+
+        const link = document.createElement('a');
+        link.download = `xcore-annotated-${preset}-${studyKey}-${Date.now()}.png`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return dataURL;
+    }, [captureViewportImage, preset, studyKey]);
 
     const buildManualBrushLabelImage = useCallback((brushAnnotations) => {
         const imageData = vtkContextRef.current?.imageData;
@@ -2979,7 +3046,7 @@ const VolumeViewer3D = ({
                     world_point: payload.worldPoint.map((value) => Number(Number(value).toFixed(3))),
                 },
                 label: payload.label || '',
-                color: payload.color || ANNOTATION_COLORS.text,
+                color: payload.color || activeAnnotationColor || ANNOTATION_COLORS.text,
                 viewer_type: '3d',
                 series_uid: seriesUid,
                 metadata: baseMetadata,
@@ -3010,12 +3077,12 @@ const VolumeViewer3D = ({
                 world_start: payload.startWorld.map((value) => Number(Number(value).toFixed(3))),
                 world_end: payload.endWorld.map((value) => Number(Number(value).toFixed(3))),
             },
-            color: payload.color || ANNOTATION_COLORS[type] || '#ffffff',
+            color: payload.color || activeAnnotationColor || ANNOTATION_COLORS[type] || '#ffffff',
             viewer_type: '3d',
             series_uid: seriesUid,
             metadata: baseMetadata,
         };
-    }, [captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
+    }, [activeAnnotationColor, captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
 
     function projectWorldOverlayAnnotation(annotation) {
         if (!annotation) return null;
@@ -3365,11 +3432,17 @@ const VolumeViewer3D = ({
     }, []);
 
     const handleUndoAnnotation = useCallback(() => {
-        setAnnotations((current) => current.slice(0, -1));
+        const history = annotationHistoryRef.current;
+        if (history.length === 0) return;
+        const previous = history[history.length - 1];
+        annotationHistoryRef.current = history.slice(0, -1);
+        setAnnotations(previous);
+        setSelectedWorldAnnotationId(null);
+        setAnnotationHistoryRevision((value) => value + 1);
     }, []);
 
     const clearAllAnnotations = useCallback(() => {
-        setAnnotations([]);
+        pushAnnotationChange([]);
         setSelectedWorldAnnotationId(null);
         setSnapshotOverlay(null);
         setWorldOverlayDraft(null);
@@ -3385,7 +3458,7 @@ const VolumeViewer3D = ({
         setBrushDraftCenters([]);
         setBrushPreviewPoint(null);
         setManualSegmentationError(null);
-    }, []);
+    }, [pushAnnotationChange]);
 
     const computeBrushVolumeMm3 = useCallback((centers, radiusMm) => {
         const imageData = vtkContextRef.current?.imageData;
@@ -3482,7 +3555,7 @@ const VolumeViewer3D = ({
         if (brushOperation === 'add') {
             if (selectedBrushId) {
                 let nextSelection = selectedBrushId;
-                setAnnotations((current) => current.map((annotation) => {
+                pushAnnotationChange((current) => current.map((annotation) => {
                     if (annotation.id !== selectedBrushId || !isWorldBrushAnnotation(annotation)) return annotation;
                     const currentCenters = annotation.coordinates.world_brush.centers || [];
                     const updated = buildBrushAnnotation({
@@ -3511,7 +3584,7 @@ const VolumeViewer3D = ({
                 setManualSegmentationError('Failed to create 3D brush segmentation from this stroke.');
                 return;
             }
-            setAnnotations((current) => [...current, nextAnnotation]);
+            pushAnnotationChange((current) => [...current, nextAnnotation]);
             setSelectedWorldAnnotationId(nextAnnotation.id);
             setManualSegmentationError(null);
             return;
@@ -3519,7 +3592,7 @@ const VolumeViewer3D = ({
 
         let affected = false;
         let removedSelected = false;
-        setAnnotations((current) => current.flatMap((annotation) => {
+        pushAnnotationChange((current) => current.flatMap((annotation) => {
             if (!isWorldBrushAnnotation(annotation)) return [annotation];
             if (selectedBrushId && annotation.id !== selectedBrushId) return [annotation];
 
@@ -3554,7 +3627,7 @@ const VolumeViewer3D = ({
             return;
         }
         setManualSegmentationError(null);
-    }, [brushOperation, brushRadiusMm, buildBrushAnnotation, captureCurrentCameraState, computeBrushVolumeMm3, selectedWorldAnnotation]);
+    }, [brushOperation, brushRadiusMm, buildBrushAnnotation, captureCurrentCameraState, computeBrushVolumeMm3, pushAnnotationChange, selectedWorldAnnotation]);
 
     const handleExportAnnotationsJson = useCallback(() => {
         exportAnnotationsJson(annotations, metadata, {
@@ -3671,6 +3744,8 @@ const VolumeViewer3D = ({
                 await persistAnnotationSession({ note, source: 'new-session' });
             }
             setAnnotations([]);
+            annotationHistoryRef.current = [];
+            setAnnotationHistoryRevision((value) => value + 1);
             clearMeasurements3D();
             setSelectedWorldAnnotationId(null);
             setSnapshotOverlay(null);
@@ -3711,6 +3786,8 @@ const VolumeViewer3D = ({
         const nextPreset = typeof featureState.preset === 'string' ? featureState.preset : null;
 
         setAnnotations(nextAnnotations);
+        annotationHistoryRef.current = [];
+        setAnnotationHistoryRevision((value) => value + 1);
         setSelectedWorldAnnotationId(null);
         setWorldOverlayDraft(null);
         setTextDraft3D(null);
@@ -4102,6 +4179,26 @@ const VolumeViewer3D = ({
     useEffect(() => {
         const ctx = vtkContextRef.current;
         if (!ctx || loading || error) return;
+        const surfaceActors = ctx.surfaceAnnotationActors || [];
+        if (!annotateMode || annotationTool !== 'brush') return;
+
+        surfaceActors.forEach((actor) => {
+            const annotationId = overlayAnnotationMap.get(actor);
+            const annotation = annotations.find((item) => item.id === annotationId);
+            if (!isWorldBrushAnnotation(annotation)) return;
+            const [r, g, b] = hexToRgbNormalized(annotation.color || '#f59e0b', [0.961, 0.62, 0.043]);
+            if (brushOperation === 'subtract') {
+                actor.getProperty().setColor(0.85, r * 0.3, b * 0.3);
+            } else {
+                actor.getProperty().setColor(r, g, b);
+            }
+        });
+        ctx.renderWindow.render();
+    }, [annotateMode, annotationTool, annotations, brushOperation, error, loading]);
+
+    useEffect(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || loading || error) return;
 
         if (ctx.snapshotSurfaceAnnotationActors?.length) {
             disposeOverlayActors(ctx.renderer, ctx.snapshotSurfaceAnnotationActors);
@@ -4167,7 +4264,7 @@ const VolumeViewer3D = ({
             ctx.brushPreviewActors = [];
         }
 
-        if (!(annotateMode && annotationTool === 'brush' && brushPreviewPoint)) {
+        if (!annotateMode || annotationTool !== 'brush' || !brushPreviewPoint) {
             ctx.renderWindow.render();
             return;
         }
@@ -4452,8 +4549,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     ]);
 
     const handleViewportPointerDown = useCallback((event) => {
-        if (event.button !== 0) return;
         if (isViewportUiEvent(event)) return;
+        if (event.button !== 0) return;
         const ctx = vtkContextRef.current;
         if (!ctx) return;
 
@@ -4464,8 +4561,10 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 event.stopPropagation();
                 setSelectedWorldAnnotationId(pickedAnnotationId);
                 setManualSegmentationError(null);
-                return;
+            } else {
+                setSelectedWorldAnnotationId(null);
             }
+            return;
         }
 
         if (annotateMode && annotationTool === 'brush') {
@@ -4504,7 +4603,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (annotateMode && annotationTool === 'freehand') {
             event.preventDefault();
             event.stopPropagation();
-            const point = pickSurfaceWorldPointFromPointer(event);
+            const point = pickSurfaceWorldPointFromPointer(event) ?? pickWorldPointFromPointer(event);
             if (!point) return;
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             surfaceTraceDraftRef.current = [point];
@@ -4576,6 +4675,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         const pointer = brushPointerRef.current;
         if (!pointer || !brushTraceActiveRef.current || !(annotateMode && annotationTool === 'brush')) return;
 
+        const now = performance.now();
+        if (now - lastBrushRenderRef.current < 32) {
+            brushMoveRafRef.current = requestAnimationFrame(processBrushPointerMove);
+            return;
+        }
+        lastBrushRenderRef.current = now;
+
         const point = pickSurfaceWorldPointFromPointer(pointer);
         if (!point) {
             setBrushPreviewPoint(null);
@@ -4601,7 +4707,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         const pointer = surfacePointerRef.current;
         if (!pointer || !surfaceTraceActiveRef.current || !(annotateMode && annotationTool === 'freehand')) return;
 
-        const point = pickSurfaceWorldPointFromPointer(pointer);
+        const point = pickSurfaceWorldPointFromPointer(pointer) ?? pickWorldPointFromPointer(pointer);
         if (!point) {
             setSurfaceTracePreview(null);
             return;
@@ -4619,11 +4725,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             surfaceTraceDraftRef.current = nextDraft;
             return nextDraft;
         });
-    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer]);
+    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
     const handleViewportPointerMove = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && isViewportUiEvent(event)) return;
         if (brushTraceActiveRef.current && annotateMode && annotationTool === 'brush') {
+            event.preventDefault();
+            event.stopPropagation();
             brushPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
             if (!brushMoveRafRef.current) {
                 brushMoveRafRef.current = requestAnimationFrame(processBrushPointerMove);
@@ -4632,6 +4740,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         }
 
         if (surfaceTraceActiveRef.current && annotateMode && annotationTool === 'freehand') {
+            event.preventDefault();
+            event.stopPropagation();
             surfacePointerRef.current = { clientX: event.clientX, clientY: event.clientY };
             if (!surfaceMoveRafRef.current) {
                 surfaceMoveRafRef.current = requestAnimationFrame(processSurfacePointerMove);
@@ -4640,6 +4750,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         }
 
         if (annotateMode && (annotationTool === 'arrow' || annotationTool === 'circle') && worldOverlayDraft?.startWorld) {
+            event.preventDefault();
+            event.stopPropagation();
             const screenPoint = getViewportPointerPoint(event);
             setWorldOverlayDraft((current) => {
                 if (!current?.startWorld) return current;
@@ -4655,6 +4767,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         }
 
         if (!measureMode3D) return;
+        event.preventDefault();
+        event.stopPropagation();
         const point = pickWorldPointFromPointer(event);
         setMeasureHoverPoint((current) => {
             if (!point) return current ? null : current;
@@ -4696,22 +4810,31 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) {}
             const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
             const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
-            const nextAnnotation = buildWorldOverlayAnnotation({
-                type: annotationTool,
-                startWorld: worldOverlayDraft.startWorld,
-                endWorld: releasePoint,
-                startScreen: worldOverlayDraft.startScreen,
-                endScreen: releaseScreen,
-                color: ANNOTATION_COLORS[annotationTool],
-            });
-            setWorldOverlayDraft(null);
-            if (!nextAnnotation || !releaseScreen || !worldOverlayDraft.startScreen || Math.hypot(
-                releaseScreen.x - worldOverlayDraft.startScreen.x,
-                releaseScreen.y - worldOverlayDraft.startScreen.y,
-            ) < 6) {
+            const dragPx = Math.hypot(
+                (releaseScreen?.x ?? 0) - (worldOverlayDraft.startScreen?.x ?? 0),
+                (releaseScreen?.y ?? 0) - (worldOverlayDraft.startScreen?.y ?? 0)
+            );
+            if (annotationTool === 'circle' && dragPx < 8) {
+                setWorldOverlayDraft(null);
                 return;
             }
-            setAnnotations((current) => [...current, nextAnnotation]);
+            const annotationStartWorld = annotationTool === 'arrow' ? releasePoint : worldOverlayDraft.startWorld;
+            const annotationEndWorld = annotationTool === 'arrow' ? worldOverlayDraft.startWorld : releasePoint;
+            const annotationStartScreen = annotationTool === 'arrow' ? releaseScreen : worldOverlayDraft.startScreen;
+            const annotationEndScreen = annotationTool === 'arrow' ? worldOverlayDraft.startScreen : releaseScreen;
+            const nextAnnotation = buildWorldOverlayAnnotation({
+                type: annotationTool,
+                startWorld: annotationStartWorld,
+                endWorld: annotationEndWorld,
+                startScreen: annotationStartScreen,
+                endScreen: annotationEndScreen,
+                color: activeAnnotationColor || ANNOTATION_COLORS[annotationTool],
+            });
+            setWorldOverlayDraft(null);
+            if (!nextAnnotation || !releaseScreen || !worldOverlayDraft.startScreen || dragPx < 6) {
+                return;
+            }
+            pushAnnotationChange((current) => [...current, nextAnnotation]);
             setManualSegmentationError(null);
             return;
         }
@@ -4723,10 +4846,23 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         surfaceTraceActiveRef.current = false;
         setSurfaceTraceActive(false);
 
-        const releasePoint = pickSurfaceWorldPointFromPointer(event);
+        const releasePoint = pickSurfaceWorldPointFromPointer(event) ?? pickWorldPointFromPointer(event);
         const rawPath = [...surfaceTraceDraftRef.current];
         if (releasePoint && (!rawPath.length || distanceMm(rawPath[rawPath.length - 1], releasePoint) >= Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData)))) {
             rawPath.push(releasePoint);
+        }
+
+        const firstWorldPoint = rawPath[0];
+        const firstScreen = projectWorldToViewport(firstWorldPoint);
+        const lastScreen = projectWorldToViewport(rawPath[rawPath.length - 1]);
+        if (
+            firstWorldPoint
+            && firstScreen
+            && lastScreen
+            && rawPath.length >= 8
+            && Math.hypot(firstScreen.x - lastScreen.x, firstScreen.y - lastScreen.y) < 14
+        ) {
+            rawPath.push(firstWorldPoint);
         }
 
         const simplifiedPath = simplifyWorldPath(rawPath, Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData)));
@@ -4741,7 +4877,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         const nextAnnotation = {
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             type: 'region',
-            color: '#E24B4A',
+            color: activeAnnotationColor || '#E24B4A',
             coordinates: {
                 world_path: simplifiedPath.map((point) => point.map((value) => Number(value.toFixed(3)))),
                 closed: true,
@@ -4761,8 +4897,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             },
         };
 
-        setAnnotations((current) => [...current, nextAnnotation]);
-    }, [annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildWorldOverlayAnnotation, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, worldOverlayDraft]);
+        pushAnnotationChange((current) => [...current, nextAnnotation]);
+    }, [activeAnnotationColor, annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildWorldOverlayAnnotation, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewport, pushAnnotationChange, worldOverlayDraft]);
 
     const handleViewportPointerLeave = useCallback(() => {
         setMeasureHoverPoint(null);
@@ -4776,13 +4912,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
     const handleViewportClick = useCallback((event) => {
         if (isViewportUiEvent(event)) return;
-        if (annotateMode && annotationTool === 'select') {
-            const pickedAnnotationId = pickWorldAnnotationIdFromPointer(event);
-            if (!pickedAnnotationId) {
-                setSelectedWorldAnnotationId(null);
-            }
-            return;
-        }
         if (annotateMode && annotationTool === 'text') {
             event.preventDefault();
             event.stopPropagation();
@@ -4802,7 +4931,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (point) {
             onSurfaceClick(point);
         }
-    }, [annotateMode, annotationTool, implantPlaceMode, isViewportUiEvent, linkedMode, measureMode3D, onSurfaceClick, pickAnnotationWorldPointFromPointer, pickWorldAnnotationIdFromPointer, pickWorldPointFromPointer, projectWorldToViewport]);
+    }, [annotateMode, annotationTool, implantPlaceMode, isViewportUiEvent, linkedMode, measureMode3D, onSurfaceClick, pickAnnotationWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewport]);
 
     const commitTextDraft3D = useCallback((value) => {
         if (!textDraft3D?.worldPoint) {
@@ -4816,15 +4945,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 type: 'text',
                 worldPoint: textDraft3D.worldPoint,
                 label: trimmed,
-                color: ANNOTATION_COLORS.text,
+                color: activeAnnotationColor || ANNOTATION_COLORS.text,
             });
             if (nextAnnotation) {
-                setAnnotations((current) => [...current, nextAnnotation]);
+                pushAnnotationChange((current) => [...current, nextAnnotation]);
             }
         }
 
         setTextDraft3D(null);
-    }, [buildWorldOverlayAnnotation, textDraft3D]);
+    }, [activeAnnotationColor, buildWorldOverlayAnnotation, pushAnnotationChange, textDraft3D]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -4835,6 +4964,56 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
+            if (annotateMode) {
+                if (key === 'a') {
+                    event.preventDefault();
+                    setAnnotationTool('arrow');
+                    return;
+                }
+                if (key === 'c') {
+                    event.preventDefault();
+                    setAnnotationTool('circle');
+                    return;
+                }
+                if (key === 's') {
+                    event.preventDefault();
+                    setAnnotationTool('select');
+                    return;
+                }
+                if (key === 'p') {
+                    event.preventDefault();
+                    setAnnotationTool('freehand');
+                    return;
+                }
+                if (key === 'k') {
+                    event.preventDefault();
+                    setAnnotationTool('brush');
+                    return;
+                }
+                if (key === 'l') {
+                    event.preventDefault();
+                    setAnnotationTool('text');
+                    return;
+                }
+                if (key === 'z' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleUndoAnnotation();
+                    return;
+                }
+                if (key === 'escape') {
+                    event.preventDefault();
+                    setAnnotateMode(false);
+                    return;
+                }
+            }
+            if (measureMode3D && key === 'escape') {
+                event.preventDefault();
+                setMeasureMode3D(false);
+                setMeasurePoints([]);
+                setMeasureHoverPoint(null);
+                return;
+            }
+
             if (key === 'b') {
                 event.preventDefault();
                 changePreset('bone');
@@ -4870,13 +5049,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [changePreset, preset, resetCamera, toggleFullscreen, toggleInvert]);
+    }, [annotateMode, changePreset, handleUndoAnnotation, measureMode3D, preset, resetCamera, toggleFullscreen, toggleInvert]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Render
     // ═══════════════════════════════════════════════════════════════════
     const isMipOrXray = preset === 'mip' || preset === 'xray';
     const canSaveSessions = Boolean((annotations.length > 0 || measurementCount > 0) && !study?.readOnly);
+    const canUndoAnnotations = annotationHistoryRevision >= 0 && annotationHistoryRef.current.length > 0;
     const measurementLabels = useMemo(() => measurements3D.map((measurement) => ({
         id: measurement.id,
         distance: measurement.distance,
@@ -4935,15 +5115,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         const anchorScreen = projectWorldToViewport(worldOverlayDraft.startWorld);
         const hoverScreen = worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen || anchorScreen;
         if (!anchorScreen || !hoverScreen) return null;
-        const startScreen = annotationTool === 'arrow' ? hoverScreen : anchorScreen;
-        const endScreen = annotationTool === 'arrow' ? anchorScreen : hoverScreen;
+        const startScreen = annotationTool === 'arrow' ? (worldOverlayDraft.startScreen || anchorScreen) : anchorScreen;
+        const endScreen = annotationTool === 'arrow' ? hoverScreen : hoverScreen;
         return {
             type: annotationTool,
             startScreen,
             endScreen,
-            color: ANNOTATION_COLORS[annotationTool] || '#ffffff',
+            color: activeAnnotationColor || ANNOTATION_COLORS[annotationTool] || '#ffffff',
         };
-    }, [annotateMode, annotationTool, projectWorldToViewport, worldOverlayDraft]);
+    }, [activeAnnotationColor, annotateMode, annotationTool, projectWorldToViewport, worldOverlayDraft]);
     const textDraftScreenPoint = useMemo(() => {
         if (!textDraft3D?.worldPoint) return null;
         return projectWorldToViewport(textDraft3D.worldPoint) || textDraft3D.screenPoint || null;
@@ -5224,6 +5404,18 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                         <AppIcon name="Camera" size={14} /> Save screenshot
                                     </button>
 
+                                    {annotations.length > 0 && (
+                                        <button
+                                            onClick={() => {
+                                                captureAnnotatedScreenshot();
+                                                setShowMoreTools(false);
+                                            }}
+                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                        >
+                                            <AppIcon name="ImageDown" size={14} /> Export annotated PNG
+                                        </button>
+                                    )}
+
                                     <button
                                         onClick={() => {
                                             generateAIReport();
@@ -5392,11 +5584,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     <div data-xcore-ui="true" className="pointer-events-none absolute left-4 right-4 top-4 z-[90] flex justify-center">
                         <div className="pointer-events-auto">
                             <Volume3DModeToolbar
+                                activeColor={activeAnnotationColor}
                                 annotateMode={annotateMode}
                                 annotationPersistence={annotationPersistence}
+                                annotationCount={annotations.length}
                                 annotationTool={annotationTool}
                                 brushOperation={brushOperation}
                                 brushRadiusMm={brushRadiusMm}
+                                canUndo={canUndoAnnotations}
                                 clearAllAnnotations={clearAllAnnotations}
                                 clearMeasurements3D={clearMeasurements3D}
                                 deleteSelectedWorldAnnotation={deleteSelectedWorldAnnotation}
@@ -5404,6 +5599,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 isWorldBrushAnnotation={isWorldBrushAnnotation}
                                 measureMode3D={measureMode3D}
                                 selectedWorldAnnotation={selectedWorldAnnotation}
+                                setActiveColor={setActiveAnnotationColor}
                                 setAnnotationTool={setAnnotationTool}
                                 setBrushOperation={setBrushOperation}
                                 setBrushRadiusMm={setBrushRadiusMm}
@@ -5441,7 +5637,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
                 {/* Loading Overlay */}
                 {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950 z-10 overflow-hidden">
+                    <div className={`absolute inset-0 z-10 flex items-center justify-center overflow-hidden transition-opacity duration-300 ${
+                        volumeWasCached ? 'bg-slate-950/70 backdrop-blur-sm' : 'bg-slate-950'
+                    }`}>
                         {previewImage && (
                             <img
                                 src={previewImage}
@@ -5557,20 +5755,51 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         {selectedWorldAnnotation && (
                             <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <AppIcon name={isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Paintbrush' : 'PenLine'} size={14} className="text-emerald-300" />
-                                    <span className="text-xs font-semibold text-white uppercase tracking-wider">Selected 3D Segment</span>
+                                    <span
+                                        className="h-3 w-3 shrink-0 rounded-full border border-white/20"
+                                        style={{ background: selectedWorldAnnotation.color || '#E24B4A' }}
+                                    />
+                                    <AppIcon name={isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Paintbrush' : 'PenLine'} size={13} className="text-emerald-300" />
+                                    <span className="truncate text-xs font-semibold uppercase tracking-wider text-white">
+                                        {isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Brush 3D' : 'Surface Loop'}
+                                    </span>
+                                    <span className="ml-auto shrink-0 rounded-full bg-slate-700 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">
+                                        {selectedWorldAnnotation.metadata?.severity || 'S1'}
+                                    </span>
                                 </div>
                                 <div className="space-y-1 text-[11px] text-slate-300">
-                                    <div className="flex justify-between gap-3"><span>Type</span><span className="font-mono text-white">{isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Brush volume' : 'Surface loop'}</span></div>
                                     {isWorldBrushAnnotation(selectedWorldAnnotation) && (
                                         <>
-                                            <div className="flex justify-between gap-3"><span>Brush</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.coordinates?.world_brush?.radius_mm || 0).toFixed(1)} mm</span></div>
+                                            <div className="flex justify-between gap-3"><span>Radius</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.coordinates?.world_brush?.radius_mm || 0).toFixed(1)} mm</span></div>
                                             <div className="flex justify-between gap-3"><span>Volume</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_volume_mm3 || 0).toFixed(1)} mm³</span></div>
                                         </>
                                     )}
                                     {isWorldPathAnnotation(selectedWorldAnnotation) && (
                                         <div className="flex justify-between gap-3"><span>Area</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_area_mm2 || 0).toFixed(1)} mm²</span></div>
                                     )}
+                                </div>
+                                <div className="mt-2 flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const copy = {
+                                                ...selectedWorldAnnotation,
+                                                id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                                            };
+                                            pushAnnotationChange((current) => [...current, copy]);
+                                            setSelectedWorldAnnotationId(copy.id);
+                                        }}
+                                        className="flex-1 rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700"
+                                    >
+                                        Duplicate
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={deleteSelectedWorldAnnotation}
+                                        className="flex-1 rounded-lg bg-rose-900/40 px-2 py-1 text-[10px] font-semibold text-rose-300 transition hover:bg-rose-900/70"
+                                    >
+                                        Delete
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -5919,6 +6148,23 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 {showNerveOverlay && nerveInfo && (
                     <div className="absolute right-3 top-16 z-20 rounded-xl border border-yellow-500/30 bg-yellow-500/15 px-3 py-2 text-xs text-yellow-100 backdrop-blur">
                         Nerve canal confidence {(Number(nerveInfo.confidence || 0) * 100).toFixed(0)}%
+                    </div>
+                )}
+
+                {!loading && !error && preset === 'density' && (
+                    <div
+                        data-xcore-ui="true"
+                        className="absolute bottom-12 right-3 z-20 rounded-xl border border-slate-700 bg-black/70 p-2 backdrop-blur-sm"
+                        onPointerDown={stopViewportUiPropagation}
+                    >
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">Misch</div>
+                        {DENSITY_LEGEND.map((item) => (
+                            <div key={item.label} className="flex items-center gap-1.5 py-0.5">
+                                <span className={`h-2.5 w-2.5 rounded-sm ${item.className}`} />
+                                <span className="w-5 text-[9px] font-bold text-white">{item.label}</span>
+                                <span className="text-[9px] text-slate-400">{item.range}</span>
+                            </div>
+                        ))}
                     </div>
                 )}
 

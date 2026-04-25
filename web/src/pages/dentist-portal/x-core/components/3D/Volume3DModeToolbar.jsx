@@ -5,12 +5,25 @@ const stopUiEvent = (event) => {
   event.stopPropagation();
 };
 
+const ANNOTATION_COLOR_PALETTE = [
+  '#E24B4A',
+  '#f59e0b',
+  '#22c55e',
+  '#38bdf8',
+  '#a78bfa',
+  '#f472b6',
+  '#ffffff',
+];
+
 export default function Volume3DModeToolbar({
+  activeColor,
   annotateMode,
   annotationPersistence,
+  annotationCount = 0,
   annotationTool,
   brushOperation,
   brushRadiusMm,
+  canUndo = false,
   clearAllAnnotations,
   clearMeasurements3D,
   deleteSelectedWorldAnnotation,
@@ -18,6 +31,7 @@ export default function Volume3DModeToolbar({
   isWorldBrushAnnotation,
   measureMode3D,
   selectedWorldAnnotation,
+  setActiveColor,
   setAnnotationTool,
   setBrushOperation,
   setBrushRadiusMm,
@@ -136,6 +150,24 @@ export default function Volume3DModeToolbar({
             </div>
           )}
 
+          {['arrow', 'circle', 'text'].includes(annotationTool) && (
+            <div className="ml-1 flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900/70 p-1">
+              {ANNOTATION_COLOR_PALETTE.map((hex) => (
+                <button
+                  key={hex}
+                  type="button"
+                  onPointerDown={stopUiEvent}
+                  onClick={() => setActiveColor?.(hex)}
+                  className={`h-5 w-5 rounded-full border-2 transition ${
+                    activeColor === hex ? 'scale-110 border-white' : 'border-transparent hover:scale-105'
+                  }`}
+                  style={{ background: hex }}
+                  title={hex}
+                />
+              ))}
+            </div>
+          )}
+
           {selectedWorldAnnotation && (
             <div className="ml-1 flex items-center gap-1 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-1 text-[11px] font-bold text-emerald-100">
               <span className="max-w-[9rem] truncate px-1">
@@ -166,7 +198,8 @@ export default function Volume3DModeToolbar({
             type="button"
             onPointerDown={stopUiEvent}
             onClick={handleUndoAnnotation}
-            className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+            disabled={!canUndo}
+            className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             title="Undo last annotation"
           >
             <AppIcon name="Undo2" size={15} />
@@ -175,10 +208,15 @@ export default function Volume3DModeToolbar({
             type="button"
             onPointerDown={stopUiEvent}
             onClick={clearAllAnnotations}
-            className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
+            className="relative rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-rose-900/60 hover:text-rose-200"
             title="Clear annotations"
           >
             <AppIcon name="Trash2" size={15} />
+            {annotationCount > 0 && (
+              <span className="absolute -right-1 -top-1 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">
+                {annotationCount > 99 ? '99+' : annotationCount}
+              </span>
+            )}
           </button>
           {annotationPersistence?.saving && (
             <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
