@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import AppIcon from '../../../../../components/AppIcon';
 
 const arrowHeadPoints = (startScreen, endScreen) => {
   const dx = endScreen.x - startScreen.x;
@@ -16,13 +17,25 @@ const stopUiEvent = (event) => {
   event.stopPropagation();
 };
 
-const renderProjectedAnnotations = (annotations = [], strokeWidth = '2', includeText = false) => (
+const renderProjectedAnnotations = (
+  annotations = [],
+  strokeWidth = '2',
+  includeText = false,
+  hoverHandlers = {},
+) => (
   <>
-    <svg className="absolute inset-0 h-full w-full">
+    <svg className="pointer-events-none absolute inset-0 h-full w-full">
       {annotations.map((annotation) => {
         if (annotation.type === 'arrow') {
           return (
-            <g key={annotation.id} opacity={annotation.opacity ?? 1}>
+            <g
+              key={annotation.id}
+              opacity={annotation.opacity ?? 1}
+              style={{ pointerEvents: 'visiblePainted' }}
+              onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+              onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+              onMouseLeave={hoverHandlers.onLeave}
+            >
               <line
                 x1={annotation.startScreen.x}
                 y1={annotation.startScreen.y}
@@ -47,6 +60,7 @@ const renderProjectedAnnotations = (annotations = [], strokeWidth = '2', include
           return (
             <circle
               key={annotation.id}
+              style={{ pointerEvents: 'visiblePainted' }}
               cx={annotation.startScreen.x}
               cy={annotation.startScreen.y}
               r={radius}
@@ -54,6 +68,9 @@ const renderProjectedAnnotations = (annotations = [], strokeWidth = '2', include
               strokeWidth={strokeWidth}
               fill="none"
               opacity={annotation.opacity ?? 1}
+              onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+              onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+              onMouseLeave={hoverHandlers.onLeave}
             />
           );
         }
@@ -63,12 +80,15 @@ const renderProjectedAnnotations = (annotations = [], strokeWidth = '2', include
     {includeText && annotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
       <div
         key={annotation.id}
-        className="absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
+        className="pointer-events-auto absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
         style={{
           left: annotation.screenPoint.x,
           top: annotation.screenPoint.y,
           opacity: annotation.opacity ?? 1,
         }}
+        onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+        onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+        onMouseLeave={hoverHandlers.onLeave}
       >
         {annotation.label}
       </div>
@@ -80,6 +100,7 @@ export default function Volume3DOverlayLayer({
   annotateMode,
   annotationTool,
   brushOperation,
+  brushPointerScreen,
   brushRadiusMm,
   brushScreenPath,
   commitTextDraft3D,
@@ -98,23 +119,36 @@ export default function Volume3DOverlayLayer({
   setTextDraft3D,
   worldOverlayPreview,
 }) {
+  const [hoveredAnnotation, setHoveredAnnotation] = useState(null);
+  const [hoverPosition, setHoverPosition] = useState(null);
   const firstTracePoint = surfaceTraceScreenPath[0];
   const lastTracePoint = surfaceTraceScreenPath[surfaceTraceScreenPath.length - 1];
   const snapToClose = firstTracePoint && lastTracePoint
-    && surfaceTraceScreenPath.length >= 8
-    && Math.hypot(lastTracePoint.x - firstTracePoint.x, lastTracePoint.y - firstTracePoint.y) < 14;
+    && surfaceTraceScreenPath.length >= 6
+    && Math.hypot(lastTracePoint.x - firstTracePoint.x, lastTracePoint.y - firstTracePoint.y) < 20;
+  const hoverHandlers = useMemo(() => ({
+    onEnter: (annotation, event) => {
+      setHoveredAnnotation(annotation);
+      setHoverPosition({ x: event.clientX, y: event.clientY });
+    },
+    onMove: (event) => setHoverPosition({ x: event.clientX, y: event.clientY }),
+    onLeave: () => {
+      setHoveredAnnotation(null);
+      setHoverPosition(null);
+    },
+  }), []);
 
   return (
     <>
       {projectedSnapshotWorldOverlayAnnotations.length > 0 && (
         <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[14]">
-          {renderProjectedAnnotations(projectedSnapshotWorldOverlayAnnotations, '2', true)}
+          {renderProjectedAnnotations(projectedSnapshotWorldOverlayAnnotations, '2', true, hoverHandlers)}
         </div>
       )}
 
       {projectedWorldOverlayAnnotations.length > 0 && (
         <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[15]">
-          {renderProjectedAnnotations(projectedWorldOverlayAnnotations, '2.25', true)}
+          {renderProjectedAnnotations(projectedWorldOverlayAnnotations, '2.25', true, hoverHandlers)}
           <svg className="absolute inset-0 h-full w-full">
             {worldOverlayPreview && worldOverlayPreview.type === 'arrow' && (
               <g opacity="0.9">
@@ -300,6 +334,26 @@ export default function Volume3DOverlayLayer({
         </svg>
       )}
 
+      {annotateMode && annotationTool === 'brush' && brushPointerScreen && (
+        <svg className="pointer-events-none absolute inset-0 z-[25] h-full w-full">
+          <circle
+            cx={brushPointerScreen.x}
+            cy={brushPointerScreen.y}
+            r={Math.max(8, brushRadiusMm * 3.5)}
+            fill="rgba(245,158,11,0.12)"
+            stroke="rgba(245,158,11,0.85)"
+            strokeWidth="1.5"
+            strokeDasharray="5 4"
+          />
+          <circle
+            cx={brushPointerScreen.x}
+            cy={brushPointerScreen.y}
+            r="3"
+            fill="rgba(245,158,11,0.9)"
+          />
+        </svg>
+      )}
+
       {measureMode3D && measurePoints.length === 1 && (
         <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur">
           First point set — move to preview, click second point
@@ -321,6 +375,23 @@ export default function Volume3DOverlayLayer({
       {!annotateMode && hiddenAnnotationCount > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 ring-1 ring-amber-400/30 backdrop-blur">
           {hiddenAnnotationCount} annotation{hiddenAnnotationCount > 1 ? 's are' : ' is'} hidden until the saved camera view is restored
+        </div>
+      )}
+
+      {hoveredAnnotation && hoverPosition && !annotateMode && (
+        <div
+          className="pointer-events-none fixed z-[200] rounded-xl border border-white/15 bg-slate-950/95 px-3 py-2 text-xs text-white shadow-2xl backdrop-blur"
+          style={{ left: hoverPosition.x + 12, top: hoverPosition.y - 8 }}
+        >
+          <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+            <AppIcon name="Info" size={11} className="text-cyan-400" />
+            {hoveredAnnotation.metadata?.finding_type || hoveredAnnotation.type || 'Annotation'}
+          </div>
+          {hoveredAnnotation.metadata?.severity && (
+            <div className="mt-0.5 text-[10px] text-slate-400">
+              Severity: {hoveredAnnotation.metadata.severity}
+            </div>
+          )}
         </div>
       )}
     </>
