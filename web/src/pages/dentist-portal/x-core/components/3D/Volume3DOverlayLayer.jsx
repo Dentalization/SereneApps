@@ -98,6 +98,12 @@ export default function Volume3DOverlayLayer({
   setTextDraft3D,
   worldOverlayPreview,
 }) {
+  const firstTracePoint = surfaceTraceScreenPath[0];
+  const lastTracePoint = surfaceTraceScreenPath[surfaceTraceScreenPath.length - 1];
+  const snapToClose = firstTracePoint && lastTracePoint
+    && surfaceTraceScreenPath.length >= 8
+    && Math.hypot(lastTracePoint.x - firstTracePoint.x, lastTracePoint.y - firstTracePoint.y) < 14;
+
   return (
     <>
       {projectedSnapshotWorldOverlayAnnotations.length > 0 && (
@@ -181,8 +187,13 @@ export default function Volume3DOverlayLayer({
       {measurementLabels.map((item) => (
         <div
           key={item.id}
-          className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/40"
+          className="pointer-events-auto absolute z-30 -translate-x-1/2 -translate-y-1/2 cursor-pointer select-none rounded-full bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/40 transition hover:bg-emerald-950/80 hover:ring-emerald-400/70 active:scale-95"
           style={{ left: item.screen.x, top: item.screen.y }}
+          title="Click to copy"
+          onClick={(event) => {
+            event.stopPropagation();
+            navigator.clipboard?.writeText(`${item.distance.toFixed(2)} mm`).catch(() => {});
+          }}
         >
           {item.distance.toFixed(2)} mm
         </div>
@@ -248,6 +259,16 @@ export default function Volume3DOverlayLayer({
               strokeWidth="1.25"
             />
           ))}
+          {snapToClose && (
+            <circle
+              cx={firstTracePoint.x}
+              cy={firstTracePoint.y}
+              r="9"
+              fill="rgba(34,197,94,0.25)"
+              stroke="rgba(34,197,94,0.9)"
+              strokeWidth="2"
+            />
+          )}
         </svg>
       )}
 
@@ -261,6 +282,20 @@ export default function Volume3DOverlayLayer({
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeDasharray="8 6"
+          />
+        </svg>
+      )}
+
+      {annotateMode && annotationTool === 'brush' && brushScreenPath.length > 0 && (
+        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+          <circle
+            cx={brushScreenPath[brushScreenPath.length - 1].x}
+            cy={brushScreenPath[brushScreenPath.length - 1].y}
+            r={Math.max(6, brushRadiusMm * 3.5)}
+            fill="none"
+            stroke="rgba(245, 158, 11, 0.75)"
+            strokeWidth="1.5"
+            strokeDasharray="4 3"
           />
         </svg>
       )}
