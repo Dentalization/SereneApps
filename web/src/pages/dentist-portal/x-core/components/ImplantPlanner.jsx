@@ -17,6 +17,7 @@ const ImplantPlanner = ({
     onLengthChange,
     onTogglePlaceMode,
     onClear,
+    hasCollisions = false,
 }) => (
     <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
@@ -71,6 +72,15 @@ const ImplantPlanner = ({
         >
             {placeMode ? 'Click Bone Surface to Place' : 'Place Implant'}
         </button>
+
+        {hasCollisions && (
+            <div className="mt-2 rounded-lg bg-rose-500/20 border border-rose-500/40 px-2 py-1.5 flex items-start gap-2">
+                <AppIcon name="AlertTriangle" size={12} className="text-rose-400 mt-0.5 shrink-0" />
+                <span className="text-[10px] text-rose-200 font-medium leading-tight">
+                    Collision detected. Implants are too close.
+                </span>
+            </div>
+        )}
 
         {placementCount > 0 && (
             <button

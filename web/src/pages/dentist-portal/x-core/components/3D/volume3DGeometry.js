@@ -135,6 +135,43 @@ export function cameraStateApproximatelyMatches(expected, current, epsilon = 0.7
     && arraysNearlyEqual(expectedViewUp, currentViewUp, 0.08);
 }
 
+export function hashWorldAnnotation(annotation, selectedId = null) {
+  if (!annotation) return '';
+  const parts = [
+    annotation.id || '',
+    annotation.type || '',
+    annotation.color || '',
+    String(annotation.displayOpacity ?? annotation.opacity ?? 1),
+    String(annotation.id === selectedId),
+  ];
+
+  const path = annotation.coordinates?.world_path;
+  if (Array.isArray(path)) {
+    parts.push(String(path.length));
+    const step = Math.max(1, Math.floor(path.length / 8));
+    for (let index = 0; index < path.length; index += step) {
+      const point = path[index] || [];
+      parts.push(point.map((value) => Number(value || 0).toFixed(1)).join(','));
+    }
+  }
+
+  const brush = annotation.coordinates?.world_brush;
+  if (brush) {
+    const centers = Array.isArray(brush.centers) ? brush.centers : [];
+    parts.push(String(centers.length), String(Number(brush.radius_mm || 0).toFixed(2)));
+    if (centers.length > 0) {
+      const first = centers[0] || [];
+      const last = centers[centers.length - 1] || [];
+      parts.push(
+        first.map((value) => Number(value || 0).toFixed(1)).join(','),
+        last.map((value) => Number(value || 0).toFixed(1)).join(','),
+      );
+    }
+  }
+
+  return parts.join('|');
+}
+
 export function densifyWorldPoints(points, maxStepMm) {
   if (!Array.isArray(points) || points.length < 2) return Array.isArray(points) ? [...points] : [];
   const safeStep = Math.max(Number(maxStepMm) || 0, 0.25);
@@ -336,4 +373,122 @@ export function stampBrushLabelToArray(sourceImageData, targetValues, centers, r
   });
 
   return affected;
+}
+
+function clampIndex(value, maxExclusive) {
+  const rounded = Math.round(Number(value) || 0);
+  return Math.max(0, Math.min(maxExclusive - 1, rounded));
+}
+
+export function rasterizeWorldPathAnnotation(annotation, imageData, targetValues, labelValue) {
+  const path = annotation?.coordinates?.world_path;
+  if (!imageData || !targetValues || !Array.isArray(path) || path.length < 3) return 0;
+
+  const dims = imageData.getDimensions?.() || [0, 0, 0];
+  if (!dims[0] || !dims[1] || !dims[2]) return 0;
+
+  const indexPath = path
+    .map((worldPoint) => imageData.worldToIndex?.(worldPoint))
+    .filter((point) => Array.isArray(point) && point.length >= 3 && point.every((value) => Number.isFinite(value)));
+  if (indexPath.length < 3) return 0;
+
+  const minK = Math.max(0, Math.floor(Math.min(...indexPath.map((point) => point[2]))));
+  const maxK = Math.min(dims[2] - 1, Math.ceil(Math.max(...indexPath.map((point) => point[2]))));
+  const polygon2D = indexPath.map((point) => ({ i: point[0], j: point[1] }));
+
+  let painted = 0;
+  for (let k = minK; k <= maxK; k += 1) {
+    const jValues = polygon2D.map((point) => point.j);
+    const jStart = Math.max(0, Math.floor(Math.min(...jValues)));
+    const jEnd = Math.min(dims[1] - 1, Math.ceil(Math.max(...jValues)));
+
+    for (let j = jStart; j <= jEnd; j += 1) {
+      const intersections = [];
+      for (let index = 0; index < polygon2D.length; index += 1) {
+        const current = polygon2D[index];
+        const next = polygon2D[(index + 1) % polygon2D.length];
+        const y0 = current.j;
+        const y1 = next.j;
+        const crosses = ((y0 <= j) && (y1 > j)) || ((y1 <= j) && (y0 > j));
+        if (!crosses) continue;
+        const t = (j - y0) / ((y1 - y0) || Number.EPSILON);
+        intersections.push(current.i + ((next.i - current.i) * t));
+      }
+      intersections.sort((a, b) => a - b);
+      for (let index = 0; index + 1 < intersections.length; index += 2) {
+        const iStart = clampIndex(Math.ceil(intersections[index]), dims[0]);
+        const iEnd = clampIndex(Math.floor(intersections[index + 1]), dims[0]);
+        for (let i = iStart; i <= iEnd; i += 1) {
+          const voxelIndex = i + (dims[0] * (j + (dims[1] * k)));
+          if (targetValues[voxelIndex] !== labelValue) {
+            targetValues[voxelIndex] = labelValue;
+            painted += 1;
+          }
+        }
+      }
+    }
+  }
+
+  return painted;
+}
+
+export function distanceBetweenSegments(a0, a1, b0, b1) {
+  if (!a0 || !a1 || !b0 || !b1) return Number.POSITIVE_INFINITY;
+  const u = [a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]];
+  const v = [b1[0] - b0[0], b1[1] - b0[1], b1[2] - b0[2]];
+  const w = [a0[0] - b0[0], a0[1] - b0[1], a0[2] - b0[2]];
+  const a = (u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]);
+  const b = (u[0] * v[0]) + (u[1] * v[1]) + (u[2] * v[2]);
+  const c = (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]);
+  const d = (u[0] * w[0]) + (u[1] * w[1]) + (u[2] * w[2]);
+  const e = (v[0] * w[0]) + (v[1] * w[1]) + (v[2] * w[2]);
+  const D = (a * c) - (b * b);
+  let sN = 0;
+  let sD = D;
+  let tN = 0;
+  let tD = D;
+
+  if (D < 1e-8) {
+    sN = 0;
+    sD = 1;
+    tN = e;
+    tD = c;
+  } else {
+    sN = (b * e) - (c * d);
+    tN = (a * e) - (b * d);
+    if (sN < 0) {
+      sN = 0;
+      tN = e;
+      tD = c;
+    } else if (sN > sD) {
+      sN = sD;
+      tN = e + b;
+      tD = c;
+    }
+  }
+
+  if (tN < 0) {
+    tN = 0;
+    if (-d < 0) sN = 0;
+    else if (-d > a) sN = sD;
+    else {
+      sN = -d;
+      sD = a;
+    }
+  } else if (tN > tD) {
+    tN = tD;
+    if ((-d + b) < 0) sN = 0;
+    else if ((-d + b) > a) sN = sD;
+    else {
+      sN = -d + b;
+      sD = a;
+    }
+  }
+
+  const sc = Math.abs(sN) < 1e-8 ? 0 : sN / sD;
+  const tc = Math.abs(tN) < 1e-8 ? 0 : tN / tD;
+  const dx = w[0] + (sc * u[0]) - (tc * v[0]);
+  const dy = w[1] + (sc * u[1]) - (tc * v[1]);
+  const dz = w[2] + (sc * u[2]) - (tc * v[2]);
+  return Math.sqrt((dx * dx) + (dy * dy) + (dz * dz));
 }

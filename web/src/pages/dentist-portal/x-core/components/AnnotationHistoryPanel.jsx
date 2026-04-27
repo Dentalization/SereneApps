@@ -40,6 +40,7 @@ const AnnotationHistoryPanel = ({
   onRefresh,
   onSelectSnapshot,
   onRestoreSnapshot,
+  onRestoreCamera,
   onDeleteSnapshot,
   onNewSession,
   onClearOverlay,
@@ -129,7 +130,7 @@ const AnnotationHistoryPanel = ({
                 </div>
               </div>
               <div className="mt-1 text-xs text-slate-400">{snapshot.note || 'No note'}</div>
-              <div className="mt-3 grid grid-cols-3 gap-1">
+              <div className="mt-3 grid grid-cols-4 gap-1">
                 <button
                   type="button"
                   onClick={() => onSelectSnapshot?.(snapshot)}
@@ -147,6 +148,13 @@ const AnnotationHistoryPanel = ({
                   className="rounded-lg bg-emerald-500/15 px-2 py-1.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/25"
                 >
                   Restore
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRestoreCamera?.(snapshot)}
+                  className="rounded-lg bg-cyan-500/15 px-2 py-1.5 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-500/25"
+                >
+                  Restore camera
                 </button>
                 <button
                   type="button"

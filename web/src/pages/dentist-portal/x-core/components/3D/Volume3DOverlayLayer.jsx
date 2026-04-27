@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppIcon from '../../../../../components/AppIcon';
 
 const arrowHeadPoints = (startScreen, endScreen) => {
@@ -16,6 +16,95 @@ const arrowHeadPoints = (startScreen, endScreen) => {
 const stopUiEvent = (event) => {
   event.stopPropagation();
 };
+
+const MeasurementLabel = memo(function MeasurementLabel({
+  measurement,
+  visible,
+  getPosition,
+  onRename,
+}) {
+  const elementRef = useRef(null);
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(measurement.label || '');
+  const [hasPosition, setHasPosition] = useState(false);
+
+  useEffect(() => {
+    setDraftLabel(measurement.label || '');
+  }, [measurement.label]);
+
+  useEffect(() => {
+    const applyPosition = (position) => {
+      if (!elementRef.current) return;
+      if (!position) {
+        setHasPosition(false);
+        return;
+      }
+      elementRef.current.style.left = `${position.x}px`;
+      elementRef.current.style.top = `${position.y}px`;
+      setHasPosition(true);
+    };
+    applyPosition(getPosition(measurement.id));
+    const handlePositionUpdate = (event) => {
+      applyPosition(event.detail?.positions?.[measurement.id] || null);
+    };
+    window.addEventListener('xcore:labelPositionUpdate', handlePositionUpdate);
+    return () => window.removeEventListener('xcore:labelPositionUpdate', handlePositionUpdate);
+  }, [getPosition, measurement.id]);
+
+  const commitLabel = useCallback(() => {
+    setEditing(false);
+    onRename?.(measurement.id, draftLabel);
+  }, [draftLabel, measurement.id, onRename]);
+
+  return (
+    <div
+      ref={elementRef}
+      className={`pointer-events-auto absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-xl transition duration-200 ${measurement.isTotal
+        ? 'bg-emerald-950/95 text-emerald-200 ring-2 ring-emerald-400/60 text-xs px-3 py-1.5'
+        : 'bg-slate-950/85 text-white ring-1 ring-emerald-400/40'
+        }`}
+      style={{
+        opacity: visible && hasPosition ? 1 : 0,
+        pointerEvents: visible && hasPosition ? 'auto' : 'none',
+      }}
+      title={editing ? '' : 'Click to copy · Double-click to rename'}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        setEditing(true);
+      }}
+      onClick={(event) => {
+        if (editing) return;
+        event.stopPropagation();
+        navigator.clipboard?.writeText(`${measurement.distance.toFixed(2)} mm`).catch(() => { });
+      }}
+    >
+      {editing ? (
+        <input
+          type="text"
+          value={draftLabel}
+          onChange={(event) => setDraftLabel(event.target.value)}
+          onBlur={commitLabel}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitLabel();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setDraftLabel(measurement.label || '');
+              setEditing(false);
+            }
+          }}
+          className="w-28 rounded-md border border-emerald-400/50 bg-slate-900 px-1.5 py-0.5 text-[11px] text-white outline-none"
+          autoFocus
+        />
+      ) : (
+        measurement.label || `${measurement.distance.toFixed(2)} mm`
+      )}
+    </div>
+  );
+});
 
 const renderProjectedAnnotations = (
   annotations = [],
@@ -102,14 +191,18 @@ export default function Volume3DOverlayLayer({
   brushOperation,
   brushPointerScreen,
   brushRadiusMm,
+  brushScreenRadiusPx,
   brushScreenPath,
   commitTextDraft3D,
   hiddenAnnotationCount,
   isWorldBrushAnnotation,
   measureMode3D,
   measurePoints,
-  measurementLabels,
+  measurements3D,
+  measurementLabelPositionsRef,
+  measurementLabelsVisible,
   measurementPreview,
+  onRenameMeasurement,
   projectedSnapshotWorldOverlayAnnotations,
   projectedWorldOverlayAnnotations,
   selectedWorldAnnotation,
@@ -137,6 +230,12 @@ export default function Volume3DOverlayLayer({
       setHoverPosition(null);
     },
   }), []);
+  const getMeasurementPosition = useCallback((id) => {
+    const fromRef = measurementLabelPositionsRef?.current?.get(id) || null;
+    if (fromRef) return fromRef;
+    const measurement = (measurements3D || []).find((m) => m.id === id);
+    return measurement?.screen || null;
+  }, [measurementLabelPositionsRef, measurements3D]);
 
   return (
     <>
@@ -218,19 +317,14 @@ export default function Volume3DOverlayLayer({
         </div>
       )}
 
-      {measurementLabels.map((item) => (
-        <div
-          key={item.id}
-          className="pointer-events-auto absolute z-30 -translate-x-1/2 -translate-y-1/2 cursor-pointer select-none rounded-full bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/40 transition hover:bg-emerald-950/80 hover:ring-emerald-400/70 active:scale-95"
-          style={{ left: item.screen.x, top: item.screen.y }}
-          title="Click to copy"
-          onClick={(event) => {
-            event.stopPropagation();
-            navigator.clipboard?.writeText(`${item.distance.toFixed(2)} mm`).catch(() => {});
-          }}
-        >
-          {item.distance.toFixed(2)} mm
-        </div>
+      {(measurements3D || []).map((measurement) => (
+        <MeasurementLabel
+          key={measurement.id}
+          measurement={measurement}
+          visible={measurementLabelsVisible}
+          getPosition={getMeasurementPosition}
+          onRename={onRenameMeasurement}
+        />
       ))}
 
       {measurementPreview && (
@@ -275,14 +369,14 @@ export default function Volume3DOverlayLayer({
       {surfaceTraceScreenPath.length >= 2 && (
         <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
           <polyline
-            points={surfaceTraceScreenPath.map((point) => `${point.x},${point.y}`).join(' ')}
+            points={(surfaceTraceScreenPath || []).map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"
             stroke="rgba(226, 75, 74, 0.96)"
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {surfaceTraceScreenPath.map((point, index) => (
+          {(surfaceTraceScreenPath || []).map((point, index) => (
             <circle
               key={`${point.x}-${point.y}-${index}`}
               cx={point.x}
@@ -309,7 +403,7 @@ export default function Volume3DOverlayLayer({
       {brushScreenPath.length >= 2 && (
         <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
           <polyline
-            points={brushScreenPath.map((point) => `${point.x},${point.y}`).join(' ')}
+            points={(brushScreenPath || []).map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"
             stroke="rgba(245, 158, 11, 0.92)"
             strokeWidth="2.5"
@@ -325,7 +419,7 @@ export default function Volume3DOverlayLayer({
           <circle
             cx={brushScreenPath[brushScreenPath.length - 1].x}
             cy={brushScreenPath[brushScreenPath.length - 1].y}
-            r={Math.max(6, brushRadiusMm * 3.5)}
+            r={Math.max(6, brushScreenRadiusPx || brushRadiusMm * 3.5)}
             fill="none"
             stroke="rgba(245, 158, 11, 0.75)"
             strokeWidth="1.5"
@@ -339,7 +433,7 @@ export default function Volume3DOverlayLayer({
           <circle
             cx={brushPointerScreen.x}
             cy={brushPointerScreen.y}
-            r={Math.max(8, brushRadiusMm * 3.5)}
+            r={Math.max(8, brushScreenRadiusPx || brushRadiusMm * 3.5)}
             fill="rgba(245,158,11,0.12)"
             stroke="rgba(245,158,11,0.85)"
             strokeWidth="1.5"

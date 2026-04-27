@@ -381,6 +381,15 @@ export const exportAnnotationsJson = (annotations, studyMetadata, options = {}) 
     coordinate_system: hasWorldGeometry ? 'mixed_viewer_native' : 'image_normalized_0_1',
     annotations: exportedAnnotations,
     training_annotations: exportedAnnotations.map((annotation) => buildTrainingAnnotation(annotation, annotation._export_id, options)),
+    measurements: {
+      distance_3d: Array.isArray(options.measurements3D) ? options.measurements3D : [],
+      polyline_3d: Array.isArray(options.polylineMeasurements) ? options.polylineMeasurements : [],
+    },
+    implants: {
+      collisions: Array.isArray(options.implantCollisionPairs) ? options.implantCollisionPairs : [],
+      boundary_margin_warnings: Array.isArray(options.implantBoundaryWarnings) ? options.implantBoundaryWarnings : [],
+    },
+    sr_findings: Array.isArray(options.srFindings) ? options.srFindings : [],
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -404,9 +413,14 @@ export const exportPdfReport = ({
   screenshotDataUrl,
   includeMetadataSummary,
   implantPlacements = [],
+  implantCollisionPairs = [],
+  implantBoundaryWarnings = [],
   densityHistogram = null,
   aiReport = '',
   annotations = [],
+  polylineMeasurements = [],
+  heatmapSummary = [],
+  srFindings = [],
 }) => {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -602,21 +616,108 @@ export const exportPdfReport = ({
     doc.text('#', margin + 2, cursorY);
     doc.text('Brand', margin + 12, cursorY);
     doc.text('Size', margin + 48, cursorY);
-    doc.text('Position (mm)', margin + 78, cursorY);
+    doc.text('Position (mm)', margin + 66, cursorY);
+    doc.text('Collision', margin + 134, cursorY);
+    doc.text('Margin', margin + 160, cursorY);
     cursorY += 7;
 
     doc.setFont('helvetica', 'normal');
+    const collisionSet = new Set(Array.isArray(implantCollisionPairs) ? implantCollisionPairs : []);
+    const boundarySet = new Set(Array.isArray(implantBoundaryWarnings) ? implantBoundaryWarnings : []);
     implantPlacements.forEach((placement, index) => {
       ensurePageSpace(tableLineHeight + 2);
       const position = Array.isArray(placement.position)
         ? placement.position.map((value) => Number(value).toFixed(1)).join(', ')
         : '—';
+      const colliding = collisionSet.has(String(placement.id || ''));
+      const marginWarn = boundarySet.has(String(placement.id || ''));
       doc.setTextColor(100, 116, 139);
       doc.text(String(index + 1), margin + 2, cursorY);
       doc.setTextColor(15, 23, 42);
       doc.text(String(placement.brand || 'Implant'), margin + 12, cursorY);
       doc.text(`${placement.diameter || '—'} × ${placement.length || '—'} mm`, margin + 48, cursorY);
-      doc.text(position, margin + 78, cursorY);
+      doc.text(position, margin + 66, cursorY);
+      doc.text(colliding ? 'Yes' : 'No', margin + 134, cursorY);
+      doc.text(marginWarn ? '<1.5mm' : 'OK', margin + 160, cursorY);
+      cursorY += tableLineHeight + 2;
+    });
+    cursorY += 4;
+  }
+
+  if (Array.isArray(polylineMeasurements) && polylineMeasurements.length > 0) {
+    ensurePageSpace(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Polyline Measurements', margin, cursorY);
+    cursorY += 7;
+
+    const rowFontSize = 8.8;
+    const rowLineHeight = lineHeightFor(rowFontSize);
+    doc.setFontSize(rowFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
+    doc.setTextColor(51, 65, 85);
+    doc.text('#', margin + 2, cursorY);
+    doc.text('Points', margin + 12, cursorY);
+    doc.text('Segments', margin + 38, cursorY);
+    doc.text('Total (mm)', margin + 96, cursorY);
+    doc.text('Label', margin + 126, cursorY);
+    cursorY += 7;
+
+    doc.setFont('helvetica', 'normal');
+    polylineMeasurements.forEach((measurement, index) => {
+      ensurePageSpace(rowLineHeight + 2);
+      const pointCount = Array.isArray(measurement.points) ? measurement.points.length : 0;
+      const segmentSummary = (measurement.segments || [])
+        .slice(0, 3)
+        .map((segment) => `${Number(segment?.distance || 0).toFixed(1)}`)
+        .join(' + ');
+      const totalDistance = Number(measurement.totalDistance || 0).toFixed(2);
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(index + 1), margin + 2, cursorY);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(pointCount), margin + 12, cursorY);
+      doc.text((segmentSummary || '—').slice(0, 34), margin + 38, cursorY);
+      doc.text(totalDistance, margin + 96, cursorY);
+      doc.text(String(measurement.label || '—').slice(0, 24), margin + 126, cursorY);
+      cursorY += rowLineHeight + 2;
+    });
+    cursorY += 4;
+  }
+
+  if (Array.isArray(heatmapSummary) && heatmapSummary.length > 0) {
+    ensurePageSpace(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Heatmap Severity Summary', margin, cursorY);
+    cursorY += 7;
+
+    const tableFontSize = 7.8;
+    const tableLineHeight = lineHeightFor(tableFontSize);
+    doc.setFontSize(tableFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
+    doc.setTextColor(51, 65, 85);
+    doc.text('AnnotationID', margin + 2, cursorY);
+    doc.text('Type', margin + 35, cursorY);
+    doc.text('Severity', margin + 53, cursorY);
+    doc.text('Volume/Area', margin + 74, cursorY);
+    doc.text('Finding', margin + 108, cursorY);
+    cursorY += 7;
+    doc.setFont('helvetica', 'normal');
+
+    heatmapSummary.forEach((row) => {
+      ensurePageSpace(tableLineHeight + 2);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(row.annotationId || '—').slice(0, 18), margin + 2, cursorY);
+      doc.text(String(row.type || '—').slice(0, 12), margin + 35, cursorY);
+      doc.text(String(row.severity || '—').slice(0, 8), margin + 53, cursorY);
+      doc.text(String(row.metric || '—').slice(0, 18), margin + 74, cursorY);
+      doc.text(String(row.findingType || '—').slice(0, 26), margin + 108, cursorY);
       cursorY += tableLineHeight + 2;
     });
     cursorY += 4;
@@ -671,6 +772,41 @@ export const exportPdfReport = ({
     doc.setFontSize(8.8);
     doc.text('AI-generated preliminary assessment — requires radiologist review.', margin, cursorY);
     cursorY += 5;
+  }
+
+  if (Array.isArray(srFindings) && srFindings.length > 0) {
+    ensurePageSpace(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Structured Report Findings', margin, cursorY);
+    cursorY += 7;
+
+    const srFontSize = 8.2;
+    const srLineHeight = lineHeightFor(srFontSize);
+    doc.setFontSize(srFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, cursorY - 4.5, contentWidth, 7, 2, 2, 'F');
+    doc.setTextColor(51, 65, 85);
+    doc.text('#', margin + 2, cursorY);
+    doc.text('Label', margin + 10, cursorY);
+    doc.text('Region', margin + 92, cursorY);
+    doc.text('Value', margin + 132, cursorY);
+    cursorY += 7;
+    doc.setFont('helvetica', 'normal');
+
+    srFindings.forEach((finding, index) => {
+      ensurePageSpace(srLineHeight + 2);
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(index + 1), margin + 2, cursorY);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(finding.label || '—').slice(0, 46), margin + 10, cursorY);
+      doc.text(String(finding.region || '—').slice(0, 20), margin + 92, cursorY);
+      doc.text(String(finding.valueText || '—').slice(0, 20), margin + 132, cursorY);
+      cursorY += srLineHeight + 2;
+    });
+    cursorY += 4;
   }
 
   const totalPages = doc.getNumberOfPages();
