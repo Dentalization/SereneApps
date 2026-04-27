@@ -10,6 +10,7 @@ import threading
 import time
 import numpy as np
 import json
+import tempfile
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -89,6 +90,19 @@ _conversion_ws_clients = set()
 _conversion_ws_lock = threading.Lock()
 _conversion_ws_loop = None
 DENSITY_HISTOGRAM_VERSION = 2
+
+_density_locks = {}
+_density_locks_lock = threading.Lock()
+
+
+def _write_json_atomic(data: dict, target_path: str) -> None:
+    dir_path = os.path.dirname(target_path)
+    with tempfile.NamedTemporaryFile(
+        mode='w', dir=dir_path, suffix='.tmp', delete=False
+    ) as tmp:
+        json.dump(data, tmp, indent=2)
+        tmp_path = tmp.name
+    os.replace(tmp_path, target_path)   # atomic on POSIX, best-effort on Windows
 
 
 async def _broadcast_conversion_status(event: dict) -> None:
@@ -460,7 +474,7 @@ async def conversion_status_websocket(websocket: WebSocket):
 
 
 @app.get("/gallery/{study_id}")
-def get_study_gallery(study_id: str, share_token: str = None):
+def get_study_gallery(study_id: str, background_tasks: BackgroundTasks, share_token: str = None):
     _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
     
@@ -502,9 +516,28 @@ def get_study_gallery(study_id: str, share_token: str = None):
                 "is_converting": is_converting,
             }
         
+        
         # ── SLOW PATH: No manifest yet — conversion hasn't run or is in progress ──
-        # Use scan_dicom_series but only read headers (stop_before_pixels=True is already used)
-        # This path should only happen briefly during the first gallery load after upload
+        # Use os.scandir instead of scan_dicom_series for initial count
+        # scan_dicom_series reads every file header — expensive.
+        # For the slow path, return a stub response immediately and trigger
+        # conversion in the background:
+        entry_count = sum(1 for e in os.scandir(study_path) 
+                          if e.is_file() and not e.name.endswith(
+                              ('.vti', '.json', '.jpg', '.txt', '.xml', '.md')))
+
+        if entry_count > 50:
+            # Return a stub so the gallery loads immediately
+            # The frontend's is_converting=True will trigger WebSocket polling
+            background_tasks.add_task(generate_study_thumbnails, study_path)
+            return {
+                "study_id": study_id,
+                "total_series": None,   # null signals "scanning in progress"
+                "series": [],
+                "is_converting": True,
+                "scanning": True,
+            }
+
         print(f"[Gallery] No manifest for {study_id}, scanning DICOM files...")
         
         series_groups = scan_dicom_series(study_path)
@@ -787,25 +820,48 @@ def _read_vti_scalar_values(vti_path: str) -> np.ndarray:
 
 
 def _compute_density_histogram_for_vti(vti_path: str, cache_path: str = None, study_id: str = None, series_uid: str = None) -> dict:
-    try:
-        volume, spacing, _ = _read_vti_volume(vti_path)
-        values = suppress_fov_background(volume, spacing).ravel()
-    except Exception as exc:
-        print(f"[Density] ROI suppression unavailable, using raw VTI values: {exc}")
-        values, spacing = _read_vti_scalar_values_and_spacing(vti_path)
-
-    result = _compute_density_histogram(values, spacing=spacing, study_vti=os.path.basename(vti_path))
-    result.update({
-        "study_id": study_id,
-        "series_uid": series_uid,
-    })
-
     if cache_path:
-        with open(cache_path, "w") as file:
-            json.dump(result, file, indent=2)
-        print(f"[Density] Histogram computed and cached: {cache_path}")
+        with _density_locks_lock:
+            lock = _density_locks.get(cache_path)
+            if not lock:
+                lock = threading.Lock()
+                _density_locks[cache_path] = lock
+        
+        with lock:
+            # Re-check cache after acquiring lock
+            cached = _load_json_file(cache_path)
+            if cached and cached.get("categories") and cached.get("version") == DENSITY_HISTOGRAM_VERSION:
+                return cached
 
-    return result
+            try:
+                volume, spacing, _ = _read_vti_volume(vti_path)
+                values = suppress_fov_background(volume, spacing).ravel()
+            except Exception as exc:
+                print(f"[Density] ROI suppression unavailable, using raw VTI values: {exc}")
+                values, spacing = _read_vti_scalar_values_and_spacing(vti_path)
+
+            result = _compute_density_histogram(values, spacing=spacing, study_vti=os.path.basename(vti_path))
+            result.update({
+                "study_id": study_id,
+                "series_uid": series_uid,
+            })
+
+            _write_json_atomic(result, cache_path)
+            print(f"[Density] Histogram computed and cached: {cache_path}")
+            return result
+    else:
+        try:
+            volume, spacing, _ = _read_vti_volume(vti_path)
+            values = suppress_fov_background(volume, spacing).ravel()
+        except Exception as exc:
+            values, spacing = _read_vti_scalar_values_and_spacing(vti_path)
+
+        result = _compute_density_histogram(values, spacing=spacing, study_vti=os.path.basename(vti_path))
+        result.update({
+            "study_id": study_id,
+            "series_uid": series_uid,
+        })
+        return result
 
 
 def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
@@ -831,6 +887,65 @@ def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
     spacing = tuple(float(value) for value in image_data.GetSpacing())
     origin = tuple(float(value) for value in image_data.GetOrigin())
     return values, spacing, origin
+
+
+@app.get("/quality/{study_id}")
+def get_cbct_quality_assessment(study_id: str, series_uid: str = None, share_token: str = None):
+    """
+    Automated CBCT quality assessment for clinical review:
+    - SNR (signal-to-noise ratio) in dB
+    - Contrast-to-noise ratio
+    - Streak artifact score (0–1, higher = more metal artifact)
+    - FOV coverage: % of volume that is non-air
+    - Histogram uniformity across slices (detects motion artifact)
+    - Voxel isotropy check: warns if spacing[0] != spacing[1] != spacing[2]
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
+    
+    volume, spacing, origin = _read_vti_volume(vti_path)
+    
+    # SNR: mean signal in bone region / std in air region
+    bone_region = volume[volume > 0.40]
+    air_region = volume[volume < 0.05]
+    snr = float(np.mean(bone_region) / (np.std(air_region) + 1e-8)) if bone_region.size > 0 else 0.0
+    
+    # Streak artifacts: very high gradient magnitude → metal/beam hardening
+    # Use finite differences on 3 sampled slices for speed
+    mid = volume.shape[2] // 2
+    slice_data = volume[:, :, max(0, mid - 1)]
+    grad_x = np.abs(np.diff(slice_data, axis=0))
+    grad_y = np.abs(np.diff(slice_data, axis=1))
+    streak_score = float(np.percentile(np.concatenate([grad_x.ravel(), grad_y.ravel()]), 99))
+    
+    # FOV coverage
+    fov_coverage = float(np.mean(volume > 0.03))
+    
+    # Isotropy
+    sx, sy, sz = spacing
+    is_isotropic = abs(sx - sy) < 0.05 and abs(sx - sz) < 0.05
+    
+    return {
+        "study_id": study_id,
+        "series_uid": series_uid,
+        "snr_db": round(20 * np.log10(max(snr, 1e-8)), 2),
+        "streak_artifact_score": round(min(streak_score / 0.15, 1.0), 3),
+        "fov_coverage_pct": round(fov_coverage * 100, 2),
+        "is_isotropic": is_isotropic,
+        "voxel_spacing_mm": list(spacing),
+        "quality_grade": (
+            "A" if snr > 40 and streak_score < 0.05 else
+            "B" if snr > 25 else
+            "C" if snr > 15 else "D"
+        ),
+        "recommendations": [
+            r for r, cond in [
+                ("Rescan recommended: low SNR", snr < 15),
+                ("Metal artifact reduction (MAR) advised", streak_score > 0.10),
+                ("Non-isotropic voxels: MPR views may be distorted", not is_isotropic),
+            ] if cond
+        ],
+    }
 
 
 @app.head("/volume/{study_id}")

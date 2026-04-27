@@ -27,6 +27,10 @@ export default function Volume3DModeToolbar({
   clearAllAnnotations,
   clearMeasurements3D,
   deleteSelectedWorldAnnotation,
+  heatmapOverlayMode,
+  heatmapOpacity,
+  setHeatmapOverlayMode,
+  setHeatmapOpacity,
   handleUndoAnnotation,
   isWorldBrushAnnotation,
   measureMode3D,
@@ -167,6 +171,32 @@ export default function Volume3DModeToolbar({
               ))}
             </div>
           )}
+
+          <div className="ml-1 flex items-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-[11px] font-bold text-violet-100">
+            <button
+              type="button"
+              onPointerDown={stopUiEvent}
+              onClick={() => setHeatmapOverlayMode((current) => !current)}
+              className={`flex items-center gap-1.5 rounded-lg px-2 py-1 transition ${heatmapOverlayMode ? 'bg-violet-500/80 text-white' : 'bg-slate-900/70 text-violet-300 hover:bg-slate-800 hover:text-white'}`}
+              title="Toggle severity heatmap overlay"
+            >
+              <AppIcon name="Flame" size={13} />
+              <span>Heatmap</span>
+            </button>
+            {heatmapOverlayMode && (
+              <input
+                type="range"
+                min="0.1"
+                max="1.0"
+                step="0.1"
+                value={heatmapOpacity}
+                onPointerDown={stopUiEvent}
+                onChange={(e) => setHeatmapOpacity(parseFloat(e.target.value))}
+                className="w-16 accent-violet-500 cursor-pointer"
+                title={`Heatmap opacity: ${Math.round(heatmapOpacity * 100)}%`}
+              />
+            )}
+          </div>
 
           {selectedWorldAnnotation && (
             <div className="ml-1 flex items-center gap-1 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-1 text-[11px] font-bold text-emerald-100">

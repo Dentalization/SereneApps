@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { ANNOTATION_COLORS, drawAnnotations } from '../utils/reportUtils';
+import useDevicePixelRatio from '../hooks/useDevicePixelRatio';
 import {
   centroidOfPath,
   clamp01,
@@ -72,6 +73,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const [metadataDraft, setMetadataDraft] = useState(null);
   const [labelDraft, setLabelDraft] = useState(null);
   const [rejectDraft, setRejectDraft] = useState(null);
+  const devicePixelRatio = useDevicePixelRatio();
   const annotationWidth = sourceWidth || width;
   const annotationHeight = sourceHeight || height;
   const geometryContext = useMemo(() => ({
@@ -108,7 +110,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     const canvas = canvasRef.current;
     if (!canvas || !width || !height) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(width * dpr));
     canvas.height = Math.max(1, Math.round(height * dpr));
     canvas.style.width = `${width}px`;
@@ -218,7 +220,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
   useEffect(() => {
     drawCanvas();
-  }, [annotationHeight, annotationWidth, annotations, draftAnnotation, geometryContext, height, imageBounds, imageDisplayScale, selectedAnnotation, width]);
+  }, [annotationHeight, annotationWidth, annotations, devicePixelRatio, draftAnnotation, geometryContext, height, imageBounds, imageDisplayScale, selectedAnnotation, width]);
 
   useEffect(() => {
     if (!active) {

@@ -71,6 +71,7 @@ function normalizeStudySeriesState(study) {
         ...study,
         series,
         totalSeries,
+        scanning: study.scanning || false,
         seriesLoadState: SERIES_LOAD_STATE.SERVICE_ERROR,
         seriesLoadError: study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE
     };
@@ -98,8 +99,9 @@ async function fetchStudySeries(study) {
                 ...study,
                 series,
                 totalSeries: data.total_series || series.length,
-                seriesLoadState: series.length > 0 ? SERIES_LOAD_STATE.READY : SERIES_LOAD_STATE.ORPHAN,
-                seriesLoadError: series.length > 0 ? null : 'No scan files found on disk.'
+                scanning: data.scanning || false,
+                seriesLoadState: data.scanning ? SERIES_LOAD_STATE.READY : (series.length > 0 ? SERIES_LOAD_STATE.READY : SERIES_LOAD_STATE.ORPHAN),
+                seriesLoadError: series.length > 0 || data.scanning ? null : 'No scan files found on disk.'
             });
         }
 
@@ -642,7 +644,7 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                 <div className="flex justify-center py-20">
                     <div className="flex flex-col items-center gap-4 text-muted">
                         <AppIcon name="Loader2" size={40} className="animate-spin text-accent" />
-                        <p>{fetchingSeries ? "Analyzing metadata..." : "Loading studies..."}</p>
+                        <p>{fetchingSeries ? (studiesWithSeries.some(s => s.scanning) ? "Scanning study contents..." : "Analyzing metadata...") : "Loading studies..."}</p>
                     </div>
                 </div>
             ) : error ? (
@@ -805,12 +807,21 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                                                     </div>
                                                 </>
                                             ) : (
-                                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                    <div className="flex flex-col items-center gap-2">
+                                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center px-6">
+                                                    <div className="flex flex-col items-center gap-3 w-full">
                                                         <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
-                                                        <span className="text-xs text-white font-medium">
-                                                            {card.status === 'converting' ? 'Processing...' : 'Queued'}
-                                                        </span>
+                                                        <div className="w-full space-y-1.5">
+                                                            <div className="flex justify-between text-[10px] text-white font-medium uppercase tracking-wider">
+                                                                <span>{card.conversionStage?.replace('_', ' ') || (card.status === 'converting' ? 'Processing' : 'Queued')}</span>
+                                                                {card.conversionProgress > 0 && <span>{card.conversionProgress}%</span>}
+                                                            </div>
+                                                            <div className="h-1 w-full bg-white/20 rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className="h-full bg-accent transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]"
+                                                                    style={{ width: `${card.conversionProgress || 5}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}

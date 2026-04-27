@@ -68,6 +68,8 @@ import {
     simplifyWorldPath,
     simplifyWorldPoints,
     stampBrushLabelToArray,
+    rasterizeWorldPathAnnotation,
+    distanceBetweenSegments,
     SURFACE_TRACE_MIN_STEP_MM,
 } from './3D/volume3DGeometry';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
@@ -130,30 +132,30 @@ const MAX_UNDO_STEPS = 20;
 // Window/Level defaults per render mode
 // Data is MONAI-normalized [0.0, 1.0] where 0.0=Air(-1000HU), 0.25=Water(0HU), 1.0=Metal(3000HU)
 const WL_DEFAULTS = {
-    bone: { center: 0.40,  width: 0.60  },
-    soft: { center: 0.28,  width: 0.25  },
-    mip:  { center: 0.46,  width: 0.42  },
-    xray: { center: 0.45,  width: 0.90  },
+    bone: { center: 0.40, width: 0.60 },
+    soft: { center: 0.28, width: 0.25 },
+    mip: { center: 0.46, width: 0.42 },
+    xray: { center: 0.45, width: 0.90 },
     sinus: { center: 0.35, width: 0.80 },
     density: { center: 0.45, width: 0.90 },
 };
 
 // Camera view presets (dental CBCT anatomical conventions)
 const CAMERA_VIEWS = {
-    front:  { position: [0, 0,  1], viewUp: [0, 1, 0], label: 'A', name: 'Anterior'  },
-    back:   { position: [0, 0, -1], viewUp: [0, 1, 0], label: 'P', name: 'Posterior' },
-    left:   { position: [-1, 0, 0], viewUp: [0, 1, 0], label: 'L', name: 'Left'      },
-    right:  { position: [1,  0, 0], viewUp: [0, 1, 0], label: 'R', name: 'Right'     },
-    top:    { position: [0,  1, 0], viewUp: [0, 0, -1], label: 'S', name: 'Superior'  },
-    bottom: { position: [0, -1, 0], viewUp: [0, 0,  1], label: 'I', name: 'Inferior'  },
+    front: { position: [0, 0, 1], viewUp: [0, 1, 0], label: 'A', name: 'Anterior' },
+    back: { position: [0, 0, -1], viewUp: [0, 1, 0], label: 'P', name: 'Posterior' },
+    left: { position: [-1, 0, 0], viewUp: [0, 1, 0], label: 'L', name: 'Left' },
+    right: { position: [1, 0, 0], viewUp: [0, 1, 0], label: 'R', name: 'Right' },
+    top: { position: [0, 1, 0], viewUp: [0, 0, -1], label: 'S', name: 'Superior' },
+    bottom: { position: [0, -1, 0], viewUp: [0, 0, 1], label: 'I', name: 'Inferior' },
 };
 
 // Background colors per mode
 const BG_COLORS = {
     bone: [0.08, 0.08, 0.12],
     soft: [0.08, 0.08, 0.12],
-    mip:  [0.0,  0.0,  0.0],
-    xray: [0.0,  0.0,  0.0],
+    mip: [0.0, 0.0, 0.0],
+    xray: [0.0, 0.0, 0.0],
     sinus: [0.04, 0.06, 0.14],
     density: [0.06, 0.06, 0.10],
 };
@@ -461,14 +463,14 @@ function setOverlayResources(actor, resources) {
     if (!actor || !resources) return;
     try {
         overlayResourceMap.set(actor, resources);
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function setOverlayAnnotationId(actor, annotationId) {
     if (!actor || !annotationId) return;
     try {
         overlayAnnotationMap.set(actor, annotationId);
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function overlayMatchesVolumeGeometry(cachedOverlay, imageData) {
@@ -484,13 +486,13 @@ function disposeToothActors(renderer, actors = []) {
     actors.forEach((actor) => {
         if (!actor) return;
         const resources = overlayResourceMap.get(actor);
-        try { renderer?.removeActor?.(actor); } catch (_) {}
-        try { actor.getMapper?.()?.delete?.(); } catch (_) {}
-        try { resources?.smoother?.delete?.(); } catch (_) {}
-        try { resources?.marching?.delete?.(); } catch (_) {}
-        try { resources?.maskImage?.delete?.(); } catch (_) {}
-        try { overlayResourceMap.delete(actor); } catch (_) {}
-        try { actor.delete?.(); } catch (_) {}
+        try { renderer?.removeActor?.(actor); } catch (_) { }
+        try { actor.getMapper?.()?.delete?.(); } catch (_) { }
+        try { resources?.smoother?.delete?.(); } catch (_) { }
+        try { resources?.marching?.delete?.(); } catch (_) { }
+        try { resources?.maskImage?.delete?.(); } catch (_) { }
+        try { overlayResourceMap.delete(actor); } catch (_) { }
+        try { actor.delete?.(); } catch (_) { }
     });
 }
 
@@ -498,8 +500,8 @@ function disposeOverlayActors(renderer, actors = []) {
     actors.forEach((actor) => {
         if (!actor) return;
         const resources = overlayResourceMap.get(actor);
-        try { renderer?.removeActor?.(actor); } catch (_) {}
-        try { actor.getMapper?.()?.delete?.(); } catch (_) {}
+        try { renderer?.removeActor?.(actor); } catch (_) { }
+        try { actor.getMapper?.()?.delete?.(); } catch (_) { }
         [
             resources?.source,
             resources?.tube,
@@ -508,22 +510,22 @@ function disposeOverlayActors(renderer, actors = []) {
             resources?.smoother,
             resources?.maskImage,
         ].forEach((resource) => {
-            try { resource?.delete?.(); } catch (_) {}
+            try { resource?.delete?.(); } catch (_) { }
         });
-        try { overlayResourceMap.delete(actor); } catch (_) {}
-        try { overlayAnnotationMap.delete(actor); } catch (_) {}
-        try { actor.delete?.(); } catch (_) {}
+        try { overlayResourceMap.delete(actor); } catch (_) { }
+        try { overlayAnnotationMap.delete(actor); } catch (_) { }
+        try { actor.delete?.(); } catch (_) { }
     });
 }
 
 function disposeSurfacePickActor(ctx) {
     if (!ctx?.surfacePickActor) return;
     const resources = overlayResourceMap.get(ctx.surfacePickActor);
-    try { ctx.renderer?.removeActor?.(ctx.surfacePickActor); } catch (_) {}
-    try { ctx.surfacePickActor.getMapper?.()?.delete?.(); } catch (_) {}
-    try { resources?.marching?.delete?.(); } catch (_) {}
-    try { overlayResourceMap.delete(ctx.surfacePickActor); } catch (_) {}
-    try { ctx.surfacePickActor.delete?.(); } catch (_) {}
+    try { ctx.renderer?.removeActor?.(ctx.surfacePickActor); } catch (_) { }
+    try { ctx.surfacePickActor.getMapper?.()?.delete?.(); } catch (_) { }
+    try { resources?.marching?.delete?.(); } catch (_) { }
+    try { overlayResourceMap.delete(ctx.surfacePickActor); } catch (_) { }
+    try { ctx.surfacePickActor.delete?.(); } catch (_) { }
     ctx.surfacePickActor = null;
 }
 
@@ -546,7 +548,7 @@ function buildDentistName(user) {
 
 function setupClinicalLights(renderer, center, maxDim) {
     if (!renderer || !center) return [];
-    try { renderer.removeAllLights?.(); } catch (_) {}
+    try { renderer.removeAllLights?.(); } catch (_) { }
 
     const makeLight = ({ position, intensity, color }) => {
         const light = vtkLight.newInstance();
@@ -705,15 +707,15 @@ async function buildPreviewSnapshot(imageData, sampleDist = 2.5) {
         return null;
     } finally {
         lights.forEach((light) => {
-            try { previewRenderer?.removeLight?.(light); } catch (_) {}
-            try { light?.delete?.(); } catch (_) {}
+            try { previewRenderer?.removeLight?.(light); } catch (_) { }
+            try { light?.delete?.(); } catch (_) { }
         });
-        try { fullScreenRenderer?.getRenderer?.()?.removeVolume?.(actor); } catch (_) {}
-        try { mapper?.delete?.(); } catch (_) {}
-        try { actor?.delete?.(); } catch (_) {}
-        try { ctfun?.delete?.(); } catch (_) {}
-        try { ofun?.delete?.(); } catch (_) {}
-        try { fullScreenRenderer?.delete?.(); } catch (_) {}
+        try { fullScreenRenderer?.getRenderer?.()?.removeVolume?.(actor); } catch (_) { }
+        try { mapper?.delete?.(); } catch (_) { }
+        try { actor?.delete?.(); } catch (_) { }
+        try { ctfun?.delete?.(); } catch (_) { }
+        try { ofun?.delete?.(); } catch (_) { }
+        try { fullScreenRenderer?.delete?.(); } catch (_) { }
         previewContainer.remove();
     }
 }
@@ -721,38 +723,38 @@ async function buildPreviewSnapshot(imageData, sampleDist = 2.5) {
 function disposeVolumeContext(ctx) {
     if (!ctx) return;
 
-    try { ctx.clipWidget?.subscription?.unsubscribe?.(); } catch (_) {}
-    try { ctx.clipWidget?.widgetManager?.removeWidgets?.(); } catch (_) {}
-    try { ctx.clipWidget?.widgetManager?.delete?.(); } catch (_) {}
-    try { ctx.clipPlane?.delete?.(); } catch (_) {}
-    try { ctx.sharedPicker?.delete?.(); } catch (_) {}
-    try { ctx.measurementActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) {}
-    try { ctx.implantActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) {}
-    try { ctx.nerveActor && ctx.renderer?.removeActor?.(ctx.nerveActor); } catch (_) {}
-    try { ctx.nerveActor?.delete?.(); } catch (_) {}
-    try { ctx.brushPreviewActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) {}
+    try { ctx.clipWidget?.subscription?.unsubscribe?.(); } catch (_) { }
+    try { ctx.clipWidget?.widgetManager?.removeWidgets?.(); } catch (_) { }
+    try { ctx.clipWidget?.widgetManager?.delete?.(); } catch (_) { }
+    try { ctx.clipPlane?.delete?.(); } catch (_) { }
+    try { ctx.sharedPicker?.delete?.(); } catch (_) { }
+    try { ctx.measurementActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
+    try { ctx.implantActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
+    try { ctx.nerveActor && ctx.renderer?.removeActor?.(ctx.nerveActor); } catch (_) { }
+    try { ctx.nerveActor?.delete?.(); } catch (_) { }
+    try { ctx.brushPreviewActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
     disposeSurfacePickActor(ctx);
     disposeToothActors(ctx.renderer, ctx.labelActors || []);
     disposeOverlayActors(ctx.renderer, ctx.overlayActors || []);
     (ctx.lights || []).forEach((light) => {
-        try { ctx.renderer?.removeLight?.(light); } catch (_) {}
-        try { light?.delete?.(); } catch (_) {}
+        try { ctx.renderer?.removeLight?.(light); } catch (_) { }
+        try { light?.delete?.(); } catch (_) { }
     });
-    try { ctx.orientMarker?.setEnabled?.(false); } catch (_) {}
-    try { ctx.orientMarker?.delete?.(); } catch (_) {}
-    try { ctx.orientationCube?.delete?.(); } catch (_) {}
+    try { ctx.orientMarker?.setEnabled?.(false); } catch (_) { }
+    try { ctx.orientMarker?.delete?.(); } catch (_) { }
+    try { ctx.orientationCube?.delete?.(); } catch (_) { }
 
-    try { ctx.renderer?.removeVolume?.(ctx.actor); } catch (_) {}
-    try { ctx.mapper?.delete?.(); } catch (_) {}
-    try { ctx.actor?.delete?.(); } catch (_) {}
-    try { ctx.ctfun?.delete?.(); } catch (_) {}
-    try { ctx.ofun?.delete?.(); } catch (_) {}
+    try { ctx.renderer?.removeVolume?.(ctx.actor); } catch (_) { }
+    try { ctx.mapper?.delete?.(); } catch (_) { }
+    try { ctx.actor?.delete?.(); } catch (_) { }
+    try { ctx.ctfun?.delete?.(); } catch (_) { }
+    try { ctx.ofun?.delete?.(); } catch (_) { }
 
     if (ctx.sharpenTimer) {
         clearTimeout(ctx.sharpenTimer);
     }
 
-    try { ctx.fullScreenRenderer?.delete?.(); } catch (_) {}
+    try { ctx.fullScreenRenderer?.delete?.(); } catch (_) { }
 }
 
 function positionCameraForView(ctx, viewName, zoom = 1.3) {
@@ -801,7 +803,7 @@ function hslToRgb(h, s, l) {
     else if (hue < 180) [r, g, b] = [0, c, x];
     else if (hue < 240) [r, g, b] = [0, x, c];
     else if (hue < 300) [r, g, b] = [x, 0, c];
-    else [r, g, b] = [c, 0, x];
+    else[r, g, b] = [c, 0, x];
 
     return [r + m, g + m, b + m];
 }
@@ -871,6 +873,7 @@ const VolumeViewer3D = ({
     const onVolumeLoadedRef = useRef(onVolumeLoaded);
     const implantSkipPersistRef = useRef(false);
     const measurementSkipPersistRef = useRef(false);
+    const measurementPersistTimerRef = useRef(null);
     const clipPlaneStateRef = useRef(null);
     const annotationHydrationKeyRef = useRef('');
     const surfaceTraceDraftRef = useRef([]);
@@ -882,6 +885,7 @@ const VolumeViewer3D = ({
     const brushPointerRef = useRef(null);
     const brushMoveRafRef = useRef(0);
     const lastBrushRenderRef = useRef(0);
+    const heatmapVolumeActorRef = useRef(null);
     const lastPickDurationRef = useRef(20);
     const projectionCacheRef = useRef({ key: null, cache: new Map() });
     const renderedAnnotationIdsRef = useRef(new Map());
@@ -914,6 +918,11 @@ const VolumeViewer3D = ({
     const [measurePoints, setMeasurePoints] = useState([]);
     const [measureHoverPoint, setMeasureHoverPoint] = useState(null);
     const [measurements3D, setMeasurements3D] = useState([]);
+    const [polylineMeasureMode, setPolylineMeasureMode] = useState(false);
+    const [polylineMeasurements, setPolylineMeasurements] = useState([]);
+    const [polylineDraft, setPolylineDraft] = useState([]);
+    const [heatmapOverlayMode, setHeatmapOverlayMode] = useState(false);
+    const [heatmapOpacity, setHeatmapOpacity] = useState(0.4);
     const [measurementRevision, setMeasurementRevision] = useState(0);
     const [showNerveOverlay, setShowNerveOverlay] = useState(false);
     const [nerveLoading, setNerveLoading] = useState(false);
@@ -925,6 +934,7 @@ const VolumeViewer3D = ({
     const [implantLength, setImplantLength] = useState(10);
     const [implantBrand, setImplantBrand] = useState('Straumann');
     const [implantPlacements, setImplantPlacements] = useState([]);
+    const [implantCollisions, setImplantCollisions] = useState([]);
     const [implantError, setImplantError] = useState(null);
     const [aiReportOpen, setAiReportOpen] = useState(false);
     const [aiReport, setAiReport] = useState('');
@@ -949,6 +959,8 @@ const VolumeViewer3D = ({
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+    const [measurementLabelsVisible, setMeasurementLabelsVisible] = useState(true);
+    const measurementLabelPositionsRef = useRef(new Map());
     const [snapshotOverlay, setSnapshotOverlay] = useState(null);
     const [sessionModalMode, setSessionModalMode] = useState(null);
     const [sessionSaving, setSessionSaving] = useState(false);
@@ -1117,8 +1129,8 @@ const VolumeViewer3D = ({
         const endSub = ctx.interactor.onEndInteraction?.(bumpProjection);
         return () => {
             if (renderRaf) cancelAnimationFrame(renderRaf);
-            try { endSub?.unsubscribe?.(); } catch (_) {}
-            try { endSub?.remove?.(); } catch (_) {}
+            try { endSub?.unsubscribe?.(); } catch (_) { }
+            try { endSub?.remove?.(); } catch (_) { }
         };
     }, [cacheKey, error, loading]);
 
@@ -1246,14 +1258,14 @@ const VolumeViewer3D = ({
             } else {
                 setBrushRadiusMm(BRUSH_RADIUS_DEFAULT_MM);
             }
-        } catch (_) {}
+        } catch (_) { }
     }, [brushRadiusStorageKey]);
 
     useEffect(() => {
         if (!brushRadiusStorageKey) return;
         try {
             localStorage.setItem(brushRadiusStorageKey, String(brushRadiusMm));
-        } catch (_) {}
+        } catch (_) { }
     }, [brushRadiusMm, brushRadiusStorageKey]);
 
     const snapshotOverlayAnnotations = useMemo(() => (
@@ -1432,7 +1444,7 @@ const VolumeViewer3D = ({
                     interactor.bindEvents?.(container);
                     interactorEventsBoundRef.current = true;
                 }
-            } catch (_) {}
+            } catch (_) { }
         };
     }, [viewportInteractionLocked, loading, error]);
 
@@ -1592,24 +1604,24 @@ const VolumeViewer3D = ({
         } else if (presetName === 'mip') {
             // ── MIP (Maximum Intensity Projection) ──
             // Gate low-density soft tissue/noise so dense tooth/implant anatomy dominates.
-            ofun.addPoint(lo,   0.0);
+            ofun.addPoint(lo, 0.0);
             ofun.addPoint(0.24, 0.0);
             ofun.addPoint(0.30, 0.08);
             ofun.addPoint(0.36, 0.35);
             ofun.addPoint(0.42, 0.75);
             ofun.addPoint(0.50, 1.0);
-            ofun.addPoint(hi,   1.0);
+            ofun.addPoint(hi, 1.0);
 
         } else if (presetName === 'xray') {
             // ── X-RAY DRR (Digital Radiograph Reconstruction) ──
             // Air stays black; tissue accumulates faintly through the slab.
-            ofun.addPoint(lo,   0.0);
+            ofun.addPoint(lo, 0.0);
             ofun.addPoint(0.10, 0.0);
             ofun.addPoint(0.20, 0.002);
             ofun.addPoint(0.30, 0.006);
             ofun.addPoint(0.45, 0.018);
             ofun.addPoint(0.65, 0.040);
-            ofun.addPoint(hi,   0.055);
+            ofun.addPoint(hi, 0.055);
         } else if (presetName === 'sinus') {
             const preset = VOLUME_PRESETS.sinus;
             preset.opacity.forEach(([v, a]) => ofun.addPoint(v, a));
@@ -2027,7 +2039,7 @@ const VolumeViewer3D = ({
                 vtkContextRef.current = null;
             }
             if (pendingVtkRef.current) {
-                try { pendingVtkRef.current.delete(); } catch (_) {}
+                try { pendingVtkRef.current.delete(); } catch (_) { }
                 pendingVtkRef.current = null;
             }
             onVolumeLoadedRef.current?.(null);
@@ -2365,7 +2377,7 @@ const VolumeViewer3D = ({
                     ctx.fullScreenRenderer.resize();
                     ctx.renderWindow.render();
                     setMeasurementRevision((value) => value + 1);
-                } catch (_) {}
+                } catch (_) { }
             });
         };
 
@@ -2735,7 +2747,7 @@ const VolumeViewer3D = ({
         if (direction && typeof labelImage.setDirection === 'function') {
             try {
                 labelImage.setDirection(direction);
-            } catch (_) {}
+            } catch (_) { }
         }
         labelImage.getPointData().setScalars(vtkDataArray.newInstance({
             name: 'ManualSegmentationLabels',
@@ -2791,11 +2803,11 @@ const VolumeViewer3D = ({
             URL.revokeObjectURL(url);
 
             resourcesList.forEach((resources) => {
-                try { resources.smoother?.delete?.(); } catch (_) {}
-                try { resources.marching?.delete?.(); } catch (_) {}
-                try { resources.maskImage?.delete?.(); } catch (_) {}
+                try { resources.smoother?.delete?.(); } catch (_) { }
+                try { resources.marching?.delete?.(); } catch (_) { }
+                try { resources.maskImage?.delete?.(); } catch (_) { }
             });
-            try { appender?.delete?.(); } catch (_) {}
+            try { appender?.delete?.(); } catch (_) { }
         } catch (exportError) {
             console.warn('[VolumeViewer3D] Manual segmentation STL export failed:', exportError);
             setManualSegmentationError(exportError.message || 'Failed to export manual segmentation STL.');
@@ -2838,8 +2850,8 @@ const VolumeViewer3D = ({
             console.warn('[VolumeViewer3D] Manual segmentation VTI export failed:', exportError);
             setManualSegmentationError(exportError.message || 'Failed to export manual segmentation VTI.');
         } finally {
-            try { writer?.delete?.(); } catch (_) {}
-            try { labelImage?.delete?.(); } catch (_) {}
+            try { writer?.delete?.(); } catch (_) { }
+            try { labelImage?.delete?.(); } catch (_) { }
             setManualMaskExporting(false);
         }
     }, [buildManualBrushLabelImage, manualBrushAnnotations, manualMaskExporting, selectedWorldAnnotation, studyKey]);
@@ -2891,7 +2903,7 @@ const VolumeViewer3D = ({
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            try { appender?.delete?.(); } catch (_) {}
+            try { appender?.delete?.(); } catch (_) { }
         } catch (exportError) {
             console.warn('[VolumeViewer3D] STL export failed:', exportError);
             setStlError(exportError.message || 'Failed to export STL');
@@ -3324,6 +3336,59 @@ const VolumeViewer3D = ({
         ];
     }, []);
 
+    const createPolylineActors = useCallback((points) => {
+        if (!points || points.length < 1) return [];
+        const sphereRadius = Math.max(0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 1.35);
+        const actors = [];
+
+        const createEndpointActor = (center) => {
+            const source = vtkSphereSource.newInstance({
+                center,
+                radius: sphereRadius,
+                thetaResolution: 18,
+                phiResolution: 18,
+            });
+            const mapper = vtkMapper.newInstance();
+            mapper.setInputConnection(source.getOutputPort());
+            const actor = vtkActor.newInstance();
+            actor.setMapper(mapper);
+            setOverlayResources(actor, { source });
+            actor.getProperty().setColor(...MEASUREMENT_COLOR);
+            actor.getProperty().setOpacity(0.98);
+            actor.getProperty().setAmbient(0.28);
+            actor.getProperty().setDiffuse(0.72);
+            actor.getProperty().setSpecular(0.45);
+            actor.getProperty().setSpecularPower(20);
+            return actor;
+        };
+
+        for (let i = 0; i < points.length; i++) {
+            actors.push(createEndpointActor(points[i]));
+            if (i < points.length - 1) {
+                const lineSource = vtkLineSource.newInstance({ point1: points[i], point2: points[i + 1], resolution: 1 });
+                const tube = vtkTubeFilter.newInstance({
+                    radius: Math.max(0.18, sphereRadius * 0.42),
+                    numberOfSides: 18,
+                    capping: true,
+                });
+                tube.setInputConnection(lineSource.getOutputPort());
+                const lineMapper = vtkMapper.newInstance();
+                lineMapper.setInputConnection(tube.getOutputPort());
+                const lineActor = vtkActor.newInstance();
+                lineActor.setMapper(lineMapper);
+                setOverlayResources(lineActor, { source: lineSource, tube });
+                lineActor.getProperty().setColor(...MEASUREMENT_COLOR);
+                lineActor.getProperty().setOpacity(0.95);
+                lineActor.getProperty().setAmbient(0.25);
+                lineActor.getProperty().setDiffuse(0.75);
+                lineActor.getProperty().setSpecular(0.35);
+                lineActor.getProperty().setSpecularPower(18);
+                actors.push(lineActor);
+            }
+        }
+        return actors;
+    }, []);
+
     const createSurfaceRegionActors = useCallback((annotation) => {
         const path = annotation?.coordinates?.world_path;
         if (!Array.isArray(path) || path.length < 3) return [];
@@ -3574,13 +3639,25 @@ const VolumeViewer3D = ({
         setMeasurePoints([]);
         setMeasureHoverPoint(null);
         setMeasurements3D([]);
+        setPolylineMeasurements([]);
+        setPolylineDraft([]);
         setMeasurementRevision((value) => value + 1);
     }, []);
 
     const undoMeasurement3D = useCallback(() => {
-        setMeasurements3D((current) => current.slice(0, -1));
+        // Simple heuristic: undo whichever was most recently modified (just check lengths or arbitrarily pop one).
+        // Since we don't have a strict combined timeline, we'll just undo polyline first if we are in polyline mode,
+        // otherwise just undo the last one added. Actually, let's just use the id timestamp to find the latest.
+        const latestP2P = measurements3D.length > 0 ? measurements3D[measurements3D.length - 1] : null;
+        const latestPoly = polylineMeasurements.length > 0 ? polylineMeasurements[polylineMeasurements.length - 1] : null;
+
+        if (latestPoly && (!latestP2P || latestPoly.id > latestP2P.id)) {
+            setPolylineMeasurements((current) => current.slice(0, -1));
+        } else if (latestP2P) {
+            setMeasurements3D((current) => current.slice(0, -1));
+        }
         setMeasurementRevision((value) => value + 1);
-    }, []);
+    }, [measurements3D, polylineMeasurements]);
 
     const handleUndoAnnotation = useCallback(() => {
         const history = annotationHistoryRef.current;
@@ -3787,8 +3864,11 @@ const VolumeViewer3D = ({
             studyKey,
             seriesUid,
             viewerType: '3d',
+            measurements3D,
+            polylineMeasurements,
+            implantCollisionPairs: implantCollisions,
         });
-    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey]);
+    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey, measurements3D, polylineMeasurements, implantCollisions]);
 
     const buildSessionAnnotations = useCallback(() => annotations.map((annotation) => normalizeAnnotationForPersistence(annotation, {
         seriesUid,
@@ -3820,6 +3900,8 @@ const VolumeViewer3D = ({
         slabThickness,
         windowCenter,
         windowWidth,
+        heatmapOverlayMode,
+        heatmapOpacity,
     ]);
 
     const refreshSnapshots = useCallback(async () => {
@@ -4066,10 +4148,10 @@ const VolumeViewer3D = ({
     const disableClipWidget = useCallback(() => {
         const ctx = vtkContextRef.current;
         if (!ctx) return;
-        try { ctx.clipWidget?.subscription?.unsubscribe?.(); } catch (_) {}
-        try { ctx.clipWidget?.widgetManager?.removeWidgets?.(); } catch (_) {}
-        try { ctx.clipWidget?.widgetManager?.delete?.(); } catch (_) {}
-        try { ctx.clipPlane?.delete?.(); } catch (_) {}
+        try { ctx.clipWidget?.subscription?.unsubscribe?.(); } catch (_) { }
+        try { ctx.clipWidget?.widgetManager?.removeWidgets?.(); } catch (_) { }
+        try { ctx.clipWidget?.widgetManager?.delete?.(); } catch (_) { }
+        try { ctx.clipPlane?.delete?.(); } catch (_) { }
         ctx.clipWidget = null;
         ctx.clipPlane = null;
         syncMapperClipping(ctx, Boolean(ctx.slabClippingActive));
@@ -4098,7 +4180,7 @@ const VolumeViewer3D = ({
                 try {
                     planeWidget.getWidgetState().setOrigin(...restoredClip.origin);
                     planeWidget.getWidgetState().setNormal(...restoredClip.normal);
-                } catch (_) {}
+                } catch (_) { }
             }
             const viewWidget = widgetManager.addWidget(planeWidget);
             widgetManager.grabFocus(planeWidget);
@@ -4114,7 +4196,7 @@ const VolumeViewer3D = ({
                 clipPlaneStateRef.current = { origin: [...origin], normal: [...normal], enabled: true };
                 try {
                     localStorage.setItem(clipStorageKey, JSON.stringify(clipPlaneStateRef.current));
-                } catch (_) {}
+                } catch (_) { }
                 syncMapperClipping(ctx, Boolean(ctx.slabClippingActive));
             };
             const subscription = planeWidget.onWidgetChange(applyPlane);
@@ -4147,12 +4229,12 @@ const VolumeViewer3D = ({
         const flipped = [-currentNormal[0], -currentNormal[1], -currentNormal[2]];
         try {
             ctx.clipWidget?.planeWidget?.getWidgetState?.()?.setNormal?.(flipped[0], flipped[1], flipped[2]);
-        } catch (_) {}
+        } catch (_) { }
         ctx.clipPlane.setNormal(flipped[0], flipped[1], flipped[2]);
         syncMapperClipping(ctx, Boolean(ctx.slabClippingActive));
     }, []);
 
-    const createImplantActor = useCallback((placement) => {
+    const createImplantActor = useCallback((placement, isColliding = false) => {
         const direction = placement.direction || [0, -1, 0];
         const source = vtkCylinderSource.newInstance({
             radius: Number(placement.diameter) / 2,
@@ -4164,11 +4246,15 @@ const VolumeViewer3D = ({
         });
         const mapper = vtkMapper.newInstance();
         mapper.setInputConnection(source.getOutputPort());
-            const actor = vtkActor.newInstance();
-            actor.setMapper(mapper);
-            setOverlayResources(actor, { source });
-            const property = actor.getProperty();
-        property.setColor(0.78, 0.82, 0.88);
+        const actor = vtkActor.newInstance();
+        actor.setMapper(mapper);
+        setOverlayResources(actor, { source });
+        const property = actor.getProperty();
+        if (isColliding) {
+            property.setColor(0.95, 0.2, 0.2); // Red for collision
+        } else {
+            property.setColor(0.78, 0.82, 0.88);
+        }
         property.setOpacity(0.72);
         property.setAmbient(0.22);
         property.setDiffuse(0.68);
@@ -4176,6 +4262,59 @@ const VolumeViewer3D = ({
         property.setSpecularPower(80);
         return actor;
     }, []);
+
+    // ── Implant Collision Detection ──
+    useEffect(() => {
+        if (!implantPlacements || implantPlacements.length < 2) {
+            setImplantCollisions([]);
+            return;
+        }
+
+        const collisions = [];
+        for (let i = 0; i < implantPlacements.length; i++) {
+            for (let j = i + 1; j < implantPlacements.length; j++) {
+                const imp1 = implantPlacements[i];
+                const imp2 = implantPlacements[j];
+
+                const r1 = Number(imp1.diameter) / 2;
+                const r2 = Number(imp2.diameter) / 2;
+                const L1 = Number(imp1.length);
+                const L2 = Number(imp2.length);
+
+                const dir1 = imp1.direction || [0, -1, 0];
+                const dir2 = imp2.direction || [0, -1, 0];
+
+                const a0 = [
+                    imp1.position[0] - (dir1[0] * L1 / 2),
+                    imp1.position[1] - (dir1[1] * L1 / 2),
+                    imp1.position[2] - (dir1[2] * L1 / 2),
+                ];
+                const a1 = [
+                    imp1.position[0] + (dir1[0] * L1 / 2),
+                    imp1.position[1] + (dir1[1] * L1 / 2),
+                    imp1.position[2] + (dir1[2] * L1 / 2),
+                ];
+
+                const b0 = [
+                    imp2.position[0] - (dir2[0] * L2 / 2),
+                    imp2.position[1] - (dir2[1] * L2 / 2),
+                    imp2.position[2] - (dir2[2] * L2 / 2),
+                ];
+                const b1 = [
+                    imp2.position[0] + (dir2[0] * L2 / 2),
+                    imp2.position[1] + (dir2[1] * L2 / 2),
+                    imp2.position[2] + (dir2[2] * L2 / 2),
+                ];
+
+                const dist = distanceBetweenSegments(a0, a1, b0, b1);
+                if (dist <= (r1 + r2)) {
+                    collisions.push(imp1.id);
+                    collisions.push(imp2.id);
+                }
+            }
+        }
+        setImplantCollisions(Array.from(new Set(collisions)));
+    }, [implantPlacements]);
 
     useEffect(() => {
         if (!implantStorageKey) return;
@@ -4196,7 +4335,7 @@ const VolumeViewer3D = ({
         }
         try {
             localStorage.setItem(implantStorageKey, JSON.stringify(implantPlacements));
-        } catch (_) {}
+        } catch (_) { }
     }, [implantPlacements, implantStorageKey]);
 
     useEffect(() => {
@@ -4208,12 +4347,12 @@ const VolumeViewer3D = ({
             ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.implantActors.includes(actor));
         }
 
-        const actors = implantPlacements.map((placement) => createImplantActor(placement));
+        const actors = implantPlacements.map((placement) => createImplantActor(placement, implantCollisions.includes(placement.id)));
         actors.forEach((actor) => ctx.renderer.addActor(actor));
         ctx.implantActors = actors;
         ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
         ctx.renderWindow.render();
-    }, [cacheKey, createImplantActor, error, implantPlacements, loading]);
+    }, [cacheKey, createImplantActor, error, implantPlacements, implantCollisions, loading]);
 
     useEffect(() => {
         if (!measurementStorageKey) return;
@@ -4221,11 +4360,15 @@ const VolumeViewer3D = ({
         try {
             const stored = localStorage.getItem(measurementStorageKey);
             const parsed = stored ? JSON.parse(stored) : [];
-            setMeasurements3D(Array.isArray(parsed) ? parsed : []);
+            const allMeasurements = Array.isArray(parsed) ? parsed : [];
+            setMeasurements3D(allMeasurements.filter((m) => !m.type || m.type === 'point-to-point'));
+            setPolylineMeasurements(allMeasurements.filter((m) => m.type === 'polyline'));
         } catch (_) {
             setMeasurements3D([]);
+            setPolylineMeasurements([]);
         }
         setMeasurePoints([]);
+        setPolylineDraft([]);
         setMeasurementRevision((value) => value + 1);
     }, [measurementStorageKey]);
 
@@ -4235,17 +4378,34 @@ const VolumeViewer3D = ({
             measurementSkipPersistRef.current = false;
             return;
         }
-        try {
-            const serializable = measurements3D.map((item) => ({
-                id: item.id,
-                pointA: item.pointA,
-                pointB: item.pointB,
-                midpoint: item.midpoint,
-                distance: item.distance,
-            }));
-            localStorage.setItem(measurementStorageKey, JSON.stringify(serializable));
-        } catch (_) {}
-    }, [measurementStorageKey, measurements3D]);
+        const serializablePointToPoint = measurements3D.map((item) => ({
+            type: 'point-to-point',
+            id: item.id,
+            pointA: item.pointA,
+            pointB: item.pointB,
+            midpoint: item.midpoint,
+            distance: item.distance,
+            label: item.label || '',
+        }));
+        const serializablePolyline = polylineMeasurements.map((item) => ({
+            type: 'polyline',
+            id: item.id,
+            points: item.points,
+            segments: item.segments,
+            totalDistance: item.totalDistance,
+            label: item.label || '',
+        }));
+        const payload = JSON.stringify([...serializablePointToPoint, ...serializablePolyline]);
+        if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
+        measurementPersistTimerRef.current = setTimeout(() => {
+            try {
+                localStorage.setItem(measurementStorageKey, payload);
+            } catch (_) { }
+        }, 500);
+        return () => {
+            if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
+        };
+    }, [measurementStorageKey, measurements3D, polylineMeasurements]);
 
     useEffect(() => {
         if (measureMode3D) return;
@@ -4299,16 +4459,26 @@ const VolumeViewer3D = ({
             ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.measurementActors.includes(actor));
         }
 
-        const actors = measurements3D
+        const pointToPointActors = measurements3D
             .filter((item) => Array.isArray(item.pointA) && Array.isArray(item.pointB))
             .flatMap((item) => createMeasurementActors(item.pointA, item.pointB));
+
+        const polylineActors = polylineMeasurements
+            .filter((item) => Array.isArray(item.points) && item.points.length >= 2)
+            .flatMap((item) => createPolylineActors(item.points));
+
+        const draftActors = polylineDraft.length > 0
+            ? createPolylineActors(polylineDraft)
+            : [];
+
+        const actors = [...pointToPointActors, ...polylineActors, ...draftActors];
 
         actors.forEach((actor) => ctx.renderer.addActor(actor));
         ctx.measurementActors = actors;
         ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
         ctx.renderWindow.render();
         setMeasurementRevision((value) => value + 1);
-    }, [cacheKey, createMeasurementActors, error, loading, measurements3D]);
+    }, [cacheKey, createMeasurementActors, createPolylineActors, error, loading, measurements3D, polylineMeasurements, polylineDraft]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -4370,6 +4540,133 @@ const VolumeViewer3D = ({
         ctx.surfaceAnnotationActors = Array.from(actorSet);
         ctx.renderWindow.render();
     }, [annotations, cacheKey, createWorldAnnotationActors, error, loading, selectedWorldAnnotationId]);
+
+    // ── Heatmap Overlay Effect ──
+    useEffect(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || loading || error || !ctx.imageData) return;
+
+        const buildHeatmapOpacityFunction = (opacityScalar) => {
+            const ofun = vtkPiecewiseFunction.newInstance();
+            ofun.addPoint(0, 0);
+            ofun.addPoint(1, opacityScalar * 0.6);
+            ofun.addPoint(2, opacityScalar * 0.7);
+            ofun.addPoint(3, opacityScalar * 0.85);
+            ofun.addPoint(4, opacityScalar);
+            return ofun;
+        };
+
+        if (!heatmapOverlayMode) {
+            if (heatmapVolumeActorRef.current) {
+                ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
+                heatmapVolumeActorRef.current.delete();
+                heatmapVolumeActorRef.current = null;
+                ctx.renderWindow.render();
+            }
+            return;
+        }
+
+        const heatmapAnnotations = annotations.filter((annotation) => {
+            const severity = parseInt(annotation.metadata?.severity, 10);
+            return severity >= 1 && severity <= 4 && (isWorldBrushAnnotation(annotation) || isWorldPathAnnotation(annotation));
+        });
+
+        const heatmapSignature = JSON.stringify(heatmapAnnotations.map(a => ({
+            id: a.id,
+            s: a.metadata.severity,
+            r: a.coordinates?.world_brush?.radius_mm,
+            pts: a.coordinates?.world_brush?.centers?.length || a.coordinates?.world_path?.length
+        })));
+
+        if (heatmapVolumeActorRef.current && heatmapVolumeActorRef.current._lastSignature === heatmapSignature) {
+            heatmapVolumeActorRef.current.getProperty().setScalarOpacity(0, buildHeatmapOpacityFunction(heatmapOpacity));
+            ctx.renderWindow.render();
+            return;
+        }
+
+        const sourceImageData = ctx.imageData;
+        const dims = sourceImageData.getDimensions();
+        const spacing = sourceImageData.getSpacing();
+        const numVoxels = dims[0] * dims[1] * dims[2];
+        const maskValues = new Uint8Array(numVoxels);
+        let hasData = false;
+
+        heatmapAnnotations.forEach((annotation) => {
+            const severity = parseInt(annotation.metadata.severity, 10);
+            if (isWorldBrushAnnotation(annotation)) {
+                const affected = stampBrushLabelToArray(
+                    sourceImageData,
+                    maskValues,
+                    annotation.coordinates.world_brush.centers,
+                    annotation.coordinates.world_brush.radius_mm,
+                    severity
+                );
+                if (affected > 0) hasData = true;
+            } else if (isWorldPathAnnotation(annotation)) {
+                const painted = rasterizeWorldPathAnnotation(
+                    annotation,
+                    sourceImageData,
+                    maskValues,
+                    severity
+                );
+                if (painted > 0) hasData = true;
+            }
+        });
+
+        if (!hasData) {
+            if (heatmapVolumeActorRef.current) {
+                ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
+                heatmapVolumeActorRef.current.delete();
+                heatmapVolumeActorRef.current = null;
+                ctx.renderWindow.render();
+            }
+            return;
+        }
+
+        const maskImage = vtkImageData.newInstance();
+        maskImage.setDimensions(...dims);
+        maskImage.setSpacing(...spacing);
+        maskImage.setOrigin(...(sourceImageData.getOrigin()));
+        if (sourceImageData.getDirection) {
+            try { maskImage.setDirection(sourceImageData.getDirection()); } catch (_) { }
+        }
+
+        maskImage.getPointData().setScalars(vtkDataArray.newInstance({
+            name: 'SeverityHeatmapMask',
+            numberOfComponents: 1,
+            values: maskValues,
+        }));
+
+        const mapper = vtkVolumeMapper.newInstance();
+        mapper.setInputData(maskImage);
+        mapper.setSampleDistance(Math.min(...spacing) * 0.5);
+        mapper.setBlendModeToComposite();
+
+        const actor = vtkVolume.newInstance();
+        actor.setMapper(mapper);
+
+        const ctfun = vtkColorTransferFunction.newInstance();
+        ctfun.addRGBPoint(0, 0, 0, 0);
+        ctfun.addRGBPoint(1, 0.133, 0.773, 0.369);
+        ctfun.addRGBPoint(2, 0.965, 0.761, 0.176);
+        ctfun.addRGBPoint(3, 0.976, 0.573, 0.106);
+        ctfun.addRGBPoint(4, 0.886, 0.294, 0.290);
+
+        actor.getProperty().setRGBTransferFunction(0, ctfun);
+        actor.getProperty().setScalarOpacity(0, buildHeatmapOpacityFunction(heatmapOpacity));
+        actor.getProperty().setInterpolationTypeToLinear();
+
+        if (heatmapVolumeActorRef.current) {
+            ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
+            heatmapVolumeActorRef.current.delete();
+        }
+
+        actor._lastSignature = heatmapSignature;
+        heatmapVolumeActorRef.current = actor;
+        ctx.renderer.addVolume(actor);
+        ctx.renderWindow.render();
+
+    }, [annotations, heatmapOverlayMode, heatmapOpacity, error, loading]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -4439,7 +4736,7 @@ const VolumeViewer3D = ({
         if (!current?.origin || !current?.normal) return;
         try {
             localStorage.setItem(clipStorageKey, JSON.stringify({ ...current, enabled: false }));
-        } catch (_) {}
+        } catch (_) { }
     }, [clipStorageKey, clippingMode]);
 
     useEffect(() => {
@@ -4712,6 +5009,22 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             }
 
             const histogram = densityHistogram || await loadDensityHistogram();
+            const heatmapSummary = annotations
+                .filter(a => a.metadata && a.metadata.severity && (isWorldBrushAnnotation(a) || isWorldPathAnnotation(a)))
+                .map(a => {
+                    let metric = '';
+                    if (a.metadata.lesion_volume_mm3) metric = `${a.metadata.lesion_volume_mm3} mm³`;
+                    else if (a.metadata.lesion_area_mm2) metric = `${a.metadata.lesion_area_mm2} mm²`;
+
+                    return {
+                        annotationId: a.id,
+                        type: isWorldBrushAnnotation(a) ? 'brush' : 'path',
+                        severity: a.metadata.severity,
+                        metric,
+                        findingType: a.metadata.finding_type || a.label || '',
+                    };
+                });
+
             exportPdfReport({
                 clinicName,
                 dentistName: formValues.dentistName,
@@ -4724,6 +5037,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 densityHistogram: histogram,
                 aiReport,
                 annotations,
+                polylineMeasurements,
+                heatmapSummary,
+                implantCollisionPairs: implantCollisions,
             });
             setReportModalOpen(false);
         } catch (reportError) {
@@ -4738,10 +5054,32 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         clinicName,
         densityHistogram,
         implantPlacements,
+        implantCollisions,
         loadDensityHistogram,
         metadata,
         annotations,
+        polylineMeasurements,
     ]);
+    const commitPolyline = useCallback((points) => {
+        if (points.length < 2) return;
+        const segments = [];
+        let totalDistance = 0;
+        for (let i = 0; i < points.length - 1; i++) {
+            const dist = distanceMm(points[i], points[i + 1]);
+            segments.push({ distance: dist });
+            totalDistance += dist;
+        }
+        const measurement = {
+            id: `poly-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            points,
+            segments,
+            totalDistance,
+            label: '',
+        };
+        setPolylineMeasurements((items) => [...items, measurement]);
+        setMeasurementRevision((value) => value + 1);
+        setPolylineDraft([]);
+    }, []);
 
     const handleViewportPointerDown = useCallback((event) => {
         if (isViewportUiEvent(event)) return;
@@ -4811,12 +5149,25 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             return;
         }
 
-        if (!measureMode3D && !implantPlaceMode) return;
+        if (!measureMode3D && !implantPlaceMode && !polylineMeasureMode) return;
         event.preventDefault();
         event.stopPropagation();
 
         const point = pickWorldPointFromPointer(event);
         if (!point) return;
+
+        if (polylineMeasureMode) {
+            if (event.detail >= 2) {
+                setPolylineDraft((currentDraft) => {
+                    const newDraft = [...currentDraft, point];
+                    commitPolyline(newDraft);
+                    return [];
+                });
+            } else {
+                setPolylineDraft((currentDraft) => [...currentDraft, point]);
+            }
+            return;
+        }
 
         if (implantPlaceMode) {
             const cameraDirection = ctx.renderer.getActiveCamera().getDirectionOfProjection();
@@ -4967,7 +5318,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             return;
         }
 
-        if (!measureMode3D) return;
+        if (!measureMode3D && !polylineMeasureMode) return;
         event.preventDefault();
         event.stopPropagation();
         const point = pickWorldPointFromPointer(event);
@@ -4976,7 +5327,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
             return [...point];
         });
-    }, [annotateMode, annotationTool, getViewportPointerPoint, isViewportUiEvent, measureMode3D, pickWorldPointFromPointer, processBrushPointerMove, processSurfacePointerMove, worldOverlayDraft]);
+    }, [annotateMode, annotationTool, getViewportPointerPoint, isViewportUiEvent, measureMode3D, polylineMeasureMode, pickWorldPointFromPointer, processBrushPointerMove, processSurfacePointerMove, worldOverlayDraft]);
 
     const handleViewportPointerUp = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && !worldOverlayDraft?.startWorld && isViewportUiEvent(event)) return;
@@ -5009,7 +5360,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (annotateMode && (annotationTool === 'arrow' || annotationTool === 'circle') && worldOverlayDraft?.startWorld) {
             event.preventDefault();
             event.stopPropagation();
-            try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) {}
+            try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) { }
             const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
             const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
             const dragPx = Math.hypot(
@@ -5228,7 +5579,24 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 setMeasureHoverPoint(null);
                 return;
             }
-
+            if (polylineMeasureMode) {
+                if (key === 'escape') {
+                    event.preventDefault();
+                    setPolylineMeasureMode(false);
+                    setPolylineDraft([]);
+                    return;
+                }
+                if (key === 'enter') {
+                    event.preventDefault();
+                    setPolylineDraft((currentDraft) => {
+                        if (currentDraft.length >= 2) {
+                            commitPolyline(currentDraft);
+                        }
+                        return [];
+                    });
+                    return;
+                }
+            }
             if (key === 'b') {
                 event.preventDefault();
                 changePreset('bone');
@@ -5264,7 +5632,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [annotateMode, annotationTool, changePreset, handleUndoAnnotation, measureMode3D, preset, resetCamera, toggleFullscreen, toggleInvert]);
+    }, [annotateMode, annotationTool, changePreset, handleUndoAnnotation, measureMode3D, polylineMeasureMode, commitPolyline, preset, resetCamera, toggleFullscreen, toggleInvert]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Render
@@ -5272,26 +5640,71 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     const isMipOrXray = preset === 'mip' || preset === 'xray';
     const canSaveSessions = Boolean((annotations.length > 0 || measurementCount > 0) && !study?.readOnly);
     const canUndoAnnotations = annotationHistoryRevision >= 0 && annotationHistoryRef.current.length > 0;
-    const measurementLabels = useMemo(() => measurements3D.map((measurement) => ({
-        id: measurement.id,
-        distance: measurement.distance,
-        screen: projectWorldToViewportCached(measurement.midpoint),
-    })).filter((item) => item.screen), [measurementRevision, measurements3D, projectWorldToViewportCached, projectionTick]);
+    const measurementLabels = useMemo(() => {
+        const p2pLabels = measurements3D.map((measurement) => ({
+            id: measurement.id,
+            distance: measurement.distance,
+            screen: projectWorldToViewportCached(measurement.midpoint),
+        })).filter((item) => item.screen);
+
+        const polylineLabels = polylineMeasurements.flatMap((poly) => {
+            if (!poly.points || poly.points.length < 2) return [];
+            const labels = [];
+            for (let i = 0; i < poly.points.length - 1; i++) {
+                labels.push({
+                    id: `${poly.id}-seg-${i}`,
+                    distance: poly.segments[i].distance,
+                    screen: projectWorldToViewportCached(midpoint(poly.points[i], poly.points[i + 1])),
+                });
+            }
+            labels.push({
+                id: `${poly.id}-total`,
+                distance: poly.totalDistance,
+                isTotal: true,
+                screen: projectWorldToViewportCached(poly.points[poly.points.length - 1]),
+            });
+            return labels;
+        }).filter((item) => item.screen);
+
+        return [...p2pLabels, ...polylineLabels];
+    }, [measurementRevision, measurements3D, polylineMeasurements, projectWorldToViewportCached, projectionTick]);
     const measurementPreview = useMemo(() => {
-        if (!measureMode3D || measurePoints.length !== 1 || !measureHoverPoint) return null;
-        const startPoint = measurePoints[0];
-        const endPoint = measureHoverPoint;
-        const startScreen = projectWorldToViewportCached(startPoint);
-        const endScreen = projectWorldToViewportCached(endPoint);
-        const midpointScreen = projectWorldToViewportCached(midpoint(startPoint, endPoint));
-        if (!startScreen || !endScreen || !midpointScreen) return null;
-        return {
-            startScreen,
-            endScreen,
-            midpointScreen,
-            distance: distanceMm(startPoint, endPoint),
-        };
-    }, [measureHoverPoint, measureMode3D, measurePoints, measurementRevision, projectWorldToViewportCached, projectionTick]);
+        if (measureMode3D && measurePoints.length === 1 && measureHoverPoint) {
+            const startPoint = measurePoints[0];
+            const endPoint = measureHoverPoint;
+            const startScreen = projectWorldToViewportCached(startPoint);
+            const endScreen = projectWorldToViewportCached(endPoint);
+            const midpointScreen = projectWorldToViewportCached(midpoint(startPoint, endPoint));
+            if (!startScreen || !endScreen || !midpointScreen) return null;
+            return {
+                startScreen,
+                endScreen,
+                midpointScreen,
+                distance: distanceMm(startPoint, endPoint),
+            };
+        }
+        if (polylineMeasureMode && polylineDraft.length > 0 && measureHoverPoint) {
+            const lastPoint = polylineDraft[polylineDraft.length - 1];
+            const endPoint = measureHoverPoint;
+            const startScreen = projectWorldToViewportCached(lastPoint);
+            const endScreen = projectWorldToViewportCached(endPoint);
+            const midpointScreen = projectWorldToViewportCached(midpoint(lastPoint, endPoint));
+            if (!startScreen || !endScreen || !midpointScreen) return null;
+            return {
+                startScreen,
+                endScreen,
+                midpointScreen,
+                distance: distanceMm(lastPoint, endPoint),
+            };
+        }
+        return null;
+    }, [measureHoverPoint, measureMode3D, measurePoints, polylineMeasureMode, polylineDraft, measurementRevision, projectWorldToViewportCached, projectionTick]);
+    const onRenameMeasurement = useCallback((id, newLabel) => {
+        setMeasurements3D((current) => current.map((m) => m.id === id ? { ...m, label: newLabel } : m));
+        setPolylineMeasurements((current) => current.map((p) => p.id === id ? { ...p, label: newLabel } : p));
+        setMeasurementRevision((v) => v + 1);
+    }, []);
+
     const surfaceTraceScreenPath = useMemo(() => {
         if (!annotateMode || annotationTool !== 'freehand') return [];
         const points = [...surfaceTraceDraft, ...(surfaceTracePreview ? [surfaceTracePreview] : [])];
@@ -5430,6 +5843,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         <button
                             onClick={() => {
                                 setMeasureMode3D((current) => !current);
+                                setPolylineMeasureMode(false);
                                 setImplantPlaceMode(false);
                                 setAnnotateMode(false);
                             }}
@@ -5446,8 +5860,27 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
                         <button
                             onClick={() => {
+                                setPolylineMeasureMode((current) => !current);
+                                setMeasureMode3D(false);
+                                setImplantPlaceMode(false);
+                                setAnnotateMode(false);
+                            }}
+                            className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ' + (
+                                polylineMeasureMode
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
+                            )}
+                            title="Multi-point polyline measurement"
+                        >
+                            <AppIcon name="Ruler" size={16} />
+                            <span>Ruler +</span>
+                        </button>
+
+                        <button
+                            onClick={() => {
                                 setAnnotateMode((current) => !current);
                                 setMeasureMode3D(false);
+                                setPolylineMeasureMode(false);
                                 setImplantPlaceMode(false);
                             }}
                             className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ' + (
@@ -5818,6 +6251,10 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 setAnnotationTool={setAnnotationTool}
                                 setBrushOperation={setBrushOperation}
                                 setBrushRadiusMm={setBrushRadiusMm}
+                                heatmapOverlayMode={heatmapOverlayMode}
+                                heatmapOpacity={heatmapOpacity}
+                                setHeatmapOverlayMode={setHeatmapOverlayMode}
+                                setHeatmapOpacity={setHeatmapOpacity}
                                 setSelectedWorldAnnotationId={setSelectedWorldAnnotationId}
                                 undoMeasurement3D={undoMeasurement3D}
                             />
@@ -5840,700 +6277,716 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             : ((measureMode3D || implantPlaceMode) ? 'crosshair' : undefined),
                     }}
                 >
-                <Volume3DInteractionLayer
-                    active={!loading && !error && viewportInteractionLocked}
-                    cursor={annotateMode && annotationTool !== 'select' ? 'crosshair' : (measureMode3D || implantPlaceMode ? 'crosshair' : 'default')}
-                    onPointerDown={handleViewportPointerDown}
-                    onPointerMove={handleViewportPointerMove}
-                    onPointerUp={handleViewportPointerUp}
-                    onPointerLeave={handleViewportPointerLeave}
-                    onClick={handleViewportClick}
-                />
+                    <Volume3DInteractionLayer
+                        active={!loading && !error && viewportInteractionLocked}
+                        cursor={annotateMode && annotationTool !== 'select' ? 'crosshair' : (measureMode3D || implantPlaceMode ? 'crosshair' : 'default')}
+                        onPointerDown={handleViewportPointerDown}
+                        onPointerMove={handleViewportPointerMove}
+                        onPointerUp={handleViewportPointerUp}
+                        onPointerLeave={handleViewportPointerLeave}
+                        onClick={handleViewportClick}
+                    />
 
-                {/* Loading Overlay */}
-                {loading && (
-                    <div className={`absolute inset-0 z-10 flex items-center justify-center overflow-hidden transition-opacity duration-300 ${
-                        volumeWasCached ? 'bg-slate-950/70 backdrop-blur-sm' : 'bg-slate-950'
-                    }`}>
-                        {previewImage && (
-                            <img
-                                src={previewImage}
-                                alt=""
-                                className="absolute inset-0 h-full w-full object-cover opacity-45 blur-[1px]"
-                            />
-                        )}
-                        <div className="absolute inset-0 bg-slate-950/55" />
-                        <div className="relative flex flex-col items-center gap-5 text-white max-w-md w-full px-8">
-                            <div className="relative">
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center animate-pulse">
-                                    <AppIcon name="Loader2" size={40} className="animate-spin text-cyan-400" />
+                    {/* Loading Overlay */}
+                    {loading && (
+                        <div className={`absolute inset-0 z-10 flex items-center justify-center overflow-hidden transition-opacity duration-300 ${volumeWasCached ? 'bg-slate-950/70 backdrop-blur-sm' : 'bg-slate-950'
+                            }`}>
+                            {previewImage && (
+                                <img
+                                    src={previewImage}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full object-cover opacity-45 blur-[1px]"
+                                />
+                            )}
+                            <div className="absolute inset-0 bg-slate-950/55" />
+                            <div className="relative flex flex-col items-center gap-5 text-white max-w-md w-full px-8">
+                                <div className="relative">
+                                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center animate-pulse">
+                                        <AppIcon name="Loader2" size={40} className="animate-spin text-cyan-400" />
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-lg font-semibold mb-1">Loading 3D Volume</p>
-                                <p className="text-sm text-gray-400">{loadingStage}</p>
-                            </div>
-                            <div className="w-full">
-                                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                                    <div
-                                        className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-300 ease-out rounded-full"
-                                        style={{ width: loadingProgress + '%' }}
-                                    />
+                                <div className="text-center">
+                                    <p className="text-lg font-semibold mb-1">Loading 3D Volume</p>
+                                    <p className="text-sm text-gray-400">{loadingStage}</p>
                                 </div>
-                                <p className="text-right text-xs text-gray-500 mt-1">{loadingProgress}%</p>
+                                <div className="w-full">
+                                    <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                                        <div
+                                            className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-300 ease-out rounded-full"
+                                            style={{ width: loadingProgress + '%' }}
+                                        />
+                                    </div>
+                                    <p className="text-right text-xs text-gray-500 mt-1">{loadingProgress}%</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Error Overlay */}
-                {error && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950 z-10">
-                        <div className="flex flex-col items-center gap-4 text-red-400 bg-red-950/40 p-8 rounded-2xl border border-red-500/20 max-w-lg">
-                            <AppIcon name="AlertCircle" size={48} />
-                            <p className="text-lg font-semibold">Failed to Load Volume</p>
-                            <p className="text-sm text-gray-400 text-center leading-relaxed">{error}</p>
-                            <div className="flex gap-3 mt-2">
-                                <button
-                                    onClick={function() {
-                                        volumeCache.delete(cacheKey);
-                                        window.location.reload();
-                                    }}
-                                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition"
-                                >
-                                    Retry
-                                </button>
-                                <button
-                                    onClick={onSwitchToSliceMode}
-                                    className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition"
-                                >
-                                    Try Slice View
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ─── Left Tool Panel ───────────────────────────── */}
-                {!loading && !error && (
-                    <div
-                        data-xcore-ui="true"
-                        onPointerDown={stopViewportUiPropagation}
-                        onPointerMove={stopViewportUiPropagation}
-                        onPointerUp={stopViewportUiPropagation}
-                        onClick={stopViewportUiPropagation}
-                        onWheel={stopViewportUiPropagation}
-                        className="absolute top-3 left-3 z-20 flex w-56 flex-col gap-2"
-                    >
-                        {teethError && (
-                            <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">Tooth overlay unavailable</div>
-                                <div className="text-red-200/80">{teethError}</div>
-                            </div>
-                        )}
-
-                        {stlError && (
-                            <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">STL export failed</div>
-                                <div className="text-red-200/80">{stlError}</div>
-                            </div>
-                        )}
-
-                        {manualSegmentationError && (
-                            <div className="bg-amber-950/80 text-amber-100 text-xs rounded-xl p-3 border border-amber-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">Manual 3D segmentation</div>
-                                <div className="text-amber-100/80">{manualSegmentationError}</div>
-                            </div>
-                        )}
-
-                        {clipError && (
-                            <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">Clip tool unavailable</div>
-                                <div className="text-red-200/80">{clipError}</div>
-                            </div>
-                        )}
-
-                        {nerveError && (
-                            <div className="bg-amber-950/80 text-amber-100 text-xs rounded-xl p-3 border border-amber-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">Nerve overlay</div>
-                                <div className="text-amber-100/80">{nerveError}</div>
-                            </div>
-                        )}
-
-                        {implantError && (
-                            <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
-                                <div className="font-semibold mb-1">Implant planner</div>
-                                <div className="text-red-200/80">{implantError}</div>
-                            </div>
-                        )}
-
-                        {selectedWorldAnnotation && (
-                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span
-                                        className="h-3 w-3 shrink-0 rounded-full border border-white/20"
-                                        style={{ background: selectedWorldAnnotation.color || '#E24B4A' }}
-                                    />
-                                    <AppIcon name={isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Paintbrush' : 'PenLine'} size={13} className="text-emerald-300" />
-                                    <span className="truncate text-xs font-semibold uppercase tracking-wider text-white">
-                                        {isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Brush 3D' : 'Surface Loop'}
-                                    </span>
-                                    <span className="ml-auto shrink-0 rounded-full bg-slate-700 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">
-                                        {selectedWorldAnnotation.metadata?.severity || 'S1'}
-                                    </span>
-                                </div>
-                                <div className="space-y-1 text-[11px] text-slate-300">
-                                    {isWorldBrushAnnotation(selectedWorldAnnotation) && (
-                                        <>
-                                            <div className="flex justify-between gap-3"><span>Radius</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.coordinates?.world_brush?.radius_mm || 0).toFixed(1)} mm</span></div>
-                                            <div className="flex justify-between gap-3"><span>Volume</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_volume_mm3 || 0).toFixed(1)} mm³</span></div>
-                                        </>
-                                    )}
-                                    {isWorldPathAnnotation(selectedWorldAnnotation) && (
-                                        <div className="flex justify-between gap-3"><span>Area</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_area_mm2 || 0).toFixed(1)} mm²</span></div>
-                                    )}
-                                </div>
-                                <div className="mt-2 flex gap-1">
+                    {/* Error Overlay */}
+                    {error && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-slate-950 z-10">
+                            <div className="flex flex-col items-center gap-4 text-red-400 bg-red-950/40 p-8 rounded-2xl border border-red-500/20 max-w-lg">
+                                <AppIcon name="AlertCircle" size={48} />
+                                <p className="text-lg font-semibold">Failed to Load Volume</p>
+                                <p className="text-sm text-gray-400 text-center leading-relaxed">{error}</p>
+                                <div className="flex gap-3 mt-2">
                                     <button
-                                        type="button"
-                                        onClick={() => {
-                                            const copy = {
-                                                ...selectedWorldAnnotation,
-                                                id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                                            };
-                                            pushAnnotationChange((current) => [...current, copy]);
-                                            setSelectedWorldAnnotationId(copy.id);
+                                        onClick={function () {
+                                            volumeCache.delete(cacheKey);
+                                            window.location.reload();
                                         }}
-                                        className="flex-1 rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700"
+                                        className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition"
                                     >
-                                        Duplicate
+                                        Retry
                                     </button>
                                     <button
-                                        type="button"
-                                        onClick={deleteSelectedWorldAnnotation}
-                                        className="flex-1 rounded-lg bg-rose-900/40 px-2 py-1 text-[10px] font-semibold text-rose-300 transition hover:bg-rose-900/70"
+                                        onClick={onSwitchToSliceMode}
+                                        className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition"
                                     >
-                                        Delete
+                                        Try Slice View
                                     </button>
                                 </div>
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {(measureMode3D || measurements3D.length > 0) && (
-                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <AppIcon name="Ruler" size={14} className="text-emerald-300" />
-                                        <span className="text-xs font-semibold text-white uppercase tracking-wider">3D Measure</span>
-                                    </div>
-                                    <span className="text-[10px] text-slate-400">{measurePoints.length ? 'Pick second point' : 'Pick two points'}</span>
+                    {/* ─── Left Tool Panel ───────────────────────────── */}
+                    {!loading && !error && (
+                        <div
+                            data-xcore-ui="true"
+                            onPointerDown={stopViewportUiPropagation}
+                            onPointerMove={stopViewportUiPropagation}
+                            onPointerUp={stopViewportUiPropagation}
+                            onClick={stopViewportUiPropagation}
+                            onWheel={stopViewportUiPropagation}
+                            className="absolute top-3 left-3 z-20 flex w-56 flex-col gap-2"
+                        >
+                            {teethError && (
+                                <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">Tooth overlay unavailable</div>
+                                    <div className="text-red-200/80">{teethError}</div>
                                 </div>
-                                <div className="flex gap-1">
-                                    <button
-                                        onClick={undoMeasurement3D}
-                                        disabled={!measurements3D.length}
-                                        className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
-                                    >
-                                        Undo
-                                    </button>
-                                    <button
-                                        onClick={clearMeasurements3D}
-                                        disabled={!measurements3D.length && !measurePoints.length}
-                                        className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
-                                    >
-                                        Clear
-                                    </button>
+                            )}
+
+                            {stlError && (
+                                <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">STL export failed</div>
+                                    <div className="text-red-200/80">{stlError}</div>
                                 </div>
-                                {measurements3D.length > 0 && (
-                                    <div className="mt-2 max-h-24 overflow-y-auto space-y-1">
-                                        {measurements3D.slice(-4).map((item, index) => (
-                                            <div key={item.id} className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1 text-[10px]">
-                                                <span className="text-slate-400">M{Math.max(1, measurements3D.length - 3 + index)}</span>
-                                                <span className="font-mono text-emerald-300">{item.distance.toFixed(2)} mm</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                            )}
 
-                        {implantPlannerOpen && (
-                            <ImplantPlanner
-                                brand={implantBrand}
-                                diameter={implantDiameter}
-                                length={implantLength}
-                                placementCount={implantPlacements.length}
-                                placeMode={implantPlaceMode}
-                                onBrandChange={setImplantBrand}
-                                onDiameterChange={setImplantDiameter}
-                                onLengthChange={setImplantLength}
-                                onTogglePlaceMode={() => {
-                                    setImplantPlaceMode((current) => !current);
-                                    setMeasureMode3D(false);
-                                    setAnnotateMode(false);
-                                }}
-                                onClear={clearImplants}
-                            />
-                        )}
-
-                        {/* Window/Level Panel (MIP & X-Ray only) */}
-                        {isMipOrXray && (
-                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <AppIcon name="SunMedium" size={14} className="text-cyan-400" />
-                                    <span className="text-xs font-semibold text-white uppercase tracking-wider">Window / Level</span>
+                            {manualSegmentationError && (
+                                <div className="bg-amber-950/80 text-amber-100 text-xs rounded-xl p-3 border border-amber-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">Manual 3D segmentation</div>
+                                    <div className="text-amber-100/80">{manualSegmentationError}</div>
                                 </div>
+                            )}
 
-                                {/* Brightness (Level/Center) */}
-                                <div className="mb-2.5">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Brightness</span>
-                                        <span className="text-xs font-mono text-cyan-400">{windowCenter.toFixed(2)}</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={vtkContextRef.current?.dataRange?.[0] ?? 0.0}
-                                        max={vtkContextRef.current?.dataRange?.[1] ?? 1.0}
-                                        step={0.01}
-                                        value={windowCenter}
-                                        onChange={(e) => setWindowCenter(Number(e.target.value))}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
-                                    />
+                            {clipError && (
+                                <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">Clip tool unavailable</div>
+                                    <div className="text-red-200/80">{clipError}</div>
                                 </div>
+                            )}
 
-                                {/* Contrast (Window/Width) */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Contrast</span>
-                                        <span className="text-xs font-mono text-cyan-400">{windowWidth.toFixed(2)}</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={0.01}
-                                        max={2.0}
-                                        step={0.02}
-                                        value={windowWidth}
-                                        onChange={(e) => setWindowWidth(Number(e.target.value))}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
-                                    />
+                            {nerveError && (
+                                <div className="bg-amber-950/80 text-amber-100 text-xs rounded-xl p-3 border border-amber-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">Nerve overlay</div>
+                                    <div className="text-amber-100/80">{nerveError}</div>
                                 </div>
+                            )}
 
-                                {/* Quick reset */}
-                                <button
-                                    onClick={() => {
-                                        const d = WL_DEFAULTS[preset] || WL_DEFAULTS.bone;
-                                        setWindowCenter(d.center);
-                                        setWindowWidth(d.width);
-                                    }}
-                                    className="mt-2 w-full py-1 text-[10px] text-gray-500 hover:text-white bg-slate-800/50 hover:bg-slate-700/50 rounded transition uppercase tracking-wider"
-                                >
-                                    Reset W/L
-                                </button>
-                            </div>
-                        )}
+                            {implantError && (
+                                <div className="bg-red-950/80 text-red-200 text-xs rounded-xl p-3 border border-red-500/30 shadow-2xl">
+                                    <div className="font-semibold mb-1">Implant planner</div>
+                                    <div className="text-red-200/80">{implantError}</div>
+                                </div>
+                            )}
 
-                        {/* Slab Thickness Panel (MIP & X-Ray) */}
-                        {isMipOrXray && (
-                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <AppIcon name="Scissors" size={14} className="text-cyan-400" />
-                                        <span className="text-xs font-semibold text-white uppercase tracking-wider">Slab</span>
+                            {selectedWorldAnnotation && (
+                                <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span
+                                            className="h-3 w-3 shrink-0 rounded-full border border-white/20"
+                                            style={{ background: selectedWorldAnnotation.color || '#E24B4A' }}
+                                        />
+                                        <AppIcon name={isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Paintbrush' : 'PenLine'} size={13} className="text-emerald-300" />
+                                        <span className="truncate text-xs font-semibold uppercase tracking-wider text-white">
+                                            {isWorldBrushAnnotation(selectedWorldAnnotation) ? 'Brush 3D' : 'Surface Loop'}
+                                        </span>
+                                        <span className="ml-auto shrink-0 rounded-full bg-slate-700 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">
+                                            {selectedWorldAnnotation.metadata?.severity || 'S1'}
+                                        </span>
                                     </div>
-                                    <button
-                                        onClick={toggleSlab}
-                                        className={'px-2 py-0.5 rounded text-[10px] font-semibold transition ' + (
-                                            slabEnabled
-                                                ? 'bg-cyan-500 text-white'
-                                                : 'bg-slate-700 text-gray-400 hover:text-white'
+                                    <div className="space-y-1 text-[11px] text-slate-300">
+                                        {isWorldBrushAnnotation(selectedWorldAnnotation) && (
+                                            <>
+                                                <div className="flex justify-between gap-3"><span>Radius</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.coordinates?.world_brush?.radius_mm || 0).toFixed(1)} mm</span></div>
+                                                <div className="flex justify-between gap-3"><span>Volume</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_volume_mm3 || 0).toFixed(1)} mm³</span></div>
+                                            </>
                                         )}
-                                    >
-                                        {slabEnabled ? 'ON' : 'OFF'}
-                                    </button>
+                                        {isWorldPathAnnotation(selectedWorldAnnotation) && (
+                                            <div className="flex justify-between gap-3"><span>Area</span><span className="font-mono text-white">{Number(selectedWorldAnnotation.metadata?.lesion_area_mm2 || 0).toFixed(1)} mm²</span></div>
+                                        )}
+                                    </div>
+                                    <div className="mt-2 flex gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const copy = {
+                                                    ...selectedWorldAnnotation,
+                                                    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                                                };
+                                                pushAnnotationChange((current) => [...current, copy]);
+                                                setSelectedWorldAnnotationId(copy.id);
+                                            }}
+                                            className="flex-1 rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700"
+                                        >
+                                            Duplicate
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={deleteSelectedWorldAnnotation}
+                                            className="flex-1 rounded-lg bg-rose-900/40 px-2 py-1 text-[10px] font-semibold text-rose-300 transition hover:bg-rose-900/70"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
                                 </div>
-                                {slabEnabled && (
-                                    <div>
+                            )}
+
+                            {(measureMode3D || measurements3D.length > 0 || polylineMeasureMode || polylineMeasurements.length > 0) && (
+                                <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <AppIcon name="Ruler" size={14} className="text-emerald-300" />
+                                            <span className="text-xs font-semibold text-white uppercase tracking-wider">3D Measure</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400">
+                                            {polylineMeasureMode
+                                                ? (polylineDraft.length ? 'Pick next point (Double click to finish)' : 'Pick first point')
+                                                : (measurePoints.length ? 'Pick second point' : 'Pick two points')}
+                                        </span>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button
+                                            onClick={undoMeasurement3D}
+                                            disabled={!measurements3D.length && !polylineMeasurements.length}
+                                            className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+                                        >
+                                            Undo
+                                        </button>
+                                        <button
+                                            onClick={clearMeasurements3D}
+                                            disabled={!measurements3D.length && !measurePoints.length && !polylineMeasurements.length && !polylineDraft.length}
+                                            className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                    {(measurements3D.length > 0 || polylineMeasurements.length > 0) && (
+                                        <div className="mt-2 max-h-24 overflow-y-auto space-y-1">
+                                            {measurements3D.slice(-4).map((item, index) => (
+                                                <div key={item.id} className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1 text-[10px]">
+                                                    <span className="text-slate-400">M{Math.max(1, measurements3D.length - 3 + index)}</span>
+                                                    <span className="font-mono text-emerald-300">{item.distance.toFixed(2)} mm</span>
+                                                </div>
+                                            ))}
+                                            {polylineMeasurements.slice(-4).map((item, index) => (
+                                                <div key={item.id} className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1 text-[10px]">
+                                                    <span className="text-slate-400 flex gap-1 items-center">
+                                                        P{Math.max(1, polylineMeasurements.length - 3 + index)}
+                                                        <span className="text-[8px] opacity-60">({item.segments.length} seg)</span>
+                                                    </span>
+                                                    <span className="font-mono text-emerald-300">{item.totalDistance.toFixed(2)} mm</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {implantPlannerOpen && (
+                                <ImplantPlanner
+                                    brand={implantBrand}
+                                    diameter={implantDiameter}
+                                    length={implantLength}
+                                    placementCount={implantPlacements.length}
+                                    hasCollisions={implantCollisions.length > 0}
+                                    placeMode={implantPlaceMode}
+                                    onBrandChange={setImplantBrand}
+                                    onDiameterChange={setImplantDiameter}
+                                    onLengthChange={setImplantLength}
+                                    onTogglePlaceMode={() => {
+                                        setImplantPlaceMode((current) => !current);
+                                        setMeasureMode3D(false);
+                                        setAnnotateMode(false);
+                                    }}
+                                    onClear={clearImplants}
+                                />
+                            )}
+
+                            {/* Window/Level Panel (MIP & X-Ray only) */}
+                            {isMipOrXray && (
+                                <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <AppIcon name="SunMedium" size={14} className="text-cyan-400" />
+                                        <span className="text-xs font-semibold text-white uppercase tracking-wider">Window / Level</span>
+                                    </div>
+
+                                    {/* Brightness (Level/Center) */}
+                                    <div className="mb-2.5">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] text-gray-400 uppercase tracking-wide">Brightness</span>
+                                            <span className="text-xs font-mono text-cyan-400">{windowCenter.toFixed(2)}</span>
+                                        </div>
                                         <input
                                             type="range"
-                                            min={SLAB_MIN_MM}
-                                            max={SLAB_MAX_MM}
-                                            step={1}
-                                            value={slabThickness}
-                                            onChange={handleSlabChange}
+                                            min={vtkContextRef.current?.dataRange?.[0] ?? 0.0}
+                                            max={vtkContextRef.current?.dataRange?.[1] ?? 1.0}
+                                            step={0.01}
+                                            value={windowCenter}
+                                            onChange={(e) => setWindowCenter(Number(e.target.value))}
                                             className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
                                         />
-                                        <div className="flex items-center justify-between mt-1">
-                                            <span className="text-[10px] text-gray-500">{SLAB_MIN_MM}mm</span>
-                                            <span className="text-xs font-mono text-cyan-400">{slabThickness}mm</span>
-                                            <span className="text-[10px] text-gray-500">{SLAB_MAX_MM}mm</span>
+                                    </div>
+
+                                    {/* Contrast (Window/Width) */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] text-gray-400 uppercase tracking-wide">Contrast</span>
+                                            <span className="text-xs font-mono text-cyan-400">{windowWidth.toFixed(2)}</span>
                                         </div>
+                                        <input
+                                            type="range"
+                                            min={0.01}
+                                            max={2.0}
+                                            step={0.02}
+                                            value={windowWidth}
+                                            onChange={(e) => setWindowWidth(Number(e.target.value))}
+                                            className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
+                                        />
                                     </div>
-                                )}
-                            </div>
-                        )}
 
-                        {/* Camera View Presets */}
-                        <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                            <div className="flex items-center gap-2 mb-2">
-                                <AppIcon name="Compass" size={14} className="text-cyan-400" />
-                                <span className="text-xs font-semibold text-white uppercase tracking-wider">Views</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-1">
-                                {Object.entries(CAMERA_VIEWS).map(([key, view]) => (
-                                    <button
-                                        key={key}
-                                        onClick={() => setCameraView(key)}
-                                        className="py-1.5 rounded-md text-[10px] font-semibold bg-slate-800/80 text-gray-400 hover:bg-slate-700 hover:text-white transition"
-                                        title={view.name}
-                                    >
-                                        {view.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <SinusVolumePanel
-                            imageData={vtkContextRef.current?.imageData || null}
-                            visible={preset === 'sinus' && showSinusPanel && !loading && !error}
-                        />
-
-                        {preset === 'density' && showMischPanel && (
-                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                        <AppIcon name="BarChart2" size={14} className="text-orange-400" />
-                                        <span className="text-xs font-semibold uppercase tracking-wider text-white">Misch Density</span>
-                                    </div>
+                                    {/* Quick reset */}
                                     <button
                                         onClick={() => {
-                                            setDensityHistogram(null);
-                                            loadDensityHistogram({ refresh: true });
+                                            const d = WL_DEFAULTS[preset] || WL_DEFAULTS.bone;
+                                            setWindowCenter(d.center);
+                                            setWindowWidth(d.width);
                                         }}
-                                        disabled={densityLoading}
-                                        className="rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:cursor-wait disabled:opacity-50"
+                                        className="mt-2 w-full py-1 text-[10px] text-gray-500 hover:text-white bg-slate-800/50 hover:bg-slate-700/50 rounded transition uppercase tracking-wider"
                                     >
-                                        {densityLoading ? 'Loading' : 'Refresh'}
+                                        Reset W/L
                                     </button>
                                 </div>
-
-                                {densityLoading ? (
-                                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                                        <AppIcon name="Loader2" size={12} className="animate-spin text-orange-400" />
-                                        Computing...
-                                    </div>
-                                ) : densityHistogram ? (
-                                    <>
-                                        <div className="space-y-1.5">
-                                            {DENSITY_LEGEND.map((item) => {
-                                                const category = getDensityCategoryData(densityHistogram, item.label);
-                                                return (
-                                                    <div key={item.label} className="rounded-lg bg-slate-900/60 px-2 py-1.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`h-3 w-3 rounded-full ${item.className}`} />
-                                                            <span className="w-6 text-xs font-bold text-white">{item.label}</span>
-                                                            <span className="flex-1 text-[10px] text-slate-400">{item.range}</span>
-                                                            <span className="font-mono text-[10px] text-white">
-                                                                {category?.percentage ?? 0}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="mt-1 flex items-center justify-between pl-5 text-[10px] text-slate-500">
-                                                            <span>{category?.voxelCount?.toLocaleString?.() || 0} vox</span>
-                                                            <span className="font-mono text-slate-300">{category?.volumeMl ?? 0} mL</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/70 px-2 py-1.5 text-[10px] text-slate-400">
-                                            Candidate voxels:{' '}
-                                            <span className="font-mono text-slate-200">
-                                                {(densityHistogram.candidate_voxels ?? densityHistogram.density_voxel_count ?? 0).toLocaleString()}
-                                            </span>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <p className="text-xs text-slate-500">No density data available.</p>
-                                )}
-                                {densityError && (
-                                    <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-200">
-                                        {densityError}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* ─── Series Sidebar ────────────────────────────── */}
-                <SeriesSidebar
-                    study={study}
-                    currentSeriesUid={seriesUid}
-                    onSelectSeries={(series) => {
-                        setShowSeriesPanel(false);
-                        if (onSwitchSeries) {
-                            onSwitchSeries(series);
-                        }
-                    }}
-                    visible={allowSeriesSwitch && showSeriesPanel}
-                    onClose={() => setShowSeriesPanel(false)}
-                    position="right"
-                />
-
-                <MetadataPanel
-                    visible={showMetadataPanel}
-                    onClose={() => setShowMetadataPanel(false)}
-                    metadata={metadata}
-                    loading={metadataLoading}
-                    error={metadataError}
-                    study={study}
-                    studyKey={studyKey}
-                    seriesUid={seriesUid}
-                    title="DICOM Info"
-                />
-
-                <ReportExportModal
-                    visible={reportModalOpen}
-                    onClose={() => setReportModalOpen(false)}
-                    onConfirm={handleExportReport}
-                    initialValues={reportInitialValues}
-                    exporting={exportingReport}
-                    clinicName={clinicName}
-                    warningMessage={reportWarningMessage}
-                />
-
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && snapshotOverlayAnnotations.length > 0 && (
-                    <AnnotationCanvas
-                        width={viewerSize.width}
-                        height={viewerSize.height}
-                        sourceWidth={viewerSize.width}
-                        sourceHeight={viewerSize.height}
-                        viewportSize={viewerSize}
-                        imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
-                        active={false}
-                        tool="select"
-                        annotations={snapshotOverlayAnnotations}
-                        onChange={() => {}}
-                        className="pointer-events-none absolute inset-0 z-[14]"
-                    />
-                )}
-
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && visible3DAnnotations.length > 0 && (
-                    <AnnotationCanvas
-                        width={viewerSize.width}
-                        height={viewerSize.height}
-                        sourceWidth={viewerSize.width}
-                        sourceHeight={viewerSize.height}
-                        viewportSize={viewerSize}
-                        imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
-                        active={false}
-                        tool={annotationTool}
-                        annotations={visible3DAnnotations}
-                        onChange={handleAnnotationsChange}
-                        reviewMode={reviewMode}
-                        onReviewAnnotation={handleReviewAnnotation}
-                        className="absolute inset-0 z-[15]"
-                    />
-                )}
-
-                {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
-                    <Volume3DOverlayLayer
-                        annotateMode={annotateMode}
-                        annotationTool={annotationTool}
-                        brushOperation={brushOperation}
-                        brushPointerScreen={brushPointerScreen}
-                        brushRadiusMm={brushRadiusMm}
-                        brushScreenPath={brushScreenPath}
-                        commitTextDraft3D={commitTextDraft3D}
-                        hiddenAnnotationCount={hiddenAnnotationCount}
-                        isWorldBrushAnnotation={isWorldBrushAnnotation}
-                        measureMode3D={measureMode3D}
-                        measurePoints={measurePoints}
-                        measurementLabels={measurementLabels}
-                        measurementPreview={measurementPreview}
-                        projectedSnapshotWorldOverlayAnnotations={projectedSnapshotWorldOverlayAnnotations}
-                        projectedWorldOverlayAnnotations={projectedWorldOverlayAnnotations}
-                        selectedWorldAnnotation={selectedWorldAnnotation}
-                        setTextDraft3D={setTextDraft3D}
-                        surfaceTraceScreenPath={surfaceTraceScreenPath}
-                        textDraft3D={textDraft3D}
-                        textDraftScreenPoint={textDraftScreenPoint}
-                        worldOverlayPreview={worldOverlayPreview}
-                    />
-                )}
-
-                {surfacePickLoading && annotateMode && annotationTool !== 'select' && (
-                    <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2">
-                        <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-500/30 bg-slate-950/85 px-6 py-4 backdrop-blur">
-                            <div className="flex items-center gap-2 text-amber-200">
-                                <AppIcon name="Loader2" size={18} className="animate-spin" />
-                                <span className="text-sm font-semibold">Preparing surface mesh...</span>
-                            </div>
-                            <p className="max-w-xs text-center text-xs text-slate-400">
-                                Building pickable surface for 3D annotation. Large CBCT data can take a few seconds.
-                            </p>
-                            <div className="h-1 w-48 overflow-hidden rounded-full bg-slate-800">
-                                <div className="h-full w-3/5 animate-pulse rounded-full bg-amber-500/70" />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {slabEnabled && isMipOrXray && !loading && !error && (
-                    <div className="pointer-events-none absolute inset-0 z-[16]">
-                        <div
-                            className="absolute left-0 right-0 border-t border-dashed border-cyan-400/40"
-                            style={{ top: `${Math.max(0, 50 - (slabThickness / 2))}%` }}
-                        />
-                        <div
-                            className="absolute left-0 right-0 border-t border-dashed border-cyan-400/40"
-                            style={{ top: `${Math.min(100, 50 + (slabThickness / 2))}%` }}
-                        />
-                        <div className="absolute right-16 top-1/2 -translate-y-1/2 text-[10px] font-mono text-cyan-400/70">
-                            Slab {slabThickness}mm
-                        </div>
-                    </div>
-                )}
-
-                {showNerveOverlay && nerveInfo && (
-                    <div className="absolute right-3 top-16 z-20 rounded-xl border border-yellow-500/30 bg-yellow-500/15 px-3 py-2 text-xs text-yellow-100 backdrop-blur">
-                        Nerve canal confidence {(Number(nerveInfo.confidence || 0) * 100).toFixed(0)}%
-                    </div>
-                )}
-
-                {!loading && !error && preset === 'density' && (
-                    <div
-                        data-xcore-ui="true"
-                        className="absolute bottom-12 right-3 z-20 rounded-xl border border-slate-700 bg-black/70 p-2 backdrop-blur-sm"
-                        onPointerDown={stopViewportUiPropagation}
-                    >
-                        <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">Misch</div>
-                        {DENSITY_LEGEND.map((item) => (
-                            <div key={item.label} className="flex items-center gap-1.5 py-0.5">
-                                <span className={`h-2.5 w-2.5 rounded-sm ${item.className}`} />
-                                <span className="w-5 text-[9px] font-bold text-white">{item.label}</span>
-                                <span className="text-[9px] text-slate-400">{item.range}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {(aiReportOpen || aiReport || aiReportLoading || aiReportError) && (
-                    <div className="absolute bottom-14 left-1/2 z-30 w-[min(720px,calc(100%-32px))] -translate-x-1/2 overflow-hidden rounded-2xl border border-cyan-500/20 bg-slate-950/90 text-slate-100 shadow-2xl backdrop-blur">
-                        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-                            <div className="flex items-center gap-2">
-                                <AppIcon name="Sparkles" size={15} className="text-cyan-300" />
-                                <span className="text-xs font-semibold uppercase tracking-wider">AI Preliminary Report</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={generateAIReport}
-                                    disabled={aiReportLoading}
-                                    className="rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
-                                >
-                                    Regenerate
-                                </button>
-                                <button
-                                    onClick={() => setAiReportOpen((current) => !current)}
-                                    className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                                >
-                                    <AppIcon name={aiReportOpen ? 'ChevronDown' : 'ChevronUp'} size={14} />
-                                </button>
-                            </div>
-                        </div>
-                        {aiReportOpen && (
-                            <div className="px-4 py-3">
-                                {aiReportLoading ? (
-                                    <div className="flex items-center gap-2 text-sm text-slate-300">
-                                        <AppIcon name="Loader2" size={16} className="animate-spin text-cyan-300" />
-                                        Generating report...
-                                    </div>
-                                ) : aiReportError ? (
-                                    <p className="text-sm text-red-200">{aiReportError}</p>
-                                ) : (
-                                    <p className="text-sm leading-relaxed text-slate-100">{aiReport || 'No report generated yet.'}</p>
-                                )}
-                                <p className="mt-2 text-[11px] text-amber-200/80">AI-generated preliminary assessment — requires radiologist review.</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <AnnotationHistoryPanel
-                    visible={historyOpen}
-                    snapshots={snapshots}
-                    loading={snapshotsLoading}
-                    selectedSnapshotId={snapshotOverlay?.id || ''}
-                    onClose={() => setHistoryOpen(false)}
-                    onRefresh={refreshSnapshots}
-                    onSelectSnapshot={handleSelectSnapshotOverlay}
-                    onRestoreSnapshot={handleRestoreAnnotationSession}
-                    onDeleteSnapshot={handleDeleteAnnotationSession}
-                    onNewSession={() => {
-                        setSessionError('');
-                        setSessionModalMode('new');
-                    }}
-                    onClearOverlay={() => setSnapshotOverlay(null)}
-                />
-
-                <AnnotationSessionModal
-                    visible={Boolean(sessionModalMode)}
-                    mode={sessionModalMode || 'save'}
-                    annotationCount={annotations.length}
-                    measurementCount={measurementCount}
-                    loading={sessionSaving}
-                    error={sessionError}
-                    onClose={() => {
-                        if (!sessionSaving) {
-                            setSessionModalMode(null);
-                            setSessionError('');
-                        }
-                    }}
-                    onConfirm={sessionModalMode === 'new' ? handleStartNewSession : handleSaveAnnotationSession}
-                />
-
-                {/* ─── Mode Label Badge ──────────────────────────── */}
-                {!loading && !error && (
-                    <div className="absolute top-3 right-3 z-20">
-                        <div className={'px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest border backdrop-blur-sm ' + (
-                            preset === 'bone' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
-                            preset === 'soft' ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' :
-                            preset === 'mip'  ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' :
-                            preset === 'sinus' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
-                            preset === 'density' ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' :
-                                                'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        )}>
-                            {preset === 'bone' ? 'Bone / Teeth' :
-                             preset === 'soft' ? 'Soft Tissue' :
-                             preset === 'mip'  ? 'MIP — Implant View' :
-                             preset === 'sinus' ? 'Sinus — Air Cavities' :
-                             preset === 'density' ? 'Density — D1/D4' :
-                                                 'X-Ray — Panoramic'}
-                            {inverted && isMipOrXray ? ' (Inv)' : ''}
-                        </div>
-                    </div>
-                )}
-
-                {/* ─── Bottom Status Bar ─────────────────────────── */}
-                {!loading && !error && (
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 bg-black/60 backdrop-blur-md px-5 py-2 rounded-full text-white text-[11px] border border-white/10 shadow-2xl">
-                        <span className="flex items-center gap-3">
-                            <span className="text-gray-400">Drag: Rotate</span>
-                            <span className="text-white/20">{'\u2022'}</span>
-                            <span className="text-gray-400">Right-click: Pan</span>
-                            <span className="text-white/20">{'\u2022'}</span>
-                            <span className="text-gray-400">Scroll: Zoom</span>
-                            <span className="text-white/20">{'\u2022'}</span>
-                            <span className="text-slate-300">Quality: {QUALITY_SETTINGS[quality]?.label || quality}</span>
-                            {isMipOrXray && (
-                                <>
-                                    <span className="text-white/20">{'\u2022'}</span>
-                                    <span className="text-cyan-400/80">W/L: Use left panel sliders</span>
-                                </>
                             )}
-                        </span>
-                    </div>
-                )}
-            </div>
+
+                            {/* Slab Thickness Panel (MIP & X-Ray) */}
+                            {isMipOrXray && (
+                                <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <AppIcon name="Scissors" size={14} className="text-cyan-400" />
+                                            <span className="text-xs font-semibold text-white uppercase tracking-wider">Slab</span>
+                                        </div>
+                                        <button
+                                            onClick={toggleSlab}
+                                            className={'px-2 py-0.5 rounded text-[10px] font-semibold transition ' + (
+                                                slabEnabled
+                                                    ? 'bg-cyan-500 text-white'
+                                                    : 'bg-slate-700 text-gray-400 hover:text-white'
+                                            )}
+                                        >
+                                            {slabEnabled ? 'ON' : 'OFF'}
+                                        </button>
+                                    </div>
+                                    {slabEnabled && (
+                                        <div>
+                                            <input
+                                                type="range"
+                                                min={SLAB_MIN_MM}
+                                                max={SLAB_MAX_MM}
+                                                step={1}
+                                                value={slabThickness}
+                                                onChange={handleSlabChange}
+                                                className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
+                                            />
+                                            <div className="flex items-center justify-between mt-1">
+                                                <span className="text-[10px] text-gray-500">{SLAB_MIN_MM}mm</span>
+                                                <span className="text-xs font-mono text-cyan-400">{slabThickness}mm</span>
+                                                <span className="text-[10px] text-gray-500">{SLAB_MAX_MM}mm</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Camera View Presets */}
+                            <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <AppIcon name="Compass" size={14} className="text-cyan-400" />
+                                    <span className="text-xs font-semibold text-white uppercase tracking-wider">Views</span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1">
+                                    {Object.entries(CAMERA_VIEWS).map(([key, view]) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setCameraView(key)}
+                                            className="py-1.5 rounded-md text-[10px] font-semibold bg-slate-800/80 text-gray-400 hover:bg-slate-700 hover:text-white transition"
+                                            title={view.name}
+                                        >
+                                            {view.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <SinusVolumePanel
+                                imageData={vtkContextRef.current?.imageData || null}
+                                visible={preset === 'sinus' && showSinusPanel && !loading && !error}
+                            />
+
+                            {preset === 'density' && showMischPanel && (
+                                <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <AppIcon name="BarChart2" size={14} className="text-orange-400" />
+                                            <span className="text-xs font-semibold uppercase tracking-wider text-white">Misch Density</span>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setDensityHistogram(null);
+                                                loadDensityHistogram({ refresh: true });
+                                            }}
+                                            disabled={densityLoading}
+                                            className="rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:cursor-wait disabled:opacity-50"
+                                        >
+                                            {densityLoading ? 'Loading' : 'Refresh'}
+                                        </button>
+                                    </div>
+
+                                    {densityLoading ? (
+                                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                                            <AppIcon name="Loader2" size={12} className="animate-spin text-orange-400" />
+                                            Computing...
+                                        </div>
+                                    ) : densityHistogram ? (
+                                        <>
+                                            <div className="space-y-1.5">
+                                                {DENSITY_LEGEND.map((item) => {
+                                                    const category = getDensityCategoryData(densityHistogram, item.label);
+                                                    return (
+                                                        <div key={item.label} className="rounded-lg bg-slate-900/60 px-2 py-1.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`h-3 w-3 rounded-full ${item.className}`} />
+                                                                <span className="w-6 text-xs font-bold text-white">{item.label}</span>
+                                                                <span className="flex-1 text-[10px] text-slate-400">{item.range}</span>
+                                                                <span className="font-mono text-[10px] text-white">
+                                                                    {category?.percentage ?? 0}%
+                                                                </span>
+                                                            </div>
+                                                            <div className="mt-1 flex items-center justify-between pl-5 text-[10px] text-slate-500">
+                                                                <span>{category?.voxelCount?.toLocaleString?.() || 0} vox</span>
+                                                                <span className="font-mono text-slate-300">{category?.volumeMl ?? 0} mL</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/70 px-2 py-1.5 text-[10px] text-slate-400">
+                                                Candidate voxels:{' '}
+                                                <span className="font-mono text-slate-200">
+                                                    {(densityHistogram.candidate_voxels ?? densityHistogram.density_voxel_count ?? 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p className="text-xs text-slate-500">No density data available.</p>
+                                    )}
+                                    {densityError && (
+                                        <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-200">
+                                            {densityError}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ─── Series Sidebar ────────────────────────────── */}
+                    <SeriesSidebar
+                        study={study}
+                        currentSeriesUid={seriesUid}
+                        onSelectSeries={(series) => {
+                            setShowSeriesPanel(false);
+                            if (onSwitchSeries) {
+                                onSwitchSeries(series);
+                            }
+                        }}
+                        visible={allowSeriesSwitch && showSeriesPanel}
+                        onClose={() => setShowSeriesPanel(false)}
+                        position="right"
+                    />
+
+                    <MetadataPanel
+                        visible={showMetadataPanel}
+                        onClose={() => setShowMetadataPanel(false)}
+                        metadata={metadata}
+                        loading={metadataLoading}
+                        error={metadataError}
+                        study={study}
+                        studyKey={studyKey}
+                        seriesUid={seriesUid}
+                        title="DICOM Info"
+                    />
+
+                    <ReportExportModal
+                        visible={reportModalOpen}
+                        onClose={() => setReportModalOpen(false)}
+                        onConfirm={handleExportReport}
+                        initialValues={reportInitialValues}
+                        exporting={exportingReport}
+                        clinicName={clinicName}
+                        warningMessage={reportWarningMessage}
+                    />
+
+                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && snapshotOverlayAnnotations.length > 0 && (
+                        <AnnotationCanvas
+                            width={viewerSize.width}
+                            height={viewerSize.height}
+                            sourceWidth={viewerSize.width}
+                            sourceHeight={viewerSize.height}
+                            viewportSize={viewerSize}
+                            imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
+                            active={false}
+                            tool="select"
+                            annotations={snapshotOverlayAnnotations}
+                            onChange={() => { }}
+                            className="pointer-events-none absolute inset-0 z-[14]"
+                        />
+                    )}
+
+                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && visible3DAnnotations.length > 0 && (
+                        <AnnotationCanvas
+                            width={viewerSize.width}
+                            height={viewerSize.height}
+                            sourceWidth={viewerSize.width}
+                            sourceHeight={viewerSize.height}
+                            viewportSize={viewerSize}
+                            imageBounds={{ x: 0, y: 0, width: viewerSize.width, height: viewerSize.height }}
+                            active={false}
+                            tool={annotationTool}
+                            annotations={visible3DAnnotations}
+                            onChange={handleAnnotationsChange}
+                            reviewMode={reviewMode}
+                            onReviewAnnotation={handleReviewAnnotation}
+                            className="absolute inset-0 z-[15]"
+                        />
+                    )}
+
+                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && (
+                        <Volume3DOverlayLayer
+                            annotateMode={annotateMode}
+                            annotationTool={annotationTool}
+                            brushOperation={brushOperation}
+                            brushPointerScreen={brushPointerScreen}
+                            brushRadiusMm={brushRadiusMm}
+                            brushScreenPath={brushScreenPath}
+                            commitTextDraft3D={commitTextDraft3D}
+                            hiddenAnnotationCount={hiddenAnnotationCount}
+                            isWorldBrushAnnotation={isWorldBrushAnnotation}
+                            measureMode3D={measureMode3D}
+                            measurePoints={measurePoints}
+                            measurements3D={measurementLabels}
+                            measurementLabelPositionsRef={measurementLabelPositionsRef}
+                            measurementLabelsVisible={measurementLabelsVisible}
+                            measurementPreview={measurementPreview}
+                            onRenameMeasurement={onRenameMeasurement}
+                            projectedSnapshotWorldOverlayAnnotations={projectedSnapshotWorldOverlayAnnotations}
+                            projectedWorldOverlayAnnotations={projectedWorldOverlayAnnotations}
+                            selectedWorldAnnotation={selectedWorldAnnotation}
+                            setTextDraft3D={setTextDraft3D}
+                            surfaceTraceScreenPath={surfaceTraceScreenPath}
+                            textDraft3D={textDraft3D}
+                            textDraftScreenPoint={textDraftScreenPoint}
+                            worldOverlayPreview={worldOverlayPreview}
+                        />
+                    )}
+
+                    {surfacePickLoading && annotateMode && annotationTool !== 'select' && (
+                        <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2">
+                            <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-500/30 bg-slate-950/85 px-6 py-4 backdrop-blur">
+                                <div className="flex items-center gap-2 text-amber-200">
+                                    <AppIcon name="Loader2" size={18} className="animate-spin" />
+                                    <span className="text-sm font-semibold">Preparing surface mesh...</span>
+                                </div>
+                                <p className="max-w-xs text-center text-xs text-slate-400">
+                                    Building pickable surface for 3D annotation. Large CBCT data can take a few seconds.
+                                </p>
+                                <div className="h-1 w-48 overflow-hidden rounded-full bg-slate-800">
+                                    <div className="h-full w-3/5 animate-pulse rounded-full bg-amber-500/70" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {slabEnabled && isMipOrXray && !loading && !error && (
+                        <div className="pointer-events-none absolute inset-0 z-[16]">
+                            <div
+                                className="absolute left-0 right-0 border-t border-dashed border-cyan-400/40"
+                                style={{ top: `${Math.max(0, 50 - (slabThickness / 2))}%` }}
+                            />
+                            <div
+                                className="absolute left-0 right-0 border-t border-dashed border-cyan-400/40"
+                                style={{ top: `${Math.min(100, 50 + (slabThickness / 2))}%` }}
+                            />
+                            <div className="absolute right-16 top-1/2 -translate-y-1/2 text-[10px] font-mono text-cyan-400/70">
+                                Slab {slabThickness}mm
+                            </div>
+                        </div>
+                    )}
+
+                    {showNerveOverlay && nerveInfo && (
+                        <div className="absolute right-3 top-16 z-20 rounded-xl border border-yellow-500/30 bg-yellow-500/15 px-3 py-2 text-xs text-yellow-100 backdrop-blur">
+                            Nerve canal confidence {(Number(nerveInfo.confidence || 0) * 100).toFixed(0)}%
+                        </div>
+                    )}
+
+                    {!loading && !error && preset === 'density' && (
+                        <div
+                            data-xcore-ui="true"
+                            className="absolute bottom-12 right-3 z-20 rounded-xl border border-slate-700 bg-black/70 p-2 backdrop-blur-sm"
+                            onPointerDown={stopViewportUiPropagation}
+                        >
+                            <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">Misch</div>
+                            {DENSITY_LEGEND.map((item) => (
+                                <div key={item.label} className="flex items-center gap-1.5 py-0.5">
+                                    <span className={`h-2.5 w-2.5 rounded-sm ${item.className}`} />
+                                    <span className="w-5 text-[9px] font-bold text-white">{item.label}</span>
+                                    <span className="text-[9px] text-slate-400">{item.range}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {(aiReportOpen || aiReport || aiReportLoading || aiReportError) && (
+                        <div className="absolute bottom-14 left-1/2 z-30 w-[min(720px,calc(100%-32px))] -translate-x-1/2 overflow-hidden rounded-2xl border border-cyan-500/20 bg-slate-950/90 text-slate-100 shadow-2xl backdrop-blur">
+                            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+                                <div className="flex items-center gap-2">
+                                    <AppIcon name="Sparkles" size={15} className="text-cyan-300" />
+                                    <span className="text-xs font-semibold uppercase tracking-wider">AI Preliminary Report</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={generateAIReport}
+                                        disabled={aiReportLoading}
+                                        className="rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
+                                    >
+                                        Regenerate
+                                    </button>
+                                    <button
+                                        onClick={() => setAiReportOpen((current) => !current)}
+                                        className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                                    >
+                                        <AppIcon name={aiReportOpen ? 'ChevronDown' : 'ChevronUp'} size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                            {aiReportOpen && (
+                                <div className="px-4 py-3">
+                                    {aiReportLoading ? (
+                                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                                            <AppIcon name="Loader2" size={16} className="animate-spin text-cyan-300" />
+                                            Generating report...
+                                        </div>
+                                    ) : aiReportError ? (
+                                        <p className="text-sm text-red-200">{aiReportError}</p>
+                                    ) : (
+                                        <p className="text-sm leading-relaxed text-slate-100">{aiReport || 'No report generated yet.'}</p>
+                                    )}
+                                    <p className="mt-2 text-[11px] text-amber-200/80">AI-generated preliminary assessment — requires radiologist review.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <AnnotationHistoryPanel
+                        visible={historyOpen}
+                        snapshots={snapshots}
+                        loading={snapshotsLoading}
+                        selectedSnapshotId={snapshotOverlay?.id || ''}
+                        onClose={() => setHistoryOpen(false)}
+                        onRefresh={refreshSnapshots}
+                        onSelectSnapshot={handleSelectSnapshotOverlay}
+                        onRestoreSnapshot={handleRestoreAnnotationSession}
+                        onDeleteSnapshot={handleDeleteAnnotationSession}
+                        onNewSession={() => {
+                            setSessionError('');
+                            setSessionModalMode('new');
+                        }}
+                        onClearOverlay={() => setSnapshotOverlay(null)}
+                    />
+
+                    <AnnotationSessionModal
+                        visible={Boolean(sessionModalMode)}
+                        mode={sessionModalMode || 'save'}
+                        annotationCount={annotations.length}
+                        measurementCount={measurementCount}
+                        loading={sessionSaving}
+                        error={sessionError}
+                        onClose={() => {
+                            if (!sessionSaving) {
+                                setSessionModalMode(null);
+                                setSessionError('');
+                            }
+                        }}
+                        onConfirm={sessionModalMode === 'new' ? handleStartNewSession : handleSaveAnnotationSession}
+                    />
+
+                    {/* ─── Mode Label Badge ──────────────────────────── */}
+                    {!loading && !error && (
+                        <div className="absolute top-3 right-3 z-20">
+                            <div className={'px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest border backdrop-blur-sm ' + (
+                                preset === 'bone' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                                    preset === 'soft' ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' :
+                                        preset === 'mip' ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' :
+                                            preset === 'sinus' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
+                                                preset === 'density' ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' :
+                                                    'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            )}>
+                                {preset === 'bone' ? 'Bone / Teeth' :
+                                    preset === 'soft' ? 'Soft Tissue' :
+                                        preset === 'mip' ? 'MIP — Implant View' :
+                                            preset === 'sinus' ? 'Sinus — Air Cavities' :
+                                                preset === 'density' ? 'Density — D1/D4' :
+                                                    'X-Ray — Panoramic'}
+                                {inverted && isMipOrXray ? ' (Inv)' : ''}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ─── Bottom Status Bar ─────────────────────────── */}
+                    {!loading && !error && (
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 bg-black/60 backdrop-blur-md px-5 py-2 rounded-full text-white text-[11px] border border-white/10 shadow-2xl">
+                            <span className="flex items-center gap-3">
+                                <span className="text-gray-400">Drag: Rotate</span>
+                                <span className="text-white/20">{'\u2022'}</span>
+                                <span className="text-gray-400">Right-click: Pan</span>
+                                <span className="text-white/20">{'\u2022'}</span>
+                                <span className="text-gray-400">Scroll: Zoom</span>
+                                <span className="text-white/20">{'\u2022'}</span>
+                                <span className="text-slate-300">Quality: {QUALITY_SETTINGS[quality]?.label || quality}</span>
+                                {isMipOrXray && (
+                                    <>
+                                        <span className="text-white/20">{'\u2022'}</span>
+                                        <span className="text-cyan-400/80">W/L: Use left panel sliders</span>
+                                    </>
+                                )}
+                            </span>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

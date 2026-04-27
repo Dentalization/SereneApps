@@ -1398,10 +1398,23 @@ def convert_study_to_vti(
             })
 
             # Step 1: Robust DICOM loading with pydicom (handles force=True)
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier,
+                "seriesUid": series_uid,
+                "status": "processing",
+                "stage": "dicom_read",
+                "progress": 10,
+                "seriesDescription": series_info.get('series_description', ''),
+                "numFiles": num_files,
+            })
             volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
             print(f"[VTI] Raw volume: shape={volume.shape}, dtype={volume.dtype}")
 
             # Step 2: MONAI preprocessing pipeline
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier, "seriesUid": series_uid,
+                "status": "processing", "stage": "monai_preprocess", "progress": 35,
+            })
             try:
                 processed, new_spacing, new_origin = monai_preprocess(
                     volume,
@@ -1437,10 +1450,24 @@ def convert_study_to_vti(
                 new_origin = origin
                 print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
 
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier, "seriesUid": series_uid,
+                "status": "processing", "stage": "fov_suppress", "progress": 60,
+            })
             processed = suppress_fov_background(processed, new_spacing)
 
             # Step 3: Write VTI using VTK writer with ZLib compression
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier, "seriesUid": series_uid,
+                "status": "processing", "stage": "vti_write", "progress": 80,
+            })
             info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)
+            
+            _emit_progress(progress_callback, {
+                "studyId": study_identifier, "seriesUid": series_uid,
+                "status": "processing", "stage": "segmentation" if segment else "thumbnail", "progress": 90,
+            })
+
             _emit_progress(progress_callback, {
                 "studyId": study_identifier,
                 "seriesUid": series_uid,
