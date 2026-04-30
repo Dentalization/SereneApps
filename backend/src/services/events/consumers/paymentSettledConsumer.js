@@ -1,13 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { queueNotificationEvent } from '../../notifications/index.js';
+import { ensureCommunicationResourcesForAppointment } from '../../communications.js';
+import { logCommunicationEvent } from '../../communications/logging.js';
 
 const prisma = new PrismaClient();
-
-// Stub: Provision Twilio Conversation internally (defined fully in Sprint 2)
-async function provisionConversationForAppointment(appointmentId) {
-  console.log(`[Stub] Provisioning conversation for appointment ${appointmentId}`);
-  return Promise.resolve();
-}
 
 export async function handlePaymentSettled(event) {
   const { correlationId } = event;
@@ -18,7 +14,7 @@ export async function handlePaymentSettled(event) {
 
   const apptIdBigInt = BigInt(appointmentId);
 
-  await prisma.$transaction(async (tx) => {
+  const transactionResult = await prisma.$transaction(async (tx) => {
     // 1. Load appointment
     const appointment = await tx.appointment.findUnique({
       where: { id: apptIdBigInt }
@@ -28,53 +24,65 @@ export async function handlePaymentSettled(event) {
       throw { code: 'APPOINTMENT_NOT_FOUND', message: `Appointment ${appointmentId} not found` };
     }
 
-    // 2. Idempotent escape hatch safely returning if double-event occurs
-    if (appointment.status === 'confirmed') {
-      console.log(`[handlePaymentSettled] Appointment ${appointmentId} already confirmed, skipping. Correlation: ${correlationId}`);
-      return;
+    if (appointment.status === 'confirmed' && appointment.commStatus === 'ready') {
+      logCommunicationEvent('payment_settled_skip_ready', {
+        appointmentId,
+        correlationId
+      });
+      return { alreadyReady: true };
     }
 
-    // 3. Update appointment
-    await tx.appointment.update({
-      where: { id: apptIdBigInt },
-      data: { status: 'confirmed' }
-    });
+    if (appointment.status !== 'confirmed') {
+      // 3. Update appointment
+      await tx.appointment.update({
+        where: { id: apptIdBigInt },
+        data: { status: 'confirmed' }
+      });
 
-    // 4. Insert historical boundary tracking
-    await tx.appointmentStatusHistory.create({
-      data: {
-        appointmentId: apptIdBigInt,
-        status: 'confirmed',
-        reason: 'payment_settled',
-        metadata: {
-          correlationId,
-          provider,
-          providerOrderId,
-          grossAmount
+      // 4. Insert historical boundary tracking
+      await tx.appointmentStatusHistory.create({
+        data: {
+          appointmentId: apptIdBigInt,
+          previousStatus: appointment.status,
+          newStatus: 'confirmed',
+          reason: 'payment_settled',
+          metadata: {
+            correlationId,
+            provider,
+            providerOrderId,
+            grossAmount
+          }
         }
-      }
-    });
+      });
 
-    // 5. Queue Notification Event inside transaction for consistency (optional, but safer)
-    await queueNotificationEvent({
-      eventType: 'appointment_confirmed',
-      appointmentId: apptIdBigInt,
-      payload: {
-        amount: grossAmount,
-        provider
-      }
-    }).catch(err => console.error(`[handlePaymentSettled] Notification queuing failed:`, err.message));
+      // 5. Queue Notification Event inside transaction for consistency (optional, but safer)
+      await queueNotificationEvent({
+        eventType: 'appointment_confirmed',
+        appointmentId: apptIdBigInt,
+        payload: {
+          amount: grossAmount,
+          provider
+        }
+      }).catch(err => console.error(`[handlePaymentSettled] Notification queuing failed:`, err.message));
+    }
+
+    return { alreadyReady: false };
   });
 
-  // 6. External async task (provisions Twilio hooks autonomously)
-  try {
-    await provisionConversationForAppointment(appointmentId);
-  } catch (error) {
-    console.error(`[handlePaymentSettled] Failed to provision conversation for appointment ${appointmentId}:`, error.message);
+  if (!transactionResult?.alreadyReady) {
+    await ensureCommunicationResourcesForAppointment({
+      appointmentId,
+      reason: 'payment_settled'
+    });
   }
 
   // 8. Log mapping footprint cleanly
-  console.log(`[handlePaymentSettled] Successfully processed payment_settled. Correlation: ${correlationId}`);
+  logCommunicationEvent('payment_settled_processed', {
+    appointmentId,
+    correlationId,
+    provider,
+    providerOrderId
+  });
 }
 
 export async function handlePaymentFailed(event) {
@@ -105,7 +113,8 @@ export async function handlePaymentFailed(event) {
     await tx.appointmentStatusHistory.create({
       data: {
         appointmentId: apptIdBigInt,
-        status: 'payment_failed',
+        previousStatus: appointment.status,
+        newStatus: 'payment_failed',
         reason: 'payment_failed',
         metadata: { correlationId }
       }

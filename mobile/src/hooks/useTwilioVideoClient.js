@@ -12,6 +12,7 @@ export function useTwilioVideoClient() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [remoteParticipantSids, setRemoteParticipantSids] = useState([]);
   const [connectError, setConnectError] = useState(null);
+  const [connectionState, setConnectionState] = useState('disconnected');
   const [networkQuality, setNetworkQuality] = useState(-1);
 
   const connect = useCallback(async ({ roomName, token }) => {
@@ -19,6 +20,7 @@ export function useTwilioVideoClient() {
     
     try {
       setConnectError(null);
+      setConnectionState('connecting');
       // Connect to the room using the React Native Ref
       twilioRef.current.connect({
         roomName,
@@ -38,6 +40,7 @@ export function useTwilioVideoClient() {
       twilioRef.current.disconnect();
     }
     setIsConnected(false);
+    setConnectionState('disconnected');
     setRemoteParticipantSids([]);
   }, []);
 
@@ -64,12 +67,14 @@ export function useTwilioVideoClient() {
   const onRoomDidConnect = () => {
     // console.log('[useTwilioVideoClient] Room connected');
     setIsConnected(true);
+    setConnectionState('connected');
     setConnectError(null);
   };
 
   const onRoomDidDisconnect = ({ error }) => {
     // console.log('[useTwilioVideoClient] Room disconnected', error);
     setIsConnected(false);
+    setConnectionState('disconnected');
     setRemoteParticipantSids([]);
     if (error) {
        setConnectError(error.message || 'Room disconnected with error');
@@ -79,6 +84,7 @@ export function useTwilioVideoClient() {
   const onRoomDidFailToConnect = (error) => {
     // console.log('[useTwilioVideoClient] Room failed to connect', error);
     setIsConnected(false);
+    setConnectionState('disconnected');
     setRemoteParticipantSids([]);
     setConnectError(error?.error || error?.message || 'Failed to connect to video room');
   };
@@ -108,6 +114,7 @@ export function useTwilioVideoClient() {
     isVideoEnabled,
     remoteParticipantSids,
     connectError,
+    connectionState,
     networkQuality,
     connect,
     disconnect,

@@ -6,7 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency } from '../../../utils/formatters';
-import { getAppointmentById, cancelAppointment } from '../../../services/appointmentService';
+import { getAppointmentById, getAppointmentClinicalSummary, cancelAppointment } from '../../../services/appointmentService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import AppointmentChatBanner from './AppointmentChatBanner';
@@ -23,6 +23,8 @@ const DetailAppointmentScreen = () => {
   
   const appointmentId = route.params?.appointmentId;
   const [appointment, setAppointment] = useState(route.params?.appointment || null);
+  const [clinicalSummary, setClinicalSummary] = useState(null);
+  const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [loading, setLoading] = useState(!route.params?.appointment);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -32,6 +34,14 @@ const DetailAppointmentScreen = () => {
       if (showLoading) setLoading(true);
       const result = await getAppointmentById(appointmentId);
       setAppointment(result.data);
+      try {
+        const summaryResult = await getAppointmentClinicalSummary(appointmentId);
+        setClinicalSummary(summaryResult.summary || null);
+        setClinicalSummaryStatus(summaryResult.status || 'pending');
+      } catch (_summaryError) {
+        setClinicalSummary(null);
+        setClinicalSummaryStatus('pending');
+      }
     } catch (error) {
       showToast(error.message || 'Gagal memuat detail janji temu', 'error');
     } finally {
@@ -214,6 +224,38 @@ const DetailAppointmentScreen = () => {
           />
         )}
 
+        {(appointment?.status === 'completed' || appointment?.status === 'finished') && (
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 }}>Ringkasan Konsultasi</Text>
+            <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16 }}>
+              {clinicalSummaryStatus === 'finalized' || clinicalSummaryStatus === 'amended' ? (
+                <>
+                  <SummaryRow label="Keluhan utama" value={clinicalSummary?.chiefComplaint} />
+                  <Divider style={{ marginVertical: 12 }} />
+                  <SummaryRow label="Temuan objektif" value={clinicalSummary?.objectiveFindings} />
+                  <Divider style={{ marginVertical: 12 }} />
+                  <SummaryRow label="Assessment" value={clinicalSummary?.assessment} />
+                  <Divider style={{ marginVertical: 12 }} />
+                  <SummaryRow label="Rencana tindakan" value={clinicalSummary?.plan} />
+                  {clinicalSummary?.recommendations?.length > 0 && (
+                    <>
+                      <Divider style={{ marginVertical: 12 }} />
+                      <SummaryRow label="Rekomendasi" value={clinicalSummary.recommendations.join('\n')} />
+                    </>
+                  )}
+                </>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="file-clock-outline" size={22} color={COLORS.textMuted} />
+                  <Text style={{ ...TYPOGRAPHY.bodyMedium, color: COLORS.textSecondary, marginLeft: 10 }}>
+                    Ringkasan konsultasi sedang disiapkan dokter.
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
           {appointment?.appointmentType === 'virtual' && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
@@ -285,6 +327,13 @@ const InfoRow = ({ icon, label, value }) => (
       <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{label}</Text>
       <Text style={{ ...TYPOGRAPHY.bodyMedium, color: COLORS.textPrimary, fontWeight: '600', marginTop: 2 }}>{value}</Text>
     </View>
+  </View>
+);
+
+const SummaryRow = ({ label, value }) => (
+  <View>
+    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{label}</Text>
+    <Text style={{ ...TYPOGRAPHY.bodyMedium, color: COLORS.textPrimary, marginTop: 4, lineHeight: 22 }}>{value || '-'}</Text>
   </View>
 );
 

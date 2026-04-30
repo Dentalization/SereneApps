@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { fetchVideoToken } from '../services/chatService';
+import { fetchVideoToken, recordCommunicationClientEvent } from '../services/chatService';
 
 const CALL_STATES = {
   IDLE: 'idle',
@@ -51,13 +51,22 @@ export function useCallState({ userId } = {}) {
       try {
         setCallState(CALL_STATES.REQUESTING_TOKEN);
         setCallError(null);
+        recordCommunicationClientEvent(appointmentId, 'device_check_started', { surface: 'dentist_web' }).catch(() => null);
+
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          throw new Error('Koneksi internet tidak tersedia. Periksa jaringan Anda lalu coba lagi.');
+        }
 
         // Pre-flight check: ensure permissions before ringing the other side
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
           stream.getTracks().forEach(t => t.stop());
+          recordCommunicationClientEvent(appointmentId, 'device_check_passed', { camera: true, microphone: true }).catch(() => null);
         } catch (mediaError) {
           console.warn('[useCallState] Media permission error:', mediaError);
+          recordCommunicationClientEvent(appointmentId, 'device_check_failed', {
+            reason: mediaError?.name || 'media_unavailable'
+          }).catch(() => null);
           if (mediaError.name === 'NotAllowedError' || mediaError.message?.includes('denied')) {
             throw new Error('Kamera & Mikrofon tidak diizinkan. Mohon izinkan akses di browser.');
           }
@@ -82,6 +91,9 @@ export function useCallState({ userId } = {}) {
         return session;
       } catch (error) {
         console.error('[useCallState] Failed to initiate call:', error);
+        recordCommunicationClientEvent(appointmentId, 'device_check_failed', {
+          reason: error?.code || error?.message || 'call_initiation_failed'
+        }).catch(() => null);
         setCallError(error?.message || 'Failed to start video call');
         setCallState(CALL_STATES.ERROR);
         resetToIdle();

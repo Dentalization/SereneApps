@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { assertVerifyConfig } from '../communications/config.js';
 
 function isTruthy(value) {
   return String(value || '').toLowerCase() === 'true';
@@ -48,9 +49,7 @@ export function createTwilioSmsAdapter(env = process.env) {
   }
 
   async function sendVerifyOtp(to, channel = 'sms') {
-    if (!client || !verifyServiceSid) {
-      throw new Error('TWILIO_VERIFY_NOT_CONFIGURED');
-    }
+    assertVerifyConfig(env);
 
     const verification = await client.verify.v2.services(verifyServiceSid)
       .verifications
@@ -63,9 +62,7 @@ export function createTwilioSmsAdapter(env = process.env) {
   }
 
   async function checkVerifyOtp(to, code) {
-    if (!client || !verifyServiceSid) {
-      throw new Error('TWILIO_VERIFY_NOT_CONFIGURED');
-    }
+    assertVerifyConfig(env);
 
     const check = await client.verify.v2.services(verifyServiceSid)
       .verificationChecks

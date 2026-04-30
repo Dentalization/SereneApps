@@ -8,10 +8,13 @@ import VideoCallInterface from './components/VideoCallInterface';
 import PatientInfoPanel from './components/PatientInfoPanel';
 import IncomingCallModal from './components/IncomingCallModal';
 import NewConsultationModal from './components/NewConsultationModal';
+import PostCallSummaryPanel from './components/PostCallSummaryPanel';
+import PreCallChecklistModal from './components/PreCallChecklistModal';
 import { useChat } from '../../../hooks/useChat';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCallState } from '../../../hooks/useCallState';
 import { useToast } from '../../../contexts/ToastContext';
+import { recordCommunicationClientEvent } from '../../../services/chatService';
 
 const MIN_LOADING_MS = 900;
 
@@ -28,6 +31,8 @@ const Teledentistry = () => {
     messages,
     incomingCall,
     socketConnected,
+    connectionState,
+    reconnectError,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
@@ -50,6 +55,8 @@ const Teledentistry = () => {
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
+  const [showPostCallSummary, setShowPostCallSummary] = useState(false);
+  const [showPreCallChecklist, setShowPreCallChecklist] = useState(false);
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
 
@@ -107,6 +114,7 @@ const Teledentistry = () => {
       if (callState === 'connected') {
         toast.info('Call ended by the other participant.');
         endCall();
+        if (activeAppointmentId) setShowPostCallSummary(true);
       }
     };
     window.addEventListener('teledentistry:call_accepted', onAccepted);
@@ -117,7 +125,7 @@ const Teledentistry = () => {
       window.removeEventListener('teledentistry:call_declined', onDeclined);
       window.removeEventListener('teledentistry:call_ended', onEnded);
     };
-  }, [callState, videoSession, acceptCall, endCall, toast]);
+  }, [activeAppointmentId, callState, videoSession, acceptCall, endCall, toast]);
 
   // ── Ringing timeout (60s) for call initiator ──
   useEffect(() => {
@@ -191,6 +199,7 @@ const Teledentistry = () => {
     const apptId = videoSession?.appointmentId || activeAppointmentId;
     if (apptId) emitVideoCallEnded(apptId);
     endCall();
+    if (apptId) setShowPostCallSummary(true);
   };
 
   // Fix 3: Handle join error from VideoCallInterface
@@ -227,6 +236,11 @@ const Teledentistry = () => {
     if (!activeAppointmentId) return [];
     return presenceMap[activeAppointmentId] || [];
   }, [presenceMap, activeAppointmentId]);
+
+  useEffect(() => {
+    if (!activeAppointmentId) return;
+    recordCommunicationClientEvent(activeAppointmentId, 'waiting_room_entered', { surface: 'dentist_web' }).catch(() => null);
+  }, [activeAppointmentId]);
 
   if (loading || bootstrapping) {
     return (
@@ -303,7 +317,7 @@ const Teledentistry = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => handleStartVideoCall()}
+              onClick={() => setShowPreCallChecklist(true)}
               disabled={!activeAppointmentId || callState === 'requesting_token' || callState === 'ringing'}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -313,6 +327,14 @@ const Teledentistry = () => {
                 <Icon name="Video" size={16} />
               )}
               <span>{callState === 'requesting_token' ? 'Connecting...' : 'Start Instant Call'}</span>
+            </button>
+            <button
+              onClick={() => setShowPostCallSummary(true)}
+              disabled={!activeAppointmentId}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:bg-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Icon name="ClipboardList" size={16} />
+              <span>Summary</span>
             </button>
             <button
               onClick={() => setShowNewConsultation(true)}
@@ -325,10 +347,14 @@ const Teledentistry = () => {
         </div>
 
         {/* Network Banner */}
-        {!socketConnected && !loading && !bootstrapping && (
+        {activeAppointmentId && !socketConnected && !loading && !bootstrapping && (
           <div className="w-full bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 shadow-sm z-40 relative">
             <Icon name="WifiOff" size={16} className="animate-pulse" />
-            <span className="text-sm font-medium leading-none tracking-wide">Koneksi terputus. Mencoba menghubungkan kembali...</span>
+            <span className="text-sm font-medium leading-none tracking-wide">
+              {reconnectError || (connectionState === 'connecting'
+                ? 'Menghubungkan ulang sesi chat...'
+                : 'Koneksi terputus. Mencoba menghubungkan kembali...')}
+            </span>
           </div>
         )}
 
@@ -397,6 +423,21 @@ const Teledentistry = () => {
           onSubmit={handleNewConsultationSubmit}
         />
       )}
+      <PreCallChecklistModal
+        appointmentId={activeAppointmentId}
+        open={showPreCallChecklist}
+        onClose={() => setShowPreCallChecklist(false)}
+        onJoin={() => {
+          setShowPreCallChecklist(false);
+          handleStartVideoCall();
+        }}
+      />
+      <PostCallSummaryPanel
+        appointmentId={activeAppointmentId}
+        conversation={activeConversation}
+        open={showPostCallSummary && Boolean(activeAppointmentId)}
+        onClose={() => setShowPostCallSummary(false)}
+      />
     </div>
   );
 };

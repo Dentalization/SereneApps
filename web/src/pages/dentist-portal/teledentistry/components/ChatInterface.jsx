@@ -111,9 +111,20 @@ const ChatInterface = ({
 
   const renderFileContent = (msg) => {
     const resolved = resolveFileUrl(msg.fileUrl);
+    const expired = msg.mediaRetentionUntil && new Date(msg.mediaRetentionUntil).getTime() < Date.now();
+    const deleted = msg.metadata?.deleted === true;
     const openFile = () => {
       if (resolved) window.open(resolved, '_blank', 'noopener');
     };
+
+    if (msg.attachmentAvailable === false || expired || deleted || !resolved) {
+      return (
+        <div className="flex items-center space-x-2 py-1">
+          <Icon name="FileWarning" size={14} />
+          <span className="text-xs font-medium">Attachment no longer available</span>
+        </div>
+      );
+    }
 
     if (isImageFile(msg) && resolved) {
       return (

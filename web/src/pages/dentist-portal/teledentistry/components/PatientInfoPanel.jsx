@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from '../../../../components/AppIcon';
+import ParticipantInvitePanel from './ParticipantInvitePanel';
 
 const formatTimeAgo = (value) => {
   if (!value) return '—';
@@ -187,6 +188,8 @@ const PatientInfoPanel = ({
               </div>
             </div>
           )}
+
+          <ParticipantInvitePanel appointmentId={appointmentId} />
 
           <div className="p-4 text-xs text-muted space-y-2">
             <p>

@@ -2,9 +2,12 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
+import communicationsDiagnosticsRouter from './admin/communicationsDiagnostics.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+router.use('/communications', communicationsDiagnosticsRouter);
 
 // Get all dentists (admin only) - combines users with dentist role and dentist profiles
 router.get('/dentists', authenticateToken, requireRoles(['admin', 'super_admin']), async (req, res) => {

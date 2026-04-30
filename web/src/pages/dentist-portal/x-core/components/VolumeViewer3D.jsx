@@ -189,6 +189,14 @@ const IMPLANT_SAFETY_MARGIN_MM = 1.5;
 const overlayResourceMap = new WeakMap();
 const overlayAnnotationMap = new WeakMap();
 const fovSuppressedImageData = new WeakSet();
+const vtkCleanupCounters = { actors: 0, volumes: 0, mappers: 0, resources: 0, widgets: 0, workers: 0 };
+
+function bumpVtkCleanupCounter(kind, count = 1) {
+    vtkCleanupCounters[kind] = (vtkCleanupCounters[kind] || 0) + count;
+    if (import.meta.env?.DEV) {
+        console.debug('[VolumeViewer3D] cleanup counters', { ...vtkCleanupCounters });
+    }
+}
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
@@ -516,12 +524,13 @@ function disposeToothActors(renderer, actors = []) {
         if (!actor) return;
         const resources = overlayResourceMap.get(actor);
         try { renderer?.removeActor?.(actor); } catch (_) { }
-        try { actor.getMapper?.()?.delete?.(); } catch (_) { }
+        try { actor.getMapper?.()?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
         try { resources?.smoother?.delete?.(); } catch (_) { }
         try { resources?.marching?.delete?.(); } catch (_) { }
         try { resources?.maskImage?.delete?.(); } catch (_) { }
+        bumpVtkCleanupCounter('resources', ['smoother', 'marching', 'maskImage'].filter((key) => resources?.[key]).length);
         try { overlayResourceMap.delete(actor); } catch (_) { }
-        try { actor.delete?.(); } catch (_) { }
+        try { actor.delete?.(); bumpVtkCleanupCounter('actors'); } catch (_) { }
     });
 }
 
@@ -530,7 +539,7 @@ function disposeOverlayActors(renderer, actors = []) {
         if (!actor) return;
         const resources = overlayResourceMap.get(actor);
         try { renderer?.removeActor?.(actor); } catch (_) { }
-        try { actor.getMapper?.()?.delete?.(); } catch (_) { }
+        try { actor.getMapper?.()?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
         [
             resources?.source,
             resources?.tube,
@@ -540,10 +549,22 @@ function disposeOverlayActors(renderer, actors = []) {
             resources?.maskImage,
         ].forEach((resource) => {
             try { resource?.delete?.(); } catch (_) { }
+            if (resource) bumpVtkCleanupCounter('resources');
         });
         try { overlayResourceMap.delete(actor); } catch (_) { }
         try { overlayAnnotationMap.delete(actor); } catch (_) { }
-        try { actor.delete?.(); } catch (_) { }
+        try { actor.delete?.(); bumpVtkCleanupCounter('actors'); } catch (_) { }
+    });
+}
+
+function disposeGenericActors(renderer, actors = []) {
+    actors.forEach((actor) => {
+        if (!actor) return;
+        try { renderer?.removeActor?.(actor); } catch (_) { }
+        try { actor.getMapper?.()?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
+        try { overlayResourceMap.delete(actor); } catch (_) { }
+        try { overlayAnnotationMap.delete(actor); } catch (_) { }
+        try { actor.delete?.(); bumpVtkCleanupCounter('actors'); } catch (_) { }
     });
 }
 
@@ -551,12 +572,27 @@ function disposeSurfacePickActor(ctx) {
     if (!ctx?.surfacePickActor) return;
     const resources = overlayResourceMap.get(ctx.surfacePickActor);
     try { ctx.renderer?.removeActor?.(ctx.surfacePickActor); } catch (_) { }
-    try { ctx.surfacePickActor.getMapper?.()?.delete?.(); } catch (_) { }
+    try { ctx.surfacePickActor.getMapper?.()?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
     try { resources?.marching?.delete?.(); } catch (_) { }
     try { resources?.polyData?.delete?.(); } catch (_) { }
+    bumpVtkCleanupCounter('resources', ['marching', 'polyData'].filter((key) => resources?.[key]).length);
     try { overlayResourceMap.delete(ctx.surfacePickActor); } catch (_) { }
-    try { ctx.surfacePickActor.delete?.(); } catch (_) { }
+    try { ctx.surfacePickActor.delete?.(); bumpVtkCleanupCounter('actors'); } catch (_) { }
     ctx.surfacePickActor = null;
+}
+
+function disposeHeatmapVolumeActor(ctx, actor) {
+    if (!actor) return;
+    const resources = overlayResourceMap.get(actor);
+    try { ctx?.renderer?.removeVolume?.(actor); } catch (_) { }
+    try { actor.getMapper?.()?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
+    try { resources?.mapper?.delete?.(); } catch (_) { }
+    try { resources?.maskImage?.delete?.(); } catch (_) { }
+    try { resources?.ctfun?.delete?.(); } catch (_) { }
+    try { resources?.ofun?.delete?.(); } catch (_) { }
+    bumpVtkCleanupCounter('resources', ['mapper', 'maskImage', 'ctfun', 'ofun'].filter((key) => resources?.[key]).length);
+    try { overlayResourceMap.delete(actor); } catch (_) { }
+    try { actor.delete?.(); bumpVtkCleanupCounter('volumes'); } catch (_) { }
 }
 
 function syncMapperClipping(ctx, includeSlab = false) {
@@ -755,14 +791,17 @@ function disposeVolumeContext(ctx) {
 
     try { ctx.clipWidget?.subscription?.unsubscribe?.(); } catch (_) { }
     try { ctx.clipWidget?.widgetManager?.removeWidgets?.(); } catch (_) { }
-    try { ctx.clipWidget?.widgetManager?.delete?.(); } catch (_) { }
+    try { ctx.clipWidget?.widgetManager?.delete?.(); bumpVtkCleanupCounter('widgets'); } catch (_) { }
     try { ctx.clipPlane?.delete?.(); } catch (_) { }
+    try { ctx.slabPlanes?.forEach?.((plane) => plane?.delete?.()); } catch (_) { }
     try { ctx.sharedPicker?.delete?.(); } catch (_) { }
-    try { ctx.measurementActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
-    try { ctx.implantActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
+    disposeGenericActors(ctx.renderer, ctx.measurementActors || []);
+    disposeGenericActors(ctx.renderer, ctx.implantActors || []);
+    disposeGenericActors(ctx.renderer, ctx.implantSafetyActors || []);
+    disposeGenericActors(ctx.renderer, ctx.surfaceAnnotationActors || []);
+    disposeGenericActors(ctx.renderer, ctx.snapshotSurfaceAnnotationActors || []);
+    disposeGenericActors(ctx.renderer, ctx.brushPreviewActors || []);
     try { ctx.nerveActor && ctx.renderer?.removeActor?.(ctx.nerveActor); } catch (_) { }
-    try { ctx.nerveActor?.delete?.(); } catch (_) { }
-    try { ctx.brushPreviewActors?.forEach?.((actor) => { ctx.renderer?.removeActor?.(actor); }); } catch (_) { }
     disposeSurfacePickActor(ctx);
     disposeToothActors(ctx.renderer, ctx.labelActors || []);
     disposeOverlayActors(ctx.renderer, ctx.overlayActors || []);
@@ -775,8 +814,8 @@ function disposeVolumeContext(ctx) {
     try { ctx.orientationCube?.delete?.(); } catch (_) { }
 
     try { ctx.renderer?.removeVolume?.(ctx.actor); } catch (_) { }
-    try { ctx.mapper?.delete?.(); } catch (_) { }
-    try { ctx.actor?.delete?.(); } catch (_) { }
+    try { ctx.mapper?.delete?.(); bumpVtkCleanupCounter('mappers'); } catch (_) { }
+    try { ctx.actor?.delete?.(); bumpVtkCleanupCounter('volumes'); } catch (_) { }
     try { ctx.ctfun?.delete?.(); } catch (_) { }
     try { ctx.ofun?.delete?.(); } catch (_) { }
 
@@ -784,7 +823,7 @@ function disposeVolumeContext(ctx) {
         clearTimeout(ctx.sharpenTimer);
     }
 
-    try { ctx.fullScreenRenderer?.delete?.(); } catch (_) { }
+    try { ctx.fullScreenRenderer?.delete?.(); bumpVtkCleanupCounter('resources'); } catch (_) { }
 }
 
 function positionCameraForView(ctx, viewName, zoom = 1.3) {
@@ -1530,9 +1569,14 @@ const VolumeViewer3D = ({
         surfacePickWorkerPendingRef.current.clear();
         try {
             surfacePickWorkerRef.current?.terminate?.();
+            if (surfacePickWorkerRef.current) bumpVtkCleanupCounter('workers');
         } catch (_) { }
         surfacePickWorkerRef.current = null;
         const ctx = vtkContextRef.current;
+        if (heatmapVolumeActorRef.current) {
+            disposeHeatmapVolumeActor(ctx, heatmapVolumeActorRef.current);
+            heatmapVolumeActorRef.current = null;
+        }
         if (ctx?.sharpenTimer) {
             clearTimeout(ctx.sharpenTimer);
             ctx.sharpenTimer = null;
@@ -2354,6 +2398,10 @@ const VolumeViewer3D = ({
             clearTimeout(timer);
             const ctx = vtkContextRef.current;
             if (ctx) {
+                if (heatmapVolumeActorRef.current) {
+                    disposeHeatmapVolumeActor(ctx, heatmapVolumeActorRef.current);
+                    heatmapVolumeActorRef.current = null;
+                }
                 const cachedOverlay = toothOverlayCache.get(cacheKey);
                 if (cachedOverlay?.actors?.some((actor) => (ctx.labelActors || []).includes(actor))) {
                     toothOverlayCache.set(cacheKey, {
@@ -5319,8 +5367,7 @@ const VolumeViewer3D = ({
 
         if (!heatmapOverlayMode) {
             if (heatmapVolumeActorRef.current) {
-                ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
-                heatmapVolumeActorRef.current.delete();
+                disposeHeatmapVolumeActor(ctx, heatmapVolumeActorRef.current);
                 heatmapVolumeActorRef.current = null;
                 ctx.renderWindow.render();
             }
@@ -5376,8 +5423,7 @@ const VolumeViewer3D = ({
 
         if (!hasData) {
             if (heatmapVolumeActorRef.current) {
-                ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
-                heatmapVolumeActorRef.current.delete();
+                disposeHeatmapVolumeActor(ctx, heatmapVolumeActorRef.current);
                 heatmapVolumeActorRef.current = null;
                 ctx.renderWindow.render();
             }
@@ -5418,11 +5464,11 @@ const VolumeViewer3D = ({
         actor.getProperty().setInterpolationTypeToLinear();
 
         if (heatmapVolumeActorRef.current) {
-            ctx.renderer.removeVolume(heatmapVolumeActorRef.current);
-            heatmapVolumeActorRef.current.delete();
+            disposeHeatmapVolumeActor(ctx, heatmapVolumeActorRef.current);
         }
 
         actor._lastSignature = heatmapSignature;
+        setOverlayResources(actor, { mapper, maskImage, ctfun });
         heatmapVolumeActorRef.current = actor;
         ctx.renderer.addVolume(actor);
         ctx.renderWindow.render();

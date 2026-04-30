@@ -84,7 +84,7 @@ api.interceptors.request.use(
       const token = await AsyncStorage.getItem('accessToken');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('[API] Token attached to request:', config.url, `(token: ${token.substring(0, 30)}...)`);
+        console.log('[API] Auth token attached to request:', config.url);
       } else {
         console.log('[API] No token found for request:', config.url);
       }

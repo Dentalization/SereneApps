@@ -5,6 +5,31 @@ import { PrismaClient } from '@prisma/client';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+async function getAuthorizedAppointment(appointmentId, user) {
+  const apptId = BigInt(appointmentId);
+  const userId = BigInt(user.id);
+  const roles = user.roles || [];
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: apptId },
+    select: { id: true, dentistId: true, patientId: true, status: true, videoRoomRef: true }
+  });
+
+  if (!appointment) {
+    const error = new Error('APPOINTMENT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+  if (!isAdmin && userId !== appointment.dentistId && userId !== appointment.patientId) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  return appointment;
+}
+
 /**
  * @route POST /v1/appointments/:appointmentId/video/leave
  * @desc Handle logic when a participant leaves a video call
@@ -17,19 +42,7 @@ router.post('/:appointmentId/video/leave', authenticateToken, async (req, res) =
 
     console.log(`[Video] User ${userId} leaving appointment ${appointmentId}`);
 
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: apptId },
-      select: { dentistId: true, patientId: true, status: true }
-    });
-
-    if (!appointment) {
-      return res.status(404).json({ error: 'Appointment not found' });
-    }
-
-    // Verify ownership
-    if (userId !== appointment.dentistId && userId !== appointment.patientId) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+    const appointment = await getAuthorizedAppointment(appointmentId, req.user);
 
     // Record session end (fallback for missed webhooks)
     const activeSession = await prisma.videoSession.findFirst({
@@ -61,7 +74,8 @@ router.post('/:appointmentId/video/leave', authenticateToken, async (req, res) =
     await prisma.appointmentStatusHistory.create({
       data: {
         appointmentId: apptId,
-        status: appointment.status,
+        previousStatus: appointment.status,
+        newStatus: appointment.status,
         changedBy: userId,
         notes: `Participant left video session (manual)`
       }
@@ -82,6 +96,7 @@ router.get('/:appointmentId/video/sessions', authenticateToken, async (req, res)
   try {
     const { appointmentId } = req.params;
     const apptId = BigInt(appointmentId);
+    await getAuthorizedAppointment(appointmentId, req.user);
 
     const sessions = await prisma.videoSession.findMany({
       where: { appointmentId: apptId },
@@ -128,14 +143,7 @@ router.get('/:appointmentId/video/status', authenticateToken, async (req, res) =
     const { appointmentId } = req.params;
     const apptId = BigInt(appointmentId);
 
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: apptId },
-      select: { videoRoomRef: true, status: true }
-    });
-
-    if (!appointment) {
-      return res.status(404).json({ error: 'Appointment not found' });
-    }
+    const appointment = await getAuthorizedAppointment(appointmentId, req.user);
 
     return res.json({
       roomName: appointment.videoRoomRef,

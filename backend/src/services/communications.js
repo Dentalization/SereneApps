@@ -1,65 +1,264 @@
 import { PrismaClient } from '@prisma/client';
+import twilio from 'twilio';
 import { buildTwilioVideoToken } from './twilioVideo.js';
 import { queueNotificationEvent } from './notifications/index.js';
+import ConversationsAdapter from './communications/conversationsAdapter.js';
+import VideoService from './communications/videoService.js';
+import { getConversationsServiceSid, getTwilioStandardKeyConfig } from './communications/config.js';
+import {
+  appointmentScopedRoomName,
+  chatChannelNameForAppointment,
+  videoRoomNameForAppointment
+} from './communications/naming.js';
+import { logCommunicationEvent } from './communications/logging.js';
 
 const prisma = new PrismaClient();
 
-function channelNameForChat(appointmentId) {
-  return `chat_${appointmentId}`;
+let conversationsAdapter;
+let videoService;
+
+function getConversationsAdapter() {
+  if (!conversationsAdapter) conversationsAdapter = new ConversationsAdapter();
+  return conversationsAdapter;
 }
 
-function channelNameForVideo(appointmentId) {
-  return `video_${appointmentId}`;
+function getVideoService() {
+  if (!videoService) videoService = new VideoService();
+  return videoService;
 }
 
-async function ensureChatRoomMembers(room, appointment) {
+function isTransientTwilioError(error) {
+  const status = Number(error?.status || error?.statusCode);
+  const code = Number(error?.code || error?.twilioCode);
+  return status === 429 || status >= 500 || code === 20429;
+}
+
+async function withTwilioRetry(operation, { attempts = 3, label = 'twilio_operation', appointmentId } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientTwilioError(error)) {
+        throw error;
+      }
+      const delayMs = Math.min(250 * (2 ** (attempt - 1)), 2000);
+      logCommunicationEvent('provisioning_retry', {
+        appointmentId,
+        label,
+        attempt,
+        delayMs,
+        error: error.message
+      }, 'warn');
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
+function userCanAccessAppointment(user, appointment) {
+  const userId = BigInt(user.id);
+  const roles = user.roles || [];
+  const invitedParticipant = (appointment.communicationParticipants || []).some((participant) => (
+    participant.userId === userId && ['verified', 'joined'].includes(participant.status)
+  ));
+  return (
+    roles.includes('admin')
+    || roles.includes('super_admin')
+    || userId === appointment.dentistId
+    || userId === appointment.patientId
+    || invitedParticipant
+  );
+}
+
+export function communicationActorRoleForAppointment(user, appointment) {
+  if (!user || !appointment) return null;
+  const roles = user.roles || [];
+  const userId = BigInt(user.id);
+  if (userId === appointment.dentistId) return 'dentist';
+  if (userId === appointment.patientId) return 'patient';
+  const invitedParticipant = (appointment.communicationParticipants || []).find((participant) => (
+    participant.userId === userId && ['verified', 'joined'].includes(participant.status)
+  ));
+  if (invitedParticipant) return invitedParticipant.role;
+  if (roles.includes('admin') || roles.includes('super_admin')) return 'admin';
+  if (roles.includes('technical_support')) return 'support';
+  return roles[0] || null;
+}
+
+function serializeMessage(msg, appointmentId) {
+  const mediaExpired = msg.mediaRetentionUntil ? new Date(msg.mediaRetentionUntil).getTime() < Date.now() : false;
+  const attachmentDeleted = msg.metadata?.deleted === true || (msg.messageType === 'file' && !msg.fileUrl);
+  return {
+    id: msg.id.toString(),
+    chatRoomId: msg.chatRoomId.toString(),
+    senderId: msg.senderId?.toString?.() ?? null,
+    senderParticipantId: msg.senderCommunicationParticipantId || null,
+    appointmentId: appointmentId?.toString?.() ?? undefined,
+    message: msg.message,
+    messageType: msg.messageType,
+    twilioMessageSid: msg.twilioMessageSid,
+    fileUrl: msg.fileUrl,
+    fileName: msg.fileName,
+    mimeType: msg.mimeType,
+    fileSizeBytes: msg.fileSizeBytes?.toString?.() ?? null,
+    mediaRetentionUntil: msg.mediaRetentionUntil,
+    attachmentAvailable: msg.messageType !== 'file' || (!mediaExpired && !attachmentDeleted),
+    metadata: msg.metadata || {},
+    createdAt: msg.createdAt,
+    sender: msg.sender
+      ? {
+          id: msg.sender.id.toString(),
+          name: msg.sender.name,
+          email: msg.sender.email,
+          avatar: msg.sender.avatar_url
+        }
+      : msg.senderCommunicationParticipant
+        ? {
+            id: msg.senderCommunicationParticipant.id,
+            name: msg.senderCommunicationParticipant.displayName,
+            email: msg.senderCommunicationParticipant.email,
+            role: msg.senderCommunicationParticipant.role,
+            participantId: msg.senderCommunicationParticipant.id
+          }
+      : null
+  };
+}
+
+export async function recordCommunicationEvent({
+  appointmentId,
+  userId = null,
+  actorRole = null,
+  eventType,
+  provider = null,
+  providerEventId = null,
+  resourceSid = null,
+  providerSid = null,
+  metadata = {},
+  occurredAt = new Date()
+}) {
+  if (!eventType) return null;
+
+  const data = {
+    appointmentId: BigInt(appointmentId),
+    userId: userId ? BigInt(userId) : null,
+    actorRole,
+    eventType,
+    provider,
+    providerEventId,
+    resourceSid,
+    providerSid: providerSid || resourceSid,
+    metadata,
+    occurredAt
+  };
+
+  try {
+    if (provider && providerEventId) {
+      return await prisma.communicationEvent.upsert({
+        where: {
+          provider_providerEventId: {
+            provider,
+            providerEventId
+          }
+        },
+        update: { metadata, actorRole, providerSid: providerSid || resourceSid },
+        create: data
+      });
+    }
+
+    return await prisma.communicationEvent.create({ data });
+  } catch (error) {
+    logCommunicationEvent('audit_event_write_failed', {
+      appointmentId,
+      eventType,
+      provider,
+      providerEventId,
+      error: error.message
+    }, 'warn');
+    return null;
+  }
+}
+
+async function ensureChatRoomMembers(room, appointment, client = prisma) {
   if (!appointment) return;
-  const dentistId = appointment.dentistId;
-  const patientId = appointment.patientId;
-
   const now = new Date();
 
-  await prisma.chatRoomMember.upsert({
+  await client.chatRoomMember.upsert({
     where: {
-      uniq_chat_room_members_user: {
-        chat_room_id: room.id,
-        user_id: dentistId
+      chatRoomId_userId: {
+        chatRoomId: room.id,
+        userId: appointment.dentistId
       }
     },
     update: { role: 'dentist' },
     create: {
       chatRoomId: room.id,
-      userId: dentistId,
+      userId: appointment.dentistId,
       role: 'dentist',
       lastReadAt: now
     }
   });
 
-  await prisma.chatRoomMember.upsert({
+  await client.chatRoomMember.upsert({
     where: {
-      uniq_chat_room_members_user: {
-        chat_room_id: room.id,
-        user_id: patientId
+      chatRoomId_userId: {
+        chatRoomId: room.id,
+        userId: appointment.patientId
       }
     },
     update: { role: 'patient' },
     create: {
       chatRoomId: room.id,
-      userId: patientId,
+      userId: appointment.patientId,
       role: 'patient',
       lastReadAt: now
     }
   });
 }
 
-export async function ensureChatRoom({ appointmentId }) {
+export async function getAppointmentForAuthorizedUser({ appointmentId, user }) {
   const apptId = BigInt(appointmentId);
   const appointment = await prisma.appointment.findUnique({
     where: { id: apptId },
-    select: {
-      id: true,
-      dentistId: true,
-      patientId: true
+    include: {
+      chatRoom: { include: { members: true } },
+      patient: { select: { id: true, name: true, email: true } },
+      dentist: { select: { id: true, name: true, email: true } },
+      communicationParticipants: {
+        select: { id: true, userId: true, role: true, status: true }
+      }
+    }
+  });
+
+  if (!appointment) {
+    const error = new Error('APPOINTMENT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  if (!userCanAccessAppointment(user, appointment)) {
+    logCommunicationEvent('permission_denied', {
+      appointmentId: apptId,
+      userId: user.id,
+      action: 'appointment_communications_access'
+    }, 'warn');
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  return appointment;
+}
+
+export async function ensureChatRoom({ appointmentId }) {
+  const apptId = BigInt(appointmentId);
+  const channelName = chatChannelNameForAppointment(apptId);
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: apptId },
+    include: {
+      patient: { select: { id: true, name: true, email: true } },
+      dentist: { select: { id: true, name: true, email: true } }
     }
   });
 
@@ -67,81 +266,292 @@ export async function ensureChatRoom({ appointmentId }) {
     throw new Error('APPOINTMENT_NOT_FOUND');
   }
 
-  let room = await prisma.chatRoom.findUnique({ where: { appointmentId: apptId } });
-  if (!room) {
-    room = await prisma.chatRoom.create({
-      data: {
-        appointmentId: apptId,
-        channelName: channelNameForChat(apptId)
-      }
-    });
-    await prisma.appointment.update({
-      where: { id: apptId },
-      data: { chatRoomRef: room.channelName }
-    }).catch(() => null);
-  } else {
-    await prisma.appointment.update({
-      where: { id: apptId, chatRoomRef: null },
-      data: { chatRoomRef: room.channelName }
-    }).catch(() => null);
-  }
+  const room = await prisma.chatRoom.upsert({
+    where: { appointmentId: apptId },
+    update: { channelName },
+    create: {
+      appointmentId: apptId,
+      channelName
+    }
+  });
+
+  await prisma.appointment.update({
+    where: { id: apptId },
+    data: { chatRoomRef: channelName }
+  }).catch(() => null);
 
   await ensureChatRoomMembers(room, appointment);
 
   return { room, appointment };
 }
 
-export async function ensureVideoChannel({ appointmentId }) {
+export async function ensureConversationForAppointment({ appointmentId, reason = 'ensure' }) {
   const apptId = BigInt(appointmentId);
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: apptId },
-    select: {
-      id: true,
-      videoRoomRef: true
+  const { room, appointment } = await ensureChatRoom({ appointmentId: apptId });
+  const adapter = getConversationsAdapter();
+  const uniqueName = appointmentScopedRoomName(apptId);
+
+  if (room.twilio_conversation_sid) {
+    return {
+      appointment,
+      room,
+      conversationSid: room.twilio_conversation_sid,
+      uniqueName
+    };
+  }
+
+  const { sid: conversationSid } = await withTwilioRetry(
+    () => adapter.createConversation({
+      uniqueName,
+      friendlyName: `Appointment ${apptId}`
+    }),
+    { appointmentId: apptId, label: 'create_conversation' }
+  );
+
+  await Promise.all([
+    withTwilioRetry(
+      () => adapter.addParticipant({
+        conversationSid,
+        identity: appointment.patientId.toString(),
+        friendlyName: appointment.patient?.name || `Patient ${appointment.patientId}`
+      }),
+      { appointmentId: apptId, label: 'add_patient_participant' }
+    ),
+    withTwilioRetry(
+      () => adapter.addParticipant({
+        conversationSid,
+        identity: appointment.dentistId.toString(),
+        friendlyName: appointment.dentist?.name || `Dentist ${appointment.dentistId}`
+      }),
+      { appointmentId: apptId, label: 'add_dentist_participant' }
+    )
+  ]);
+
+  const updatedRoom = await prisma.chatRoom.update({
+    where: { id: room.id },
+    data: {
+      twilio_conversation_sid: conversationSid,
+      channelName: uniqueName
     }
   });
-  if (!appointment) {
-    throw new Error('APPOINTMENT_NOT_FOUND');
-  }
-  if (appointment.videoRoomRef) {
-    return { channelName: appointment.videoRoomRef };
-  }
 
-  const channelName = channelNameForVideo(apptId);
   await prisma.appointment.update({
     where: { id: apptId },
-    data: { videoRoomRef: channelName }
+    data: { chatRoomRef: uniqueName }
+  }).catch(() => null);
+
+  await recordCommunicationEvent({
+    appointmentId: apptId,
+    eventType: 'conversation_provisioned',
+    provider: 'twilio-conversations',
+    providerEventId: conversationSid,
+    resourceSid: conversationSid,
+    metadata: { reason, uniqueName }
   });
-  return { channelName };
+
+  logCommunicationEvent('conversation_provisioned', {
+    appointmentId: apptId,
+    conversationSid,
+    uniqueName,
+    reason
+  });
+
+  return {
+    appointment,
+    room: updatedRoom,
+    conversationSid,
+    uniqueName
+  };
 }
 
-export async function saveChatMessage({ appointmentId, senderId, message, messageType = 'text', fileUrl, fileName }) {
+export async function ensureVideoChannel({ appointmentId }) {
+  const apptId = BigInt(appointmentId);
+  const roomName = videoRoomNameForAppointment(apptId);
+  const video = await withTwilioRetry(
+    () => getVideoService().ensureRoom(apptId),
+    { appointmentId: apptId, label: 'ensure_video_room' }
+  );
+
+  await prisma.appointment.update({
+    where: { id: apptId },
+    data: {
+      videoRoomRef: roomName,
+      video_room_sid: video.roomSid
+    }
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: apptId,
+    eventType: 'video_room_provisioned',
+    provider: 'twilio-video',
+    providerEventId: video.roomSid,
+    resourceSid: video.roomSid,
+    metadata: { roomName }
+  });
+
+  return { channelName: roomName, roomName, roomSid: video.roomSid };
+}
+
+export async function ensureCommunicationResourcesForAppointment({ appointmentId, reason = 'ensure' }) {
+  const apptId = BigInt(appointmentId);
+
+  try {
+    const conversation = await ensureConversationForAppointment({ appointmentId: apptId, reason });
+    const video = await ensureVideoChannel({ appointmentId: apptId });
+
+    await prisma.appointment.update({
+      where: { id: apptId },
+      data: {
+        chatRoomRef: conversation.uniqueName,
+        videoRoomRef: video.roomName,
+        video_room_sid: video.roomSid,
+        commStatus: 'ready'
+      }
+    });
+
+    await recordCommunicationEvent({
+      appointmentId: apptId,
+      eventType: 'communications_ready',
+      metadata: {
+        reason,
+        conversationSid: conversation.conversationSid,
+        videoRoomSid: video.roomSid,
+        roomName: video.roomName
+      }
+    });
+
+    return {
+      appointment: conversation.appointment,
+      chatRoom: conversation.room,
+      conversationSid: conversation.conversationSid,
+      roomName: video.roomName,
+      videoRoomSid: video.roomSid,
+      commStatus: 'ready'
+    };
+  } catch (error) {
+    await prisma.appointment.update({
+      where: { id: apptId },
+      data: { commStatus: 'provisioning_failed' }
+    }).catch(() => null);
+    logCommunicationEvent('provisioning_failed', {
+      appointmentId: apptId,
+      reason,
+      error: error.message,
+      code: error.code
+    }, 'error');
+    throw error;
+  }
+}
+
+export async function addConversationParticipantForIdentity({
+  appointmentId,
+  identity,
+  friendlyName,
+  reason = 'participant_access'
+}) {
+  const resources = await ensureCommunicationResourcesForAppointment({ appointmentId, reason });
+  await withTwilioRetry(
+    () => getConversationsAdapter().addParticipant({
+      conversationSid: resources.conversationSid,
+      identity,
+      friendlyName
+    }),
+    { appointmentId: resources.appointment.id, label: 'add_external_participant' }
+  );
+  return resources;
+}
+
+export async function saveChatMessage({
+  appointmentId,
+  senderId,
+  message,
+  messageType = 'text',
+  fileUrl,
+  fileName,
+  mimeType,
+  fileSizeBytes,
+  metadata = {}
+}) {
   const apptId = BigInt(appointmentId);
   const userId = BigInt(senderId);
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: apptId },
-    select: { id: true, dentistId: true, patientId: true }
+    select: {
+      id: true,
+      dentistId: true,
+      patientId: true,
+      communicationParticipants: {
+        select: { userId: true, status: true }
+      }
+    }
   });
   if (!appointment) {
     throw new Error('APPOINTMENT_NOT_FOUND');
   }
-  if (userId !== appointment.dentistId && userId !== appointment.patientId) {
+  const isInvitedLinkedParticipant = appointment.communicationParticipants.some((participant) => (
+    participant.userId === userId && ['verified', 'joined'].includes(participant.status)
+  ));
+  if (userId !== appointment.dentistId && userId !== appointment.patientId && !isInvitedLinkedParticipant) {
     throw new Error('FORBIDDEN');
   }
-  const { room } = await ensureChatRoom({ appointmentId: apptId });
-  const newMessage = await prisma.chatMessage.create({
-    data: {
+
+  const { room, conversationSid } = await ensureConversationForAppointment({
+    appointmentId: apptId,
+    reason: 'send_message'
+  });
+
+  const messageAttributes = {
+    ...(metadata || {}),
+    type: messageType,
+    appointmentId: apptId.toString(),
+    fileUrl,
+    fileName,
+    mimeType,
+    fileSizeBytes
+  };
+
+  const sent = await withTwilioRetry(
+    () => getConversationsAdapter().sendMessage({
+      conversationSid,
+      author: userId.toString(),
+      body: message,
+      attributes: messageAttributes
+    }),
+    { appointmentId: apptId, label: 'send_conversation_message' }
+  );
+
+  const fileSizeBigInt = fileSizeBytes === undefined || fileSizeBytes === null ? null : BigInt(fileSizeBytes);
+  const newMessage = await prisma.chatMessage.upsert({
+    where: { twilioMessageSid: sent.messageSid },
+    update: {
+      message,
+      messageType,
+      fileUrl,
+      fileName,
+      mimeType,
+      fileSizeBytes: fileSizeBigInt,
+      metadata: messageAttributes
+    },
+    create: {
       chatRoomId: room.id,
       senderId: userId,
       message,
       messageType,
+      twilioMessageSid: sent.messageSid,
+      createdAt: sent.dateCreated ? new Date(sent.dateCreated) : new Date(),
       fileUrl,
-      fileName
+      fileName,
+      mimeType,
+      fileSizeBytes: fileSizeBigInt,
+      metadata: messageAttributes
     },
     include: {
       sender: {
         select: { id: true, name: true, email: true, avatar_url: true }
+      },
+      senderCommunicationParticipant: {
+        select: { id: true, displayName: true, email: true, role: true }
       }
     }
   });
@@ -154,31 +564,35 @@ export async function saveChatMessage({ appointmentId, senderId, message, messag
   await prisma.chatRoomMember.updateMany({
     where: {
       chatRoomId: room.id,
-      userId: userId
+      userId
     },
     data: { lastReadAt: new Date() }
   });
 
+  await recordCommunicationEvent({
+    appointmentId: apptId,
+    userId,
+    actorRole: userId === appointment.dentistId ? 'dentist' : userId === appointment.patientId ? 'patient' : 'participant',
+    eventType: 'message_sent',
+    provider: 'twilio-conversations',
+    providerEventId: sent.messageSid,
+    resourceSid: conversationSid,
+    metadata: {
+      messageType,
+      chatRoomId: room.id.toString()
+    }
+  });
+
+  logCommunicationEvent('message_synced', {
+    appointmentId: apptId,
+    chatRoomId: room.id,
+    messageId: newMessage.id,
+    twilioMessageSid: newMessage.twilioMessageSid,
+    source: 'local_send'
+  });
+
   return {
-    message: {
-      id: newMessage.id.toString(),
-      chatRoomId: newMessage.chatRoomId.toString(),
-      senderId: newMessage.senderId.toString(),
-      appointmentId: appointment.id.toString(),
-      message: newMessage.message,
-      messageType: newMessage.messageType,
-      fileUrl: newMessage.fileUrl,
-      fileName: newMessage.fileName,
-      createdAt: newMessage.createdAt,
-      sender: newMessage.sender
-        ? {
-            id: newMessage.sender.id.toString(),
-            name: newMessage.sender.name,
-            email: newMessage.sender.email,
-            avatar: newMessage.sender.avatar_url
-          }
-        : null
-    },
+    message: serializeMessage(newMessage, appointment.id),
     channelName: room.channelName,
     appointmentId: appointment.id.toString(),
     participants: {
@@ -202,30 +616,14 @@ export async function fetchChatMessages({ appointmentId, limit = 50, before }) {
     include: {
       sender: {
         select: { id: true, name: true, email: true, avatar_url: true }
+      },
+      senderCommunicationParticipant: {
+        select: { id: true, displayName: true, email: true, role: true }
       }
     }
   });
 
-  return messages
-    .map(msg => ({
-      id: msg.id.toString(),
-      chatRoomId: msg.chatRoomId.toString(),
-      senderId: msg.senderId.toString(),
-      message: msg.message,
-      messageType: msg.messageType,
-      fileUrl: msg.fileUrl,
-      fileName: msg.fileName,
-      createdAt: msg.createdAt,
-      sender: msg.sender
-        ? {
-            id: msg.sender.id.toString(),
-            name: msg.sender.name,
-            email: msg.sender.email,
-            avatar: msg.sender.avatar_url
-          }
-        : null
-    }))
-    .reverse();
+  return messages.map((msg) => serializeMessage(msg, apptId)).reverse();
 }
 
 export async function updateLastRead({ appointmentId, userId }) {
@@ -234,13 +632,22 @@ export async function updateLastRead({ appointmentId, userId }) {
   const { room } = await ensureChatRoom({ appointmentId: apptId });
   await prisma.chatRoomMember.update({
     where: {
-      uniq_chat_room_members_user: {
-        chat_room_id: room.id,
-        user_id: userBigInt
+      chatRoomId_userId: {
+        chatRoomId: room.id,
+        userId: userBigInt
       }
     },
     data: { lastReadAt: new Date() }
   }).catch(() => null);
+
+  await recordCommunicationEvent({
+    appointmentId: apptId,
+    userId: userBigInt,
+    eventType: 'message_read',
+    metadata: {
+      chatRoomId: room.id.toString()
+    }
+  });
 }
 
 export async function listChatRoomsForUser(userId) {
@@ -260,7 +667,10 @@ export async function listChatRoomsForUser(userId) {
             orderBy: { createdAt: 'desc' },
             take: 1,
             include: {
-              sender: { select: { id: true, name: true, email: true, avatar_url: true } }
+              sender: { select: { id: true, name: true, email: true, avatar_url: true } },
+              senderCommunicationParticipant: {
+                select: { id: true, displayName: true, email: true, role: true }
+              }
             }
           }
         }
@@ -286,6 +696,8 @@ export async function listChatRoomsForUser(userId) {
         appointmentId: appointment.id.toString(),
         chatRoomId: room.id.toString(),
         channelName: room.channelName,
+        conversationSid: room.twilio_conversation_sid || null,
+        commStatus: appointment.commStatus,
         patient: appointment.patient
           ? {
               id: appointment.patient.id.toString(),
@@ -301,25 +713,7 @@ export async function listChatRoomsForUser(userId) {
               email: appointment.dentist.email
             }
           : null,
-        lastMessage: lastMessage
-          ? {
-              id: lastMessage.id.toString(),
-              senderId: lastMessage.senderId.toString(),
-              message: lastMessage.message,
-              messageType: lastMessage.messageType,
-              fileUrl: lastMessage.fileUrl,
-              fileName: lastMessage.fileName,
-              createdAt: lastMessage.createdAt,
-              sender: lastMessage.sender
-                ? {
-                    id: lastMessage.sender.id.toString(),
-                    name: lastMessage.sender.name,
-                    email: lastMessage.sender.email,
-                    avatar: lastMessage.sender.avatar_url
-                  }
-                : null
-            }
-          : null,
+        lastMessage: lastMessage ? serializeMessage(lastMessage, appointment.id) : null,
         unreadCount,
         lastReadAt: member.lastReadAt,
         role: member.role
@@ -349,7 +743,7 @@ export async function generateVideoAccessToken({ appointmentId, userId, expireSe
     throw new Error('FORBIDDEN');
   }
 
-  const { channelName } = await ensureVideoChannel({ appointmentId: apptId });
+  const { channelName, roomSid } = await ensureVideoChannel({ appointmentId: apptId });
   const token = buildTwilioVideoToken({
     roomName: channelName,
     identity: userBigInt.toString(),
@@ -359,8 +753,261 @@ export async function generateVideoAccessToken({ appointmentId, userId, expireSe
   return {
     roomName: channelName,
     channelName,
+    roomSid,
     token,
     expireSeconds
+  };
+}
+
+function buildWaitingRoomState(appointment) {
+  const earlyMinutes = parseInt(process.env.COMM_WAITING_ROOM_EARLY_MINUTES || '15', 10);
+  const graceMinutes = parseInt(process.env.COMM_WAITING_ROOM_GRACE_MINUTES || '60', 10);
+  const now = Date.now();
+  const startsAt = new Date(appointment.startsAt).getTime();
+  const endsAt = new Date(appointment.endsAt).getTime();
+  const opensAt = startsAt - earlyMinutes * 60_000;
+  const closesAt = endsAt + graceMinutes * 60_000;
+  const paymentReady = ['confirmed', 'completed'].includes(appointment.status) || appointment.commStatus === 'ready';
+  const withinVideoWindow = now >= opensAt && now <= closesAt;
+  let state = 'ready';
+
+  if (!paymentReady) {
+    state = 'payment_pending';
+  } else if (now < opensAt) {
+    state = 'scheduled_waiting';
+  } else if (now > closesAt) {
+    state = 'ended';
+  }
+
+  return {
+    state,
+    paymentReady,
+    canChat: paymentReady,
+    canJoinVideo: paymentReady && withinVideoWindow,
+    opensAt: new Date(opensAt).toISOString(),
+    startsAt: appointment.startsAt,
+    endsAt: appointment.endsAt,
+    closesAt: new Date(closesAt).toISOString()
+  };
+}
+
+function buildCombinedTwilioToken({ identity, roomName, ttl = 3600 }) {
+  const config = getTwilioStandardKeyConfig();
+  const serviceSid = getConversationsServiceSid();
+  const AccessToken = twilio.jwt.AccessToken;
+  const token = new AccessToken(config.accountSid, config.apiKeySid, config.apiKeySecret, {
+    identity,
+    ttl
+  });
+  const ConversationsGrant = AccessToken.ConversationsGrant || AccessToken.ChatGrant;
+  token.addGrant(new ConversationsGrant({ serviceSid }));
+  token.addGrant(new AccessToken.VideoGrant({ room: roomName }));
+  return {
+    token: token.toJwt(),
+    expiresAt: new Date(Date.now() + ttl * 1000).toISOString()
+  };
+}
+
+export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3600 }) {
+  const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user });
+  const waitingRoom = buildWaitingRoomState(appointment);
+
+  if (!waitingRoom.paymentReady) {
+    const error = new Error('COMMUNICATIONS_NOT_READY');
+    error.status = 409;
+    error.waitingRoom = waitingRoom;
+    throw error;
+  }
+
+  const resources = appointment.commStatus === 'ready'
+    && appointment.chatRoom?.twilio_conversation_sid
+    && appointment.videoRoomRef
+    && appointment.video_room_sid
+    ? {
+        chatRoom: appointment.chatRoom,
+        conversationSid: appointment.chatRoom.twilio_conversation_sid,
+        roomName: appointment.videoRoomRef,
+        videoRoomSid: appointment.video_room_sid
+      }
+    : await ensureCommunicationResourcesForAppointment({
+        appointmentId: appointment.id,
+        reason: 'token_issuance'
+      });
+
+  const identity = user.id.toString();
+  const tokenData = buildCombinedTwilioToken({
+    identity,
+    roomName: resources.roomName,
+    ttl
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole: communicationActorRoleForAppointment(user, appointment),
+    eventType: 'token_issued',
+    metadata: {
+      identity,
+      roomName: resources.roomName,
+      conversationSid: resources.conversationSid,
+      expiresAt: tokenData.expiresAt
+    }
+  });
+
+  logCommunicationEvent('token_issued', {
+    appointmentId: appointment.id,
+    userId: user.id,
+    identity,
+    roomName: resources.roomName,
+    conversationSid: resources.conversationSid,
+    expiresAt: tokenData.expiresAt
+  });
+
+  return {
+    appointmentId: appointment.id.toString(),
+    identity,
+    token: tokenData.token,
+    expiresAt: tokenData.expiresAt,
+    grants: ['conversations', 'video'],
+    waitingRoom,
+    chat: {
+      token: tokenData.token,
+      conversationSid: resources.conversationSid,
+      channelName: resources.chatRoom?.channelName || appointmentScopedRoomName(appointment.id)
+    },
+    video: {
+      token: tokenData.token,
+      roomName: resources.roomName,
+      roomSid: resources.videoRoomSid,
+      canJoin: waitingRoom.canJoinVideo
+    },
+    // Backward-compatible fields for existing web/mobile clients.
+    conversationSid: resources.conversationSid,
+    roomName: resources.roomName,
+    channelName: resources.roomName,
+    videoToken: tokenData.token
+  };
+}
+
+export async function issueExternalParticipantScopedToken({ appointmentId, participant, ttl = 3600 }) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: BigInt(appointmentId) },
+    include: { chatRoom: true }
+  });
+  if (!appointment) {
+    const error = new Error('APPOINTMENT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const waitingRoom = buildWaitingRoomState(appointment);
+  if (!waitingRoom.paymentReady) {
+    const error = new Error('COMMUNICATIONS_NOT_READY');
+    error.status = 409;
+    error.waitingRoom = waitingRoom;
+    throw error;
+  }
+
+  const resources = await ensureCommunicationResourcesForAppointment({
+    appointmentId: appointment.id,
+    reason: 'participant_token_issuance'
+  });
+  const identity = participant.identity;
+  const tokenData = buildCombinedTwilioToken({
+    identity,
+    roomName: resources.roomName,
+    ttl
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: participant.userId || null,
+    actorRole: participant.role,
+    eventType: 'token_issued',
+    metadata: {
+      participantId: participant.id,
+      identity,
+      roomName: resources.roomName,
+      conversationSid: resources.conversationSid,
+      expiresAt: tokenData.expiresAt
+    }
+  });
+
+  logCommunicationEvent('token_issued', {
+    appointmentId: appointment.id,
+    participantId: participant.id,
+    actorRole: participant.role,
+    roomName: resources.roomName,
+    conversationSid: resources.conversationSid,
+    expiresAt: tokenData.expiresAt
+  });
+
+  return {
+    appointmentId: appointment.id.toString(),
+    identity,
+    token: tokenData.token,
+    expiresAt: tokenData.expiresAt,
+    grants: ['conversations', 'video'],
+    waitingRoom,
+    chat: {
+      token: tokenData.token,
+      conversationSid: resources.conversationSid,
+      channelName: resources.chatRoom?.channelName || appointmentScopedRoomName(appointment.id)
+    },
+    video: {
+      token: tokenData.token,
+      roomName: resources.roomName,
+      roomSid: resources.videoRoomSid,
+      canJoin: waitingRoom.canJoinVideo
+    },
+    conversationSid: resources.conversationSid,
+    roomName: resources.roomName,
+    channelName: resources.roomName,
+    videoToken: tokenData.token
+  };
+}
+
+export async function getCommunicationHealth({ appointmentId, user }) {
+  const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user });
+  const events = await prisma.communicationEvent.findMany({
+    where: { appointmentId: appointment.id },
+    orderBy: { occurredAt: 'desc' },
+    take: 25
+  });
+  const activeVideoSessions = await prisma.videoSession.findMany({
+    where: {
+      appointmentId: appointment.id,
+      leftAt: null
+    },
+    orderBy: { joinedAt: 'desc' }
+  });
+
+  return {
+    appointmentId: appointment.id.toString(),
+    status: appointment.status,
+    commStatus: appointment.commStatus,
+    chatRoomRef: appointment.chatRoomRef,
+    videoRoomRef: appointment.videoRoomRef,
+    conversationSid: appointment.chatRoom?.twilio_conversation_sid || null,
+    videoRoomSid: appointment.video_room_sid || null,
+    waitingRoom: buildWaitingRoomState(appointment),
+    activeVideoSessions: activeVideoSessions.map((session) => ({
+      id: session.id.toString(),
+      userId: session.userId.toString(),
+      joinedAt: session.joinedAt
+    })),
+    events: events.map((event) => ({
+      id: event.id.toString(),
+      eventType: event.eventType,
+      userId: event.userId?.toString?.() ?? null,
+      actorRole: event.actorRole,
+      provider: event.provider,
+      providerEventId: event.providerEventId,
+      resourceSid: event.resourceSid,
+      providerSid: event.providerSid || event.resourceSid,
+      metadata: event.metadata || {},
+      occurredAt: event.occurredAt
+    }))
   };
 }
 
@@ -379,3 +1026,7 @@ export async function emitAppointmentEvent({ type, appointmentId, payload = {} }
     });
   }
 }
+
+export const __testables = {
+  buildWaitingRoomState
+};

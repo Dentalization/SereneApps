@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { ensureChatRoom, ensureVideoChannel, emitAppointmentEvent } from '../communications.js';
+import { ensureCommunicationResourcesForAppointment, emitAppointmentEvent } from '../communications.js';
 import { queueNotificationEvent } from '../notifications/index.js';
 
 const prisma = new PrismaClient();
@@ -48,28 +48,23 @@ async function syncCommunications(appointment, status) {
   const appointmentId = appointment.id;
 
   if (status === 'confirmed') {
-    const { room } = await ensureChatRoom({ appointmentId });
-    const videoRoom = await ensureVideoChannel({ appointmentId });
-    await prisma.appointment.update({
-      where: { id: appointmentId },
-      data: {
-        chatRoomRef: room.channelName,
-        videoRoomRef: videoRoom.channelName,
-        commStatus: 'ready'
-      }
-    }).catch(() => null);
+    const resources = await ensureCommunicationResourcesForAppointment({
+      appointmentId,
+      reason: 'payment_status_sync'
+    });
 
     await queueNotificationEvent({
       eventType: 'chat_invite',
       appointmentId,
       payload: {
-        roomName: room.channelName
+        roomName: resources.roomName,
+        conversationSid: resources.conversationSid
       }
     }).catch((error) => {
       console.error('Chat invite notification error:', error);
     });
 
-    return { chatRoomRef: room.channelName, videoRoomRef: videoRoom.channelName };
+    return { chatRoomRef: resources.chatRoom.channelName, videoRoomRef: resources.roomName };
   }
 
   if (['payment_failed', 'cancelled'].includes(status)) {
