@@ -1,0 +1,42 @@
+# Project Instructions: SereneApps Teledentistry Feature
+
+These instructions are intended for AI assistants (like Claude) working on the Teledentistry module of SereneApps.
+
+## 1. Technical Stack
+- **Backend**: Node.js (ES Modules), Express, Prisma ORM, PostgreSQL.
+- **Web**: React, Tailwind CSS, vtk.js (for X-Core imaging).
+- **Mobile**: React Native, Twilio SDKs.
+- **Communications**: Twilio Video, Twilio Conversations (Chat), Twilio Verify v2 (OTP).
+
+## 2. Core Architecture Patterns
+- **Session Scoping**: All teledentistry sessions MUST be scoped to an `Appointment`. Access tokens should be generated using the appointment ID to ensure correct permission grants.
+- **Identity & Access**: 
+    - Use `GET /communications/appointments/:id/token` for all session initiations.
+    - Tokens must include both Video and Chat grants.
+- **Chat Synchronization**: 
+    - The `chat_messages` table in the local database is the source of truth for history.
+    - All messages sent via Twilio MUST be synchronized back via the `chatWebhookHandler.js`.
+    - Never rely solely on Twilio's cloud storage for long-term history.
+- **Idempotency**: All webhooks (Twilio, Midtrans) must use the idempotency service (`src/services/webhooks/idempotency.js`) to prevent duplicate processing.
+
+## 3. Coding Standards
+- **Backend**:
+    - Always use `import/export` (ESM). No `require()`.
+    - Use Prisma for all database queries. Avoid raw SQL unless performance-critical.
+    - Follow the established directory structure: `routes/` for API definitions, `services/` for business logic, `adapters/` for 3D/third-party wrappers.
+- **Frontend/Mobile**:
+    - Use functional components and hooks.
+    - Keep UI components separate from business logic hooks (e.g., `useChat.js`, `useTwilioVideoClient.js`).
+    - Use Tailwind CSS for styling on Web.
+
+## 4. Key Domains & File Paths
+- **Backend Communications**: `backend/src/services/communications/`
+- **Backend Webhooks**: `backend/src/routes/webhooks/`
+- **Dentist Portal Teledentistry**: `web/src/pages/dentist-portal/teledentistry/`
+- **Patient Mobile Chat/Video**: `mobile/src/hooks/useChat.js`, `mobile/src/hooks/useTwilioVideoClient.js`
+- **X-Core Integration**: When working on `VolumeViewer3D.jsx`, ensure vtk.js actors are cleaned up correctly to prevent memory leaks in the teledentistry overlay.
+
+## 5. Development Workflow
+- **Prisma**: If the schema changes, always run `npx prisma generate` and update the local migration files.
+- **Environment**: Always verify the presence of `TWILIO_CONVERSATIONS_SERVICE_SID` and `TWILIO_VERIFY_SERVICE_SID` when debugging communication issues.
+- **Mocking**: Do not mock Twilio in development unless explicitly requested; use the development API keys provided in `.env`.

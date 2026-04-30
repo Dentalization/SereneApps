@@ -36,15 +36,76 @@ export async function uploadAttachment(appointmentId, file) {
   return data?.message;
 }
 
-export async function fetchVideoToken(appointmentId, role = 'publisher') {
+export async function fetchAppointmentCommunicationsToken(appointmentId) {
+  const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/token`);
+  return data;
+}
+
+export async function fetchVideoToken(appointmentId) {
   try {
-    const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/video/token`, { role });
-    // Normalize: always expose roomName regardless of backend key
+    const data = await fetchAppointmentCommunicationsToken(appointmentId);
     return {
       ...data,
-      roomName: data.roomName || data.channelName,
+      token: data.video?.token || data.videoToken || data.token,
+      roomName: data.video?.roomName || data.roomName || data.channelName,
+      roomSid: data.video?.roomSid || data.roomSid,
+      waitingRoom: data.waitingRoom,
     };
   } catch (err) {
     throw { code: 'VIDEO_TOKEN_FETCH_FAILED', message: err.message };
   }
+}
+
+export async function recordCommunicationClientEvent(appointmentId, eventType, metadata = {}) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/events`, {
+    eventType,
+    provider: 'web',
+    metadata
+  });
+  return data?.event || null;
+}
+
+export async function fetchClinicalSummary(appointmentId) {
+  const { data } = await authHttp.get(`/appointments/${appointmentId}/clinical-summary`);
+  return data;
+}
+
+export async function saveClinicalSummaryDraft(appointmentId, payload) {
+  const { data } = await authHttp.put(`/appointments/${appointmentId}/clinical-summary/draft`, payload);
+  return data;
+}
+
+export async function finalizeClinicalSummary(appointmentId, payload) {
+  const { data } = await authHttp.post(`/appointments/${appointmentId}/clinical-summary/finalize`, payload);
+  return data;
+}
+
+export async function listCommunicationParticipants(appointmentId) {
+  const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/participants`);
+  return data?.participants || [];
+}
+
+export async function inviteCommunicationParticipant(appointmentId, payload) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/invite`, payload);
+  return data;
+}
+
+export async function revokeCommunicationParticipant(appointmentId, participantId) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/${participantId}/revoke`);
+  return data?.participant;
+}
+
+export async function fetchCommunicationDiagnostics(appointmentId) {
+  const { data } = await authHttp.get(`/admin/communications/appointments/${appointmentId}/diagnostics`);
+  return data;
+}
+
+export async function fetchCommunicationTimeline(appointmentId) {
+  const { data } = await authHttp.get(`/admin/communications/appointments/${appointmentId}/timeline`);
+  return data;
+}
+
+export async function reconcileCommunicationDiagnostics(appointmentId) {
+  const { data } = await authHttp.post(`/admin/communications/appointments/${appointmentId}/reconcile`);
+  return data;
 }

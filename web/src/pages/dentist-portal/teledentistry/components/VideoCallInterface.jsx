@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useTwilioVideoClient } from '../../../../hooks/useTwilioVideoClient';
+import { recordCommunicationClientEvent } from '../../../../services/chatService';
+import NetworkQualityBadge from './NetworkQualityBadge';
 
 const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError, remoteParticipant }) => {
   // remoteParticipant = { name, avatar } — the person on the other end
@@ -16,11 +18,14 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
   const controlsHideTimerRef = useRef(null);
   const [showControls, setShowControls] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
+  const lastQualityEventAtRef = useRef(0);
 
   const {
     join,
     leave,
     isJoined,
+    connectionState,
+    reconnectError,
     audioEnabled,
     videoEnabled,
     networkQuality,
@@ -110,6 +115,25 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (!videoSession?.appointmentId || networkQuality > 1) return;
+    const now = Date.now();
+    if (now - lastQualityEventAtRef.current < 60_000) return;
+    lastQualityEventAtRef.current = now;
+    recordCommunicationClientEvent(videoSession.appointmentId, 'network_quality_degraded', {
+      level: networkQuality,
+      surface: 'dentist_web'
+    }).catch(() => null);
+  }, [networkQuality, videoSession?.appointmentId]);
+
+  useEffect(() => {
+    if (!videoSession?.appointmentId || connectionState !== 'reconnecting') return;
+    recordCommunicationClientEvent(videoSession.appointmentId, 'participant_reconnected', {
+      surface: 'dentist_web',
+      state: connectionState
+    }).catch(() => null);
+  }, [connectionState, videoSession?.appointmentId]);
+
   const resetControlsTimer = () => {
     setShowControls(true);
     if (controlsHideTimerRef.current) {
@@ -150,21 +174,19 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-medium">{remoteName}</h3>
-                <div className="flex items-center gap-0.5" title={`Signal quality: ${networkQuality}/5`}>
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <div
-                      key={level}
-                      className={`w-1 h-3 rounded-full ${
-                        level <= networkQuality ? 'bg-emerald-500' : 'bg-white/20'
-                      }`}
-                      style={{ height: `${level * 20 + 20}%` }}
-                    />
-                  ))}
-                </div>
+                <NetworkQualityBadge level={networkQuality} compact />
               </div>
               <p className="text-xs text-gray-300">
-                {isJoined ? 'Connected' : 'Connecting'} • {formatDuration(callDuration)}
+                {connectionState === 'reconnecting' ? 'Reconnecting' : isJoined ? 'Connected' : 'Connecting'} • {formatDuration(callDuration)}
               </p>
+              {reconnectError && (
+                <p className="text-xs text-amber-200 mt-0.5">{reconnectError}</p>
+              )}
+              {networkQuality <= 1 && (
+                <p className="text-xs text-amber-100 mt-0.5">
+                  Kualitas jaringan buruk. Matikan video bila audio mulai terputus.
+                </p>
+              )}
             </div>
           </div>
         </div>

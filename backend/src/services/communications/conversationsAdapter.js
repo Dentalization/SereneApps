@@ -1,13 +1,21 @@
 import twilio from 'twilio';
+import {
+  getConversationsServiceSid,
+  getTwilioStandardKeyConfig
+} from './config.js';
 
 class ConversationsAdapter {
   constructor() {
+    const config = getTwilioStandardKeyConfig();
     this.client = twilio(
-      process.env.TWILIO_API_KEY_SID, 
-      process.env.TWILIO_API_KEY_SECRET, 
-      { accountSid: process.env.TWILIO_ACCOUNT_SID }
+      config.apiKeySid,
+      config.apiKeySecret,
+      { accountSid: config.accountSid }
     );
-    this.serviceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+    this.accountSid = config.accountSid;
+    this.apiKeySid = config.apiKeySid;
+    this.apiKeySecret = config.apiKeySecret;
+    this.serviceSid = getConversationsServiceSid();
   }
 
   async createConversation({ uniqueName, friendlyName }) {
@@ -20,18 +28,16 @@ class ConversationsAdapter {
       return { sid: conversation.sid, uniqueName: conversation.uniqueName };
     } catch (err) {
       if (err.code === 50200) {
-        // Conversation already exists: fetch existing by uniqueName and return it
-        const conversations = await this.client.conversations.v1
+        const existing = await this.client.conversations.v1
           .services(this.serviceSid)
-          .conversations
-          .list({ limit: 50 });
-          
-        const existing = conversations.find(c => c.uniqueName === uniqueName);
-        if (existing) {
-          return { sid: existing.sid, uniqueName: existing.uniqueName };
-        }
+          .conversations(uniqueName)
+          .fetch();
+        return { sid: existing.sid, uniqueName: existing.uniqueName };
       }
-      throw { code: 'TWILIO_CONVERSATIONS_ERROR', message: err.message, twilioCode: err.code };
+      const error = new Error('TWILIO_CONVERSATIONS_ERROR');
+      error.twilioMessage = err.message;
+      error.twilioCode = err.code;
+      throw error;
     }
   }
 
@@ -57,9 +63,12 @@ class ConversationsAdapter {
       .services(this.serviceSid)
       .conversations(conversationSid)
       .messages
-      .create({ author, body, attributes: JSON.stringify(attributes) });
+      .create({ author, body, attributes: JSON.stringify(attributes || {}) });
       
-    return { messageSid: message.sid };
+    return {
+      messageSid: message.sid,
+      dateCreated: message.dateCreated
+    };
   }
 
   async deleteConversation(conversationSid) {
@@ -72,9 +81,9 @@ class ConversationsAdapter {
   async generateAccessToken({ identity, ttl = 3600 }) {
     const AccessToken = twilio.jwt.AccessToken;
     const accessToken = new AccessToken(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_API_KEY_SID,
-      process.env.TWILIO_API_KEY_SECRET,
+      this.accountSid,
+      this.apiKeySid,
+      this.apiKeySecret,
       { identity, ttl }
     );
     

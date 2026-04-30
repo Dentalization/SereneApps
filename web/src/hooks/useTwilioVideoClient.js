@@ -15,6 +15,8 @@ export function useTwilioVideoClient() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [networkQuality, setNetworkQuality] = useState(5); // 0-5
+  const [connectionState, setConnectionState] = useState('disconnected');
+  const [reconnectError, setReconnectError] = useState(null);
 
   const detachFromElement = (track, element) => {
     if (!track) return;
@@ -81,6 +83,7 @@ export function useTwilioVideoClient() {
     remoteElementRef.current = null;
 
     setIsConnected(false);
+    setConnectionState('disconnected');
     setAudioEnabled(true);
     setVideoEnabled(true);
   }, []);
@@ -100,6 +103,8 @@ export function useTwilioVideoClient() {
 
       let room;
       try {
+        setConnectionState('connecting');
+        setReconnectError(null);
         room = await connect(token, {
           name: roomName,
           networkQuality: true,
@@ -115,12 +120,27 @@ export function useTwilioVideoClient() {
       }
       roomRef.current = room;
       setIsConnected(true);
+      setConnectionState('connected');
       setAudioEnabled(true);
       setVideoEnabled(true);
       setNetworkQuality(room.localParticipant.networkQualityLevel || 5);
 
       room.localParticipant.on('networkQualityLevelChanged', (level) => {
         setNetworkQuality(level);
+      });
+
+      room.on('reconnecting', (error) => {
+        setConnectionState('reconnecting');
+        setReconnectError(error?.message || 'Video connection is recovering');
+      });
+      room.on('reconnected', () => {
+        setConnectionState('connected');
+        setReconnectError(null);
+      });
+      room.on('disconnected', (_room, error) => {
+        setConnectionState('disconnected');
+        setIsConnected(false);
+        if (error) setReconnectError(error.message || 'Video disconnected');
       });
 
       const attachLocalTracks = () => {
@@ -170,6 +190,8 @@ export function useTwilioVideoClient() {
     join,
     leave,
     isJoined: isConnected,
+    connectionState,
+    reconnectError,
     audioEnabled,
     videoEnabled,
     networkQuality,

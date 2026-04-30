@@ -1,16 +1,16 @@
 import Twilio from 'twilio';
+import { getTwilioStandardKeyConfig } from './communications/config.js';
 
 const { AccessToken } = Twilio.jwt;
 const { VideoGrant } = AccessToken;
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
-const TWILIO_VIDEO_API_KEY_SID = process.env.TWILIO_VIDEO_API_KEY_SID || '';
-const TWILIO_VIDEO_API_KEY_SECRET = process.env.TWILIO_VIDEO_API_KEY_SECRET || '';
-
 function ensureVideoConfig() {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_VIDEO_API_KEY_SID || !TWILIO_VIDEO_API_KEY_SECRET) {
+  try {
+    return getTwilioStandardKeyConfig();
+  } catch (err) {
     const error = new Error('TWILIO_VIDEO_CONFIG_MISSING');
     error.status = 500;
+    error.missing = err.missing;
     throw error;
   }
 }
@@ -22,9 +22,9 @@ export function buildTwilioVideoToken({ roomName, identity, expireSeconds = 3600
     throw error;
   }
 
-  ensureVideoConfig();
+  const config = ensureVideoConfig();
 
-  const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_VIDEO_API_KEY_SID, TWILIO_VIDEO_API_KEY_SECRET, {
+  const token = new AccessToken(config.accountSid, config.apiKeySid, config.apiKeySecret, {
     ttl: expireSeconds
   });
 

@@ -289,6 +289,9 @@ model Appointment {
   chatRoom           ChatRoom?
   paymentIntents     PaymentIntent[]            @relation("AppointmentPaymentIntents")
   videoSessions      VideoSession[]
+  communicationEvents CommunicationEvent[]
+  clinicalSummary    AppointmentClinicalSummary?
+  communicationParticipants AppointmentCommunicationParticipant[]
 
   @@index([dentistId, startsAt], map: "idx_appointments_dentist_time")
   @@index([patientId, startsAt], map: "idx_appointments_patient_time")
@@ -378,18 +381,25 @@ model ChatRoom {
 model ChatMessage {
   id          BigInt   @id @default(autoincrement())
   chatRoomId  BigInt   @map("chat_room_id")
-  senderId    BigInt   @map("sender_id")
+  senderId    BigInt?  @map("sender_id")
+  senderCommunicationParticipantId String? @map("sender_communication_participant_id") @db.Uuid
   message     String
   messageType      String   @default("text") @map("message_type") @db.VarChar
   twilioMessageSid String?  @unique @map("twilio_message_sid") @db.VarChar(255)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   fileUrl          String?  @map("file_url")
   fileName         String?  @map("file_name")
+  mimeType         String?  @map("mime_type") @db.VarChar(120)
+  fileSizeBytes    BigInt?  @map("file_size_bytes")
+  mediaRetentionUntil DateTime? @map("media_retention_until") @db.Timestamptz(6)
+  metadata         Json?    @default("{}")
   chatRoom    ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sender      User?    @relation(fields: [senderId], references: [id], onUpdate: NoAction)
+  senderCommunicationParticipant AppointmentCommunicationParticipant? @relation(fields: [senderCommunicationParticipantId], references: [id], onUpdate: NoAction)
 
   @@index([chatRoomId, createdAt(sort: Desc)], map: "idx_chat_messages_room_created_at")
   @@index([senderId, createdAt(sort: Desc)], map: "idx_chat_messages_sender")
+  @@index([senderCommunicationParticipantId, createdAt(sort: Desc)], map: "idx_chat_messages_comm_participant")
   @@index([createdAt(sort: Desc)], map: "idx_chat_messages_created_at")
   @@map("chat_messages")
 }
@@ -567,6 +577,80 @@ model WebhookReceipt {
   @@index([status, nextAttemptAt], map: "idx_webhook_receipts_status_next_attempt")
   @@index([provider, receivedAt(sort: Desc)], map: "idx_webhook_receipts_provider_received_at")
   @@map("webhook_receipts")
+}
+
+model CommunicationEvent {
+  id              BigInt      @id @default(autoincrement())
+  appointmentId   BigInt      @map("appointment_id")
+  userId          BigInt?     @map("user_id")
+  actorRole       String?     @map("actor_role") @db.VarChar(32)
+  eventType       String      @map("event_type") @db.VarChar(64)
+  provider        String?     @db.VarChar(32)
+  providerEventId String?     @map("provider_event_id") @db.VarChar(191)
+  resourceSid     String?     @map("resource_sid") @db.VarChar(191)
+  providerSid     String?     @map("provider_sid") @db.VarChar(191)
+  metadata        Json?       @default("{}")
+  occurredAt      DateTime    @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([provider, providerEventId], map: "uniq_communication_events_provider_event")
+  @@index([appointmentId, occurredAt(sort: Desc)], map: "idx_communication_events_appointment_time")
+  @@index([eventType, occurredAt(sort: Desc)], map: "idx_communication_events_type_time")
+  @@index([userId, occurredAt(sort: Desc)], map: "idx_communication_events_user_time")
+  @@map("communication_events")
+}
+
+model AppointmentClinicalSummary {
+  id                String      @id @default(uuid()) @db.Uuid
+  appointmentId     BigInt      @unique @map("appointment_id")
+  dentistId         BigInt      @map("dentist_id")
+  patientId         BigInt      @map("patient_id")
+  status            String      @default("draft") @db.VarChar(32)
+  chiefComplaint    String?     @map("chief_complaint")
+  subjectiveNotes   String?     @map("subjective_notes")
+  objectiveFindings String?     @map("objective_findings")
+  assessment        String?
+  plan              String?
+  diagnosisCodes    Json?       @default("[]") @map("diagnosis_codes")
+  recommendations   Json?       @default("[]")
+  followUpNeeded    Boolean     @default(false) @map("follow_up_needed")
+  followUpAt        DateTime?   @map("follow_up_at") @db.Timestamptz(6)
+  finalizedAt       DateTime?   @map("finalized_at") @db.Timestamptz(6)
+  amendedAt         DateTime?   @map("amended_at") @db.Timestamptz(6)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dentistId, status], map: "idx_clinical_summaries_dentist_status")
+  @@index([patientId, status], map: "idx_clinical_summaries_patient_status")
+  @@map("appointment_clinical_summaries")
+}
+
+model AppointmentCommunicationParticipant {
+  id             String      @id @default(uuid()) @db.Uuid
+  appointmentId  BigInt      @map("appointment_id")
+  userId         BigInt?     @map("user_id")
+  displayName    String      @map("display_name") @db.VarChar(160)
+  email          String?     @db.VarChar(191)
+  phone          String?     @db.VarChar(40)
+  role           String      @db.VarChar(32)
+  status         String      @default("invited") @db.VarChar(32)
+  inviteTokenHash String?    @unique @map("invite_token_hash") @db.VarChar(128)
+  invitedById    BigInt?     @map("invited_by_id")
+  invitedAt      DateTime?   @map("invited_at") @db.Timestamptz(6)
+  verifiedAt     DateTime?   @map("verified_at") @db.Timestamptz(6)
+  joinedAt       DateTime?   @map("joined_at") @db.Timestamptz(6)
+  expiresAt      DateTime?   @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  chatMessages   ChatMessage[]
+
+  @@index([appointmentId, role, status], map: "idx_comm_participants_appointment_role_status")
+  @@index([userId, status], map: "idx_comm_participants_user_status")
+  @@index([expiresAt], map: "idx_comm_participants_expires_at")
+  @@map("appointment_communication_participants")
 }
 
 model Clinic {

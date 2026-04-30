@@ -1,37 +1,60 @@
 import twilio from 'twilio';
 import { PrismaClient } from '@prisma/client';
+import { getTwilioStandardKeyConfig, getWebhookBaseUrl } from './config.js';
+import { videoRoomNameForAppointment } from './naming.js';
+import { logCommunicationEvent } from './logging.js';
 
 const prisma = new PrismaClient();
 
 export default class VideoService {
   constructor() {
-    this.client = twilio(process.env.TWILIO_API_KEY_SID, process.env.TWILIO_API_KEY_SECRET, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-    this.webhookBaseUrl = process.env.TWILIO_WEBHOOK_BASE_URL || process.env.API_BASE_URL;
+    const config = getTwilioStandardKeyConfig();
+    this.client = twilio(config.apiKeySid, config.apiKeySecret, { accountSid: config.accountSid });
+    this.accountSid = config.accountSid;
+    this.apiKeySid = config.apiKeySid;
+    this.apiKeySecret = config.apiKeySecret;
+    this.webhookBaseUrl = getWebhookBaseUrl();
   }
 
   async ensureRoom(appointmentId) {
+    const roomName = videoRoomNameForAppointment(appointmentId);
     const appointment = await prisma.appointment.findUnique({
-      where: { id: BigInt(appointmentId) }
+      where: { id: BigInt(appointmentId) },
+      select: {
+        id: true,
+        videoRoomRef: true,
+        video_room_sid: true
+      }
     });
 
-    if (appointment && appointment.video_room_sid) {
-      return { roomSid: appointment.video_room_sid, roomName: `appointment-${appointmentId}` };
+    if (!appointment) {
+      const error = new Error('APPOINTMENT_NOT_FOUND');
+      error.status = 404;
+      throw error;
     }
 
-    const uniqueName = `appointment-${appointmentId}`;
+    if (appointment.video_room_sid && appointment.videoRoomRef === roomName) {
+      return { roomSid: appointment.video_room_sid, roomName };
+    }
+
     let roomSid;
+    const apiPrefix = `/${process.env.API_VERSION || 'v1'}`;
+    const callbackBase = this.webhookBaseUrl.endsWith(apiPrefix)
+      ? this.webhookBaseUrl
+      : `${this.webhookBaseUrl}${apiPrefix}`;
 
     try {
       const room = await this.client.video.v1.rooms.create({
-        uniqueName,
+        uniqueName: roomName,
         type: 'go',
-        statusCallback: this.webhookBaseUrl ? `${this.webhookBaseUrl}/webhooks/twilio/video` : undefined
+        statusCallback: this.webhookBaseUrl
+          ? `${callbackBase}/webhooks/twilio/video`
+          : undefined
       });
       roomSid = room.sid;
     } catch (err) {
       if (err.code === 53113) {
-        // Idempotent recovery
-        const room = await this.client.video.v1.rooms(uniqueName).fetch();
+        const room = await this.client.video.v1.rooms(roomName).fetch();
         roomSid = room.sid;
       } else {
         throw err;
@@ -40,10 +63,19 @@ export default class VideoService {
 
     await prisma.appointment.update({
       where: { id: BigInt(appointmentId) },
-      data: { video_room_sid: roomSid }
+      data: {
+        video_room_sid: roomSid,
+        videoRoomRef: roomName
+      }
     });
 
-    return { roomSid, roomName: uniqueName };
+    logCommunicationEvent('room_ensured', {
+      appointmentId,
+      roomName,
+      roomSid
+    });
+
+    return { roomSid, roomName };
   }
 
   async generateVideoToken({ identity, roomName, ttl = 14400 }) {
@@ -51,9 +83,9 @@ export default class VideoService {
     const VideoGrant = AccessToken.VideoGrant;
 
     const token = new AccessToken(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_API_KEY_SID,
-      process.env.TWILIO_API_KEY_SECRET,
+      this.accountSid,
+      this.apiKeySid,
+      this.apiKeySecret,
       { identity, ttl }
     );
 

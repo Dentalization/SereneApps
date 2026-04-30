@@ -5,6 +5,7 @@ import { appointmentConfig, millisecondsFromHours } from '../services/appointmen
 import { recordStatusChange } from '../services/appointments/audit.js';
 import { emitAppointmentEvent } from '../services/communications.js';
 import videoRouter from './communications/video.js';
+import clinicalSummaryRouter from './appointments/clinicalSummary.js';
 
 const router = express.Router();
 const prisma = new PrismaClient({
@@ -1236,6 +1237,7 @@ router.patch(
   }
 );
 
+router.use('/', clinicalSummaryRouter);
 router.use('/', videoRouter);
 
 router.get(

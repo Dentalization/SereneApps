@@ -1,22 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Client as ConversationsClient } from '@twilio/conversations';
-import { getAccessToken } from '../utils/auth/tokenStorage';
-import { fetchConversations, markConversationRead } from '../services/chatService';
+import {
+  fetchAppointmentCommunicationsToken,
+  fetchConversations,
+  fetchMessages,
+  markConversationRead,
+  sendTextMessage,
+  uploadAttachment
+} from '../services/chatService';
 import { useAuth } from '../contexts/AuthContext';
-
-const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
-const API_VERSION = import.meta.env.VITE_AUTH_API_VERSION || 'v1';
-
-const getTwilioToken = async (appointmentId, authToken) => {
-  const baseUrl = `${API_BASE.replace(/\/$/, '')}/${API_VERSION.replace(/^\//, '')}`;
-  const response = await fetch(`${baseUrl}/communications/appointments/${appointmentId}/token`, {
-    headers: { 'Authorization': `Bearer ${authToken}` }
-  });
-  if (!response.ok) {
-    throw new Error('Failed to fetch Twilio token');
-  }
-  return response.json();
-};
 
 export function useChat() {
   const { user } = useAuth();
@@ -27,12 +19,12 @@ export function useChat() {
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
+  const [connectionState, setConnectionState] = useState('disconnected');
+  const [reconnectError, setReconnectError] = useState(null);
   const notificationSound = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'));
 
   const clientRef = useRef(null);
   const convRef = useRef(null);
-
-  const token = useMemo(() => getAccessToken(), [user?.id]);
 
   const activeConversation = useMemo(() => {
     if (!activeAppointmentId) return null;
@@ -41,7 +33,9 @@ export function useChat() {
 
   const activeMessages = useMemo(() => {
     if (!activeAppointmentId) return [];
-    return messagesByAppointment[activeAppointmentId] || [];
+    return (messagesByAppointment[activeAppointmentId] || []).filter((message) => (
+      message.messageType !== 'system' && message.metadata?.type !== 'video_call'
+    ));
   }, [messagesByAppointment, activeAppointmentId]);
 
   // Initial load
@@ -65,17 +59,15 @@ export function useChat() {
   useEffect(() => {
     const handleFocus = async () => {
       if (clientRef.current && activeAppointmentId) {
-        console.log('[useChat] Tab focused, fetching fresh Twilio token...');
         try {
-          const freshJwt = getAccessToken();
-          if (freshJwt) {
-            const data = await getTwilioToken(activeAppointmentId, freshJwt);
-            if (data?.token) {
-              await clientRef.current.updateToken(data.token);
-            }
+          const data = await fetchAppointmentCommunicationsToken(activeAppointmentId);
+          if (data?.token) {
+            await clientRef.current.updateToken(data.token);
+            setReconnectError(null);
           }
         } catch (error) {
           console.warn('[useChat] Error updating Twilio token on focus:', error.message);
+          setReconnectError(error.message || 'Failed to refresh chat session');
         }
       }
     };
@@ -98,10 +90,15 @@ export function useChat() {
       setActiveAppointmentId(appointmentId);
 
       try {
-        // Fetch Token
-        const jwtToken = getAccessToken();
-        const data = await getTwilioToken(appointmentId, jwtToken);
-        const { token: twilioToken, conversationSid } = data;
+        const data = await fetchAppointmentCommunicationsToken(appointmentId);
+        const twilioToken = data.chat?.token || data.token;
+        const conversationSid = data.chat?.conversationSid || data.conversationSid;
+
+        const history = await fetchMessages(appointmentId);
+        setMessagesByAppointment((prev) => ({
+          ...prev,
+          [appointmentId]: history.messages || []
+        }));
 
         // Init Twilio client if null
         let client = clientRef.current;
@@ -110,11 +107,14 @@ export function useChat() {
           clientRef.current = client;
 
           client.on('connectionStateChanged', (state) => {
+            setConnectionState(state);
             setSocketConnected(state === 'connected');
+            if (state === 'connected') setReconnectError(null);
           });
           
           if (client.connectionState === 'connected') {
             setSocketConnected(true);
+            setConnectionState('connected');
           }
         } else {
           try {
@@ -132,9 +132,6 @@ export function useChat() {
         const conv = await client.getConversationBySid(conversationSid);
         convRef.current = conv;
 
-        // Load History
-        const paginator = await conv.getMessages(50);
-        
         const formatMessage = (msg) => {
           let attrs = {};
           try {
@@ -151,19 +148,6 @@ export function useChat() {
             _attrs: attrs
           };
         };
-
-        const parsedHistory = [];
-        paginator.items.forEach((msg) => {
-          const formatted = formatMessage(msg);
-          // Don't show system signals in actual message UI
-          if (formatted._attrs && formatted._attrs.type === 'video_call') return;
-          parsedHistory.push(formatted);
-        });
-
-        setMessagesByAppointment((prev) => ({
-          ...prev,
-          [appointmentId]: parsedHistory
-        }));
 
         // Presence via getParticipants()
         const updatePresence = async () => {
@@ -218,7 +202,7 @@ export function useChat() {
 
           setMessagesByAppointment((prev) => {
             const current = prev[appointmentId] || [];
-            if (current.some((m) => m.id === formatted.id)) return prev;
+            if (current.some((m) => m.id === formatted.id || m.twilioMessageSid === formatted.twilioMessageSid)) return prev;
             return {
               ...prev,
               [appointmentId]: [...current, formatted]
@@ -267,6 +251,8 @@ export function useChat() {
 
       } catch (err) {
         console.error('Failed to select Twilio conversation:', err.message);
+        setConnectionState('disconnected');
+        setReconnectError(err.message || 'Failed to connect chat');
       }
     },
     [user?.id]
@@ -275,25 +261,35 @@ export function useChat() {
   // ── Actions ──────────────────────────────────────────────────
   const sendMessage = useCallback(async ({ appointmentId, text }) => {
     if (!appointmentId || !text) return;
-    if (convRef.current) {
-      try {
-        await convRef.current.sendMessage(text);
-      } catch (err) {
-        console.error('[useChat] Twilio send message failed', err.message);
+    try {
+      const saved = await sendTextMessage(appointmentId, text);
+      if (saved) {
+        setMessagesByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
+          return { ...prev, [appointmentId]: [...current, saved] };
+        });
       }
+    } catch (err) {
+      console.error('[useChat] send message failed', err.message);
+      setReconnectError(err.message || 'Failed to send message');
     }
   }, []);
 
   const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
     if (!appointmentId || !file) return;
-    if (convRef.current) {
-      const formData = new FormData();
-      formData.append('media', file);
-      try {
-        await convRef.current.sendMessage(formData);
-      } catch (err) {
-        console.error('[useChat] Twilio send attachment failed', err.message);
+    try {
+      const saved = await uploadAttachment(appointmentId, file);
+      if (saved) {
+        setMessagesByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
+          return { ...prev, [appointmentId]: [...current, saved] };
+        });
       }
+    } catch (err) {
+      console.error('[useChat] upload attachment failed', err.message);
+      setReconnectError(err.message || 'Failed to upload attachment');
     }
   }, []);
 
@@ -337,6 +333,8 @@ export function useChat() {
     presenceMap,
     loading,
     socketConnected,
+    connectionState,
+    reconnectError,
     activeConversation,
     activeAppointmentId,
     messages: activeMessages,

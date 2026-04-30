@@ -179,6 +179,15 @@ export const getAppointmentById = async (id) => {
   }
 };
 
+export const getAppointmentClinicalSummary = async (id) => {
+  try {
+    const response = await api.get(`/appointments/${id}/clinical-summary`);
+    return response.data;
+  } catch (error) {
+    throw normalizeAppointmentError(error, 'Gagal memuat ringkasan konsultasi');
+  }
+};
+
 /**
  * Cancel an appointment
  * @param {number|string} id - Appointment ID
@@ -237,6 +246,7 @@ export default {
   getUpcomingAppointments,
   getCompletedAppointments,
   getAppointmentById,
+  getAppointmentClinicalSummary,
   cancelAppointment,
   rescheduleAppointment,
   getAvailableSlots,

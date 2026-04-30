@@ -8,14 +8,20 @@ import {
   ensureChatRoom,
   fetchChatMessages,
   saveChatMessage,
-  generateVideoAccessToken,
   updateLastRead,
-  listChatRoomsForUser
+  listChatRoomsForUser,
+  issueAppointmentScopedToken,
+  getCommunicationHealth,
+  recordCommunicationEvent,
+  communicationActorRoleForAppointment
 } from '../services/communications.js';
-import { emitChatMessage, emitChatRead } from '../sockets/chat.js';
-import ConversationsAdapter from '../services/communications/conversationsAdapter.js';
-
-const conversationsAdapter = new ConversationsAdapter();
+import {
+  inviteCommunicationParticipant,
+  listCommunicationParticipants,
+  revokeCommunicationParticipant,
+  verifyCommunicationParticipantInvite
+} from '../services/communications/participantAccessService.js';
+import { emitChatRead } from '../sockets/chat.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -61,6 +67,53 @@ const upload = multer({
     return cb(null, true);
   }
 });
+
+const CLIENT_EVENT_TYPES = new Set([
+  'waiting_room_entered',
+  'device_check_started',
+  'device_check_passed',
+  'device_check_failed',
+  'participant_reconnected',
+  'network_quality_degraded',
+  'attachment_uploaded'
+]);
+
+function sanitizeClientMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const safe = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    const lowered = key.toLowerCase();
+    if (lowered.includes('token') || lowered.includes('secret') || lowered.includes('otp') || lowered.includes('code')) {
+      continue;
+    }
+    if (typeof value === 'string') {
+      safe[key] = value.slice(0, 160);
+    } else if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+      safe[key] = value;
+    }
+  }
+  return safe;
+}
+
+function sendCommunicationRouteError(res, error, fallbackCode = 'COMMUNICATIONS_REQUEST_FAILED') {
+  if (error.status === 403 || error.message === 'FORBIDDEN') {
+    return res.status(403).json({ error: { code: 'COMMUNICATIONS_ACCESS_DENIED' } });
+  }
+  if (error.status === 404 || error.message === 'APPOINTMENT_NOT_FOUND' || error.message === 'PARTICIPANT_NOT_FOUND') {
+    return res.status(404).json({ error: { code: error.message || 'NOT_FOUND' } });
+  }
+  if ([409, 410].includes(error.status)) {
+    return res.status(error.status).json({ error: { code: error.message } });
+  }
+  if (error.status === 400) {
+    return res.status(400).json({ error: { code: error.message } });
+  }
+  if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
+    return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
+  }
+  console.error('Communications route error:', error);
+  return res.status(500).json({ error: { code: fallbackCode } });
+}
 
 const attachmentUpload = (req, res, next) => {
   upload.single('file')(req, res, (err) => {
@@ -194,11 +247,6 @@ router.post(
         messageType
       });
 
-      emitChatMessage({
-        channelName: saved.channelName,
-        message: saved.message
-      });
-
       res.status(201).json({ message: saved.message });
     } catch (error) {
       console.error('Error saving chat message:', error);
@@ -207,6 +255,9 @@ router.post(
       }
       if (error.message === 'APPOINTMENT_NOT_FOUND') {
         return res.status(404).json({ error: 'appointment not found' });
+      }
+      if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
+        return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
       }
       return res.status(500).json({ error: 'Failed to save message' });
     }
@@ -233,12 +284,25 @@ router.post(
         message: file.originalname,
         messageType: 'file',
         fileUrl: `/${relativePath}`,
-        fileName: file.originalname
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        fileSizeBytes: file.size,
+        metadata: {
+          storage: 'local_uploads',
+          retentionPolicy: 'appointment_history'
+        }
       });
-
-      emitChatMessage({
-        channelName: saved.channelName,
-        message: saved.message
+      await recordCommunicationEvent({
+        appointmentId,
+        userId: req.user.id,
+        actorRole: communicationActorRoleForAppointment(req.user, await getAppointmentForUser(appointmentId, req.user)),
+        eventType: 'attachment_uploaded',
+        provider: 'local',
+        metadata: {
+          messageId: saved.message.id,
+          mimeType: file.mimetype,
+          size: file.size
+        }
       });
 
       res.status(201).json({ message: saved.message });
@@ -249,6 +313,9 @@ router.post(
       }
       if (error.message === 'APPOINTMENT_NOT_FOUND') {
         return res.status(404).json({ error: 'appointment not found' });
+      }
+      if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
+        return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
       }
       return res.status(500).json({ error: 'Failed to upload attachment' });
     }
@@ -283,22 +350,137 @@ router.patch(
 );
 
 router.post(
+  '/appointments/:appointmentId/events',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+      const { eventType, provider = 'client', providerSid = null, metadata = {} } = req.body || {};
+      if (!CLIENT_EVENT_TYPES.has(eventType)) {
+        return res.status(400).json({ error: { code: 'INVALID_COMMUNICATION_EVENT_TYPE' } });
+      }
+
+      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const event = await recordCommunicationEvent({
+        appointmentId: appointment.id,
+        userId: req.user.id,
+        actorRole: communicationActorRoleForAppointment(req.user, appointment),
+        eventType,
+        provider,
+        providerSid,
+        resourceSid: providerSid,
+        metadata: sanitizeClientMetadata(metadata)
+      });
+
+      return res.status(201).json({
+        event: event
+          ? {
+              id: event.id.toString(),
+              eventType: event.eventType,
+              occurredAt: event.occurredAt
+            }
+          : null
+      });
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'COMMUNICATION_EVENT_FAILED');
+    }
+  }
+);
+
+router.post(
+  '/appointments/:appointmentId/participants/invite',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await inviteCommunicationParticipant({
+        appointmentId: req.params.appointmentId,
+        user: req.user,
+        input: req.body || {}
+      });
+      return res.status(201).json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANT_INVITE_FAILED');
+    }
+  }
+);
+
+router.get(
+  '/appointments/:appointmentId/participants',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await listCommunicationParticipants({
+        appointmentId: req.params.appointmentId,
+        user: req.user
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANTS_LOAD_FAILED');
+    }
+  }
+);
+
+router.post(
+  '/appointments/:appointmentId/participants/:participantId/revoke',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await revokeCommunicationParticipant({
+        appointmentId: req.params.appointmentId,
+        participantId: req.params.participantId,
+        user: req.user
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANT_REVOKE_FAILED');
+    }
+  }
+);
+
+router.post(
+  '/appointments/:appointmentId/participants/verify-invite',
+  async (req, res) => {
+    try {
+      const { token, ttl } = req.body || {};
+      const result = await verifyCommunicationParticipantInvite({
+        token,
+        appointmentId: req.params.appointmentId,
+        ttl: ttl ? parseInt(ttl, 10) : 3600
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'INVITE_VERIFY_FAILED');
+    }
+  }
+);
+
+router.post(
   '/appointments/:appointmentId/video/token',
   authenticateToken,
   async (req, res) => {
     try {
       const { appointmentId } = req.params;
-      const { role = 'publisher', expireSeconds } = req.body || {};
+      const { expireSeconds } = req.body || {};
 
-      await getAppointmentForUser(appointmentId, req.user);
-      const token = await generateVideoAccessToken({
+      res.set('Deprecation', 'true');
+      res.set('Link', '</communications/appointments/:appointmentId/token>; rel="successor-version"');
+
+      const session = await issueAppointmentScopedToken({
         appointmentId,
-        userId: req.user.id,
-        role,
-        expireSeconds: expireSeconds ? parseInt(expireSeconds, 10) : 3600
+        user: req.user,
+        ttl: expireSeconds ? parseInt(expireSeconds, 10) : 3600
       });
 
-      res.json(token);
+      res.json({
+        appointmentId: session.appointmentId,
+        roomName: session.video.roomName,
+        channelName: session.video.roomName,
+        roomSid: session.video.roomSid,
+        token: session.video.token,
+        expiresAt: session.expiresAt,
+        waitingRoom: session.waitingRoom,
+        deprecated: true
+      });
     } catch (error) {
       console.error('Error generating video token:', error);
       if (error.message === 'FORBIDDEN') {
@@ -307,8 +489,17 @@ router.post(
       if (error.message === 'APPOINTMENT_NOT_FOUND') {
         return res.status(404).json({ error: 'appointment not found' });
       }
-      if (error.message === 'TWILIO_VIDEO_CONFIG_MISSING') {
-        return res.status(500).json({ error: 'Twilio video configuration missing on server' });
+      if (error.status === 409) {
+        return res.status(409).json({
+          error: {
+            code: 'COMMUNICATIONS_NOT_READY',
+            message: 'Communication resources are not ready for this appointment.'
+          },
+          waitingRoom: error.waitingRoom
+        });
+      }
+      if (error.message?.startsWith?.('TWILIO_')) {
+        return res.status(503).json({ error: 'Twilio configuration missing on server' });
       }
       return res.status(500).json({ error: 'Failed to generate video token' });
     }
@@ -317,8 +508,13 @@ router.post(
 
 /**
  * GET /appointments/:appointmentId/token
- * Generates an access token for Twilio Conversations (Chat).
- * Used by the mobile app's useChat hook.
+ * Unified appointment-scoped initiation contract.
+ * Stable response envelope:
+ * - waitingRoom: appointment schedule/payment gate, with canChat/canJoinVideo.
+ * - chat: Twilio Conversations token, conversationSid, appointment-scoped channelName.
+ * - video: Twilio Video token, appointment-{appointmentId} roomName, roomSid, canJoin.
+ * - compatibility: token, conversationSid, roomName, channelName, videoToken remain for older clients.
+ * Tokens are never written to logs or communication_events metadata.
  */
 router.get(
   '/appointments/:appointmentId/token',
@@ -326,52 +522,56 @@ router.get(
   async (req, res) => {
     try {
       const { appointmentId } = req.params;
-      const userId = req.user.id;
+      const ttl = req.query.ttl ? parseInt(req.query.ttl, 10) : 3600;
 
-      // 1. Verify access
-      const chatRoom = await prisma.chatRoom.findUnique({
-        where: { appointmentId: toBigInt(appointmentId, 'appointmentId') },
-        include: { members: true }
+      const session = await issueAppointmentScopedToken({
+        appointmentId,
+        user: req.user,
+        ttl
       });
 
-      if (!chatRoom) {
-        return res.status(404).json({ 
-          error: { 
-            code: 'CONVERSATION_NOT_PROVISIONED', 
-            message: 'Chat belum tersedia. Selesaikan pembayaran atau tunggu inisialisasi.' 
-          } 
-        });
-      }
-
-      const isMember = chatRoom.members.some(m => m.userId === toBigInt(userId, 'userId'));
-      if (!isMember) {
-        return res.status(403).json({ error: { code: 'CONVERSATION_ACCESS_DENIED' } });
-      }
-
-      if (!chatRoom.twilio_conversation_sid) {
-        return res.status(404).json({ 
-          error: { 
-            code: 'CONVERSATION_NOT_PROVISIONED', 
-            message: 'Twilio Conversation SID belum tersedia.' 
-          } 
-        });
-      }
-
-      // 2. Generate token
-      const tokenData = await conversationsAdapter.generateAccessToken({ 
-        identity: String(userId), 
-        ttl: 3600 
-      });
-
-      res.json({
-        token: tokenData.token,
-        conversationSid: chatRoom.twilio_conversation_sid,
-        identity: tokenData.identity,
-        expiresAt: tokenData.expiresAt
-      });
+      res.json(session);
     } catch (error) {
-      console.error('Error generating Conversations token:', error);
-      res.status(500).json({ error: 'Failed to generate chat token' });
+      console.error('Error generating appointment communications token:', error);
+      if (error.status === 403 || error.message === 'FORBIDDEN') {
+        return res.status(403).json({ error: { code: 'COMMUNICATIONS_ACCESS_DENIED' } });
+      }
+      if (error.status === 404 || error.message === 'APPOINTMENT_NOT_FOUND') {
+        return res.status(404).json({ error: { code: 'APPOINTMENT_NOT_FOUND' } });
+      }
+      if (error.status === 409 || error.message === 'COMMUNICATIONS_NOT_READY') {
+        return res.status(409).json({
+          error: {
+            code: 'COMMUNICATIONS_NOT_READY',
+            message: 'Chat dan video belum tersedia. Selesaikan pembayaran atau tunggu inisialisasi.'
+          },
+          waitingRoom: error.waitingRoom
+        });
+      }
+      if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
+        return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
+      }
+      res.status(500).json({ error: { code: 'COMMUNICATIONS_TOKEN_FAILED' } });
+    }
+  }
+);
+
+router.get(
+  '/appointments/:appointmentId/health',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const health = await getCommunicationHealth({
+        appointmentId: req.params.appointmentId,
+        user: req.user
+      });
+      res.json(health);
+    } catch (error) {
+      console.error('Error fetching communication health:', error);
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message.toLowerCase() });
+      }
+      return res.status(500).json({ error: 'Failed to fetch communication health' });
     }
   }
 );

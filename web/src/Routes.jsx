@@ -65,6 +65,7 @@ import ContentManagement from './pages/admin-portal/content-management';
 import AdminProfile from './pages/admin-portal/admin-profile';
 import AnalyticReport from './pages/admin-portal/analytic-report';
 import NotificationScreenAdmin from './pages/admin-portal/ui/NotificationScreenAdmin';
+import AppointmentDiagnosticsDashboard from './pages/admin-portal/communications-diagnostics';
 
 const Routes = () => {
   return (
@@ -145,6 +146,7 @@ const Routes = () => {
             <Route path="/admin/revenue-billing" element={<RevenueBilling />} />
             <Route path="/admin/ai-platform" element={<AIPlatform />} />
             <Route path="/admin/support-helpdesk" element={<SupportHelpdesk />} />
+            <Route path="/admin/communications-diagnostics" element={<AppointmentDiagnosticsDashboard />} />
             <Route path="/admin/system-administration" element={<SystemAdministration />} />
             <Route path="/admin/compliance-security" element={<ComplianceSecurity />} />
             <Route path="/admin/partnership" element={<Partnership />} />

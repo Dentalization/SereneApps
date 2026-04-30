@@ -88,6 +88,25 @@ export async function beginWebhookProcessing({
       throw error;
     }
 
+    if (existing.payloadHash !== payloadHash) {
+      const mismatch = new Error('WEBHOOK_REPLAY_PAYLOAD_MISMATCH');
+      mismatch.status = 409;
+      mismatch.receipt = existing;
+      throw mismatch;
+    }
+
+    if (existing.status !== WEBHOOK_STATUS.PROCESSED) {
+      await prisma.webhookReceipt.update({
+        where: { id: existing.id },
+        data: {
+          status: WEBHOOK_STATUS.PROCESSING,
+          attempts: { increment: 1 },
+          lastError: null,
+          nextAttemptAt: null
+        }
+      }).catch(() => null);
+    }
+
     return {
       decision: existing.status === WEBHOOK_STATUS.PROCESSED ? 'skip' : 'replay',
       receipt: existing
@@ -119,11 +138,18 @@ export async function markWebhookFailed({ receiptId, errorMessage, nextAttemptAt
 }
 
 export async function guardWebhookIdempotency(provider, deliveryKey, payload, handler) {
+  const payloadHash = hashWebhookPayload(payload);
   const existing = await prisma.webhookReceipt.findUnique({
     where: {
       provider_deliveryKey: { provider, deliveryKey }
     }
   });
+
+  if (existing && existing.payloadHash !== payloadHash) {
+    const mismatch = new Error('WEBHOOK_REPLAY_PAYLOAD_MISMATCH');
+    mismatch.status = 409;
+    throw mismatch;
+  }
 
   if (existing && existing.status === WEBHOOK_STATUS.PROCESSED) {
     return { skipped: true };
@@ -133,7 +159,6 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
     let receiptId;
 
     if (!existing) {
-      const payloadHash = hashWebhookPayload(payload);
       const created = await tx.webhookReceipt.create({
         data: {
           provider,

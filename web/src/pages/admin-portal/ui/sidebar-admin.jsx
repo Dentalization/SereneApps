@@ -144,6 +144,14 @@ const AdminSideBar = () => {
       ]
     },
     {
+      id: 'communicationDiagnostics',
+      label: 'Communication Diagnostics',
+      icon: 'Activity',
+      path: '/admin/communications-diagnostics',
+      description: 'Teledentistry health & reconciliation',
+      roles: ['super_admin', 'technical_support', 'customer_success_manager', 'platform_manager', 'compliance_officer']
+    },
+    {
       id: 'analytics',
       label: t('admin.nav.analytics') || 'Analytics & Reports',
       icon: 'Analytics',

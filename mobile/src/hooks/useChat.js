@@ -1,43 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
+import * as ConversationsSdk from '@twilio/conversations';
 import api from '../services/api';
 
-let conversationsClientCtorPromise = null;
-
-async function loadConversationsClientCtor() {
-  if (!conversationsClientCtorPromise) {
-    conversationsClientCtorPromise = (async () => {
-      const loaders = [
-        () => require('@twilio/conversations/builds/browser.esm.js'),
-        () => require('@twilio/conversations/builds/browser.js'),
-        () => require('@twilio/conversations'),
-      ];
-
-      let lastError = null;
-
-      for (const loadModule of loaders) {
-        try {
-          const mod = loadModule();
-          const ClientCtor = mod?.Client || mod?.default?.Client || mod?.default || mod;
-          if (ClientCtor && typeof ClientCtor.create === 'function') {
-            return ClientCtor;
-          }
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      throw lastError || new Error('Unable to load Twilio Conversations SDK');
-    })();
-  }
-
-  try {
-    return await conversationsClientCtorPromise;
-  } catch (error) {
-    conversationsClientCtorPromise = null;
-    throw error;
-  }
-}
+const ConversationsClient = ConversationsSdk.Client || ConversationsSdk.default?.Client || ConversationsSdk.default;
 
 /**
  * Mobile version of useChat using Twilio Conversations SDK
@@ -51,6 +17,8 @@ export function useChat({ userId } = {}) {
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
+  const [connectionState, setConnectionState] = useState('disconnected');
+  const [reconnectError, setReconnectError] = useState(null);
 
   const twilioClientRef = useRef(null);
   const activeConversationRef = useRef(null);
@@ -83,7 +51,9 @@ export function useChat({ userId } = {}) {
 
   const activeMessages = useMemo(() => {
     if (!activeAppointmentId) return [];
-    return messagesByAppointment[activeAppointmentId] || [];
+    return (messagesByAppointment[activeAppointmentId] || []).filter((message) => (
+      message.messageType !== 'system' && message.metadata?.type !== 'video_call'
+    ));
   }, [messagesByAppointment, activeAppointmentId]);
 
   // ── Load conversations on mount ──────────────────────────────
@@ -112,9 +82,11 @@ export function useChat({ userId } = {}) {
             const { data } = await api.get(`/communications/appointments/${activeAppointmentId}/token`);
             if (data?.token) {
               await client.updateToken(data.token);
+              setReconnectError(null);
             }
           } catch (e) {
             console.warn('[useChat] Error updating Twilio token in foreground:', e.message);
+            setReconnectError(e.message || 'Failed to refresh chat session');
           }
         }
       }
@@ -148,7 +120,8 @@ export function useChat({ userId } = {}) {
           data = response.data;
           break;
         } catch (err) {
-          if (err.response?.data?.error?.code === 'CONVERSATION_NOT_PROVISIONED' && attempt < 2) {
+          const errorCode = err.response?.data?.error?.code;
+          if (['CONVERSATION_NOT_PROVISIONED', 'COMMUNICATIONS_NOT_READY'].includes(errorCode) && attempt < 2) {
             console.log(`[useChat] Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
             await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
             continue;
@@ -157,21 +130,33 @@ export function useChat({ userId } = {}) {
         }
       }
 
-      const { token, conversationSid } = data;
-      const ConversationsClient = await loadConversationsClientCtor();
+      const token = data.chat?.token || data.token;
+      const conversationSid = data.chat?.conversationSid || data.conversationSid;
+
+      const history = await api.get(`/communications/appointments/${appointmentId}/chat/messages`);
+      setMessagesByAppointment((prev) => ({
+        ...prev,
+        [appointmentId]: history.data?.messages || []
+      }));
 
       // 3-4. Init / Update Client
       let client = twilioClientRef.current;
       if (!client) {
+        if (!ConversationsClient?.create) {
+          throw new Error('Unable to load Twilio Conversations SDK');
+        }
         client = await ConversationsClient.create(token);
         twilioClientRef.current = client;
 
         client.on('connectionStateChanged', (state) => {
+          setConnectionState(state);
           setSocketConnected(state === 'connected');
+          if (state === 'connected') setReconnectError(null);
         });
 
         if (client.connectionState === 'connected') {
           setSocketConnected(true);
+          setConnectionState('connected');
         }
       } else {
         await client.updateToken(token);
@@ -189,7 +174,7 @@ export function useChat({ userId } = {}) {
       const updatePresence = async () => {
         const participants = await conversation.getParticipants();
         const onlineIdentityStrings = participants.filter(p => p.isOnline).map(p => p.identity);
-        setPresenceMap(prev => ({ ...prev, [conversationSid]: onlineIdentityStrings }));
+        setPresenceMap(prev => ({ ...prev, [appointmentId]: onlineIdentityStrings }));
       };
       updatePresence();
 
@@ -227,7 +212,7 @@ export function useChat({ userId } = {}) {
 
         setMessagesByAppointment((prev) => {
           const current = prev[appointmentId] || [];
-          if (current.some((m) => m.id === msgObj.id)) return prev;
+          if (current.some((m) => m.id === msgObj.id || m.twilioMessageSid === msgObj.twilioMessageSid)) return prev;
           return { ...prev, [appointmentId]: [...current, msgObj] };
         });
 
@@ -266,6 +251,8 @@ export function useChat({ userId } = {}) {
       }
     } catch (error) {
       setSocketConnected(false);
+      setConnectionState('disconnected');
+      setReconnectError(error.message || 'Failed to connect chat');
       console.error('[useChat] Failed to init Twilio for appointmentId:', appointmentId, error);
     }
   }, [userId, fetchConversations]);
@@ -273,27 +260,44 @@ export function useChat({ userId } = {}) {
   // ── Actions ──────────────────────────────────────────────────
   const sendMessage = useCallback(async ({ appointmentId, text }) => {
     if (!appointmentId || !text) return;
-    const conversation = activeConversationRef.current;
-    if (conversation) {
-      try {
-        await conversation.sendMessage(text);
-      } catch (error) {
-        console.error('[useChat] Twilio send text failed:', error.message);
+    try {
+      const { data } = await api.post(`/communications/appointments/${appointmentId}/chat/messages`, {
+        message: text,
+        messageType: 'text'
+      });
+      const saved = data?.message;
+      if (saved) {
+        setMessagesByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
+          return { ...prev, [appointmentId]: [...current, saved] };
+        });
       }
+    } catch (error) {
+      console.error('[useChat] send text failed:', error.message);
+      setReconnectError(error.message || 'Failed to send message');
     }
   }, []);
 
   const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
     if (!appointmentId || !file) return;
-    const conversation = activeConversationRef.current;
-    if (conversation) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        await conversation.sendMessage(formData);
-      } catch (error) {
-        console.error('[useChat] Twilio send attachment failed:', error.message);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await api.post(`/communications/appointments/${appointmentId}/chat/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const saved = data?.message;
+      if (saved) {
+        setMessagesByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
+          return { ...prev, [appointmentId]: [...current, saved] };
+        });
       }
+    } catch (error) {
+      console.error('[useChat] upload attachment failed:', error.message);
+      setReconnectError(error.message || 'Failed to upload attachment');
     }
   }, []);
 
@@ -318,12 +322,13 @@ export function useChat({ userId } = {}) {
 
   const fetchVideoToken = useCallback(async (appointmentId) => {
     try {
-      const { data } = await api.post(`/communications/appointments/${appointmentId}/video/token`, {
-        role: 'publisher',
-      });
+      const { data } = await api.get(`/communications/appointments/${appointmentId}/token`);
       return {
         ...data,
-        roomName: data.roomName || data.channelName,
+        token: data.video?.token || data.videoToken || data.token,
+        roomName: data.video?.roomName || data.roomName || data.channelName,
+        roomSid: data.video?.roomSid || data.roomSid,
+        waitingRoom: data.waitingRoom,
       };
     } catch (error) {
       console.error('[useChat] Failed to fetch video token:', error.message);
@@ -336,6 +341,8 @@ export function useChat({ userId } = {}) {
     presenceMap,
     loading,
     socketConnected,
+    connectionState,
+    reconnectError,
     activeConversation,
     activeAppointmentId,
     messages: activeMessages,

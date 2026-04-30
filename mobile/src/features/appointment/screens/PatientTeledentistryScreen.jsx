@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
+import { getAppointmentClinicalSummary } from '../../../services/appointmentService';
 
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
@@ -105,6 +106,8 @@ const PatientTeledentistryScreen = () => {
   const {
     messages: chatMessagesFromSocket,
     socketConnected,
+    connectionState,
+    reconnectError,
     incomingCall,
     selectConversation,
     sendMessage,
@@ -113,11 +116,13 @@ const PatientTeledentistryScreen = () => {
     fetchVideoToken,
   } = useChat({ userId: currentUser?.id });
 
-  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connectError, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
+  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connectError, networkQuality, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
   const [callStatus, setCallStatus] = useState('idle');  // 'idle' | 'incoming' | 'active'
+  const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
+  const [clinicalSummary, setClinicalSummary] = useState(null);
 
   // ─── UI State ──────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -152,10 +157,10 @@ const PatientTeledentistryScreen = () => {
 
   // ─── Join chat room on mount ───────────────────────────────────────────────
   useEffect(() => {
-    if (appointmentId && socketConnected) {
+    if (appointmentId && currentUser?.id) {
       selectConversation(appointmentId.toString());
     }
-  }, [appointmentId, socketConnected, selectConversation]);
+  }, [appointmentId, currentUser?.id, selectConversation]);
 
   // ─── Init: Push system welcome message ─────────────────────────────────────
   useEffect(() => {
@@ -350,6 +355,19 @@ const PatientTeledentistryScreen = () => {
       addSystemMessage('Koneksi video terputus: ' + connectError);
     }
   }, [connectError, callStatus]);
+
+  useEffect(() => {
+    if (!appointmentId || sessionStatus !== 'ended') return;
+    getAppointmentClinicalSummary(appointmentId)
+      .then((result) => {
+        setClinicalSummaryStatus(result.status || 'pending');
+        setClinicalSummary(result.summary || null);
+      })
+      .catch(() => {
+        setClinicalSummaryStatus('pending');
+        setClinicalSummary(null);
+      });
+  }, [appointmentId, sessionStatus]);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  SUB-COMPONENTS (RENDER FUNCTIONS)
@@ -646,6 +664,23 @@ const PatientTeledentistryScreen = () => {
             <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.success, marginTop: 4, textAlign: 'center' }}>
               Riwayat chat di atas disimpan untuk referensi Anda.
             </Text>
+            <View style={{ marginTop: 12, width: '100%', backgroundColor: COLORS.white, borderRadius: 12, padding: 12 }}>
+              {clinicalSummaryStatus === 'finalized' || clinicalSummaryStatus === 'amended' ? (
+                <>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>Ringkasan dokter</Text>
+                  <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, marginTop: 4, fontWeight: '700' }}>
+                    {clinicalSummary?.assessment || 'Ringkasan tersedia'}
+                  </Text>
+                  <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 6 }}>
+                    {clinicalSummary?.plan || '-'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, textAlign: 'center' }}>
+                  Ringkasan konsultasi sedang disiapkan dokter.
+                </Text>
+              )}
+            </View>
           </View>
         </View>
       )}
@@ -871,10 +906,20 @@ const PatientTeledentistryScreen = () => {
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: withOpacity(COLORS.white, 0.15), paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.error, marginRight: 8 }} />
               <Text style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{formatCallDuration(callDuration)}</Text>
+              <MaterialCommunityIcons name="signal-cellular-2" size={14} color={COLORS.white} style={{ marginLeft: 10, marginRight: 4 }} />
+              <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700' }}>{networkQuality >= 0 ? networkQuality : '-'}/5</Text>
             </View>
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} />
           </View>
         </SafeAreaView>
+
+        {networkQuality >= 0 && networkQuality <= 1 && (
+          <View style={{ position: 'absolute', top: insets.top + 58, left: 16, right: 16, zIndex: 11, backgroundColor: withOpacity(COLORS.warning, 0.92), borderRadius: 12, padding: 10 }}>
+            <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>
+              Kualitas jaringan buruk. Matikan video bila audio mulai terputus.
+            </Text>
+          </View>
+        )}
 
         {/* PIP (Patient Camera) */}
         <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: withOpacity(COLORS.white, 0.3), elevation: 10, shadowColor: COLORS.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60, backgroundColor: '#263238' }}>
@@ -954,10 +999,12 @@ const PatientTeledentistryScreen = () => {
 
       {renderHeader()}
 
-      {!socketConnected && (
+      {appointmentId && !socketConnected && (
         <View style={{ backgroundColor: COLORS.warning, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
           <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.white} style={{ marginRight: 8 }} />
-          <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>Koneksi terputus. Menghubungkan kembali...</Text>
+          <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>
+            {reconnectError || (connectionState === 'connecting' ? 'Menghubungkan ulang sesi chat...' : 'Koneksi terputus. Menghubungkan kembali...')}
+          </Text>
         </View>
       )}
 
