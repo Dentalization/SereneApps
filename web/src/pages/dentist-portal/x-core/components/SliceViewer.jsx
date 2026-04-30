@@ -943,6 +943,16 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         scheduleProjectionRefresh();
     }, [imageData, scheduleProjectionRefresh]);
 
+    useEffect(() => {
+        const handleMprCrosshairSync = (event) => {
+            const point = event?.detail?.worldPoint;
+            if (!Array.isArray(point) || point.length !== 3) return;
+            syncSlicesFromWorldPoint('3d', point);
+        };
+        window.addEventListener('xcore:mpr_crosshair_sync', handleMprCrosshairSync);
+        return () => window.removeEventListener('xcore:mpr_crosshair_sync', handleMprCrosshairSync);
+    }, [syncSlicesFromWorldPoint]);
+
     const handleUndoMeasurement = useCallback(() => {
         const axisPriority = [axis, ...AXIS_ORDER.filter((axisName) => axisName !== axis)];
         const targetAxis = axisPriority.find((axisName) => (measurementStoreRef.current[axisName] || []).length > 0);

@@ -22,6 +22,7 @@ Frontend receives data in [0.0, 1.0] range where:
 import os
 import sys
 import json
+import shutil
 import numpy as np
 import pydicom
 from pydicom.uid import ExplicitVRLittleEndian
@@ -47,6 +48,35 @@ _NEIGHBOR_OFFSETS_6 = (
     (0, -1, 0), (0, 1, 0),
     (0, 0, -1), (0, 0, 1),
 )
+
+
+def _link_or_copy_file(src_path: str, dest_path: str) -> bool:
+    if not src_path or not dest_path or not os.path.exists(src_path):
+        return False
+    try:
+        if os.path.lexists(dest_path):
+            os.remove(dest_path)
+        os.link(src_path, dest_path)
+        return True
+    except Exception:
+        shutil.copy2(src_path, dest_path)
+        return True
+
+
+def _copy_default_volume_outputs(study_path: str, safe_uid: str) -> bool:
+    vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
+    labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+    labels_manifest_path = _label_manifest_path(study_path, safe_uid)
+    default_vti = os.path.join(study_path, "volume.vti")
+    default_labels = os.path.join(study_path, "labels.vti")
+    default_labels_manifest = os.path.join(study_path, "labels.json")
+
+    wrote_any = _link_or_copy_file(vti_path, default_vti)
+    if os.path.exists(labels_path):
+        wrote_any = _link_or_copy_file(labels_path, default_labels) or wrote_any
+    if os.path.exists(labels_manifest_path):
+        wrote_any = _link_or_copy_file(labels_manifest_path, default_labels_manifest) or wrote_any
+    return wrote_any
 
 
 def classify_series(num_files: int, modality: str) -> str:
@@ -656,6 +686,21 @@ def _extract_connected_components(mask: np.ndarray) -> list[dict]:
     return components
 
 
+def _scipy_components_to_list(labeled_array: np.ndarray, num_features: int, shape: tuple) -> list[dict]:
+    components = []
+    for label_id in range(1, int(num_features) + 1):
+        xs, ys, zs = np.where(labeled_array == label_id)
+        if xs.size == 0:
+            continue
+        components.append(_component_metadata(
+            xs.astype(np.int32),
+            ys.astype(np.int32),
+            zs.astype(np.int32),
+            shape,
+        ))
+    return components
+
+
 def _empty_segmentation_manifest(status: str = "missing") -> dict:
     return {
         "segmentation_method": TOOTH_SEGMENT_METHOD,
@@ -732,7 +777,12 @@ def _build_heuristic_tooth_labels(volume: np.ndarray) -> tuple[Optional[np.ndarr
     if not seed_mask.any():
         return None, _empty_segmentation_manifest()
 
-    components = _extract_connected_components(seed_mask)
+    try:
+        from scipy import ndimage
+        labeled_array, num_features = ndimage.label(seed_mask)
+        components = _scipy_components_to_list(labeled_array, num_features, volume.shape)
+    except Exception:
+        components = _extract_connected_components(seed_mask)
     filtered = [
         component
         for component in components
@@ -1315,7 +1365,7 @@ def convert_study_to_vti(
 
     results = {}
     series_groups = scan_dicom_series(study_path)
-    is_first_3d = True  # Track first 3D series for default volume.vti
+    default_volume_written = False
 
     for series_uid, series_info in series_groups.items():
         files_with_meta = series_info['files']
@@ -1362,9 +1412,6 @@ def convert_study_to_vti(
         vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
         labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
         labels_manifest_path = _label_manifest_path(study_path, safe_uid)
-        default_vti = os.path.join(study_path, "volume.vti")
-        default_labels = os.path.join(study_path, "labels.vti")
-        default_labels_manifest = os.path.join(study_path, "labels.json")
         needs_segmentation = segment and (force or not os.path.exists(labels_path))
 
         if os.path.exists(vti_path) and not force and not needs_segmentation:
@@ -1375,15 +1422,8 @@ def convert_study_to_vti(
                 "modality": modality, "classification": classification,
                 **segmentation_metadata,
             }
-            # Still update default volume.vti if this is the first 3D series
-            if is_first_3d and not os.path.exists(default_vti):
-                import shutil
-                shutil.copy2(vti_path, default_vti)
-                if os.path.exists(labels_path):
-                    shutil.copy2(labels_path, default_labels)
-                if os.path.exists(labels_manifest_path):
-                    shutil.copy2(labels_manifest_path, default_labels_manifest)
-                is_first_3d = False
+            if not default_volume_written:
+                default_volume_written = _copy_default_volume_outputs(study_path, safe_uid) or default_volume_written
             continue
 
         try:
@@ -1505,15 +1545,8 @@ def convert_study_to_vti(
 
             results[series_uid] = info
 
-            # Copy as default volume.vti for first 3D series processed
-            if is_first_3d:
-                import shutil
-                shutil.copy2(vti_path, default_vti)
-                if os.path.exists(labels_path):
-                    shutil.copy2(labels_path, default_labels)
-                if os.path.exists(labels_manifest_path):
-                    shutil.copy2(labels_manifest_path, default_labels_manifest)
-                is_first_3d = False
+            if not default_volume_written:
+                default_volume_written = _copy_default_volume_outputs(study_path, safe_uid) or default_volume_written
                 print(f"[VTI] Default volume.vti updated from {os.path.basename(vti_path)}")
 
         except Exception as e:

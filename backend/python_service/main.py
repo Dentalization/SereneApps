@@ -11,6 +11,7 @@ import time
 import numpy as np
 import json
 import tempfile
+from io import BytesIO
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -63,6 +64,7 @@ app.add_middleware(
         "X-Labels-Count",
         "Accept-Ranges",
         "Content-Range",
+        "X-VTI-Size",
     ],
 )
 
@@ -78,6 +80,7 @@ _conversion_state_lock = threading.Lock()
 _conversion_events = {}
 _conversion_failures = {}
 _conversion_waiters = {}
+_conversion_progress = {}
 _CONVERSION_WAIT_TIMEOUT_SECONDS = 300
 
 # Shared viewer assets fan out into many Python requests. Cache successful
@@ -123,10 +126,42 @@ async def _broadcast_conversion_status(event: dict) -> None:
 
 
 def _emit_conversion_status(event: dict) -> None:
+    study_id = event.get("studyId") or event.get("study_id")
+    if study_id:
+        with _conversion_state_lock:
+            _conversion_progress[str(study_id)] = {
+                **event,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            }
     loop = _conversion_ws_loop
     if not loop or not loop.is_running():
         return
     asyncio.run_coroutine_threadsafe(_broadcast_conversion_status(event), loop)
+
+
+def _get_conversion_progress(study_id: str) -> dict:
+    with _conversion_state_lock:
+        progress = _conversion_progress.get(str(study_id))
+    if progress:
+        return progress
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    if os.path.exists(study_path):
+        try:
+            if any(name.startswith("volume") and name.endswith(".vti") for name in os.listdir(study_path)):
+                return {
+                    "studyId": study_id,
+                    "status": "ready",
+                    "stage": "cached",
+                    "progress": 100,
+                }
+        except FileNotFoundError:
+            pass
+    return {
+        "studyId": study_id,
+        "status": "pending",
+        "stage": "waiting",
+        "progress": 0,
+    }
 
 
 def _is_conversion_in_progress(study_path: str) -> bool:
@@ -733,6 +768,59 @@ def _compute_density_histogram(values, bins=None, spacing=(1.0, 1.0, 1.0), study
     spacing_values = tuple(float(value) for value in spacing)
     voxel_volume_mm3 = spacing_values[0] * spacing_values[1] * spacing_values[2]
 
+    if bone_candidate_min >= d4_max or total_bone == 0:
+        zero_histogram = {
+            "version": DENSITY_HISTOGRAM_VERSION,
+            "study_vti": study_vti,
+            "bins": [float(value) for value in bin_edges.tolist()],
+            "counts": [int(value) for value in counts.tolist()],
+            "total_voxels": int(scalar_values.size),
+            "air_voxels": air_count,
+            "candidate_voxels": 0,
+            "density_voxel_count": 0,
+            "voxel_spacing_mm": [float(value) for value in spacing_values],
+            "voxel_volume_mm3": round(voxel_volume_mm3, 4),
+            "d1_pct": 0.0,
+            "d2_pct": 0.0,
+            "d3_pct": 0.0,
+            "d4_pct": 0.0,
+            "categories": {
+                "D1": {
+                    "label": "D1 - Dense Cortical",
+                    "hu_range": ">1250 HU",
+                    "normalized_threshold": ">0.5625",
+                    "voxel_count": 0,
+                    "volume_ml": 0.0,
+                    "percentage": 0.0,
+                },
+                "D2": {
+                    "label": "D2 - Thick Cortical, Fine Trabecular",
+                    "hu_range": "850-1250 HU",
+                    "normalized_threshold": "0.4625-0.5625",
+                    "voxel_count": 0,
+                    "volume_ml": 0.0,
+                    "percentage": 0.0,
+                },
+                "D3": {
+                    "label": "D3 - Thin Cortical, Coarse Trabecular",
+                    "hu_range": "350-850 HU",
+                    "normalized_threshold": "0.3375-0.4625",
+                    "voxel_count": 0,
+                    "volume_ml": 0.0,
+                    "percentage": 0.0,
+                },
+                "D4": {
+                    "label": "D4 - Fine Trabecular Only",
+                    "hu_range": "<350 HU",
+                    "normalized_threshold": "0.30-0.3375",
+                    "voxel_count": 0,
+                    "volume_ml": 0.0,
+                    "percentage": 0.0,
+                },
+            },
+        }
+        return zero_histogram
+
     def pct(count) -> float:
         if total_bone == 0:
             return 0.0
@@ -819,7 +907,14 @@ def _read_vti_scalar_values(vti_path: str) -> np.ndarray:
     return _read_vti_scalar_values_and_spacing(vti_path)[0]
 
 
-def _compute_density_histogram_for_vti(vti_path: str, cache_path: str = None, study_id: str = None, series_uid: str = None) -> dict:
+def _compute_density_histogram_for_vti(
+    vti_path: str,
+    cache_path: str = None,
+    study_id: str = None,
+    series_uid: str = None,
+    force_refresh: bool = False,
+    check_stale: bool = False,
+) -> dict:
     if cache_path:
         with _density_locks_lock:
             lock = _density_locks.get(cache_path)
@@ -830,8 +925,13 @@ def _compute_density_histogram_for_vti(vti_path: str, cache_path: str = None, st
         with lock:
             # Re-check cache after acquiring lock
             cached = _load_json_file(cache_path)
-            if cached and cached.get("categories") and cached.get("version") == DENSITY_HISTOGRAM_VERSION:
-                return cached
+            if cached and cached.get("categories") and cached.get("version") == DENSITY_HISTOGRAM_VERSION and not force_refresh:
+                if not check_stale:
+                    return cached
+                vti_mtime = os.path.getmtime(vti_path)
+                cache_mtime = os.path.getmtime(cache_path) if os.path.exists(cache_path) else 0
+                if cache_mtime >= vti_mtime:
+                    return cached
 
             try:
                 volume, spacing, _ = _read_vti_volume(vti_path)
@@ -844,6 +944,7 @@ def _compute_density_histogram_for_vti(vti_path: str, cache_path: str = None, st
             result.update({
                 "study_id": study_id,
                 "series_uid": series_uid,
+                "vti_mtime": os.path.getmtime(vti_path),
             })
 
             _write_json_atomic(result, cache_path)
@@ -860,6 +961,7 @@ def _compute_density_histogram_for_vti(vti_path: str, cache_path: str = None, st
         result.update({
             "study_id": study_id,
             "series_uid": series_uid,
+            "vti_mtime": os.path.getmtime(vti_path),
         })
         return result
 
@@ -887,6 +989,45 @@ def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
     spacing = tuple(float(value) for value in image_data.GetSpacing())
     origin = tuple(float(value) for value in image_data.GetOrigin())
     return values, spacing, origin
+
+
+def _render_preview_png_from_volume(volume: np.ndarray, size: int = 256) -> bytes:
+    try:
+        from PIL import Image
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pillow unavailable for preview rendering: {exc}") from exc
+
+    if volume is None or getattr(volume, "ndim", 0) != 3:
+        raise HTTPException(status_code=500, detail="Preview volume must be a 3D array")
+
+    mid_index = int(volume.shape[2] // 2)
+    slice_data = np.asarray(volume[:, :, mid_index], dtype=np.float32)
+    finite_values = slice_data[np.isfinite(slice_data)]
+    if finite_values.size == 0:
+        normalized = np.zeros(slice_data.shape, dtype=np.uint8)
+    else:
+        low, high = np.percentile(finite_values, [2, 98])
+        if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+            low = float(np.min(finite_values))
+            high = float(np.max(finite_values))
+        if high <= low:
+            normalized = np.zeros(slice_data.shape, dtype=np.uint8)
+        else:
+            scaled = np.clip((slice_data - low) / (high - low), 0.0, 1.0)
+            normalized = np.round(scaled * 255.0).astype(np.uint8)
+
+    preview_array = np.flipud(normalized.T)
+    image = Image.fromarray(preview_array, mode='L')
+    resampling = getattr(getattr(Image, 'Resampling', Image), 'BILINEAR')
+    image = image.resize((size, size), resample=resampling)
+    output = BytesIO()
+    image.save(output, format='PNG')
+    return output.getvalue()
+
+
+def _render_middle_axial_preview_png(vti_path: str, size: int = 256) -> bytes:
+    volume, _, _ = _read_vti_volume(vti_path)
+    return _render_preview_png_from_volume(volume, size=size)
 
 
 @app.get("/quality/{study_id}")
@@ -974,8 +1115,50 @@ def get_volume_vti(request: Request, study_id: str, series_uid: str = None, shar
     return _stream_vti_file(request, vti_path, f"volume_{study_id}.vti")
 
 
+@app.get("/preview/{study_id}")
+def get_volume_preview(study_id: str, series_uid: str = None, share_token: str = None):
+    _authorize_study_access(study_id, share_token)
+    _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
+    png_bytes = _render_middle_axial_preview_png(vti_path)
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+@app.get("/segmentation-progress/{study_id}")
+async def stream_segmentation_progress(study_id: str, request: Request, share_token: str = None):
+    _authorize_study_access(study_id, share_token)
+
+    async def event_generator():
+        last_payload = None
+        while True:
+            if await request.is_disconnected():
+                break
+            current = _get_conversion_progress(study_id)
+            payload = json.dumps(current, sort_keys=True)
+            if payload != last_payload:
+                yield f"data: {payload}\n\n"
+                last_payload = payload
+            if current.get("status") in ("ready", "complete", "failed", "error"):
+                await asyncio.sleep(0.5)
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.get("/density-histogram/{study_id}")
-def get_bone_density_histogram(study_id: str, series_uid: str = None, share_token: str = None, refresh: bool = False):
+def get_bone_density_histogram(study_id: str, series_uid: str = None, share_token: str = None, refresh: bool = False, check_stale: bool = False):
     """
     Return cached Misch D1-D4 bone-density counts, percentages, and volumes.
     """
@@ -985,13 +1168,13 @@ def get_bone_density_histogram(study_id: str, series_uid: str = None, share_toke
     cache_name = f"density_{safe_uid}.json" if safe_uid else "density_default.json"
     cache_path = os.path.join(study_path, cache_name)
 
-    if not refresh:
+    if not refresh and not check_stale:
         cached = _load_json_file(cache_path)
         if cached and cached.get("categories") and cached.get("version") == DENSITY_HISTOGRAM_VERSION:
             return cached
 
     try:
-        return _compute_density_histogram_for_vti(vti_path, cache_path, study_id, series_uid)
+        return _compute_density_histogram_for_vti(vti_path, cache_path, study_id, series_uid, force_refresh=refresh, check_stale=check_stale)
     except Exception as exc:
         import traceback
         traceback.print_exc()

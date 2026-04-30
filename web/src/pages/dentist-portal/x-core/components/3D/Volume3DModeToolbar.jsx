@@ -13,16 +13,20 @@ const ANNOTATION_COLOR_PALETTE = [
   '#a78bfa',
   '#f472b6',
   '#ffffff',
+  'custom',
 ];
 
 export default function Volume3DModeToolbar({
   activeColor,
   annotateMode,
+  annotationCustomColor,
   annotationPersistence,
   annotationCount = 0,
+  annotationQualityScore,
   annotationTool,
   brushOperation,
   brushRadiusMm,
+  canRedo = false,
   canUndo = false,
   clearAllAnnotations,
   clearMeasurements3D,
@@ -31,6 +35,7 @@ export default function Volume3DModeToolbar({
   heatmapOpacity,
   setHeatmapOverlayMode,
   setHeatmapOpacity,
+  handleRedo,
   handleUndoAnnotation,
   isWorldBrushAnnotation,
   measureMode3D,
@@ -39,9 +44,11 @@ export default function Volume3DModeToolbar({
   setAnnotationTool,
   setBrushOperation,
   setBrushRadiusMm,
+  setCustomAnnotationColor,
   setSelectedWorldAnnotationId,
   undoMeasurement3D,
 }) {
+  const customColorInputRef = React.useRef(null);
   if (!measureMode3D && !annotateMode) return null;
 
   return (
@@ -63,10 +70,21 @@ export default function Volume3DModeToolbar({
             type="button"
             onPointerDown={stopUiEvent}
             onClick={undoMeasurement3D}
+            disabled={!canUndo}
             className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
             title="Undo last measurement"
           >
             <AppIcon name="Undo2" size={15} />
+          </button>
+          <button
+            type="button"
+            onPointerDown={stopUiEvent}
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Redo last change"
+          >
+            <AppIcon name="Redo2" size={15} />
           </button>
           <button
             type="button"
@@ -156,19 +174,112 @@ export default function Volume3DModeToolbar({
 
           {['arrow', 'circle', 'text'].includes(annotationTool) && (
             <div className="ml-1 flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900/70 p-1">
-              {ANNOTATION_COLOR_PALETTE.map((hex) => (
-                <button
-                  key={hex}
-                  type="button"
-                  onPointerDown={stopUiEvent}
-                  onClick={() => setActiveColor?.(hex)}
-                  className={`h-5 w-5 rounded-full border-2 transition ${
-                    activeColor === hex ? 'scale-110 border-white' : 'border-transparent hover:scale-105'
-                  }`}
-                  style={{ background: hex }}
-                  title={hex}
-                />
-              ))}
+              {ANNOTATION_COLOR_PALETTE.map((hex) => {
+                if (hex === 'custom') {
+                  const customHex = annotationCustomColor || '#4fd1c5';
+                  const isActive = activeColor === customHex;
+                  return (
+                    <React.Fragment key="custom">
+                      <button
+                        type="button"
+                        onPointerDown={stopUiEvent}
+                        onClick={() => customColorInputRef.current?.click()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            customColorInputRef.current?.click();
+                          }
+                        }}
+                        className={`relative h-5 w-5 rounded-full border-2 transition ${
+                          isActive ? 'scale-110 border-white' : 'border-transparent hover:scale-105'
+                        }`}
+                        style={{ background: customHex }}
+                        title={`Custom (${customHex})`}
+                      >
+                        <span className="absolute inset-0 rounded-full border border-slate-950/70" />
+                      </button>
+                      <input
+                        ref={customColorInputRef}
+                        type="color"
+                        value={customHex}
+                        onChange={(event) => {
+                          const nextColor = event.target.value;
+                          setCustomAnnotationColor?.(nextColor);
+                          setActiveColor?.(nextColor);
+                        }}
+                        className="sr-only"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                      />
+                    </React.Fragment>
+                  );
+                }
+                return (
+                  <button
+                    key={hex}
+                    type="button"
+                    onPointerDown={stopUiEvent}
+                    onClick={() => setActiveColor?.(hex)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        setActiveColor?.(hex);
+                      }
+                    }}
+                    className={`h-5 w-5 rounded-full border-2 transition ${
+                      activeColor === hex ? 'scale-110 border-white' : 'border-transparent hover:scale-105'
+                    }`}
+                    style={{ background: hex }}
+                    title={hex}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {annotationQualityScore && (
+            <div className="ml-1 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/80 px-2 py-1 text-[10px] text-slate-300">
+              {(() => {
+                const total = Math.max(0, Math.min(100, Number(annotationQualityScore.total) || 0));
+                const color = total >= 80 ? '#22c55e' : total >= 50 ? '#f59e0b' : '#ef4444';
+                const dims = annotationQualityScore.dimensions || {};
+                const bars = [
+                  ['Coverage', dims.coverage?.score || 0],
+                  ['Severity', dims.severity?.score || 0],
+                  ['Finding', dims.findingType?.score || 0],
+                  ['Docs', dims.documentation?.score || 0],
+                ];
+                return (
+                  <>
+                    <svg className="h-8 w-8 shrink-0" viewBox="0 0 36 36" aria-label={`Quality ${total}/100`}>
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="3" />
+                      <circle
+                        cx="18"
+                        cy="18"
+                        r="15"
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="3"
+                        strokeDasharray={`${total} 100`}
+                        pathLength="100"
+                        strokeLinecap="round"
+                        transform="rotate(-90 18 18)"
+                      />
+                      <text x="18" y="21" textAnchor="middle" className="fill-white text-[9px] font-bold">{total}</text>
+                    </svg>
+                    <div className="grid w-28 grid-cols-2 gap-x-2 gap-y-1">
+                      {bars.map(([label, score]) => (
+                        <div key={label} title={`${label}: ${score}/25`}>
+                          <div className="mb-0.5 text-[8px] font-bold uppercase text-slate-500">{label}</div>
+                          <div className="h-1 overflow-hidden rounded-full bg-slate-800">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, (score / 25) * 100)}%`, background: color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -233,6 +344,16 @@ export default function Volume3DModeToolbar({
             title="Undo last annotation"
           >
             <AppIcon name="Undo2" size={15} />
+          </button>
+          <button
+            type="button"
+            onPointerDown={stopUiEvent}
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Redo last change"
+          >
+            <AppIcon name="Redo2" size={15} />
           </button>
           <button
             type="button"

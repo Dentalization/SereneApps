@@ -18,6 +18,9 @@ const ImplantPlanner = ({
     onTogglePlaceMode,
     onClear,
     hasCollisions = false,
+    hasBoundaryWarnings = false,
+    safetyZonesVisible = true,
+    onToggleSafetyZones,
 }) => (
     <div className="bg-black/75 backdrop-blur-md rounded-xl p-3 border border-white/10 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
@@ -73,11 +76,33 @@ const ImplantPlanner = ({
             {placeMode ? 'Click Bone Surface to Place' : 'Place Implant'}
         </button>
 
+        <button
+            type="button"
+            onClick={onToggleSafetyZones}
+            className={'mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition ' + (
+                safetyZonesVisible
+                    ? 'border border-sky-400/30 bg-sky-400/15 text-sky-200'
+                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white'
+            )}
+        >
+            <AppIcon name="ShieldCheck" size={12} />
+            Safety Zones
+        </button>
+
         {hasCollisions && (
             <div className="mt-2 rounded-lg bg-rose-500/20 border border-rose-500/40 px-2 py-1.5 flex items-start gap-2">
                 <AppIcon name="AlertTriangle" size={12} className="text-rose-400 mt-0.5 shrink-0" />
                 <span className="text-[10px] text-rose-200 font-medium leading-tight">
                     Collision detected. Implants are too close.
+                </span>
+            </div>
+        )}
+
+        {hasBoundaryWarnings && (
+            <div className="mt-2 rounded-lg bg-amber-500/20 border border-amber-500/40 px-2 py-1.5 flex items-start gap-2">
+                <AppIcon name="AlertTriangle" size={12} className="text-amber-300 mt-0.5 shrink-0" />
+                <span className="text-[10px] text-amber-100 font-medium leading-tight">
+                    Safety zone reaches the volume boundary.
                 </span>
             </div>
         )}

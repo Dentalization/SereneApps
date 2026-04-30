@@ -11,3 +11,4 @@ monai
 torch
 vtk
 nibabel
+scipy

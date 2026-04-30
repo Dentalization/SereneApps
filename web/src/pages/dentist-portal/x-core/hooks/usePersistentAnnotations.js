@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadStudyAnnotations,
   normalizeAnnotationForPersistence,
@@ -47,6 +47,7 @@ export default function usePersistentAnnotations({
   const changeVersionRef = useRef(0);
   const annotationsRef = useRef(annotations);
   const lastAnnotationsRef = useRef(annotations);
+  const lastAnnotationHashRef = useRef('');
   const studyId = studyIdForApi(study);
   const storageStudyKey = studyKeyForStorage(study);
   const loadKey = `${storageStudyKey || studyId}__${seriesUid || ''}__${viewerType || ''}`;
@@ -56,13 +57,20 @@ export default function usePersistentAnnotations({
   const cacheStorageKey = storageStudyKey && seriesUid && viewerType
     ? `xcore.annotations.${storageStudyKey}.${seriesUid}.${viewerType}`
     : '';
+  const annotationHash = useMemo(() => (
+    (annotations || []).map((annotation) => {
+      const coordinatesLength = JSON.stringify(annotation?.coordinates || {}).length;
+      return `${annotation?.id || ''}:${annotation?.review_status || ''}:${coordinatesLength}`;
+    }).join('|')
+  ), [annotations]);
 
   if (lastAnnotationsRef.current !== annotations) {
     annotationsRef.current = annotations;
     lastAnnotationsRef.current = annotations;
-    if (hydratedRef.current) {
+    if (hydratedRef.current && lastAnnotationHashRef.current !== annotationHash) {
       changeVersionRef.current += 1;
     }
+    lastAnnotationHashRef.current = annotationHash;
   }
 
   const readDraftBackup = useCallback(() => {
@@ -318,7 +326,7 @@ export default function usePersistentAnnotations({
         saveTimerRef.current = null;
       }
     };
-  }, [annotations, buildSaveSnapshot, enabled, flushPendingSave, seriesUid, studyId, viewerType, writeDraftBackup, writeLocalCache]);
+  }, [annotationHash, buildSaveSnapshot, enabled, flushPendingSave, seriesUid, studyId, viewerType, writeDraftBackup, writeLocalCache]);
 
   useEffect(() => {
     if (!enabled) return undefined;

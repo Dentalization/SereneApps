@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import AppIcon from '../../../../../components/AppIcon';
 
 const arrowHeadPoints = (startScreen, endScreen) => {
@@ -20,36 +20,28 @@ const stopUiEvent = (event) => {
 const MeasurementLabel = memo(function MeasurementLabel({
   measurement,
   visible,
-  getPosition,
+  positionStore,
   onRename,
 }) {
   const elementRef = useRef(null);
   const [editing, setEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(measurement.label || '');
-  const [hasPosition, setHasPosition] = useState(false);
+  const position = useSyncExternalStore(
+    useCallback((listener) => positionStore?.subscribe?.(measurement.id, listener) || (() => { }), [measurement.id, positionStore]),
+    useCallback(() => positionStore?.getPosition?.(measurement.id) || null, [measurement.id, positionStore]),
+    useCallback(() => positionStore?.getPosition?.(measurement.id) || null, [measurement.id, positionStore]),
+  );
+  const hasPosition = Boolean(position);
 
   useEffect(() => {
     setDraftLabel(measurement.label || '');
   }, [measurement.label]);
 
   useEffect(() => {
-    const applyPosition = (position) => {
-      if (!elementRef.current) return;
-      if (!position) {
-        setHasPosition(false);
-        return;
-      }
-      elementRef.current.style.left = `${position.x}px`;
-      elementRef.current.style.top = `${position.y}px`;
-      setHasPosition(true);
-    };
-    applyPosition(getPosition(measurement.id));
-    const handlePositionUpdate = (event) => {
-      applyPosition(event.detail?.positions?.[measurement.id] || null);
-    };
-    window.addEventListener('xcore:labelPositionUpdate', handlePositionUpdate);
-    return () => window.removeEventListener('xcore:labelPositionUpdate', handlePositionUpdate);
-  }, [getPosition, measurement.id]);
+    if (!elementRef.current || !position) return;
+    elementRef.current.style.left = `${position.x}px`;
+    elementRef.current.style.top = `${position.y}px`;
+  }, [position]);
 
   const commitLabel = useCallback(() => {
     setEditing(false);
@@ -193,13 +185,14 @@ export default function Volume3DOverlayLayer({
   brushRadiusMm,
   brushScreenRadiusPx,
   brushScreenPath,
+  brushTraceActive,
   commitTextDraft3D,
   hiddenAnnotationCount,
   isWorldBrushAnnotation,
   measureMode3D,
   measurePoints,
   measurements3D,
-  measurementLabelPositionsRef,
+  measurementLabelStore,
   measurementLabelsVisible,
   measurementPreview,
   onRenameMeasurement,
@@ -230,13 +223,6 @@ export default function Volume3DOverlayLayer({
       setHoverPosition(null);
     },
   }), []);
-  const getMeasurementPosition = useCallback((id) => {
-    const fromRef = measurementLabelPositionsRef?.current?.get(id) || null;
-    if (fromRef) return fromRef;
-    const measurement = (measurements3D || []).find((m) => m.id === id);
-    return measurement?.screen || null;
-  }, [measurementLabelPositionsRef, measurements3D]);
-
   return (
     <>
       {projectedSnapshotWorldOverlayAnnotations.length > 0 && (
@@ -322,7 +308,7 @@ export default function Volume3DOverlayLayer({
           key={measurement.id}
           measurement={measurement}
           visible={measurementLabelsVisible}
-          getPosition={getMeasurementPosition}
+          positionStore={measurementLabelStore}
           onRename={onRenameMeasurement}
         />
       ))}
@@ -429,23 +415,48 @@ export default function Volume3DOverlayLayer({
       )}
 
       {annotateMode && annotationTool === 'brush' && brushPointerScreen && (
-        <svg className="pointer-events-none absolute inset-0 z-[25] h-full w-full">
-          <circle
-            cx={brushPointerScreen.x}
-            cy={brushPointerScreen.y}
-            r={Math.max(8, brushScreenRadiusPx || brushRadiusMm * 3.5)}
-            fill="rgba(245,158,11,0.12)"
-            stroke="rgba(245,158,11,0.85)"
-            strokeWidth="1.5"
-            strokeDasharray="5 4"
-          />
-          <circle
-            cx={brushPointerScreen.x}
-            cy={brushPointerScreen.y}
-            r="3"
-            fill="rgba(245,158,11,0.9)"
-          />
-        </svg>
+        <div className="pointer-events-none absolute inset-0 z-[25]">
+          {brushTraceActive && (
+            <div
+              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-300/70 bg-amber-400/10 animate-pulse"
+              style={{
+                left: brushPointerScreen.x,
+                top: brushPointerScreen.y,
+                width: Math.max(16, (brushScreenRadiusPx || brushRadiusMm * 3.5) * 2),
+                height: Math.max(16, (brushScreenRadiusPx || brushRadiusMm * 3.5) * 2),
+                boxShadow: '0 0 0 2px rgba(245, 158, 11, 0.08)',
+              }}
+            />
+          )}
+          <svg className="absolute inset-0 h-full w-full">
+            <circle
+              cx={brushPointerScreen.x}
+              cy={brushPointerScreen.y}
+              r={Math.max(8, brushScreenRadiusPx || brushRadiusMm * 3.5)}
+              fill="rgba(245,158,11,0.12)"
+              stroke="rgba(245,158,11,0.85)"
+              strokeWidth="1.5"
+              strokeDasharray="5 4"
+            />
+            <circle
+              cx={brushPointerScreen.x}
+              cy={brushPointerScreen.y}
+              r="3"
+              fill="rgba(245,158,11,0.9)"
+            />
+          </svg>
+          {brushTraceActive && (
+            <div
+              className="absolute -translate-x-1/2 rounded-full border border-amber-400/35 bg-slate-950/85 px-2 py-1 text-[10px] font-semibold text-amber-100 shadow-xl backdrop-blur"
+              style={{
+                left: brushPointerScreen.x,
+                top: Math.max(18, brushPointerScreen.y - Math.max(24, (brushScreenRadiusPx || brushRadiusMm * 3.5) + 14)),
+              }}
+            >
+              {brushRadiusMm.toFixed(1)} mm
+            </div>
+          )}
+        </div>
       )}
 
       {measureMode3D && measurePoints.length === 1 && (

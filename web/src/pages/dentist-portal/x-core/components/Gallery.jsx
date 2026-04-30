@@ -22,6 +22,7 @@ const SERIES_LOAD_STATE = {
 };
 
 const IMAGING_SERVICE_OFFLINE_MESSAGE = 'Cannot connect to the imaging service. Start the X-Core Python service and retry.';
+const SERIES_CACHE_STALE_AFTER_MS = 5 * 60 * 1000;
 
 function getStudyKey(study) {
     return study.folderName || study.id;
@@ -45,13 +46,20 @@ function normalizeStudySeriesState(study) {
 
     const series = study.series || [];
     const totalSeries = study.totalSeries ?? series.length;
+    const seriesCacheUpdatedAt = Number(
+        study.seriesCacheUpdatedAt
+        || study.cacheUpdatedAt
+        || study.cachedAt
+        || (series.length > 0 ? Date.now() : 0)
+    ) || 0;
 
     if (study.seriesLoadState) {
         return {
             ...study,
             series,
             totalSeries,
-            seriesLoadError: study.seriesLoadError || null
+            seriesLoadError: study.seriesLoadError || null,
+            seriesCacheUpdatedAt,
         };
     }
 
@@ -61,7 +69,8 @@ function normalizeStudySeriesState(study) {
             series,
             totalSeries,
             seriesLoadState: SERIES_LOAD_STATE.READY,
-            seriesLoadError: null
+            seriesLoadError: null,
+            seriesCacheUpdatedAt,
         };
     }
 
@@ -73,7 +82,8 @@ function normalizeStudySeriesState(study) {
         totalSeries,
         scanning: study.scanning || false,
         seriesLoadState: SERIES_LOAD_STATE.SERVICE_ERROR,
-        seriesLoadError: study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE
+        seriesLoadError: study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE,
+        seriesCacheUpdatedAt,
     };
 }
 
@@ -140,10 +150,15 @@ async function fetchStudySeries(study) {
     }
 }
 
-function shouldRevalidateCachedStudies(cachedStudies) {
+function shouldRevalidateCachedStudies(cachedStudies, staleAfterMs = SERIES_CACHE_STALE_AFTER_MS) {
+    const now = Date.now();
     return cachedStudies.some((study) => {
-        if (!study?.seriesLoadState) return true;
-        return study.seriesLoadState !== SERIES_LOAD_STATE.READY;
+        const series = study?.series || [];
+        if (study?.seriesLoadState === SERIES_LOAD_STATE.READY && series.length > 0) {
+            const lastUpdatedAt = Number(study?.seriesCacheUpdatedAt || 0);
+            return !lastUpdatedAt || (now - lastUpdatedAt) > staleAfterMs;
+        }
+        return true;
     });
 }
 
@@ -361,12 +376,76 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
             .join('|')
     ), [studiesWithSeries]);
 
-    // Fallback polling while disconnected from the live conversion socket.
+    // Fallback live progress while disconnected from the WebSocket.
     useEffect(() => {
         if (connectionStatus === 'connected') return undefined;
-        const hasConverting = studiesRef.current.some(hasIncompleteSeries);
+        const convertingStudies = studiesRef.current.filter(hasIncompleteSeries);
 
-        if (!hasConverting) return undefined;
+        if (convertingStudies.length === 0) return undefined;
+
+        if (typeof EventSource !== 'undefined') {
+            const sources = convertingStudies.map((study) => {
+                const studyKey = getStudyKey(study);
+                const url = buildImagingUrl(
+                    `/segmentation-progress/${studyKey}`,
+                    buildStudyAssetParams(study)
+                );
+                const source = new EventSource(url);
+
+                source.onmessage = (event) => {
+                    let payload = null;
+                    try {
+                        payload = JSON.parse(event.data);
+                    } catch (_) {
+                        payload = null;
+                    }
+                    if (!payload?.studyId) return;
+
+                    if (payload.status === 'ready' || payload.status === 'complete') {
+                        const matchingStudy = studiesRef.current.find((item) => String(getStudyKey(item)) === String(payload.studyId));
+                        if (matchingStudy) {
+                            fetchStudySeries(matchingStudy).then((updatedStudy) => {
+                                setStudiesWithSeries((currentStudies) => {
+                                    const nextStudies = currentStudies.map((item) =>
+                                        String(getStudyKey(item)) === String(payload.studyId) ? updatedStudy : item
+                                    );
+                                    if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(nextStudies);
+                                    return nextStudies;
+                                });
+                            }).catch((error) => console.error('[Gallery] SSE completion refresh failed:', error));
+                        }
+                        source.close();
+                        return;
+                    }
+
+                    setStudiesWithSeries((currentStudies) => {
+                        const nextStudies = currentStudies.map((item) => {
+                            if (String(getStudyKey(item)) !== String(payload.studyId)) return item;
+                            const nextSeries = (item.series || []).map((series) => {
+                                if (payload.seriesUid && series.series_uid !== payload.seriesUid) return series;
+                                return {
+                                    ...series,
+                                    status: payload.status === 'processing' || payload.status === 'started' ? 'converting' : series.status,
+                                    conversionStage: payload.stage || series.conversionStage,
+                                    conversionProgress: payload.progress ?? series.conversionProgress,
+                                };
+                            });
+                            return { ...item, series: nextSeries };
+                        });
+                        if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(nextStudies);
+                        return nextStudies;
+                    });
+                };
+
+                source.onerror = () => {
+                    source.close();
+                };
+
+                return source;
+            });
+
+            return () => sources.forEach((source) => source.close());
+        }
 
         const interval = setInterval(async () => {
             const current = studiesRef.current;
