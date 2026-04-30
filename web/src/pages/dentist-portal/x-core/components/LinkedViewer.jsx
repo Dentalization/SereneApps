@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import AppIcon from '../../../../components/AppIcon';
 import VolumeViewer3D from './VolumeViewer3D';
@@ -9,6 +9,17 @@ const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
     const [crosshairWorld, setCrosshairWorld] = useState(null);
 
     const title = study?.patientName || study?.originalName || study?.folderName || 'Linked Study';
+
+    useEffect(() => {
+        const handleCrosshairSync = (event) => {
+            const point = event?.detail?.worldPoint;
+            if (Array.isArray(point) && point.length === 3) {
+                setCrosshairWorld(point);
+            }
+        };
+        window.addEventListener('xcore:mpr_crosshair_sync', handleCrosshairSync);
+        return () => window.removeEventListener('xcore:mpr_crosshair_sync', handleCrosshairSync);
+    }, []);
 
     return (
         <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">

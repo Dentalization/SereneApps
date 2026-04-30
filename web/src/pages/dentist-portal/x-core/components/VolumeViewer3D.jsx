@@ -47,6 +47,7 @@ import AnnotationSessionModal from './AnnotationSessionModal';
 import Volume3DInteractionLayer from './3D/Volume3DInteractionLayer';
 import Volume3DModeToolbar from './3D/Volume3DModeToolbar';
 import Volume3DOverlayLayer from './3D/Volume3DOverlayLayer';
+import { createMeasurementLabelPositionStore } from './3D/measurementLabelStore.mjs';
 import {
     arraysNearlyEqual,
     BRUSH_RADIUS_DEFAULT_MM,
@@ -95,12 +96,11 @@ import {
     mergeAnnotationSessions,
     saveLocalAnnotationSession,
 } from '../utils/annotationSessions.mjs';
-import { getAnnotationReviewIssues } from '../utils/annotationQuality';
+import { calculateAnnotationQualityScore, getAnnotationReviewIssues } from '../utils/annotationQuality';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const SAMPLE_DISTANCE_INTERACTIVE = 1.0;
 const SAMPLE_DISTANCE_STILL = 0.5;
-const PARTIAL_PREVIEW_THRESHOLD = 0.20;
 const SLAB_MIN_MM = 1;
 const SLAB_MAX_MM = 100;
 const SLAB_DEFAULT_MM = 20;
@@ -183,6 +183,9 @@ const DENSITY_LEGEND = [
 const MEASUREMENT_COLOR = [0.113, 0.62, 0.459];
 const NERVE_COLOR = [1.0, 0.82, 0.18];
 const PICK_SURFACE_CONTOUR = 0.42;
+const LARGE_VTI_RANGE_THRESHOLD_BYTES = 150 * 1024 * 1024;
+const VTI_RANGE_CHUNK_COUNT = 4;
+const IMPLANT_SAFETY_MARGIN_MM = 1.5;
 const overlayResourceMap = new WeakMap();
 const overlayAnnotationMap = new WeakMap();
 const fovSuppressedImageData = new WeakSet();
@@ -338,11 +341,21 @@ function addColorPresetPoints(ctfun, colorPoints, isInverted = false) {
     });
 }
 
-function suppressFovBackgroundInPlace(imageData) {
+async function suppressFovBackgroundInPlace(imageData, options = {}) {
     const scalars = imageData?.getPointData?.()?.getScalars?.();
     const values = scalars?.getData?.();
     const dims = imageData?.getDimensions?.();
     const spacing = imageData?.getSpacing?.() || [1, 1, 1];
+    const onProgress = options?.onProgress;
+    const onComplete = options?.onComplete;
+    const batchSize = Math.max(1, Number(options?.batchSize) || 16);
+    const yieldToFrame = () => new Promise((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 0);
+        }
+    });
 
     if (!values || !dims || dims.length < 3 || fovSuppressedImageData.has(imageData)) return;
 
@@ -361,27 +374,32 @@ function suppressFovBackgroundInPlace(imageData) {
     const sliceBounds = Array.from({ length: nz }, () => null);
     let candidateVoxels = 0;
 
-    for (let z = 0; z < nz; z += 1) {
-        let minX = nx;
-        let minY = ny;
-        let maxX = -1;
-        let maxY = -1;
-        const zOffset = nx * ny * z;
-        for (let y = 0; y < ny; y += 1) {
-            const rowOffset = zOffset + nx * y;
-            for (let x = 0; x < nx; x += 1) {
-                if (values[rowOffset + x] >= boneThreshold) {
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                    candidateVoxels += 1;
+    for (let zStart = 0; zStart < nz; zStart += batchSize) {
+        const zEnd = Math.min(nz, zStart + batchSize);
+        for (let z = zStart; z < zEnd; z += 1) {
+            let minX = nx;
+            let minY = ny;
+            let maxX = -1;
+            let maxY = -1;
+            const zOffset = nx * ny * z;
+            for (let y = 0; y < ny; y += 1) {
+                const rowOffset = zOffset + nx * y;
+                for (let x = 0; x < nx; x += 1) {
+                    if (values[rowOffset + x] >= boneThreshold) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        candidateVoxels += 1;
+                    }
                 }
             }
+            if (maxX >= 0) {
+                sliceBounds[z] = { minX, maxX, minY, maxY };
+            }
         }
-        if (maxX >= 0) {
-            sliceBounds[z] = { minX, maxX, minY, maxY };
-        }
+        onProgress?.(Math.round((zEnd / Math.max(nz, 1)) * 45));
+        await yieldToFrame();
     }
 
     if (candidateVoxels < Math.max(400, nx * ny * nz * 0.0001)) {
@@ -390,60 +408,71 @@ function suppressFovBackgroundInPlace(imageData) {
     }
 
     let suppressed = 0;
-    for (let z = 0; z < nz; z += 1) {
-        let minX = nx;
-        let minY = ny;
-        let maxX = -1;
-        let maxY = -1;
-        const z0 = Math.max(0, z - zWindow);
-        const z1 = Math.min(nz - 1, z + zWindow);
-        for (let zz = z0; zz <= z1; zz += 1) {
-            const bounds = sliceBounds[zz];
-            if (!bounds) continue;
-            minX = Math.min(minX, bounds.minX);
-            maxX = Math.max(maxX, bounds.maxX);
-            minY = Math.min(minY, bounds.minY);
-            maxY = Math.max(maxY, bounds.maxY);
-        }
-
-        const zOffset = nx * ny * z;
-        if (maxX < 0) {
-            for (let i = zOffset; i < zOffset + nx * ny; i += 1) {
-                if (values[i] > 0.02) suppressed += 1;
-                values[i] = 0;
+    for (let zStart = 0; zStart < nz; zStart += batchSize) {
+        const zEnd = Math.min(nz, zStart + batchSize);
+        for (let z = zStart; z < zEnd; z += 1) {
+            let minX = nx;
+            let minY = ny;
+            let maxX = -1;
+            let maxY = -1;
+            const z0 = Math.max(0, z - zWindow);
+            const z1 = Math.min(nz - 1, z + zWindow);
+            for (let zz = z0; zz <= z1; zz += 1) {
+                const bounds = sliceBounds[zz];
+                if (!bounds) continue;
+                minX = Math.min(minX, bounds.minX);
+                maxX = Math.max(maxX, bounds.maxX);
+                minY = Math.min(minY, bounds.minY);
+                maxY = Math.max(maxY, bounds.maxY);
             }
-            continue;
-        }
 
-        minX = Math.max(0, minX - marginX);
-        maxX = Math.min(nx - 1, maxX + marginX);
-        minY = Math.max(0, minY - marginY);
-        maxY = Math.min(ny - 1, maxY + marginY);
+            const zOffset = nx * ny * z;
+            if (maxX < 0) {
+                for (let i = zOffset; i < zOffset + nx * ny; i += 1) {
+                    if (values[i] > 0.02) suppressed += 1;
+                    values[i] = 0;
+                }
+                continue;
+            }
 
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-        const rx = Math.max((maxX - minX) / 2, 1);
-        const ry = Math.max((maxY - minY) / 2, 1);
-        const rx2 = rx * rx;
-        const ry2 = ry * ry;
+            minX = Math.max(0, minX - marginX);
+            maxX = Math.min(nx - 1, maxX + marginX);
+            minY = Math.max(0, minY - marginY);
+            maxY = Math.min(ny - 1, maxY + marginY);
 
-        for (let y = 0; y < ny; y += 1) {
-            const dy = y - cy;
-            const dy2 = dy * dy;
-            const rowOffset = zOffset + nx * y;
-            for (let x = 0; x < nx; x += 1) {
-                const dx = x - cx;
-                if (((dx * dx) / rx2) + (dy2 / ry2) <= 1) continue;
-                const idx = rowOffset + x;
-                if (values[idx] > 0.02) suppressed += 1;
-                values[idx] = 0;
+            const cx = (minX + maxX) / 2;
+            const cy = (minY + maxY) / 2;
+            const rx = Math.max((maxX - minX) / 2, 1);
+            const ry = Math.max((maxY - minY) / 2, 1);
+            const rx2 = rx * rx;
+            const ry2 = ry * ry;
+
+            for (let y = 0; y < ny; y += 1) {
+                const dy = y - cy;
+                const dy2 = dy * dy;
+                const rowOffset = zOffset + nx * y;
+                for (let x = 0; x < nx; x += 1) {
+                    const dx = x - cx;
+                    if (((dx * dx) / rx2) + (dy2 / ry2) <= 1) continue;
+                    const idx = rowOffset + x;
+                    if (values[idx] > 0.02) suppressed += 1;
+                    values[idx] = 0;
+                }
             }
         }
+        onProgress?.(45 + Math.round((zEnd / Math.max(nz, 1)) * 55));
+        await yieldToFrame();
     }
 
     scalars.modified?.();
     imageData.modified?.();
     fovSuppressedImageData.add(imageData);
+    onComplete?.();
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('xcore:fovSuppressionComplete', {
+            detail: { suppressed },
+        }));
+    }
     console.log('[VolumeViewer3D] Suppressed scan FOV background voxels:', suppressed.toLocaleString());
 }
 
@@ -524,6 +553,7 @@ function disposeSurfacePickActor(ctx) {
     try { ctx.renderer?.removeActor?.(ctx.surfacePickActor); } catch (_) { }
     try { ctx.surfacePickActor.getMapper?.()?.delete?.(); } catch (_) { }
     try { resources?.marching?.delete?.(); } catch (_) { }
+    try { resources?.polyData?.delete?.(); } catch (_) { }
     try { overlayResourceMap.delete(ctx.surfacePickActor); } catch (_) { }
     try { ctx.surfacePickActor.delete?.(); } catch (_) { }
     ctx.surfacePickActor = null;
@@ -884,18 +914,37 @@ const VolumeViewer3D = ({
     const brushTraceActiveRef = useRef(false);
     const brushPointerRef = useRef(null);
     const brushMoveRafRef = useRef(0);
+    const mprSyncMoveRafRef = useRef(0);
+    const mprSyncPointerRef = useRef(null);
     const lastBrushRenderRef = useRef(0);
     const heatmapVolumeActorRef = useRef(null);
     const lastPickDurationRef = useRef(20);
     const projectionCacheRef = useRef({ key: null, cache: new Map() });
     const renderedAnnotationIdsRef = useRef(new Map());
     const annotationHistoryRef = useRef([]);
+    const annotationRedoRef = useRef([]);
+    const measurementHistoryRef = useRef([]);
+    const measurementRedoRef = useRef([]);
+    const measurements3DRef = useRef([]);
+    const polylineMeasurementsRef = useRef([]);
+    const undoToastTimerRef = useRef(null);
     const interactorEventsBoundRef = useRef(true);
+    const autoRotateIntervalRef = useRef(null);
+    const autoRotateResumeTimerRef = useRef(null);
+    const autoRotatePausedRef = useRef(false);
+    const previewObjectUrlRef = useRef(null);
+    const surfacePickWorkerRef = useRef(null);
+    const surfacePickWorkerRequestIdRef = useRef(0);
+    const surfacePickWorkerPendingRef = useRef(new Map());
+    const surfacePickWorkerFailedRef = useRef(false);
+    const measurementLabelStoreRef = useRef(createMeasurementLabelPositionStore());
 
     // Core state
     const [loading, setLoading] = useState(true);
     const [loadingStage, setLoadingStage] = useState('Connecting...');
     const [loadingProgress, setLoadingProgress] = useState(0);
+    const [vtiChunkProgress, setVtiChunkProgress] = useState([]);
+    const [suppressionProgress, setSuppressionProgress] = useState(0);
     const [previewImage, setPreviewImage] = useState(null);
     const [volumeWasCached, setVolumeWasCached] = useState(false);
     const [error, setError] = useState(null);
@@ -924,6 +973,7 @@ const VolumeViewer3D = ({
     const [heatmapOverlayMode, setHeatmapOverlayMode] = useState(false);
     const [heatmapOpacity, setHeatmapOpacity] = useState(0.4);
     const [measurementRevision, setMeasurementRevision] = useState(0);
+    const [undoToast, setUndoToast] = useState(null);
     const [showNerveOverlay, setShowNerveOverlay] = useState(false);
     const [nerveLoading, setNerveLoading] = useState(false);
     const [nerveError, setNerveError] = useState(null);
@@ -935,7 +985,10 @@ const VolumeViewer3D = ({
     const [implantBrand, setImplantBrand] = useState('Straumann');
     const [implantPlacements, setImplantPlacements] = useState([]);
     const [implantCollisions, setImplantCollisions] = useState([]);
+    const [implantBoundaryWarnings, setImplantBoundaryWarnings] = useState([]);
+    const [implantSafetyZonesVisible, setImplantSafetyZonesVisible] = useState(true);
     const [implantError, setImplantError] = useState(null);
+    const [mprSyncEnabled, setMprSyncEnabled] = useState(false);
     const [aiReportOpen, setAiReportOpen] = useState(false);
     const [aiReport, setAiReport] = useState('');
     const [aiReportLoading, setAiReportLoading] = useState(false);
@@ -954,18 +1007,30 @@ const VolumeViewer3D = ({
     const [annotations, setAnnotations] = useState([]);
     const [annotationHistoryRevision, setAnnotationHistoryRevision] = useState(0);
     const [activeAnnotationColor, setActiveAnnotationColor] = useState(ANNOTATION_COLORS.arrow);
+    const [annotationCustomColor, setAnnotationCustomColor] = useState('#4fd1c5');
     const [worldOverlayDraft, setWorldOverlayDraft] = useState(null);
     const [textDraft3D, setTextDraft3D] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
     const [measurementLabelsVisible, setMeasurementLabelsVisible] = useState(true);
-    const measurementLabelPositionsRef = useRef(new Map());
+    const measurementLabelProjectionKeyRef = useRef('');
+    const measurementLabelSignatureRef = useRef('');
     const [snapshotOverlay, setSnapshotOverlay] = useState(null);
     const [sessionModalMode, setSessionModalMode] = useState(null);
     const [sessionSaving, setSessionSaving] = useState(false);
     const [sessionError, setSessionError] = useState('');
     const [reviewError, setReviewError] = useState('');
+    const [qualityGateOpen, setQualityGateOpen] = useState(false);
+    const [annotationQualityScore, setAnnotationQualityScore] = useState(() => {
+        try {
+            const stored = sessionStorage.getItem('xcore.annotationQualityScore');
+            return stored ? JSON.parse(stored) : null;
+        } catch (_) {
+            return null;
+        }
+    });
+    const qualityScoreTimerRef = useRef(null);
     const [surfaceTraceDraft, setSurfaceTraceDraft] = useState([]);
     const [surfaceTracePreview, setSurfaceTracePreview] = useState(null);
     const [surfaceTraceActive, setSurfaceTraceActive] = useState(false);
@@ -974,6 +1039,7 @@ const VolumeViewer3D = ({
     const [brushDraftCenters, setBrushDraftCenters] = useState([]);
     const [brushPreviewPoint, setBrushPreviewPoint] = useState(null);
     const [brushPointerScreen, setBrushPointerScreen] = useState(null);
+    const [brushScreenRadiusPx, setBrushScreenRadiusPx] = useState(null);
     const [brushTraceActive, setBrushTraceActive] = useState(false);
     const [selectedWorldAnnotationId, setSelectedWorldAnnotationId] = useState(null);
 
@@ -982,15 +1048,53 @@ const VolumeViewer3D = ({
         [annotations, selectedWorldAnnotationId]
     );
 
+    useEffect(() => {
+        measurements3DRef.current = measurements3D;
+    }, [measurements3D]);
+
+    useEffect(() => {
+        polylineMeasurementsRef.current = polylineMeasurements;
+    }, [polylineMeasurements]);
+
+    const showUndoToast = useCallback((message) => {
+        setUndoToast(message);
+        if (undoToastTimerRef.current) clearTimeout(undoToastTimerRef.current);
+        undoToastTimerRef.current = setTimeout(() => {
+            setUndoToast(null);
+            undoToastTimerRef.current = null;
+        }, 2000);
+    }, []);
+
     const pushAnnotationChange = useCallback((updater) => {
         setAnnotations((current) => {
             annotationHistoryRef.current = [
                 ...annotationHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
                 current,
             ];
+            annotationRedoRef.current = [];
             return typeof updater === 'function' ? updater(current) : updater;
         });
         setAnnotationHistoryRevision((value) => value + 1);
+    }, []);
+
+    const applyMeasurementChange = useCallback((updater) => {
+        const previous = {
+            measurements3D: measurements3DRef.current,
+            polylineMeasurements: polylineMeasurementsRef.current,
+        };
+        const next = typeof updater === 'function' ? updater(previous) : updater;
+        if (!next) return;
+
+        measurementHistoryRef.current = [
+            ...measurementHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+            previous,
+        ];
+        measurementRedoRef.current = [];
+        measurements3DRef.current = next.measurements3D || [];
+        polylineMeasurementsRef.current = next.polylineMeasurements || [];
+        setMeasurements3D(measurements3DRef.current);
+        setPolylineMeasurements(polylineMeasurementsRef.current);
+        setMeasurementRevision((value) => value + 1);
     }, []);
 
     const deleteSelectedWorldAnnotation = useCallback(() => {
@@ -999,6 +1103,27 @@ const VolumeViewer3D = ({
         setSelectedWorldAnnotationId(null);
         setManualSegmentationError(null);
     }, [pushAnnotationChange, selectedWorldAnnotationId]);
+
+    const revokePreviewObjectUrl = useCallback(() => {
+        if (!previewObjectUrlRef.current) return;
+        try {
+            URL.revokeObjectURL(previewObjectUrlRef.current);
+        } catch (_) { }
+        previewObjectUrlRef.current = null;
+    }, []);
+
+    const updatePreviewImageUrl = useCallback((nextUrl) => {
+        if (previewObjectUrlRef.current && previewObjectUrlRef.current !== nextUrl) {
+            try {
+                URL.revokeObjectURL(previewObjectUrlRef.current);
+            } catch (_) { }
+            previewObjectUrlRef.current = null;
+        }
+        if (nextUrl?.startsWith?.('blob:')) {
+            previewObjectUrlRef.current = nextUrl;
+        }
+        setPreviewImage(nextUrl);
+    }, []);
 
     const [manualSegmentationExporting, setManualSegmentationExporting] = useState(false);
     const [manualMaskExporting, setManualMaskExporting] = useState(false);
@@ -1038,6 +1163,7 @@ const VolumeViewer3D = ({
     const measurementStorageKey = useMemo(() => `xcore.measurements3d.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const clipStorageKey = useMemo(() => `xcore.clipPlane.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
     const brushRadiusStorageKey = useMemo(() => `xcore.brushRadius.${studyKey || 'study'}__${seriesUid || 'default'}`, [studyKey, seriesUid]);
+    const annotationCustomColorStorageKey = useMemo(() => 'xcore.annotationCustomColor', []);
     const showBack = typeof onBack === 'function';
     const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
     const reviewMode = useMemo(() => {
@@ -1091,7 +1217,7 @@ const VolumeViewer3D = ({
 
     const currentCameraState = useMemo(
         () => captureCurrentCameraState(),
-        [captureCurrentCameraState, measurementRevision, preset, projectionTick, viewerSize.height, viewerSize.width]
+        [captureCurrentCameraState, projectionTick, viewerSize.height, viewerSize.width]
     );
     const manualBrushAnnotations = useMemo(
         () => annotations.filter(isWorldBrushAnnotation),
@@ -1207,11 +1333,42 @@ const VolumeViewer3D = ({
 
     const scheduleCameraStateRestore = useCallback((cameraState) => {
         if (!cameraState) return;
-        requestAnimationFrame(() => {
-            window.setTimeout(() => {
+        const ctx = vtkContextRef.current;
+        const renderWindow = ctx?.renderWindow;
+        if (!renderWindow) {
+            requestAnimationFrame(() => {
                 applyCameraState(cameraState);
-            }, 160);
-        });
+            });
+            return;
+        }
+
+        const bumpProjectionAfterRestore = () => {
+            window.setTimeout(() => {
+                projectionCacheRef.current.cache.clear();
+                setProjectionTick((value) => value + 1);
+            }, 100);
+        };
+
+        if ((renderWindow.getMTime?.() || 0) > 0) {
+            applyCameraState(cameraState);
+            bumpProjectionAfterRestore();
+            return;
+        }
+
+        let settled = false;
+        let sub = null;
+        const applyOnce = () => {
+            if (settled) return;
+            settled = true;
+            try { sub?.unsubscribe?.(); } catch (_) { }
+            try { sub?.remove?.(); } catch (_) { }
+            applyCameraState(cameraState);
+            bumpProjectionAfterRestore();
+        };
+
+        sub = renderWindow.onModified?.(applyOnce);
+        renderWindow.render?.();
+        window.setTimeout(applyOnce, 250);
     }, [applyCameraState]);
 
     const decorate3DAnnotations = useCallback((nextAnnotations = []) => {
@@ -1267,6 +1424,23 @@ const VolumeViewer3D = ({
             localStorage.setItem(brushRadiusStorageKey, String(brushRadiusMm));
         } catch (_) { }
     }, [brushRadiusMm, brushRadiusStorageKey]);
+
+    useEffect(() => {
+        if (!annotationCustomColorStorageKey) return;
+        try {
+            const stored = localStorage.getItem(annotationCustomColorStorageKey);
+            if (stored) {
+                setAnnotationCustomColor(stored);
+            }
+        } catch (_) { }
+    }, [annotationCustomColorStorageKey]);
+
+    useEffect(() => {
+        if (!annotationCustomColorStorageKey) return;
+        try {
+            localStorage.setItem(annotationCustomColorStorageKey, annotationCustomColor);
+        } catch (_) { }
+    }, [annotationCustomColor, annotationCustomColorStorageKey]);
 
     const snapshotOverlayAnnotations = useMemo(() => (
         (snapshotOverlay?.annotations || []).map((annotation) => ({
@@ -1340,7 +1514,31 @@ const VolumeViewer3D = ({
     useEffect(() => () => {
         if (brushMoveRafRef.current) cancelAnimationFrame(brushMoveRafRef.current);
         if (surfaceMoveRafRef.current) cancelAnimationFrame(surfaceMoveRafRef.current);
-    }, []);
+        if (mprSyncMoveRafRef.current) cancelAnimationFrame(mprSyncMoveRafRef.current);
+        if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
+        if (autoRotateResumeTimerRef.current) clearTimeout(autoRotateResumeTimerRef.current);
+        if (autoRotateIntervalRef.current) clearInterval(autoRotateIntervalRef.current);
+        if (undoToastTimerRef.current) clearTimeout(undoToastTimerRef.current);
+        overlayAbortRef.current?.abort?.();
+        overlayAbortRef.current = null;
+        revokePreviewObjectUrl();
+        surfacePickWorkerPendingRef.current.forEach(({ reject }) => {
+            try {
+                reject(new Error('Surface pick worker terminated'));
+            } catch (_) { }
+        });
+        surfacePickWorkerPendingRef.current.clear();
+        try {
+            surfacePickWorkerRef.current?.terminate?.();
+        } catch (_) { }
+        surfacePickWorkerRef.current = null;
+        const ctx = vtkContextRef.current;
+        if (ctx?.sharpenTimer) {
+            clearTimeout(ctx.sharpenTimer);
+            ctx.sharpenTimer = null;
+        }
+        measurementLabelStoreRef.current.reset();
+    }, [revokePreviewObjectUrl]);
 
     useEffect(() => {
         annotationHydrationKeyRef.current = '';
@@ -1670,6 +1868,7 @@ const VolumeViewer3D = ({
         if (!study || !containerReady) return;
 
         let cancelled = false;
+        let previewAbortController = null;
 
         const isCached = volumeCache.has(cacheKey);
         setVolumeWasCached(isCached);
@@ -1678,6 +1877,9 @@ const VolumeViewer3D = ({
         const loadVolume = async () => {
             setLoading(true);
             setError(null);
+            setVtiChunkProgress([]);
+            setSuppressionProgress(0);
+            revokePreviewObjectUrl();
             setPreviewImage(null);
             setShowTeethOverlay(false);
             setTeethLoading(false);
@@ -1689,9 +1891,13 @@ const VolumeViewer3D = ({
             setClippingMode(false);
             setMeasureMode3D(false);
             setMeasurePoints([]);
+            measurementLabelStoreRef.current.reset();
             setShowNerveOverlay(false);
             setNerveInfo(null);
             setImplantPlaceMode(false);
+            setImplantBoundaryWarnings([]);
+            setImplantSafetyZonesVisible(true);
+            setMprSyncEnabled(false);
             setAiReport('');
             setAiReportError(null);
             setAiReportOpen(false);
@@ -1710,6 +1916,11 @@ const VolumeViewer3D = ({
             renderedAnnotationIdsRef.current.clear();
             projectionCacheRef.current.cache.clear();
             annotationHistoryRef.current = [];
+            annotationRedoRef.current = [];
+            measurementHistoryRef.current = [];
+            measurementRedoRef.current = [];
+            measurements3DRef.current = [];
+            polylineMeasurementsRef.current = [];
             setAnnotationHistoryRevision((value) => value + 1);
             setActiveAnnotationColor(ANNOTATION_COLORS.arrow);
             setWorldOverlayDraft(null);
@@ -1719,11 +1930,14 @@ const VolumeViewer3D = ({
             setSessionModalMode(null);
             setSessionError('');
             setReviewError('');
+            setQualityGateOpen(false);
             setSurfaceTraceDraft([]);
             setSurfaceTracePreview(null);
             setSurfaceTraceActive(false);
             setBrushDraftCenters([]);
             setBrushPreviewPoint(null);
+            setBrushPointerScreen(null);
+            setBrushScreenRadiusPx(null);
             setBrushTraceActive(false);
             setSelectedWorldAnnotationId(null);
             setManualSegmentationError(null);
@@ -1759,75 +1973,167 @@ const VolumeViewer3D = ({
                         })
                     );
                     console.log('[VolumeViewer3D] Fetching VTI from:', url);
+                    previewAbortController = new AbortController();
+                    const previewUrl = buildImagingUrl(
+                        `/preview/${studyKey}`,
+                        buildStudyAssetParams(study, {
+                            series_uid: seriesUid || undefined,
+                        })
+                    );
+                    fetch(previewUrl, { signal: previewAbortController.signal })
+                        .then((previewResponse) => {
+                            if (!previewResponse.ok) {
+                                throw new Error(`Preview ${previewResponse.status}`);
+                            }
+                            return previewResponse.blob();
+                        })
+                        .then((previewBlob) => {
+                            if (cancelled) return;
+                            updatePreviewImageUrl(URL.createObjectURL(previewBlob));
+                        })
+                        .catch((previewError) => {
+                            if (previewError?.name !== 'AbortError') {
+                                console.debug('[VolumeViewer3D] Preview image unavailable:', previewError);
+                            }
+                        });
 
                     setLoadingStage('Connecting...');
                     setLoadingProgress(5);
 
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        const text = await response.text();
-                        throw new Error('Server error ' + response.status + ': ' + text.substring(0, 200));
-                    }
-
-                    const contentLength = response.headers.get('Content-Length');
-                    const totalBytes = contentLength ? parseInt(contentLength) : 0;
-                    const reader = response.body.getReader();
-                    const chunks = [];
-                    let receivedBytes = 0;
-                    let partialRendered = false;
-
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        if (cancelled) return;
-
-                        chunks.push(value);
-                        receivedBytes += value.length;
-
-                        if (totalBytes > 0) {
-                            const pct = Math.round((receivedBytes / totalBytes) * 60);
-                            setLoadingProgress(5 + pct);
-                            setLoadingStage('Downloading... ' + (receivedBytes / (1024 * 1024)).toFixed(1) + 'MB / ' + (totalBytes / (1024 * 1024)).toFixed(1) + 'MB');
-                        } else {
-                            setLoadingStage('Downloading... ' + (receivedBytes / (1024 * 1024)).toFixed(1) + 'MB');
+                    const streamVolumeBuffer = async () => {
+                        setVtiChunkProgress([]);
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            const text = await response.text();
+                            throw new Error('Server error ' + response.status + ': ' + text.substring(0, 200));
                         }
 
-                        if (!partialRendered && totalBytes > 0 && receivedBytes / totalBytes >= PARTIAL_PREVIEW_THRESHOLD) {
-                            partialRendered = true;
-                            try {
-                                const partialBuffer = new Uint8Array(receivedBytes);
-                                let partialOffset = 0;
-                                for (const chunk of chunks) {
-                                    partialBuffer.set(chunk, partialOffset);
-                                    partialOffset += chunk.length;
-                                }
-                                const partialReader = vtkXMLImageDataReader.newInstance();
-                                partialReader.parseAsArrayBuffer(partialBuffer.buffer);
-                                const partialData = partialReader.getOutputData(0);
-                                if (partialData && !cancelled) {
-                                    const snapshot = await buildPreviewSnapshot(partialData, 2.5);
-                                    if (snapshot && !cancelled) {
-                                        setPreviewImage(snapshot);
-                                        setLoadingStage('Partial preview ready — downloading full quality...');
-                                    }
-                                }
-                            } catch (_) {
-                                // Most compressed VTI files cannot be parsed partially; ignore and continue full load.
+                        const contentLength = response.headers.get('Content-Length') || response.headers.get('X-VTI-Size');
+                        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+                        const reader = response.body.getReader();
+                        const chunks = [];
+                        let receivedBytes = 0;
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            if (cancelled) return null;
+
+                            chunks.push(value);
+                            receivedBytes += value.length;
+
+                            if (totalBytes > 0) {
+                                const pct = Math.round((receivedBytes / totalBytes) * 60);
+                                setLoadingProgress(5 + pct);
+                                setLoadingStage('Downloading... ' + (receivedBytes / (1024 * 1024)).toFixed(1) + 'MB / ' + (totalBytes / (1024 * 1024)).toFixed(1) + 'MB');
+                            } else {
+                                setLoadingStage('Downloading... ' + (receivedBytes / (1024 * 1024)).toFixed(1) + 'MB');
                             }
                         }
-                    }
+
+                        const fullBuffer = new Uint8Array(receivedBytes);
+                        let offset = 0;
+                        for (const chunk of chunks) {
+                            fullBuffer.set(chunk, offset);
+                            offset += chunk.length;
+                        }
+                        return fullBuffer;
+                    };
+
+                    const fetchRangeChunk = async ({ start, end }, index, totalSize) => {
+                        const rangeResponse = await fetch(url, {
+                            headers: { Range: `bytes=${start}-${end}` },
+                        });
+                        if (rangeResponse.status !== 206) {
+                            return null;
+                        }
+                        const chunkSize = end - start + 1;
+                        const output = new Uint8Array(chunkSize);
+                        const reader = rangeResponse.body?.getReader?.();
+                        if (!reader) {
+                            output.set(new Uint8Array(await rangeResponse.arrayBuffer()));
+                            return output;
+                        }
+                        let offset = 0;
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            if (cancelled) return null;
+                            output.set(value, offset);
+                            offset += value.length;
+                            setVtiChunkProgress((current) => {
+                                const next = current.length ? [...current] : Array(VTI_RANGE_CHUNK_COUNT).fill(0);
+                                next[index] = Math.min(1, offset / chunkSize);
+                                const loadedBytes = next.reduce((sum, fraction, itemIndex) => {
+                                    const rangeStart = Math.floor((totalSize * itemIndex) / VTI_RANGE_CHUNK_COUNT);
+                                    const rangeEnd = itemIndex === VTI_RANGE_CHUNK_COUNT - 1
+                                        ? totalSize - 1
+                                        : Math.floor((totalSize * (itemIndex + 1)) / VTI_RANGE_CHUNK_COUNT) - 1;
+                                    return sum + (fraction * (rangeEnd - rangeStart + 1));
+                                }, 0);
+                                setLoadingProgress(5 + Math.round((loadedBytes / totalSize) * 60));
+                                return next;
+                            });
+                        }
+                        return output;
+                    };
+
+                    const fetchVolumeBuffer = async () => {
+                        let totalSize = 0;
+                        let acceptsRanges = false;
+                        try {
+                            const headResponse = await fetch(url, { method: 'HEAD' });
+                            if (headResponse.ok) {
+                                totalSize = parseInt(headResponse.headers.get('X-VTI-Size') || headResponse.headers.get('Content-Length') || '0', 10);
+                                acceptsRanges = (headResponse.headers.get('Accept-Ranges') || '').toLowerCase().includes('bytes');
+                            }
+                        } catch (headError) {
+                            console.debug('[VolumeViewer3D] VTI HEAD probe failed, using stream fetch:', headError);
+                        }
+
+                        if (acceptsRanges && totalSize > LARGE_VTI_RANGE_THRESHOLD_BYTES) {
+                            setLoadingStage(`Downloading in ${VTI_RANGE_CHUNK_COUNT} chunks... ${(totalSize / (1024 * 1024)).toFixed(1)}MB`);
+                            setVtiChunkProgress(Array(VTI_RANGE_CHUNK_COUNT).fill(0));
+                            const ranges = Array.from({ length: VTI_RANGE_CHUNK_COUNT }, (_, index) => {
+                                const start = Math.floor((totalSize * index) / VTI_RANGE_CHUNK_COUNT);
+                                const end = index === VTI_RANGE_CHUNK_COUNT - 1
+                                    ? totalSize - 1
+                                    : Math.floor((totalSize * (index + 1)) / VTI_RANGE_CHUNK_COUNT) - 1;
+                                return { start, end };
+                            });
+
+                            const firstChunk = await fetchRangeChunk(ranges[0], 0, totalSize);
+                            if (firstChunk) {
+                                const otherChunks = await Promise.all(
+                                    ranges.slice(1).map((range, index) => fetchRangeChunk(range, index + 1, totalSize))
+                                );
+                                const chunks = [firstChunk, ...otherChunks];
+                                if (!cancelled && chunks.every(Boolean)) {
+                                    const fullBuffer = new Uint8Array(totalSize);
+                                    let offset = 0;
+                                    chunks.forEach((chunk) => {
+                                        fullBuffer.set(chunk, offset);
+                                        offset += chunk.length;
+                                    });
+                                    setVtiChunkProgress(Array(VTI_RANGE_CHUNK_COUNT).fill(1));
+                                    return fullBuffer;
+                                }
+                            }
+                            console.warn('[VolumeViewer3D] Range request unsupported or incomplete; falling back to stream fetch.');
+                        }
+
+                        return streamVolumeBuffer();
+                    };
+
+                    const fullBuffer = await fetchVolumeBuffer();
+                    if (!fullBuffer || cancelled) return;
 
                     if (cancelled) return;
+                    previewAbortController?.abort?.();
+                    previewAbortController = null;
 
                     setLoadingStage('Decompressing...');
                     setLoadingProgress(70);
-
-                    const fullBuffer = new Uint8Array(receivedBytes);
-                    let offset = 0;
-                    for (const chunk of chunks) {
-                        fullBuffer.set(chunk, offset);
-                        offset += chunk.length;
-                    }
 
                     setLoadingStage('Decompressing...');
                     setLoadingProgress(78);
@@ -1846,7 +2152,20 @@ const VolumeViewer3D = ({
 
                 if (cancelled) return;
 
-                suppressFovBackgroundInPlace(imageData);
+                setLoadingStage('Suppressing field of view...');
+                setSuppressionProgress(0);
+                await suppressFovBackgroundInPlace(imageData, {
+                    batchSize: 16,
+                    onProgress: (progress) => {
+                        if (cancelled) return;
+                        setSuppressionProgress(progress);
+                        setLoadingStage(`Suppressing field of view... ${progress}%`);
+                        setLoadingProgress(78 + Math.round(progress * 0.07));
+                    },
+                    onComplete: () => {
+                        setSuppressionProgress(100);
+                    },
+                });
                 const scalars = imageData.getPointData().getScalars();
                 const dataRange = scalars.getRange();
                 const dims = imageData.getDimensions();
@@ -1994,17 +2313,23 @@ const VolumeViewer3D = ({
 
                 if (isCached) {
                     setLoading(false); // Instant for cached volumes
+                    revokePreviewObjectUrl();
+                    setPreviewImage(null);
                     forceResizeAndRender();
                 } else {
                     setTimeout(() => {
                         if (cancelled) return;
                         setLoading(false);
+                        revokePreviewObjectUrl();
+                        setPreviewImage(null);
                         forceResizeAndRender();
                     }, 150);
                 }
 
             } catch (err) {
                 if (cancelled) return;
+                previewAbortController?.abort?.();
+                previewAbortController = null;
                 console.error('[VolumeViewer3D] Error:', err);
                 // Provide user-friendly error messages
                 let errorMsg = err.message || 'Failed to load volume';
@@ -2022,6 +2347,7 @@ const VolumeViewer3D = ({
 
         return () => {
             cancelled = true;
+            previewAbortController?.abort?.();
             overlayAbortRef.current?.abort();
             overlayAbortRef.current = null;
             overlayBuildIdRef.current += 1;
@@ -2044,7 +2370,7 @@ const VolumeViewer3D = ({
             }
             onVolumeLoadedRef.current?.(null);
         };
-    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset]);
+    }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset, revokePreviewObjectUrl, updatePreviewImageUrl]);
 
     const attachToothActors = useCallback((actors, visible) => {
         const ctx = vtkContextRef.current;
@@ -2284,23 +2610,63 @@ const VolumeViewer3D = ({
 
     // Auto-rotate
     useEffect(() => {
-        if (!autoRotate || !vtkContextRef.current) return;
-        const { renderer, renderWindow, imageData } = vtkContextRef.current;
-        const camera = renderer.getActiveCamera();
-        const bounds = imageData.getBounds();
-        const center = [
-            (bounds[0] + bounds[1]) / 2,
-            (bounds[2] + bounds[3]) / 2,
-            (bounds[4] + bounds[5]) / 2,
-        ];
+        const ctx = vtkContextRef.current;
+        if (!autoRotate || !ctx) return undefined;
 
-        const id = setInterval(() => {
-            camera.azimuth(0.6);
-            camera.setFocalPoint(center[0], center[1], center[2]);
-            camera.orthogonalizeViewUp();
-            renderWindow.render();
-        }, 50);
-        return () => clearInterval(id);
+        const startAutoRotate = () => {
+            if (!ctx?.renderer || !ctx?.renderWindow || !ctx?.imageData || autoRotatePausedRef.current) return;
+            if (autoRotateIntervalRef.current) clearInterval(autoRotateIntervalRef.current);
+            const camera = ctx.renderer.getActiveCamera();
+            const bounds = ctx.imageData.getBounds();
+            const center = [
+                (bounds[0] + bounds[1]) / 2,
+                (bounds[2] + bounds[3]) / 2,
+                (bounds[4] + bounds[5]) / 2,
+            ];
+            autoRotateIntervalRef.current = setInterval(() => {
+                if (autoRotatePausedRef.current) return;
+                camera.azimuth(0.6);
+                camera.setFocalPoint(center[0], center[1], center[2]);
+                camera.orthogonalizeViewUp();
+                ctx.renderWindow.render();
+            }, 50);
+        };
+
+        startAutoRotate();
+        const startSub = ctx.interactor?.onStartInteraction?.(() => {
+            autoRotatePausedRef.current = true;
+            if (autoRotateResumeTimerRef.current) {
+                clearTimeout(autoRotateResumeTimerRef.current);
+                autoRotateResumeTimerRef.current = null;
+            }
+            if (autoRotateIntervalRef.current) {
+                clearInterval(autoRotateIntervalRef.current);
+                autoRotateIntervalRef.current = null;
+            }
+        });
+        const endSub = ctx.interactor?.onEndInteraction?.(() => {
+            if (autoRotateResumeTimerRef.current) {
+                clearTimeout(autoRotateResumeTimerRef.current);
+            }
+            autoRotateResumeTimerRef.current = setTimeout(() => {
+                autoRotatePausedRef.current = false;
+                startAutoRotate();
+            }, 1500);
+        });
+
+        return () => {
+            autoRotatePausedRef.current = false;
+            if (autoRotateResumeTimerRef.current) {
+                clearTimeout(autoRotateResumeTimerRef.current);
+                autoRotateResumeTimerRef.current = null;
+            }
+            if (autoRotateIntervalRef.current) {
+                clearInterval(autoRotateIntervalRef.current);
+                autoRotateIntervalRef.current = null;
+            }
+            try { startSub?.unsubscribe?.(); } catch (_) { }
+            try { endSub?.unsubscribe?.(); } catch (_) { }
+        };
     }, [autoRotate, cacheKey]);
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2320,32 +2686,28 @@ const VolumeViewer3D = ({
         }
     }, [slabThickness, slabEnabled, updateSlabClipping]);
 
-    // ═══════════════════════════════════════════════════════════════════
-    // Slab follows camera rotation (recalculate when user finishes rotating)
-    // ═══════════════════════════════════════════════════════════════════
-    useEffect(() => {
-        const ctx = vtkContextRef.current;
-        if (!ctx) return;
-
-        const { interactor } = ctx;
-
-        // onEndInteraction fires when user releases mouse after drag/rotation
-        const sub = interactor.onEndInteraction(() => {
-            if (slabEnabledRef.current) {
-                updateSlabClipping(slabThicknessRef.current);
-            }
-        });
-
-        return () => sub.unsubscribe();
-    }, [cacheKey, loading, slabEnabled, updateSlabClipping]);
-
     useEffect(() => {
         const ctx = vtkContextRef.current;
         if (!ctx?.interactor) return undefined;
+        let restoreTimer = null;
+        const startSub = ctx.interactor.onStartInteraction(() => {
+            if (restoreTimer) {
+                clearTimeout(restoreTimer);
+                restoreTimer = null;
+            }
+            setMeasurementLabelsVisible(false);
+        });
         const sub = ctx.interactor.onEndInteraction(() => {
             setMeasurementRevision((value) => value + 1);
+            restoreTimer = setTimeout(() => {
+                setMeasurementLabelsVisible(true);
+            }, 200);
         });
-        return () => sub.unsubscribe();
+        return () => {
+            if (restoreTimer) clearTimeout(restoreTimer);
+            startSub.unsubscribe();
+            sub.unsubscribe();
+        };
     }, [cacheKey, loading]);
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2629,95 +2991,6 @@ const VolumeViewer3D = ({
         });
     }, [viewerSize.height, viewerSize.width]);
 
-    // ═══════════════════════════════════════════════════════════════════
-    // Screenshot Export
-    // ═══════════════════════════════════════════════════════════════════
-    const captureViewportImage = useCallback(async () => {
-        const ctx = vtkContextRef.current;
-        if (!ctx?.renderWindow?.captureImages) return null;
-        const projectedCurrentOverlays = worldOverlayAnnotations
-            .map((annotation) => projectWorldOverlayAnnotation(annotation))
-            .filter(Boolean);
-
-        try {
-            const captures = ctx.renderWindow.captureImages('image/png', {
-                scale: Math.max(window.devicePixelRatio || 1, 2),
-            });
-            if (!Array.isArray(captures) || captures.length === 0) return null;
-
-            const dataURL = await captures[0];
-            if (typeof dataURL !== 'string' || !dataURL.startsWith('data:image')) {
-                return null;
-            }
-
-            let compositedDataURL = dataURL;
-            if ((screen3DAnnotations.length > 0 || projectedCurrentOverlays.length > 0) && typeof Image !== 'undefined') {
-                try {
-                    const image = new Image();
-                    await new Promise((resolve, reject) => {
-                        image.onload = resolve;
-                        image.onerror = reject;
-                        image.src = dataURL;
-                    });
-                    const canvas = document.createElement('canvas');
-                    canvas.width = image.width;
-                    canvas.height = image.height;
-                    const drawCtx = canvas.getContext('2d');
-                    if (drawCtx) {
-                        drawCtx.drawImage(image, 0, 0);
-                        if (screen3DAnnotations.length > 0) {
-                            drawAnnotations(drawCtx, visible3DAnnotations, canvas.width, canvas.height, {
-                                displayScale: Math.max(canvas.width / Math.max(viewerSize.width || canvas.width, 1), 1),
-                            });
-                        }
-                        if (projectedCurrentOverlays.length > 0) {
-                            drawProjected3DOverlayAnnotations(drawCtx, projectedCurrentOverlays, canvas.width, canvas.height);
-                        }
-                        compositedDataURL = canvas.toDataURL('image/png');
-                    }
-                } catch (annotationCompositeError) {
-                    console.warn('[VolumeViewer3D] Failed to composite annotations into screenshot:', annotationCompositeError);
-                }
-            }
-
-            return await addScreenshotWatermark(compositedDataURL, {
-                patientName,
-                studyDate: metadata?.StudyDate,
-                preset,
-                clinicName,
-            });
-        } catch (captureError) {
-            console.warn('[VolumeViewer3D] Screenshot capture failed:', captureError);
-            return null;
-        }
-    }, [clinicName, drawProjected3DOverlayAnnotations, metadata?.StudyDate, patientName, preset, projectWorldOverlayAnnotation, screen3DAnnotations.length, viewerSize.width, visible3DAnnotations, worldOverlayAnnotations]);
-
-    const captureScreenshot = useCallback(async () => {
-        const dataURL = await captureViewportImage();
-        if (!dataURL) return null;
-
-        const link = document.createElement('a');
-        link.download = 'xcore-' + preset + '-' + Date.now() + '.png';
-        link.href = dataURL;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return dataURL;
-    }, [captureViewportImage, preset]);
-
-    const captureAnnotatedScreenshot = useCallback(async () => {
-        const dataURL = await captureViewportImage();
-        if (!dataURL) return null;
-
-        const link = document.createElement('a');
-        link.download = `xcore-annotated-${preset}-${studyKey}-${Date.now()}.png`;
-        link.href = dataURL;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return dataURL;
-    }, [captureViewportImage, preset, studyKey]);
-
     const buildManualBrushLabelImage = useCallback((brushAnnotations) => {
         const imageData = vtkContextRef.current?.imageData;
         if (!imageData || !Array.isArray(brushAnnotations) || brushAnnotations.length === 0) return null;
@@ -2757,6 +3030,44 @@ const VolumeViewer3D = ({
 
         return { labelImage, paintedVoxels };
     }, []);
+
+    const buildWorldBrushMeshResources = useCallback((annotation) => {
+        const brush = annotation?.coordinates?.world_brush;
+        const centers = brush?.centers;
+        const sourceImageData = vtkContextRef.current?.imageData;
+        if (!sourceImageData || !Array.isArray(centers) || centers.length === 0) return null;
+
+        const radiusMm = Math.max(
+            BRUSH_RADIUS_MIN_MM,
+            Math.min(BRUSH_RADIUS_MAX_MM, Number(brush?.radius_mm) || BRUSH_RADIUS_DEFAULT_MM)
+        );
+        const maskPayload = createBrushMaskImage(sourceImageData, centers, radiusMm);
+        if (!maskPayload || maskPayload.voxelCount < 8) return null;
+
+        const marching = vtkImageMarchingCubes.newInstance({
+            contourValue: 0.5,
+            computeNormals: true,
+            mergePoints: true,
+        });
+        marching.setInputData(maskPayload.maskImage);
+        marching.update();
+
+        const smoother = vtkWindowedSincPolyDataFilter.newInstance();
+        smoother.setInputConnection(marching.getOutputPort());
+        smoother.setNumberOfIterations(12);
+        smoother.setPassBand(0.16);
+        smoother.setBoundarySmoothing(true);
+        smoother.setNonManifoldSmoothing(true);
+        smoother.setNormalizeCoordinates(true);
+        smoother.update();
+
+        return {
+            maskImage: maskPayload.maskImage,
+            marching,
+            smoother,
+            polyData: smoother.getOutputData?.() || marching.getOutputData?.() || null,
+        };
+    }, [createBrushMaskImage]);
 
     const exportManualSegmentationSTL = useCallback(async () => {
         const brushAnnotations = isWorldBrushAnnotation(selectedWorldAnnotation)
@@ -2986,6 +3297,19 @@ const VolumeViewer3D = ({
         return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}_${projectionTick}`;
     }, [projectionTick]);
 
+    const getStableCameraProjectionKey = useCallback(() => {
+        const ctx = vtkContextRef.current;
+        const camera = ctx?.renderer?.getActiveCamera?.();
+        const container = containerRef.current;
+        if (!camera || !container) return '';
+        const position = camera.getPosition?.() || [];
+        const focalPoint = camera.getFocalPoint?.() || [];
+        const viewUp = camera.getViewUp?.() || [];
+        const rect = container.getBoundingClientRect();
+        const pack = (values) => values.map((value) => Number(value || 0).toFixed(2)).join(',');
+        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    }, []);
+
     const projectWorldToViewportCached = useCallback((worldPoint) => {
         if (!isWorldPoint3D(worldPoint)) return null;
         const cameraKey = getCameraProjectionKey();
@@ -3002,6 +3326,114 @@ const VolumeViewer3D = ({
         cacheEntry.cache.set(pointKey, result);
         return result;
     }, [getCameraProjectionKey, projectWorldToViewport]);
+
+    const prewarmWorldOverlayProjectionCache = useCallback((annotationsToWarm = []) => {
+        annotationsToWarm.forEach((annotation) => {
+            if (annotation?.type === 'text') {
+                projectWorldToViewportCached(annotation.coordinates?.world_point);
+                return;
+            }
+            if (annotation?.type === 'arrow' || annotation?.type === 'circle') {
+                projectWorldToViewportCached(annotation.coordinates?.world_start);
+                projectWorldToViewportCached(annotation.coordinates?.world_end);
+            }
+        });
+    }, [projectWorldToViewportCached]);
+
+    const updateBrushScreenRadius = useCallback((worldPoint) => {
+        if (!isWorldPoint3D(worldPoint)) {
+            setBrushScreenRadiusPx(null);
+            return;
+        }
+        const centerScreen = projectWorldToViewportCached(worldPoint);
+        const offsetScreen = projectWorldToViewportCached([
+            worldPoint[0] + brushRadiusMm,
+            worldPoint[1],
+            worldPoint[2],
+        ]);
+        if (!centerScreen || !offsetScreen) {
+            setBrushScreenRadiusPx(null);
+            return;
+        }
+        const radius = Math.hypot(offsetScreen.x - centerScreen.x, offsetScreen.y - centerScreen.y);
+        setBrushScreenRadiusPx(Number.isFinite(radius) && radius > 0 ? radius : null);
+    }, [brushRadiusMm, projectWorldToViewportCached]);
+
+    const projectWorldOverlayAnnotation = useCallback((annotation) => {
+        if (!annotation) return null;
+
+        if (annotation.type === 'text') {
+            const point = projectWorldToViewportCached(annotation.coordinates?.world_point);
+            if (!point) return null;
+            return {
+                id: annotation.id,
+                type: 'text',
+                screenPoint: point,
+                label: annotation.label || '',
+                color: annotation.color || ANNOTATION_COLORS.text,
+                opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
+                metadata: annotation.metadata || {},
+            };
+        }
+
+        if (annotation.type === 'arrow' || annotation.type === 'circle') {
+            const startWorld = annotation.coordinates?.world_start;
+            const endWorld = annotation.coordinates?.world_end;
+            const anchorScreen = projectWorldToViewportCached(startWorld);
+            if (!anchorScreen) return null;
+            let startScreen = anchorScreen;
+            let endScreen = projectWorldToViewportCached(endWorld);
+            const offsetNorm = annotation.metadata?.screen_tail_offset_norm;
+            const radiusNorm = annotation.metadata?.screen_radius_norm;
+            if (annotation.type === 'arrow' && offsetNorm && Number.isFinite(offsetNorm.x) && Number.isFinite(offsetNorm.y)) {
+                startScreen = projectWorldToViewportCached(startWorld) || anchorScreen;
+                endScreen = projectWorldToViewportCached(endWorld) || endScreen || anchorScreen;
+            }
+            if (annotation.type === 'circle' && Number.isFinite(radiusNorm)) {
+                const radiusPx = radiusNorm * Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
+                startScreen = anchorScreen;
+                endScreen = {
+                    x: anchorScreen.x + radiusPx,
+                    y: anchorScreen.y,
+                };
+                const worldRadius = Number(annotation.metadata?.world_radius_mm || 0);
+                if (worldRadius > 0 && isWorldPoint3D(startWorld)) {
+                    const offsetScreen = projectWorldToViewportCached([
+                        startWorld[0] + worldRadius,
+                        startWorld[1],
+                        startWorld[2],
+                    ]);
+                    if (offsetScreen) {
+                        const computedRadius = Math.hypot(offsetScreen.x - anchorScreen.x, offsetScreen.y - anchorScreen.y);
+                        const radiusRatio = radiusPx > 0 ? computedRadius / radiusPx : 1;
+                        if (
+                            Number.isFinite(computedRadius)
+                            && computedRadius > 0
+                            && radiusRatio > 0.2
+                            && radiusRatio < 5
+                        ) {
+                            endScreen = {
+                                x: anchorScreen.x + computedRadius,
+                                y: anchorScreen.y,
+                            };
+                        }
+                    }
+                }
+            }
+            if (!startScreen || !endScreen) return null;
+            return {
+                id: annotation.id,
+                type: annotation.type,
+                startScreen,
+                endScreen,
+                color: annotation.color || ANNOTATION_COLORS[annotation.type] || '#ffffff',
+                opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
+                metadata: annotation.metadata || {},
+            };
+        }
+
+        return null;
+    }, [projectWorldToViewportCached, viewerSize.height, viewerSize.width]);
 
     const pickSurfaceWorldPointFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
@@ -3169,82 +3601,6 @@ const VolumeViewer3D = ({
             metadata: baseMetadata,
         };
     }, [activeAnnotationColor, captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
-
-    function projectWorldOverlayAnnotation(annotation) {
-        if (!annotation) return null;
-
-        if (annotation.type === 'text') {
-            const point = projectWorldToViewportCached(annotation.coordinates?.world_point);
-            if (!point) return null;
-            return {
-                id: annotation.id,
-                type: 'text',
-                screenPoint: point,
-                label: annotation.label || '',
-                color: annotation.color || ANNOTATION_COLORS.text,
-                opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
-                metadata: annotation.metadata || {},
-            };
-        }
-
-        if (annotation.type === 'arrow' || annotation.type === 'circle') {
-            const startWorld = annotation.coordinates?.world_start;
-            const endWorld = annotation.coordinates?.world_end;
-            const anchorScreen = projectWorldToViewportCached(startWorld);
-            if (!anchorScreen) return null;
-            let startScreen = anchorScreen;
-            let endScreen = projectWorldToViewportCached(endWorld);
-            const offsetNorm = annotation.metadata?.screen_tail_offset_norm;
-            const radiusNorm = annotation.metadata?.screen_radius_norm;
-            if (annotation.type === 'arrow' && offsetNorm && Number.isFinite(offsetNorm.x) && Number.isFinite(offsetNorm.y)) {
-                startScreen = projectWorldToViewportCached(startWorld) || anchorScreen;
-                endScreen = projectWorldToViewportCached(endWorld) || endScreen || anchorScreen;
-            }
-            if (annotation.type === 'circle' && Number.isFinite(radiusNorm)) {
-                const radiusPx = radiusNorm * Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
-                startScreen = anchorScreen;
-                endScreen = {
-                    x: anchorScreen.x + radiusPx,
-                    y: anchorScreen.y,
-                };
-                const worldRadius = Number(annotation.metadata?.world_radius_mm || 0);
-                if (worldRadius > 0 && isWorldPoint3D(startWorld)) {
-                    const offsetScreen = projectWorldToViewportCached([
-                        startWorld[0] + worldRadius,
-                        startWorld[1],
-                        startWorld[2],
-                    ]);
-                    if (offsetScreen) {
-                        const computedRadius = Math.hypot(offsetScreen.x - anchorScreen.x, offsetScreen.y - anchorScreen.y);
-                        const radiusRatio = radiusPx > 0 ? computedRadius / radiusPx : 1;
-                        if (
-                            Number.isFinite(computedRadius)
-                            && computedRadius > 0
-                            && radiusRatio > 0.2
-                            && radiusRatio < 5
-                        ) {
-                            endScreen = {
-                                x: anchorScreen.x + computedRadius,
-                                y: anchorScreen.y,
-                            };
-                        }
-                    }
-                }
-            }
-            if (!startScreen || !endScreen) return null;
-            return {
-                id: annotation.id,
-                type: annotation.type,
-                startScreen,
-                endScreen,
-                color: annotation.color || ANNOTATION_COLORS[annotation.type] || '#ffffff',
-                opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
-                metadata: annotation.metadata || {},
-            };
-        }
-
-        return null;
-    }
 
     useEffect(() => {
         if (loading || error || !viewerSize.width || !viewerSize.height) return;
@@ -3462,44 +3818,6 @@ const VolumeViewer3D = ({
         return [actor, centroidActor];
     }, [selectedWorldAnnotationId]);
 
-    function buildWorldBrushMeshResources(annotation) {
-        const brush = annotation?.coordinates?.world_brush;
-        const centers = brush?.centers;
-        const sourceImageData = vtkContextRef.current?.imageData;
-        if (!sourceImageData || !Array.isArray(centers) || centers.length === 0) return null;
-
-        const radiusMm = Math.max(
-            BRUSH_RADIUS_MIN_MM,
-            Math.min(BRUSH_RADIUS_MAX_MM, Number(brush?.radius_mm) || BRUSH_RADIUS_DEFAULT_MM)
-        );
-        const maskPayload = createBrushMaskImage(sourceImageData, centers, radiusMm);
-        if (!maskPayload || maskPayload.voxelCount < 8) return null;
-
-        const marching = vtkImageMarchingCubes.newInstance({
-            contourValue: 0.5,
-            computeNormals: true,
-            mergePoints: true,
-        });
-        marching.setInputData(maskPayload.maskImage);
-        marching.update();
-
-        const smoother = vtkWindowedSincPolyDataFilter.newInstance();
-        smoother.setInputConnection(marching.getOutputPort());
-        smoother.setNumberOfIterations(12);
-        smoother.setPassBand(0.16);
-        smoother.setBoundarySmoothing(true);
-        smoother.setNonManifoldSmoothing(true);
-        smoother.setNormalizeCoordinates(true);
-        smoother.update();
-
-        return {
-            maskImage: maskPayload.maskImage,
-            marching,
-            smoother,
-            polyData: smoother.getOutputData?.() || marching.getOutputData?.() || null,
-        };
-    }
-
     const createWorldBrushActors = useCallback((annotation) => {
         const brush = annotation?.coordinates?.world_brush;
         const centers = (brush?.centers || []).filter(isWorldPoint3D);
@@ -3556,7 +3874,96 @@ const VolumeViewer3D = ({
         property.setSpecularPower(isSelected ? 26 : 18);
 
         return [actor];
-    }, [selectedWorldAnnotationId]);
+    }, [buildWorldBrushMeshResources, selectedWorldAnnotationId]);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Screenshot Export
+    // ═══════════════════════════════════════════════════════════════════
+    const captureViewportImage = useCallback(async () => {
+        const ctx = vtkContextRef.current;
+        if (!ctx?.renderWindow?.captureImages) return null;
+        const projectedCurrentOverlays = worldOverlayAnnotations
+            .map((annotation) => projectWorldOverlayAnnotation(annotation))
+            .filter(Boolean);
+
+        try {
+            const captures = ctx.renderWindow.captureImages('image/png', {
+                scale: Math.max(window.devicePixelRatio || 1, 2),
+            });
+            if (!Array.isArray(captures) || captures.length === 0) return null;
+
+            const dataURL = await captures[0];
+            if (typeof dataURL !== 'string' || !dataURL.startsWith('data:image')) {
+                return null;
+            }
+
+            let compositedDataURL = dataURL;
+            if ((screen3DAnnotations.length > 0 || projectedCurrentOverlays.length > 0) && typeof Image !== 'undefined') {
+                try {
+                    const image = new Image();
+                    await new Promise((resolve, reject) => {
+                        image.onload = resolve;
+                        image.onerror = reject;
+                        image.src = dataURL;
+                    });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = image.width;
+                    canvas.height = image.height;
+                    const drawCtx = canvas.getContext('2d');
+                    if (drawCtx) {
+                        drawCtx.drawImage(image, 0, 0);
+                        if (screen3DAnnotations.length > 0) {
+                            drawAnnotations(drawCtx, visible3DAnnotations, canvas.width, canvas.height, {
+                                displayScale: Math.max(canvas.width / Math.max(viewerSize.width || canvas.width, 1), 1),
+                            });
+                        }
+                        if (projectedCurrentOverlays.length > 0) {
+                            drawProjected3DOverlayAnnotations(drawCtx, projectedCurrentOverlays, canvas.width, canvas.height);
+                        }
+                        compositedDataURL = canvas.toDataURL('image/png');
+                    }
+                } catch (annotationCompositeError) {
+                    console.warn('[VolumeViewer3D] Failed to composite annotations into screenshot:', annotationCompositeError);
+                }
+            }
+
+            return await addScreenshotWatermark(compositedDataURL, {
+                patientName,
+                studyDate: metadata?.StudyDate,
+                preset,
+                clinicName,
+            });
+        } catch (captureError) {
+            console.warn('[VolumeViewer3D] Screenshot capture failed:', captureError);
+            return null;
+        }
+    }, [clinicName, drawProjected3DOverlayAnnotations, metadata?.StudyDate, patientName, preset, projectWorldOverlayAnnotation, screen3DAnnotations.length, viewerSize.width, visible3DAnnotations, worldOverlayAnnotations]);
+
+    const captureScreenshot = useCallback(async () => {
+        const dataURL = await captureViewportImage();
+        if (!dataURL) return null;
+
+        const link = document.createElement('a');
+        link.download = 'xcore-' + preset + '-' + Date.now() + '.png';
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return dataURL;
+    }, [captureViewportImage, preset]);
+
+    const captureAnnotatedScreenshot = useCallback(async () => {
+        const dataURL = await captureViewportImage();
+        if (!dataURL) return null;
+
+        const link = document.createElement('a');
+        link.download = `xcore-annotated-${preset}-${studyKey}-${Date.now()}.png`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return dataURL;
+    }, [captureViewportImage, preset, studyKey]);
 
     const createWorldAnnotationActors = useCallback((annotation) => {
         if (isWorldBrushAnnotation(annotation)) {
@@ -3568,106 +3975,258 @@ const VolumeViewer3D = ({
         return [];
     }, [createSurfaceRegionActors, createWorldBrushActors]);
 
+    const ensureSurfacePickWorker = useCallback(() => {
+        if (typeof Worker === 'undefined' || surfacePickWorkerFailedRef.current) return null;
+        if (surfacePickWorkerRef.current) return surfacePickWorkerRef.current;
+        try {
+            const worker = new Worker(
+                new URL('../workers/surfacePickActor.worker.js', import.meta.url),
+                { type: 'module' },
+            );
+            worker.onmessage = (event) => {
+                const payload = event.data || {};
+                const pending = surfacePickWorkerPendingRef.current.get(payload.id);
+                if (!pending) return;
+                surfacePickWorkerPendingRef.current.delete(payload.id);
+                if (!payload.ok) {
+                    pending.reject(new Error(payload.error || 'Surface pick worker failed'));
+                    return;
+                }
+                pending.resolve({
+                    points: payload.points ? new Float32Array(payload.points) : new Float32Array(),
+                    polys: payload.polys ? new Uint32Array(payload.polys) : new Uint32Array(),
+                });
+            };
+            worker.onerror = (event) => {
+                surfacePickWorkerFailedRef.current = true;
+                surfacePickWorkerPendingRef.current.forEach(({ reject }) => {
+                    reject(new Error(event?.message || 'Surface pick worker error'));
+                });
+                surfacePickWorkerPendingRef.current.clear();
+                try {
+                    worker.terminate();
+                } catch (_) { }
+                surfacePickWorkerRef.current = null;
+            };
+            surfacePickWorkerRef.current = worker;
+            return worker;
+        } catch (workerError) {
+            surfacePickWorkerFailedRef.current = true;
+            console.warn('[VolumeViewer3D] Surface pick worker unavailable:', workerError);
+            return null;
+        }
+    }, []);
+
+    const buildSurfacePickPolyDataInWorker = useCallback(async (imageData, contourValue) => {
+        const worker = ensureSurfacePickWorker();
+        if (!worker || !imageData) return null;
+
+        const scalars = imageData.getPointData?.()?.getScalars?.();
+        const values = scalars?.getData?.();
+        if (!values) return null;
+
+        const requestId = ++surfacePickWorkerRequestIdRef.current;
+        const scalarCopy = values instanceof Float32Array ? new Float32Array(values) : Float32Array.from(values);
+
+        const result = await new Promise((resolve, reject) => {
+            surfacePickWorkerPendingRef.current.set(requestId, { resolve, reject });
+            try {
+                worker.postMessage({
+                    id: requestId,
+                    contourValue,
+                    dims: imageData.getDimensions(),
+                    spacing: imageData.getSpacing(),
+                    origin: imageData.getOrigin(),
+                    scalarBuffer: scalarCopy.buffer,
+                }, [scalarCopy.buffer]);
+            } catch (postError) {
+                surfacePickWorkerPendingRef.current.delete(requestId);
+                reject(postError);
+            }
+        });
+
+        const polyData = vtkPolyData.newInstance();
+        polyData.getPoints().setData(result.points, 3);
+        polyData.getPolys().setData(result.polys);
+        return polyData;
+    }, [ensureSurfacePickWorker]);
+
+    const buildSurfacePickPolyDataOnMainThread = useCallback(async (imageData, contourValue) => {
+        const marching = vtkImageMarchingCubes.newInstance({
+            contourValue,
+            computeNormals: false,
+            mergePoints: true,
+        });
+        marching.setInputData(imageData);
+        await new Promise((resolve) => {
+            const idleCallback = typeof window !== 'undefined' ? window.requestIdleCallback : null;
+            if (idleCallback) {
+                idleCallback(() => {
+                    marching.update();
+                    resolve();
+                }, { timeout: 8000 });
+            } else {
+                setTimeout(() => {
+                    marching.update();
+                    resolve();
+                }, 0);
+            }
+        });
+        const polyData = vtkPolyData.newInstance();
+        polyData.shallowCopy(marching.getOutputData());
+        try { marching.delete?.(); } catch (_) { }
+        return polyData;
+    }, []);
+
     const ensureSurfacePickActor = useCallback(async () => {
         const ctx = vtkContextRef.current;
         if (!ctx?.imageData || ctx.surfacePickActor) return ctx?.surfacePickActor || null;
-        if (ctx._buildingPickActor) return null;
+        if (ctx._surfacePickActorPromise) return ctx._surfacePickActorPromise;
 
         ctx._buildingPickActor = true;
-        setSurfacePickLoading(true);
-        try {
-            await waitForNextFrame();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            const activeCtx = vtkContextRef.current;
-            if (!activeCtx?.imageData || activeCtx.surfacePickActor || !activeCtx._buildingPickActor) {
-                return activeCtx?.surfacePickActor || null;
-            }
-
-            const marching = vtkImageMarchingCubes.newInstance({
-                contourValue: Math.min(PICK_SURFACE_CONTOUR, 0.38),
-                computeNormals: false,
-                mergePoints: false,
-            });
-            marching.setInputData(activeCtx.imageData);
-            await new Promise((resolve) => {
-                const idleCallback = typeof window !== 'undefined' ? window.requestIdleCallback : null;
-                if (idleCallback) {
-                    idleCallback(() => {
-                        marching.update();
-                        resolve();
-                    }, { timeout: 5000 });
-                } else {
-                    setTimeout(() => {
-                        marching.update();
-                        resolve();
-                    }, 0);
+        ctx._surfacePickActorPromise = (async () => {
+            setSurfacePickLoading(true);
+            try {
+                await waitForNextFrame();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                const activeCtx = vtkContextRef.current;
+                if (!activeCtx?.imageData || activeCtx.surfacePickActor || !activeCtx._buildingPickActor) {
+                    return activeCtx?.surfacePickActor || null;
                 }
-            });
 
-            const mapper = vtkMapper.newInstance();
-            mapper.setInputConnection(marching.getOutputPort());
+                const contourValue = 0.36;
+                let polyData = null;
+                try {
+                    polyData = await buildSurfacePickPolyDataInWorker(activeCtx.imageData, contourValue);
+                } catch (workerError) {
+                    console.warn('[VolumeViewer3D] Surface pick worker fallback:', workerError);
+                }
+                if (!polyData) {
+                    polyData = await buildSurfacePickPolyDataOnMainThread(activeCtx.imageData, contourValue);
+                }
+                if (!polyData) return null;
 
-            const actor = vtkActor.newInstance();
-            actor.setMapper(mapper);
-            setOverlayResources(actor, { marching });
-            actor.setPickable?.(true);
-            actor.getProperty().setColor(0.02, 0.03, 0.05);
-            // Must be non-zero opacity for vtkPicker, but visually imperceptible.
-            actor.getProperty().setOpacity(0.001);
-            actor.getProperty().setAmbient(0);
-            actor.getProperty().setDiffuse(0);
-            actor.getProperty().setSpecular(0);
+                const mapper = vtkMapper.newInstance();
+                mapper.setInputData(polyData);
 
-            activeCtx.renderer.addActor(actor);
-            activeCtx.surfacePickActor = actor;
-            activeCtx._buildingPickActor = false;
-            activeCtx.renderWindow.render();
-            return actor;
-        } catch (surfaceError) {
-            const activeCtx = vtkContextRef.current;
-            if (activeCtx) activeCtx._buildingPickActor = false;
-            console.warn('[VolumeViewer3D] Surface pick actor failed:', surfaceError);
-            return null;
-        } finally {
-            const activeCtx = vtkContextRef.current;
-            if (activeCtx && !activeCtx.surfacePickActor) activeCtx._buildingPickActor = false;
-            setSurfacePickLoading(false);
-        }
-    }, []);
+                const actor = vtkActor.newInstance();
+                actor.setMapper(mapper);
+                setOverlayResources(actor, { polyData });
+                actor.setPickable?.(true);
+                actor.getProperty().setColor(0.02, 0.03, 0.05);
+                actor.getProperty().setOpacity(0.001);
+                actor.getProperty().setAmbient(0);
+                actor.getProperty().setDiffuse(0);
+                actor.getProperty().setSpecular(0);
+
+                activeCtx.renderer.addActor(actor);
+                activeCtx.surfacePickActor = actor;
+                activeCtx.renderWindow.render();
+                return actor;
+            } catch (surfaceError) {
+                console.warn('[VolumeViewer3D] Surface pick actor failed:', surfaceError);
+                return null;
+            } finally {
+                const activeCtx = vtkContextRef.current;
+                if (activeCtx) {
+                    activeCtx._buildingPickActor = false;
+                    activeCtx._surfacePickActorPromise = null;
+                }
+                setSurfacePickLoading(false);
+            }
+        })();
+
+        return ctx._surfacePickActorPromise;
+    }, [buildSurfacePickPolyDataInWorker, buildSurfacePickPolyDataOnMainThread]);
 
     const clearMeasurements3D = useCallback(() => {
+        const hasMeasurements = measurements3DRef.current.length > 0 || polylineMeasurementsRef.current.length > 0;
+        if (hasMeasurements) {
+            applyMeasurementChange(() => ({
+                measurements3D: [],
+                polylineMeasurements: [],
+            }));
+        }
         setMeasurePoints([]);
         setMeasureHoverPoint(null);
-        setMeasurements3D([]);
-        setPolylineMeasurements([]);
         setPolylineDraft([]);
-        setMeasurementRevision((value) => value + 1);
-    }, []);
+    }, [applyMeasurementChange]);
 
     const undoMeasurement3D = useCallback(() => {
-        // Simple heuristic: undo whichever was most recently modified (just check lengths or arbitrarily pop one).
-        // Since we don't have a strict combined timeline, we'll just undo polyline first if we are in polyline mode,
-        // otherwise just undo the last one added. Actually, let's just use the id timestamp to find the latest.
-        const latestP2P = measurements3D.length > 0 ? measurements3D[measurements3D.length - 1] : null;
-        const latestPoly = polylineMeasurements.length > 0 ? polylineMeasurements[polylineMeasurements.length - 1] : null;
-
-        if (latestPoly && (!latestP2P || latestPoly.id > latestP2P.id)) {
-            setPolylineMeasurements((current) => current.slice(0, -1));
-        } else if (latestP2P) {
-            setMeasurements3D((current) => current.slice(0, -1));
-        }
-        setMeasurementRevision((value) => value + 1);
-    }, [measurements3D, polylineMeasurements]);
-
-    const handleUndoAnnotation = useCallback(() => {
-        const history = annotationHistoryRef.current;
+        const history = measurementHistoryRef.current;
         if (history.length === 0) return;
         const previous = history[history.length - 1];
-        annotationHistoryRef.current = history.slice(0, -1);
-        setAnnotations(previous);
-        setSelectedWorldAnnotationId(null);
-        setAnnotationHistoryRevision((value) => value + 1);
-    }, []);
+        measurementHistoryRef.current = history.slice(0, -1);
+        measurementRedoRef.current = [
+            ...measurementRedoRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+            {
+                measurements3D: measurements3DRef.current,
+                polylineMeasurements: polylineMeasurementsRef.current,
+            },
+        ];
+        measurements3DRef.current = previous.measurements3D || [];
+        polylineMeasurementsRef.current = previous.polylineMeasurements || [];
+        setMeasurements3D(measurements3DRef.current);
+        setPolylineMeasurements(polylineMeasurementsRef.current);
+        setMeasurePoints([]);
+        setMeasureHoverPoint(null);
+        setPolylineDraft([]);
+        setMeasurementRevision((value) => value + 1);
+        showUndoToast('Undid measurement');
+    }, [showUndoToast]);
+
+    const handleUndo = useCallback(() => {
+        const annotationHistory = annotationHistoryRef.current;
+        if (annotationHistory.length > 0) {
+            const previous = annotationHistory[annotationHistory.length - 1];
+            annotationHistoryRef.current = annotationHistory.slice(0, -1);
+            annotationRedoRef.current = [
+                ...annotationRedoRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+                annotations,
+            ];
+            setAnnotations(previous);
+            setSelectedWorldAnnotationId(null);
+            setAnnotationHistoryRevision((value) => value + 1);
+            showUndoToast('Undid annotation');
+            return;
+        }
+        undoMeasurement3D();
+    }, [annotations, showUndoToast, undoMeasurement3D]);
+
+    const handleRedo = useCallback(() => {
+        const annotationRedo = annotationRedoRef.current;
+        if (annotationRedo.length > 0) {
+            const next = annotationRedo[annotationRedo.length - 1];
+            annotationRedoRef.current = annotationRedo.slice(0, -1);
+            annotationHistoryRef.current = [
+                ...annotationHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+                annotations,
+            ];
+            setAnnotations(next);
+            setSelectedWorldAnnotationId(null);
+            setAnnotationHistoryRevision((value) => value + 1);
+            showUndoToast('Redid annotation');
+            return;
+        }
+
+        const measurementRedo = measurementRedoRef.current;
+        if (measurementRedo.length === 0) return;
+        const next = measurementRedo[measurementRedo.length - 1];
+        measurementRedoRef.current = measurementRedo.slice(0, -1);
+        measurementHistoryRef.current = [
+            ...measurementHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+            {
+                measurements3D: measurements3DRef.current,
+                polylineMeasurements: polylineMeasurementsRef.current,
+            },
+        ];
+        measurements3DRef.current = next.measurements3D || [];
+        polylineMeasurementsRef.current = next.polylineMeasurements || [];
+        setMeasurements3D(measurements3DRef.current);
+        setPolylineMeasurements(polylineMeasurementsRef.current);
+        setMeasurementRevision((value) => value + 1);
+        showUndoToast('Redid measurement');
+    }, [annotations, showUndoToast]);
 
     const clearAllAnnotations = useCallback(() => {
         pushAnnotationChange([]);
@@ -3867,8 +4426,9 @@ const VolumeViewer3D = ({
             measurements3D,
             polylineMeasurements,
             implantCollisionPairs: implantCollisions,
+            implantBoundaryWarnings,
         });
-    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey, measurements3D, polylineMeasurements, implantCollisions]);
+    }, [annotations, metadata, patientName, seriesUid, study?.id, studyKey, measurements3D, polylineMeasurements, implantCollisions, implantBoundaryWarnings]);
 
     const buildSessionAnnotations = useCallback(() => annotations.map((annotation) => normalizeAnnotationForPersistence(annotation, {
         seriesUid,
@@ -4103,13 +4663,42 @@ const VolumeViewer3D = ({
         }
     }, [study?.id]);
 
-    const handleSubmitAnnotationsForReview = useCallback(async () => {
+    useEffect(() => {
+        if (!annotateMode) return undefined;
+        if (qualityScoreTimerRef.current) clearTimeout(qualityScoreTimerRef.current);
+        qualityScoreTimerRef.current = setTimeout(() => {
+            const score = calculateAnnotationQualityScore({
+                annotations,
+                brushRadiusMm,
+            });
+            setAnnotationQualityScore(score);
+            try {
+                sessionStorage.setItem('xcore.annotationQualityScore', JSON.stringify(score));
+            } catch (_) { }
+            qualityScoreTimerRef.current = null;
+        }, 500);
+        return () => {
+            if (qualityScoreTimerRef.current) {
+                clearTimeout(qualityScoreTimerRef.current);
+                qualityScoreTimerRef.current = null;
+            }
+        };
+    }, [annotateMode, annotations, brushRadiusMm]);
+
+    const handleSubmitAnnotationsForReview = useCallback(async (options = {}) => {
         if (!study?.id || !annotations.length) return;
         const reviewIssues = getAnnotationReviewIssues(annotations);
         if (reviewIssues.length > 0) {
             setReviewError(`Cannot submit yet. Fix ${reviewIssues.length} annotation(s): ${reviewIssues[0].errors.join(', ')}`);
             return;
         }
+        const score = annotationQualityScore || calculateAnnotationQualityScore({ annotations, brushRadiusMm });
+        if (!options.force && Number(score?.total || 0) < 60) {
+            setAnnotationQualityScore(score);
+            setQualityGateOpen(true);
+            return;
+        }
+        setQualityGateOpen(false);
         setReviewError('');
         const ids = annotations.map((annotation) => annotation.id).filter(Boolean);
         setAnnotations((current) => current.map((annotation) => ({
@@ -4127,9 +4716,18 @@ const VolumeViewer3D = ({
         } catch (submitError) {
             console.warn('[VolumeViewer3D] Failed to submit annotations:', submitError);
         }
-    }, [annotations, seriesUid, study?.id]);
+    }, [annotationQualityScore, annotations, brushRadiusMm, seriesUid, study?.id]);
 
     const handleSelectSnapshotOverlay = useCallback((snapshot) => {
+        const warmedAnnotations = (snapshot?.annotations || [])
+            .map((annotation) => normalizeAnnotationForPersistence(annotation, {
+                seriesUid,
+                viewerType: '3d',
+                sourceWidth: viewerSize.width,
+                sourceHeight: viewerSize.height,
+            }))
+            .filter(isWorldOverlayAnnotation);
+        prewarmWorldOverlayProjectionCache(warmedAnnotations);
         setSnapshotOverlay(snapshot);
         const featureState = snapshot?.feature_state || snapshot?.featureState || {};
         scheduleCameraStateRestore(
@@ -4137,7 +4735,7 @@ const VolumeViewer3D = ({
             || snapshot?.annotations?.find((annotation) => annotation?.metadata?.camera_state)?.metadata?.camera_state
             || null
         );
-    }, [scheduleCameraStateRestore]);
+    }, [prewarmWorldOverlayProjectionCache, scheduleCameraStateRestore, seriesUid, viewerSize.height, viewerSize.width]);
 
     useEffect(() => {
         if (historyOpen) {
@@ -4180,6 +4778,7 @@ const VolumeViewer3D = ({
                 try {
                     planeWidget.getWidgetState().setOrigin(...restoredClip.origin);
                     planeWidget.getWidgetState().setNormal(...restoredClip.normal);
+                    planeWidget.modified?.();
                 } catch (_) { }
             }
             const viewWidget = widgetManager.addWidget(planeWidget);
@@ -4203,6 +4802,8 @@ const VolumeViewer3D = ({
             ctx.clipWidget = { widgetManager, planeWidget, viewWidget, subscription };
             ctx.clipPlane = clipPlane;
             applyPlane();
+            widgetManager.renderWidgets?.();
+            ctx.renderWindow.render();
             setClipError(null);
         } catch (clipSetupError) {
             console.warn('[VolumeViewer3D] Clip widget setup failed:', clipSetupError);
@@ -4234,6 +4835,18 @@ const VolumeViewer3D = ({
         syncMapperClipping(ctx, Boolean(ctx.slabClippingActive));
     }, []);
 
+    const resetClipPlaneWidget = useCallback(() => {
+        clipPlaneStateRef.current = null;
+        try {
+            localStorage.removeItem(clipStorageKey);
+        } catch (_) { }
+        if (clippingMode) {
+            enableClipWidget();
+        } else {
+            setClippingMode(true);
+        }
+    }, [clipStorageKey, clippingMode, enableClipWidget]);
+
     const createImplantActor = useCallback((placement, isColliding = false) => {
         const direction = placement.direction || [0, -1, 0];
         const source = vtkCylinderSource.newInstance({
@@ -4263,21 +4876,154 @@ const VolumeViewer3D = ({
         return actor;
     }, []);
 
+    const createImplantSafetyActor = useCallback((placement, isUnsafe = false) => {
+        const direction = placement.direction || [0, -1, 0];
+        const source = vtkCylinderSource.newInstance({
+            radius: (Number(placement.diameter) / 2) + IMPLANT_SAFETY_MARGIN_MM,
+            height: Number(placement.length),
+            resolution: 32,
+            capping: true,
+            center: placement.position,
+            direction,
+        });
+        const mapper = vtkMapper.newInstance();
+        mapper.setInputConnection(source.getOutputPort());
+        const actor = vtkActor.newInstance();
+        actor.setMapper(mapper);
+        setOverlayResources(actor, { source });
+        const property = actor.getProperty();
+        property.setColor(isUnsafe ? 0.94 : 0.22, isUnsafe ? 0.27 : 0.74, isUnsafe ? 0.27 : 0.97);
+        property.setOpacity(0.12);
+        property.setAmbient(0.35);
+        property.setDiffuse(0.55);
+        property.setSpecular(0.25);
+        actor.setVisibility(Boolean(implantSafetyZonesVisible));
+        return actor;
+    }, [implantSafetyZonesVisible]);
+
+    const updateMprCrosshairActor = useCallback((point) => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || !isWorldPoint3D(point)) return;
+        if (ctx.mprCrosshairActor) {
+            disposeOverlayActors(ctx.renderer, [ctx.mprCrosshairActor]);
+            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => actor !== ctx.mprCrosshairActor);
+            ctx.mprCrosshairActor = null;
+        }
+        const source = vtkSphereSource.newInstance({
+            center: point,
+            radius: 0.8,
+            thetaResolution: 16,
+            phiResolution: 16,
+        });
+        const mapper = vtkMapper.newInstance();
+        mapper.setInputConnection(source.getOutputPort());
+        const actor = vtkActor.newInstance();
+        actor.setMapper(mapper);
+        setOverlayResources(actor, { source });
+        actor.getProperty().setColor(0.22, 0.74, 0.97);
+        actor.getProperty().setOpacity(0.95);
+        actor.getProperty().setAmbient(0.45);
+        actor.getProperty().setDiffuse(0.55);
+        ctx.renderer.addActor(actor);
+        ctx.mprCrosshairActor = actor;
+        ctx.overlayActors = [...(ctx.overlayActors || []), actor];
+        ctx.renderWindow.render();
+    }, []);
+
+    const emitMprCrosshairSync = useCallback((point) => {
+        if (!isWorldPoint3D(point)) return;
+        const normalizedPoint = point.map((value) => Number(value.toFixed(3)));
+        updateMprCrosshairActor(normalizedPoint);
+        if (typeof onSurfaceClick === 'function') {
+            onSurfaceClick(normalizedPoint);
+        }
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('xcore:mpr_crosshair_sync', {
+                detail: {
+                    worldPoint: normalizedPoint,
+                    studyKey,
+                    seriesUid,
+                },
+            }));
+        }
+    }, [onSurfaceClick, seriesUid, studyKey, updateMprCrosshairActor]);
+
+    const processMprSyncPointerMove = useCallback(() => {
+        mprSyncMoveRafRef.current = 0;
+        const pointer = mprSyncPointerRef.current;
+        if (!pointer || !mprSyncEnabled || annotateMode || measureMode3D || implantPlaceMode) return;
+        const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
+        if (point) emitMprCrosshairSync(point);
+    }, [annotateMode, emitMprCrosshairSync, implantPlaceMode, measureMode3D, mprSyncEnabled, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
+
+    useEffect(() => {
+        if (mprSyncEnabled) return;
+        const ctx = vtkContextRef.current;
+        if (!ctx?.mprCrosshairActor) return;
+        disposeOverlayActors(ctx.renderer, [ctx.mprCrosshairActor]);
+        ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => actor !== ctx.mprCrosshairActor);
+        ctx.mprCrosshairActor = null;
+        ctx.renderWindow?.render?.();
+    }, [mprSyncEnabled]);
+
+    useEffect(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx?.implantSafetyActors) return;
+        ctx.implantSafetyActors.forEach((actor) => {
+            actor.setVisibility?.(Boolean(implantSafetyZonesVisible));
+        });
+        ctx.renderWindow?.render?.();
+    }, [implantSafetyZonesVisible]);
+
+    const implantTouchesBoundary = useCallback((placement) => {
+        const imageData = vtkContextRef.current?.imageData;
+        const bounds = imageData?.getBounds?.();
+        if (!bounds || !Array.isArray(placement?.position)) return false;
+        const radius = (Number(placement.diameter) / 2) + IMPLANT_SAFETY_MARGIN_MM;
+        const length = Number(placement.length) || 0;
+        const direction = placement.direction || [0, -1, 0];
+        const endpoints = [-0.5, 0.5].map((scale) => ([
+            placement.position[0] + (direction[0] * length * scale),
+            placement.position[1] + (direction[1] * length * scale),
+            placement.position[2] + (direction[2] * length * scale),
+        ]));
+        const safeBounds = [
+            bounds[0] + 1,
+            bounds[1] - 1,
+            bounds[2] + 1,
+            bounds[3] - 1,
+            bounds[4] + 1,
+            bounds[5] - 1,
+        ];
+        return endpoints.some((point) => (
+            point[0] - radius < safeBounds[0]
+            || point[0] + radius > safeBounds[1]
+            || point[1] - radius < safeBounds[2]
+            || point[1] + radius > safeBounds[3]
+            || point[2] - radius < safeBounds[4]
+            || point[2] + radius > safeBounds[5]
+        ));
+    }, []);
+
     // ── Implant Collision Detection ──
     useEffect(() => {
-        if (!implantPlacements || implantPlacements.length < 2) {
+        if (!implantPlacements || implantPlacements.length === 0) {
             setImplantCollisions([]);
+            setImplantBoundaryWarnings([]);
             return;
         }
-
         const collisions = [];
+        const boundaryWarnings = implantPlacements
+            .filter((placement) => implantTouchesBoundary(placement))
+            .map((placement) => placement.id);
+
         for (let i = 0; i < implantPlacements.length; i++) {
             for (let j = i + 1; j < implantPlacements.length; j++) {
                 const imp1 = implantPlacements[i];
                 const imp2 = implantPlacements[j];
 
-                const r1 = Number(imp1.diameter) / 2;
-                const r2 = Number(imp2.diameter) / 2;
+                const r1 = (Number(imp1.diameter) / 2) + IMPLANT_SAFETY_MARGIN_MM;
+                const r2 = (Number(imp2.diameter) / 2) + IMPLANT_SAFETY_MARGIN_MM;
                 const L1 = Number(imp1.length);
                 const L2 = Number(imp2.length);
 
@@ -4314,7 +5060,8 @@ const VolumeViewer3D = ({
             }
         }
         setImplantCollisions(Array.from(new Set(collisions)));
-    }, [implantPlacements]);
+        setImplantBoundaryWarnings(Array.from(new Set(boundaryWarnings)));
+    }, [cacheKey, implantPlacements, implantTouchesBoundary, loading]);
 
     useEffect(() => {
         if (!implantStorageKey) return;
@@ -4346,13 +5093,21 @@ const VolumeViewer3D = ({
             disposeOverlayActors(ctx.renderer, ctx.implantActors);
             ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.implantActors.includes(actor));
         }
+        if (ctx.implantSafetyActors?.length) {
+            disposeOverlayActors(ctx.renderer, ctx.implantSafetyActors);
+            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.implantSafetyActors.includes(actor));
+        }
 
         const actors = implantPlacements.map((placement) => createImplantActor(placement, implantCollisions.includes(placement.id)));
+        const warningSet = new Set([...implantCollisions, ...implantBoundaryWarnings]);
+        const safetyActors = implantPlacements.map((placement) => createImplantSafetyActor(placement, warningSet.has(placement.id)));
         actors.forEach((actor) => ctx.renderer.addActor(actor));
+        safetyActors.forEach((actor) => ctx.renderer.addActor(actor));
         ctx.implantActors = actors;
-        ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
+        ctx.implantSafetyActors = safetyActors;
+        ctx.overlayActors = [...(ctx.overlayActors || []), ...actors, ...safetyActors];
         ctx.renderWindow.render();
-    }, [cacheKey, createImplantActor, error, implantPlacements, implantCollisions, loading]);
+    }, [cacheKey, createImplantActor, createImplantSafetyActor, error, implantPlacements, implantCollisions, implantBoundaryWarnings, loading]);
 
     useEffect(() => {
         if (!measurementStorageKey) return;
@@ -4361,9 +5116,15 @@ const VolumeViewer3D = ({
             const stored = localStorage.getItem(measurementStorageKey);
             const parsed = stored ? JSON.parse(stored) : [];
             const allMeasurements = Array.isArray(parsed) ? parsed : [];
-            setMeasurements3D(allMeasurements.filter((m) => !m.type || m.type === 'point-to-point'));
-            setPolylineMeasurements(allMeasurements.filter((m) => m.type === 'polyline'));
+            measurements3DRef.current = allMeasurements.filter((m) => !m.type || m.type === 'point-to-point');
+            polylineMeasurementsRef.current = allMeasurements.filter((m) => m.type === 'polyline');
+            measurementHistoryRef.current = [];
+            measurementRedoRef.current = [];
+            setMeasurements3D(measurements3DRef.current);
+            setPolylineMeasurements(polylineMeasurementsRef.current);
         } catch (_) {
+            measurements3DRef.current = [];
+            polylineMeasurementsRef.current = [];
             setMeasurements3D([]);
             setPolylineMeasurements([]);
         }
@@ -4785,6 +5546,8 @@ const VolumeViewer3D = ({
 
     const clearImplants = useCallback(() => {
         setImplantPlacements([]);
+        setImplantCollisions([]);
+        setImplantBoundaryWarnings([]);
         setImplantPlaceMode(false);
     }, []);
 
@@ -4904,6 +5667,7 @@ const VolumeViewer3D = ({
                 buildStudyAssetParams(study, {
                     series_uid: seriesUid || undefined,
                     refresh: options.refresh ? 'true' : undefined,
+                    check_stale: options.refresh ? undefined : 'true',
                 })
             ));
             if (!response.ok) {
@@ -5040,6 +5804,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 polylineMeasurements,
                 heatmapSummary,
                 implantCollisionPairs: implantCollisions,
+                implantBoundaryWarnings,
             });
             setReportModalOpen(false);
         } catch (reportError) {
@@ -5055,6 +5820,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         densityHistogram,
         implantPlacements,
         implantCollisions,
+        implantBoundaryWarnings,
         loadDensityHistogram,
         metadata,
         annotations,
@@ -5076,10 +5842,12 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             totalDistance,
             label: '',
         };
-        setPolylineMeasurements((items) => [...items, measurement]);
-        setMeasurementRevision((value) => value + 1);
+        applyMeasurementChange((current) => ({
+            measurements3D: current.measurements3D,
+            polylineMeasurements: [...current.polylineMeasurements, measurement],
+        }));
         setPolylineDraft([]);
-    }, []);
+    }, [applyMeasurementChange]);
 
     const handleViewportPointerDown = useCallback((event) => {
         if (isViewportUiEvent(event)) return;
@@ -5105,13 +5873,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.stopPropagation();
             const screenPoint = getViewportPointerPoint(event);
             setBrushPointerScreen(screenPoint);
-            const point = pickSurfaceWorldPointFromPointer(event);
+            const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             if (!point) return;
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             brushDraftCentersRef.current = [point];
             brushTraceActiveRef.current = true;
             setBrushDraftCenters([point]);
             setBrushPreviewPoint(point);
+            updateBrushScreenRadius(point);
             setBrushTraceActive(true);
             setManualSegmentationError(null);
             return;
@@ -5138,7 +5907,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (annotateMode && annotationTool === 'freehand') {
             event.preventDefault();
             event.stopPropagation();
-            const point = pickSurfaceWorldPointFromPointer(event);
+            const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             if (!point) return;
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             surfaceTraceDraftRef.current = [point];
@@ -5196,8 +5965,10 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 midpoint: midpoint(pointA, pointB),
                 distance: distanceMm(pointA, pointB),
             };
-            setMeasurements3D((items) => [...items, measurement]);
-            setMeasurementRevision((value) => value + 1);
+            applyMeasurementChange((items) => ({
+                measurements3D: [...items.measurements3D, measurement],
+                polylineMeasurements: items.polylineMeasurements,
+            }));
             setMeasureHoverPoint(null);
             return [];
         });
@@ -5209,6 +5980,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         implantDiameter,
         implantLength,
         implantPlaceMode,
+        applyMeasurementChange,
         getViewportPointerPoint,
         isViewportUiEvent,
         measureMode3D,
@@ -5216,6 +5988,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         pickWorldAnnotationIdFromPointer,
         pickSurfaceWorldPointFromPointer,
         pickWorldPointFromPointer,
+        updateBrushScreenRadius,
     ]);
 
     const processBrushPointerMove = useCallback(() => {
@@ -5232,14 +6005,16 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         lastBrushRenderRef.current = now;
 
         const pickStart = performance.now();
-        const point = pickSurfaceWorldPointFromPointer(pointer);
+        const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
         lastPickDurationRef.current = performance.now() - pickStart;
         if (!point) {
             setBrushPreviewPoint(null);
+            setBrushScreenRadiusPx(null);
             return;
         }
 
         setBrushPreviewPoint(point);
+        updateBrushScreenRadius(point);
         setBrushDraftCenters((current) => {
             const activeDraft = brushDraftCentersRef.current.length ? brushDraftCentersRef.current : current;
             const lastPoint = activeDraft[activeDraft.length - 1];
@@ -5251,14 +6026,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             brushDraftCentersRef.current = nextDraft;
             return nextDraft;
         });
-    }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer]);
+    }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, updateBrushScreenRadius]);
 
     const processSurfacePointerMove = useCallback(() => {
         surfaceMoveRafRef.current = 0;
         const pointer = surfacePointerRef.current;
         if (!pointer || !surfaceTraceActiveRef.current || !(annotateMode && annotationTool === 'freehand')) return;
 
-        const point = pickSurfaceWorldPointFromPointer(pointer);
+        const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
         if (!point) {
             setSurfaceTracePreview(null);
             return;
@@ -5276,7 +6051,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             surfaceTraceDraftRef.current = nextDraft;
             return nextDraft;
         });
-    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer]);
+    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
     const handleViewportPointerMove = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && isViewportUiEvent(event)) return;
@@ -5318,6 +6093,22 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             return;
         }
 
+        if (
+            mprSyncEnabled
+            && !annotateMode
+            && !measureMode3D
+            && !implantPlaceMode
+            && (event.buttons & 1)
+        ) {
+            event.preventDefault();
+            event.stopPropagation();
+            mprSyncPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+            if (!mprSyncMoveRafRef.current) {
+                mprSyncMoveRafRef.current = requestAnimationFrame(processMprSyncPointerMove);
+            }
+            return;
+        }
+
         if (!measureMode3D && !polylineMeasureMode) return;
         event.preventDefault();
         event.stopPropagation();
@@ -5327,7 +6118,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
             return [...point];
         });
-    }, [annotateMode, annotationTool, getViewportPointerPoint, isViewportUiEvent, measureMode3D, polylineMeasureMode, pickWorldPointFromPointer, processBrushPointerMove, processSurfacePointerMove, worldOverlayDraft]);
+    }, [annotateMode, annotationTool, getViewportPointerPoint, implantPlaceMode, isViewportUiEvent, measureMode3D, mprSyncEnabled, polylineMeasureMode, pickWorldPointFromPointer, processBrushPointerMove, processMprSyncPointerMove, processSurfacePointerMove, worldOverlayDraft]);
 
     const handleViewportPointerUp = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && !worldOverlayDraft?.startWorld && isViewportUiEvent(event)) return;
@@ -5338,7 +6129,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             brushTraceActiveRef.current = false;
             setBrushTraceActive(false);
 
-            const releasePoint = pickSurfaceWorldPointFromPointer(event);
+            const releasePoint = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             const rawCenters = [...brushDraftCentersRef.current];
             const minStepMm = Math.max((brushRadiusMm || BRUSH_RADIUS_DEFAULT_MM) * 0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 0.8);
             if (releasePoint && (!rawCenters.length || distanceMm(rawCenters[rawCenters.length - 1], releasePoint) >= minStepMm)) {
@@ -5350,6 +6141,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             setBrushDraftCenters([]);
             setBrushPreviewPoint(null);
             setBrushPointerScreen(null);
+            setBrushScreenRadiusPx(null);
 
             if (simplifiedCenters.length < 1) return;
 
@@ -5399,7 +6191,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         surfaceTraceActiveRef.current = false;
         setSurfaceTraceActive(false);
 
-        const releasePoint = pickSurfaceWorldPointFromPointer(event);
+        const releasePoint = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
         const rawPath = [...surfaceTraceDraftRef.current];
         if (releasePoint && (!rawPath.length || distanceMm(rawPath[rawPath.length - 1], releasePoint) >= Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData)))) {
             rawPath.push(releasePoint);
@@ -5460,6 +6252,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (!brushTraceActiveRef.current) {
             setBrushPreviewPoint(null);
             setBrushPointerScreen(null);
+            setBrushScreenRadiusPx(null);
         }
         if (!surfaceTraceActiveRef.current) {
             setSurfaceTracePreview(null);
@@ -5481,13 +6274,18 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             });
             return;
         }
-        if (!linkedMode || typeof onSurfaceClick !== 'function') return;
         if (measureMode3D || implantPlaceMode || annotateMode) return;
+        if (mprSyncEnabled) {
+            const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
+            if (point) emitMprCrosshairSync(point);
+            return;
+        }
+        if (!linkedMode || typeof onSurfaceClick !== 'function') return;
         const point = pickWorldPointFromPointer(event);
         if (point) {
             onSurfaceClick(point);
         }
-    }, [annotateMode, annotationTool, implantPlaceMode, isViewportUiEvent, linkedMode, measureMode3D, onSurfaceClick, pickAnnotationWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewportCached]);
+    }, [annotateMode, annotationTool, emitMprCrosshairSync, implantPlaceMode, isViewportUiEvent, linkedMode, measureMode3D, mprSyncEnabled, onSurfaceClick, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewportCached]);
 
     const commitTextDraft3D = useCallback((value) => {
         if (!textDraft3D?.worldPoint) {
@@ -5520,6 +6318,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
+            if ((event.metaKey || event.ctrlKey) && key === 'z') {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    handleRedo();
+                } else {
+                    handleUndo();
+                }
+                return;
+            }
             if (annotateMode) {
                 if (annotationTool === 'brush' && (key === '[' || key === '-')) {
                     event.preventDefault();
@@ -5563,7 +6370,12 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 }
                 if (key === 'z' && !event.shiftKey) {
                     event.preventDefault();
-                    handleUndoAnnotation();
+                    handleUndo();
+                    return;
+                }
+                if (key === 'z' && event.shiftKey) {
+                    event.preventDefault();
+                    handleRedo();
                     return;
                 }
                 if (key === 'escape') {
@@ -5632,20 +6444,22 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [annotateMode, annotationTool, changePreset, handleUndoAnnotation, measureMode3D, polylineMeasureMode, commitPolyline, preset, resetCamera, toggleFullscreen, toggleInvert]);
+    }, [annotateMode, annotationTool, changePreset, handleRedo, handleUndo, measureMode3D, polylineMeasureMode, commitPolyline, preset, resetCamera, toggleFullscreen, toggleInvert]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Render
     // ═══════════════════════════════════════════════════════════════════
     const isMipOrXray = preset === 'mip' || preset === 'xray';
     const canSaveSessions = Boolean((annotations.length > 0 || measurementCount > 0) && !study?.readOnly);
-    const canUndoAnnotations = annotationHistoryRevision >= 0 && annotationHistoryRef.current.length > 0;
+    const canUndoChanges = annotationHistoryRef.current.length > 0 || measurementHistoryRef.current.length > 0;
+    const canRedoChanges = annotationRedoRef.current.length > 0 || measurementRedoRef.current.length > 0;
     const measurementLabels = useMemo(() => {
         const p2pLabels = measurements3D.map((measurement) => ({
             id: measurement.id,
             distance: measurement.distance,
-            screen: projectWorldToViewportCached(measurement.midpoint),
-        })).filter((item) => item.screen);
+            label: measurement.label || '',
+            worldPoint: measurement.midpoint,
+        }));
 
         const polylineLabels = polylineMeasurements.flatMap((poly) => {
             if (!poly.points || poly.points.length < 2) return [];
@@ -5654,20 +6468,45 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 labels.push({
                     id: `${poly.id}-seg-${i}`,
                     distance: poly.segments[i].distance,
-                    screen: projectWorldToViewportCached(midpoint(poly.points[i], poly.points[i + 1])),
+                    worldPoint: midpoint(poly.points[i], poly.points[i + 1]),
                 });
             }
             labels.push({
                 id: `${poly.id}-total`,
                 distance: poly.totalDistance,
+                label: poly.label || '',
                 isTotal: true,
-                screen: projectWorldToViewportCached(poly.points[poly.points.length - 1]),
+                worldPoint: poly.points[poly.points.length - 1],
             });
             return labels;
-        }).filter((item) => item.screen);
+        });
 
         return [...p2pLabels, ...polylineLabels];
-    }, [measurementRevision, measurements3D, polylineMeasurements, projectWorldToViewportCached, projectionTick]);
+    }, [measurements3D, polylineMeasurements]);
+    const measurementProjectionKey = useMemo(
+        () => getStableCameraProjectionKey(),
+        [getStableCameraProjectionKey, projectionTick]
+    );
+    useEffect(() => {
+        const signature = measurementLabels.map((measurement) => `${measurement.id}:${measurement.label || ''}:${measurement.distance.toFixed(2)}`).join('|');
+        if (
+            measurementLabelProjectionKeyRef.current === measurementProjectionKey
+            && measurementLabelSignatureRef.current === signature
+        ) {
+            return;
+        }
+
+        const nextPositions = new Map();
+        measurementLabels.forEach((measurement) => {
+            const screen = projectWorldToViewportCached(measurement.worldPoint);
+            if (screen) {
+                nextPositions.set(measurement.id, screen);
+            }
+        });
+        measurementLabelStoreRef.current.setPositions(nextPositions);
+        measurementLabelProjectionKeyRef.current = measurementProjectionKey;
+        measurementLabelSignatureRef.current = signature;
+    }, [measurementLabels, measurementProjectionKey, projectWorldToViewportCached]);
     const measurementPreview = useMemo(() => {
         if (measureMode3D && measurePoints.length === 1 && measureHoverPoint) {
             const startPoint = measurePoints[0];
@@ -5700,10 +6539,11 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         return null;
     }, [measureHoverPoint, measureMode3D, measurePoints, polylineMeasureMode, polylineDraft, measurementRevision, projectWorldToViewportCached, projectionTick]);
     const onRenameMeasurement = useCallback((id, newLabel) => {
-        setMeasurements3D((current) => current.map((m) => m.id === id ? { ...m, label: newLabel } : m));
-        setPolylineMeasurements((current) => current.map((p) => p.id === id ? { ...p, label: newLabel } : p));
-        setMeasurementRevision((v) => v + 1);
-    }, []);
+        applyMeasurementChange((current) => ({
+            measurements3D: current.measurements3D.map((m) => m.id === id ? { ...m, label: newLabel } : m),
+            polylineMeasurements: current.polylineMeasurements.map((p) => p.id === id ? { ...p, label: newLabel } : p),
+        }));
+    }, [applyMeasurementChange]);
 
     const surfaceTraceScreenPath = useMemo(() => {
         if (!annotateMode || annotationTool !== 'freehand') return [];
@@ -5721,7 +6561,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     }, [annotateMode, annotationTool, brushDraftCenters, brushPreviewPoint, projectWorldToViewportCached, projectionTick]);
     const projectedWorldOverlayAnnotations = useMemo(() => worldOverlayAnnotations
         .map((annotation) => projectWorldOverlayAnnotation(annotation))
-        .filter(Boolean), [currentCameraState, projectWorldOverlayAnnotation, projectionTick, worldOverlayAnnotations]);
+        .filter(Boolean), [projectWorldOverlayAnnotation, projectionTick, worldOverlayAnnotations]);
     const projectedSnapshotWorldOverlayAnnotations = useMemo(() => (
         (snapshotOverlay?.annotations || [])
             .map((annotation) => normalizeAnnotationForPersistence(annotation, {
@@ -5737,7 +6577,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 displayOpacity: 0.55,
             }))
             .filter(Boolean)
-    ), [currentCameraState, projectWorldOverlayAnnotation, projectionTick, seriesUid, snapshotOverlay?.annotations, viewerSize.height, viewerSize.width]);
+    ), [projectWorldOverlayAnnotation, projectionTick, seriesUid, snapshotOverlay?.annotations, viewerSize.height, viewerSize.width]);
     const worldOverlayPreview = useMemo(() => {
         if (!annotateMode || !worldOverlayDraft?.startWorld || !['arrow', 'circle'].includes(annotationTool)) return null;
         const anchorScreen = projectWorldToViewportCached(worldOverlayDraft.startWorld);
@@ -5755,7 +6595,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     const textDraftScreenPoint = useMemo(() => {
         if (!textDraft3D?.worldPoint) return null;
         return projectWorldToViewportCached(textDraft3D.worldPoint) || textDraft3D.screenPoint || null;
-    }, [projectWorldToViewportCached, textDraft3D, currentCameraState, projectionTick]);
+    }, [projectWorldToViewportCached, textDraft3D, projectionTick]);
 
     return (
         <div ref={wrapperRef} tabIndex={0} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 outline-none">
@@ -5909,7 +6749,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         </button>
 
                         <button
-                            onClick={() => setImplantPlannerOpen((current) => !current)}
+                            onClick={() => {
+                                setImplantPlannerOpen((current) => {
+                                    const next = !current;
+                                    if (next) changePreset('xray');
+                                    return next;
+                                });
+                            }}
                             className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ' + (
                                 implantPlannerOpen
                                     ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
@@ -5954,6 +6800,19 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={() => setMprSyncEnabled((current) => !current)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${
+                                mprSyncEnabled
+                                    ? 'bg-sky-500/20 text-sky-200 border border-sky-500/40'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
+                            }`}
+                            title="Pick a 3D surface point and sync MPR crosshair"
+                        >
+                            <AppIcon name="Crosshair" size={16} />
+                            <span>Sync</span>
+                        </button>
+
                         {typeof onSwitchToLinkedMode === 'function' && (
                             <button
                                 onClick={onSwitchToLinkedMode}
@@ -6006,15 +6865,26 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                     )}
 
                                     {clippingMode && (
-                                        <button
-                                            onClick={() => {
-                                                flipClipPlane();
-                                                setShowMoreTools(false);
-                                            }}
-                                            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
-                                        >
-                                            <AppIcon name="Scissors" size={14} /> Flip clip plane
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    flipClipPlane();
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="Scissors" size={14} /> Flip clip plane
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    resetClipPlaneWidget();
+                                                    setShowMoreTools(false);
+                                                }}
+                                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                                            >
+                                                <AppIcon name="RotateCcw" size={14} /> Reset clip plane
+                                            </button>
+                                        </>
                                     )}
 
                                     <button
@@ -6227,6 +7097,50 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 </div>
             )}
 
+            {undoToast && (
+                <div data-xcore-ui="true" className="pointer-events-none absolute left-1/2 top-24 z-[121] -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-white shadow-2xl backdrop-blur">
+                    {undoToast}
+                </div>
+            )}
+
+            {qualityGateOpen && annotationQualityScore && (
+                <div data-xcore-ui="true" className="absolute inset-0 z-[130] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div>
+                                <div className="text-sm font-semibold text-white">Annotation quality is low</div>
+                                <div className="text-xs text-slate-400">Score {annotationQualityScore.total}/100</div>
+                            </div>
+                            <button type="button" onClick={() => setQualityGateOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
+                                <AppIcon name="X" size={14} />
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            {Object.entries(annotationQualityScore.dimensions || {}).map(([key, value]) => (
+                                <div key={key} className="rounded-lg bg-slate-900/80 p-2">
+                                    <div className="mb-1 flex justify-between text-[11px] font-semibold uppercase text-slate-300">
+                                        <span>{key.replace(/([A-Z])/g, ' $1')}</span>
+                                        <span>{value.score}/25</span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                        <div className="h-full rounded-full bg-amber-400" style={{ width: `${Math.min(100, (value.score / 25) * 100)}%` }} />
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-slate-500">{value.reason}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-4 flex gap-2">
+                            <button type="button" onClick={() => setQualityGateOpen(false)} className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700">
+                                Improve First
+                            </button>
+                            <button type="button" onClick={() => handleSubmitAnnotationsForReview({ force: true })} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-400">
+                                Submit Anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="relative flex-1 min-h-[400px]">
                 {!loading && !error && (measureMode3D || annotateMode) && (
                     <div data-xcore-ui="true" className="pointer-events-none absolute left-4 right-4 top-4 z-[90] flex justify-center">
@@ -6234,16 +7148,20 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             <Volume3DModeToolbar
                                 activeColor={activeAnnotationColor}
                                 annotateMode={annotateMode}
+                                annotationCustomColor={annotationCustomColor}
                                 annotationPersistence={annotationPersistence}
                                 annotationCount={annotations.length}
+                                annotationQualityScore={annotationQualityScore}
                                 annotationTool={annotationTool}
                                 brushOperation={brushOperation}
                                 brushRadiusMm={brushRadiusMm}
-                                canUndo={canUndoAnnotations}
+                                canRedo={canRedoChanges}
+                                canUndo={canUndoChanges}
                                 clearAllAnnotations={clearAllAnnotations}
                                 clearMeasurements3D={clearMeasurements3D}
                                 deleteSelectedWorldAnnotation={deleteSelectedWorldAnnotation}
-                                handleUndoAnnotation={handleUndoAnnotation}
+                                handleRedo={handleRedo}
+                                handleUndoAnnotation={handleUndo}
                                 isWorldBrushAnnotation={isWorldBrushAnnotation}
                                 measureMode3D={measureMode3D}
                                 selectedWorldAnnotation={selectedWorldAnnotation}
@@ -6251,6 +7169,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 setAnnotationTool={setAnnotationTool}
                                 setBrushOperation={setBrushOperation}
                                 setBrushRadiusMm={setBrushRadiusMm}
+                                setCustomAnnotationColor={setAnnotationCustomColor}
                                 heatmapOverlayMode={heatmapOverlayMode}
                                 heatmapOpacity={heatmapOpacity}
                                 setHeatmapOverlayMode={setHeatmapOverlayMode}
@@ -6308,6 +7227,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                 <div className="text-center">
                                     <p className="text-lg font-semibold mb-1">Loading 3D Volume</p>
                                     <p className="text-sm text-gray-400">{loadingStage}</p>
+                                    {suppressionProgress > 0 && suppressionProgress < 100 && (
+                                        <p className="mt-1 text-[11px] text-cyan-300">FOV suppression {suppressionProgress}%</p>
+                                    )}
                                 </div>
                                 <div className="w-full">
                                     <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
@@ -6316,6 +7238,18 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                             style={{ width: loadingProgress + '%' }}
                                         />
                                     </div>
+                                    {vtiChunkProgress.length > 0 && (
+                                        <div className="mt-2 grid gap-1">
+                                            {vtiChunkProgress.map((fraction, index) => (
+                                                <div key={index} className="h-1 overflow-hidden rounded-full bg-slate-800/80">
+                                                    <div
+                                                        className="h-full rounded-full bg-cyan-400/80 transition-all duration-150"
+                                                        style={{ width: `${Math.round((fraction || 0) * 100)}%` }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     <p className="text-right text-xs text-gray-500 mt-1">{loadingProgress}%</p>
                                 </div>
                             </div>
@@ -6471,10 +7405,17 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                     <div className="flex gap-1">
                                         <button
                                             onClick={undoMeasurement3D}
-                                            disabled={!measurements3D.length && !polylineMeasurements.length}
+                                            disabled={measurementHistoryRef.current.length === 0}
                                             className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
                                         >
                                             Undo
+                                        </button>
+                                        <button
+                                            onClick={handleRedo}
+                                            disabled={measurementRedoRef.current.length === 0}
+                                            className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+                                        >
+                                            Redo
                                         </button>
                                         <button
                                             onClick={clearMeasurements3D}
@@ -6513,10 +7454,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                     length={implantLength}
                                     placementCount={implantPlacements.length}
                                     hasCollisions={implantCollisions.length > 0}
+                                    hasBoundaryWarnings={implantBoundaryWarnings.length > 0}
+                                    safetyZonesVisible={implantSafetyZonesVisible}
                                     placeMode={implantPlaceMode}
                                     onBrandChange={setImplantBrand}
                                     onDiameterChange={setImplantDiameter}
                                     onLengthChange={setImplantLength}
+                                    onToggleSafetyZones={() => setImplantSafetyZonesVisible((current) => !current)}
                                     onTogglePlaceMode={() => {
                                         setImplantPlaceMode((current) => !current);
                                         setMeasureMode3D(false);
@@ -6792,14 +7736,16 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             brushOperation={brushOperation}
                             brushPointerScreen={brushPointerScreen}
                             brushRadiusMm={brushRadiusMm}
+                            brushScreenRadiusPx={brushScreenRadiusPx}
                             brushScreenPath={brushScreenPath}
+                            brushTraceActive={brushTraceActive}
                             commitTextDraft3D={commitTextDraft3D}
                             hiddenAnnotationCount={hiddenAnnotationCount}
                             isWorldBrushAnnotation={isWorldBrushAnnotation}
                             measureMode3D={measureMode3D}
                             measurePoints={measurePoints}
                             measurements3D={measurementLabels}
-                            measurementLabelPositionsRef={measurementLabelPositionsRef}
+                            measurementLabelStore={measurementLabelStoreRef.current}
                             measurementLabelsVisible={measurementLabelsVisible}
                             measurementPreview={measurementPreview}
                             onRenameMeasurement={onRenameMeasurement}
