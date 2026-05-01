@@ -38,4 +38,5 @@ test('diagnostics identifies room naming and projection mismatches', () => {
   assert.ok(issues.some((issue) => issue.code === 'missing_conversation_sid'));
   assert.ok(issues.some((issue) => issue.code === 'missing_video_room_sid'));
   assert.ok(issues.some((issue) => issue.code === 'messages_missing_twilio_sid'));
+  assert.equal(__testables.bucketForInconsistencies(issues), 'error');
 });

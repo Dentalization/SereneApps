@@ -41,3 +41,18 @@ test('waiting room blocks unpaid appointments and opens around appointment time'
   assert.equal(ready.canJoinVideo, true);
 });
 
+test('communication audit metadata strips secrets and serializes dates', () => {
+  const sanitized = __testables.sanitizeEventMetadata({
+    inviteToken: 'raw-token',
+    expiresAt: new Date('2026-05-01T00:00:00.000Z'),
+    nested: {
+      value: 7n,
+      safe: 'ok'
+    }
+  });
+
+  assert.equal(sanitized.inviteToken, undefined);
+  assert.equal(sanitized.expiresAt, '2026-05-01T00:00:00.000Z');
+  assert.equal(sanitized.nested.value, '7');
+  assert.equal(sanitized.nested.safe, 'ok');
+});

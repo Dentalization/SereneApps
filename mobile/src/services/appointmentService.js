@@ -188,6 +188,15 @@ export const getAppointmentClinicalSummary = async (id) => {
   }
 };
 
+export const acknowledgeAppointmentClinicalSummary = async (id) => {
+  try {
+    const response = await api.post(`/appointments/${id}/clinical-summary/acknowledge`);
+    return response.data;
+  } catch (error) {
+    throw normalizeAppointmentError(error, 'Gagal mengonfirmasi ringkasan konsultasi');
+  }
+};
+
 /**
  * Cancel an appointment
  * @param {number|string} id - Appointment ID

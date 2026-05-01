@@ -13,11 +13,15 @@ These instructions are intended for AI assistants (like Claude) working on the T
 - **Identity & Access**: 
     - Use `GET /communications/appointments/:id/token` for all session initiations.
     - Tokens must include both Video and Chat grants.
+    - Keep the deprecated `POST /communications/appointments/:id/video/token` shim working only during the documented sunset window. It must delegate to unified issuance, emit telemetry, and never gain independent logic.
 - **Chat Synchronization**: 
     - The `chat_messages` table in the local database is the source of truth for history.
     - All messages sent via Twilio MUST be synchronized back via the `chatWebhookHandler.js`.
     - Never rely solely on Twilio's cloud storage for long-term history.
+    - Chat attachments must persist object-storage metadata in `chat_messages`, render via signed URLs, and tombstone safely after retention expiry.
 - **Idempotency**: All webhooks (Twilio, Midtrans) must use the idempotency service (`src/services/webhooks/idempotency.js`) to prevent duplicate processing.
+    - Twilio webhook signatures are mandatory in staging/production (`TWILIO_WEBHOOK_REQUIRE_SIGNATURE=true` or `APP_ENV/NODE_ENV=staging|production`).
+    - `TWILIO_AUTH_TOKEN` is for Twilio request signature validation only where possible. Twilio REST clients and JWT generation must use Standard API Keys.
 
 ## 3. Coding Standards
 - **Backend**:
@@ -39,4 +43,6 @@ These instructions are intended for AI assistants (like Claude) working on the T
 ## 5. Development Workflow
 - **Prisma**: If the schema changes, always run `npx prisma generate` and update the local migration files.
 - **Environment**: Always verify the presence of `TWILIO_CONVERSATIONS_SERVICE_SID` and `TWILIO_VERIFY_SERVICE_SID` when debugging communication issues.
+- **Waiting Room**: Keep waiting-room windows documented through `COMM_WAITING_ROOM_EARLY_MINUTES` and `COMM_WAITING_ROOM_GRACE_MINUTES`.
+- **Retention**: Communication retention workers must expire media attachment objects and participant invite hashes without deleting durable chat-message records.
 - **Mocking**: Do not mock Twilio in development unless explicitly requested; use the development API keys provided in `.env`.

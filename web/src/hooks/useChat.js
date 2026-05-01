@@ -142,9 +142,19 @@ export function useChat() {
             id: msg.sid,
             senderId: msg.author,
             message: msg.body,
-            messageType: msg.type || 'text',
+            messageType: attrs.type || msg.type || 'text',
             createdAt: msg.dateCreated,
             twilioMessageSid: msg.sid,
+            fileUrl: attrs.fileUrl,
+            fileName: attrs.fileName,
+            mimeType: attrs.mimeType,
+            fileSizeBytes: attrs.fileSizeBytes,
+            mediaRetentionUntil: attrs.mediaRetentionUntil,
+            storageProvider: attrs.storageProvider,
+            mediaScanStatus: attrs.mediaScanStatus,
+            mediaTombstoneReason: attrs.mediaTombstoneReason,
+            attachmentAvailable: attrs.type !== 'file' || attrs.deleted !== true,
+            metadata: attrs,
             _attrs: attrs
           };
         };

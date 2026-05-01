@@ -7,10 +7,11 @@ function isTruthy(value) {
 
 export function createTwilioSmsAdapter(env = process.env) {
   const accountSid = env.TWILIO_ACCOUNT_SID || '';
-  const authToken = env.TWILIO_AUTH_TOKEN || '';
   const fromNumber = env.TWILIO_SMS_FROM_NUMBER || env.TWILIO_PHONE_NUMBER || '';
   const verifyServiceSid = env.TWILIO_VERIFY_SERVICE_SID || '';
-  const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
+  const client = accountSid && env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET
+    ? twilio(env.TWILIO_API_KEY_SID, env.TWILIO_API_KEY_SECRET, { accountSid })
+    : null;
 
   async function sendOtpSms({ to, body }) {
     if (!client) {

@@ -109,4 +109,33 @@ export default class VideoService {
       participants: room.participants || []
     };
   }
+
+  async disconnectParticipant({ roomSid, identity }) {
+    if (!roomSid || !identity) return { disconnected: false };
+    try {
+      await this.client.video.v1
+        .rooms(roomSid)
+        .participants(identity)
+        .update({ status: 'disconnected' });
+      return { disconnected: true };
+    } catch (error) {
+      if (Number(error?.status || error?.statusCode) === 404 || Number(error?.code) === 20404) {
+        return { disconnected: false };
+      }
+      throw error;
+    }
+  }
+
+  async completeRoom(roomSid) {
+    if (!roomSid) return { ended: false };
+    try {
+      const room = await this.client.video.v1.rooms(roomSid).update({ status: 'completed' });
+      return { ended: true, roomSid: room.sid, status: room.status };
+    } catch (error) {
+      if (Number(error?.status || error?.statusCode) === 404 || Number(error?.code) === 20404) {
+        return { ended: false };
+      }
+      throw error;
+    }
+  }
 }

@@ -3,7 +3,9 @@ import { PrismaClient } from '@prisma/client';
 import {
   addConversationParticipantForIdentity,
   communicationActorRoleForAppointment,
+  disconnectVideoParticipantForIdentity,
   issueExternalParticipantScopedToken,
+  removeConversationParticipantForIdentity,
   recordCommunicationEvent
 } from '../communications.js';
 
@@ -101,9 +103,22 @@ function serializeParticipant(participant, { includeContact = false } = {}) {
     invitedAt: participant.invitedAt,
     verifiedAt: participant.verifiedAt,
     joinedAt: participant.joinedAt,
+    lastInviteSentAt: participant.lastInviteSentAt,
+    revokedAt: participant.revokedAt,
+    kickedAt: participant.kickedAt,
+    accessRegeneratedAt: participant.accessRegeneratedAt,
     expiresAt: participant.expiresAt,
     createdAt: participant.createdAt,
     updatedAt: participant.updatedAt
+  };
+}
+
+function buildInviteDelivery({ rawToken }) {
+  return {
+    inviteToken: rawToken,
+    inviteUrl: process.env.COMM_INVITE_BASE_URL
+      ? `${process.env.COMM_INVITE_BASE_URL.replace(/\/$/, '')}?token=${encodeURIComponent(rawToken)}`
+      : null
   };
 }
 
@@ -171,6 +186,7 @@ export async function inviteCommunicationParticipant({ appointmentId, user, inpu
       inviteTokenHash,
       invitedById: toBigInt(user.id, 'userId'),
       invitedAt: new Date(),
+      lastInviteSentAt: new Date(),
       expiresAt
     }
   });
@@ -190,10 +206,7 @@ export async function inviteCommunicationParticipant({ appointmentId, user, inpu
 
   return {
     participant: serializeParticipant(participant, { includeContact: true }),
-    inviteToken: rawToken,
-    inviteUrl: process.env.COMM_INVITE_BASE_URL
-      ? `${process.env.COMM_INVITE_BASE_URL.replace(/\/$/, '')}?token=${encodeURIComponent(rawToken)}`
-      : null
+    ...buildInviteDelivery({ rawToken })
   };
 }
 
@@ -241,7 +254,9 @@ export async function revokeCommunicationParticipant({ appointmentId, participan
     where: { id: participant.id },
     data: {
       status: 'removed',
-      inviteTokenHash: null
+      inviteTokenHash: null,
+      revokedAt: new Date(),
+      removedById: toBigInt(user.id, 'userId')
     }
   });
 
@@ -257,6 +272,186 @@ export async function revokeCommunicationParticipant({ appointmentId, participan
   });
 
   return { participant: serializeParticipant(updated, { includeContact: true }) };
+}
+
+export async function resendCommunicationParticipantInvite({ appointmentId, participantId, user, expiresInHours = 24 }) {
+  const appointment = await getAppointment(appointmentId);
+  if (!isDentistOrAdmin(user, appointment)) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  const participant = await prisma.appointmentCommunicationParticipant.findFirst({
+    where: { id: participantId, appointmentId: appointment.id }
+  });
+  if (!participant) {
+    const error = new Error('PARTICIPANT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+  if (['removed', 'expired'].includes(participant.status)) {
+    const error = new Error('PARTICIPANT_NOT_INVITABLE');
+    error.status = 409;
+    throw error;
+  }
+
+  const rawToken = crypto.randomBytes(32).toString('base64url');
+  const requestedExpiryHours = Number(expiresInHours || 24);
+  const safeExpiryHours = Number.isFinite(requestedExpiryHours)
+    ? Math.max(1, Math.min(requestedExpiryHours, 168))
+    : 24;
+  const updated = await prisma.appointmentCommunicationParticipant.update({
+    where: { id: participant.id },
+    data: {
+      inviteTokenHash: hashInviteToken(rawToken),
+      status: participant.status === 'joined' ? 'verified' : participant.status,
+      lastInviteSentAt: new Date(),
+      expiresAt: new Date(Date.now() + safeExpiryHours * 60 * 60 * 1000)
+    }
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole: communicationActorRoleForAppointment(user, appointment),
+    eventType: `${participant.role}_invite_resent`,
+    metadata: {
+      participantId: participant.id,
+      role: participant.role,
+      expiresAt: updated.expiresAt
+    }
+  });
+
+  return {
+    participant: serializeParticipant(updated, { includeContact: true }),
+    ...buildInviteDelivery({ rawToken })
+  };
+}
+
+export async function regenerateCommunicationParticipantAccess({ appointmentId, participantId, user }) {
+  const appointment = await getAppointment(appointmentId);
+  if (!isDentistOrAdmin(user, appointment)) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  const participant = await prisma.appointmentCommunicationParticipant.findFirst({
+    where: { id: participantId, appointmentId: appointment.id }
+  });
+  if (!participant) {
+    const error = new Error('PARTICIPANT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+  if (participant.status === 'removed') {
+    const error = new Error('PARTICIPANT_REMOVED');
+    error.status = 409;
+    throw error;
+  }
+
+  const rawToken = crypto.randomBytes(32).toString('base64url');
+  const updated = await prisma.appointmentCommunicationParticipant.update({
+    where: { id: participant.id },
+    data: {
+      inviteTokenHash: hashInviteToken(rawToken),
+      status: 'invited',
+      verifiedAt: null,
+      joinedAt: null,
+      accessRegeneratedAt: new Date(),
+      lastInviteSentAt: new Date(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    }
+  });
+
+  const identity = buildParticipantIdentity({
+    appointmentId: appointment.id,
+    participantId: participant.id,
+    role: participant.role,
+    userId: participant.userId
+  });
+  await Promise.all([
+    removeConversationParticipantForIdentity({ appointmentId: appointment.id, identity, reason: 'access_regenerated' }).catch(() => null),
+    disconnectVideoParticipantForIdentity({ appointmentId: appointment.id, identity, reason: 'access_regenerated' }).catch(() => null)
+  ]);
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole: communicationActorRoleForAppointment(user, appointment),
+    eventType: `${participant.role}_access_regenerated`,
+    metadata: {
+      participantId: participant.id,
+      role: participant.role,
+      expiresAt: updated.expiresAt
+    }
+  });
+
+  return {
+    participant: serializeParticipant(updated, { includeContact: true }),
+    ...buildInviteDelivery({ rawToken })
+  };
+}
+
+export async function kickCommunicationParticipant({ appointmentId, participantId, user }) {
+  const appointment = await getAppointment(appointmentId);
+  if (!isDentistOrAdmin(user, appointment)) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  const participant = await prisma.appointmentCommunicationParticipant.findFirst({
+    where: { id: participantId, appointmentId: appointment.id }
+  });
+  if (!participant) {
+    const error = new Error('PARTICIPANT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const identity = buildParticipantIdentity({
+    appointmentId: appointment.id,
+    participantId: participant.id,
+    role: participant.role,
+    userId: participant.userId
+  });
+  const [conversationResult, videoResult] = await Promise.all([
+    removeConversationParticipantForIdentity({ appointmentId: appointment.id, identity, reason: 'moderator_kick' }).catch((error) => ({ removed: false, error: error.message })),
+    disconnectVideoParticipantForIdentity({ appointmentId: appointment.id, identity, reason: 'moderator_kick' }).catch((error) => ({ disconnected: false, error: error.message }))
+  ]);
+
+  const updated = await prisma.appointmentCommunicationParticipant.update({
+    where: { id: participant.id },
+    data: {
+      status: 'removed',
+      inviteTokenHash: null,
+      kickedAt: new Date(),
+      removedById: toBigInt(user.id, 'userId')
+    }
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole: communicationActorRoleForAppointment(user, appointment),
+    eventType: `${participant.role}_kicked`,
+    metadata: {
+      participantId: participant.id,
+      role: participant.role,
+      conversationRemoved: conversationResult?.removed || false,
+      videoDisconnected: videoResult?.disconnected || false
+    }
+  });
+
+  return {
+    participant: serializeParticipant(updated, { includeContact: true }),
+    moderation: {
+      conversationRemoved: conversationResult?.removed || false,
+      videoDisconnected: videoResult?.disconnected || false
+    }
+  };
 }
 
 export async function verifyCommunicationParticipantInvite({ token, appointmentId = null, ttl = 3600 }) {

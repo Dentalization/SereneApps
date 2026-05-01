@@ -1,8 +1,10 @@
 import express from 'express';
 import { authenticateToken, requireRoles } from '../../utils/tokens.js';
 import {
+  exportCommunicationAudit,
   getAppointmentDiagnostics,
   getCommunicationTimeline,
+  listOperationalCommunicationDiagnostics,
   getMessageProjectionStatus,
   reconcileAppointmentCommunications
 } from '../../services/communications/diagnosticsService.js';
@@ -52,6 +54,19 @@ router.get('/appointments/:appointmentId/diagnostics', async (req, res) => {
   }
 });
 
+router.get('/appointments', async (req, res) => {
+  try {
+    const result = await listOperationalCommunicationDiagnostics({
+      status: req.query.status,
+      bucket: req.query.bucket,
+      limit: req.query.limit
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendDiagnosticsError(res, error);
+  }
+});
+
 router.get('/appointments/:appointmentId/timeline', async (req, res) => {
   try {
     const timeline = await getCommunicationTimeline({
@@ -59,6 +74,29 @@ router.get('/appointments/:appointmentId/timeline', async (req, res) => {
       limit: req.query.limit
     });
     return res.json(timeline);
+  } catch (error) {
+    return sendDiagnosticsError(res, error);
+  }
+});
+
+router.get('/appointments/:appointmentId/audit-export', async (req, res) => {
+  try {
+    const result = await exportCommunicationAudit({
+      appointmentId: req.params.appointmentId,
+      format: req.query.format === 'csv' ? 'csv' : 'json'
+    });
+    await recordCommunicationEvent({
+      appointmentId: req.params.appointmentId,
+      userId: req.user.id,
+      actorRole: 'admin',
+      eventType: 'communication_audit_exported',
+      metadata: {
+        format: req.query.format === 'csv' ? 'csv' : 'json'
+      }
+    });
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="communication-audit-${result.appointmentId}.${result.contentType === 'text/csv' ? 'csv' : 'json'}"`);
+    return res.send(result.body);
   } catch (error) {
     return sendDiagnosticsError(res, error);
   }

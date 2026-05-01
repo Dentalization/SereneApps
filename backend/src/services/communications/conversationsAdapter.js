@@ -58,6 +58,25 @@ class ConversationsAdapter {
     }
   }
 
+  async removeParticipant({ conversationSid, identity }) {
+    const participants = await this.client.conversations.v1
+      .services(this.serviceSid)
+      .conversations(conversationSid)
+      .participants
+      .list({ limit: 100 });
+
+    const participant = participants.find((item) => item.identity === identity);
+    if (!participant) return { removed: false };
+
+    await this.client.conversations.v1
+      .services(this.serviceSid)
+      .conversations(conversationSid)
+      .participants(participant.sid)
+      .remove();
+
+    return { removed: true, participantSid: participant.sid };
+  }
+
   async sendMessage({ conversationSid, author, body, attributes = {} }) {
     const message = await this.client.conversations.v1
       .services(this.serviceSid)

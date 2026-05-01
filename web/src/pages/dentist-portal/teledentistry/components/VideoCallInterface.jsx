@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useTwilioVideoClient } from '../../../../hooks/useTwilioVideoClient';
-import { recordCommunicationClientEvent } from '../../../../services/chatService';
+import {
+  hardEndConsultationRoom,
+  recordCommunicationClientEvent
+} from '../../../../services/chatService';
 import NetworkQualityBadge from './NetworkQualityBadge';
 
 const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError, remoteParticipant }) => {
@@ -109,6 +112,29 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
     onEndCall?.();
   };
 
+  const handleHardEndCall = async () => {
+    if (!videoSession?.appointmentId) {
+      await handleEndCall();
+      return;
+    }
+    if (!window.confirm('End the consultation room for all participants?')) return;
+    await hardEndConsultationRoom(videoSession.appointmentId).catch(() => null);
+    await handleEndCall();
+  };
+
+  const handleSwitchToAudioOnly = async () => {
+    if (videoEnabled) {
+      await toggleVideo();
+      if (videoSession?.appointmentId) {
+        recordCommunicationClientEvent(videoSession.appointmentId, 'network_quality_degraded', {
+          level: networkQuality,
+          action: 'switched_audio_only',
+          surface: 'dentist_web'
+        }).catch(() => null);
+      }
+    }
+  };
+
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -183,9 +209,17 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
                 <p className="text-xs text-amber-200 mt-0.5">{reconnectError}</p>
               )}
               {networkQuality <= 1 && (
-                <p className="text-xs text-amber-100 mt-0.5">
-                  Kualitas jaringan buruk. Matikan video bila audio mulai terputus.
-                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-100">
+                  <span>Kualitas jaringan buruk. Pertimbangkan audio-only.</span>
+                  {videoEnabled && (
+                    <button
+                      onClick={handleSwitchToAudioOnly}
+                      className="rounded-md border border-amber-200/40 px-2 py-1 font-semibold text-amber-50 hover:bg-amber-200/10"
+                    >
+                      Audio only
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -251,8 +285,12 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
             <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} className="text-white" />
           </button>
 
-          <button onClick={handleEndCall} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-colors">
+          <button onClick={handleEndCall} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-colors" title="Leave call">
             <Icon name="PhoneOff" size={20} className="text-white" />
+          </button>
+
+          <button onClick={handleHardEndCall} className="p-4 bg-red-800 hover:bg-red-900 rounded-full transition-colors" title="End room for everyone">
+            <Icon name="ShieldX" size={20} className="text-white" />
           </button>
         </div>
       </div>

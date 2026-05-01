@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
 import {
+  exportCommunicationAudit,
   fetchCommunicationDiagnostics,
+  fetchOperationalCommunicationDiagnostics,
   reconcileCommunicationDiagnostics
 } from '../../../services/chatService';
 
@@ -22,6 +24,8 @@ function toneForDiagnostics(diagnostics) {
 export default function AppointmentDiagnosticsDashboard() {
   const [appointmentId, setAppointmentId] = useState('');
   const [diagnostics, setDiagnostics] = useState(null);
+  const [operational, setOperational] = useState(null);
+  const [filters, setFilters] = useState({ status: 'all', bucket: 'all' });
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
 
@@ -33,6 +37,18 @@ export default function AppointmentDiagnosticsDashboard() {
       setDiagnostics(await fetchCommunicationDiagnostics(appointmentId.trim()));
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Failed to load diagnostics.');
+    } finally {
+      setStatus('idle');
+    }
+  };
+
+  const loadOperational = async () => {
+    setStatus('loading');
+    setError('');
+    try {
+      setOperational(await fetchOperationalCommunicationDiagnostics({ ...filters, limit: 50 }));
+    } catch (err) {
+      setError(err?.response?.data?.error?.code || 'Failed to load operational diagnostics.');
     } finally {
       setStatus('idle');
     }
@@ -55,6 +71,23 @@ export default function AppointmentDiagnosticsDashboard() {
 
   const tone = toneForDiagnostics(diagnostics);
 
+  const downloadAudit = async () => {
+    if (!diagnostics?.appointmentId) return;
+    try {
+      const blob = await exportCommunicationAudit(diagnostics.appointmentId, 'csv');
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `communication-audit-${diagnostics.appointmentId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.response?.data?.error?.code || 'Audit export failed.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface flex theme-transition">
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
@@ -67,6 +100,33 @@ export default function AppointmentDiagnosticsDashboard() {
             <p className="text-sm text-secondary">Internal appointment health, projection status, webhook receipts, and safe reconciliation.</p>
           </div>
           <div className="flex gap-2">
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+              className="rounded-lg border border-primary/20 bg-surface-elevated px-3 py-2 text-sm text-primary"
+            >
+              <option value="all">All status</option>
+              <option value="ready">Ready</option>
+              <option value="pending">Pending</option>
+              <option value="provisioning_failed">Provisioning failed</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+            </select>
+            <select
+              value={filters.bucket}
+              onChange={(event) => setFilters((current) => ({ ...current, bucket: event.target.value }))}
+              className="rounded-lg border border-primary/20 bg-surface-elevated px-3 py-2 text-sm text-primary"
+            >
+              <option value="all">All buckets</option>
+              <option value="healthy">Healthy</option>
+              <option value="warning">Warning</option>
+              <option value="error">Error</option>
+              <option value="info">Info</option>
+            </select>
+            <button onClick={loadOperational} disabled={status === 'loading'} className="inline-flex items-center gap-2 rounded-lg border border-primary/20 px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50">
+              <AppIcon name="Activity" size={16} />
+              Ops
+            </button>
             <input
               value={appointmentId}
               onChange={(event) => setAppointmentId(event.target.value)}
@@ -81,6 +141,59 @@ export default function AppointmentDiagnosticsDashboard() {
         </header>
 
         {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        {operational && (
+          <section className="mt-6 rounded-lg border border-primary/10 bg-surface-elevated p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-primary">Operational overview</h2>
+                <p className="text-sm text-secondary">Replay counters, provisioning retries, and filtered inconsistency buckets.</p>
+              </div>
+              <div className="text-xs text-muted">No secrets displayed</div>
+            </div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <StatusCard title="Webhook replay counters" rows={operational.replayCounters} />
+              <StatusCard title="Filters" rows={operational.filters} />
+              <StatusCard title="Provisioning" rows={{ retries: operational.provisioningRetries }} />
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs text-muted">
+                  <tr>
+                    <th className="py-2 pr-4">Appointment</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Bucket</th>
+                    <th className="py-2 pr-4">Resources</th>
+                    <th className="py-2 pr-4">Messages</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-primary/10">
+                  {(operational.rows || []).map((row) => (
+                    <tr key={row.appointmentId}>
+                      <td className="py-2 pr-4">
+                        <button
+                          onClick={() => {
+                            setAppointmentId(row.appointmentId);
+                            setDiagnostics(null);
+                          }}
+                          className="font-semibold text-accent"
+                        >
+                          {row.appointmentId}
+                        </button>
+                      </td>
+                      <td className="py-2 pr-4 text-primary">{row.status} / {row.commStatus}</td>
+                      <td className="py-2 pr-4 text-primary">{row.bucket}</td>
+                      <td className="py-2 pr-4 text-muted">
+                        C:{row.conversationSidPresent ? 'yes' : 'no'} V:{row.videoRoomSidPresent ? 'yes' : 'no'}
+                      </td>
+                      <td className="py-2 pr-4 text-muted">{row.localMessageCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {!diagnostics ? (
           <div className="mt-8 rounded-lg border border-primary/10 bg-surface-elevated p-8 text-center text-muted">
@@ -112,10 +225,16 @@ export default function AppointmentDiagnosticsDashboard() {
                   <h2 className="text-base font-semibold text-primary">Reconciliation</h2>
                   <p className="text-sm text-secondary">Idempotent: re-ensures missing resources using appointment-{diagnostics.appointmentId} only.</p>
                 </div>
-                <button onClick={reconcile} disabled={status === 'reconciling' || diagnostics.status?.appointment === 'cancelled'} className="inline-flex items-center gap-2 rounded-lg border border-accent/40 px-4 py-2 text-sm font-semibold text-accent disabled:opacity-50">
-                  <AppIcon name={status === 'reconciling' ? 'Loader2' : 'RefreshCw'} size={16} className={status === 'reconciling' ? 'animate-spin' : ''} />
-                  Reconcile
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={downloadAudit} className="inline-flex items-center gap-2 rounded-lg border border-primary/20 px-4 py-2 text-sm font-semibold text-primary">
+                    <AppIcon name="Download" size={16} />
+                    Export timeline
+                  </button>
+                  <button onClick={reconcile} disabled={status === 'reconciling' || diagnostics.status?.appointment === 'cancelled'} className="inline-flex items-center gap-2 rounded-lg border border-accent/40 px-4 py-2 text-sm font-semibold text-accent disabled:opacity-50">
+                    <AppIcon name={status === 'reconciling' ? 'Loader2' : 'RefreshCw'} size={16} className={status === 'reconciling' ? 'animate-spin' : ''} />
+                    Reconcile
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -124,6 +243,7 @@ export default function AppointmentDiagnosticsDashboard() {
               <StatusCard title="Chat projection" rows={diagnostics.projection} />
               <ListCard title="Webhook receipts" items={diagnostics.webhookReceipts} />
               <ListCard title="Outbox attempts" items={diagnostics.outbox} />
+              <StatusCard title="Operational counters" rows={diagnostics.operational} />
             </div>
 
             {diagnostics.inconsistencies?.length > 0 && (

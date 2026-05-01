@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { logCommunicationEvent } from '../communications/logging.js';
 
 const prisma = new PrismaClient();
 
@@ -27,6 +28,14 @@ export function normalizeWebhookHeaders(headers = {}) {
       return [key, value];
     })
   );
+}
+
+function stringifyReceiptId(receipt) {
+  return receipt?.id?.toString?.() ?? null;
+}
+
+function logWebhookReceipt(eventType, metadata, level = 'info') {
+  logCommunicationEvent(eventType, metadata, level);
 }
 
 export async function beginWebhookProcessing({
@@ -89,6 +98,21 @@ export async function beginWebhookProcessing({
     }
 
     if (existing.payloadHash !== payloadHash) {
+      await prisma.webhookReceipt.update({
+        where: { id: existing.id },
+        data: {
+          attempts: { increment: 1 },
+          lastError: 'WEBHOOK_REPLAY_PAYLOAD_MISMATCH'
+        }
+      }).catch(() => null);
+      logWebhookReceipt('webhook_payload_hash_mismatch', {
+        provider,
+        source: source || null,
+        deliveryKey,
+        receiptId: stringifyReceiptId(existing),
+        eventType: eventType || existing.eventType,
+        resourceId: resourceId || existing.resourceId
+      }, 'warn');
       const mismatch = new Error('WEBHOOK_REPLAY_PAYLOAD_MISMATCH');
       mismatch.status = 409;
       mismatch.receipt = existing;
@@ -107,11 +131,102 @@ export async function beginWebhookProcessing({
       }).catch(() => null);
     }
 
-    return {
-      decision: existing.status === WEBHOOK_STATUS.PROCESSED ? 'skip' : 'replay',
-      receipt: existing
-    };
+    const decision = existing.status === WEBHOOK_STATUS.PROCESSED ? 'skip' : 'replay';
+    logWebhookReceipt(decision === 'skip' ? 'webhook_replay_skipped' : 'webhook_replay_retry', {
+      provider,
+      source: source || existing.source,
+      deliveryKey,
+      receiptId: stringifyReceiptId(existing),
+      eventType: eventType || existing.eventType,
+      resourceId: resourceId || existing.resourceId,
+      attempts: existing.attempts
+    }, decision === 'skip' ? 'info' : 'warn');
+
+    return { decision, receipt: existing };
   }
+}
+
+export async function recordWebhookRejected({
+  provider,
+  source,
+  deliveryKey,
+  eventType,
+  resourceId,
+  signature,
+  rawBody,
+  headers = {},
+  correlationId,
+  reason
+}) {
+  const payloadHash = hashWebhookPayload(rawBody);
+  const safeReason = String(reason || 'WEBHOOK_REJECTED').slice(0, 160);
+
+  let receipt = null;
+  try {
+    const existing = await prisma.webhookReceipt.findUnique({
+      where: { provider_deliveryKey: { provider, deliveryKey } }
+    });
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) {
+        logWebhookReceipt('webhook_payload_hash_mismatch', {
+          provider,
+          source: source || existing.source,
+          deliveryKey,
+          receiptId: stringifyReceiptId(existing),
+          eventType: eventType || existing.eventType,
+          resourceId: resourceId || existing.resourceId
+        }, 'warn');
+      }
+      receipt = await prisma.webhookReceipt.update({
+        where: { id: existing.id },
+        data: {
+          attempts: { increment: 1 },
+          lastError: safeReason,
+          status: existing.status === WEBHOOK_STATUS.PROCESSED ? existing.status : WEBHOOK_STATUS.IGNORED,
+          headers: normalizeWebhookHeaders(headers)
+        }
+      });
+    } else {
+      receipt = await prisma.webhookReceipt.create({
+        data: {
+          provider,
+          source: source || null,
+          deliveryKey,
+          eventType: eventType || null,
+          resourceId: resourceId || null,
+          signature: signature || null,
+          payloadHash,
+          correlationId: correlationId || null,
+          rawPayload: typeof rawBody === 'string' ? { raw: rawBody } : (rawBody || {}),
+          headers: normalizeWebhookHeaders(headers),
+          status: WEBHOOK_STATUS.IGNORED,
+          lastError: safeReason,
+          processedAt: new Date()
+        }
+      });
+    }
+  } catch (error) {
+    logWebhookReceipt('webhook_rejected_receipt_failed', {
+      provider,
+      deliveryKey,
+      eventType,
+      resourceId,
+      reason: safeReason,
+      error: error.message
+    }, 'warn');
+  }
+
+  logWebhookReceipt('webhook_signature_invalid', {
+    provider,
+    source: source || null,
+    deliveryKey,
+    receiptId: stringifyReceiptId(receipt),
+    eventType,
+    resourceId,
+    reason: safeReason
+  }, 'warn');
+
+  return receipt;
 }
 
 export async function markWebhookProcessed({ receiptId, status = WEBHOOK_STATUS.PROCESSED }) {
@@ -146,12 +261,29 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
   });
 
   if (existing && existing.payloadHash !== payloadHash) {
+    await prisma.webhookReceipt.update({
+      where: { id: existing.id },
+      data: {
+        attempts: { increment: 1 },
+        lastError: 'WEBHOOK_REPLAY_PAYLOAD_MISMATCH'
+      }
+    }).catch(() => null);
+    logWebhookReceipt('webhook_payload_hash_mismatch', {
+      provider,
+      deliveryKey,
+      receiptId: stringifyReceiptId(existing)
+    }, 'warn');
     const mismatch = new Error('WEBHOOK_REPLAY_PAYLOAD_MISMATCH');
     mismatch.status = 409;
     throw mismatch;
   }
 
   if (existing && existing.status === WEBHOOK_STATUS.PROCESSED) {
+    logWebhookReceipt('webhook_replay_skipped', {
+      provider,
+      deliveryKey,
+      receiptId: stringifyReceiptId(existing)
+    });
     return { skipped: true };
   }
 

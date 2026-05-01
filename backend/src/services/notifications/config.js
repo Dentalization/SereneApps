@@ -28,7 +28,8 @@ export const notificationConfig = {
   sendgridFromEmail: process.env.SENDGRID_FROM_EMAIL || 'no-reply@sereneai.test',
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID || '',
-    authToken: process.env.TWILIO_AUTH_TOKEN || '',
+    apiKeySid: process.env.TWILIO_API_KEY_SID || '',
+    apiKeySecret: process.env.TWILIO_API_KEY_SECRET || '',
     fromNumber: process.env.TWILIO_SMS_FROM_NUMBER || process.env.TWILIO_FROM_NUMBER || ''
   },
   fcm: {
@@ -56,6 +57,6 @@ export function isEmailConfigured() {
 }
 
 export function isSmsConfigured() {
-  const { accountSid, authToken, fromNumber } = notificationConfig.twilio;
-  return Boolean(accountSid && authToken && fromNumber);
+  const { accountSid, apiKeySid, apiKeySecret, fromNumber } = notificationConfig.twilio;
+  return Boolean(accountSid && apiKeySid && apiKeySecret && fromNumber);
 }
