@@ -1118,6 +1118,7 @@ model VideoSession {
   id            BigInt   @id @default(autoincrement())
   appointmentId BigInt
   userId        BigInt
+  actorRole     String   @default("participant") @map("actor_role") @db.VarChar(32)
   joinedAt      DateTime @default(now())
   leftAt        DateTime?
   durationSeconds Int?

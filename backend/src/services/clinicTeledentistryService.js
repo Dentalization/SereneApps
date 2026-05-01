@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
+import { recordCommunicationEvent } from './communications.js';
 
 const prisma = new PrismaClient();
 
@@ -10,6 +11,7 @@ const TELE_CONSULTATION_TYPES = ['virtual', 'tele', 'teledentistry'];
 const WAITING_STATUSES = new Set(['scheduled', 'confirmed', 'check-in', 'in-chair']);
 const COMPLETED_STATUSES = new Set(['completed']);
 const ENDED_STATUSES = new Set(['cancelled', 'no-show']);
+const OBSERVER_VIDEO_SESSION_ROLES = new Set(['observer', 'clinic_observer']);
 
 function toBigInt(value, fieldName = 'id') {
   try {
@@ -36,10 +38,16 @@ function capabilitiesForClinicRole(clinicRole) {
   return {
     canObserve: clinicRole === 'clinic_owner',
     canViewSummaries: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin',
+    canViewClinicalSummaryBody: clinicRole === 'clinic_owner'
+      || (clinicRole === 'clinic_admin' && clinicAdminCanViewClinicalSummary()),
     canViewChatHistory: clinicRole === 'clinic_owner',
     canViewAuditLog: clinicRole === 'clinic_owner',
     canViewSessions: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin'
   };
+}
+
+function clinicAdminCanViewClinicalSummary(env = process.env) {
+  return env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY === 'true';
 }
 
 function scopedClinicBranchIdsForContext(context, branchIds) {
@@ -124,9 +132,23 @@ function serializeSummary(summary, { includeBody = false } = {}) {
   };
 }
 
+function isClinicalVideoSession(session) {
+  const actorRole = session?.actorRole || 'participant';
+  return !OBSERVER_VIDEO_SESSION_ROLES.has(actorRole);
+}
+
+function activeClinicalVideoSessionWhere() {
+  return {
+    leftAt: null,
+    actorRole: { notIn: Array.from(OBSERVER_VIDEO_SESSION_ROLES) }
+  };
+}
+
 function sessionBucket(appointment) {
-  const hasActiveParticipant = (appointment.videoSessions || []).some((session) => !session.leftAt);
-  if (hasActiveParticipant) return 'live';
+  const hasClinicalParticipant = (appointment.videoSessions || []).some((session) => (
+    !session.leftAt && isClinicalVideoSession(session)
+  ));
+  if (hasClinicalParticipant) return 'live';
   if (COMPLETED_STATUSES.has(appointment.status)) return 'completed';
   if (ENDED_STATUSES.has(appointment.status)) return 'ended';
   if (WAITING_STATUSES.has(appointment.status)) return 'waiting';
@@ -134,7 +156,12 @@ function sessionBucket(appointment) {
 }
 
 function serializeSession(appointment, context) {
-  const activeParticipants = (appointment.videoSessions || []).filter((session) => !session.leftAt);
+  const activeParticipants = (appointment.videoSessions || []).filter((session) => (
+    !session.leftAt && isClinicalVideoSession(session)
+  ));
+  const activeObservers = (appointment.videoSessions || []).filter((session) => (
+    !session.leftAt && !isClinicalVideoSession(session)
+  ));
   const completedSessions = (appointment.videoSessions || []).filter((session) => session.leftAt);
   const durationSeconds = completedSessions.reduce((sum, session) => sum + (session.durationSeconds || 0), 0);
   const summary = serializeSummary(appointment.clinicalSummary);
@@ -149,6 +176,7 @@ function serializeSession(appointment, context) {
     endsAt: appointment.endsAt,
     durationSeconds,
     activeParticipantCount: activeParticipants.length,
+    activeObserverCount: activeObservers.length,
     participantRoles: (appointment.communicationParticipants || []).map((participant) => ({
       id: participant.id,
       role: participant.role,
@@ -236,12 +264,12 @@ function teleAppointmentScope(branchIds) {
 
 function sessionStatusWhere(status) {
   if (status === 'live') {
-    return { videoSessions: { some: { leftAt: null } } };
+    return { videoSessions: { some: activeClinicalVideoSessionWhere() } };
   }
   if (status === 'waiting') {
     return {
       AND: [
-        { videoSessions: { none: { leftAt: null } } },
+        { videoSessions: { none: activeClinicalVideoSessionWhere() } },
         { status: { in: Array.from(WAITING_STATUSES) } }
       ]
     };
@@ -249,7 +277,7 @@ function sessionStatusWhere(status) {
   if (status === 'active') {
     return {
       OR: [
-        { videoSessions: { some: { leftAt: null } } },
+        { videoSessions: { some: activeClinicalVideoSessionWhere() } },
         { status: { in: Array.from(WAITING_STATUSES) } }
       ]
     };
@@ -382,6 +410,7 @@ export async function countClinicTeledentistrySessions({ user, status }) {
 export async function getClinicTeledentistrySummary({ user, appointmentId }) {
   const context = await getClinicTeledentistryContext(user, ['clinic_owner', 'clinic_admin']);
   const appointment = await getClinicTeleAppointment({ context, appointmentId });
+  const includeBody = context.capabilities.canViewClinicalSummaryBody;
   return {
     clinicRole: context.clinicRole,
     capabilities: context.capabilities,
@@ -393,7 +422,7 @@ export async function getClinicTeledentistrySummary({ user, appointmentId }) {
       patient: serializeUser(appointment.patient),
       dentist: serializeUser(appointment.dentist)
     },
-    ...serializeSummary(appointment.clinicalSummary, { includeBody: true })
+    ...serializeSummary(appointment.clinicalSummary, { includeBody })
   };
 }
 
@@ -416,15 +445,29 @@ export async function getClinicTeledentistryMessages({ user, appointmentId, limi
     }
   });
 
+  const safeMessages = (room?.messages || [])
+    .filter((message) => message.metadata?.deleted !== true)
+    .map((message) => serializeMessage(message));
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: context.userId,
+    actorRole: 'clinic_owner',
+    eventType: 'clinic_chat_history_viewed',
+    provider: 'local',
+    metadata: {
+      clinicStaffId: context.staffId,
+      messageCount: safeMessages.length
+    }
+  }).catch(() => null);
+
   return {
     clinicRole: context.clinicRole,
     capabilities: context.capabilities,
     appointmentId: appointment.id.toString(),
     chatRoomId: room?.id?.toString?.() ?? null,
     source: 'local_chat_messages_projection',
-    messages: (room?.messages || [])
-      .filter((message) => message.metadata?.deleted !== true)
-      .map((message) => serializeMessage(message))
+    messages: safeMessages
   };
 }
 
@@ -481,5 +524,7 @@ export const __testables = {
   sessionBucket,
   sessionStatusWhere,
   serializeMessage,
-  scopedClinicBranchIdsForContext
+  scopedClinicBranchIdsForContext,
+  clinicAdminCanViewClinicalSummary,
+  isClinicalVideoSession
 };

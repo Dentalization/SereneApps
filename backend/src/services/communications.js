@@ -15,6 +15,8 @@ import { attachmentPresentationForMessage } from './communications/attachmentSto
 
 const prisma = new PrismaClient();
 const OBSERVER_TOKEN_MAX_TTL_SECONDS = 900;
+const OBSERVER_ALLOWED_CLINIC_ROLES = new Set(['clinic_owner', 'owner']);
+const TELE_CONSULTATION_TYPES = new Set(['virtual', 'tele', 'teledentistry']);
 
 let conversationsAdapter;
 let videoService;
@@ -74,20 +76,38 @@ function userCanAccessAppointment(user, appointment) {
   );
 }
 
-async function userCanObserveClinicAppointment(user, appointment) {
+async function evaluateClinicObserverAccess(user, appointment) {
   const userId = BigInt(user.id);
-  if (!appointment.clinicBranch?.clinicProfileId) return false;
+  if (!appointment.clinicBranch?.clinicProfileId) {
+    return { allowed: false, reason: 'independent_dentist_denied' };
+  }
 
-  const staff = await prisma.clinicStaff.findFirst({
-    where: {
-      userId,
+  const staff = await prisma.clinicStaff.findUnique({
+    where: { userId },
+    select: {
+      id: true,
+      role: true,
       isActive: true,
-      role: { in: ['clinic_owner', 'owner'] },
-      clinicProfileId: appointment.clinicBranch.clinicProfileId
-    },
-    select: { id: true }
+      clinicProfileId: true,
+      assignedBranchId: true
+    }
   });
-  return Boolean(staff);
+  if (!staff) return { allowed: false, reason: 'not_clinic_staff' };
+  if (!staff.isActive) return { allowed: false, reason: 'inactive_clinic_staff', staffId: staff.id };
+  if (staff.clinicProfileId !== appointment.clinicBranch.clinicProfileId) {
+    return { allowed: false, reason: 'cross_clinic_denied', staffId: staff.id };
+  }
+
+  const isTeleAppointment = TELE_CONSULTATION_TYPES.has(appointment.consultationType) || Boolean(appointment.videoRoomRef);
+  if (!isTeleAppointment) {
+    return { allowed: false, reason: 'appointment_not_tele', staffId: staff.id };
+  }
+
+  if (!OBSERVER_ALLOWED_CLINIC_ROLES.has(staff.role)) {
+    return { allowed: false, reason: 'clinic_role_not_allowed', staffId: staff.id };
+  }
+
+  return { allowed: true, reason: null, staffId: staff.id };
 }
 
 export function normalizeCommunicationTokenMode(input = {}) {
@@ -300,8 +320,11 @@ export async function getAppointmentForAuthorizedUser({ appointmentId, user, req
   }
 
   const isObserverRequest = requestedRole === 'observer';
+  const observerAccess = isObserverRequest
+    ? await evaluateClinicObserverAccess(user, appointment)
+    : { allowed: false, reason: null };
   const canAccess = isObserverRequest
-    ? await userCanObserveClinicAppointment(user, appointment)
+    ? observerAccess.allowed
     : userCanAccessAppointment(user, appointment);
 
   if (!canAccess) {
@@ -313,14 +336,15 @@ export async function getAppointmentForAuthorizedUser({ appointmentId, user, req
         eventType: 'clinic_observer_denied',
         provider: 'api',
         metadata: {
-          reason: 'clinic_owner_required',
+          reason: observerAccess.reason || 'clinic_observer_denied',
+          clinicStaffId: observerAccess.staffId || null,
           roomName: appointmentScopedRoomName(apptId)
         }
       }).catch(() => null);
       logCommunicationEvent('clinic_observer_denied', {
         appointmentId: apptId,
         userId: user.id,
-        reason: 'clinic_owner_required'
+        reason: observerAccess.reason || 'clinic_observer_denied'
       }, 'warn');
     }
     logCommunicationEvent('permission_denied', {
@@ -1282,6 +1306,7 @@ export async function getCommunicationHealth({ appointmentId, user }) {
     activeVideoSessions: activeVideoSessions.map((session) => ({
       id: session.id.toString(),
       userId: session.userId.toString(),
+      actorRole: session.actorRole,
       joinedAt: session.joinedAt
     })),
     events: events.map((event) => ({
@@ -1320,5 +1345,6 @@ export const __testables = {
   buildWaitingRoomState,
   clampCommunicationTokenTtl,
   normalizeCommunicationTokenMode,
+  evaluateClinicObserverAccess,
   sanitizeEventMetadata
 };

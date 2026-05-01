@@ -63,6 +63,7 @@ router.post('/:appointmentId/video/leave', authenticateToken, async (req, res) =
         data: {
           appointmentId: apptId,
           userId,
+          actorRole: 'participant',
           joinedAt: new Date(Date.now() - 1000),
           leftAt: new Date(),
           durationSeconds: 1

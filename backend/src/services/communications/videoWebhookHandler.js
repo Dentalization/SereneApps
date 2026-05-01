@@ -11,7 +11,11 @@ import {
 } from './participantAccessService.js';
 
 const prisma = new PrismaClient();
-const OBSERVER_TRACK_EVENT_RE = /track|publish/i;
+const OBSERVER_PUBLISH_EVENTS = new Set([
+  'track-published',
+  'track-added',
+  'track-started'
+]);
 
 function parseVideoAppointment(event) {
   const appointmentId = parseAppointmentIdFromRoomName(event.RoomName);
@@ -54,7 +58,16 @@ async function recordVideoEvent(event, eventType, appointmentId, userId = null, 
 
 function isObserverTrackPublishEvent(event, parsedIdentity) {
   return parsedIdentity?.type === 'clinic_observer'
-    && Boolean(event.TrackSid || event.TrackName || event.TrackKind || OBSERVER_TRACK_EVENT_RE.test(event.StatusCallbackEvent || ''));
+    && OBSERVER_PUBLISH_EVENTS.has(event.StatusCallbackEvent)
+    && Boolean(event.TrackSid || event.TrackKind);
+}
+
+function videoSessionActorRole(parsedIdentity, externalParticipant = null) {
+  if (parsedIdentity?.type === 'clinic_observer') return 'observer';
+  if (parsedIdentity?.type === 'communication_participant') {
+    return externalParticipant?.role || parsedIdentity.role || 'participant';
+  }
+  return parsedIdentity?.role || 'participant';
 }
 
 async function handleObserverPublishViolation(event, appointmentId, parsedIdentity) {
@@ -191,6 +204,7 @@ export async function handleVideoEvent(event) {
             joinedAt
           })
         : null;
+      const actorRole = videoSessionActorRole(parsedIdentity, externalParticipant);
 
       if (userId) {
         const existing = await prisma.videoSession.findFirst({
@@ -202,13 +216,14 @@ export async function handleVideoEvent(event) {
             data: {
               appointmentId,
               userId,
+              actorRole,
               joinedAt
             }
           });
         } else {
           await prisma.videoSession.update({
             where: { id: existing.id },
-            data: { joinedAt }
+            data: { joinedAt, actorRole }
           });
         }
       }
@@ -219,14 +234,14 @@ export async function handleVideoEvent(event) {
         appointmentId,
         userId,
         { participantId: externalParticipant?.id || null },
-        parsedIdentity?.role || externalParticipant?.role || null
+        actorRole
       );
       logCommunicationEvent('room_joined', {
         appointmentId,
         roomName: RoomName,
         roomSid: RoomSid,
         userId,
-        actorRole: parsedIdentity?.role || externalParticipant?.role || null,
+        actorRole,
         participantId: externalParticipant?.id || null
       });
       return { processed: true };
@@ -242,6 +257,7 @@ export async function handleVideoEvent(event) {
             where: { id: parsedIdentity.participantId }
           }).catch(() => null)
         : null;
+      const actorRole = videoSessionActorRole(parsedIdentity, externalParticipant);
       const session = userId
         ? await prisma.videoSession.findFirst({
             where: {
@@ -276,14 +292,14 @@ export async function handleVideoEvent(event) {
           durationSeconds,
           participantId: externalParticipant?.id || null
         },
-        parsedIdentity?.role || externalParticipant?.role || null
+        actorRole
       );
       logCommunicationEvent('room_left', {
         appointmentId,
         roomName: RoomName,
         roomSid: RoomSid,
         userId,
-        actorRole: parsedIdentity?.role || externalParticipant?.role || null,
+        actorRole,
         participantId: externalParticipant?.id || null,
         durationSeconds
       });
@@ -328,5 +344,6 @@ export async function handleVideoEvent(event) {
 }
 
 export const __testables = {
-  isObserverTrackPublishEvent
+  isObserverTrackPublishEvent,
+  videoSessionActorRole
 };
