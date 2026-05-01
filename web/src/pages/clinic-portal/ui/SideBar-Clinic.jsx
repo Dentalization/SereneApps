@@ -79,7 +79,7 @@ const ClinicSideBar = () => {
     let cancelled = false;
     const loadActiveCount = async () => {
       try {
-        const result = await fetchClinicTeledentistrySessionCount({ status: 'active' });
+        const result = await fetchClinicTeledentistrySessionCount({ status: 'live' });
         if (!cancelled) {
           setActiveTeleSessionCount(result?.count || 0);
         }

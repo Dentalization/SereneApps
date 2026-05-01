@@ -39,8 +39,10 @@ function formatDuration(seconds = 0) {
 }
 
 function statusClass(status) {
-  if (status === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (status === 'live') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (status === 'waiting') return 'bg-amber-50 text-amber-700 border-amber-200';
   if (status === 'completed') return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (status === 'ended') return 'bg-red-50 text-red-700 border-red-200';
   return 'bg-amber-50 text-amber-700 border-amber-200';
 }
 
@@ -103,6 +105,9 @@ function MessagesDrawer({ open, messagesState, onClose }) {
             <p className="text-sm text-secondary">
               Appointment #{messagesState.appointmentId || '-'} · local chat_messages
             </p>
+            <p className="mt-1 text-xs text-muted">
+              Clinic owner can review local projected chat history for compliance. Attachment downloads are not enabled in observer review.
+            </p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Close messages">
             <Icon name="X" size={18} />
@@ -132,16 +137,6 @@ function MessagesDrawer({ open, messagesState, onClose }) {
                   <div className="text-xs text-secondary">
                     {message.attachmentAvailable ? 'Attachment tersedia via signed download.' : `Attachment tidak tersedia (${message.mediaTombstoneReason || 'expired/deleted'}).`}
                   </div>
-                  {message.fileUrl && (
-                    <a
-                      href={message.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex text-xs font-medium text-cyan-700 hover:text-cyan-800"
-                    >
-                      Download attachment
-                    </a>
-                  )}
                 </div>
               ) : (
                 <p className="mt-2 whitespace-pre-wrap text-sm text-secondary">{message.message || '-'}</p>
@@ -164,10 +159,10 @@ function SummaryField({ label, value }) {
 }
 
 function ObserverModal({ appointmentId, open, onClose }) {
-  const remoteVideoRef = useRef(null);
+  const remoteContainerRef = useRef(null);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
-  const { join, leave, connectionState, reconnectError, networkQuality } = useTwilioVideoClient();
+  const { join, leave, connectionState, reconnectError, networkQuality, remoteTrackCount } = useTwilioVideoClient();
 
   useEffect(() => {
     if (!open || !appointmentId) return undefined;
@@ -181,7 +176,7 @@ function ObserverModal({ appointmentId, open, onClose }) {
         await join({
           roomName: session.video?.roomName || session.roomName,
           token: session.video?.token || session.videoToken || session.token,
-          remoteVideoEl: remoteVideoRef.current,
+          remoteContainerEl: remoteContainerRef.current,
           observeOnly: true
         });
         if (!cancelled) setStatus('connected');
@@ -215,7 +210,10 @@ function ObserverModal({ appointmentId, open, onClose }) {
         <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold text-white">Clinic Observer View</h2>
-            <p className="text-xs text-slate-400">Appointment #{appointmentId} · read-only monitoring</p>
+            <p className="text-xs text-slate-400">Appointment #{appointmentId} · observer monitoring</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Observer mode connects without camera/mic tracks. Token misuse is audited and may trigger disconnect.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">
@@ -227,12 +225,24 @@ function ObserverModal({ appointmentId, open, onClose }) {
           </div>
         </header>
 
-        <div className="relative aspect-video bg-black">
-          <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
+        <div className="relative min-h-[60vh] bg-black">
+          <div
+            ref={remoteContainerRef}
+            className={`grid h-full min-h-[60vh] gap-2 p-2 ${
+              remoteTrackCount > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
+            }`}
+          />
           {status !== 'connected' && (
             <div className="absolute inset-0 flex items-center justify-center text-center">
               <div className="rounded-xl bg-slate-900/90 px-4 py-3 text-sm text-slate-200">
                 {status === 'error' ? error : 'Menghubungkan observer ke room...'}
+              </div>
+            </div>
+          )}
+          {status === 'connected' && remoteTrackCount === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-center">
+              <div className="rounded-xl bg-slate-900/90 px-4 py-3 text-sm text-slate-300">
+                Terhubung sebagai observer. Menunggu video participant.
               </div>
             </div>
           )}
@@ -317,7 +327,7 @@ export default function ClinicTeledentistryPage() {
   const [date, setDate] = useState(localDateKey());
   const [liveSessions, setLiveSessions] = useState([]);
   const [historySessions, setHistorySessions] = useState([]);
-  const [counts, setCounts] = useState({ active: 0, completed: 0, total: 0 });
+  const [counts, setCounts] = useState({ live: 0, waiting: 0, completed: 0, ended: 0, total: 0 });
   const [auditEvents, setAuditEvents] = useState([]);
   const [eventFilter, setEventFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -352,12 +362,12 @@ export default function ClinicTeledentistryPage() {
     setError('');
     try {
       const [live, history] = await Promise.all([
-        fetchClinicTeledentistrySessions({ status: 'active' }),
+        fetchClinicTeledentistrySessions({ status: 'live' }),
         fetchClinicTeledentistrySessions({ status: 'completed', date })
       ]);
       setLiveSessions(live.sessions || []);
       setHistorySessions(history.sessions || []);
-      setCounts(live.counts || history.counts || { active: 0, completed: 0, total: 0 });
+      setCounts(live.counts || history.counts || { live: 0, waiting: 0, completed: 0, ended: 0, total: 0 });
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal memuat sesi teledentistry klinik.');
     } finally {
@@ -465,7 +475,7 @@ export default function ClinicTeledentistryPage() {
               className="rounded-lg border border-primary/20 bg-surface px-3 py-2 text-sm text-primary"
             />
             <div className="rounded-lg border border-primary/10 bg-surface px-3 py-2 text-sm text-secondary">
-              Active: <span className="font-semibold text-primary">{counts.active || 0}</span>
+              Live: <span className="font-semibold text-primary">{counts.live || 0}</span>
             </div>
           </div>
         </header>

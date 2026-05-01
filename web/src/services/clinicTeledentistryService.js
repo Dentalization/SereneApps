@@ -27,7 +27,7 @@ export async function fetchClinicCommunicationAuditLog(params = {}) {
 
 export async function fetchClinicObserverToken(appointmentId) {
   const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/token`, {
-    params: { role: 'observer' }
+    params: { mode: 'observer' }
   });
   return data;
 }

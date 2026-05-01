@@ -9,6 +9,7 @@ import {
   updateLastRead,
   listChatRoomsForUser,
   issueAppointmentScopedToken,
+  normalizeCommunicationTokenMode,
   getCommunicationHealth,
   hardEndAppointmentConsultationRoom,
   recordCommunicationEvent,
@@ -640,12 +641,13 @@ router.get(
     try {
       const { appointmentId } = req.params;
       const ttl = req.query.ttl ? parseInt(req.query.ttl, 10) : 3600;
+      const requestedMode = normalizeCommunicationTokenMode(req.query);
 
       const session = await issueAppointmentScopedToken({
         appointmentId,
         user: req.user,
         ttl,
-        requestedRole: req.query.role === 'observer' ? 'observer' : null
+        requestedRole: requestedMode
       });
 
       res.json(session);

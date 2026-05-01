@@ -43,3 +43,11 @@ test('observer token can be constrained to a video-only grant', () => {
   assert.equal(payload.grants.video.room, 'appointment-99');
   assert.equal(payload.grants.chat, undefined);
 });
+
+test('observer token mode accepts role or mode and clamps ttl to 15 minutes', () => {
+  assert.equal(__testables.normalizeCommunicationTokenMode({ role: 'observer' }), 'observer');
+  assert.equal(__testables.normalizeCommunicationTokenMode({ mode: 'observer' }), 'observer');
+  assert.equal(__testables.normalizeCommunicationTokenMode({ role: 'dentist' }), null);
+  assert.equal(__testables.clampCommunicationTokenTtl({ ttl: 999999, mode: 'observer' }), 900);
+  assert.equal(__testables.clampCommunicationTokenTtl({ ttl: 600, mode: 'observer' }), 600);
+});

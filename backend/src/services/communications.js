@@ -14,6 +14,7 @@ import { logCommunicationEvent } from './communications/logging.js';
 import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
 
 const prisma = new PrismaClient();
+const OBSERVER_TOKEN_MAX_TTL_SECONDS = 900;
 
 let conversationsAdapter;
 let videoService;
@@ -87,6 +88,20 @@ async function userCanObserveClinicAppointment(user, appointment) {
     select: { id: true }
   });
   return Boolean(staff);
+}
+
+export function normalizeCommunicationTokenMode(input = {}) {
+  const role = String(input.role || '').toLowerCase();
+  const mode = String(input.mode || '').toLowerCase();
+  return role === 'observer' || mode === 'observer' ? 'observer' : null;
+}
+
+export function clampCommunicationTokenTtl({ ttl = 3600, mode = null } = {}) {
+  const parsed = Number.parseInt(ttl, 10);
+  const safeTtl = Number.isFinite(parsed) && parsed > 0 ? parsed : 3600;
+  return mode === 'observer'
+    ? Math.min(safeTtl, OBSERVER_TOKEN_MAX_TTL_SECONDS)
+    : safeTtl;
 }
 
 export function communicationActorRoleForAppointment(user, appointment) {
@@ -290,6 +305,24 @@ export async function getAppointmentForAuthorizedUser({ appointmentId, user, req
     : userCanAccessAppointment(user, appointment);
 
   if (!canAccess) {
+    if (isObserverRequest) {
+      await recordCommunicationEvent({
+        appointmentId: apptId,
+        userId: user.id,
+        actorRole: 'observer',
+        eventType: 'clinic_observer_denied',
+        provider: 'api',
+        metadata: {
+          reason: 'clinic_owner_required',
+          roomName: appointmentScopedRoomName(apptId)
+        }
+      }).catch(() => null);
+      logCommunicationEvent('clinic_observer_denied', {
+        appointmentId: apptId,
+        userId: user.id,
+        reason: 'clinic_owner_required'
+      }, 'warn');
+    }
     logCommunicationEvent('permission_denied', {
       appointmentId: apptId,
       userId: user.id,
@@ -1015,6 +1048,8 @@ function buildCombinedTwilioToken({
 
 export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3600, requestedRole = null }) {
   const role = requestedRole === 'observer' ? 'observer' : null;
+  const mode = role;
+  const effectiveTtl = clampCommunicationTokenTtl({ ttl, mode });
   const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user, requestedRole: role });
   const waitingRoom = buildWaitingRoomState(appointment);
 
@@ -1029,6 +1064,17 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
     getConversationsServiceSid();
     const roomEnded = waitingRoom.state === 'ended' || await appointmentVideoRoomEnded(appointment);
     if (roomEnded) {
+      await recordCommunicationEvent({
+        appointmentId: appointment.id,
+        userId: user.id,
+        actorRole: 'observer',
+        eventType: 'clinic_observer_denied',
+        provider: 'api',
+        metadata: {
+          reason: 'room_ended',
+          roomName: appointment.videoRoomRef || appointmentScopedRoomName(appointment.id)
+        }
+      }).catch(() => null);
       const error = new Error('ROOM_ENDED');
       error.status = 409;
       error.waitingRoom = waitingRoom;
@@ -1058,45 +1104,55 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
   const tokenData = buildCombinedTwilioToken({
     identity,
     roomName: resources.roomName,
-    ttl,
+    ttl: effectiveTtl,
     includeConversations: role !== 'observer',
     includeVideo: true
   });
   const grants = role === 'observer' ? ['video'] : ['conversations', 'video'];
+  const eventType = role === 'observer' ? 'clinic_observer_token_issued' : 'token_issued';
 
   await recordCommunicationEvent({
     appointmentId: appointment.id,
     userId: user.id,
     actorRole,
-    eventType: 'token_issued',
+    eventType,
+    provider: 'api',
     metadata: {
       identity,
       requestedRole: role || actorRole,
+      mode: role || 'participant',
       observeOnly: role === 'observer',
       roomName: resources.roomName,
       conversationSid: role === 'observer' ? null : resources.conversationSid,
-      expiresAt: tokenData.expiresAt
+      expiresAt: tokenData.expiresAt,
+      ttlSeconds: effectiveTtl,
+      requestedTtlSeconds: Number.parseInt(ttl, 10) || null
     }
   });
 
-  logCommunicationEvent('token_issued', {
+  logCommunicationEvent(eventType, {
     appointmentId: appointment.id,
     userId: user.id,
     identity,
     actorRole,
+    mode: role || 'participant',
     observeOnly: role === 'observer',
     roomName: resources.roomName,
     conversationSid: role === 'observer' ? null : resources.conversationSid,
-    expiresAt: tokenData.expiresAt
+    expiresAt: tokenData.expiresAt,
+    ttlSeconds: effectiveTtl
   });
 
   return {
     appointmentId: appointment.id.toString(),
     identity,
     role: actorRole,
+    actorRole,
+    mode: role || 'participant',
     observeOnly: role === 'observer',
     token: tokenData.token,
     expiresAt: tokenData.expiresAt,
+    ttlSeconds: effectiveTtl,
     grants,
     waitingRoom,
     chat: {
@@ -1262,5 +1318,7 @@ export async function emitAppointmentEvent({ type, appointmentId, payload = {} }
 export const __testables = {
   buildCombinedTwilioToken,
   buildWaitingRoomState,
+  clampCommunicationTokenTtl,
+  normalizeCommunicationTokenMode,
   sanitizeEventMetadata
 };
