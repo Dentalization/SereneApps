@@ -7,7 +7,15 @@ import {
 } from '../../../../services/chatService';
 import NetworkQualityBadge from './NetworkQualityBadge';
 
-const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError, remoteParticipant }) => {
+const VideoCallInterface = ({
+  conversation,
+  videoSession,
+  onEndCall,
+  onJoinError,
+  remoteParticipant,
+  observeOnly = false,
+  allowHardEnd = true
+}) => {
   // remoteParticipant = { name, avatar } — the person on the other end
   const remote = remoteParticipant || conversation?.patient || {};
   const remoteName = remote?.name || 'Participant';
@@ -91,7 +99,8 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
         roomName,
         token: videoSession.token,
         localVideoEl: localVideoRef.current,
-        remoteVideoEl: remoteVideoRef.current
+        remoteVideoEl: remoteVideoRef.current,
+        observeOnly
       }).catch((error) => {
         console.error('Failed to join Twilio room:', error);
         onJoinError?.(error);
@@ -105,7 +114,7 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
       clearInterval(durationTimer);
       leave().catch(() => null);
     };
-  }, [videoSession, join, leave]);
+  }, [videoSession, join, leave, observeOnly]);
 
   const handleEndCall = async () => {
     await leave().catch(() => null);
@@ -242,56 +251,64 @@ const VideoCallInterface = ({ conversation, videoSession, onEndCall, onJoinError
           </div>
         </div>
 
-        <div 
-          onMouseDown={handleDragStart}
-          style={{ 
-            top: `${pipPos.y}px`, 
-            right: `${pipPos.x}px`,
-            cursor: isDragging ? 'grabbing' : 'grab'
-          }}
-          className="absolute w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border-2 border-white/20 shadow-2xl z-20 group"
-        >
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-            <Icon name="Move" size={20} className="text-white" />
-          </div>
-          <video ref={localVideoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-          {!videoEnabled && (
-            <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-              <Icon name="VideoOff" size={24} className="text-white" />
+        {!observeOnly && (
+          <div
+            onMouseDown={handleDragStart}
+            style={{
+              top: `${pipPos.y}px`,
+              right: `${pipPos.x}px`,
+              cursor: isDragging ? 'grabbing' : 'grab'
+            }}
+            className="absolute w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border-2 border-white/20 shadow-2xl z-20 group"
+          >
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              <Icon name="Move" size={20} className="text-white" />
             </div>
-          )}
-        </div>
+            <video ref={localVideoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+            {!videoEnabled && (
+              <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
+                <Icon name="VideoOff" size={24} className="text-white" />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={`absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/50 to-transparent transition-opacity duration-300 ${
         showControls ? 'opacity-100' : 'opacity-0'
       }`}>
         <div className="flex items-center justify-center space-x-4">
-          <button
-            onClick={toggleAudio}
-            className={`p-4 rounded-full transition-colors ${
-              audioEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-            }`}
-          >
-            <Icon name={audioEnabled ? 'Mic' : 'MicOff'} size={20} className="text-white" />
-          </button>
+          {!observeOnly && (
+            <>
+              <button
+                onClick={toggleAudio}
+                className={`p-4 rounded-full transition-colors ${
+                  audioEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                <Icon name={audioEnabled ? 'Mic' : 'MicOff'} size={20} className="text-white" />
+              </button>
 
-          <button
-            onClick={toggleVideo}
-            className={`p-4 rounded-full transition-colors ${
-              videoEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-            }`}
-          >
-            <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} className="text-white" />
-          </button>
+              <button
+                onClick={toggleVideo}
+                className={`p-4 rounded-full transition-colors ${
+                  videoEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} className="text-white" />
+              </button>
+            </>
+          )}
 
           <button onClick={handleEndCall} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-colors" title="Leave call">
             <Icon name="PhoneOff" size={20} className="text-white" />
           </button>
 
-          <button onClick={handleHardEndCall} className="p-4 bg-red-800 hover:bg-red-900 rounded-full transition-colors" title="End room for everyone">
-            <Icon name="ShieldX" size={20} className="text-white" />
-          </button>
+          {allowHardEnd && !observeOnly && (
+            <button onClick={handleHardEndCall} className="p-4 bg-red-800 hover:bg-red-900 rounded-full transition-colors" title="End room for everyone">
+              <Icon name="ShieldX" size={20} className="text-white" />
+            </button>
+          )}
         </div>
       </div>
     </div>

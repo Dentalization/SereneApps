@@ -629,6 +629,7 @@ router.post(
  * - waitingRoom: appointment schedule/payment gate, with canChat/canJoinVideo.
  * - chat: Twilio Conversations token, conversationSid, appointment-scoped channelName.
  * - video: Twilio Video token, appointment-{appointmentId} roomName, roomSid, canJoin.
+ * - role=observer: clinic-owner observer token for read-only monitoring UI; no chat token is returned.
  * - compatibility: token, conversationSid, roomName, channelName, videoToken remain for older clients.
  * Tokens are never written to logs or communication_events metadata.
  */
@@ -643,7 +644,8 @@ router.get(
       const session = await issueAppointmentScopedToken({
         appointmentId,
         user: req.user,
-        ttl
+        ttl,
+        requestedRole: req.query.role === 'observer' ? 'observer' : null
       });
 
       res.json(session);
@@ -654,6 +656,15 @@ router.get(
       }
       if (error.status === 404 || error.message === 'APPOINTMENT_NOT_FOUND') {
         return res.status(404).json({ error: { code: 'APPOINTMENT_NOT_FOUND' } });
+      }
+      if (error.status === 409 && error.message === 'ROOM_ENDED') {
+        return res.status(409).json({
+          error: {
+            code: 'ROOM_ENDED',
+            message: 'Sesi teledentistry telah berakhir.'
+          },
+          waitingRoom: error.waitingRoom
+        });
       }
       if (error.status === 409 || error.message === 'COMMUNICATIONS_NOT_READY') {
         return res.status(409).json({

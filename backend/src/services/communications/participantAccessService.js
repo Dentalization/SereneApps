@@ -79,6 +79,15 @@ export function parseParticipantIdentity(identity) {
   if (/^\d+$/.test(identity)) {
     return { type: 'user', userId: BigInt(identity) };
   }
+  const observerMatch = String(identity).match(/^appointment-(\d+)-observer-(\d+)$/);
+  if (observerMatch) {
+    return {
+      type: 'clinic_observer',
+      appointmentId: BigInt(observerMatch[1]),
+      userId: BigInt(observerMatch[2]),
+      role: 'observer'
+    };
+  }
   const match = String(identity).match(/^appointment-(\d+):participant-([0-9a-fA-F-]{36}):([a-z_]+)$/);
   if (!match) return null;
   return {

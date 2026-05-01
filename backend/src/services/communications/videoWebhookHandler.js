@@ -125,7 +125,7 @@ export async function handleVideoEvent(event) {
       const parsedIdentity = parseParticipantIdentity(ParticipantIdentity);
       if (!parsedIdentity) return { skipped: true, reason: 'invalid_participant_identity' };
       const joinedAt = eventOccurredAt(event);
-      const userId = parsedIdentity?.type === 'user' ? parsedIdentity.userId : null;
+      const userId = ['user', 'clinic_observer'].includes(parsedIdentity?.type) ? parsedIdentity.userId : null;
       const externalParticipant = parsedIdentity?.type === 'communication_participant'
         ? await markCommunicationParticipantJoinedFromIdentity({
             appointmentId,
@@ -161,13 +161,14 @@ export async function handleVideoEvent(event) {
         appointmentId,
         userId,
         { participantId: externalParticipant?.id || null },
-        externalParticipant?.role || null
+        parsedIdentity?.role || externalParticipant?.role || null
       );
       logCommunicationEvent('room_joined', {
         appointmentId,
         roomName: RoomName,
         roomSid: RoomSid,
         userId,
+        actorRole: parsedIdentity?.role || externalParticipant?.role || null,
         participantId: externalParticipant?.id || null
       });
       return { processed: true };
@@ -177,7 +178,7 @@ export async function handleVideoEvent(event) {
       if (!ParticipantIdentity) return { skipped: true, reason: 'missing_participant_identity' };
       const parsedIdentity = parseParticipantIdentity(ParticipantIdentity);
       if (!parsedIdentity) return { skipped: true, reason: 'invalid_participant_identity' };
-      const userId = parsedIdentity?.type === 'user' ? parsedIdentity.userId : null;
+      const userId = ['user', 'clinic_observer'].includes(parsedIdentity?.type) ? parsedIdentity.userId : null;
       const externalParticipant = parsedIdentity?.type === 'communication_participant'
         ? await prisma.appointmentCommunicationParticipant.findUnique({
             where: { id: parsedIdentity.participantId }
@@ -217,13 +218,14 @@ export async function handleVideoEvent(event) {
           durationSeconds,
           participantId: externalParticipant?.id || null
         },
-        externalParticipant?.role || null
+        parsedIdentity?.role || externalParticipant?.role || null
       );
       logCommunicationEvent('room_left', {
         appointmentId,
         roomName: RoomName,
         roomSid: RoomSid,
         userId,
+        actorRole: parsedIdentity?.role || externalParticipant?.role || null,
         participantId: externalParticipant?.id || null,
         durationSeconds
       });
@@ -234,13 +236,14 @@ export async function handleVideoEvent(event) {
       if (!ParticipantIdentity) return { skipped: true, reason: 'missing_participant_identity' };
       const parsedIdentity = parseParticipantIdentity(ParticipantIdentity);
       if (!parsedIdentity) return { skipped: true, reason: 'invalid_participant_identity' };
-      const userId = parsedIdentity?.type === 'user' ? parsedIdentity.userId : null;
-      await recordVideoEvent(event, 'participant_reconnected', appointmentId, userId);
+      const userId = ['user', 'clinic_observer'].includes(parsedIdentity?.type) ? parsedIdentity.userId : null;
+      await recordVideoEvent(event, 'participant_reconnected', appointmentId, userId, {}, parsedIdentity?.role || null);
       logCommunicationEvent('participant_reconnected', {
         appointmentId,
         roomName: RoomName,
         roomSid: RoomSid,
-        userId
+        userId,
+        actorRole: parsedIdentity?.role || null
       });
       return { processed: true };
     }

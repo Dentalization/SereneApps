@@ -2,6 +2,20 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 
+const CLINIC_TIME_ZONE = 'Asia/Jakarta';
+
+const getClinicDateKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: CLINIC_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+};
+
 const ClinicMultiCalendar = ({
   selectedDate,
   appointments,
@@ -36,18 +50,9 @@ const ClinicMultiCalendar = ({
   const formatDateShort = (date) => 
     date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 
-  // Safe date comparison that handles timezone issues
-  const isSameDay = (date1, date2) => {
-    // Ensure both are Date objects
-    const d1 = date1 instanceof Date ? date1 : new Date(date1);
-    const d2 = date2 instanceof Date ? date2 : new Date(date2);
-    
-    // Reset time to avoid timezone issues
-    const d1Start = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
-    const d2Start = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
-    
-    return d1Start.getTime() === d2Start.getTime();
-  };
+  // API appointments may arrive as UTC ISO strings while mock rows use Date objects.
+  // Calendar bucketing is intentionally based on the clinic timezone, not the browser timezone.
+  const isSameDay = (date1, date2) => getClinicDateKey(date1) === getClinicDateKey(date2);
 
   const isToday = (date) => isSameDay(date, new Date());
   const isSelected = (date) => isSameDay(date, currentDate);
@@ -181,20 +186,13 @@ const ClinicMultiCalendar = ({
     return filtered;
   }, [appointments, displayDates, selectedDoctors, viewMode]);
 
-  const getLocalDateKey = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   // Group appointments by date and doctor
   const appointmentsByDateDoctor = useMemo(() => {
     const grouped = {};
     
     filteredAppointments.forEach(apt => {
       const aptDate = new Date(apt.start);
-      const dateKey = getLocalDateKey(aptDate);
+      const dateKey = getClinicDateKey(aptDate);
       const doctorId = apt.provider?.id || 'unknown';
       
       if (!grouped[dateKey]) grouped[dateKey] = {};
@@ -458,7 +456,7 @@ const WeekView = ({
         <div key={date.toISOString()} className="p-3 text-center border-b border-primary/20 bg-surface-elevated/20">
           <div className="text-sm font-medium text-secondary">{dayNames[index]}</div>
           <div className={`text-lg font-semibold mt-1 ${
-            date.toDateString() === new Date().toDateString() 
+            getClinicDateKey(date) === getClinicDateKey(new Date())
               ? 'text-accent' 
               : 'text-primary'
           }`}>
@@ -469,7 +467,7 @@ const WeekView = ({
 
       {/* Appointment Slots */}
       {dates.map(date => {
-        const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const dateKey = getClinicDateKey(date);
         const dayAppointments = appointmentsByDateDoctor[dateKey] || {};
         
         return (
@@ -565,10 +563,10 @@ const MonthView = ({
       {weeks.map((week, weekIndex) => (
         <div key={weekIndex} className="grid grid-cols-7 gap-1">
           {week.map(date => {
-            const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const dateKey = getClinicDateKey(date);
             const dayAppointments = appointmentsByDateDoctor[dateKey] || {};
             const isCurrentMonth = date.getMonth() === currentDate.getMonth();
-            const isToday = date.toDateString() === new Date().toDateString();
+            const isToday = getClinicDateKey(date) === getClinicDateKey(new Date());
             
             return (
               <div 

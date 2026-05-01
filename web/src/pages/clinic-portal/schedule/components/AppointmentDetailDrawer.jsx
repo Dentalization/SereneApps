@@ -26,7 +26,14 @@ if (typeof document !== 'undefined' && !document.getElementById('modal-animation
   document.head.appendChild(style);
 }
 
-const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onAction }) => {
+const AppointmentDetailDrawer = ({
+  appointment,
+  isOpen,
+  onClose,
+  onAction,
+  onOpenVideoRoom,
+  canObserveVideoRoom = false
+}) => {
   if (!isOpen || !appointment) return null;
 
   const { t, language } = useLanguage();
@@ -255,9 +262,18 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onAction }) => 
                 <p className="text-xs text-cyan-700 dark:text-cyan-300">
                   {t('clinic.schedule.appointment.patientWillJoin')}
                 </p>
-                <button className="w-full px-4 py-3 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 font-medium transition-colors">
-                  {t('clinic.schedule.appointment.openVideoRoom')}
-                </button>
+                {canObserveVideoRoom ? (
+                  <button
+                    onClick={() => onOpenVideoRoom?.(appointment)}
+                    className="w-full px-4 py-3 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 font-medium transition-colors"
+                  >
+                    {t('clinic.schedule.appointment.openVideoRoom')}
+                  </button>
+                ) : (
+                  <p className="rounded-lg bg-white/70 px-3 py-2 text-xs font-medium text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200">
+                    {t('clinic.schedule.appointment.ownerOnlyVideoRoom') || 'Only clinic owners can observe live video sessions.'}
+                  </p>
+                )}
               </section>
             )}
 

@@ -73,6 +73,22 @@ function userCanAccessAppointment(user, appointment) {
   );
 }
 
+async function userCanObserveClinicAppointment(user, appointment) {
+  const userId = BigInt(user.id);
+  if (!appointment.clinicBranch?.clinicProfileId) return false;
+
+  const staff = await prisma.clinicStaff.findFirst({
+    where: {
+      userId,
+      isActive: true,
+      role: { in: ['clinic_owner', 'owner'] },
+      clinicProfileId: appointment.clinicBranch.clinicProfileId
+    },
+    select: { id: true }
+  });
+  return Boolean(staff);
+}
+
 export function communicationActorRoleForAppointment(user, appointment) {
   if (!user || !appointment) return null;
   const roles = user.roles || [];
@@ -247,7 +263,7 @@ async function ensureChatRoomMembers(room, appointment, client = prisma) {
   });
 }
 
-export async function getAppointmentForAuthorizedUser({ appointmentId, user }) {
+export async function getAppointmentForAuthorizedUser({ appointmentId, user, requestedRole = null }) {
   const apptId = BigInt(appointmentId);
   const appointment = await prisma.appointment.findUnique({
     where: { id: apptId },
@@ -255,6 +271,7 @@ export async function getAppointmentForAuthorizedUser({ appointmentId, user }) {
       chatRoom: { include: { members: true } },
       patient: { select: { id: true, name: true, email: true } },
       dentist: { select: { id: true, name: true, email: true } },
+      clinicBranch: { select: { id: true, clinicProfileId: true } },
       communicationParticipants: {
         select: { id: true, userId: true, role: true, status: true }
       }
@@ -267,11 +284,16 @@ export async function getAppointmentForAuthorizedUser({ appointmentId, user }) {
     throw error;
   }
 
-  if (!userCanAccessAppointment(user, appointment)) {
+  const isObserverRequest = requestedRole === 'observer';
+  const canAccess = isObserverRequest
+    ? await userCanObserveClinicAppointment(user, appointment)
+    : userCanAccessAppointment(user, appointment);
+
+  if (!canAccess) {
     logCommunicationEvent('permission_denied', {
       appointmentId: apptId,
       userId: user.id,
-      action: 'appointment_communications_access'
+      action: isObserverRequest ? 'clinic_observer_token_access' : 'appointment_communications_access'
     }, 'warn');
     const error = new Error('FORBIDDEN');
     error.status = 403;
@@ -952,25 +974,48 @@ function buildWaitingRoomState(appointment) {
   };
 }
 
-function buildCombinedTwilioToken({ identity, roomName, ttl = 3600 }) {
+async function appointmentVideoRoomEnded(appointment) {
+  if (['completed', 'cancelled', 'no-show'].includes(appointment.status)) return true;
+  const endedEvent = await prisma.communicationEvent.findFirst({
+    where: {
+      appointmentId: appointment.id,
+      eventType: { in: ['room_ended', 'consultation_room_hard_ended'] }
+    },
+    select: { id: true }
+  });
+  return Boolean(endedEvent);
+}
+
+function buildCombinedTwilioToken({
+  identity,
+  roomName,
+  ttl = 3600,
+  includeConversations = true,
+  includeVideo = true
+}) {
   const config = getTwilioStandardKeyConfig();
-  const serviceSid = getConversationsServiceSid();
   const AccessToken = twilio.jwt.AccessToken;
   const token = new AccessToken(config.accountSid, config.apiKeySid, config.apiKeySecret, {
     identity,
     ttl
   });
-  const ConversationsGrant = AccessToken.ConversationsGrant || AccessToken.ChatGrant;
-  token.addGrant(new ConversationsGrant({ serviceSid }));
-  token.addGrant(new AccessToken.VideoGrant({ room: roomName }));
+  if (includeConversations) {
+    const serviceSid = getConversationsServiceSid();
+    const ConversationsGrant = AccessToken.ConversationsGrant || AccessToken.ChatGrant;
+    token.addGrant(new ConversationsGrant({ serviceSid }));
+  }
+  if (includeVideo) {
+    token.addGrant(new AccessToken.VideoGrant({ room: roomName }));
+  }
   return {
     token: token.toJwt(),
     expiresAt: new Date(Date.now() + ttl * 1000).toISOString()
   };
 }
 
-export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3600 }) {
-  const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user });
+export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3600, requestedRole = null }) {
+  const role = requestedRole === 'observer' ? 'observer' : null;
+  const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user, requestedRole: role });
   const waitingRoom = buildWaitingRoomState(appointment);
 
   if (!waitingRoom.paymentReady) {
@@ -978,6 +1023,17 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
     error.status = 409;
     error.waitingRoom = waitingRoom;
     throw error;
+  }
+
+  if (role === 'observer') {
+    getConversationsServiceSid();
+    const roomEnded = waitingRoom.state === 'ended' || await appointmentVideoRoomEnded(appointment);
+    if (roomEnded) {
+      const error = new Error('ROOM_ENDED');
+      error.status = 409;
+      error.waitingRoom = waitingRoom;
+      throw error;
+    }
   }
 
   const resources = appointment.commStatus === 'ready'
@@ -995,22 +1051,30 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
         reason: 'token_issuance'
       });
 
-  const identity = user.id.toString();
+  const actorRole = role || communicationActorRoleForAppointment(user, appointment);
+  const identity = role === 'observer'
+    ? `appointment-${appointment.id}-observer-${user.id}`
+    : user.id.toString();
   const tokenData = buildCombinedTwilioToken({
     identity,
     roomName: resources.roomName,
-    ttl
+    ttl,
+    includeConversations: role !== 'observer',
+    includeVideo: true
   });
+  const grants = role === 'observer' ? ['video'] : ['conversations', 'video'];
 
   await recordCommunicationEvent({
     appointmentId: appointment.id,
     userId: user.id,
-    actorRole: communicationActorRoleForAppointment(user, appointment),
+    actorRole,
     eventType: 'token_issued',
     metadata: {
       identity,
+      requestedRole: role || actorRole,
+      observeOnly: role === 'observer',
       roomName: resources.roomName,
-      conversationSid: resources.conversationSid,
+      conversationSid: role === 'observer' ? null : resources.conversationSid,
       expiresAt: tokenData.expiresAt
     }
   });
@@ -1019,31 +1083,38 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
     appointmentId: appointment.id,
     userId: user.id,
     identity,
+    actorRole,
+    observeOnly: role === 'observer',
     roomName: resources.roomName,
-    conversationSid: resources.conversationSid,
+    conversationSid: role === 'observer' ? null : resources.conversationSid,
     expiresAt: tokenData.expiresAt
   });
 
   return {
     appointmentId: appointment.id.toString(),
     identity,
+    role: actorRole,
+    observeOnly: role === 'observer',
     token: tokenData.token,
     expiresAt: tokenData.expiresAt,
-    grants: ['conversations', 'video'],
+    grants,
     waitingRoom,
     chat: {
-      token: tokenData.token,
-      conversationSid: resources.conversationSid,
-      channelName: resources.chatRoom?.channelName || appointmentScopedRoomName(appointment.id)
+      token: role === 'observer' ? null : tokenData.token,
+      conversationSid: role === 'observer' ? null : resources.conversationSid,
+      channelName: resources.chatRoom?.channelName || appointmentScopedRoomName(appointment.id),
+      canRead: role !== 'observer',
+      canWrite: role !== 'observer'
     },
     video: {
       token: tokenData.token,
       roomName: resources.roomName,
       roomSid: resources.videoRoomSid,
-      canJoin: waitingRoom.canJoinVideo
+      canJoin: waitingRoom.canJoinVideo,
+      observeOnly: role === 'observer'
     },
     // Backward-compatible fields for existing web/mobile clients.
-    conversationSid: resources.conversationSid,
+    conversationSid: role === 'observer' ? null : resources.conversationSid,
     roomName: resources.roomName,
     channelName: resources.roomName,
     videoToken: tokenData.token

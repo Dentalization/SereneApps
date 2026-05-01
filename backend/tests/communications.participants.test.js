@@ -36,3 +36,12 @@ test('linked account participant identity stays compatible with existing Twilio 
   assert.equal(identity, '88');
   assert.deepEqual(__testables.parseParticipantIdentity(identity), { type: 'user', userId: 88n });
 });
+
+test('clinic observer identity is appointment-scoped and does not parse as a guest participant', () => {
+  const parsed = __testables.parseParticipantIdentity('appointment-123-observer-77');
+
+  assert.equal(parsed.type, 'clinic_observer');
+  assert.equal(parsed.appointmentId, 123n);
+  assert.equal(parsed.userId, 77n);
+  assert.equal(parsed.role, 'observer');
+});

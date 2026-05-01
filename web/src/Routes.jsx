@@ -48,6 +48,7 @@ import {
 import StaffManagement from './pages/clinic-portal/staff';
 import BranchManagement from './pages/clinic-portal/branches';
 import NotificationScreenClinic from './pages/clinic-portal/ui/NotificationScreenClinic';
+import ClinicTeledentistry from './pages/clinic-portal/teledentistry';
 
 // Admin Portal Imports
 import AdminDashboard from './pages/admin-portal/home';
@@ -116,10 +117,11 @@ const Routes = () => {
           </Route>
 
           {/* Clinic Portal Routes - Protected for clinic staff roles */}
-          <Route element={<ProtectedRoute allow={["clinic_owner", "owner", "manager", "clinic_admin", "front_office", "nurse", "cashier", "staff"]} />}>
+          <Route element={<ProtectedRoute allow={["clinic_owner", "owner", "manager", "clinic_admin", "clinic_manager", "front_office", "nurse", "cashier", "clinic_staff", "staff"]} />}>
             <Route path="/clinic-portal" element={<Navigate to="/clinic-portal/home" replace />} />
             <Route path="/clinic-portal/home" element={<ClinicDashboard />} />
             <Route path="/clinic-portal/schedule" element={<ClinicSchedule />} />
+            <Route path="/clinic-portal/teledentistry" element={<ClinicTeledentistry />} />
             <Route path="/clinic-portal/notifications" element={<NotificationScreenClinic />} />
             <Route path="/clinic-portal/patients" element={<ClinicPatients />} />
             <Route path="/clinic-portal/billing" element={<ClinicBilling />} />

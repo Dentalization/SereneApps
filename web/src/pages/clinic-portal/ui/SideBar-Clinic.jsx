@@ -6,6 +6,8 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { resolveMediaUrl } from '../../../utils/media';
+import { fetchClinicTeledentistrySessionCount } from '../../../services/clinicTeledentistryService';
+import { canViewSummaries, getClinicRole } from '../../../utils/clinicRoles';
 import { getClinicNotificationsForRoles } from './clinicNotificationsData';
 
 const FLAG_SRC = {
@@ -23,6 +25,7 @@ const ClinicSideBar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [activeTeleSessionCount, setActiveTeleSessionCount] = useState(0);
   const userMenuRef = useRef(null);
   
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
@@ -51,6 +54,8 @@ const ClinicSideBar = () => {
     const roles = new Set(user?.roles || []);
     if (roles.has('clinic_owner')) roles.add('owner');
     if (roles.has('clinic_admin')) roles.add('manager');
+    if (roles.has('clinic_manager')) roles.add('manager');
+    if (roles.has('clinic_staff')) roles.add('staff');
     if (!roles.size && user?.role) roles.add(user.role);
     if (!roles.size) roles.add('staff');
     return roles;
@@ -63,6 +68,33 @@ const ClinicSideBar = () => {
     }
     return Array.from(userRoles)[0] || 'staff';
   }, [userRoles]);
+  const clinicRole = useMemo(() => getClinicRole(user), [user]);
+
+  useEffect(() => {
+    if (!canViewSummaries(clinicRole)) {
+      setActiveTeleSessionCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadActiveCount = async () => {
+      try {
+        const result = await fetchClinicTeledentistrySessionCount({ status: 'active' });
+        if (!cancelled) {
+          setActiveTeleSessionCount(result?.count || 0);
+        }
+      } catch (_) {
+        if (!cancelled) setActiveTeleSessionCount(0);
+      }
+    };
+
+    loadActiveCount();
+    const interval = setInterval(loadActiveCount, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [clinicRole]);
 
   const menuItems = [
     { 
@@ -80,6 +112,15 @@ const ClinicSideBar = () => {
       path: '/clinic-portal/schedule', 
       description: t('clinic.sidebar.descriptions.schedule') || 'Schedule & Queue Management',
       roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
+    },
+    {
+      id: 'teledentistry',
+      label: t('clinic.sidebar.teledentistry') || 'Teledentistry',
+      icon: 'Video',
+      path: '/clinic-portal/teledentistry',
+      description: t('clinic.sidebar.descriptions.teledentistry') || 'Live sessions & summaries',
+      roles: ['manager', 'owner'],
+      badge: activeTeleSessionCount > 0 ? activeTeleSessionCount : null
     },
     { 
       id: 'patients', 
@@ -299,6 +340,11 @@ const ClinicSideBar = () => {
                       )}
                       {active && !isCollapsed && (
                         <div className="w-1 h-6 bg-white rounded-full opacity-80"></div>
+                      )}
+                      {item.badge && !isCollapsed && (
+                        <span className="ml-2 min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold text-white">
+                          {item.badge}
+                        </span>
                       )}
                     </button>
 

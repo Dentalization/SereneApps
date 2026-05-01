@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { Server as SocketIOServer } from 'socket.io';
 import authRouter from './routes/auth.js';
 import clinicRouter from './routes/clinic.js';
+import clinicTeledentistryRouter from './routes/clinicTeledentistry.js';
 import clinicsRouter from './routes/clinics.js';
 import dentistsRouter from './routes/dentists.js';
 import profileRouter from './routes/profile.js';
@@ -178,6 +179,7 @@ app.use(`${prefix}/otp`, otpRouter);
 app.use(`${prefix}`, authRouter); // Also mount auth routes under /v1 for profile endpoints
 app.use(`${prefix}/profile`, profileRouter);
 app.use(`${prefix}/patient`, patientRouter); // Patient-specific routes
+app.use(`${prefix}/clinic/teledentistry`, clinicTeledentistryRouter);
 app.use(`${prefix}/clinic`, clinicRouter);
 app.use(`${prefix}/clinic`, clinicServicesRouter); // Clinic services management
 app.use(`${prefix}/clinic`, clinicProfileRouter); // Clinic profile (gallery, highlights, facilities)

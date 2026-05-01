@@ -36,8 +36,8 @@ export async function uploadAttachment(appointmentId, file) {
   return data?.message;
 }
 
-export async function fetchAppointmentCommunicationsToken(appointmentId) {
-  const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/token`);
+export async function fetchAppointmentCommunicationsToken(appointmentId, params = {}) {
+  const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/token`, { params });
   return data;
 }
 
