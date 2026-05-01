@@ -320,6 +320,7 @@ export async function getAppointmentDiagnostics({ appointmentId }) {
     videoSessions: appointment.videoSessions.map((session) => ({
       id: session.id.toString(),
       userId: asString(session.userId),
+      actorRole: session.actorRole,
       joinedAt: session.joinedAt,
       leftAt: session.leftAt,
       durationSeconds: session.durationSeconds

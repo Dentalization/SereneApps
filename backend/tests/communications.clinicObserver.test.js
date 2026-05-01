@@ -5,16 +5,27 @@ const { __testables } = await import('../src/services/clinicTeledentistryService
 const { __testables: videoWebhookTestables } = await import('../src/services/communications/videoWebhookHandler.js');
 
 test('clinic teledentistry capabilities keep observer and chat review owner-only', () => {
+  const previousPolicy = process.env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY;
+  delete process.env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY;
   assert.deepEqual(__testables.capabilitiesForClinicRole('clinic_owner'), {
     canObserve: true,
     canViewSummaries: true,
+    canViewClinicalSummaryBody: true,
     canViewChatHistory: true,
     canViewAuditLog: true,
     canViewSessions: true
   });
   assert.equal(__testables.capabilitiesForClinicRole('clinic_admin').canObserve, false);
   assert.equal(__testables.capabilitiesForClinicRole('clinic_admin').canViewSummaries, true);
+  assert.equal(__testables.capabilitiesForClinicRole('clinic_admin').canViewClinicalSummaryBody, false);
+  process.env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY = 'true';
+  assert.equal(__testables.capabilitiesForClinicRole('clinic_admin').canViewClinicalSummaryBody, true);
   assert.equal(__testables.capabilitiesForClinicRole('clinic_staff').canViewChatHistory, false);
+  if (previousPolicy === undefined) {
+    delete process.env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY;
+  } else {
+    process.env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY = previousPolicy;
+  }
 });
 
 test('assigned branch scope is enforced for non-owner clinic staff', () => {
@@ -36,9 +47,18 @@ test('assigned branch scope is enforced for non-owner clinic staff', () => {
 
 test('session buckets distinguish waiting from live and ended', () => {
   assert.equal(__testables.sessionBucket({ status: 'confirmed', videoSessions: [] }), 'waiting');
-  assert.equal(__testables.sessionBucket({ status: 'confirmed', videoSessions: [{ leftAt: null }] }), 'live');
+  assert.equal(__testables.sessionBucket({ status: 'confirmed', videoSessions: [{ leftAt: null, actorRole: 'observer' }] }), 'waiting');
+  assert.equal(__testables.sessionBucket({ status: 'confirmed', videoSessions: [{ leftAt: null, actorRole: 'participant' }] }), 'live');
   assert.equal(__testables.sessionBucket({ status: 'completed', videoSessions: [] }), 'completed');
   assert.equal(__testables.sessionBucket({ status: 'cancelled', videoSessions: [] }), 'ended');
+  assert.deepEqual(__testables.sessionStatusWhere('live'), {
+    videoSessions: {
+      some: {
+        leftAt: null,
+        actorRole: { notIn: ['observer', 'clinic_observer'] }
+      }
+    }
+  });
 });
 
 test('clinic chat projection redacts attachment download URLs while preserving tombstone state', () => {
@@ -69,9 +89,31 @@ test('observer track publish webhook is classified as a violation', () => {
   );
   assert.equal(
     videoWebhookTestables.isObserverTrackPublishEvent(
+      { StatusCallbackEvent: 'track-subscribed', TrackSid: 'MT00000000000000000000000000000000' },
+      { type: 'clinic_observer' }
+    ),
+    false
+  );
+  assert.equal(
+    videoWebhookTestables.isObserverTrackPublishEvent(
       { StatusCallbackEvent: 'track-added', TrackSid: 'MT00000000000000000000000000000000' },
       { type: 'user' }
     ),
     false
+  );
+});
+
+test('observer video sessions are tagged separately from clinical participants', () => {
+  assert.equal(
+    videoWebhookTestables.videoSessionActorRole({ type: 'clinic_observer', role: 'observer' }),
+    'observer'
+  );
+  assert.equal(
+    videoWebhookTestables.videoSessionActorRole({ type: 'communication_participant', role: 'guardian' }),
+    'guardian'
+  );
+  assert.equal(
+    videoWebhookTestables.videoSessionActorRole({ type: 'user' }),
+    'participant'
   );
 });
