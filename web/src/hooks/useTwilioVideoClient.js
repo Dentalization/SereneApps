@@ -10,6 +10,8 @@ export function useTwilioVideoClient() {
   const remoteVideoTrackRef = useRef(null);
   const localElementRef = useRef(null);
   const remoteElementRef = useRef(null);
+  const remoteContainerRef = useRef(null);
+  const remoteTrackElementsRef = useRef(new Map());
 
   const [isConnected, setIsConnected] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -18,6 +20,7 @@ export function useTwilioVideoClient() {
   const [connectionState, setConnectionState] = useState('disconnected');
   const [reconnectError, setReconnectError] = useState(null);
   const [observeOnly, setObserveOnly] = useState(false);
+  const [remoteTrackCount, setRemoteTrackCount] = useState(0);
 
   const detachFromElement = (track, element) => {
     if (!track) return;
@@ -26,6 +29,18 @@ export function useTwilioVideoClient() {
 
   const attachRemoteTrack = (track) => {
     if (!track || track.kind !== 'video') return;
+    if (remoteContainerRef.current) {
+      if (remoteTrackElementsRef.current.has(track.sid)) return;
+      const element = track.attach();
+      element.autoplay = true;
+      element.playsInline = true;
+      element.className = 'h-full min-h-[180px] w-full rounded-lg bg-black object-contain';
+      remoteContainerRef.current.appendChild(element);
+      remoteTrackElementsRef.current.set(track.sid, { track, element });
+      setRemoteTrackCount(remoteTrackElementsRef.current.size);
+      return;
+    }
+
     if (remoteVideoTrackRef.current && remoteVideoTrackRef.current.sid === track.sid) {
       return;
     }
@@ -39,6 +54,15 @@ export function useTwilioVideoClient() {
 
   const detachRemoteTrack = (track) => {
     if (!track) return;
+    const tracked = remoteTrackElementsRef.current.get(track.sid);
+    if (tracked) {
+      track.detach(tracked.element);
+      tracked.element.remove();
+      remoteTrackElementsRef.current.delete(track.sid);
+      setRemoteTrackCount(remoteTrackElementsRef.current.size);
+      return;
+    }
+
     detachFromElement(track, remoteElementRef.current);
     if (remoteVideoTrackRef.current === track) {
       remoteVideoTrackRef.current = null;
@@ -79,19 +103,33 @@ export function useTwilioVideoClient() {
 
     remoteVideoTrackRef.current?.detach(remoteElementRef.current);
     remoteVideoTrackRef.current = null;
+    remoteTrackElementsRef.current.forEach(({ track, element }) => {
+      track.detach(element);
+      element.remove();
+    });
+    remoteTrackElementsRef.current.clear();
 
     localElementRef.current = null;
     remoteElementRef.current = null;
+    remoteContainerRef.current = null;
 
     setIsConnected(false);
     setConnectionState('disconnected');
     setAudioEnabled(true);
     setVideoEnabled(true);
     setObserveOnly(false);
+    setRemoteTrackCount(0);
   }, []);
 
   const join = useCallback(
-    async ({ roomName, token, localVideoEl, remoteVideoEl, observeOnly: nextObserveOnly = false }) => {
+    async ({
+      roomName,
+      token,
+      localVideoEl,
+      remoteVideoEl,
+      remoteContainerEl,
+      observeOnly: nextObserveOnly = false
+    }) => {
       if (!roomName || !token) {
         throw new Error('Missing Twilio video credentials');
       }
@@ -102,6 +140,7 @@ export function useTwilioVideoClient() {
 
       localElementRef.current = localVideoEl;
       remoteElementRef.current = remoteVideoEl;
+      remoteContainerRef.current = remoteContainerEl || null;
 
       let room;
       try {
@@ -199,6 +238,7 @@ export function useTwilioVideoClient() {
     videoEnabled,
     networkQuality,
     observeOnly,
+    remoteTrackCount,
     toggleAudio,
     toggleVideo
   };

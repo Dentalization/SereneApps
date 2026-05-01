@@ -7,8 +7,9 @@ const OWNER_ROLES = new Set(['clinic_owner', 'owner']);
 const ADMIN_ROLES = new Set(['clinic_admin', 'manager', 'clinic_manager', 'admin']);
 const STAFF_ROLES = new Set(['clinic_staff', 'staff', 'front_office', 'nurse', 'cashier']);
 const TELE_CONSULTATION_TYPES = ['virtual', 'tele', 'teledentistry'];
-const ACTIVE_STATUSES = new Set(['scheduled', 'confirmed', 'check-in', 'in-chair']);
-const COMPLETED_STATUSES = new Set(['completed', 'cancelled', 'no-show']);
+const WAITING_STATUSES = new Set(['scheduled', 'confirmed', 'check-in', 'in-chair']);
+const COMPLETED_STATUSES = new Set(['completed']);
+const ENDED_STATUSES = new Set(['cancelled', 'no-show']);
 
 function toBigInt(value, fieldName = 'id') {
   try {
@@ -29,6 +30,22 @@ function normalizeClinicRole(role) {
 
 function hasRole(clinicRole, allowedRoles = []) {
   return allowedRoles.includes(clinicRole);
+}
+
+function capabilitiesForClinicRole(clinicRole) {
+  return {
+    canObserve: clinicRole === 'clinic_owner',
+    canViewSummaries: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin',
+    canViewChatHistory: clinicRole === 'clinic_owner',
+    canViewAuditLog: clinicRole === 'clinic_owner',
+    canViewSessions: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin'
+  };
+}
+
+function scopedClinicBranchIdsForContext(context, branchIds) {
+  return context.assignedBranchId && context.clinicRole !== 'clinic_owner'
+    ? [context.assignedBranchId]
+    : branchIds;
 }
 
 function dateWindow(date) {
@@ -109,9 +126,10 @@ function serializeSummary(summary, { includeBody = false } = {}) {
 
 function sessionBucket(appointment) {
   const hasActiveParticipant = (appointment.videoSessions || []).some((session) => !session.leftAt);
-  if (hasActiveParticipant) return 'active';
+  if (hasActiveParticipant) return 'live';
   if (COMPLETED_STATUSES.has(appointment.status)) return 'completed';
-  if (ACTIVE_STATUSES.has(appointment.status)) return 'active';
+  if (ENDED_STATUSES.has(appointment.status)) return 'ended';
+  if (WAITING_STATUSES.has(appointment.status)) return 'waiting';
   return appointment.status || 'unknown';
 }
 
@@ -141,7 +159,7 @@ function serializeSession(appointment, context) {
     commStatus: appointment.commStatus,
     patient: serializeUser(appointment.patient),
     dentist: serializeUser(appointment.dentist),
-    canObserve: context.clinicRole === 'clinic_owner' && sessionBucket(appointment) === 'active'
+    canObserve: context.capabilities.canObserve && sessionBucket(appointment) === 'live'
   };
 }
 
@@ -159,7 +177,7 @@ function serializeMessage(message) {
     fileName: message.fileName,
     mimeType: message.mimeType,
     fileSizeBytes: message.fileSizeBytes?.toString?.() ?? null,
-    fileUrl: attachment.fileUrl,
+    fileUrl: null,
     attachmentAvailable: attachment.attachmentAvailable,
     mediaTombstoneReason: attachment.tombstoneReason,
     createdAt: message.createdAt
@@ -178,7 +196,7 @@ export async function getClinicTeledentistryContext(user, allowedRoles = ['clini
     }
   });
 
-  const clinicRole = normalizeClinicRole(staff?.role) || (user.roles || []).map(normalizeClinicRole).find(Boolean);
+  const clinicRole = normalizeClinicRole(staff?.role);
   if (!staff?.isActive || !clinicRole || !hasRole(clinicRole, allowedRoles)) {
     const error = new Error('FORBIDDEN');
     error.status = 403;
@@ -189,17 +207,21 @@ export async function getClinicTeledentistryContext(user, allowedRoles = ['clini
     userId: toBigInt(user.id, 'userId'),
     staffId: staff.id,
     clinicRole,
+    capabilities: capabilitiesForClinicRole(clinicRole),
     clinicProfileId: staff.clinicProfileId,
     assignedBranchId: staff.assignedBranchId
   };
 }
 
 async function clinicBranchIds(context) {
+  if (context.assignedBranchId && context.clinicRole !== 'clinic_owner') {
+    return [context.assignedBranchId];
+  }
   const branches = await prisma.clinicBranch.findMany({
     where: { clinicProfileId: context.clinicProfileId },
     select: { id: true }
   });
-  return branches.map((branch) => branch.id);
+  return scopedClinicBranchIdsForContext(context, branches.map((branch) => branch.id));
 }
 
 function teleAppointmentScope(branchIds) {
@@ -213,19 +235,33 @@ function teleAppointmentScope(branchIds) {
 }
 
 function sessionStatusWhere(status) {
+  if (status === 'live') {
+    return { videoSessions: { some: { leftAt: null } } };
+  }
+  if (status === 'waiting') {
+    return {
+      AND: [
+        { videoSessions: { none: { leftAt: null } } },
+        { status: { in: Array.from(WAITING_STATUSES) } }
+      ]
+    };
+  }
   if (status === 'active') {
     return {
       OR: [
         { videoSessions: { some: { leftAt: null } } },
-        { status: { in: Array.from(ACTIVE_STATUSES) } }
+        { status: { in: Array.from(WAITING_STATUSES) } }
       ]
     };
   }
   if (status === 'completed') {
+    return { status: { in: Array.from(COMPLETED_STATUSES) } };
+  }
+  if (status === 'ended') {
     return {
       OR: [
-        { status: { in: Array.from(COMPLETED_STATUSES) } },
-        { clinicalSummary: { is: { status: { in: ['finalized', 'amended'] } } } }
+        { status: { in: Array.from(ENDED_STATUSES) } },
+        { communicationEvents: { some: { eventType: { in: ['room_ended', 'consultation_room_hard_ended'] } } } }
       ]
     };
   }
@@ -270,17 +306,21 @@ export async function listClinicTeledentistrySessions({ user, date, status }) {
   const context = await getClinicTeledentistryContext(user);
   const branchIds = await clinicBranchIds(context);
   if (!branchIds.length) {
-    return { clinicRole: context.clinicRole, sessions: [], counts: { active: 0, completed: 0, total: 0 } };
+    return {
+      clinicRole: context.clinicRole,
+      capabilities: context.capabilities,
+      sessions: [],
+      counts: { live: 0, waiting: 0, completed: 0, ended: 0, active: 0, total: 0 }
+    };
   }
 
   const window = dateWindow(date);
   const appointments = await prisma.appointment.findMany({
     where: {
-      clinicBranchId: { in: branchIds },
-      ...(window ? { startsAt: { gte: window.start, lt: window.end } } : {}),
-      OR: [
-        { consultationType: { in: TELE_CONSULTATION_TYPES } },
-        { videoRoomRef: { not: null } }
+      AND: [
+        teleAppointmentScope(branchIds),
+        sessionStatusWhere(status),
+        ...(window ? [{ startsAt: { gte: window.start, lt: window.end } }] : [])
       ]
     },
     include: {
@@ -299,14 +339,17 @@ export async function listClinicTeledentistrySessions({ user, date, status }) {
   });
 
   const sessions = appointments.map((appointment) => serializeSession(appointment, context));
-  const filtered = status ? sessions.filter((session) => session.sessionStatus === status) : sessions;
 
   return {
     clinicRole: context.clinicRole,
-    sessions: filtered,
+    capabilities: context.capabilities,
+    sessions,
     counts: {
-      active: sessions.filter((session) => session.sessionStatus === 'active').length,
+      live: sessions.filter((session) => session.sessionStatus === 'live').length,
+      waiting: sessions.filter((session) => session.sessionStatus === 'waiting').length,
       completed: sessions.filter((session) => session.sessionStatus === 'completed').length,
+      ended: sessions.filter((session) => session.sessionStatus === 'ended').length,
+      active: sessions.filter((session) => ['live', 'waiting'].includes(session.sessionStatus)).length,
       total: sessions.length
     }
   };
@@ -316,7 +359,7 @@ export async function countClinicTeledentistrySessions({ user, status }) {
   const context = await getClinicTeledentistryContext(user);
   const branchIds = await clinicBranchIds(context);
   if (!branchIds.length) {
-    return { clinicRole: context.clinicRole, status: status || 'all', count: 0 };
+    return { clinicRole: context.clinicRole, capabilities: context.capabilities, status: status || 'all', count: 0 };
   }
 
   const count = await prisma.appointment.count({
@@ -330,6 +373,7 @@ export async function countClinicTeledentistrySessions({ user, status }) {
 
   return {
     clinicRole: context.clinicRole,
+    capabilities: context.capabilities,
     status: status || 'all',
     count
   };
@@ -339,6 +383,8 @@ export async function getClinicTeledentistrySummary({ user, appointmentId }) {
   const context = await getClinicTeledentistryContext(user, ['clinic_owner', 'clinic_admin']);
   const appointment = await getClinicTeleAppointment({ context, appointmentId });
   return {
+    clinicRole: context.clinicRole,
+    capabilities: context.capabilities,
     appointment: {
       id: appointment.id.toString(),
       startsAt: appointment.startsAt,
@@ -371,19 +417,21 @@ export async function getClinicTeledentistryMessages({ user, appointmentId, limi
   });
 
   return {
+    clinicRole: context.clinicRole,
+    capabilities: context.capabilities,
     appointmentId: appointment.id.toString(),
     chatRoomId: room?.id?.toString?.() ?? null,
     source: 'local_chat_messages_projection',
     messages: (room?.messages || [])
       .filter((message) => message.metadata?.deleted !== true)
-      .map(serializeMessage)
+      .map((message) => serializeMessage(message))
   };
 }
 
 export async function listClinicCommunicationAudit({ user, date, eventType, dentistId, limit = 100 }) {
   const context = await getClinicTeledentistryContext(user, ['clinic_owner']);
   const branchIds = await clinicBranchIds(context);
-  if (!branchIds.length) return { clinicRole: context.clinicRole, events: [] };
+  if (!branchIds.length) return { clinicRole: context.clinicRole, capabilities: context.capabilities, events: [] };
 
   const window = dateWindow(date);
   const appointments = await prisma.appointment.findMany({
@@ -399,7 +447,7 @@ export async function listClinicCommunicationAudit({ user, date, eventType, dent
     take: 500
   });
   const appointmentIds = appointments.map((appointment) => appointment.id);
-  if (!appointmentIds.length) return { clinicRole: context.clinicRole, events: [] };
+  if (!appointmentIds.length) return { clinicRole: context.clinicRole, capabilities: context.capabilities, events: [] };
 
   const events = await prisma.communicationEvent.findMany({
     where: {
@@ -413,6 +461,7 @@ export async function listClinicCommunicationAudit({ user, date, eventType, dent
 
   return {
     clinicRole: context.clinicRole,
+    capabilities: context.capabilities,
     events: events.map((event) => ({
       id: event.id.toString(),
       appointmentId: event.appointmentId.toString(),
@@ -426,3 +475,11 @@ export async function listClinicCommunicationAudit({ user, date, eventType, dent
     }))
   };
 }
+
+export const __testables = {
+  capabilitiesForClinicRole,
+  sessionBucket,
+  sessionStatusWhere,
+  serializeMessage,
+  scopedClinicBranchIdsForContext
+};

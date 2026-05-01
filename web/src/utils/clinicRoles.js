@@ -8,6 +8,8 @@ const OWNER_ALIASES = new Set(['clinic_owner', 'owner']);
 const ADMIN_ALIASES = new Set(['clinic_admin', 'manager', 'clinic_manager', 'admin']);
 const STAFF_ALIASES = new Set(['clinic_staff', 'staff', 'front_office', 'nurse', 'cashier']);
 
+// UI-only role hints. Backend authorization is authoritative and resolves
+// clinic staff membership from the database on every teledentistry request.
 export function getClinicRole(user) {
   const roles = [...(user?.roles || []), user?.role].filter(Boolean);
   if (roles.some((role) => OWNER_ALIASES.has(role))) return CLINIC_ROLES.OWNER;
