@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
+import { canObserveSessions, getClinicRole } from '../../../utils/clinicRoles';
 
 // Import new components
 import ClinicMultiCalendar from './components/ClinicMultiCalendar';
@@ -16,6 +18,7 @@ const SchedulePage = () => {
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
+  const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState('overview');
   const [viewMode, setViewMode] = useState('week'); // 'daily', 'week', 'month'
@@ -28,6 +31,8 @@ const SchedulePage = () => {
   const [showAppointmentDrawer, setShowAppointmentDrawer] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const clinicRole = useMemo(() => getClinicRole(user), [user]);
+  const canObserveVideoRoom = canObserveSessions(clinicRole);
 
   const MIN_LOADING_MS = 900;
   const loadStartRef = useRef(Date.now());
@@ -344,6 +349,12 @@ const SchedulePage = () => {
     setSelectedAppointment(appointment);
     setShowAppointmentDrawer(true);
   };
+
+  const handleOpenVideoRoom = useCallback((appointment) => {
+    if (!appointment?.id || !canObserveVideoRoom) return;
+    navigate(`/clinic-portal/teledentistry?appointmentId=${encodeURIComponent(appointment.id)}&observe=true`);
+    setShowAppointmentDrawer(false);
+  }, [canObserveVideoRoom, navigate]);
 
   // Handle view mode change
   const handleViewModeChange = (mode) => {
@@ -741,6 +752,8 @@ const SchedulePage = () => {
         isOpen={showAppointmentDrawer}
         onClose={() => setShowAppointmentDrawer(false)}
         onAction={handleAppointmentAction}
+        onOpenVideoRoom={handleOpenVideoRoom}
+        canObserveVideoRoom={canObserveVideoRoom}
       />
     </div>
   );

@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { useAuth } from '../../../../contexts/AuthContext';
+import { fetchClinicTeledentistrySummary } from '../../../../services/clinicTeledentistryService';
+import { canViewSummaries, getClinicRole } from '../../../../utils/clinicRoles';
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 const fmt = (d, locale = 'id-ID') => {
@@ -74,7 +77,11 @@ const InfoRow = ({ icon, label, value }) => (
 
 /* ═══════════════════════════════════════════════════════════════════ */
 const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], initialTab = 'overview' }) => {
+  const { user } = useAuth();
   const [tab, setTab] = useState(initialTab);
+  const [summaryState, setSummaryState] = useState({ open: false, loading: false, error: '', data: null });
+  const clinicRole = getClinicRole(user);
+  const canViewTeleSummaries = canViewSummaries(clinicRole);
 
   // Sync tab when initialTab changes (e.g. opening from different action buttons)
   React.useEffect(() => {
@@ -91,6 +98,21 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
   const upcomingApts = patientAppointments.filter(a => a.status === 'scheduled' || a.status === 'confirmed');
   const completedApts = patientAppointments.filter(a => a.status === 'completed');
   const totalRevenue = patientAppointments.filter(a => a.isPaid).reduce((s, a) => s + (a.fee || 0), 0);
+
+  const handleViewTeleSummary = async (appointmentId) => {
+    setSummaryState({ open: true, loading: true, error: '', data: null });
+    try {
+      const data = await fetchClinicTeledentistrySummary(appointmentId);
+      setSummaryState({ open: true, loading: false, error: '', data });
+    } catch (err) {
+      setSummaryState({
+        open: true,
+        loading: false,
+        error: err?.response?.data?.error?.code || 'Gagal memuat summary.',
+        data: null
+      });
+    }
+  };
 
   return (
     <ModalPortal>
@@ -187,10 +209,20 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
           {/* ─── Tab content ─── */}
           <div className="flex-1 overflow-y-auto p-6">
             {tab === 'overview' && <OverviewTab patient={patient} />}
-            {tab === 'history' && <HistoryTab appointments={patientAppointments} />}
+            {tab === 'history' && (
+              <HistoryTab
+                appointments={patientAppointments}
+                canViewTeleSummaries={canViewTeleSummaries}
+                onViewTeleSummary={handleViewTeleSummary}
+              />
+            )}
             {tab === 'schedule' && <ScheduleTab upcoming={upcomingApts} />}
           </div>
         </div>
+        <ClinicTeleSummaryModal
+          state={summaryState}
+          onClose={() => setSummaryState({ open: false, loading: false, error: '', data: null })}
+        />
       </div>
     </ModalPortal>
   );
@@ -265,7 +297,9 @@ const OverviewTab = ({ patient }) => (
 );
 
 /* ═══ HISTORY TAB ═══════════════════════════════════════════════════ */
-const HistoryTab = ({ appointments }) => {
+const isVirtualAppointment = (appointment) => ['virtual', 'tele', 'teledentistry'].includes(String(appointment.consultationType || '').toLowerCase());
+
+const HistoryTab = ({ appointments, canViewTeleSummaries = false, onViewTeleSummary }) => {
   const [filter, setFilter] = useState('all');
 
   const filtered = filter === 'all' ? appointments : appointments.filter(a => a.status === filter);
@@ -349,6 +383,15 @@ const HistoryTab = ({ appointments }) => {
                   {apt.notes && (
                     <p className="mt-1.5 text-xs text-secondary/70 italic">"{apt.notes}"</p>
                   )}
+                  {canViewTeleSummaries && isVirtualAppointment(apt) && (
+                    <button
+                      onClick={() => onViewTeleSummary?.(apt.id)}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+                    >
+                      <Icon name="FileText" size={12} />
+                      View Summary
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -358,6 +401,54 @@ const HistoryTab = ({ appointments }) => {
     </div>
   );
 };
+
+const ClinicTeleSummaryModal = ({ state, onClose }) => {
+  if (!state.open) return null;
+  const summary = state.data?.summary;
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-primary/15 bg-surface-elevated p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-primary">Ringkasan Teledentistry</h3>
+            <p className="text-sm text-secondary">
+              Appointment #{state.data?.appointment?.id || '-'}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-muted hover:bg-primary/10">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        {state.loading && <p className="text-sm text-secondary">Memuat summary...</p>}
+        {state.error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>}
+        {!state.loading && !state.error && !summary && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            Summary belum final atau belum tersedia.
+          </div>
+        )}
+        {summary && (
+          <div className="space-y-3">
+            <SummaryLine label="Keluhan utama" value={summary.chiefComplaint} />
+            <SummaryLine label="Temuan objektif" value={summary.objectiveFindings} />
+            <SummaryLine label="Assessment" value={summary.assessment} />
+            <SummaryLine label="Rencana tindakan" value={summary.plan} />
+            <SummaryLine label="Rekomendasi" value={(summary.recommendations || []).join('\n')} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SummaryLine = ({ label, value }) => (
+  <section className="rounded-xl border border-primary/10 bg-surface p-3">
+    <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+    <p className="mt-1 whitespace-pre-wrap text-sm text-primary">{value || '-'}</p>
+  </section>
+);
 
 /* ═══ SCHEDULE TAB ══════════════════════════════════════════════════ */
 const ScheduleTab = ({ upcoming }) => (

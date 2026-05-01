@@ -17,6 +17,7 @@ export function useTwilioVideoClient() {
   const [networkQuality, setNetworkQuality] = useState(5); // 0-5
   const [connectionState, setConnectionState] = useState('disconnected');
   const [reconnectError, setReconnectError] = useState(null);
+  const [observeOnly, setObserveOnly] = useState(false);
 
   const detachFromElement = (track, element) => {
     if (!track) return;
@@ -86,10 +87,11 @@ export function useTwilioVideoClient() {
     setConnectionState('disconnected');
     setAudioEnabled(true);
     setVideoEnabled(true);
+    setObserveOnly(false);
   }, []);
 
   const join = useCallback(
-    async ({ roomName, token, localVideoEl, remoteVideoEl }) => {
+    async ({ roomName, token, localVideoEl, remoteVideoEl, observeOnly: nextObserveOnly = false }) => {
       if (!roomName || !token) {
         throw new Error('Missing Twilio video credentials');
       }
@@ -108,7 +110,7 @@ export function useTwilioVideoClient() {
         room = await connect(token, {
           name: roomName,
           networkQuality: true,
-          ...DEFAULT_VIDEO_SETTINGS
+          ...(nextObserveOnly ? { audio: false, video: false } : DEFAULT_VIDEO_SETTINGS)
         });
       } catch (error) {
         if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
@@ -121,8 +123,9 @@ export function useTwilioVideoClient() {
       roomRef.current = room;
       setIsConnected(true);
       setConnectionState('connected');
-      setAudioEnabled(true);
-      setVideoEnabled(true);
+      setObserveOnly(nextObserveOnly);
+      setAudioEnabled(!nextObserveOnly);
+      setVideoEnabled(!nextObserveOnly);
       setNetworkQuality(room.localParticipant.networkQualityLevel || 5);
 
       room.localParticipant.on('networkQualityLevelChanged', (level) => {
@@ -147,11 +150,11 @@ export function useTwilioVideoClient() {
         const videoPublication = Array.from(room.localParticipant.videoTracks.values())[0];
         const audioPublication = Array.from(room.localParticipant.audioTracks.values())[0];
 
-        if (videoPublication?.track && localVideoEl) {
+        if (videoPublication?.track && localVideoEl && !nextObserveOnly) {
           videoPublication.track.attach(localVideoEl);
           localVideoTrackRef.current = videoPublication.track;
         }
-        if (audioPublication?.track) {
+        if (audioPublication?.track && !nextObserveOnly) {
           localAudioTrackRef.current = audioPublication.track;
         }
       };
@@ -195,6 +198,7 @@ export function useTwilioVideoClient() {
     audioEnabled,
     videoEnabled,
     networkQuality,
+    observeOnly,
     toggleAudio,
     toggleVideo
   };

@@ -29,3 +29,17 @@ test('combined token includes Conversations and Video grants without auth token'
   assert.equal(payload.iss, process.env.TWILIO_API_KEY_SID);
   assert.equal(payload.sub, process.env.TWILIO_ACCOUNT_SID);
 });
+
+test('observer token can be constrained to a video-only grant', () => {
+  const { token } = __testables.buildCombinedTwilioToken({
+    identity: 'appointment-99-observer-42',
+    roomName: 'appointment-99',
+    ttl: 600,
+    includeConversations: false
+  });
+  const payload = decodeJwtPayload(token);
+
+  assert.equal(payload.grants.identity, 'appointment-99-observer-42');
+  assert.equal(payload.grants.video.room, 'appointment-99');
+  assert.equal(payload.grants.chat, undefined);
+});
