@@ -60,6 +60,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   const [form, setForm] = useState(EMPTY_FORM);
   const [status, setStatus] = useState('idle');
   const [summaryStatus, setSummaryStatus] = useState('pending');
+  const [followUpTasks, setFollowUpTasks] = useState([]);
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const autosaveRef = useRef(null);
@@ -80,6 +81,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
       .then((result) => {
         setSummaryStatus(result.status || 'pending');
         setForm(toForm(result.summary));
+        setFollowUpTasks(result.summary?.followUpTasks || []);
         setDirty(false);
       })
       .catch((err) => setError(err?.response?.data?.error?.code || 'Gagal memuat ringkasan.'))
@@ -97,6 +99,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
       saveClinicalSummaryDraft(appointmentId, toPayload(form))
         .then((result) => {
           setSummaryStatus(result.status || 'draft');
+          setFollowUpTasks(result.summary?.followUpTasks || []);
           setDirty(false);
           setError('');
         })
@@ -128,6 +131,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
     try {
       const result = await saveClinicalSummaryDraft(appointmentId, toPayload(form));
       setSummaryStatus(result.status || 'draft');
+      setFollowUpTasks(result.summary?.followUpTasks || []);
       setDirty(false);
       setError('');
     } catch (err) {
@@ -147,6 +151,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
     try {
       const result = await finalizeClinicalSummary(appointmentId, toPayload(form));
       setSummaryStatus(result.status || 'finalized');
+      setFollowUpTasks(result.summary?.followUpTasks || []);
       setDirty(false);
       setError('');
     } catch (err) {
@@ -189,6 +194,12 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         {isFinalized && (
           <div className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             Ringkasan sudah final dan tampil sebagai read-only.
+          </div>
+        )}
+
+        {followUpTasks.length > 0 && (
+          <div className="mx-5 mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            Follow-up task dibuat: {followUpTasks[0].title} {followUpTasks[0].dueAt ? `• ${new Date(followUpTasks[0].dueAt).toLocaleString()}` : ''}
           </div>
         )}
 

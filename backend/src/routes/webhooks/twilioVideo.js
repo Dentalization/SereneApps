@@ -3,10 +3,15 @@ import twilio from 'twilio';
 import { handleVideoEvent } from '../../services/communications/videoWebhookHandler.js';
 import {
   beginWebhookProcessing,
+  recordWebhookRejected,
   markWebhookProcessed,
   markWebhookFailed
 } from '../../services/webhooks/idempotency.js';
 import { logCommunicationEvent } from '../../services/communications/logging.js';
+import {
+  getTwilioWebhookAuthToken,
+  isWebhookSignatureRequired
+} from '../../services/communications/config.js';
 
 const router = express.Router();
 
@@ -24,17 +29,12 @@ function getWebhookUrl(req) {
 
 function verifyTwilioSignature(req) {
   const signature = req.headers['x-twilio-signature'];
-  const requireSignature = process.env.NODE_ENV === 'production' || process.env.TWILIO_WEBHOOK_REQUIRE_SIGNATURE === 'true';
+  const requireSignature = isWebhookSignatureRequired();
 
   if (!signature && !requireSignature) return true;
-  if (!process.env.TWILIO_AUTH_TOKEN) {
-    const error = new Error('TWILIO_WEBHOOK_AUTH_TOKEN_MISSING');
-    error.status = 500;
-    throw error;
-  }
 
   return twilio.validateRequest(
-    process.env.TWILIO_AUTH_TOKEN,
+    getTwilioWebhookAuthToken(),
     signature || '',
     getWebhookUrl(req),
     req.body
@@ -53,6 +53,18 @@ router.post('/', express.urlencoded({ extended: false }), async (req, res) => {
 
   try {
     if (!verifyTwilioSignature(req)) {
+      await recordWebhookRejected({
+        provider: 'twilio-video',
+        source: 'twilio-video',
+        deliveryKey,
+        eventType: event.StatusCallbackEvent,
+        resourceId: event.RoomSid || event.RoomName,
+        signature,
+        rawBody: event,
+        headers: req.headers,
+        correlationId: event.RoomSid,
+        reason: 'TWILIO_SIGNATURE_INVALID'
+      });
       logCommunicationEvent('permission_denied', {
         action: 'twilio_video_webhook_signature',
         eventType: event.StatusCallbackEvent,
@@ -93,6 +105,9 @@ router.post('/', express.urlencoded({ extended: false }), async (req, res) => {
     }
   } catch (error) {
     console.error('Error handling Twilio Video webhook:', error);
+    if (error.message === 'WEBHOOK_REPLAY_PAYLOAD_MISMATCH') {
+      return res.status(409).json({ error: { code: 'WEBHOOK_REPLAY_PAYLOAD_MISMATCH' } });
+    }
     return res.status(error.status || 500).json({ error: 'Internal server error' });
   }
 });

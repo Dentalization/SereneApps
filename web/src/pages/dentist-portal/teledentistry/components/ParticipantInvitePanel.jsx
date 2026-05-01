@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import {
+  kickCommunicationParticipant,
   inviteCommunicationParticipant,
   listCommunicationParticipants,
+  regenerateCommunicationParticipantAccess,
+  resendCommunicationParticipantInvite,
   revokeCommunicationParticipant
 } from '../../../../services/chatService';
 
@@ -58,6 +61,50 @@ export default function ParticipantInvitePanel({ appointmentId }) {
       loadParticipants();
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal revoke undangan.');
+    } finally {
+      setStatus('idle');
+    }
+  };
+
+  const applyInviteResult = (result) => {
+    setLatestInvite(result.inviteUrl || result.inviteToken || null);
+    loadParticipants();
+  };
+
+  const handleResend = async (participantId) => {
+    setStatus('saving');
+    setError('');
+    try {
+      applyInviteResult(await resendCommunicationParticipantInvite(appointmentId, participantId));
+    } catch (err) {
+      setError(err?.response?.data?.error?.code || 'Gagal mengirim ulang undangan.');
+    } finally {
+      setStatus('idle');
+    }
+  };
+
+  const handleRegenerate = async (participantId) => {
+    if (!window.confirm('Regenerate participant access? Existing invite/session access will be invalidated.')) return;
+    setStatus('saving');
+    setError('');
+    try {
+      applyInviteResult(await regenerateCommunicationParticipantAccess(appointmentId, participantId));
+    } catch (err) {
+      setError(err?.response?.data?.error?.code || 'Gagal regenerate akses.');
+    } finally {
+      setStatus('idle');
+    }
+  };
+
+  const handleKick = async (participantId) => {
+    if (!window.confirm('Kick participant from the current consultation?')) return;
+    setStatus('saving');
+    setError('');
+    try {
+      await kickCommunicationParticipant(appointmentId, participantId);
+      loadParticipants();
+    } catch (err) {
+      setError(err?.response?.data?.error?.code || 'Gagal mengeluarkan participant.');
     } finally {
       setStatus('idle');
     }
@@ -131,15 +178,52 @@ export default function ParticipantInvitePanel({ appointmentId }) {
               <p className="truncate text-sm font-medium text-primary">{participant.displayName}</p>
               <p className="text-xs text-muted capitalize">{participant.role} • {participant.status}</p>
             </div>
-            {['invited', 'verified'].includes(participant.status) && (
-              <button
-                onClick={() => handleRevoke(participant.id)}
-                className="p-2 rounded-md text-red-500 hover:bg-red-50"
-                aria-label="Revoke participant"
-              >
-                <Icon name="X" size={14} />
-              </button>
-            )}
+            <div className="flex items-center gap-1">
+              {['invited', 'verified'].includes(participant.status) && (
+                <button
+                  onClick={() => handleResend(participant.id)}
+                  disabled={status === 'saving'}
+                  className="p-2 rounded-md text-accent hover:bg-accent/10 disabled:opacity-50"
+                  aria-label="Resend invite"
+                  title="Resend invite"
+                >
+                  <Icon name="Send" size={14} />
+                </button>
+              )}
+              {['invited', 'verified', 'joined', 'expired'].includes(participant.status) && (
+                <button
+                  onClick={() => handleRegenerate(participant.id)}
+                  disabled={status === 'saving'}
+                  className="p-2 rounded-md text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                  aria-label="Regenerate access"
+                  title="Regenerate access"
+                >
+                  <Icon name="KeyRound" size={14} />
+                </button>
+              )}
+              {['verified', 'joined'].includes(participant.status) && (
+                <button
+                  onClick={() => handleKick(participant.id)}
+                  disabled={status === 'saving'}
+                  className="p-2 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  aria-label="Kick participant"
+                  title="Kick participant"
+                >
+                  <Icon name="LogOut" size={14} />
+                </button>
+              )}
+              {['invited', 'verified'].includes(participant.status) && (
+                <button
+                  onClick={() => handleRevoke(participant.id)}
+                  disabled={status === 'saving'}
+                  className="p-2 rounded-md text-red-500 hover:bg-red-50 disabled:opacity-50"
+                  aria-label="Revoke participant"
+                  title="Revoke participant"
+                >
+                  <Icon name="X" size={14} />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

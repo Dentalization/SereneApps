@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../../utils/tokens.js';
 import {
+  acknowledgeClinicalSummary,
   amendClinicalSummary,
   finalizeClinicalSummary,
   getClinicalSummary,
@@ -90,6 +91,22 @@ router.post(
         appointmentId: req.params.appointmentId,
         user: req.user,
         input: req.body || {}
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendClinicalSummaryError(res, error);
+    }
+  }
+);
+
+router.post(
+  '/:appointmentId/clinical-summary/acknowledge',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await acknowledgeClinicalSummary({
+        appointmentId: req.params.appointmentId,
+        user: req.user
       });
       return res.json(result);
     } catch (error) {

@@ -3,6 +3,7 @@ import { emitChatMessage } from '../../sockets/chat.js';
 import { logCommunicationEvent } from './logging.js';
 import { recordCommunicationEvent } from '../communications.js';
 import { parseParticipantIdentity } from './participantAccessService.js';
+import { attachmentPresentationForMessage } from './attachmentStorageService.js';
 
 const prisma = new PrismaClient();
 
@@ -103,6 +104,7 @@ export async function handleChatMessageEvent(event) {
     ? null
     : BigInt(attrs.fileSizeBytes);
   const mediaRetentionUntil = attrs.mediaRetentionUntil ? new Date(attrs.mediaRetentionUntil) : null;
+  const mediaDeletedAt = attrs.mediaDeletedAt ? new Date(attrs.mediaDeletedAt) : null;
 
   // 4. Upsert to prevent duplicate writes when Twilio retries or backend-originated sends already saved.
   const newMessage = await prisma.chatMessage.upsert({
@@ -115,6 +117,12 @@ export async function handleChatMessageEvent(event) {
       mimeType: attrs.mimeType,
       fileSizeBytes: fileSize,
       mediaRetentionUntil,
+      storageProvider: attrs.storageProvider || null,
+      storageBucket: attrs.storageBucket || null,
+      storageObjectKey: attrs.storageObjectKey || null,
+      mediaScanStatus: attrs.mediaScanStatus || null,
+      mediaDeletedAt,
+      mediaTombstoneReason: attrs.mediaTombstoneReason || null,
       senderCommunicationParticipantId: participant?.id || null,
       metadata: attrs
     },
@@ -131,6 +139,12 @@ export async function handleChatMessageEvent(event) {
       mimeType: attrs.mimeType,
       fileSizeBytes: fileSize,
       mediaRetentionUntil,
+      storageProvider: attrs.storageProvider || null,
+      storageBucket: attrs.storageBucket || null,
+      storageObjectKey: attrs.storageObjectKey || null,
+      mediaScanStatus: attrs.mediaScanStatus || null,
+      mediaDeletedAt,
+      mediaTombstoneReason: attrs.mediaTombstoneReason || null,
       metadata: attrs
     },
     include: {
@@ -159,6 +173,7 @@ export async function handleChatMessageEvent(event) {
     }
   });
 
+  const attachment = attachmentPresentationForMessage(newMessage);
   const serialized = {
     id: newMessage.id.toString(),
     chatRoomId: newMessage.chatRoomId.toString(),
@@ -168,15 +183,16 @@ export async function handleChatMessageEvent(event) {
     message: newMessage.message,
     messageType: newMessage.messageType,
     twilioMessageSid: newMessage.twilioMessageSid,
-    fileUrl: newMessage.fileUrl,
+    fileUrl: attachment.fileUrl,
     fileName: newMessage.fileName,
     mimeType: newMessage.mimeType,
     fileSizeBytes: newMessage.fileSizeBytes?.toString?.() ?? null,
     mediaRetentionUntil: newMessage.mediaRetentionUntil,
-    attachmentAvailable: newMessage.messageType !== 'file'
-      || (Boolean(newMessage.fileUrl)
-        && !(newMessage.mediaRetentionUntil && new Date(newMessage.mediaRetentionUntil).getTime() < Date.now())
-        && newMessage.metadata?.deleted !== true),
+    storageProvider: newMessage.storageProvider || newMessage.metadata?.storage || null,
+    mediaScanStatus: newMessage.mediaScanStatus || newMessage.metadata?.scanStatus || null,
+    mediaDeletedAt: newMessage.mediaDeletedAt,
+    mediaTombstoneReason: attachment.tombstoneReason,
+    attachmentAvailable: attachment.attachmentAvailable,
     metadata: newMessage.metadata || {},
     createdAt: newMessage.createdAt,
     sender: newMessage.sender ? {

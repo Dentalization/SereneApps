@@ -98,6 +98,15 @@ function serializeSummary(summary, { includeDraft = false } = {}) {
       recommendations: summary.recommendations || [],
       followUpNeeded: summary.followUpNeeded,
       followUpAt: summary.followUpAt,
+      patientAcknowledgedAt: summary.patientAcknowledgedAt,
+      patientAcknowledgedById: summary.patientAcknowledgedById?.toString?.() ?? null,
+      followUpTasks: (summary.followUpTasks || []).map((task) => ({
+        id: task.id,
+        status: task.status,
+        title: task.title,
+        dueAt: task.dueAt,
+        completedAt: task.completedAt
+      })),
       finalizedAt: summary.finalizedAt,
       amendedAt: summary.amendedAt,
       createdAt: summary.createdAt,
@@ -110,7 +119,13 @@ async function getAppointment(appointmentId) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: toBigInt(appointmentId, 'appointmentId') },
     include: {
-      clinicalSummary: true,
+      clinicalSummary: {
+        include: {
+          followUpTasks: {
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      },
       communicationParticipants: {
         select: { id: true, userId: true, role: true, status: true }
       }
@@ -122,6 +137,77 @@ async function getAppointment(appointmentId) {
     throw error;
   }
   return appointment;
+}
+
+async function syncFollowUpTaskForSummary({ appointment, summary }) {
+  if (!summary.followUpNeeded) {
+    await prisma.appointmentFollowUpTask.updateMany({
+      where: {
+        appointmentId: appointment.id,
+        summaryId: summary.id,
+        status: 'open'
+      },
+      data: {
+        status: 'cancelled',
+        metadata: {
+          cancelledBy: 'summary_finalized_without_follow_up',
+          cancelledAt: new Date().toISOString()
+        }
+      }
+    }).catch(() => null);
+    return null;
+  }
+
+  const existing = await prisma.appointmentFollowUpTask.findFirst({
+    where: {
+      appointmentId: appointment.id,
+      summaryId: summary.id,
+      status: { in: ['open', 'scheduled'] }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  const data = {
+    appointmentId: appointment.id,
+    summaryId: summary.id,
+    dentistId: appointment.dentistId,
+    patientId: appointment.patientId,
+    title: 'Follow-up teledentistry consultation',
+    notes: 'Created from finalized post-call summary.',
+    dueAt: summary.followUpAt,
+    metadata: {
+      source: 'clinical_summary',
+      summaryId: summary.id
+    }
+  };
+
+  const task = existing
+    ? await prisma.appointmentFollowUpTask.update({
+        where: { id: existing.id },
+        data: {
+          dueAt: summary.followUpAt,
+          status: existing.status,
+          metadata: {
+            ...(existing.metadata || {}),
+            syncedFromSummaryAt: new Date().toISOString()
+          }
+        }
+      })
+    : await prisma.appointmentFollowUpTask.create({ data });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: appointment.dentistId,
+    actorRole: 'dentist',
+    eventType: 'follow_up_task_created',
+    metadata: {
+      summaryId: summary.id,
+      taskId: task.id,
+      dueAt: task.dueAt
+    }
+  });
+
+  return task;
 }
 
 export async function getClinicalSummary({ appointmentId, user }) {
@@ -238,7 +324,14 @@ export async function finalizeClinicalSummary({ appointmentId, user, input }) {
     }
   });
 
-  return serializeSummary(summary, { includeDraft: true });
+  await syncFollowUpTaskForSummary({ appointment, summary });
+
+  const refreshed = await prisma.appointmentClinicalSummary.findUnique({
+    where: { appointmentId: appointment.id },
+    include: { followUpTasks: { orderBy: { createdAt: 'desc' } } }
+  });
+
+  return serializeSummary(refreshed || summary, { includeDraft: true });
 }
 
 export async function amendClinicalSummary({ appointmentId, user, input }) {
@@ -279,11 +372,59 @@ export async function amendClinicalSummary({ appointmentId, user, input }) {
     }
   });
 
-  return serializeSummary(summary, { includeDraft: true });
+  await syncFollowUpTaskForSummary({ appointment, summary });
+
+  const refreshed = await prisma.appointmentClinicalSummary.findUnique({
+    where: { appointmentId: appointment.id },
+    include: { followUpTasks: { orderBy: { createdAt: 'desc' } } }
+  });
+
+  return serializeSummary(refreshed || summary, { includeDraft: true });
+}
+
+export async function acknowledgeClinicalSummary({ appointmentId, user }) {
+  const appointment = await getAppointment(appointmentId);
+  if (!isAssignedPatient(user, appointment)) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+  if (!appointment.clinicalSummary || !['finalized', 'amended'].includes(appointment.clinicalSummary.status)) {
+    const error = new Error('SUMMARY_NOT_FINALIZED');
+    error.status = 409;
+    throw error;
+  }
+
+  const summary = await prisma.appointmentClinicalSummary.update({
+    where: { appointmentId: appointment.id },
+    data: {
+      patientAcknowledgedAt: appointment.clinicalSummary.patientAcknowledgedAt || new Date(),
+      patientAcknowledgedById: appointment.patientId
+    },
+    include: {
+      followUpTasks: {
+        orderBy: { createdAt: 'desc' }
+      }
+    }
+  });
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole: 'patient',
+    eventType: 'post_call_summary_acknowledged',
+    metadata: {
+      summaryId: summary.id,
+      acknowledgedAt: summary.patientAcknowledgedAt
+    }
+  });
+
+  return serializeSummary(summary, { includeDraft: false });
 }
 
 export const __testables = {
   normalizeSummaryInput,
   serializeSummary,
+  syncFollowUpTaskForSummary,
   validateClinicalSummaryForFinalize
 };

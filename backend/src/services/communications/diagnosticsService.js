@@ -123,6 +123,13 @@ function detectInconsistencies({ appointment, projection }) {
   return issues;
 }
 
+function bucketForInconsistencies(inconsistencies = []) {
+  if (inconsistencies.some((issue) => issue.severity === 'error')) return 'error';
+  if (inconsistencies.some((issue) => issue.severity === 'warning')) return 'warning';
+  if (inconsistencies.length > 0) return 'info';
+  return 'healthy';
+}
+
 async function getAppointmentOrThrow(appointmentId) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: toBigInt(appointmentId, 'appointmentId') },
@@ -221,11 +228,30 @@ export async function getCommunicationTimeline({ appointmentId, limit = 100 }) {
 
 export async function getAppointmentDiagnostics({ appointmentId }) {
   const appointment = await getAppointmentOrThrow(appointmentId);
-  const [projection, timeline, lastReceipts, lastOutbox] = await Promise.all([
+  const webhookProviderWhere = { provider: { in: ['twilio', 'twilio-conversations', 'twilio-video', 'midtrans'] } };
+  const appointmentWebhookIds = [
+    appointment.chatRoom?.twilio_conversation_sid,
+    appointment.video_room_sid,
+    appointment.videoRoomRef
+  ].filter(Boolean);
+  const appointmentWebhookWhere = appointmentWebhookIds.length
+    ? {
+        AND: [
+          webhookProviderWhere,
+          {
+            OR: [
+              { resourceId: { in: appointmentWebhookIds } },
+              { correlationId: { in: appointmentWebhookIds } }
+            ]
+          }
+        ]
+      }
+    : webhookProviderWhere;
+  const [projection, timeline, lastReceipts, lastOutbox, processedReceiptCount, mismatchCount, invalidSignatureCount, provisioningRetryCount] = await Promise.all([
     getMessageProjectionStatus({ appointmentId: appointment.id }),
     getCommunicationTimeline({ appointmentId: appointment.id, limit: 50 }),
     prisma.webhookReceipt.findMany({
-      where: { provider: { in: ['twilio', 'midtrans'] } },
+      where: appointmentWebhookWhere,
       orderBy: { receivedAt: 'desc' },
       take: 10
     }),
@@ -238,11 +264,21 @@ export async function getAppointmentDiagnostics({ appointmentId }) {
       },
       orderBy: { createdAt: 'desc' },
       take: 10
+    }),
+    prisma.webhookReceipt.count({ where: { ...appointmentWebhookWhere, status: 'processed' } }),
+    prisma.webhookReceipt.count({ where: { ...appointmentWebhookWhere, lastError: 'WEBHOOK_REPLAY_PAYLOAD_MISMATCH' } }),
+    prisma.webhookReceipt.count({ where: { ...appointmentWebhookWhere, status: 'ignored', lastError: 'TWILIO_SIGNATURE_INVALID' } }),
+    prisma.communicationEvent.count({
+      where: {
+        appointmentId: appointment.id,
+        eventType: 'provisioning_retry'
+      }
     })
   ]);
 
   const expectedRoomName = appointmentScopedRoomName(appointment.id);
   const latestPayment = appointment.paymentIntents?.[0] || null;
+  const inconsistencies = detectInconsistencies({ appointment, projection });
 
   return {
     appointmentId: appointment.id.toString(),
@@ -266,6 +302,14 @@ export async function getAppointmentDiagnostics({ appointmentId }) {
       chatChannelName: appointment.chatRoom?.channelName || null,
       videoRoomName: appointment.videoRoomRef || null,
       videoRoomSid: appointment.video_room_sid || null
+    },
+    operational: {
+      bucket: bucketForInconsistencies(inconsistencies),
+      processedReceiptCount,
+      payloadMismatchCount: mismatchCount,
+      invalidSignatureCount,
+      provisioningRetryCount,
+      attachmentRetentionRespected: projection.retentionRespected
     },
     participants: [
       { role: 'dentist', userId: appointment.dentistId.toString(), status: 'assigned' },
@@ -304,7 +348,115 @@ export async function getAppointmentDiagnostics({ appointmentId }) {
       lastError: event.lastError
     })),
     timeline: timeline.events,
-    inconsistencies: detectInconsistencies({ appointment, projection })
+    inconsistencies
+  };
+}
+
+export async function listOperationalCommunicationDiagnostics({
+  status,
+  bucket,
+  limit = 25
+} = {}) {
+  const take = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const where = {};
+  if (status && status !== 'all') {
+    if (['ready', 'pending', 'provisioning_failed'].includes(status)) {
+      where.commStatus = status;
+    } else {
+      where.status = status;
+    }
+  }
+
+  const appointments = await prisma.appointment.findMany({
+    where,
+    orderBy: { updatedAt: 'desc' },
+    take,
+    include: {
+      chatRoom: true,
+      paymentIntents: {
+        orderBy: { createdAt: 'desc' },
+        take: 1
+      },
+      communicationParticipants: true
+    }
+  });
+
+  const rows = [];
+  for (const appointment of appointments) {
+    const projection = await getMessageProjectionStatus({ appointmentId: appointment.id });
+    const inconsistencies = detectInconsistencies({ appointment, projection });
+    const rowBucket = bucketForInconsistencies(inconsistencies);
+    if (bucket && bucket !== 'all' && rowBucket !== bucket) continue;
+    rows.push({
+      appointmentId: appointment.id.toString(),
+      status: appointment.status,
+      commStatus: appointment.commStatus,
+      paymentStatus: appointment.paymentIntents?.[0]?.status || 'unknown',
+      expectedRoomName: appointmentScopedRoomName(appointment.id),
+      conversationSidPresent: Boolean(appointment.chatRoom?.twilio_conversation_sid),
+      videoRoomSidPresent: Boolean(appointment.video_room_sid),
+      participantCount: appointment.communicationParticipants.length,
+      localMessageCount: projection.localMessageCount,
+      attachmentCount: projection.attachmentCount,
+      bucket: rowBucket,
+      inconsistencyCodes: inconsistencies.map((issue) => issue.code),
+      updatedAt: appointment.updatedAt
+    });
+  }
+
+  const replayCounters = await prisma.webhookReceipt.groupBy({
+    by: ['status'],
+    where: { provider: { in: ['twilio', 'twilio-conversations', 'twilio-video', 'midtrans'] } },
+    _count: { _all: true }
+  });
+  const provisioningRetries = await prisma.communicationEvent.count({
+    where: { eventType: 'provisioning_retry' }
+  });
+
+  return {
+    filters: {
+      status: status || 'all',
+      bucket: bucket || 'all',
+      limit: take
+    },
+    replayCounters: Object.fromEntries(replayCounters.map((item) => [item.status, item._count._all])),
+    provisioningRetries,
+    rows
+  };
+}
+
+export async function exportCommunicationAudit({ appointmentId, format = 'json' }) {
+  const timeline = await getCommunicationTimeline({ appointmentId, limit: 250 });
+  const safeEvents = timeline.events.map((event) => ({
+    appointmentId: event.appointmentId,
+    occurredAt: event.occurredAt,
+    eventType: event.eventType,
+    actorRole: event.actorRole,
+    actorUserId: event.actorUserId,
+    provider: event.provider,
+    providerSid: event.providerSid,
+    metadata: redactDiagnosticsMetadata(event.metadata || {})
+  }));
+
+  if (format === 'csv') {
+    const headers = ['appointmentId', 'occurredAt', 'eventType', 'actorRole', 'actorUserId', 'provider', 'providerSid', 'metadata'];
+    const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    return {
+      appointmentId: timeline.appointmentId,
+      contentType: 'text/csv',
+      body: [
+        headers.join(','),
+        ...safeEvents.map((event) => headers.map((key) => escapeCsv(
+          key === 'metadata' ? JSON.stringify(event.metadata || {}) : event[key]
+        )).join(','))
+      ].join('\n')
+    };
+  }
+
+  return {
+    appointmentId: timeline.appointmentId,
+    contentType: 'application/json',
+    body: JSON.stringify({ events: safeEvents }, null, 2)
   };
 }
 
@@ -367,6 +519,7 @@ export async function reconcileAppointmentCommunications({ appointmentId, user }
 }
 
 export const __testables = {
+  bucketForInconsistencies,
   detectInconsistencies,
   redactDiagnosticsMetadata,
   serializeEvent

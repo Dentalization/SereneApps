@@ -17,7 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
-import { getAppointmentClinicalSummary } from '../../../services/appointmentService';
+import {
+  acknowledgeAppointmentClinicalSummary,
+  getAppointmentClinicalSummary,
+} from '../../../services/appointmentService';
 
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
@@ -123,6 +126,7 @@ const PatientTeledentistryScreen = () => {
   const [callStatus, setCallStatus] = useState('idle');  // 'idle' | 'incoming' | 'active'
   const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [clinicalSummary, setClinicalSummary] = useState(null);
+  const [summaryAckStatus, setSummaryAckStatus] = useState('idle');
 
   // ─── UI State ──────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -147,7 +151,11 @@ const PatientTeledentistryScreen = () => {
     const socketMsgs = (chatMessagesFromSocket || []).map((m) => ({
       id: m.id,
       role: m.senderId === currentUser?.id?.toString() ? 'user' : 'dentist',
-      text: m.message,
+      text: m.messageType === 'file'
+        ? (m.attachmentAvailable === false
+          ? `Lampiran tidak tersedia: ${m.fileName || m.message || 'Attachment'}`
+          : `Lampiran: ${m.fileName || m.message || 'Attachment'}`)
+        : m.message,
       timestamp: new Date(m.createdAt),
     }));
     const all = [...systemMessages, ...socketMsgs];
@@ -347,6 +355,28 @@ const PatientTeledentistryScreen = () => {
     setSessionStatus('ended');
     setCallStatus('idle');
     addSystemMessage('Sesi konsultasi telah berakhir.');
+  };
+
+  const handleAcknowledgeSummary = async () => {
+    if (!appointmentId || summaryAckStatus === 'saving') return;
+    setSummaryAckStatus('saving');
+    try {
+      const result = await acknowledgeAppointmentClinicalSummary(appointmentId);
+      setClinicalSummaryStatus(result.status || 'finalized');
+      setClinicalSummary(result.summary || clinicalSummary);
+      setSummaryAckStatus('done');
+      addSystemMessage('Ringkasan konsultasi telah dikonfirmasi.');
+    } catch (error) {
+      setSummaryAckStatus('error');
+      Alert.alert('Gagal', error.message || 'Gagal mengonfirmasi ringkasan konsultasi.');
+    }
+  };
+
+  const switchToAudioOnly = () => {
+    if (isVideoEnabled) {
+      toggleVideo();
+      addSystemMessage('Mode audio-only diaktifkan karena kualitas jaringan rendah.');
+    }
   };
 
   useEffect(() => {
@@ -674,6 +704,21 @@ const PatientTeledentistryScreen = () => {
                   <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 6 }}>
                     {clinicalSummary?.plan || '-'}
                   </Text>
+                  {clinicalSummary?.patientAcknowledgedAt ? (
+                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.success, marginTop: 8 }}>
+                      Sudah dikonfirmasi.
+                    </Text>
+                  ) : (
+                    <TouchableOpacity
+                      style={{ marginTop: 10, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                      onPress={handleAcknowledgeSummary}
+                      disabled={summaryAckStatus === 'saving'}
+                    >
+                      <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 12 }}>
+                        {summaryAckStatus === 'saving' ? 'Mengonfirmasi...' : 'Konfirmasi sudah membaca'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               ) : (
                 <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, textAlign: 'center' }}>
@@ -916,8 +961,16 @@ const PatientTeledentistryScreen = () => {
         {networkQuality >= 0 && networkQuality <= 1 && (
           <View style={{ position: 'absolute', top: insets.top + 58, left: 16, right: 16, zIndex: 11, backgroundColor: withOpacity(COLORS.warning, 0.92), borderRadius: 12, padding: 10 }}>
             <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>
-              Kualitas jaringan buruk. Matikan video bila audio mulai terputus.
+              Kualitas jaringan buruk. Gunakan audio-only bila video terputus.
             </Text>
+            {isVideoEnabled && (
+              <TouchableOpacity
+                onPress={switchToAudioOnly}
+                style={{ marginTop: 8, alignSelf: 'center', borderWidth: 1, borderColor: withOpacity(COLORS.white, 0.5), borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
+              >
+                <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700' }}>Audio only</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 

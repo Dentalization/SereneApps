@@ -5,8 +5,8 @@ let client = null;
 
 function getClient() {
   if (client || !isSmsConfigured()) return client;
-  const { accountSid, authToken } = notificationConfig.twilio;
-  client = twilio(accountSid, authToken);
+  const { accountSid, apiKeySid, apiKeySecret } = notificationConfig.twilio;
+  client = twilio(apiKeySid, apiKeySecret, { accountSid });
   return client;
 }
 

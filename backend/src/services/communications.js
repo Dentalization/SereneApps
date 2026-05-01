@@ -11,6 +11,7 @@ import {
   videoRoomNameForAppointment
 } from './communications/naming.js';
 import { logCommunicationEvent } from './communications/logging.js';
+import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
 
 const prisma = new PrismaClient();
 
@@ -88,8 +89,7 @@ export function communicationActorRoleForAppointment(user, appointment) {
 }
 
 function serializeMessage(msg, appointmentId) {
-  const mediaExpired = msg.mediaRetentionUntil ? new Date(msg.mediaRetentionUntil).getTime() < Date.now() : false;
-  const attachmentDeleted = msg.metadata?.deleted === true || (msg.messageType === 'file' && !msg.fileUrl);
+  const attachment = attachmentPresentationForMessage(msg);
   return {
     id: msg.id.toString(),
     chatRoomId: msg.chatRoomId.toString(),
@@ -99,12 +99,16 @@ function serializeMessage(msg, appointmentId) {
     message: msg.message,
     messageType: msg.messageType,
     twilioMessageSid: msg.twilioMessageSid,
-    fileUrl: msg.fileUrl,
+    fileUrl: attachment.fileUrl,
     fileName: msg.fileName,
     mimeType: msg.mimeType,
     fileSizeBytes: msg.fileSizeBytes?.toString?.() ?? null,
     mediaRetentionUntil: msg.mediaRetentionUntil,
-    attachmentAvailable: msg.messageType !== 'file' || (!mediaExpired && !attachmentDeleted),
+    storageProvider: msg.storageProvider || msg.metadata?.storage || null,
+    mediaScanStatus: msg.mediaScanStatus || msg.metadata?.scanStatus || null,
+    mediaDeletedAt: msg.mediaDeletedAt,
+    mediaTombstoneReason: attachment.tombstoneReason,
+    attachmentAvailable: attachment.attachmentAvailable,
     metadata: msg.metadata || {},
     createdAt: msg.createdAt,
     sender: msg.sender
@@ -124,6 +128,32 @@ function serializeMessage(msg, appointmentId) {
           }
       : null
   };
+}
+
+function sanitizeEventMetadata(value) {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      code: value.code
+    };
+  }
+  if (Array.isArray(value)) return value.map(sanitizeEventMetadata);
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => {
+        const lowered = key.toLowerCase();
+        return !lowered.includes('token')
+          && !lowered.includes('secret')
+          && !lowered.includes('otp')
+          && lowered !== 'code';
+      })
+      .map(([key, item]) => [key, sanitizeEventMetadata(item)])
+  );
 }
 
 export async function recordCommunicationEvent({
@@ -149,7 +179,7 @@ export async function recordCommunicationEvent({
     providerEventId,
     resourceSid,
     providerSid: providerSid || resourceSid,
-    metadata,
+    metadata: sanitizeEventMetadata(metadata || {}),
     occurredAt
   };
 
@@ -160,9 +190,9 @@ export async function recordCommunicationEvent({
           provider_providerEventId: {
             provider,
             providerEventId
-          }
-        },
-        update: { metadata, actorRole, providerSid: providerSid || resourceSid },
+        }
+      },
+        update: { metadata: data.metadata, actorRole, providerSid: providerSid || resourceSid },
         create: data
       });
     }
@@ -461,6 +491,117 @@ export async function addConversationParticipantForIdentity({
   return resources;
 }
 
+export async function removeConversationParticipantForIdentity({
+  appointmentId,
+  identity,
+  reason = 'participant_removed'
+}) {
+  const apptId = BigInt(appointmentId);
+  const room = await prisma.chatRoom.findUnique({
+    where: { appointmentId: apptId },
+    select: { twilio_conversation_sid: true }
+  });
+  if (!room?.twilio_conversation_sid || !identity) {
+    return { removed: false, reason: 'conversation_not_ready' };
+  }
+
+  const result = await withTwilioRetry(
+    () => getConversationsAdapter().removeParticipant({
+      conversationSid: room.twilio_conversation_sid,
+      identity
+    }),
+    { appointmentId: apptId, label: 'remove_external_participant' }
+  );
+
+  logCommunicationEvent('participant_conversation_removed', {
+    appointmentId: apptId,
+    identity,
+    removed: result?.removed || false,
+    reason
+  });
+
+  return result || { removed: false };
+}
+
+export async function disconnectVideoParticipantForIdentity({
+  appointmentId,
+  identity,
+  reason = 'participant_removed'
+}) {
+  const apptId = BigInt(appointmentId);
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: apptId },
+    select: { video_room_sid: true, videoRoomRef: true }
+  });
+  if (!appointment?.video_room_sid || !identity) {
+    return { disconnected: false, reason: 'video_room_not_ready' };
+  }
+
+  const result = await withTwilioRetry(
+    () => getVideoService().disconnectParticipant({
+      roomSid: appointment.video_room_sid,
+      identity
+    }),
+    { appointmentId: apptId, label: 'disconnect_video_participant' }
+  );
+
+  logCommunicationEvent('participant_video_disconnected', {
+    appointmentId: apptId,
+    identity,
+    roomName: appointment.videoRoomRef,
+    disconnected: result?.disconnected || false,
+    reason
+  });
+
+  return result || { disconnected: false };
+}
+
+export async function hardEndAppointmentConsultationRoom({ appointmentId, user }) {
+  const appointment = await getAppointmentForAuthorizedUser({ appointmentId, user });
+  const actorRole = communicationActorRoleForAppointment(user, appointment);
+  const canEnd = actorRole === 'dentist' || actorRole === 'admin';
+  if (!canEnd) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  const result = appointment.video_room_sid
+    ? await withTwilioRetry(
+        () => getVideoService().completeRoom(appointment.video_room_sid),
+        { appointmentId: appointment.id, label: 'hard_end_video_room' }
+      )
+    : { ended: false, reason: 'video_room_not_ready' };
+
+  if (appointment.status === 'confirmed') {
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { status: 'completed' }
+    }).catch(() => null);
+  }
+
+  await recordCommunicationEvent({
+    appointmentId: appointment.id,
+    userId: user.id,
+    actorRole,
+    eventType: 'consultation_room_hard_ended',
+    provider: 'twilio-video',
+    resourceSid: appointment.video_room_sid || null,
+    metadata: {
+      roomName: appointment.videoRoomRef,
+      ended: result.ended || false,
+      reason: result.reason || 'moderator_control'
+    }
+  });
+
+  return {
+    appointmentId: appointment.id.toString(),
+    roomName: appointment.videoRoomRef,
+    roomSid: appointment.video_room_sid,
+    ended: result.ended || false
+  };
+}
+
 export async function saveChatMessage({
   appointmentId,
   senderId,
@@ -470,6 +611,11 @@ export async function saveChatMessage({
   fileName,
   mimeType,
   fileSizeBytes,
+  storageProvider,
+  storageBucket,
+  storageObjectKey,
+  mediaRetentionUntil,
+  mediaScanStatus,
   metadata = {}
 }) {
   const apptId = BigInt(appointmentId);
@@ -508,7 +654,12 @@ export async function saveChatMessage({
     fileUrl,
     fileName,
     mimeType,
-    fileSizeBytes
+    fileSizeBytes,
+    storageProvider,
+    storageBucket,
+    storageObjectKey,
+    mediaRetentionUntil,
+    mediaScanStatus
   };
 
   const sent = await withTwilioRetry(
@@ -531,6 +682,11 @@ export async function saveChatMessage({
       fileName,
       mimeType,
       fileSizeBytes: fileSizeBigInt,
+      storageProvider,
+      storageBucket,
+      storageObjectKey,
+      mediaRetentionUntil,
+      mediaScanStatus,
       metadata: messageAttributes
     },
     create: {
@@ -544,6 +700,11 @@ export async function saveChatMessage({
       fileName,
       mimeType,
       fileSizeBytes: fileSizeBigInt,
+      storageProvider,
+      storageBucket,
+      storageObjectKey,
+      mediaRetentionUntil,
+      mediaScanStatus,
       metadata: messageAttributes
     },
     include: {
@@ -1028,5 +1189,7 @@ export async function emitAppointmentEvent({ type, appointmentId, payload = {} }
 }
 
 export const __testables = {
-  buildWaitingRoomState
+  buildCombinedTwilioToken,
+  buildWaitingRoomState,
+  sanitizeEventMetadata
 };

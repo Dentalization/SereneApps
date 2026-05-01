@@ -1,7 +1,5 @@
 import express from 'express';
 import multer from 'multer';
-import fs from 'fs';
-import path from 'path';
 import { authenticateToken } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import {
@@ -12,35 +10,27 @@ import {
   listChatRoomsForUser,
   issueAppointmentScopedToken,
   getCommunicationHealth,
+  hardEndAppointmentConsultationRoom,
   recordCommunicationEvent,
   communicationActorRoleForAppointment
 } from '../services/communications.js';
 import {
+  kickCommunicationParticipant,
   inviteCommunicationParticipant,
   listCommunicationParticipants,
+  regenerateCommunicationParticipantAccess,
+  resendCommunicationParticipantInvite,
   revokeCommunicationParticipant,
   verifyCommunicationParticipantInvite
 } from '../services/communications/participantAccessService.js';
+import {
+  getAttachmentDownload,
+  storeChatAttachment
+} from '../services/communications/attachmentStorageService.js';
 import { emitChatRead } from '../sockets/chat.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
-
-const chatUploadDir = path.join(process.cwd(), 'uploads', 'chat');
-if (!fs.existsSync(chatUploadDir)) {
-  fs.mkdirSync(chatUploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, chatUploadDir);
-  },
-  filename: (req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const cleaned = file.originalname.replace(/[^a-zA-Z0-9.\-]/g, '_');
-    cb(null, `${unique}-${cleaned}`);
-  }
-});
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = new Set([
@@ -54,7 +44,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_FILE_SIZE
   },
@@ -77,6 +67,14 @@ const CLIENT_EVENT_TYPES = new Set([
   'network_quality_degraded',
   'attachment_uploaded'
 ]);
+
+export function deprecatedVideoTokenHeaders() {
+  return {
+    Deprecation: 'true',
+    Sunset: 'Fri, 31 Jul 2026 23:59:59 GMT',
+    Link: '</communications/appointments/:appointmentId/token>; rel="successor-version"; type="application/json"'
+  };
+}
 
 function sanitizeClientMetadata(metadata = {}) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
@@ -110,6 +108,9 @@ function sendCommunicationRouteError(res, error, fallbackCode = 'COMMUNICATIONS_
   }
   if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
     return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
+  }
+  if (error.message?.startsWith?.('COMM_ATTACHMENT_')) {
+    return res.status(error.status || 503).json({ error: { code: error.message } });
   }
   console.error('Communications route error:', error);
   return res.status(500).json({ error: { code: fallbackCode } });
@@ -276,32 +277,35 @@ router.post(
         return res.status(400).json({ error: 'file is required' });
       }
 
-      await getAppointmentForUser(appointmentId, req.user);
-      const relativePath = path.posix.join('uploads', 'chat', file.filename);
+      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const stored = await storeChatAttachment({ appointmentId: appointment.id, file });
       const saved = await saveChatMessage({
         appointmentId,
         senderId: req.user.id,
         message: file.originalname,
         messageType: 'file',
-        fileUrl: `/${relativePath}`,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        fileSizeBytes: file.size,
-        metadata: {
-          storage: 'local_uploads',
-          retentionPolicy: 'appointment_history'
-        }
+        fileName: stored.fileName,
+        mimeType: stored.mimeType,
+        fileSizeBytes: stored.fileSizeBytes,
+        storageProvider: stored.storageProvider,
+        storageBucket: stored.storageBucket,
+        storageObjectKey: stored.storageObjectKey,
+        mediaRetentionUntil: stored.mediaRetentionUntil,
+        mediaScanStatus: stored.mediaScanStatus,
+        metadata: stored.metadata
       });
       await recordCommunicationEvent({
         appointmentId,
         userId: req.user.id,
-        actorRole: communicationActorRoleForAppointment(req.user, await getAppointmentForUser(appointmentId, req.user)),
+        actorRole: communicationActorRoleForAppointment(req.user, appointment),
         eventType: 'attachment_uploaded',
-        provider: 'local',
+        provider: stored.storageProvider,
         metadata: {
           messageId: saved.message.id,
           mimeType: file.mimetype,
-          size: file.size
+          size: file.size,
+          storageProvider: stored.storageProvider,
+          scanStatus: stored.mediaScanStatus
         }
       });
 
@@ -317,7 +321,38 @@ router.post(
       if (error.message?.startsWith?.('TWILIO_') || error.code === 'TWILIO_CONVERSATIONS_ERROR') {
         return res.status(503).json({ error: { code: 'COMMUNICATIONS_PROVIDER_UNAVAILABLE' } });
       }
+      if (error.message?.startsWith?.('COMM_ATTACHMENT_')) {
+        return res.status(error.status || 503).json({ error: { code: error.message } });
+      }
       return res.status(500).json({ error: 'Failed to upload attachment' });
+    }
+  }
+);
+
+router.get(
+  '/attachments/:messageId/download',
+  async (req, res) => {
+    try {
+      const download = await getAttachmentDownload({
+        messageId: req.params.messageId,
+        expiresAt: req.query.expiresAt,
+        signature: req.query.signature
+      });
+      if (download.redirectUrl) {
+        return res.redirect(302, download.redirectUrl);
+      }
+      res.setHeader('Content-Type', download.mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(download.fileName)}"`);
+      if (download.fileSizeBytes) {
+        res.setHeader('Content-Length', download.fileSizeBytes.toString());
+      }
+      return download.stream.pipe(res);
+    } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ error: { code: error.message } });
+      }
+      console.error('Attachment download failed:', error);
+      return res.status(500).json({ error: { code: 'ATTACHMENT_DOWNLOAD_FAILED' } });
     }
   }
 );
@@ -438,6 +473,58 @@ router.post(
 );
 
 router.post(
+  '/appointments/:appointmentId/participants/:participantId/resend',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await resendCommunicationParticipantInvite({
+        appointmentId: req.params.appointmentId,
+        participantId: req.params.participantId,
+        user: req.user,
+        expiresInHours: req.body?.expiresInHours
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANT_INVITE_RESEND_FAILED');
+    }
+  }
+);
+
+router.post(
+  '/appointments/:appointmentId/participants/:participantId/regenerate-access',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await regenerateCommunicationParticipantAccess({
+        appointmentId: req.params.appointmentId,
+        participantId: req.params.participantId,
+        user: req.user
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANT_ACCESS_REGENERATE_FAILED');
+    }
+  }
+);
+
+router.post(
+  '/appointments/:appointmentId/participants/:participantId/kick',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await kickCommunicationParticipant({
+        appointmentId: req.params.appointmentId,
+        participantId: req.params.participantId,
+        user: req.user
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'PARTICIPANT_KICK_FAILED');
+    }
+  }
+);
+
+router.post(
   '/appointments/:appointmentId/participants/verify-invite',
   async (req, res) => {
     try {
@@ -455,6 +542,22 @@ router.post(
 );
 
 router.post(
+  '/appointments/:appointmentId/video/end',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const result = await hardEndAppointmentConsultationRoom({
+        appointmentId: req.params.appointmentId,
+        user: req.user
+      });
+      return res.json(result);
+    } catch (error) {
+      return sendCommunicationRouteError(res, error, 'VIDEO_ROOM_END_FAILED');
+    }
+  }
+);
+
+router.post(
   '/appointments/:appointmentId/video/token',
   authenticateToken,
   async (req, res) => {
@@ -462,13 +565,26 @@ router.post(
       const { appointmentId } = req.params;
       const { expireSeconds } = req.body || {};
 
-      res.set('Deprecation', 'true');
-      res.set('Link', '</communications/appointments/:appointmentId/token>; rel="successor-version"');
+      const deprecationHeaders = deprecatedVideoTokenHeaders();
+      Object.entries(deprecationHeaders).forEach(([header, value]) => res.set(header, value));
 
       const session = await issueAppointmentScopedToken({
         appointmentId,
         user: req.user,
         ttl: expireSeconds ? parseInt(expireSeconds, 10) : 3600
+      });
+
+      await recordCommunicationEvent({
+        appointmentId,
+        userId: req.user.id,
+        actorRole: 'deprecated_client',
+        eventType: 'deprecated_video_token_route_used',
+        provider: 'api',
+        metadata: {
+          route: 'POST /communications/appointments/:appointmentId/video/token',
+          successor: 'GET /communications/appointments/:appointmentId/token',
+          sunset: '2026-07-31'
+        }
       });
 
       res.json({

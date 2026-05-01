@@ -3,16 +3,19 @@ import twilio from 'twilio';
 class SmsAdapter {
   constructor() {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const apiKeySid = process.env.TWILIO_API_KEY_SID;
+    const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
     
     // Fallback safely so the app doesn't crash during build without envs
-    this.client = (accountSid && authToken) ? twilio(accountSid, authToken) : null;
+    this.client = (accountSid && apiKeySid && apiKeySecret)
+      ? twilio(apiKeySid, apiKeySecret, { accountSid })
+      : null;
     this.fromNumber = process.env.TWILIO_SMS_FROM_NUMBER;
   }
 
   async sendSms(to, body) {
     if (!this.client) {
-      console.warn('[SmsAdapter] Twilio Client not initialized due to missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN.');
+      console.warn('[SmsAdapter] Twilio Client not initialized due to missing TWILIO_ACCOUNT_SID or Twilio API key credentials.');
       return { messageSid: 'local-stub-sid' }; 
     }
 

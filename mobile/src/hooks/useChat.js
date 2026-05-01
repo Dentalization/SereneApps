@@ -205,9 +205,19 @@ export function useChat({ userId } = {}) {
           id: message.sid,
           senderId: message.author,
           message: message.body,
-          messageType: message.type || 'text',
+          messageType: attrs.type || message.type || 'text',
           createdAt: message.dateCreated,
-          twilioMessageSid: message.sid
+          twilioMessageSid: message.sid,
+          fileUrl: attrs.fileUrl,
+          fileName: attrs.fileName,
+          mimeType: attrs.mimeType,
+          fileSizeBytes: attrs.fileSizeBytes,
+          mediaRetentionUntil: attrs.mediaRetentionUntil,
+          storageProvider: attrs.storageProvider,
+          mediaScanStatus: attrs.mediaScanStatus,
+          mediaTombstoneReason: attrs.mediaTombstoneReason,
+          attachmentAvailable: attrs.type !== 'file' || attrs.deleted !== true,
+          metadata: attrs
         };
 
         setMessagesByAppointment((prev) => {

@@ -80,6 +80,11 @@ export async function finalizeClinicalSummary(appointmentId, payload) {
   return data;
 }
 
+export async function acknowledgeClinicalSummary(appointmentId) {
+  const { data } = await authHttp.post(`/appointments/${appointmentId}/clinical-summary/acknowledge`);
+  return data;
+}
+
 export async function listCommunicationParticipants(appointmentId) {
   const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/participants`);
   return data?.participants || [];
@@ -93,6 +98,39 @@ export async function inviteCommunicationParticipant(appointmentId, payload) {
 export async function revokeCommunicationParticipant(appointmentId, participantId) {
   const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/${participantId}/revoke`);
   return data?.participant;
+}
+
+export async function resendCommunicationParticipantInvite(appointmentId, participantId) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/${participantId}/resend`);
+  return data;
+}
+
+export async function regenerateCommunicationParticipantAccess(appointmentId, participantId) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/${participantId}/regenerate-access`);
+  return data;
+}
+
+export async function kickCommunicationParticipant(appointmentId, participantId) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/participants/${participantId}/kick`);
+  return data;
+}
+
+export async function hardEndConsultationRoom(appointmentId) {
+  const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/video/end`);
+  return data;
+}
+
+export async function fetchOperationalCommunicationDiagnostics(params = {}) {
+  const { data } = await authHttp.get('/admin/communications/appointments', { params });
+  return data;
+}
+
+export async function exportCommunicationAudit(appointmentId, format = 'csv') {
+  const { data } = await authHttp.get(`/admin/communications/appointments/${appointmentId}/audit-export`, {
+    params: { format },
+    responseType: 'blob'
+  });
+  return data;
 }
 
 export async function fetchCommunicationDiagnostics(appointmentId) {

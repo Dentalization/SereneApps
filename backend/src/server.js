@@ -36,6 +36,7 @@ import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
 import { start as startOutboxWorker } from './services/events/outboxWorker.js';
 import { startReminderWorker } from './services/appointments/reminderService.js';
+import { startCommunicationsRetentionWorker } from './services/communications/retentionService.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
@@ -92,6 +93,7 @@ registerChatGateway(io);
 startNotificationWorker();
 startOutboxWorker();
 startReminderWorker();
+startCommunicationsRetentionWorker();
 
 app.use(cors(corsOptions));
 // Increase JSON body size limit to handle AI analysis payloads safely
