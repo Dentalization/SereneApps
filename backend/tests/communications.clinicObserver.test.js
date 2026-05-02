@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { __testables } = await import('../src/services/clinicTeledentistryService.js');
+const { __testables: clinicPolicyTestables } = await import('../src/services/clinicAuthorizationPolicyService.js');
 const { __testables: videoWebhookTestables } = await import('../src/services/communications/videoWebhookHandler.js');
 
 test('clinic teledentistry capabilities keep observer and chat review owner-only', () => {
@@ -43,6 +44,68 @@ test('assigned branch scope is enforced for non-owner clinic staff', () => {
     ),
     [11n, 22n, 33n]
   );
+});
+
+test('shared clinic observer policy returns audit-safe denial reasons', () => {
+  const appointment = {
+    clinicBranchId: 22n,
+    consultationType: 'virtual',
+    videoRoomRef: null,
+    clinicBranch: { clinicProfileId: 10n }
+  };
+
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({ staff: null, appointment }).reason,
+    'not_clinic_staff'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_owner', isActive: false, clinicProfileId: 10n },
+      appointment
+    }).reason,
+    'inactive_clinic_staff'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_owner', isActive: true, clinicProfileId: 99n },
+      appointment
+    }).reason,
+    'cross_clinic_denied'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_owner', isActive: true, clinicProfileId: 10n },
+      appointment: { ...appointment, consultationType: 'onsite', videoRoomRef: null }
+    }).reason,
+    'appointment_not_tele'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_admin', isActive: true, clinicProfileId: 10n, assignedBranchId: 33n },
+      appointment
+    }).reason,
+    'cross_branch_denied'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_admin', isActive: true, clinicProfileId: 10n, assignedBranchId: 22n },
+      appointment
+    }).reason,
+    'clinic_role_not_allowed'
+  );
+  assert.equal(
+    clinicPolicyTestables.evaluateClinicObserverStaffAccess({
+      staff: { id: 1n, role: 'clinic_owner', isActive: true, clinicProfileId: 10n },
+      appointment
+    }).allowed,
+    true
+  );
+});
+
+test('shared clinic policy classifies tele appointments consistently', () => {
+  assert.equal(clinicPolicyTestables.isTeleAppointment({ consultationType: 'tele' }), true);
+  assert.equal(clinicPolicyTestables.isTeleAppointment({ consultationType: 'onsite', videoRoomRef: 'appointment-1' }), true);
+  assert.equal(clinicPolicyTestables.isTeleAppointment({ consultationType: 'onsite' }), false);
 });
 
 test('session buckets distinguish waiting from live and ended', () => {
