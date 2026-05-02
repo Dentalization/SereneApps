@@ -12,11 +12,10 @@ import {
 } from './communications/naming.js';
 import { logCommunicationEvent } from './communications/logging.js';
 import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
+import { evaluateClinicObserverAccess } from './clinicAuthorizationPolicyService.js';
 
 const prisma = new PrismaClient();
 const OBSERVER_TOKEN_MAX_TTL_SECONDS = 900;
-const OBSERVER_ALLOWED_CLINIC_ROLES = new Set(['clinic_owner', 'owner']);
-const TELE_CONSULTATION_TYPES = new Set(['virtual', 'tele', 'teledentistry']);
 
 let conversationsAdapter;
 let videoService;
@@ -74,40 +73,6 @@ function userCanAccessAppointment(user, appointment) {
     || userId === appointment.patientId
     || invitedParticipant
   );
-}
-
-async function evaluateClinicObserverAccess(user, appointment) {
-  const userId = BigInt(user.id);
-  if (!appointment.clinicBranch?.clinicProfileId) {
-    return { allowed: false, reason: 'independent_dentist_denied' };
-  }
-
-  const staff = await prisma.clinicStaff.findUnique({
-    where: { userId },
-    select: {
-      id: true,
-      role: true,
-      isActive: true,
-      clinicProfileId: true,
-      assignedBranchId: true
-    }
-  });
-  if (!staff) return { allowed: false, reason: 'not_clinic_staff' };
-  if (!staff.isActive) return { allowed: false, reason: 'inactive_clinic_staff', staffId: staff.id };
-  if (staff.clinicProfileId !== appointment.clinicBranch.clinicProfileId) {
-    return { allowed: false, reason: 'cross_clinic_denied', staffId: staff.id };
-  }
-
-  const isTeleAppointment = TELE_CONSULTATION_TYPES.has(appointment.consultationType) || Boolean(appointment.videoRoomRef);
-  if (!isTeleAppointment) {
-    return { allowed: false, reason: 'appointment_not_tele', staffId: staff.id };
-  }
-
-  if (!OBSERVER_ALLOWED_CLINIC_ROLES.has(staff.role)) {
-    return { allowed: false, reason: 'clinic_role_not_allowed', staffId: staff.id };
-  }
-
-  return { allowed: true, reason: null, staffId: staff.id };
 }
 
 export function normalizeCommunicationTokenMode(input = {}) {

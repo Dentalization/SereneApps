@@ -1,60 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
 import { recordCommunicationEvent } from './communications.js';
+import {
+  capabilitiesForClinicRole,
+  clinicAdminCanViewClinicalSummary,
+  clinicBranchIdsForContext,
+  getClinicTeledentistryContext,
+  scopedClinicBranchIdsForContext,
+  teleAppointmentScope,
+  toBigInt
+} from './clinicAuthorizationPolicyService.js';
+
+export { getClinicTeledentistryContext } from './clinicAuthorizationPolicyService.js';
 
 const prisma = new PrismaClient();
 
-const OWNER_ROLES = new Set(['clinic_owner', 'owner']);
-const ADMIN_ROLES = new Set(['clinic_admin', 'manager', 'clinic_manager', 'admin']);
-const STAFF_ROLES = new Set(['clinic_staff', 'staff', 'front_office', 'nurse', 'cashier']);
-const TELE_CONSULTATION_TYPES = ['virtual', 'tele', 'teledentistry'];
 const WAITING_STATUSES = new Set(['scheduled', 'confirmed', 'check-in', 'in-chair']);
 const COMPLETED_STATUSES = new Set(['completed']);
 const ENDED_STATUSES = new Set(['cancelled', 'no-show']);
 const OBSERVER_VIDEO_SESSION_ROLES = new Set(['observer', 'clinic_observer']);
-
-function toBigInt(value, fieldName = 'id') {
-  try {
-    return BigInt(value);
-  } catch (_) {
-    const error = new Error(`INVALID_${fieldName.toUpperCase()}`);
-    error.status = 400;
-    throw error;
-  }
-}
-
-function normalizeClinicRole(role) {
-  if (OWNER_ROLES.has(role)) return 'clinic_owner';
-  if (ADMIN_ROLES.has(role)) return 'clinic_admin';
-  if (STAFF_ROLES.has(role)) return 'clinic_staff';
-  return null;
-}
-
-function hasRole(clinicRole, allowedRoles = []) {
-  return allowedRoles.includes(clinicRole);
-}
-
-function capabilitiesForClinicRole(clinicRole) {
-  return {
-    canObserve: clinicRole === 'clinic_owner',
-    canViewSummaries: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin',
-    canViewClinicalSummaryBody: clinicRole === 'clinic_owner'
-      || (clinicRole === 'clinic_admin' && clinicAdminCanViewClinicalSummary()),
-    canViewChatHistory: clinicRole === 'clinic_owner',
-    canViewAuditLog: clinicRole === 'clinic_owner',
-    canViewSessions: clinicRole === 'clinic_owner' || clinicRole === 'clinic_admin'
-  };
-}
-
-function clinicAdminCanViewClinicalSummary(env = process.env) {
-  return env.CLINIC_ADMIN_CAN_VIEW_CLINICAL_SUMMARY === 'true';
-}
-
-function scopedClinicBranchIdsForContext(context, branchIds) {
-  return context.assignedBranchId && context.clinicRole !== 'clinic_owner'
-    ? [context.assignedBranchId]
-    : branchIds;
-}
 
 function dateWindow(date) {
   if (!date) return null;
@@ -212,56 +176,6 @@ function serializeMessage(message) {
   };
 }
 
-export async function getClinicTeledentistryContext(user, allowedRoles = ['clinic_owner', 'clinic_admin']) {
-  const staff = await prisma.clinicStaff.findUnique({
-    where: { userId: toBigInt(user.id, 'userId') },
-    select: {
-      id: true,
-      role: true,
-      isActive: true,
-      clinicProfileId: true,
-      assignedBranchId: true
-    }
-  });
-
-  const clinicRole = normalizeClinicRole(staff?.role);
-  if (!staff?.isActive || !clinicRole || !hasRole(clinicRole, allowedRoles)) {
-    const error = new Error('FORBIDDEN');
-    error.status = 403;
-    throw error;
-  }
-
-  return {
-    userId: toBigInt(user.id, 'userId'),
-    staffId: staff.id,
-    clinicRole,
-    capabilities: capabilitiesForClinicRole(clinicRole),
-    clinicProfileId: staff.clinicProfileId,
-    assignedBranchId: staff.assignedBranchId
-  };
-}
-
-async function clinicBranchIds(context) {
-  if (context.assignedBranchId && context.clinicRole !== 'clinic_owner') {
-    return [context.assignedBranchId];
-  }
-  const branches = await prisma.clinicBranch.findMany({
-    where: { clinicProfileId: context.clinicProfileId },
-    select: { id: true }
-  });
-  return scopedClinicBranchIdsForContext(context, branches.map((branch) => branch.id));
-}
-
-function teleAppointmentScope(branchIds) {
-  return {
-    clinicBranchId: { in: branchIds },
-    OR: [
-      { consultationType: { in: TELE_CONSULTATION_TYPES } },
-      { videoRoomRef: { not: null } }
-    ]
-  };
-}
-
 function sessionStatusWhere(status) {
   if (status === 'live') {
     return { videoSessions: { some: activeClinicalVideoSessionWhere() } };
@@ -297,7 +211,7 @@ function sessionStatusWhere(status) {
 }
 
 async function getClinicTeleAppointment({ context, appointmentId }) {
-  const branchIds = await clinicBranchIds(context);
+  const branchIds = await clinicBranchIdsForContext(context);
   if (!branchIds.length) {
     const error = new Error('APPOINTMENT_NOT_FOUND');
     error.status = 404;
@@ -307,11 +221,7 @@ async function getClinicTeleAppointment({ context, appointmentId }) {
   const appointment = await prisma.appointment.findFirst({
     where: {
       id: toBigInt(appointmentId, 'appointmentId'),
-      clinicBranchId: { in: branchIds },
-      OR: [
-        { consultationType: { in: TELE_CONSULTATION_TYPES } },
-        { videoRoomRef: { not: null } }
-      ]
+      ...teleAppointmentScope(branchIds)
     },
     include: {
       patient: { select: { id: true, name: true, email: true, phone_number: true } },
@@ -332,7 +242,7 @@ async function getClinicTeleAppointment({ context, appointmentId }) {
 
 export async function listClinicTeledentistrySessions({ user, date, status }) {
   const context = await getClinicTeledentistryContext(user);
-  const branchIds = await clinicBranchIds(context);
+  const branchIds = await clinicBranchIdsForContext(context);
   if (!branchIds.length) {
     return {
       clinicRole: context.clinicRole,
@@ -385,7 +295,7 @@ export async function listClinicTeledentistrySessions({ user, date, status }) {
 
 export async function countClinicTeledentistrySessions({ user, status }) {
   const context = await getClinicTeledentistryContext(user);
-  const branchIds = await clinicBranchIds(context);
+  const branchIds = await clinicBranchIdsForContext(context);
   if (!branchIds.length) {
     return { clinicRole: context.clinicRole, capabilities: context.capabilities, status: status || 'all', count: 0 };
   }
@@ -473,18 +383,14 @@ export async function getClinicTeledentistryMessages({ user, appointmentId, limi
 
 export async function listClinicCommunicationAudit({ user, date, eventType, dentistId, limit = 100 }) {
   const context = await getClinicTeledentistryContext(user, ['clinic_owner']);
-  const branchIds = await clinicBranchIds(context);
+  const branchIds = await clinicBranchIdsForContext(context);
   if (!branchIds.length) return { clinicRole: context.clinicRole, capabilities: context.capabilities, events: [] };
 
   const window = dateWindow(date);
   const appointments = await prisma.appointment.findMany({
     where: {
-      clinicBranchId: { in: branchIds },
+      ...teleAppointmentScope(branchIds),
       ...(dentistId ? { dentistId: toBigInt(dentistId, 'dentistId') } : {}),
-      OR: [
-        { consultationType: { in: TELE_CONSULTATION_TYPES } },
-        { videoRoomRef: { not: null } }
-      ]
     },
     select: { id: true },
     take: 500
