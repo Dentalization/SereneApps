@@ -33,6 +33,7 @@ const Teledentistry = () => {
     socketConnected,
     connectionState,
     reconnectError,
+    attachmentUpload,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
@@ -310,9 +311,9 @@ const Teledentistry = () => {
       <main className="flex-1 min-w-0 flex flex-col h-screen">
         <div className="px-6 py-4 border-b border-primary/20 bg-surface-elevated theme-transition flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-primary">Teledentistry Console</h1>
+            <h1 className="text-2xl font-semibold text-primary">Konsol Teledentistry</h1>
             <p className="text-sm text-secondary">
-              Manage virtual consultations, secure messaging, and real-time patient collaboration.
+              Kelola konsultasi virtual, pesan aman, dan kolaborasi real-time dengan pasien.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -326,7 +327,7 @@ const Teledentistry = () => {
               ) : (
                 <Icon name="Video" size={16} />
               )}
-              <span>{callState === 'requesting_token' ? 'Connecting...' : 'Start Instant Call'}</span>
+              <span>{callState === 'requesting_token' ? 'Menghubungkan...' : 'Mulai Panggilan'}</span>
             </button>
             <button
               onClick={() => setShowPostCallSummary(true)}
@@ -334,14 +335,14 @@ const Teledentistry = () => {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:bg-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon name="ClipboardList" size={16} />
-              <span>Summary</span>
+              <span>Ringkasan</span>
             </button>
             <button
               onClick={() => setShowNewConsultation(true)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-all duration-200"
             >
               <Icon name="Plus" size={16} />
-              <span>New Consultation</span>
+              <span>Konsultasi Baru</span>
             </button>
           </div>
         </div>
@@ -361,8 +362,8 @@ const Teledentistry = () => {
         <div className="flex flex-1 min-h-0">
           <aside className="w-80 bg-surface-elevated border-r border-primary/20 flex flex-col theme-transition">
             <div className="px-4 py-4 border-b border-primary/10">
-              <h2 className="text-sm font-semibold text-primary">Conversations</h2>
-              <p className="text-xs text-muted mt-1">Tap to open the patient channel</p>
+              <h2 className="text-sm font-semibold text-primary">Percakapan</h2>
+              <p className="text-xs text-muted mt-1">Pilih untuk membuka kanal pasien</p>
             </div>
             <ConversationList
               conversations={conversations}
@@ -388,6 +389,7 @@ const Teledentistry = () => {
                 currentUserId={user?.id?.toString()}
                 presence={selectedPresence}
                 loading={chatLoading}
+                attachmentUpload={attachmentUpload}
                 onSendText={handleSendTextMessage}
                 onUploadAttachment={handleUploadAttachment}
                 onStartVideoCall={handleStartVideoCall}

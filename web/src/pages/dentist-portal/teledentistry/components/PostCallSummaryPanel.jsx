@@ -56,11 +56,64 @@ const requiredFields = [
   ['plan', 'Rencana tindakan']
 ];
 
+const SUMMARY_TEMPLATES = [
+  {
+    label: 'Karies',
+    values: {
+      assessment: 'Suspek karies gigi. Perlu evaluasi klinis langsung untuk menentukan kedalaman lesi.',
+      plan: 'Edukasi kebersihan mulut, evaluasi restorasi, dan jadwalkan kontrol di klinik.',
+      recommendationsText: 'Sikat gigi 2x sehari dengan pasta gigi fluoride\nBatasi makanan/minuman manis\nKontrol ke klinik untuk pemeriksaan lanjutan'
+    }
+  },
+  {
+    label: 'Gusi berdarah',
+    values: {
+      assessment: 'Keluhan mengarah ke inflamasi gingiva. Perlu evaluasi plak/kalkulus dan faktor risiko.',
+      plan: 'Instruksi oral hygiene, pertimbangkan scaling, dan kontrol ulang sesuai kondisi klinis.',
+      recommendationsText: 'Gunakan sikat gigi berbulu lembut\nBersihkan sela gigi\nKontrol jika perdarahan berlanjut'
+    }
+  },
+  {
+    label: 'Nyeri gigi',
+    values: {
+      assessment: 'Nyeri gigi membutuhkan pemeriksaan klinis/radiografis untuk memastikan sumber nyeri.',
+      plan: 'Berikan edukasi tanda bahaya, rencanakan kunjungan klinik, dan evaluasi kebutuhan terapi definitif.',
+      recommendationsText: 'Hindari mengunyah di sisi yang nyeri\nSegera ke klinik bila bengkak/demam/nyeri berat\nIkuti instruksi obat sesuai resep dokter'
+    }
+  },
+  {
+    label: 'Ortodonti',
+    values: {
+      assessment: 'Konsultasi ortodonti awal. Perlu pemeriksaan oklusi dan dokumentasi klinis.',
+      plan: 'Rujuk untuk evaluasi ortodonti lengkap dan pencatatan foto/radiograf bila diperlukan.',
+      recommendationsText: 'Jaga kebersihan gigi dan bracket/retainer\nCatat keluhan gigitan atau nyeri\nJadwalkan konsultasi lanjutan'
+    }
+  },
+  {
+    label: 'Edukasi OH',
+    values: {
+      assessment: 'Kebutuhan edukasi kebersihan gigi dan mulut.',
+      plan: 'Edukasi teknik sikat gigi, kebiasaan makan, dan jadwal kontrol preventif.',
+      recommendationsText: 'Sikat gigi pagi setelah sarapan dan malam sebelum tidur\nGunakan pasta gigi fluoride\nKontrol rutin setiap 6 bulan'
+    }
+  },
+  {
+    label: 'Rujukan klinik',
+    values: {
+      assessment: 'Membutuhkan pemeriksaan/tindakan langsung di klinik.',
+      plan: 'Buat follow-up klinik untuk pemeriksaan lanjutan dan rencana perawatan.',
+      followUpNeeded: true,
+      recommendationsText: 'Datang ke klinik sesuai jadwal follow-up\nBawa riwayat obat/alergi bila ada\nHubungi klinik bila keluhan memburuk'
+    }
+  }
+];
+
 export default function PostCallSummaryPanel({ appointmentId, conversation, open, onClose }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [status, setStatus] = useState('idle');
   const [summaryStatus, setSummaryStatus] = useState('pending');
   const [followUpTasks, setFollowUpTasks] = useState([]);
+  const [summaryMeta, setSummaryMeta] = useState({ patientAcknowledgedAt: null, finalizedAt: null });
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const autosaveRef = useRef(null);
@@ -77,11 +130,16 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
     loadedRef.current = false;
     setStatus('loading');
     setError('');
+    setSummaryMeta({ patientAcknowledgedAt: null, finalizedAt: null });
     fetchClinicalSummary(appointmentId)
       .then((result) => {
         setSummaryStatus(result.status || 'pending');
         setForm(toForm(result.summary));
         setFollowUpTasks(result.summary?.followUpTasks || []);
+        setSummaryMeta({
+          patientAcknowledgedAt: result.summary?.patientAcknowledgedAt || null,
+          finalizedAt: result.summary?.finalizedAt || null
+        });
         setDirty(false);
       })
       .catch((err) => setError(err?.response?.data?.error?.code || 'Gagal memuat ringkasan.'))
@@ -100,6 +158,10 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         .then((result) => {
           setSummaryStatus(result.status || 'draft');
           setFollowUpTasks(result.summary?.followUpTasks || []);
+          setSummaryMeta({
+            patientAcknowledgedAt: result.summary?.patientAcknowledgedAt || null,
+            finalizedAt: result.summary?.finalizedAt || null
+          });
           setDirty(false);
           setError('');
         })
@@ -132,6 +194,10 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
       const result = await saveClinicalSummaryDraft(appointmentId, toPayload(form));
       setSummaryStatus(result.status || 'draft');
       setFollowUpTasks(result.summary?.followUpTasks || []);
+      setSummaryMeta({
+        patientAcknowledgedAt: result.summary?.patientAcknowledgedAt || null,
+        finalizedAt: result.summary?.finalizedAt || null
+      });
       setDirty(false);
       setError('');
     } catch (err) {
@@ -152,6 +218,10 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
       const result = await finalizeClinicalSummary(appointmentId, toPayload(form));
       setSummaryStatus(result.status || 'finalized');
       setFollowUpTasks(result.summary?.followUpTasks || []);
+      setSummaryMeta({
+        patientAcknowledgedAt: result.summary?.patientAcknowledgedAt || null,
+        finalizedAt: result.summary?.finalizedAt || null
+      });
       setDirty(false);
       setError('');
     } catch (err) {
@@ -164,6 +234,15 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   const handleClose = () => {
     if (dirty && !isFinalized && !window.confirm('Draft belum tersimpan. Tutup panel?')) return;
     onClose?.();
+  };
+
+  const applyTemplate = (template) => {
+    if (isFinalized) return;
+    setForm((current) => ({
+      ...current,
+      ...template.values
+    }));
+    setDirty(true);
   };
 
   return (
@@ -193,7 +272,12 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
 
         {isFinalized && (
           <div className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Ringkasan sudah final dan tampil sebagai read-only.
+            <div>Ringkasan sudah final dan tampil sebagai read-only.</div>
+            <div className="mt-1 text-xs">
+              {summaryMeta.patientAcknowledgedAt
+                ? `Pasien sudah mengakui ringkasan pada ${new Date(summaryMeta.patientAcknowledgedAt).toLocaleString('id-ID')}.`
+                : 'Pasien belum mengakui ringkasan klinis ini.'}
+            </div>
           </div>
         )}
 
@@ -204,6 +288,23 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         )}
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {!isFinalized && (
+            <section className="rounded-lg border border-primary/10 bg-surface px-3 py-3">
+              <div className="mb-2 text-sm font-medium text-primary">Template cepat</div>
+              <div className="flex flex-wrap gap-2">
+                {SUMMARY_TEMPLATES.map((template) => (
+                  <button
+                    key={template.label}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    className="rounded-lg border border-primary/15 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
+                  >
+                    {template.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           <Field label="Keluhan utama / Chief complaint" required value={form.chiefComplaint} disabled={isFinalized} onChange={(value) => updateField('chiefComplaint', value)} />
           <Field label="Catatan subjektif" value={form.subjectiveNotes} disabled={isFinalized} onChange={(value) => updateField('subjectiveNotes', value)} />
           <Field label="Temuan objektif" required value={form.objectiveFindings} disabled={isFinalized} onChange={(value) => updateField('objectiveFindings', value)} />
