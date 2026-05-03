@@ -10,6 +10,20 @@ const CALL_STATES = {
   ERROR: 'error',
 };
 
+const DEVICE_CHECK_CACHE_TTL_MS = 2 * 60 * 1000;
+const DEVICE_CHECK_CACHE_KEY = 'sereneapps:teledentistry:device-check-passed-at';
+
+function hasRecentDeviceCheck() {
+  if (typeof window === 'undefined') return false;
+  const value = Number(window.sessionStorage?.getItem(DEVICE_CHECK_CACHE_KEY) || 0);
+  return value && Date.now() - value < DEVICE_CHECK_CACHE_TTL_MS;
+}
+
+function markDeviceCheckPassed() {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage?.setItem(DEVICE_CHECK_CACHE_KEY, String(Date.now()));
+}
+
 /**
  * useCallState — manages the full lifecycle of a video call.
  *
@@ -57,10 +71,13 @@ export function useCallState({ userId } = {}) {
           throw new Error('Koneksi internet tidak tersedia. Periksa jaringan Anda lalu coba lagi.');
         }
 
-        // Pre-flight check: ensure permissions before ringing the other side
+        // Pre-flight check: reuse the checklist result briefly to avoid duplicate permission prompts.
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-          stream.getTracks().forEach(t => t.stop());
+          if (!hasRecentDeviceCheck()) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            stream.getTracks().forEach(t => t.stop());
+            markDeviceCheckPassed();
+          }
           recordCommunicationClientEvent(appointmentId, 'device_check_passed', { camera: true, microphone: true }).catch(() => null);
         } catch (mediaError) {
           console.warn('[useCallState] Media permission error:', mediaError);
@@ -68,9 +85,9 @@ export function useCallState({ userId } = {}) {
             reason: mediaError?.name || 'media_unavailable'
           }).catch(() => null);
           if (mediaError.name === 'NotAllowedError' || mediaError.message?.includes('denied')) {
-            throw new Error('Kamera & Mikrofon tidak diizinkan. Mohon izinkan akses di browser.');
+            throw new Error('Kamera & Mikrofon tidak diizinkan. Izinkan akses di browser, lalu coba lagi.');
           }
-          throw new Error('Kamera/Mikrofon tidak ditemukan atau tidak dapat diakses.');
+          throw new Error('Kamera/Mikrofon tidak ditemukan atau tidak dapat diakses. Periksa perangkat atau reload halaman.');
         }
 
         const tokenData = await fetchVideoToken(appointmentId, role);

@@ -22,6 +22,7 @@ const PatientTeledentistry = () => {
     messages,
     incomingCall,
     socketConnected,
+    attachmentUpload,
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
@@ -303,6 +304,7 @@ const PatientTeledentistry = () => {
             messages={messages}
             currentUserId={user?.id?.toString()}
             presence={selectedPresence}
+            attachmentUpload={attachmentUpload}
             onSendText={handleSendTextMessage}
             onUploadAttachment={handleUploadAttachment}
             onStartVideoCall={handleStartVideoCall}

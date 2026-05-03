@@ -12,6 +12,7 @@ export function useTwilioVideoClient() {
   const remoteElementRef = useRef(null);
   const remoteContainerRef = useRef(null);
   const remoteTrackElementsRef = useRef(new Map());
+  const remoteTrackLabelerRef = useRef(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -27,7 +28,7 @@ export function useTwilioVideoClient() {
     track.detach(element);
   };
 
-  const attachRemoteTrack = (track) => {
+  const attachRemoteTrack = (track, participant = null) => {
     if (!track || track.kind !== 'video') return;
     if (remoteContainerRef.current) {
       if (remoteTrackElementsRef.current.has(track.sid)) return;
@@ -35,8 +36,17 @@ export function useTwilioVideoClient() {
       element.autoplay = true;
       element.playsInline = true;
       element.className = 'h-full min-h-[180px] w-full rounded-lg bg-black object-contain';
-      remoteContainerRef.current.appendChild(element);
-      remoteTrackElementsRef.current.set(track.sid, { track, element });
+      const wrapper = document.createElement('div');
+      wrapper.className = 'relative min-h-[180px] overflow-hidden rounded-lg bg-black';
+      wrapper.appendChild(element);
+
+      const label = document.createElement('div');
+      label.className = 'absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs font-medium text-white';
+      label.textContent = remoteTrackLabelerRef.current?.(participant, track) || 'Participant';
+      wrapper.appendChild(label);
+
+      remoteContainerRef.current.appendChild(wrapper);
+      remoteTrackElementsRef.current.set(track.sid, { track, element, wrapper });
       setRemoteTrackCount(remoteTrackElementsRef.current.size);
       return;
     }
@@ -57,6 +67,7 @@ export function useTwilioVideoClient() {
     const tracked = remoteTrackElementsRef.current.get(track.sid);
     if (tracked) {
       track.detach(tracked.element);
+      tracked.wrapper?.remove();
       tracked.element.remove();
       remoteTrackElementsRef.current.delete(track.sid);
       setRemoteTrackCount(remoteTrackElementsRef.current.size);
@@ -72,11 +83,11 @@ export function useTwilioVideoClient() {
   const subscribeParticipantTracks = (participant) => {
     participant.tracks.forEach((publication) => {
       if (publication.track && publication.track.kind === 'video' && publication.isSubscribed) {
-        attachRemoteTrack(publication.track);
+        attachRemoteTrack(publication.track, participant);
       }
       publication.on('subscribed', (track) => {
         if (track.kind === 'video') {
-          attachRemoteTrack(track);
+          attachRemoteTrack(track, participant);
         }
       });
       publication.on('unsubscribed', (track) => {
@@ -103,8 +114,9 @@ export function useTwilioVideoClient() {
 
     remoteVideoTrackRef.current?.detach(remoteElementRef.current);
     remoteVideoTrackRef.current = null;
-    remoteTrackElementsRef.current.forEach(({ track, element }) => {
+    remoteTrackElementsRef.current.forEach(({ track, element, wrapper }) => {
       track.detach(element);
+      wrapper?.remove();
       element.remove();
     });
     remoteTrackElementsRef.current.clear();
@@ -112,6 +124,7 @@ export function useTwilioVideoClient() {
     localElementRef.current = null;
     remoteElementRef.current = null;
     remoteContainerRef.current = null;
+    remoteTrackLabelerRef.current = null;
 
     setIsConnected(false);
     setConnectionState('disconnected');
@@ -128,6 +141,7 @@ export function useTwilioVideoClient() {
       localVideoEl,
       remoteVideoEl,
       remoteContainerEl,
+      remoteTrackLabeler,
       observeOnly: nextObserveOnly = false
     }) => {
       if (!roomName || !token) {
@@ -141,6 +155,7 @@ export function useTwilioVideoClient() {
       localElementRef.current = localVideoEl;
       remoteElementRef.current = remoteVideoEl;
       remoteContainerRef.current = remoteContainerEl || null;
+      remoteTrackLabelerRef.current = remoteTrackLabeler || null;
 
       let room;
       try {

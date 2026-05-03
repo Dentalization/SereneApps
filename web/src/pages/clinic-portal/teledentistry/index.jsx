@@ -38,6 +38,59 @@ function formatDuration(seconds = 0) {
   return `${mins}m ${secs}s`;
 }
 
+const ROLE_LABELS = {
+  dentist: 'Dokter',
+  patient: 'Pasien',
+  guardian: 'Wali',
+  interpreter: 'Interpreter',
+  assistant: 'Asisten',
+  observer: 'Observer Klinik'
+};
+
+const EVENT_CATEGORY_LABELS = {
+  session: 'Sesi',
+  observer: 'Observer',
+  security: 'Keamanan',
+  chat: 'Chat',
+  summary: 'Ringkasan',
+  attachment: 'Attachment',
+  system: 'Sistem'
+};
+
+function sessionStatusLabel(status) {
+  if (status === 'live') return 'Live';
+  if (status === 'waiting') return 'Menunggu';
+  if (status === 'completed') return 'Selesai';
+  if (status === 'ended') return 'Berakhir';
+  return status || 'Unknown';
+}
+
+function summaryStatusLabel(status) {
+  if (status === 'finalized') return 'Final';
+  if (status === 'amended') return 'Diamendemen';
+  if (status === 'draft') return 'Draft';
+  return 'Menunggu';
+}
+
+function auditCategory(eventType = '') {
+  if (eventType.includes('observer_publish') || eventType.includes('denied')) return 'security';
+  if (eventType.includes('observer')) return 'observer';
+  if (eventType.includes('message') || eventType.includes('chat')) return 'chat';
+  if (eventType.includes('summary')) return 'summary';
+  if (eventType.includes('attachment')) return 'attachment';
+  if (eventType.includes('room') || eventType.includes('participant')) return 'session';
+  return 'system';
+}
+
+function auditCategoryClass(category) {
+  if (category === 'security') return 'border-red-200 bg-red-50 text-red-700';
+  if (category === 'observer') return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+  if (category === 'chat') return 'border-violet-200 bg-violet-50 text-violet-700';
+  if (category === 'summary') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (category === 'attachment') return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-slate-200 bg-slate-50 text-slate-700';
+}
+
 function statusClass(status) {
   if (status === 'live') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if (status === 'waiting') return 'bg-amber-50 text-amber-700 border-amber-200';
@@ -54,12 +107,12 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
       <aside className="h-full w-full max-w-2xl bg-surface-elevated border-l border-primary/20 shadow-2xl flex flex-col">
         <header className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-primary">Clinical Summary</h2>
+            <h2 className="text-lg font-semibold text-primary">Ringkasan Klinis</h2>
             <p className="text-sm text-secondary">
-              {summary?.appointment?.patient?.name || 'Patient'} · Appointment #{summary?.appointment?.id || '-'}
+              {summary?.appointment?.patient?.name || 'Pasien'} · Appointment #{summary?.appointment?.id || '-'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Close summary">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Tutup ringkasan">
             <Icon name="X" size={18} />
           </button>
         </header>
@@ -73,7 +126,7 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
           )}
           {!loading && !error && !body && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Summary belum final atau belum tersedia untuk klinik.
+              Ringkasan belum final atau isi klinis tidak tersedia untuk role klinik ini.
             </div>
           )}
           {body && (
@@ -101,20 +154,20 @@ function MessagesDrawer({ open, messagesState, onClose }) {
       <aside className="h-full w-full max-w-2xl bg-surface-elevated border-l border-primary/20 shadow-2xl flex flex-col">
         <header className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-primary">Chat Projection</h2>
+            <h2 className="text-lg font-semibold text-primary">Riwayat Chat Konsultasi</h2>
             <p className="text-sm text-secondary">
               Appointment #{messagesState.appointmentId || '-'} · local chat_messages
             </p>
             <p className="mt-1 text-xs text-muted">
-              Clinic owner can review local projected chat history for compliance. Attachment downloads are not enabled in observer review.
+              Clinic owner dapat meninjau arsip chat lokal untuk compliance. Download attachment tidak tersedia di mode review klinik.
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Close messages">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Tutup riwayat chat">
             <Icon name="X" size={18} />
           </button>
         </header>
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {messagesState.loading && <p className="text-sm text-secondary">Memuat chat history...</p>}
+          {messagesState.loading && <p className="text-sm text-secondary">Memuat riwayat chat...</p>}
           {messagesState.error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {messagesState.error}
@@ -122,7 +175,7 @@ function MessagesDrawer({ open, messagesState, onClose }) {
           )}
           {!messagesState.loading && !messagesState.error && messagesState.messages.length === 0 && (
             <div className="rounded-xl border border-primary/10 bg-surface p-4 text-sm text-secondary">
-              Belum ada chat message yang tersinkron ke projection lokal.
+              Belum ada pesan chat yang tersinkron ke arsip lokal.
             </div>
           )}
           {messagesState.messages.map((message) => (
@@ -135,7 +188,7 @@ function MessagesDrawer({ open, messagesState, onClose }) {
                 <div className="mt-2 rounded-lg border border-primary/10 bg-surface-elevated px-3 py-2 text-sm">
                   <div className="font-medium text-primary">{message.fileName || 'Attachment'}</div>
                   <div className="text-xs text-secondary">
-                    {message.attachmentAvailable ? 'Attachment tersedia via signed download.' : `Attachment tidak tersedia (${message.mediaTombstoneReason || 'expired/deleted'}).`}
+                    {message.attachmentAvailable ? 'Attachment tersimpan, tetapi download dinonaktifkan untuk review klinik.' : `Attachment tidak tersedia (${message.mediaTombstoneReason || 'expired/deleted'}).`}
                   </div>
                 </div>
               ) : (
@@ -158,11 +211,31 @@ function SummaryField({ label, value }) {
   );
 }
 
-function ObserverModal({ appointmentId, open, onClose }) {
+function participantLabelFromIdentity(identity, session) {
+  const value = String(identity || '');
+  if (session?.dentist?.id && value === String(session.dentist.id)) {
+    return `Dokter${session.dentist.name ? ` · ${session.dentist.name}` : ''}`;
+  }
+  if (session?.patient?.id && value === String(session.patient.id)) {
+    return `Pasien${session.patient.name ? ` · ${session.patient.name}` : ''}`;
+  }
+  const invited = value.match(/^appointment-\d+:participant-[0-9a-fA-F-]{36}:([a-z_]+)$/);
+  if (invited) return ROLE_LABELS[invited[1]] || invited[1];
+  const observer = value.match(/^appointment-\d+-observer-\d+$/);
+  if (observer) return ROLE_LABELS.observer;
+  return 'Participant';
+}
+
+function ObserverModal({ appointmentId, session, open, onClose }) {
   const remoteContainerRef = useRef(null);
+  const sessionRef = useRef(session);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const { join, leave, connectionState, reconnectError, networkQuality, remoteTrackCount } = useTwilioVideoClient();
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     if (!open || !appointmentId) return undefined;
@@ -171,12 +244,13 @@ function ObserverModal({ appointmentId, open, onClose }) {
     setError('');
 
     fetchClinicObserverToken(appointmentId)
-      .then(async (session) => {
+      .then(async (tokenSession) => {
         if (cancelled) return;
         await join({
-          roomName: session.video?.roomName || session.roomName,
-          token: session.video?.token || session.videoToken || session.token,
+          roomName: tokenSession.video?.roomName || tokenSession.roomName,
+          token: tokenSession.video?.token || tokenSession.videoToken || tokenSession.token,
           remoteContainerEl: remoteContainerRef.current,
+          remoteTrackLabeler: (participant) => participantLabelFromIdentity(participant?.identity, sessionRef.current),
           observeOnly: true
         });
         if (!cancelled) setStatus('connected');
@@ -209,18 +283,18 @@ function ObserverModal({ appointmentId, open, onClose }) {
       <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">Clinic Observer View</h2>
-            <p className="text-xs text-slate-400">Appointment #{appointmentId} · observer monitoring</p>
+            <h2 className="text-sm font-semibold text-white">Mode Pemantauan Klinik</h2>
+            <p className="text-xs text-slate-400">Appointment #{appointmentId} · pemantauan sesi teledentistry</p>
             <p className="mt-1 text-xs text-slate-500">
-              Observer mode connects without camera/mic tracks. Token misuse is audited and may trigger disconnect.
+              Observer terhubung tanpa camera/mic. Penyalahgunaan token diaudit dan dapat memicu disconnect.
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">
-              Quality {networkQuality ?? '-'}
+              Kualitas {networkQuality ?? '-'}
             </span>
             <button onClick={handleClose} className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15">
-              Close
+              Tutup
             </button>
           </div>
         </header>
@@ -267,40 +341,42 @@ function ObserverModal({ appointmentId, open, onClose }) {
   );
 }
 
-function SessionRow({ session, canObserve, onObserve, onViewSummary, onViewMessages }) {
+function SessionRow({ session, canObserve, canViewSummary, canViewChat, onObserve, onViewSummary, onViewMessages }) {
   return (
     <div className="rounded-xl border border-primary/10 bg-surface-elevated p-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-primary">{session.patient?.name || 'Patient unavailable'}</h3>
+            <h3 className="font-semibold text-primary">{session.patient?.name || 'Pasien tidak tersedia'}</h3>
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${statusClass(session.sessionStatus)}`}>
-              {session.sessionStatus}
+              {sessionStatusLabel(session.sessionStatus)}
             </span>
             <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700">
               Teledentistry
             </span>
           </div>
           <p className="mt-1 text-sm text-secondary">
-            {session.dentist?.name || 'Assigned dentist'} · {formatDateTime(session.startsAt)} · {session.roomName}
+            {session.dentist?.name || 'Dokter belum ditentukan'} · {formatDateTime(session.startsAt)} · {session.roomName}
           </p>
           <p className="mt-1 text-xs text-muted">
-            Summary: {session.summaryStatus || 'pending'} · Active participants: {session.activeParticipantCount} · Duration {formatDuration(session.durationSeconds || 0)}
+            Ringkasan: {summaryStatusLabel(session.summaryStatus)} · Participant aktif: {session.activeParticipantCount} · Observer: {session.activeObserverCount || 0} · Durasi {formatDuration(session.durationSeconds || 0)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => onViewSummary(session.appointmentId)}
-            className="rounded-lg border border-primary/15 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
-          >
-            View Summary
-          </button>
-          {canObserve && (
+          {canViewSummary && (
+            <button
+              onClick={() => onViewSummary(session.appointmentId)}
+              className="rounded-lg border border-primary/15 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+            >
+              Lihat Ringkasan
+            </button>
+          )}
+          {canViewChat && (
             <button
               onClick={() => onViewMessages(session.appointmentId)}
               className="rounded-lg border border-primary/15 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
             >
-              Chat History
+              Riwayat Chat
             </button>
           )}
           {canObserve && session.canObserve && (
@@ -308,7 +384,7 @@ function SessionRow({ session, canObserve, onObserve, onViewSummary, onViewMessa
               onClick={() => onObserve(session.appointmentId)}
               className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700"
             >
-              Observe
+              Pantau
             </button>
           )}
         </div>
@@ -321,8 +397,12 @@ export default function ClinicTeledentistryPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const clinicRole = getClinicRole(user);
-  const canObserve = canObserveSessions(clinicRole);
-  const canReadSummaries = canViewSummaries(clinicRole);
+  const fallbackCanObserve = canObserveSessions(clinicRole);
+  const fallbackCanReadSummaries = canViewSummaries(clinicRole);
+  const [serverCapabilities, setServerCapabilities] = useState(null);
+  const canObserve = serverCapabilities?.canObserve ?? fallbackCanObserve;
+  const canReadSummaries = serverCapabilities?.canViewSummaries ?? fallbackCanReadSummaries;
+  const canViewChat = serverCapabilities?.canViewChatHistory ?? canObserve;
   const [activeTab, setActiveTab] = useState('live');
   const [date, setDate] = useState(localDateKey());
   const [liveSessions, setLiveSessions] = useState([]);
@@ -343,8 +423,8 @@ export default function ClinicTeledentistryPage() {
   });
 
   const tabs = useMemo(() => ([
-    { id: 'live', label: 'Live Sessions', icon: 'Radio', visible: canObserve },
-    { id: 'history', label: 'Session History', icon: 'History', visible: canReadSummaries },
+    { id: 'live', label: 'Sesi Live', icon: 'Radio', visible: canObserve },
+    { id: 'history', label: 'Riwayat Sesi', icon: 'History', visible: canReadSummaries },
     { id: 'audit', label: 'Audit Log', icon: 'ShieldCheck', visible: canObserve }
   ]), [canObserve, canReadSummaries]);
 
@@ -365,6 +445,7 @@ export default function ClinicTeledentistryPage() {
         fetchClinicTeledentistrySessions({ status: 'live' }),
         fetchClinicTeledentistrySessions({ status: 'completed', date })
       ]);
+      setServerCapabilities(live.capabilities || history.capabilities || null);
       setLiveSessions(live.sessions || []);
       setHistorySessions(history.sessions || []);
       setCounts(live.counts || history.counts || { live: 0, waiting: 0, completed: 0, ended: 0, total: 0 });
@@ -407,6 +488,11 @@ export default function ClinicTeledentistryPage() {
       setActiveTab('live');
     }
   }, [canObserve, searchParams]);
+
+  const observingSession = useMemo(
+    () => liveSessions.find((session) => String(session.appointmentId) === String(observingAppointmentId)) || null,
+    [liveSessions, observingAppointmentId]
+  );
 
   const openSummary = async (appointmentId) => {
     setSummaryState({ open: true, loading: true, error: '', data: null });
@@ -465,7 +551,7 @@ export default function ClinicTeledentistryPage() {
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-primary">Teledentistry</h1>
-            <p className="text-sm text-secondary">Clinic-level visibility for live sessions, finalized summaries, and audit events.</p>
+            <p className="text-sm text-secondary">Pemantauan sesi, ringkasan final, dan audit teledentistry tingkat klinik.</p>
           </div>
           <div className="flex items-center gap-3">
             <input
@@ -479,6 +565,12 @@ export default function ClinicTeledentistryPage() {
             </div>
           </div>
         </header>
+
+        {canReadSummaries && !canObserve && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Anda memiliki akses riwayat dan ringkasan sesuai policy klinik. Pemantauan live hanya tersedia untuk clinic owner.
+          </div>
+        )}
 
         <nav className="flex flex-wrap gap-2 border-b border-primary/10 pb-3">
           {visibleTabs.map((tab) => (
@@ -503,7 +595,7 @@ export default function ClinicTeledentistryPage() {
 
         {activeTab === 'live' && canObserve && (
           <section className="space-y-3">
-            {loading ? <p className="text-sm text-secondary">Memuat live sessions...</p> : null}
+            {loading ? <p className="text-sm text-secondary">Memuat sesi live...</p> : null}
             {!loading && liveSessions.length === 0 ? (
               <div className="rounded-xl border border-primary/10 bg-surface p-6 text-sm text-secondary">
                 Tidak ada sesi teledentistry aktif.
@@ -513,6 +605,8 @@ export default function ClinicTeledentistryPage() {
                 key={session.appointmentId}
                 session={session}
                 canObserve={canObserve}
+                canViewSummary={canReadSummaries}
+                canViewChat={canViewChat}
                 onObserve={setObservingAppointmentId}
                 onViewSummary={openSummary}
                 onViewMessages={openMessages}
@@ -532,6 +626,8 @@ export default function ClinicTeledentistryPage() {
                 key={session.appointmentId}
                 session={session}
                 canObserve={false}
+                canViewSummary={canReadSummaries}
+                canViewChat={false}
                 onObserve={setObservingAppointmentId}
                 onViewSummary={openSummary}
                 onViewMessages={openMessages}
@@ -556,17 +652,25 @@ export default function ClinicTeledentistryPage() {
             <div className="overflow-hidden rounded-xl border border-primary/10 bg-surface-elevated">
               {auditEvents.length === 0 ? (
                 <p className="p-5 text-sm text-secondary">Tidak ada audit event.</p>
-              ) : auditEvents.map((event) => (
+              ) : auditEvents.map((event) => {
+                const category = auditCategory(event.eventType);
+                return (
                 <div key={event.id} className="border-b border-primary/10 px-4 py-3 last:border-b-0">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-medium text-primary">{event.eventType}</div>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${auditCategoryClass(category)}`}>
+                        {EVENT_CATEGORY_LABELS[category]}
+                      </span>
+                      <div className="font-medium text-primary">{event.eventType}</div>
+                    </div>
                     <div className="text-xs text-secondary">{formatDateTime(event.occurredAt)}</div>
                   </div>
                   <p className="mt-1 text-xs text-secondary">
                     Appointment #{event.appointmentId} · {event.actorRole || 'system'} · {event.provider || 'local'}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
@@ -574,6 +678,7 @@ export default function ClinicTeledentistryPage() {
 
       <ObserverModal
         appointmentId={observingAppointmentId}
+        session={observingSession}
         open={Boolean(observingAppointmentId)}
         onClose={() => setObservingAppointmentId(null)}
       />

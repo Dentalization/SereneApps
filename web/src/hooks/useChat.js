@@ -21,6 +21,7 @@ export function useChat() {
   const [incomingCall, setIncomingCall] = useState(null);
   const [connectionState, setConnectionState] = useState('disconnected');
   const [reconnectError, setReconnectError] = useState(null);
+  const [attachmentUpload, setAttachmentUpload] = useState({ status: 'idle', progress: 0, error: '' });
   const notificationSound = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'));
 
   const clientRef = useRef(null);
@@ -289,7 +290,17 @@ export function useChat() {
   const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
     if (!appointmentId || !file) return;
     try {
-      const saved = await uploadAttachment(appointmentId, file);
+      setAttachmentUpload({ status: 'uploading', progress: 0, error: '' });
+      const saved = await uploadAttachment(appointmentId, file, {
+        onUploadProgress: (event) => {
+          if (!event.total) return;
+          setAttachmentUpload({
+            status: 'uploading',
+            progress: Math.min(99, Math.round((event.loaded / event.total) * 100)),
+            error: ''
+          });
+        }
+      });
       if (saved) {
         setMessagesByAppointment((prev) => {
           const current = prev[appointmentId] || [];
@@ -297,9 +308,23 @@ export function useChat() {
           return { ...prev, [appointmentId]: [...current, saved] };
         });
       }
+      setAttachmentUpload({
+        status: saved?.mediaScanStatus === 'pending' ? 'scan_pending' : 'complete',
+        progress: 100,
+        error: ''
+      });
+      setTimeout(() => {
+        setAttachmentUpload((current) => (
+          ['complete', 'scan_pending'].includes(current.status)
+            ? { status: 'idle', progress: 0, error: '' }
+            : current
+        ));
+      }, 4000);
     } catch (err) {
       console.error('[useChat] upload attachment failed', err.message);
-      setReconnectError(err.message || 'Failed to upload attachment');
+      const message = err?.response?.data?.error?.code || err.message || 'Failed to upload attachment';
+      setAttachmentUpload({ status: 'error', progress: 0, error: message });
+      setReconnectError(message);
     }
   }, []);
 
@@ -345,6 +370,7 @@ export function useChat() {
     socketConnected,
     connectionState,
     reconnectError,
+    attachmentUpload,
     activeConversation,
     activeAppointmentId,
     messages: activeMessages,

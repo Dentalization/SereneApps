@@ -5,6 +5,16 @@ const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:400
 const FILE_BASE_URL = (import.meta.env.VITE_FILE_BASE_URL || API_BASE).replace(/\/$/, '');
 
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain'
+]);
 
 function resolveFileUrl(fileUrl) {
   if (!fileUrl) return null;
@@ -58,11 +68,13 @@ const ChatInterface = ({
   currentUserId,
   presence,
   loading = false,
+  attachmentUpload = { status: 'idle', progress: 0, error: '' },
   onSendText,
   onUploadAttachment,
   onStartVideoCall
 }) => {
   const [message, setMessage] = useState('');
+  const [attachmentError, setAttachmentError] = useState('');
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -101,6 +113,17 @@ const ChatInterface = ({
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setAttachmentError('');
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachmentError('Ukuran file maksimal 10 MB.');
+      fileInputRef.current.value = '';
+      return;
+    }
+    if (file.type && !ALLOWED_ATTACHMENT_TYPES.has(file.type)) {
+      setAttachmentError('Tipe file tidak didukung. Gunakan gambar, PDF, DOC/DOCX, atau TXT.');
+      fileInputRef.current.value = '';
+      return;
+    }
     await onUploadAttachment?.(file);
     fileInputRef.current.value = '';
   };
@@ -121,7 +144,7 @@ const ChatInterface = ({
       return (
         <div className="flex items-center space-x-2 py-1">
           <Icon name="FileWarning" size={14} />
-          <span className="text-xs font-medium">Attachment no longer available</span>
+          <span className="text-xs font-medium">Attachment tidak tersedia</span>
         </div>
       );
     }
@@ -142,6 +165,11 @@ const ChatInterface = ({
           <Icon name="Paperclip" size={14} />
           <span className="text-xs font-medium">{msg.fileName || 'Attachment'}</span>
         </div>
+        {msg.mediaScanStatus && msg.mediaScanStatus !== 'clean' && (
+          <div className="text-xs text-white/80">
+            Scan: {msg.mediaScanStatus === 'pending' ? 'menunggu' : msg.mediaScanStatus}
+          </div>
+        )}
         {msg.fileUrl && (
           <button
             onClick={openFile}
@@ -218,15 +246,16 @@ const ChatInterface = ({
           <button
             onClick={onStartVideoCall}
             className="p-1.5 text-muted hover:text-primary hover:bg-surface rounded-lg theme-transition"
-            title="Start video call"
+            title="Mulai panggilan video"
           >
             <Icon name="Video" size={16} />
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 text-muted hover:text-primary hover:bg-surface rounded-lg theme-transition"
-            title="Share file"
-            aria-label="Upload file attachment"
+            disabled={attachmentUpload.status === 'uploading'}
+            className="p-1.5 text-muted hover:text-primary hover:bg-surface rounded-lg theme-transition disabled:opacity-50"
+            title="Kirim attachment"
+            aria-label="Upload attachment"
           >
             <Icon name="Paperclip" size={16} />
           </button>
@@ -251,6 +280,26 @@ const ChatInterface = ({
       </div>
 
       <div className="border-t border-primary/10 p-3 bg-surface-elevated theme-transition">
+        {(attachmentError || attachmentUpload.status !== 'idle') && (
+          <div className="mb-2 rounded-lg border border-primary/10 bg-surface px-3 py-2 text-xs text-secondary">
+            {attachmentError ? (
+              <span className="text-red-600">{attachmentError}</span>
+            ) : attachmentUpload.status === 'uploading' ? (
+              <div className="space-y-1">
+                <div>Mengupload attachment... {attachmentUpload.progress || 0}%</div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-primary/10">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${attachmentUpload.progress || 0}%` }} />
+                </div>
+              </div>
+            ) : attachmentUpload.status === 'scan_pending' ? (
+              <span>Attachment terupload. Malware scan sedang berjalan.</span>
+            ) : attachmentUpload.status === 'error' ? (
+              <span className="text-red-600">{attachmentUpload.error || 'Upload attachment gagal.'}</span>
+            ) : (
+              <span>Attachment berhasil diupload.</span>
+            )}
+          </div>
+        )}
         <div className="flex items-center space-x-2">
           <input
             type="file"
@@ -265,7 +314,7 @@ const ChatInterface = ({
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder="Ketik pesan..."
               className="w-full px-3 py-2 border border-primary/10 rounded-lg bg-surface text-primary text-sm focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent theme-transition"
             />
           </div>

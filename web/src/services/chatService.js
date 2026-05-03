@@ -25,13 +25,14 @@ export async function sendTextMessage(appointmentId, message) {
   return data?.message;
 }
 
-export async function uploadAttachment(appointmentId, file) {
+export async function uploadAttachment(appointmentId, file, options = {}) {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await authHttp.post(`/communications/appointments/${appointmentId}/chat/attachments`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
-    }
+    },
+    onUploadProgress: options.onUploadProgress
   });
   return data?.message;
 }
