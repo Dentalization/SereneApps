@@ -1370,6 +1370,19 @@ export default {
     logout: 'Logout'
   },
 
+  // Navigation
+  navigation: {
+    dashboard: 'Dashboard',
+    schedule: 'Schedule',
+    patients: 'Patients',
+    teledentistry: 'Teledentistry',
+    reports: 'Reports',
+    settings: 'Settings',
+    aiInsights: 'AI Insights',
+    profile: 'Profile',
+    logout: 'Logout'
+  },
+
   // Dashboard/Home
   home: {
     title: 'Practice Dashboard',

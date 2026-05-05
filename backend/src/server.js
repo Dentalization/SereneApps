@@ -38,6 +38,7 @@ import { startNotificationWorker } from './services/notifications/index.js';
 import { start as startOutboxWorker } from './services/events/outboxWorker.js';
 import { startReminderWorker } from './services/appointments/reminderService.js';
 import { startCommunicationsRetentionWorker } from './services/communications/retentionService.js';
+import { validateAttachmentStorageConfiguration } from './services/communications/attachmentStorageService.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
@@ -206,6 +207,7 @@ app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 app.use(errorHandler);
 
 const port = process.env.PORT || 4000;
+validateAttachmentStorageConfiguration();
 server.listen(port, () => {
   console.log(`API listening on :${port}`);
 });

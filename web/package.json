@@ -76,7 +76,8 @@
     "build": "vite build --sourcemap",
     "serve": "vite preview",
     "i18n:audit": "node scripts/i18n-audit.mjs",
-    "i18n:audit:keys": "node scripts/i18n-audit.mjs --fail-on-missing-keys"
+    "i18n:audit:keys": "node scripts/i18n-audit.mjs --fail-on-missing-keys",
+    "i18n:coverage": "node scripts/i18n-audit.mjs --fail-on-missing-keys --fail-on-parity"
   },
   "eslintConfig": {
     "extends": [

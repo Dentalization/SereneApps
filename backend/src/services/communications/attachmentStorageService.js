@@ -38,8 +38,30 @@ function getStorageDriver() {
   return String(process.env.COMM_ATTACHMENT_STORAGE_DRIVER || 'local-private').toLowerCase();
 }
 
-function getSigningSecret() {
-  return process.env.COMM_ATTACHMENT_SIGNING_SECRET || process.env.JWT_SECRET || 'development-attachment-signing-secret';
+function isProductionLikeRuntime(env = process.env) {
+  const runtime = String(env.APP_ENV || env.NODE_ENV || '').toLowerCase();
+  return runtime === 'production' || runtime === 'staging';
+}
+
+function getSigningSecret(env = process.env) {
+  const dedicatedSecret = String(env.COMM_ATTACHMENT_SIGNING_SECRET || '').trim();
+  if (dedicatedSecret) return dedicatedSecret;
+
+  if (isProductionLikeRuntime(env)) {
+    const error = new Error('COMM_ATTACHMENT_SIGNING_SECRET_REQUIRED');
+    error.status = 500;
+    throw error;
+  }
+
+  return env.JWT_SECRET || 'development-attachment-signing-secret';
+}
+
+export function validateAttachmentStorageConfiguration(env = process.env) {
+  getSigningSecret(env);
+  if (String(env.COMM_ATTACHMENT_STORAGE_DRIVER || 'local-private').toLowerCase() === 's3') {
+    getS3Config();
+  }
+  return { ok: true };
 }
 
 function safeFileName(name = 'attachment') {

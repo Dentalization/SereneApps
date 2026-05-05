@@ -1,4 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  mergeTranslationsDeep,
+  resolveTranslation,
+  translateWithFallback,
+} from '../utils/i18nRuntime.mjs';
 
 const LanguageContext = createContext();
 
@@ -15,34 +20,20 @@ export const LanguageProvider = ({ children }) => {
   const [translations, setTranslations] = useState({});
   const [fallbackTranslations, setFallbackTranslations] = useState({});
 
-  const mergeDeep = (target, source) => {
-    if (!source || typeof source !== 'object') return target;
-    const output = Array.isArray(target) ? [...target] : { ...target };
-    Object.keys(source).forEach((key) => {
-      const sourceValue = source[key];
-      if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
-        output[key] = mergeDeep(output[key] || {}, sourceValue);
-      } else {
-        output[key] = sourceValue;
-      }
-    });
-    return output;
-  };
-
   const loadLanguageBundle = async (languageCode) => {
     const translationModule = await import(`../translations/${languageCode}.js`);
     let mergedTranslations = translationModule.default || {};
 
     try {
       const extraModule = await import(`../translations/${languageCode}2.js`);
-      mergedTranslations = mergeDeep(mergedTranslations, extraModule.default || {});
+      mergedTranslations = mergeTranslationsDeep(mergedTranslations, extraModule.default || {});
     } catch (extraError) {
       console.warn(`LanguageContext: No extended translations found for ${languageCode}`, extraError);
     }
 
     try {
       const coverageModule = await import('../translations/coverage.js');
-      mergedTranslations = mergeDeep(mergedTranslations, coverageModule.default?.[languageCode] || {});
+      mergedTranslations = mergeTranslationsDeep(mergedTranslations, coverageModule.default?.[languageCode] || {});
     } catch (coverageError) {
       console.warn(`LanguageContext: No coverage translations found for ${languageCode}`, coverageError);
     }
@@ -53,21 +44,18 @@ export const LanguageProvider = ({ children }) => {
   // Load translations based on language
   useEffect(() => {
     const loadTranslations = async () => {
-      console.log('LanguageContext: Loading translations for language:', language);
       try {
         const mergedTranslations = await loadLanguageBundle(language);
         const mergedFallback = language === 'en'
           ? mergedTranslations
           : await loadLanguageBundle('en');
 
-        console.log('LanguageContext: Successfully loaded translations for:', language);
         setTranslations(mergedTranslations);
         setFallbackTranslations(mergedFallback);
       } catch (error) {
         console.error('Failed to load translations:', error);
         // Fallback to English if translation fails
         if (language !== 'en') {
-          console.log('LanguageContext: Falling back to English');
           const mergedFallback = await loadLanguageBundle('en');
           setTranslations(mergedFallback);
           setFallbackTranslations(mergedFallback);
@@ -91,61 +79,32 @@ export const LanguageProvider = ({ children }) => {
     }
   }, []);
 
-  const resolveTranslation = useCallback((source, key) => {
-    const keys = key.split('.');
-    let value = source;
-    
-    for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
-        value = value[k];
-      } else {
-        return undefined;
+  const t = useCallback((key, params = {}) => {
+    const resolved = translateWithFallback({
+      translations,
+      fallbackTranslations,
+      key,
+      params,
+    });
+    if (import.meta.env.DEV) {
+      const hasCurrent = resolveTranslation(translations, key) !== undefined;
+      const hasFallback = resolveTranslation(fallbackTranslations, key) !== undefined;
+      const hasExplicitFallback = params?.defaultValue !== undefined || params?.fallbackText !== undefined || params?.fallback !== undefined;
+      if (!hasCurrent && !hasFallback && !hasExplicitFallback) {
+        console.warn(`LanguageContext: missing translation for "${key}" in ${language}`);
       }
     }
 
-    return value;
-  }, []);
+    return resolved;
+  }, [fallbackTranslations, language, translations]);
 
-  const interpolate = useCallback((value, params = {}) => {
-    if (typeof value !== 'string' || Object.keys(params).length === 0) {
-      return value;
-    }
-
-    return Object.keys(params).reduce((str, param) => {
-      return str.replace(new RegExp(`{{${param}}}`, 'g'), params[param]);
-    }, value);
-  }, []);
-
-  const t = useCallback((key, params = {}) => {
-    const optionParams = params && typeof params === 'object' && !Array.isArray(params) ? params : {};
-    const {
-      defaultValue,
-      fallback,
-      ...interpolationParams
-    } = optionParams;
-
-    const value = resolveTranslation(translations, key);
-    const fallbackValue = resolveTranslation(fallbackTranslations, key);
-    const resolved = value ?? fallbackValue ?? defaultValue ?? fallback;
-
-    if (resolved !== undefined && resolved !== null) {
-      return interpolate(resolved, interpolationParams);
-    }
-
-    if (import.meta.env.DEV) {
-      console.warn(`LanguageContext: missing translation for "${key}" in ${language}`);
-    }
-
-    return '';
-  }, [fallbackTranslations, interpolate, language, resolveTranslation, translations]);
+  const tSafe = useCallback((key, fallbackText, params = {}) => (
+    t(key, { ...params, fallbackText })
+  ), [t]);
 
   const changeLanguage = (newLanguage) => {
-    console.log('LanguageContext: changeLanguage called with:', newLanguage);
     if (newLanguage === 'en' || newLanguage === 'id') {
-      console.log('LanguageContext: Setting language to:', newLanguage);
       setLanguage(newLanguage);
-    } else {
-      console.log('LanguageContext: Invalid language:', newLanguage);
     }
   };
 
@@ -155,6 +114,7 @@ export const LanguageProvider = ({ children }) => {
       setLanguage: changeLanguage,
       changeLanguage,
       t,
+      tSafe,
       translations,
       fallbackTranslations
     }}>
