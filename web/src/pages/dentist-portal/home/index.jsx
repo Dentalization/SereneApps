@@ -209,7 +209,10 @@ const DentistHome = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-elevated flex theme-transition dentist-skeleton">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <div
+          className="flex-shrink-0"
+          style={{ width: 'var(--sidebar-width, 20rem)' }}
+        >
           <SideBar />
         </div>
         <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">
@@ -324,7 +327,10 @@ const DentistHome = () => {
 
   return (
     <div className="min-h-screen bg-surface-elevated flex theme-transition">
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div
+        className="flex-shrink-0"
+        style={{ width: 'var(--sidebar-width, 20rem)' }}
+      >
         <SideBar />
       </div>
       <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">

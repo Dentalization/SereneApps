@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const STATUS_CONFIG = {
   success: {
     icon: '✓',
-    label: 'Success',
+    labelKey: 'common.toast.success',
     bgGradient: 'from-emerald-500 to-teal-400',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -12,7 +13,7 @@ const STATUS_CONFIG = {
   },
   error: {
     icon: '⚠',
-    label: 'Error',
+    labelKey: 'common.toast.error',
     bgGradient: 'from-red-500 to-red-400',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -21,7 +22,7 @@ const STATUS_CONFIG = {
   },
   warning: {
     icon: '⚡',
-    label: 'Warning',
+    labelKey: 'common.toast.warning',
     bgGradient: 'from-amber-500 to-yellow-400',
     iconBg: 'bg-black/10',
     iconColor: 'text-amber-900',
@@ -30,7 +31,7 @@ const STATUS_CONFIG = {
   },
   info: {
     icon: 'ℹ',
-    label: 'Info',
+    labelKey: 'common.toast.info',
     bgGradient: 'from-indigo-600 to-purple-600',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -41,6 +42,7 @@ const STATUS_CONFIG = {
 
 const ToastItem = ({ id, message, status = 'info', dismissing, onDismiss }) => {
   const [mounted, setMounted] = useState(false);
+  const { t } = useLanguage();
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.info;
 
   // Trigger enter animation on mount
@@ -92,7 +94,7 @@ const ToastItem = ({ id, message, status = 'info', dismissing, onDismiss }) => {
         {/* Text Content */}
         <div className="flex-1 min-w-0">
           <p className={`${config.labelColor} text-xs font-semibold uppercase tracking-wider mb-0.5`}>
-            {config.label}
+            {t(config.labelKey, { defaultValue: status })}
           </p>
           <p className={`${config.textColor} text-sm font-medium leading-snug break-words`}>
             {message}
@@ -111,7 +113,7 @@ const ToastItem = ({ id, message, status = 'info', dismissing, onDismiss }) => {
               transition-colors
               flex-shrink-0
             `}
-            aria-label="Dismiss notification"
+            aria-label={t('common.dismissNotification', { defaultValue: 'Dismiss notification' })}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

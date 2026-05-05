@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router-dom'
 import Icon from '../AppIcon'
 import Button from './Button'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLanguage } from '../../contexts/LanguageContext'
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -17,16 +18,17 @@ const Header = () => {
 
   const location = useLocation()
   const { toggleTheme, isDark } = useTheme()
+  const { t } = useLanguage()
 
   const isOnSereneAI = location?.pathname === '/serene-agentic'
 
   const navigationItems = [
-    { name: 'Platform', path: '/product-platform', icon: 'Cpu' },
-    { name: 'For Patients', path: '/for-patients', icon: 'Heart' },
-    { name: 'For Dentists', path: '/for-dentists', icon: 'Stethoscope' },
-    { name: 'Pricing', path: '/pricing', icon: 'CreditCard' }
+    { labelKey: 'public.header.platform', fallback: 'Platform', path: '/product-platform', icon: 'Cpu' },
+    { labelKey: 'public.header.forPatients', fallback: 'For Patients', path: '/for-patients', icon: 'Heart' },
+    { labelKey: 'public.header.forDentists', fallback: 'For Dentists', path: '/for-dentists', icon: 'Stethoscope' },
+    { labelKey: 'public.header.pricing', fallback: 'Pricing', path: '/pricing', icon: 'CreditCard' }
   ]
-  const moreItems = [{ name: 'Clinical Research', path: '/clinical-research', icon: 'FileText' }]
+  const moreItems = [{ labelKey: 'public.header.clinicalResearch', fallback: 'Clinical Research', path: '/clinical-research', icon: 'FileText' }]
 
   // --- SCROLL LISTENER (Optimized) ---
   useEffect(() => {
@@ -97,15 +99,15 @@ const Header = () => {
             >
               <img
                 src="./icon.png"
-                alt="Serene AI"
+                alt={t('public.header.brand', { defaultValue: 'Serene AI' })}
                 className="h-20 w-20 object-contain transition-transform duration-300 group-hover:scale-110"
               />
               <div className="flex flex-col">
                 <span className="text-xl font-bold text-slate-900 dark:text-white leading-none tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  Serene AI
+                  {t('public.header.brand', { defaultValue: 'Serene AI' })}
                 </span>
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-0.5">
-                  Dental Platform
+                  {t('public.header.dentalPlatform', { defaultValue: 'Dental Platform' })}
                 </span>
               </div>
             </Link>
@@ -131,7 +133,7 @@ const Header = () => {
                       size={16} 
                       className={`transition-colors duration-300 ${active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} 
                     />
-                    <span>{item.name}</span>
+                    <span>{t(item.labelKey, { defaultValue: item.fallback })}</span>
                   </Link>
                 )
               })}
@@ -152,7 +154,7 @@ const Header = () => {
                     }
                   `}
                 >
-                  <span>More</span>
+                  <span>{t('public.header.more', { defaultValue: 'More' })}</span>
                   <Icon
                     name="ChevronDown"
                     size={14}
@@ -187,7 +189,7 @@ const Header = () => {
                         <div className={`p-1.5 rounded-lg transition-colors ${active ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 group-hover:bg-white dark:group-hover:bg-slate-600'}`}>
                            <Icon name={item.icon} size={16} />
                         </div>
-                        {item.name}
+                        {t(item.labelKey, { defaultValue: item.fallback })}
                       </Link>
                     )
                   })}
@@ -199,7 +201,7 @@ const Header = () => {
             <div className="hidden lg:flex items-center gap-3">
               <button
                 onClick={toggleTheme}
-                aria-label="Toggle theme"
+                aria-label={t('public.header.toggleTheme', { defaultValue: 'Toggle theme' })}
                 className="p-2.5 rounded-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
               >
                 <Icon name={isDark ? 'Sun' : 'Moon'} size={20} />
@@ -209,7 +211,7 @@ const Header = () => {
 
               <Link to="/login">
                 <button className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
-                  Sign In
+                  {t('public.header.signIn', { defaultValue: 'Sign In' })}
                 </button>
               </Link>
 
@@ -228,7 +230,7 @@ const Header = () => {
                     iconSize={16}
                     className="rounded-full shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40"
                   >
-                    Try Free Analysis
+                    {t('public.header.tryFreeAnalysis', { defaultValue: 'Try Free Analysis' })}
                   </Button>
                 </Link>
               )}
@@ -275,7 +277,7 @@ const Header = () => {
                   <div className={`p-2 rounded-xl ${active ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-slate-100 dark:bg-slate-800'}`}>
                     <Icon name={item.icon} size={24} />
                   </div>
-                  {item.name}
+                  {t(item.labelKey, { defaultValue: item.fallback })}
                 </Link>
               )
             })}
@@ -288,7 +290,9 @@ const Header = () => {
             >
               <span className="flex items-center gap-3">
                  <Icon name={isDark ? 'Moon' : 'Sun'} size={20} className={isDark ? 'text-purple-400' : 'text-amber-500'} />
-                 {isDark ? 'Dark Mode' : 'Light Mode'}
+                 {isDark
+                   ? t('public.header.darkMode', { defaultValue: 'Dark Mode' })
+                   : t('public.header.lightMode', { defaultValue: 'Light Mode' })}
               </span>
               <div className={`w-12 h-7 rounded-full p-1 transition-colors ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}>
                 <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -297,11 +301,11 @@ const Header = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <Link to="/login" onClick={closeMobileMenu} className="w-full">
-                <Button variant="outline" fullWidth className="h-12 rounded-xl border-slate-200 dark:border-slate-700">Sign In</Button>
+                <Button variant="outline" fullWidth className="h-12 rounded-xl border-slate-200 dark:border-slate-700">{t('public.header.signIn', { defaultValue: 'Sign In' })}</Button>
               </Link>
               {!isOnSereneAI && (
                 <Link to="/serene-ai" onClick={closeMobileMenu} className="w-full">
-                  <Button variant="default" fullWidth className="h-12 rounded-xl shadow-lg shadow-blue-500/20">Try AI</Button>
+                  <Button variant="default" fullWidth className="h-12 rounded-xl shadow-lg shadow-blue-500/20">{t('public.header.tryAI', { defaultValue: 'Try AI' })}</Button>
                 </Link>
               )}
             </div>

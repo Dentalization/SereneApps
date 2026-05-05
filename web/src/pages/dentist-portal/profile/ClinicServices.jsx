@@ -61,22 +61,24 @@ const ClinicServices = () => {
   const clinicInfo = services.clinic;
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex theme-transition">
       <SideBar />
-      <div className="flex-1 p-6">
-        <div className="max-w-5xl mx-auto space-y-6">
-        <header className="space-y-3">
-          <p className="text-xs uppercase tracking-widest text-muted">My Profile</p>
-          <h1 className="text-3xl font-bold text-foreground">Assigned Clinic Services</h1>
-          <p className="text-muted-foreground">
-            These services are managed by your clinic. General services apply to all dentists in your branch, while specialist services are custom to you.
-          </p>
-          {contextError && (
-            <p className="text-xs text-warning">
-              Tidak dapat memuat detail klinik. Menampilkan data terbaru yang tersedia.
+      <main className="flex-1 min-w-0 overflow-y-auto bg-background theme-transition">
+        <div className="p-6 md:p-8 space-y-8">
+        <section className="clinic-page-header space-y-6 rounded-3xl border border-border/40 bg-surface-elevated p-6 shadow-theme-sm">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent">My Profile</p>
+            <h1 className="text-3xl font-bold text-foreground">Assigned Clinic Services</h1>
+            <p className="text-muted-foreground max-w-4xl">
+              These services are managed by your clinic. General services apply to all dentists in your branch, while specialist services are custom to you.
             </p>
-          )}
-        </header>
+            {contextError && (
+              <p className="text-xs text-warning">
+                Tidak dapat memuat detail klinik. Menampilkan data terbaru yang tersedia.
+              </p>
+            )}
+          </div>
+        </section>
 
         {error && (
           <div className="rounded-xl border border-error/20 bg-error/10 text-error px-4 py-3 text-sm">
@@ -208,7 +210,7 @@ const ClinicServices = () => {
           )}
         </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

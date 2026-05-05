@@ -2,62 +2,68 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 // FIX: Adjusted path to point to src/components/AppIcon
 import Icon from '../AppIcon'; 
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const Footer = () => {
+  const { t } = useLanguage();
   const currentYear = new Date().getFullYear();
   const brandLogoUrl = "/icon.png"; 
 
   const footerSections = [
     {
-      title: "Platform",
+      titleKey: "public.footer.sections.platform",
+      titleFallback: "Platform",
       links: [
-        { name: "How it Works", path: "/product-platform" },
-        { name: "For Patients", path: "/for-patients" },
-        { name: "For Dentists", path: "/for-dentists" },
-        { name: "Pricing & Plans", path: "/pricing" }
+        { labelKey: "public.footer.links.howItWorks", fallback: "How it Works", path: "/product-platform" },
+        { labelKey: "public.footer.links.forPatients", fallback: "For Patients", path: "/for-patients" },
+        { labelKey: "public.footer.links.forDentists", fallback: "For Dentists", path: "/for-dentists" },
+        { labelKey: "public.footer.links.pricingPlans", fallback: "Pricing & Plans", path: "/pricing" }
       ]
     },
     {
-      title: "Company",
+      titleKey: "public.footer.sections.company",
+      titleFallback: "Company",
       links: [
-        { name: "Our Story", path: "/about" },
-        { name: "Careers", path: "/careers" },
-        { name: "Press Kit", path: "/press" },
-        { name: "Contact Us", path: "/contact" }
+        { labelKey: "public.footer.links.ourStory", fallback: "Our Story", path: "/about" },
+        { labelKey: "public.footer.links.careers", fallback: "Careers", path: "/careers" },
+        { labelKey: "public.footer.links.pressKit", fallback: "Press Kit", path: "/press" },
+        { labelKey: "public.footer.links.contactUs", fallback: "Contact Us", path: "/contact" }
       ]
     },
     {
-      title: "Resources",
+      titleKey: "public.footer.sections.resources",
+      titleFallback: "Resources",
       links: [
-        { name: "Clinical Research", path: "/clinical-research" },
-        { name: "Developer API", path: "/api-docs" },
-        { name: "Help Center", path: "/help" },
-        { name: "System Status", path: "/status" }
+        { labelKey: "public.footer.links.clinicalResearch", fallback: "Clinical Research", path: "/clinical-research" },
+        { labelKey: "public.footer.links.developerApi", fallback: "Developer API", path: "/api-docs" },
+        { labelKey: "public.footer.links.helpCenter", fallback: "Help Center", path: "/help" },
+        { labelKey: "public.footer.links.systemStatus", fallback: "System Status", path: "/status" }
       ]
     },
     {
-      title: "Legal",
+      titleKey: "public.footer.sections.legal",
+      titleFallback: "Legal",
       links: [
-        { name: "Privacy Policy", path: "/privacy" },
-        { name: "Terms of Service", path: "/terms" },
-        { name: "HIPAA Compliance", path: "/hipaa" },
-        { name: "Medical Disclaimer", path: "/disclaimer" }
+        { labelKey: "public.footer.links.privacyPolicy", fallback: "Privacy Policy", path: "/privacy" },
+        { labelKey: "public.footer.links.termsOfService", fallback: "Terms of Service", path: "/terms" },
+        { labelKey: "public.footer.links.hipaaCompliance", fallback: "HIPAA Compliance", path: "/hipaa" },
+        { labelKey: "public.footer.links.medicalDisclaimer", fallback: "Medical Disclaimer", path: "/disclaimer" }
       ]
     }
   ];
 
   const socialLinks = [
-    { name: "Email", icon: "Mail", url: "mailto:sereneai.management@gmail.com" },
-    { name: "Instagram", icon: "Instagram", url: "https://instagram.com/sereneai" },
-    { name: "Twitter", icon: "Twitter", url: "https://twitter.com/sereneai" },
-    { name: "LinkedIn", icon: "Linkedin", url: "https://linkedin.com/company/sereneai" },
+    { labelKey: "public.footer.socials.email", fallback: "Email", icon: "Mail", url: "mailto:sereneai.management@gmail.com" },
+    { labelKey: "public.footer.socials.instagram", fallback: "Instagram", icon: "Instagram", url: "https://instagram.com/sereneai" },
+    { labelKey: "public.footer.socials.twitter", fallback: "Twitter", icon: "Twitter", url: "https://twitter.com/sereneai" },
+    { labelKey: "public.footer.socials.linkedin", fallback: "LinkedIn", icon: "Linkedin", url: "https://linkedin.com/company/sereneai" },
   ];
 
   const certifications = [
-    { name: "HIPAA Compliant", icon: "Shield" },
-    { name: "FDA Registered", icon: "Award" },
-    { name: "ISO 27001", icon: "Lock" },
-    { name: "SOC 2 Type II", icon: "CheckCircle" }
+    { labelKey: "public.footer.certifications.hipaa", fallback: "HIPAA Compliant", icon: "Shield" },
+    { labelKey: "public.footer.certifications.fda", fallback: "FDA Registered", icon: "Award" },
+    { labelKey: "public.footer.certifications.iso", fallback: "ISO 27001", icon: "Lock" },
+    { labelKey: "public.footer.certifications.soc", fallback: "SOC 2 Type II", icon: "CheckCircle" }
   ];
 
   return (
@@ -80,17 +86,16 @@ const Footer = () => {
             <Link to="/" className="flex items-center space-x-3 mb-6 group">
               <img 
                 src={brandLogoUrl} 
-                alt="Serene AI Logo" 
+                alt={t('public.footer.brandAlt', { defaultValue: 'Serene AI Logo' })}
                 className="w-12 h-12 object-contain group-hover:opacity-80 transition-opacity" 
               />
               <div>
-                <span className="block text-2xl font-bold text-white tracking-tight">Serene AI</span>
-                <span className="text-xs text-blue-400 font-medium tracking-widest uppercase">Dental Intelligence</span>
+                <span className="block text-2xl font-bold text-white tracking-tight">{t('public.footer.brand', { defaultValue: 'Serene AI' })}</span>
+                <span className="text-xs text-blue-400 font-medium tracking-widest uppercase">{t('public.footer.dentalIntelligence', { defaultValue: 'Dental Intelligence' })}</span>
               </div>
             </Link>
             <p className="text-slate-400 leading-relaxed mb-6">
-              Pioneering the future of dental diagnostics with advanced computer vision and generative AI. 
-              Bridging the gap between patients and practitioners.
+              {t('public.footer.description', { defaultValue: 'Pioneering the future of dental diagnostics with advanced computer vision and generative AI. Bridging the gap between patients and practitioners.' })}
             </p>
             
             {/* Certifications Badges */}
@@ -98,7 +103,7 @@ const Footer = () => {
               {certifications.map((cert, i) => (
                 <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-medium text-slate-300">
                   <Icon name={cert.icon} size={12} className="text-green-500" />
-                  {cert.name}
+                  {t(cert.labelKey, { defaultValue: cert.fallback })}
                 </div>
               ))}
             </div>
@@ -106,16 +111,16 @@ const Footer = () => {
 
           {/* Newsletter (Visual Only) */}
           <div className="lg:w-1/3">
-            <h3 className="text-white font-semibold mb-2">Stay ahead of the curve</h3>
-            <p className="text-sm text-slate-500 mb-4">Join our newsletter for the latest AI research and product updates.</p>
+            <h3 className="text-white font-semibold mb-2">{t('public.footer.newsletterTitle', { defaultValue: 'Stay ahead of the curve' })}</h3>
+            <p className="text-sm text-slate-500 mb-4">{t('public.footer.newsletterDescription', { defaultValue: 'Join our newsletter for the latest AI research and product updates.' })}</p>
             <form className="flex gap-2" onSubmit={(e) => e.preventDefault()}>
               <input 
                 type="email" 
-                placeholder="Enter your email" 
+                placeholder={t('public.footer.emailPlaceholder', { defaultValue: 'Enter your email' })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
               />
               <button className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors">
-                Subscribe
+                {t('public.footer.subscribe', { defaultValue: 'Subscribe' })}
               </button>
             </form>
           </div>
@@ -125,7 +130,7 @@ const Footer = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12 mb-16">
           {footerSections.map((section, idx) => (
             <div key={idx}>
-              <h4 className="font-bold text-white mb-6">{section.title}</h4>
+              <h4 className="font-bold text-white mb-6">{t(section.titleKey, { defaultValue: section.titleFallback })}</h4>
               <ul className="space-y-4">
                 {section.links.map((link, lIdx) => (
                   <li key={lIdx}>
@@ -133,7 +138,7 @@ const Footer = () => {
                       to={link.path} 
                       className="text-sm text-slate-400 hover:text-blue-400 transition-colors"
                     >
-                      {link.name}
+                      {t(link.labelKey, { defaultValue: link.fallback })}
                     </Link>
                   </li>
                 ))}
@@ -149,9 +154,7 @@ const Footer = () => {
           <div className="bg-yellow-900/10 border border-yellow-700/20 rounded-xl p-4 mb-8 flex gap-4 items-start">
             <Icon name="AlertTriangle" size={20} className="text-yellow-600 shrink-0 mt-0.5" />
             <p className="text-xs text-yellow-600/80 leading-relaxed">
-              <strong>Medical Disclaimer:</strong> Serene AI is a clinical decision support tool designed for educational and informational purposes. 
-              It does not provide medical diagnoses or treatment advice. Always consult a qualified healthcare professional for dental concerns. 
-              This software is designed to assist, not replace, human judgment.
+              <strong>{t('public.footer.medicalDisclaimerTitle', { defaultValue: 'Medical Disclaimer:' })}</strong> {t('public.footer.medicalDisclaimerBody', { defaultValue: 'Serene AI is a clinical decision support tool designed for educational and informational purposes. It does not provide medical diagnoses or treatment advice. Always consult a qualified healthcare professional for dental concerns. This software is designed to assist, not replace, human judgment.' })}
             </p>
           </div>
 
@@ -162,7 +165,7 @@ const Footer = () => {
               <span>&copy; {currentYear} Serene AI Technologies, Inc.</span>
               <span className="hidden md:inline text-slate-700">|</span>
               <span className="flex items-center gap-1.5">
-                <Icon name="MapPin" size={12} /> Jakarta, Indonesia
+                <Icon name="MapPin" size={12} /> {t('public.footer.location', { defaultValue: 'Jakarta, Indonesia' })}
               </span>
             </div>
 
@@ -177,7 +180,7 @@ const Footer = () => {
                     target="_blank" 
                     rel="noreferrer"
                     className="text-slate-500 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-lg"
-                    aria-label={social.name}
+                    aria-label={t(social.labelKey, { defaultValue: social.fallback })}
                   >
                     <Icon name={social.icon} size={18} />
                   </a>
@@ -188,7 +191,7 @@ const Footer = () => {
               
               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold text-green-500 uppercase tracking-wide">System Operational</span>
+                <span className="text-[10px] font-bold text-green-500 uppercase tracking-wide">{t('public.footer.systemOperational', { defaultValue: 'System Operational' })}</span>
               </div>
               
             </div>

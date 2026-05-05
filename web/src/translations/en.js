@@ -172,6 +172,7 @@ export default {
     sidebar: {
       dashboard: 'Dashboard',
       schedule: 'Schedule & Queue',
+      teledentistry: 'Teledentistry',
       patients: 'Patients & Records',
       billing: 'Billing & Insurance',
       inventory: 'Inventory & Sterilization',
@@ -182,6 +183,7 @@ export default {
       descriptions: {
         dashboard: 'Summary & Quick Actions',
         schedule: 'Schedule & Queue Management',
+        teledentistry: 'Live sessions & summaries',
         patients: 'Registry & Medical Records',
         billing: 'Invoice & Insurance Claims',
         inventory: 'Stock & Equipment Management',

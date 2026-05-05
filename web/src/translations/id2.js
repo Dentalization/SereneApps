@@ -5,11 +5,11 @@ export default {
   admin: {
     // Navigation labels
     nav: {
-      dashboard: 'Dashboard',
+      dashboard: 'Dasbor',
       clinicManagement: 'Manajemen Klinik',
       clinicDirectory: 'Direktori Klinik',
       clinicVerification: 'Verifikasi Klinik',
-      ownerAccounts: 'Akun Owner',
+      ownerAccounts: 'Akun Pemilik',
 
       dentistManagement: 'Manajemen Dokter Gigi',
       dentistDirectory: 'Direktori Dokter Gigi',
@@ -17,7 +17,7 @@ export default {
       professionalNetwork: 'Jaringan Profesional',
 
       revenueBilling: 'Pendapatan & Tagihan',
-      revenueDashboard: 'Dashboard Pendapatan',
+      revenueDashboard: 'Dasbor Pendapatan',
       paymentProcessing: 'Pemrosesan Pembayaran',
       subscriptionManagement: 'Manajemen Langganan',
 
@@ -32,14 +32,14 @@ export default {
       communicationCenter: 'Pusat Komunikasi',
 
       analytics: 'Analitik & Laporan',
-      businessIntelligence: 'Business Intelligence',
+      businessIntelligence: 'Intelijen Bisnis',
       performanceMetrics: 'Metrik Kinerja',
       financialReports: 'Laporan Keuangan',
 
       systemAdministration: 'Administrasi Sistem',
       userManagement: 'Manajemen Pengguna',
       systemConfiguration: 'Konfigurasi Sistem',
-      monitoring: 'Monitoring & Peringatan',
+      monitoring: 'Pemantauan & Peringatan',
 
       complianceSecurity: 'Kepatuhan & Keamanan',
       dataPrivacy: 'Privasi Data',
@@ -75,36 +75,36 @@ export default {
     },
     pages: {
       dashboard: {
-        title: 'Dashboard Admin',
-        subtitle: 'Ringkasan Eksekutif & Overview Platform'
+        title: 'Dasbor Admin',
+        subtitle: 'Ringkasan Eksekutif & Ikhtisar Platform'
       },
       clinics: {
         title: 'Manajemen Klinik',
-        subtitle: 'Direktori Klinik, Verifikasi & Onboarding'
+        subtitle: 'Direktori Klinik, Verifikasi & Orientasi'
       },
       dentists: {
         title: 'Verifikasi Dokter Gigi',
-        subtitle: 'Network Profesional & Verifikasi Kredensial'
+        subtitle: 'Jaringan Profesional & Verifikasi Kredensial'
       },
       revenue: {
-        title: 'Pendapatan & Billing',
+        title: 'Pendapatan & Penagihan',
         subtitle: 'Pemrosesan Pembayaran & Analitik Keuangan'
       },
       aiPlatform: {
         title: 'Platform AI',
-        subtitle: 'Monitoring Penggunaan AI & Manajemen Model'
+        subtitle: 'Pemantauan Penggunaan AI & Manajemen Model'
       },
       support: {
-        title: 'Support & Helpdesk',
-        subtitle: 'Customer Support & Manajemen Success'
+        title: 'Dukungan & Helpdesk',
+        subtitle: 'Dukungan Pelanggan & Manajemen Keberhasilan'
       },
       analytics: {
         title: 'Analitik & Laporan',
-        subtitle: 'Business Intelligence & Data Insight'
+        subtitle: 'Intelijen Bisnis & Wawasan Data'
       },
       system: {
         title: 'Administrasi Sistem',
-        subtitle: 'Manajemen User & Konfigurasi Platform'
+        subtitle: 'Manajemen Pengguna & Konfigurasi Platform'
       },
       compliance: {
         title: 'Kepatuhan & Keamanan',
@@ -112,11 +112,11 @@ export default {
       },
       partnerships: {
         title: 'Kemitraan & API',
-        subtitle: 'Partner Integrasi & Manajemen API'
+        subtitle: 'Mitra Integrasi & Manajemen API'
       },
       content: {
         title: 'Manajemen Konten',
-        subtitle: 'Sumber Daya Marketing & Edukasi'
+        subtitle: 'Sumber Daya Pemasaran & Edukasi'
       },
       profile: {
         title: 'Pengaturan Profil',
@@ -214,10 +214,10 @@ export default {
           title: 'Klinik berhasil dibuat',
           subtitle: 'Profil klinik telah dibuat dan terdaftar di sistem.',
           tempPassword: {
-            title: 'Password Sementara Owner',
-            subtitle: 'Bagikan password ini secara aman kepada owner klinik',
-            copyTooltip: 'Salin password',
-            warning: '⚠️ Owner disarankan mengubah password setelah login pertama demi keamanan.'
+            title: 'Kata Sandi Sementara Pemilik',
+            subtitle: 'Bagikan kata sandi ini secara aman kepada pemilik klinik',
+            copyTooltip: 'Salin kata sandi',
+            warning: '⚠️ Pemilik disarankan mengubah kata sandi setelah login pertama demi keamanan.'
           },
           actions: {
             backToDirectory: 'Kembali ke Direktori Klinik'
@@ -267,27 +267,27 @@ export default {
               placeholder: 'Masukkan alamat lengkap'
             },
             ownerName: {
-              label: 'Nama Owner',
-              placeholder: 'Nama lengkap owner'
+              label: 'Nama Pemilik',
+              placeholder: 'Nama lengkap pemilik'
             },
             ownerEmail: {
-              label: 'Email Owner',
+              label: 'Email Pemilik',
               placeholder: 'owner@example.com'
             },
             ownerPosition: {
-              label: 'Posisi Owner',
+              label: 'Posisi Pemilik',
               options: {
-                owner: 'Owner',
+                owner: 'Pemilik',
                 manager: 'Manajer'
               }
             },
             ownerWhatsapp: {
-              label: 'WhatsApp Owner',
+              label: 'WhatsApp Pemilik',
               placeholder: 'mis. +628123456789'
             },
             ownerNik: {
-              label: 'NIK Owner',
-              placeholder: 'Masukkan nomor NIK owner'
+              label: 'NIK Pemilik',
+              placeholder: 'Masukkan nomor NIK pemilik'
             },
             nibNumber: {
               label: 'Nomor NIB',
@@ -301,8 +301,8 @@ export default {
               label: 'Berkas KTP (jpeg/png/pdf)'
             },
             ktpSelfie: {
-              label: 'Selfie KTP / Foto Owner (jpeg/png/pdf)',
-              hint: 'Opsional: Foto owner memegang KTP untuk verifikasi'
+              label: 'Selfie KTP / Foto Pemilik (jpeg/png/pdf)',
+              hint: 'Opsional: Foto pemilik memegang KTP untuk verifikasi'
             },
             nibFile: {
               label: 'Berkas NIB (jpeg/png/pdf)'
@@ -325,7 +325,7 @@ export default {
           },
           files: {
             ktp: 'Berkas KTP',
-            ktpSelfie: 'Selfie KTP / Foto Owner',
+            ktpSelfie: 'Selfie KTP / Foto Pemilik',
             nib: 'Berkas NIB',
             npwp: 'Berkas NPWP',
             operationalLicense: 'Izin Operasional',
@@ -393,7 +393,7 @@ export default {
       },
       unnamedClinic: 'Klinik Tanpa Nama',
       defaultTimezone: 'Asia/Jakarta',
-      unassignedBranchLabel: 'Staff Belum Ditempatkan',
+      unassignedBranchLabel: 'Staf Belum Ditempatkan',
       unnamedBranchLabel: 'Cabang Tanpa Nama',
       virtualBadge: 'Virtual',
       mainBadge: 'Utama',
@@ -401,11 +401,11 @@ export default {
       branchCount: '{{count}} cabang terdaftar',
       noBranches: 'Belum ada cabang terdaftar.',
       noBranchesEmpty: 'Belum ada cabang. Tambahkan cabang untuk mengelola operasional dan penugasan.',
-      unassignedStaffHint: 'Staff tanpa penugasan cabang spesifik',
-      staffRosterTitle: 'Roster Staff',
-      staffRosterSubtitle: 'Menampilkan staff yang ditempatkan di {{branch}}.',
-      noMainBranchHint: 'Cabang utama belum ditentukan. Tetapkan cabang utama untuk menampilkan penugasan staff.',
-      staffCountLabel: '{{count}} staff',
+      unassignedStaffHint: 'Staf tanpa penugasan cabang spesifik',
+      staffRosterTitle: 'Daftar Staf',
+      staffRosterSubtitle: 'Menampilkan staf yang ditempatkan di {{branch}}.',
+      noMainBranchHint: 'Cabang utama belum ditentukan. Tetapkan cabang utama untuk menampilkan penugasan staf.',
+      staffCountLabel: '{{count}} staf',
       roomCountLabel: '{{count}} ruang',
       branchCodeLabel: 'Kode: {{code}}',
       quickActionsTitle: 'Aksi Cepat',
@@ -413,13 +413,13 @@ export default {
       modal: {
         approveTitle: 'Setujui Registrasi Klinik',
         rejectTitle: 'Tolak Pengajuan Klinik',
-        approveDescription: 'Klinik ini akan ditandai sebagai terverifikasi dan owner akan diberi tahu.',
+        approveDescription: 'Klinik ini akan ditandai sebagai terverifikasi dan pemilik akan diberi tahu.',
         rejectDescription: 'Pengajuan ini akan ditolak. Mohon berikan alasan di bawah.',
         notesLabel: 'Catatan Verifikasi',
         notesPlaceholderApprove: 'Tambahkan catatan terkait verifikasi (opsional)',
         notesPlaceholderReject: 'Jelaskan alasan penolakan pengajuan ini (wajib)',
         notesHintApprove: 'Catatan ini akan terlihat oleh admin lainnya',
-        notesHintReject: 'Owner akan melihat alasan ini',
+        notesHintReject: 'Pemilik akan melihat alasan ini',
         rejectWarning: 'Mohon sertakan alasan penolakan',
         cancelButton: 'Batal',
         processing: 'Memproses...',
@@ -438,15 +438,15 @@ export default {
       verifiedOn: 'Diverifikasi pada',
       statusRejected: 'Pengajuan Ditolak',
       notesTitle: 'Catatan',
-      notesPlaceholder: 'Gunakan alur verifikasi untuk mencatat review, lampiran, dan komentar kepatuhan. Catatan ini membantu tim lain memahami keputusan onboarding.',
+      notesPlaceholder: 'Gunakan alur verifikasi untuk mencatat tinjauan, lampiran, dan komentar kepatuhan. Catatan ini membantu tim lain memahami keputusan orientasi.',
       legalEntityLabel: 'Entitas legal:',
       metricTotalBranches: 'Total Cabang',
       metricTotalBranchesHint: 'Lokasi terdaftar',
-      metricStaff: 'Jumlah Staff',
+      metricStaff: 'Jumlah Staf',
       metricStaffHint: 'Penugasan aktif',
-      metricOwner: 'Owner',
+      metricOwner: 'Pemilik',
       metricPrimaryBranch: 'Cabang Utama',
-      primaryBranchSummary: '{{count}} staff • {{location}}',
+      primaryBranchSummary: '{{count}} staf • {{location}}',
       primaryBranchMissing: 'Tetapkan cabang utama untuk memantau penugasan.',
       notAssigned: 'Belum ditetapkan',
       noEmail: 'Tidak ada email',
@@ -458,9 +458,9 @@ export default {
       complianceFilesTitle: 'Dokumen Kepatuhan',
       docUploadedPlaceholder: 'Diunggah',
       docFilesSuffix: 'berkas',
-      operationalOverviewTitle: 'Overview Operasional',
-      operationalOverviewSubtitle: 'Identitas owner, kontak, dan kelengkapan kepatuhan.',
-      ownerSectionTitle: 'Owner / PIC',
+      operationalOverviewTitle: 'Ikhtisar Operasional',
+      operationalOverviewSubtitle: 'Identitas pemilik, kontak, dan kelengkapan kepatuhan.',
+      ownerSectionTitle: 'Pemilik / PIC',
       contactSectionTitle: 'Kontak Klinik',
       fieldEmail: 'Email',
       fieldWhatsapp: 'WhatsApp',
@@ -509,7 +509,7 @@ export default {
           tiers: {
             basic: 'Dasar',
             professional: 'Profesional',
-            enterprise: 'Enterprise'
+          enterprise: 'Perusahaan'
           }
         }
       },
@@ -576,10 +576,10 @@ export default {
     aiPlatform: {
       badge: 'Platform AI',
       title: 'Platform AI',
-      subtitle: 'Monitoring penggunaan AI, manajemen model, dan operasi machine learning',
+      subtitle: 'Pemantauan penggunaan AI, manajemen model, dan operasi machine learning',
       systemStatus: 'Model AI: Aktif',
       settings: 'Pengaturan AI',
-      deploy: 'Deploy Model',
+      deploy: 'Terapkan Model',
       tabs: {
         overview: 'Ringkasan',
         usage: 'Penggunaan',
@@ -650,7 +650,7 @@ export default {
       knowledgeBase: 'Basis Pengetahuan',
       tabs: {
         tickets: 'Tiket',
-        liveChat: 'Live Chat',
+        liveChat: 'Chat Langsung',
         knowledgeBase: 'Basis Pengetahuan'
       },
       cards: {
@@ -703,17 +703,17 @@ export default {
           agent: 'Agen',
           resolved: 'Diselesaikan',
           avgTime: 'Rata-rata Waktu',
-          rating: 'Rating'
+          rating: 'Peringkat'
         }
       },
       liveChat: {
-        sidebarTitle: 'Obrolan Aktif',
+        sidebarTitle: 'Chat Aktif',
         searchPlaceholder: 'Cari obrolan...',
         typing: 'sedang mengetik...',
         inputPlaceholder: 'Ketik pesan...',
         send: 'Kirim',
         endChat: 'Akhiri Obrolan',
-        transfer: 'Transfer',
+        transfer: 'Alihkan',
         noChatSelected: 'Pilih obrolan untuk memulai pesan'
       },
       knowledgeContent: {
@@ -747,9 +747,9 @@ export default {
         storageUsage: 'Penyimpanan',
         apiLatency: 'Latensi API',
         services: {
-          database: 'Database',
-          redis: 'Redis Cache',
-          storage: 'Object Storage',
+          database: 'Basis Data',
+          redis: 'Cache Redis',
+          storage: 'Penyimpanan Objek',
           email: 'Layanan Email'
         },
         status: {
@@ -770,7 +770,7 @@ export default {
           actions: 'Tindakan'
         },
         roles: {
-          admin: 'Administrator',
+          admin: 'Admin Sistem',
           manager: 'Manajer',
           staff: 'Staf',
           support: 'Dukungan'
@@ -866,8 +866,8 @@ export default {
         export: 'Ekspor Data Pribadi',
         forget: 'Hak untuk Dilupakan',
         consentLog: 'Log Persetujuan',
-        optIn: 'Opt-In',
-        optOut: 'Opt-Out',
+        optIn: 'Setuju',
+        optOut: 'Tidak setuju',
         groups: {
           patient: 'Data Pasien',
           employee: 'Data Karyawan',
@@ -969,6 +969,122 @@ export default {
         publicProfile: 'Layanan, Galeri & Fasilitas'
       }
     },
+    teledentistry: {
+      title: 'Teledentistry',
+      subtitle: 'Pemantauan sesi, ringkasan final, dan audit teledentistry tingkat klinik.',
+      liveCount: 'Live',
+      tabs: {
+        live: 'Sesi Live',
+        history: 'Riwayat Sesi',
+        audit: 'Log Audit'
+      },
+      accessDenied: 'Role klinik ini hanya dapat melihat status appointment. Akses teledentistry memerlukan clinic owner atau clinic admin.',
+      adminLimitedAccess: 'Anda memiliki akses riwayat dan ringkasan sesuai policy klinik. Pemantauan live hanya tersedia untuk clinic owner.',
+      empty: {
+        liveTitle: 'Belum ada sesi aktif',
+        liveDescription: 'Tidak ada sesi teledentistry aktif.',
+        historyTitle: 'Belum ada riwayat sesi',
+        historyDescription: 'Tidak ada riwayat sesi pada tanggal ini.',
+        auditTitle: 'Audit log kosong',
+        auditDescription: 'Tidak ada audit event.'
+      },
+      actions: {
+        viewSummary: 'Lihat Ringkasan',
+        viewChat: 'Riwayat Chat',
+        observe: 'Pantau',
+        refreshAudit: 'Segarkan Audit',
+        close: 'Tutup'
+      },
+      filters: {
+        eventType: 'Filter jenis event'
+      },
+      labels: {
+        summary: 'Ringkasan',
+        activeParticipants: 'Participant aktif',
+        observer: 'Observer',
+        duration: 'Durasi',
+        appointment: 'Janji temu',
+        quality: 'Kualitas',
+        localChatMessages: 'chat_messages lokal'
+      },
+      statuses: {
+        live: 'Live',
+        waiting: 'Menunggu',
+        completed: 'Selesai',
+        ended: 'Berakhir',
+        unknown: 'Tidak diketahui'
+      },
+      summaryStatuses: {
+        finalized: 'Final',
+        amended: 'Diamendemen',
+        draft: 'Draft',
+        pending: 'Menunggu'
+      },
+      roles: {
+        dentist: 'Dokter',
+        patient: 'Pasien',
+        guardian: 'Wali',
+        interpreter: 'Interpreter',
+        assistant: 'Asisten',
+        observer: 'Observer Klinik',
+        participant: 'Participant',
+        system: 'system'
+      },
+      categories: {
+        session: 'Sesi',
+        observer: 'Observer',
+        security: 'Keamanan',
+        chat: 'Chat',
+        summary: 'Ringkasan',
+        attachment: 'Attachment',
+        system: 'Sistem'
+      },
+      summaryDrawer: {
+        title: 'Ringkasan Klinis',
+        patientFallback: 'Pasien',
+        closeAria: 'Tutup ringkasan',
+        loading: 'Memuat ringkasan...',
+        unavailable: 'Ringkasan belum final atau isi klinis tidak tersedia untuk role klinik ini.',
+        chiefComplaint: 'Keluhan utama',
+        objectiveFindings: 'Temuan objektif',
+        assessment: 'Assessment',
+        plan: 'Rencana tindakan',
+        recommendations: 'Rekomendasi lanjutan',
+        followUp: 'Follow-up',
+        followUpYes: 'Ya',
+        followUpNo: 'Tidak'
+      },
+      messagesDrawer: {
+        title: 'Riwayat Chat Konsultasi',
+        closeAria: 'Tutup riwayat chat',
+        policyCopy: 'Pemilik klinik dapat meninjau arsip chat lokal untuk kepatuhan. Unduhan lampiran tidak tersedia di mode tinjauan klinik.',
+        loading: 'Memuat riwayat chat...',
+        empty: 'Belum ada pesan chat yang tersinkron ke arsip lokal.',
+        attachmentFallback: 'Attachment',
+        attachmentStored: 'Attachment tersimpan, tetapi download dinonaktifkan untuk review klinik.',
+        attachmentUnavailable: 'Attachment tidak tersedia ({{reason}}).',
+        unavailableReason: 'expired/deleted'
+      },
+      observer: {
+        title: 'Mode Pemantauan Klinik',
+        appointmentMeta: 'Janji temu #{{appointmentId}} · pemantauan sesi teledentistry',
+        policyCopy: 'Observer terhubung tanpa camera/mic. Penyalahgunaan token diaudit dan dapat memicu disconnect.',
+        connecting: 'Menghubungkan observer ke room...',
+        connectedWaiting: 'Terhubung sebagai observer. Menunggu video participant.',
+        reconnecting: 'Koneksi terputus, mencoba menyambungkan ulang...',
+        disconnected: 'Sesi telah berakhir atau koneksi observer terputus.',
+        roomEnded: 'Sesi telah berakhir. Observer tidak dapat bergabung lagi.',
+        openFailed: 'Gagal membuka observer room.'
+      },
+      errors: {
+        auditFailed: 'Gagal memuat audit log teledentistry. Silakan coba lagi.',
+        sessionsFailed: 'Gagal memuat sesi teledentistry klinik.',
+        summaryFailed: 'Gagal memuat ringkasan klinis.',
+        messagesFailed: 'Gagal memuat riwayat chat konsultasi.',
+        forbidden: 'Akses teledentistry tidak diizinkan untuk akun ini.',
+        appointmentNotFound: 'Janji temu tidak ditemukan.'
+      }
+    },
     publicProfile: {
       badge: 'Profil Publik',
       title: 'Profil Publik Klinik',
@@ -985,17 +1101,17 @@ export default {
       },
       tabDescriptions: {
         services: 'Perbarui layanan, harga, dan ketersediaan yang terlihat oleh pasien.',
-        gallery: 'Atur hero image dan foto galeri.',
+        gallery: 'Atur gambar utama dan foto galeri.',
         highlights: 'Promosikan keunggulan dan pengalaman unik klinik.',
         facilities: 'Tampilkan fasilitas dan peralatan yang tersedia.'
       }
     },
     staff: {
       // Existing translations
-      badge: 'Manajemen Staff',
-      title: 'Manajemen Staff',
+      badge: 'Manajemen Staf',
+      title: 'Manajemen Staf',
       subtitle: 'Kelola tim klinik, peran, dan penempatan cabang',
-      totalStaff: 'total staff',
+      totalStaff: 'total staf',
 
       // Multi-branch extensions
       branches: {
@@ -1005,13 +1121,13 @@ export default {
         assignToBranch: 'Tempatkan di Cabang',
         currentBranch: 'Cabang Saat Ini',
         branchInfo: 'Informasi Cabang',
-        moveStaff: 'Pindah Staff',
+        moveStaff: 'Pindah Staf',
         filterByBranch: 'Filter berdasarkan Cabang'
       },
 
       // Table columns
       table: {
-        staff: 'Staff',
+        staff: 'Staf',
         contact: 'Kontak',
         role: 'Peran',
         branch: 'Cabang',
@@ -1021,7 +1137,7 @@ export default {
 
       // Actions
       actions: {
-        addStaff: 'Tambah Staff',
+        addStaff: 'Tambah Staf',
         viewProfile: 'Lihat Profil',
         editRole: 'Edit Peran',
         changeBranch: 'Ubah Cabang',
@@ -1031,13 +1147,13 @@ export default {
       // Modals
       modals: {
         invite: {
-          badge: 'Undang Staff',
-          title: 'Undang Anggota Staff Baru',
+          badge: 'Undang Staf',
+          title: 'Undang Anggota Staf Baru',
           subtitle: 'Tambahkan anggota tim baru ke klinik Anda',
           fields: {
             name: 'Nama Lengkap',
             email: 'Alamat Email',
-            password: 'Password',
+            password: 'Kata Sandi',
             role: 'Peran',
             position: 'Posisi',
             department: 'Departemen',
@@ -1046,14 +1162,14 @@ export default {
           placeholders: {
             name: 'Masukkan nama lengkap',
             email: 'Masukkan alamat email',
-            password: 'Masukkan password sementara',
+            password: 'Masukkan kata sandi sementara',
             position: 'Masukkan posisi (opsional)',
             department: 'Masukkan departemen (opsional)',
             branch: 'Pilih penempatan cabang'
           },
           hints: {
-            password: 'Minimal 6 karakter. Staff dapat mengubah password setelah login pertama.',
-            branch: 'Staff akan ditempatkan untuk bekerja di lokasi cabang ini.'
+            password: 'Minimal 6 karakter. Staf dapat mengubah kata sandi setelah login pertama.',
+            branch: 'Staf akan ditempatkan untuk bekerja di lokasi cabang ini.'
           },
           actions: {
             cancel: 'Batal',
@@ -1111,13 +1227,13 @@ export default {
         operational: 'Operasional',
         financial: 'Keuangan',
         compliance: 'Kepatuhan',
-        marketing: 'Marketing'
+        marketing: 'Pemasaran'
       },
       operational: {
         roomUtilization: 'Keterisian Ruang',
         avgWaitTime: 'Rata-rata Waktu Tunggu',
         satisfaction: 'Kepuasan Pasien',
-        completionRate: 'Completion Rate',
+        completionRate: 'Rasio Penyelesaian',
         appointmentStats: 'Statistik Janji Mingguan',
         roomUsage: 'Penggunaan Ruang',
         treatmentDistribution: 'Distribusi Tindakan',
@@ -1130,8 +1246,8 @@ export default {
         profitMargin: 'Margin Profit',
         cashPayments: 'Pembayaran Tunai',
         paymentMethods: 'Metode Pembayaran',
-        outstandingInvoices: 'Invoice Tertunggak',
-        outstandingList: 'Daftar Invoice Tertunggak',
+        outstandingInvoices: 'Faktur Tertunggak',
+        outstandingList: 'Daftar Faktur Tertunggak',
         monthlyTrend: 'Tren Pendapatan Bulanan'
       },
       compliance: {
@@ -1140,7 +1256,7 @@ export default {
         consentForms: 'Form Persetujuan',
         recordKeeping: 'Pencatatan',
         security: 'Keamanan Sistem',
-        consentStatus: 'Status Consent',
+        consentStatus: 'Status Persetujuan',
         auditLogs: 'Log Audit',
         dataBackups: 'Cadangan Data',
         privacyRequirements: 'Kebutuhan Privasi',
@@ -1151,8 +1267,8 @@ export default {
         campaignPerformance: 'Performa Kampanye',
         acquisitionSources: 'Sumber Akuisisi',
         referralRate: 'Rasio Rujukan',
-        recallProgram: 'Program Recall',
-        recallSuccess: 'Keberhasilan Recall',
+        recallProgram: 'Program Kunjungan Ulang',
+        recallSuccess: 'Keberhasilan Kunjungan Ulang',
         topReferrers: 'Pengirim Rujukan Teratas',
         socialMedia: 'Performa Media Sosial',
         activeCampaigns: 'Kampanye Aktif',
@@ -1181,7 +1297,7 @@ export default {
     filters: {
       all: 'Semua',
       network: 'Jaringan',
-      billing: 'Pendapatan & Tagihan',
+      billing: 'Pendapatan & Penagihan',
       ai: 'Platform AI',
       support: 'Dukungan',
       compliance: 'Kepatuhan',
@@ -1190,7 +1306,7 @@ export default {
       schedule: 'Jadwal & Antrean',
       patient: 'Pasien',
       operations: 'Operasional',
-      marketing: 'Experience',
+      marketing: 'Pengalaman',
       appointments: 'Jadwal',
       teledentistry: 'Teledentistry',
       clinical: 'Klinis',
@@ -1223,19 +1339,19 @@ export default {
       title: 'Pusat Notifikasi Klinik',
       subtitle: 'Sinyal antrean, pasien, dan operasional untuk seluruh cabang.',
       stats: {
-        totalLabel: 'Update hari ini',
+        totalLabel: 'Pembaruan hari ini',
         totalDescription: 'Gabungan jadwal, pasien, dan billing',
         unreadLabel: 'Belum dibaca',
         unreadMeta: 'Butuh perhatian',
         unreadDescription: 'Termasuk antrean & klaim prioritas',
         opsLabel: 'Tugas operasional',
-        opsMeta: 'Ops & inventory',
+        opsMeta: 'Operasional & inventori',
         opsDescription: 'Pastikan sterilisasi dan stok aman'
       },
       sections: {
-        insights: 'INSIGHT',
+        insights: 'WAWASAN',
         alerts: 'Alert Operasional',
-        playbooks: 'PLAYBOOK'
+        playbooks: 'PANDUAN'
       },
       emptyTitle: 'Tidak ada update',
       emptyDescription: 'Area ini aman. Sistem akan memberi tahu saat ada perubahan.'
@@ -1249,15 +1365,15 @@ export default {
         totalDescription: 'Termasuk jadwal & klinis',
         unreadLabel: 'Belum dibaca',
         unreadMeta: 'Perlu aksi',
-        unreadDescription: 'Teledentistry & alert AI',
+        unreadDescription: 'Teledentistry & peringatan AI',
         clinicalLabel: 'Tugas klinis',
         clinicalMeta: 'Perlu review',
         clinicalDescription: 'Kasus lab, insight AI, consent'
       },
       sections: {
-        insights: 'INSIGHT',
-        alerts: 'Focus Items',
-        playbooks: 'PLAYBOOK'
+        insights: 'WAWASAN',
+        alerts: 'Item Prioritas',
+        playbooks: 'PANDUAN'
       },
       emptyTitle: 'Tidak ada notifikasi',
       emptyDescription: 'Semua aman. Kami akan memberi tahu jika ada update baru.'
@@ -1266,7 +1382,7 @@ export default {
   settings: {
     title: 'Pengaturan',
     profile: 'Profil',
-    billing: 'AI & Billing',
+    billing: 'AI & Penagihan',
     practice: 'Praktik',
     security: 'Keamanan',
     preferences: 'Preferensi',
@@ -1499,7 +1615,7 @@ export default {
         empty: 'Belum ada riwayat chat untuk analisis ini.',
         placeholder: 'Tanya AI tentang hasil ini...',
         send: 'Kirim',
-        loading: 'Loading...'
+        loading: 'Memuat...'
       }
     },
     appointments: {
@@ -2027,7 +2143,7 @@ export default {
         teledentistry: 'Teledentistry'
       },
       actions: {
-        clear: 'Reset Filter',
+        clear: 'Atur Ulang Filter',
         showPending: 'Tampilkan Menunggu',
         teleOnly: 'Hanya Tele'
       }
@@ -2157,7 +2273,7 @@ export default {
         title: 'Penutupan Slot Cepat',
         typeSelected: 'Tipe: {{type}}',
         typePrompt: 'Pilih tipe penutupan terlebih dahulu',
-        reset: 'Reset',
+        reset: 'Atur Ulang',
         instructions: {
           title: '💡 Cara menutup slot:',
           step1: '1️⃣ Pilih tipe penutupan di atas (mis. Istirahat)',
@@ -2226,7 +2342,7 @@ export default {
       },
       appointmentTypes: {
         consultation: 'Konsultasi',
-        scaling: 'Scaling & Polishing',
+        scaling: 'Pembersihan Karang Gigi & Pemolesan',
         fillingSimple: 'Tambal Sederhana',
         fillingComplex: 'Tambal Kompleks',
         rootCanal: 'Perawatan Saraf',
@@ -2354,7 +2470,7 @@ export default {
         table: {
           receiptNumber: 'No. Penerimaan',
           poNumber: 'No. PO',
-          supplier: 'Supplier',
+          supplier: 'Pemasok',
           receivedBy: 'Diterima Oleh',
           items: 'Item',
           status: 'Status',
@@ -2420,7 +2536,7 @@ export default {
           stats: {
             operational: 'Operasional',
             inUse: 'Sedang Digunakan',
-            maintenance: 'Maintenance',
+      maintenance: 'Pemeliharaan',
             total: 'Total Alat'
           },
           table: {
@@ -2428,7 +2544,7 @@ export default {
             type: 'Tipe',
             location: 'Lokasi',
             condition: 'Kondisi',
-            maintenance: 'Maintenance',
+            maintenance: 'Pemeliharaan',
             status: 'Status',
             actions: 'Aksi'
           }
@@ -2438,10 +2554,10 @@ export default {
 
     // Billing & Insurance
     billing: {
-      title: 'Billing & Asuransi',
-      subtitle: 'Pantau invoice, pembayaran, klaim, dan promo klinik',
+      title: 'Penagihan & Asuransi',
+      subtitle: 'Pantau faktur, pembayaran, klaim, dan promo klinik',
       tabs: {
-        invoices: 'Invoice',
+        invoices: 'Faktur',
         payments: 'Pembayaran',
         claims: 'Klaim Asuransi',
         promos: 'Promo & Paket'
@@ -2473,7 +2589,7 @@ export default {
         },
         table: {
           paymentId: 'ID Pembayaran',
-          invoice: 'Invoice',
+          invoice: 'Faktur',
           patient: 'Pasien',
           amount: 'Jumlah',
           method: 'Metode',

@@ -14,6 +14,7 @@ const FLAG_SRC = {
   en: '/assets/images/ukflag.png',
   id: '/assets/images/idflag.jpg',
 };
+const SIDEBAR_WIDTH_TRANSITION = 'width 620ms cubic-bezier(0.16, 1, 0.3, 1)';
 
 const ClinicSideBar = () => {
   const navigate = useNavigate();
@@ -40,7 +41,10 @@ const ClinicSideBar = () => {
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--sidebar-width', isCollapsed ? '7rem' : '20rem');
+    const frame = requestAnimationFrame(() => {
+      document.documentElement.style.setProperty('--sidebar-width', isCollapsed ? '7rem' : '20rem');
+    });
+    return () => cancelAnimationFrame(frame);
   }, [isCollapsed]);
 
   const formatNameWithTitle = (name, title) => {
@@ -245,8 +249,11 @@ const ClinicSideBar = () => {
 
       <div className="sticky top-0 h-screen p-4">
         <div
-          className={`h-full flex flex-col rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
-          style={{ transition: 'width .4s cubic-bezier(0.4,0,0.2,1)' }}
+          className={`h-full flex flex-col overflow-hidden rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
+          style={{
+            transition: SIDEBAR_WIDTH_TRANSITION,
+            willChange: 'width'
+          }}
         >
           {/* Header */}
           <div className={`border-b border-primary theme-transition ${isCollapsed ? 'px-2 py-3' : 'px-6 py-4'}`}>

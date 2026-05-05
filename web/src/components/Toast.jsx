@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { shouldSuppressToastMessage } from '../contexts/ToastContext';
 import { createPortal } from 'react-dom';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const STATUS_CONFIG = {
   success: {
     icon: '✓',
-    label: 'Berhasil',
+    labelKey: 'common.toast.success',
     bgGradient: 'from-emerald-500 to-teal-400',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -14,7 +15,7 @@ const STATUS_CONFIG = {
   },
   error: {
     icon: '⚠',
-    label: 'Butuh perhatian',
+    labelKey: 'common.toast.error',
     bgGradient: 'from-red-500 to-red-400',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -23,7 +24,7 @@ const STATUS_CONFIG = {
   },
   warning: {
     icon: '⚡',
-    label: 'Perlu dicek',
+    labelKey: 'common.toast.warning',
     bgGradient: 'from-amber-500 to-yellow-400',
     iconBg: 'bg-black/10',
     iconColor: 'text-amber-900',
@@ -32,7 +33,7 @@ const STATUS_CONFIG = {
   },
   info: {
     icon: 'ℹ',
-    label: 'Informasi',
+    labelKey: 'common.toast.info',
     bgGradient: 'from-indigo-600 to-purple-600',
     iconBg: 'bg-white/20',
     iconColor: 'text-white',
@@ -44,6 +45,7 @@ const STATUS_CONFIG = {
 const Toast = ({ visible, message, onDismiss, status = 'info', duration = 5000 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissing, setIsDismissing] = useState(false);
+  const { t } = useLanguage();
 
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.info;
 
@@ -108,7 +110,7 @@ const Toast = ({ visible, message, onDismiss, status = 'info', duration = 5000 }
             {/* Text Content */}
             <div className="flex-1 min-w-0">
               <p className={`${config.labelColor} text-xs font-semibold uppercase tracking-wider mb-0.5`}>
-                {config.label}
+                {t(config.labelKey, { defaultValue: status })}
               </p>
               <p className={`${config.textColor} text-sm sm:text-[15px] font-medium leading-snug break-words`}>
                 {message}
@@ -128,7 +130,7 @@ const Toast = ({ visible, message, onDismiss, status = 'info', duration = 5000 }
                   flex-shrink-0
                   self-start sm:self-center
                 `}
-                aria-label="Tutup"
+                aria-label={t('common.close', { defaultValue: 'Close' })}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

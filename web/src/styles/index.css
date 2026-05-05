@@ -38,6 +38,16 @@ body {
   /* will-change: transform; also removed as it has similar effect */
 }
 
+/* Smooth sidebar collapse/expand across all portals */
+:root {
+  --sidebar-width-transition: width 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flex-shrink-0[style*='--sidebar-width'] {
+  transition: var(--sidebar-width-transition);
+  will-change: width;
+}
+
 * {
   box-sizing: border-box;
   line-height: normal;

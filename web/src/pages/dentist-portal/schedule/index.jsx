@@ -440,7 +440,10 @@ const mapScheduleEntry = useCallback((entry) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-elevated flex theme-transition dentist-skeleton">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <div
+          className="flex-shrink-0"
+          style={{ width: 'var(--sidebar-width, 20rem)' }}
+        >
           <SideBar />
         </div>
         <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">
@@ -452,96 +455,99 @@ const mapScheduleEntry = useCallback((entry) => {
 
   return (
     <div className="min-h-screen bg-surface-elevated flex theme-transition">
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div
+        className="flex-shrink-0"
+        style={{ width: 'var(--sidebar-width, 20rem)' }}
+      >
         <SideBar />
       </div>
       <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">
-        <div className="p-8">
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
-            <div className="space-y-1">
-              <h1 className="text-4xl font-bold text-primary theme-transition">{t('dentistSchedule.header.title')}</h1>
-              <p className="text-secondary theme-transition">
-                {formatDateLong(selectedDate, locale)} •{' '}
-                {user?.name
-                  ? t('dentistSchedule.header.greeting', { name: user.name })
-                  : t('dentistSchedule.header.fallbackName')}
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col items-end text-right gap-1">
-                <span className="text-xs text-muted">
-                  {lastSyncedAt
-                    ? t('dentistSchedule.header.lastUpdated', {
-                        time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)
-                      })
-                    : t('dentistSchedule.header.fetching')}
-                </span>
-                <button
-                  onClick={loadAppointments}
-                  disabled={refreshing}
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm ${
-                    refreshing
-                      ? 'border-border text-muted cursor-not-allowed'
-                      : 'border-primary/20 text-primary hover:bg-accent/10'
-                  }`}
-                >
-                  <Icon name="RefreshCw" size={14} className={refreshing ? 'animate-spin' : ''} />
-                  {refreshing
-                    ? t('dentistSchedule.header.refreshing')
-                    : t('dentistSchedule.header.refresh')}
-                </button>
+        <div className="p-6 md:p-8 space-y-8">
+          <section className="clinic-page-header space-y-6 rounded-3xl border border-border/40 bg-surface-elevated p-6 shadow-theme-sm">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-accent">Schedule</p>
+                <h1 className="text-4xl font-bold text-primary theme-transition">{t('dentistSchedule.header.title')}</h1>
+                <p className="text-secondary theme-transition">
+                  {formatDateLong(selectedDate, locale)} •{' '}
+                  {user?.name
+                    ? t('dentistSchedule.header.greeting', { name: user.name })
+                    : t('dentistSchedule.header.fallbackName')}
+                </p>
               </div>
-              {/* View Mode Selector */}
-              <div className="flex items-center bg-surface rounded-xl p-1 border border-border">
-                {[
-                  { key: 'daily', label: t('dentistSchedule.header.viewModes.daily'), icon: 'Calendar' },
-                  { key: 'week', label: t('dentistSchedule.header.viewModes.week'), icon: 'CalendarDays' },
-                  { key: 'month', label: t('dentistSchedule.header.viewModes.month'), icon: 'Grid3X3' }
-                ].map((mode) => (
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-end text-right gap-1">
+                  <span className="text-xs text-muted">
+                    {lastSyncedAt
+                      ? t('dentistSchedule.header.lastUpdated', {
+                          time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)
+                        })
+                      : t('dentistSchedule.header.fetching')}
+                  </span>
                   <button
-                    key={mode.key}
-                    onClick={() => setViewMode(mode.key)}
-                    className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                      viewMode === mode.key 
-                        ? 'bg-accent text-white shadow-sm' 
-                        : 'text-secondary hover:text-primary hover:bg-surface-elevated'
+                    onClick={loadAppointments}
+                    disabled={refreshing}
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm ${
+                      refreshing
+                        ? 'border-border text-muted cursor-not-allowed'
+                        : 'border-primary/20 text-primary hover:bg-accent/10'
                     }`}
                   >
-                    <Icon name={mode.icon} size={14} />
-                    <span className="text-sm">{mode.label}</span>
+                    <Icon name="RefreshCw" size={14} className={refreshing ? 'animate-spin' : ''} />
+                    {refreshing
+                      ? t('dentistSchedule.header.refreshing')
+                      : t('dentistSchedule.header.refresh')}
                   </button>
-                ))}
+                </div>
+                <div className="flex items-center bg-surface rounded-xl p-1 border border-border">
+                  {[
+                    { key: 'daily', label: t('dentistSchedule.header.viewModes.daily'), icon: 'Calendar' },
+                    { key: 'week', label: t('dentistSchedule.header.viewModes.week'), icon: 'CalendarDays' },
+                    { key: 'month', label: t('dentistSchedule.header.viewModes.month'), icon: 'Grid3X3' }
+                  ].map((mode) => (
+                    <button
+                      key={mode.key}
+                      onClick={() => setViewMode(mode.key)}
+                      className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                        viewMode === mode.key
+                          ? 'bg-accent text-white shadow-sm'
+                          : 'text-secondary hover:text-primary hover:bg-surface-elevated'
+                      }`}
+                    >
+                      <Icon name={mode.icon} size={14} />
+                      <span className="text-sm">{mode.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Filters */}
-          <div className="mb-8">
-            <div className="flex flex-wrap gap-4 text-sm text-muted mb-4">
-              <span>
-                {t('dentistSchedule.summary.total')}: <strong>{summaryCounts.total}</strong>
-              </span>
-              <span>
-                {t('dentistSchedule.summary.pending')}: <strong>{summaryCounts.pending}</strong>
-              </span>
-              <span>
-                {t('dentistSchedule.summary.confirmed')}: <strong>{summaryCounts.confirmed}</strong>
-              </span>
-              <span>
-                {t('dentistSchedule.summary.cancelled')}: <strong>{summaryCounts.cancelled}</strong>
-              </span>
+            <div className="pt-4 border-t border-border/40 space-y-4">
+              <div className="flex flex-wrap gap-4 text-sm text-muted">
+                <span>
+                  {t('dentistSchedule.summary.total')}: <strong>{summaryCounts.total}</strong>
+                </span>
+                <span>
+                  {t('dentistSchedule.summary.pending')}: <strong>{summaryCounts.pending}</strong>
+                </span>
+                <span>
+                  {t('dentistSchedule.summary.confirmed')}: <strong>{summaryCounts.confirmed}</strong>
+                </span>
+                <span>
+                  {t('dentistSchedule.summary.cancelled')}: <strong>{summaryCounts.cancelled}</strong>
+                </span>
+              </div>
+              <ScheduleFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                providers={providers}
+                locations={locations}
+              />
             </div>
-            <ScheduleFilters 
-              filters={filters} 
-              onFiltersChange={setFilters}
-              providers={providers}
-              locations={locations}
-            />
-          </div>
+          </section>
 
           {/* Content */}
-          <div className="mb-8">
+          <div>
             {viewMode === 'daily' ? (
               <DailyCalendar
                 appointments={filtered}
@@ -565,11 +571,9 @@ const mapScheduleEntry = useCallback((entry) => {
           </div>
 
           {/* Stats */}
-          <div className="mb-8">
+          <div>
             <ScheduleStats appointments={filtered} selectedDate={selectedDate} />
           </div>
-
-          
         </div>
       </main>
 

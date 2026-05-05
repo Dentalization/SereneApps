@@ -6,26 +6,46 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./contexts/ToastContext";
 
+const APP_FALLBACK_COPY = {
+  en: {
+    title: 'Error in App'
+  },
+  id: {
+    title: 'Error pada Aplikasi'
+  }
+};
+
+const getSavedLanguage = () => {
+  try {
+    return localStorage.getItem('dentist-portal-language');
+  } catch (_) {
+    return 'en';
+  }
+};
+
 function App() {
   try {
     return (
-      <ToastProvider>
-        <ThemeProvider>
-          <PreferencesProvider>
-            <LanguageProvider>
+      <ThemeProvider>
+        <PreferencesProvider>
+          <LanguageProvider>
+            <ToastProvider>
               <AuthProvider>
                 <Routes />
               </AuthProvider>
-            </LanguageProvider>
-          </PreferencesProvider>
-        </ThemeProvider>
-      </ToastProvider>
+            </ToastProvider>
+          </LanguageProvider>
+        </PreferencesProvider>
+      </ThemeProvider>
     );
   } catch (error) {
     console.error('Error in App component:', error);
+    const savedLanguage = getSavedLanguage();
+    const copy = APP_FALLBACK_COPY[savedLanguage] || APP_FALLBACK_COPY.en;
+
     return (
       <div style={{ padding: '20px', color: 'red' }}>
-        <h1>Error in App</h1>
+        <h1>{copy.title}</h1>
         <pre>{error.message}</pre>
       </div>
     );

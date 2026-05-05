@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import AppIcon from '../../components/AppIcon';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const statusStyles = {
   pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -22,17 +23,20 @@ const formatDate = (value) => {
 };
 
 const ClinicTable = ({ clinics = [], onView }) => {
+  const { t } = useLanguage();
+  const translatedStatus = (status) => t(`common.statuses.${status || 'unknown'}`, { defaultValue: formatStatus(status) });
+
   return (
     <div className="bg-surface border border-border/40 rounded-2xl overflow-hidden">
       <table className="w-full table-auto">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-secondary border-b border-border/40 bg-muted/40">
-            <th className="px-5 py-3 font-medium">Clinic</th>
-            <th className="px-5 py-3 font-medium">Owner</th>
-            <th className="px-5 py-3 font-medium">Status</th>
-            <th className="px-5 py-3 font-medium">Branches</th>
-            <th className="px-5 py-3 font-medium">Created</th>
-            <th className="px-5 py-3 font-medium text-right">Actions</th>
+            <th className="px-5 py-3 font-medium">{t('shared.clinic.table.clinic', { defaultValue: 'Clinic' })}</th>
+            <th className="px-5 py-3 font-medium">{t('shared.clinic.table.owner', { defaultValue: 'Owner' })}</th>
+            <th className="px-5 py-3 font-medium">{t('shared.clinic.table.status', { defaultValue: 'Status' })}</th>
+            <th className="px-5 py-3 font-medium">{t('shared.clinic.table.branches', { defaultValue: 'Branches' })}</th>
+            <th className="px-5 py-3 font-medium">{t('shared.clinic.table.created', { defaultValue: 'Created' })}</th>
+            <th className="px-5 py-3 font-medium text-right">{t('shared.clinic.table.actions', { defaultValue: 'Actions' })}</th>
           </tr>
         </thead>
         <tbody>
@@ -41,7 +45,7 @@ const ClinicTable = ({ clinics = [], onView }) => {
               <td className="px-5 py-4 align-top">
                 <div className="font-medium text-primary">{c.legalName || c.brandName}</div>
                 <div className="text-xs text-secondary mt-1">{c.email || c.user?.email}</div>
-                {c.city && <div className="text-xs text-secondary mt-1">City: {c.city}</div>}
+                {c.city && <div className="text-xs text-secondary mt-1">{t('common.city', { defaultValue: 'City' })}: {c.city}</div>}
               </td>
               <td className="px-5 py-4 align-top">
                 <div className="font-medium">{c.user?.name || c.ownerName || '—'}</div>
@@ -52,7 +56,7 @@ const ClinicTable = ({ clinics = [], onView }) => {
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[c.status] || statusStyles.default}`}
                 >
                   <span className="inline-block h-2 w-2 rounded-full bg-current opacity-70" />
-                  {formatStatus(c.status)}
+                  {translatedStatus(c.status)}
                 </span>
               </td>
               <td className="px-5 py-4 align-top">
@@ -63,7 +67,7 @@ const ClinicTable = ({ clinics = [], onView }) => {
                     {c.branches.length > 2 && '…'}
                   </div>
                 ) : (
-                  <div className="text-xs text-secondary mt-1">No branches</div>
+                  <div className="text-xs text-secondary mt-1">{t('common.noBranches', { defaultValue: 'No branches' })}</div>
                 )}
               </td>
               <td className="px-5 py-4 align-top text-sm text-secondary">
@@ -74,7 +78,7 @@ const ClinicTable = ({ clinics = [], onView }) => {
                   onClick={() => onView(c)}
                   className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700"
                 >
-                  View
+                  {t('shared.clinic.table.view', { defaultValue: 'View' })}
                   <AppIcon name="ArrowUpRight" size={12} />
                 </button>
               </td>

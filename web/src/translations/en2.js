@@ -1,4 +1,7 @@
 export default {
+  common: {
+    notifications: 'Notifications',
+  },
   admin: {
     // Navigation labels
     nav: {
@@ -964,6 +967,122 @@ export default {
       publicProfile: 'Public Profile',
       descriptions: {
         publicProfile: 'Services, Gallery & Facilities'
+      }
+    },
+    teledentistry: {
+      title: 'Teledentistry',
+      subtitle: 'Monitor sessions, finalized summaries, and clinic-level teledentistry audits.',
+      liveCount: 'Live',
+      tabs: {
+        live: 'Live Sessions',
+        history: 'Session History',
+        audit: 'Audit Log'
+      },
+      accessDenied: 'This clinic role can only view appointment status. Teledentistry access requires a clinic owner or clinic admin.',
+      adminLimitedAccess: 'You have access to history and summaries based on clinic policy. Live monitoring is only available to clinic owners.',
+      empty: {
+        liveTitle: 'No active sessions yet',
+        liveDescription: 'There are no active teledentistry sessions.',
+        historyTitle: 'No session history yet',
+        historyDescription: 'There is no session history for this date.',
+        auditTitle: 'Audit log is empty',
+        auditDescription: 'No audit events found.'
+      },
+      actions: {
+        viewSummary: 'View Summary',
+        viewChat: 'Chat History',
+        observe: 'Observe',
+        refreshAudit: 'Refresh Audit',
+        close: 'Close'
+      },
+      filters: {
+        eventType: 'Filter event type'
+      },
+      labels: {
+        summary: 'Summary',
+        activeParticipants: 'Active participants',
+        observer: 'Observer',
+        duration: 'Duration',
+        appointment: 'Appointment',
+        quality: 'Quality',
+        localChatMessages: 'local chat_messages'
+      },
+      statuses: {
+        live: 'Live',
+        waiting: 'Waiting',
+        completed: 'Completed',
+        ended: 'Ended',
+        unknown: 'Unknown'
+      },
+      summaryStatuses: {
+        finalized: 'Final',
+        amended: 'Amended',
+        draft: 'Draft',
+        pending: 'Pending'
+      },
+      roles: {
+        dentist: 'Dentist',
+        patient: 'Patient',
+        guardian: 'Guardian',
+        interpreter: 'Interpreter',
+        assistant: 'Assistant',
+        observer: 'Clinic Observer',
+        participant: 'Participant',
+        system: 'system'
+      },
+      categories: {
+        session: 'Session',
+        observer: 'Observer',
+        security: 'Security',
+        chat: 'Chat',
+        summary: 'Summary',
+        attachment: 'Attachment',
+        system: 'System'
+      },
+      summaryDrawer: {
+        title: 'Clinical Summary',
+        patientFallback: 'Patient',
+        closeAria: 'Close summary',
+        loading: 'Loading summary...',
+        unavailable: 'Summary is not finalized or clinical content is unavailable for this clinic role.',
+        chiefComplaint: 'Chief complaint',
+        objectiveFindings: 'Objective findings',
+        assessment: 'Assessment',
+        plan: 'Treatment plan',
+        recommendations: 'Follow-up recommendations',
+        followUp: 'Follow-up',
+        followUpYes: 'Yes',
+        followUpNo: 'No'
+      },
+      messagesDrawer: {
+        title: 'Consultation Chat History',
+        closeAria: 'Close chat history',
+        policyCopy: 'Clinic owners can review local chat archives for compliance. Attachment downloads are not available in clinic review mode.',
+        loading: 'Loading chat history...',
+        empty: 'No chat messages have been synchronized to the local archive yet.',
+        attachmentFallback: 'Attachment',
+        attachmentStored: 'Attachment is stored, but download is disabled for clinic review.',
+        attachmentUnavailable: 'Attachment unavailable ({{reason}}).',
+        unavailableReason: 'expired/deleted'
+      },
+      observer: {
+        title: 'Clinic Monitoring Mode',
+        appointmentMeta: 'Appointment #{{appointmentId}} · teledentistry session monitoring',
+        policyCopy: 'Observer connects without camera/mic. Token misuse is audited and can trigger disconnect.',
+        connecting: 'Connecting observer to room...',
+        connectedWaiting: 'Connected as observer. Waiting for participant video.',
+        reconnecting: 'Connection lost, trying to reconnect...',
+        disconnected: 'Session has ended or observer connection was disconnected.',
+        roomEnded: 'Session has ended. Observer cannot join again.',
+        openFailed: 'Failed to open observer room.'
+      },
+      errors: {
+        auditFailed: 'Failed to load teledentistry audit log. Please try again.',
+        sessionsFailed: 'Failed to load clinic teledentistry sessions.',
+        summaryFailed: 'Failed to load clinical summary.',
+        messagesFailed: 'Failed to load consultation chat history.',
+        forbidden: 'Teledentistry access is not allowed for this account.',
+        appointmentNotFound: 'Appointment was not found.'
       }
     },
     publicProfile: {
