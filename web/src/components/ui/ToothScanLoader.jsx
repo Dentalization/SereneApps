@@ -1,6 +1,10 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
+const ToothScanLoader = ({ text }) => {
+  const { t } = useLanguage();
+  const loadingText = text || t('shared.loader.dentalScan', { defaultValue: 'Analyzing Dental Structure...' });
+
   // Style untuk menggunakan tooth.png sebagai masker (cetakan)
   const maskStyle = {
     maskImage: 'url(/tooth.png)',
@@ -58,7 +62,7 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
       {/* --- 4. Loading Text --- */}
       <div className="mt-8 text-center space-y-2">
         <h3 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight animate-pulse">
-          {text}
+          {loadingText}
         </h3>
         <div className="flex items-center justify-center gap-1">
           <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
@@ -66,7 +70,7 @@ const ToothScanLoader = ({ text = "Analyzing Dental Structure..." }) => {
           <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" />
         </div>
         <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono uppercase tracking-widest">
-          AI Model v2.4 Processing
+          {t('shared.loader.modelProcessing', { defaultValue: 'AI Model v2.4 Processing' })}
         </p>
       </div>
 

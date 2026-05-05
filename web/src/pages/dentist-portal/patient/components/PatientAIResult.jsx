@@ -494,7 +494,6 @@ const formatAIResponse = (text) => {
         </div>
       );
     }
-
     // Numbered lines: 1. text  (including sub-numbers like 1.1.)
     if (/^\d+[\.\)]\s+/.test(trimmed)) {
       const match = trimmed.match(/^(\d+[\.\)])\s+(.*)/);

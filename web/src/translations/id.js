@@ -172,6 +172,7 @@ export default {
     sidebar: {
       dashboard: 'Dashboard',
       schedule: 'Jadwal & Antrian',
+      teledentistry: 'Teledentistry',
       patients: 'Pasien & Rekam Medis',
       billing: 'Billing & Asuransi',
       inventory: 'Inventori & Sterilisasi',
@@ -182,6 +183,7 @@ export default {
       descriptions: {
         dashboard: 'Ringkasan & Aksi Cepat',
         schedule: 'Manajemen Jadwal & Antrian',
+        teledentistry: 'Sesi live & ringkasan',
         patients: 'Registrasi & Rekam Medis',
         billing: 'Tagihan & Klaim Asuransi',
         inventory: 'Manajemen Stok & Peralatan',

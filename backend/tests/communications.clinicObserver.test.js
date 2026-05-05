@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Prisma } from '@prisma/client';
 
 const { __testables } = await import('../src/services/clinicTeledentistryService.js');
 const { __testables: clinicPolicyTestables } = await import('../src/services/clinicAuthorizationPolicyService.js');
@@ -179,4 +180,20 @@ test('observer video sessions are tagged separately from clinical participants',
     videoWebhookTestables.videoSessionActorRole({ type: 'user' }),
     'participant'
   );
+});
+
+test('communication audit storage errors are downgraded when schema is missing', () => {
+  const missingTableError = new Prisma.PrismaClientKnownRequestError(
+    'The table `(not available)` does not exist in the current database.',
+    { code: 'P2021', clientVersion: 'test' }
+  );
+  const missingColumnError = new Prisma.PrismaClientKnownRequestError(
+    'The column `(not available)` does not exist in the current database.',
+    { code: 'P2022', clientVersion: 'test' }
+  );
+  const unrelatedError = new Error('connection closed unexpectedly');
+
+  assert.equal(__testables.isCommunicationAuditStorageUnavailable(missingTableError), true);
+  assert.equal(__testables.isCommunicationAuditStorageUnavailable(missingColumnError), true);
+  assert.equal(__testables.isCommunicationAuditStorageUnavailable(unrelatedError), false);
 });

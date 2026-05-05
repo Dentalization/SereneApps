@@ -1,14 +1,17 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 /**
  * Simple Line Chart Component
  * Displays trend data as a line chart with gradient fill
  */
 const LineChart = ({ data, height = 200, color = '#6366f1' }) => {
+  const { t } = useLanguage();
+
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-muted-foreground">No data available</p>
+        <p className="text-sm text-muted-foreground">{t('shared.charts.noDataAvailable', { defaultValue: 'No data available' })}</p>
       </div>
     );
   }
@@ -97,10 +100,12 @@ const LineChart = ({ data, height = 200, color = '#6366f1' }) => {
  * Displays categorical data as vertical bars
  */
 export const BarChart = ({ data, height = 200, colors = ['#6366f1', '#10b981', '#f59e0b'] }) => {
+  const { t } = useLanguage();
+
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-muted-foreground">No data available</p>
+        <p className="text-sm text-muted-foreground">{t('shared.charts.noDataAvailable', { defaultValue: 'No data available' })}</p>
       </div>
     );
   }

@@ -123,19 +123,18 @@ const ReportsIndex = () => {
 
   return (
     <div className={shellClasses.join(' ')}>
-      {/* Sidebar */}
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div
+        className="flex-shrink-0"
+        style={{ width: 'var(--sidebar-width, 20rem)' }}
+      >
         <SideBar />
       </div>
 
-      {/* Main */}
-      <div className="flex-1 min-w-0">
-        <div className="min-h-screen bg-background theme-transition">
+      <main className="flex-1 min-w-0 overflow-y-auto bg-background theme-transition">
+        <div className="p-6 md:p-8 space-y-8">
 
-          {/* ===== Header Card ===== */}
-          <div className="bg-transparent theme-transition">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-              <div className="rounded-[25px] bg-surface-elevated border border-primary/20 shadow-theme-lg theme-transition px-6 py-6 lg:px-8 lg:py-7">
+          {/* ===== Header ===== */}
+          <section className="clinic-page-header space-y-6 rounded-3xl border border-border/40 bg-surface-elevated p-6 shadow-theme-sm theme-transition">
                 {loading ? (
                   <div className="space-y-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -165,20 +164,18 @@ const ReportsIndex = () => {
                 ) : (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                      {/* Title */}
                       <div className="flex items-start gap-3">
                         <div className="p-3 rounded-2xl bg-accent/10">
                           <Icon name="BarChart3" size={24} className="text-accent" />
                         </div>
                         <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Reports</p>
                           <h1 className="text-3xl font-bold text-primary">{t('reports.title')}</h1>
                           <p className="text-secondary mt-1">{t('reports.subtitle')}</p>
                         </div>
                       </div>
 
-                      {/* Actions */}
                       <div className="flex items-center flex-wrap gap-3">
-                        {/* Date range */}
                         <div className="relative">
                           <select
                             value={dateRange}
@@ -196,7 +193,6 @@ const ReportsIndex = () => {
                           />
                         </div>
 
-                        {/* Filter */}
                         <button
                           onClick={() => setShowFilters(!showFilters)}
                           className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border transition-gentle ${
@@ -209,7 +205,6 @@ const ReportsIndex = () => {
                           <span>{t('reports.filter')}</span>
                         </button>
 
-                        {/* Export */}
                         <button
                           onClick={() => setShowExport(!showExport)}
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border bg-surface-elevated text-primary border-primary/20 hover:border-accent/50 transition-gentle"
@@ -218,7 +213,6 @@ const ReportsIndex = () => {
                           <span>{t('reports.export')}</span>
                         </button>
 
-                        {/* Refresh */}
                         <button
                           onClick={refreshData}
                           disabled={loading}
@@ -230,8 +224,7 @@ const ReportsIndex = () => {
                       </div>
                     </div>
 
-                    {/* Tabs as pills */}
-                    <div className="mt-6 pt-4 border-t border-primary/15">
+                    <div className="pt-4 border-t border-border/40">
                       <div className="flex flex-wrap gap-2">
                         {tabs.map(tab => {
                           const active = activeTab === tab.id;
@@ -240,16 +233,16 @@ const ReportsIndex = () => {
                               key={tab.id}
                               onClick={() => setActiveTab(tab.id)}
                               className={[
-                                'inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-gentle',
+                                'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
                                 active
-                                  ? 'bg-accent/10 text-accent border border-accent/30'
-                                  : 'bg-transparent text-secondary border border-transparent hover:text-primary hover:border-primary/30'
+                                  ? 'bg-accent text-white shadow-sm'
+                                  : 'text-secondary hover:text-primary hover:bg-surface'
                               ].join(' ')}
                             >
                               <Icon
                                 name={tab.icon}
                                 size={16}
-                                className={active ? 'text-accent' : 'text-muted'}
+                                className={active ? 'text-white' : 'text-muted'}
                               />
                               {tab.label}
                             </button>
@@ -257,17 +250,13 @@ const ReportsIndex = () => {
                         })}
                       </div>
 
-                      {/* Tab description */}
                       <p className="mt-3 text-secondary text-sm">
                         {tabs.find(t => t.id === activeTab)?.description}
                       </p>
                     </div>
                   </>
                 )}
-              </div>
-            </div>
-          </div>
-          {/* ===== End Header Card ===== */}
+          </section>
 
           {/* Panels */}
           {showFilters && (
@@ -287,7 +276,7 @@ const ReportsIndex = () => {
           )}
 
           {/* Content */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="py-2">
             {loading ? (
               <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -319,7 +308,7 @@ const ReportsIndex = () => {
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

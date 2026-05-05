@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const LanguageContext = createContext();
 
@@ -13,6 +13,7 @@ export const useLanguage = () => {
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState('en');
   const [translations, setTranslations] = useState({});
+  const [fallbackTranslations, setFallbackTranslations] = useState({});
 
   const mergeDeep = (target, source) => {
     if (!source || typeof source !== 'object') return target;
@@ -28,37 +29,48 @@ export const LanguageProvider = ({ children }) => {
     return output;
   };
 
+  const loadLanguageBundle = async (languageCode) => {
+    const translationModule = await import(`../translations/${languageCode}.js`);
+    let mergedTranslations = translationModule.default || {};
+
+    try {
+      const extraModule = await import(`../translations/${languageCode}2.js`);
+      mergedTranslations = mergeDeep(mergedTranslations, extraModule.default || {});
+    } catch (extraError) {
+      console.warn(`LanguageContext: No extended translations found for ${languageCode}`, extraError);
+    }
+
+    try {
+      const coverageModule = await import('../translations/coverage.js');
+      mergedTranslations = mergeDeep(mergedTranslations, coverageModule.default?.[languageCode] || {});
+    } catch (coverageError) {
+      console.warn(`LanguageContext: No coverage translations found for ${languageCode}`, coverageError);
+    }
+
+    return mergedTranslations;
+  };
+
   // Load translations based on language
   useEffect(() => {
     const loadTranslations = async () => {
       console.log('LanguageContext: Loading translations for language:', language);
       try {
-        const translationModule = await import(`../translations/${language}.js`);
-        let mergedTranslations = translationModule.default || {};
-
-        try {
-          const extraModule = await import(`../translations/${language}2.js`);
-          mergedTranslations = mergeDeep(mergedTranslations, extraModule.default || {});
-        } catch (extraError) {
-          console.warn(`LanguageContext: No extended translations found for ${language}`, extraError);
-        }
+        const mergedTranslations = await loadLanguageBundle(language);
+        const mergedFallback = language === 'en'
+          ? mergedTranslations
+          : await loadLanguageBundle('en');
 
         console.log('LanguageContext: Successfully loaded translations for:', language);
         setTranslations(mergedTranslations);
+        setFallbackTranslations(mergedFallback);
       } catch (error) {
         console.error('Failed to load translations:', error);
         // Fallback to English if translation fails
         if (language !== 'en') {
           console.log('LanguageContext: Falling back to English');
-          const fallbackModule = await import('../translations/en.js');
-          let mergedFallback = fallbackModule.default || {};
-          try {
-            const fallbackExtra = await import('../translations/en2.js');
-            mergedFallback = mergeDeep(mergedFallback, fallbackExtra.default || {});
-          } catch (fallbackExtraError) {
-            console.warn('LanguageContext: No extended translations for English', fallbackExtraError);
-          }
+          const mergedFallback = await loadLanguageBundle('en');
           setTranslations(mergedFallback);
+          setFallbackTranslations(mergedFallback);
         }
       }
     };
@@ -79,28 +91,53 @@ export const LanguageProvider = ({ children }) => {
     }
   }, []);
 
-  const t = (key, params = {}) => {
+  const resolveTranslation = useCallback((source, key) => {
     const keys = key.split('.');
-    let value = translations;
+    let value = source;
     
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        // Return key if translation not found
-        return key;
+        return undefined;
       }
     }
 
-    // Replace parameters in translation
-    if (typeof value === 'string' && Object.keys(params).length > 0) {
-      return Object.keys(params).reduce((str, param) => {
-        return str.replace(new RegExp(`{{${param}}}`, 'g'), params[param]);
-      }, value);
+    return value;
+  }, []);
+
+  const interpolate = useCallback((value, params = {}) => {
+    if (typeof value !== 'string' || Object.keys(params).length === 0) {
+      return value;
     }
 
-    return value || key;
-  };
+    return Object.keys(params).reduce((str, param) => {
+      return str.replace(new RegExp(`{{${param}}}`, 'g'), params[param]);
+    }, value);
+  }, []);
+
+  const t = useCallback((key, params = {}) => {
+    const optionParams = params && typeof params === 'object' && !Array.isArray(params) ? params : {};
+    const {
+      defaultValue,
+      fallback,
+      ...interpolationParams
+    } = optionParams;
+
+    const value = resolveTranslation(translations, key);
+    const fallbackValue = resolveTranslation(fallbackTranslations, key);
+    const resolved = value ?? fallbackValue ?? defaultValue ?? fallback;
+
+    if (resolved !== undefined && resolved !== null) {
+      return interpolate(resolved, interpolationParams);
+    }
+
+    if (import.meta.env.DEV) {
+      console.warn(`LanguageContext: missing translation for "${key}" in ${language}`);
+    }
+
+    return '';
+  }, [fallbackTranslations, interpolate, language, resolveTranslation, translations]);
 
   const changeLanguage = (newLanguage) => {
     console.log('LanguageContext: changeLanguage called with:', newLanguage);
@@ -118,7 +155,8 @@ export const LanguageProvider = ({ children }) => {
       setLanguage: changeLanguage,
       changeLanguage,
       t,
-      translations
+      translations,
+      fallbackTranslations
     }}>
       {children}
     </LanguageContext.Provider>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 import {
@@ -21,9 +22,9 @@ function localDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function formatDateTime(value) {
+function formatDateTime(value, language = 'id') {
   if (!value) return '-';
-  return new Date(value).toLocaleString('id-ID', {
+  return new Date(value).toLocaleString(language === 'id' ? 'id-ID' : 'en-US', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -39,37 +40,56 @@ function formatDuration(seconds = 0) {
 }
 
 const ROLE_LABELS = {
-  dentist: 'Dokter',
-  patient: 'Pasien',
-  guardian: 'Wali',
+  dentist: 'Dentist',
+  patient: 'Patient',
+  guardian: 'Guardian',
   interpreter: 'Interpreter',
-  assistant: 'Asisten',
-  observer: 'Observer Klinik'
+  assistant: 'Assistant',
+  observer: 'Clinic Observer',
+  participant: 'Participant'
 };
 
 const EVENT_CATEGORY_LABELS = {
-  session: 'Sesi',
+  session: 'Session',
   observer: 'Observer',
-  security: 'Keamanan',
+  security: 'Security',
   chat: 'Chat',
-  summary: 'Ringkasan',
+  summary: 'Summary',
   attachment: 'Attachment',
-  system: 'Sistem'
+  system: 'System'
 };
 
-function sessionStatusLabel(status) {
-  if (status === 'live') return 'Live';
-  if (status === 'waiting') return 'Menunggu';
-  if (status === 'completed') return 'Selesai';
-  if (status === 'ended') return 'Berakhir';
-  return status || 'Unknown';
+const TELEDENTISTRY_ERROR_MESSAGES = {
+  CLINIC_TELEDENTISTRY_AUDIT_FAILED: 'clinic.teledentistry.errors.auditFailed',
+  CLINIC_TELEDENTISTRY_SESSIONS_FAILED: 'clinic.teledentistry.errors.sessionsFailed',
+  CLINIC_TELEDENTISTRY_SUMMARY_FAILED: 'clinic.teledentistry.errors.summaryFailed',
+  CLINIC_TELEDENTISTRY_MESSAGES_FAILED: 'clinic.teledentistry.errors.messagesFailed',
+  CLINIC_TELEDENTISTRY_FORBIDDEN: 'clinic.teledentistry.errors.forbidden',
+  APPOINTMENT_NOT_FOUND: 'clinic.teledentistry.errors.appointmentNotFound'
+};
+
+function roleLabel(t, role) {
+  return t(`clinic.teledentistry.roles.${role}`, { defaultValue: ROLE_LABELS[role] || role });
 }
 
-function summaryStatusLabel(status) {
-  if (status === 'finalized') return 'Final';
-  if (status === 'amended') return 'Diamendemen';
-  if (status === 'draft') return 'Draft';
-  return 'Menunggu';
+function auditCategoryLabel(t, category) {
+  return t(`clinic.teledentistry.categories.${category}`, { defaultValue: EVENT_CATEGORY_LABELS[category] || category });
+}
+
+function resolveTeledentistryErrorMessage(error, fallbackMessage, t) {
+  const code = String(error?.response?.data?.error?.code || '').trim();
+  if (code && TELEDENTISTRY_ERROR_MESSAGES[code]) {
+    return t(TELEDENTISTRY_ERROR_MESSAGES[code], { defaultValue: fallbackMessage });
+  }
+  return fallbackMessage;
+}
+
+function sessionStatusLabel(status, t) {
+  return t(`clinic.teledentistry.statuses.${status || 'unknown'}`, { defaultValue: status || 'Unknown' });
+}
+
+function summaryStatusLabel(status, t) {
+  return t(`clinic.teledentistry.summaryStatuses.${status || 'pending'}`, { defaultValue: status || 'Pending' });
 }
 
 function auditCategory(eventType = '') {
@@ -100,6 +120,7 @@ function statusClass(status) {
 }
 
 function SummaryDrawer({ open, summary, loading, error, onClose }) {
+  const { t } = useLanguage();
   if (!open) return null;
   const body = summary?.summary;
   return (
@@ -107,18 +128,18 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
       <aside className="h-full w-full max-w-2xl bg-surface-elevated border-l border-primary/20 shadow-2xl flex flex-col">
         <header className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-primary">Ringkasan Klinis</h2>
+            <h2 className="text-lg font-semibold text-primary">{t('clinic.teledentistry.summaryDrawer.title')}</h2>
             <p className="text-sm text-secondary">
-              {summary?.appointment?.patient?.name || 'Pasien'} · Appointment #{summary?.appointment?.id || '-'}
+              {summary?.appointment?.patient?.name || t('clinic.teledentistry.summaryDrawer.patientFallback')} · {t('clinic.teledentistry.labels.appointment')} #{summary?.appointment?.id || '-'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Tutup ringkasan">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label={t('clinic.teledentistry.summaryDrawer.closeAria')}>
             <Icon name="X" size={18} />
           </button>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {loading && <p className="text-sm text-secondary">Memuat ringkasan...</p>}
+          {loading && <p className="text-sm text-secondary">{t('clinic.teledentistry.summaryDrawer.loading')}</p>}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
@@ -126,18 +147,20 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
           )}
           {!loading && !error && !body && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Ringkasan belum final atau isi klinis tidak tersedia untuk role klinik ini.
+              {t('clinic.teledentistry.summaryDrawer.unavailable')}
             </div>
           )}
           {body && (
             <>
-              <SummaryField label="Keluhan utama" value={body.chiefComplaint} />
-              <SummaryField label="Temuan objektif" value={body.objectiveFindings} />
-              <SummaryField label="Assessment" value={body.assessment} />
-              <SummaryField label="Rencana tindakan" value={body.plan} />
-              <SummaryField label="Rekomendasi lanjutan" value={(body.recommendations || []).join('\n')} />
+              <SummaryField label={t('clinic.teledentistry.summaryDrawer.chiefComplaint')} value={body.chiefComplaint} />
+              <SummaryField label={t('clinic.teledentistry.summaryDrawer.objectiveFindings')} value={body.objectiveFindings} />
+              <SummaryField label={t('clinic.teledentistry.summaryDrawer.assessment')} value={body.assessment} />
+              <SummaryField label={t('clinic.teledentistry.summaryDrawer.plan')} value={body.plan} />
+              <SummaryField label={t('clinic.teledentistry.summaryDrawer.recommendations')} value={(body.recommendations || []).join('\n')} />
               <div className="rounded-xl border border-primary/10 bg-surface p-4 text-sm text-secondary">
-                Follow-up: {body.followUpNeeded ? `Ya${body.followUpAt ? ` · ${formatDateTime(body.followUpAt)}` : ''}` : 'Tidak'}
+                {t('clinic.teledentistry.summaryDrawer.followUp')}: {body.followUpNeeded
+                  ? `${t('clinic.teledentistry.summaryDrawer.followUpYes')}${body.followUpAt ? ` · ${formatDateTime(body.followUpAt, language)}` : ''}`
+                  : t('clinic.teledentistry.summaryDrawer.followUpNo')}
               </div>
             </>
           )}
@@ -148,26 +171,27 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
 }
 
 function MessagesDrawer({ open, messagesState, onClose }) {
+  const { t, language } = useLanguage();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
       <aside className="h-full w-full max-w-2xl bg-surface-elevated border-l border-primary/20 shadow-2xl flex flex-col">
         <header className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-primary">Riwayat Chat Konsultasi</h2>
+            <h2 className="text-lg font-semibold text-primary">{t('clinic.teledentistry.messagesDrawer.title')}</h2>
             <p className="text-sm text-secondary">
-              Appointment #{messagesState.appointmentId || '-'} · local chat_messages
+              {t('clinic.teledentistry.labels.appointment')} #{messagesState.appointmentId || '-'} · {t('clinic.teledentistry.labels.localChatMessages')}
             </p>
             <p className="mt-1 text-xs text-muted">
-              Clinic owner dapat meninjau arsip chat lokal untuk compliance. Download attachment tidak tersedia di mode review klinik.
+              {t('clinic.teledentistry.messagesDrawer.policyCopy')}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label="Tutup riwayat chat">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-primary/10 text-muted" aria-label={t('clinic.teledentistry.messagesDrawer.closeAria')}>
             <Icon name="X" size={18} />
           </button>
         </header>
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {messagesState.loading && <p className="text-sm text-secondary">Memuat riwayat chat...</p>}
+          {messagesState.loading && <p className="text-sm text-secondary">{t('clinic.teledentistry.messagesDrawer.loading')}</p>}
           {messagesState.error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {messagesState.error}
@@ -175,20 +199,24 @@ function MessagesDrawer({ open, messagesState, onClose }) {
           )}
           {!messagesState.loading && !messagesState.error && messagesState.messages.length === 0 && (
             <div className="rounded-xl border border-primary/10 bg-surface p-4 text-sm text-secondary">
-              Belum ada pesan chat yang tersinkron ke arsip lokal.
+              {t('clinic.teledentistry.messagesDrawer.empty')}
             </div>
           )}
           {messagesState.messages.map((message) => (
             <div key={message.id} className="rounded-xl border border-primary/10 bg-surface p-4">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-semibold text-primary">{message.senderName}</span>
-                <span className="text-xs text-muted">{formatDateTime(message.createdAt)}</span>
+                <span className="text-xs text-muted">{formatDateTime(message.createdAt, language)}</span>
               </div>
               {message.messageType === 'file' ? (
                 <div className="mt-2 rounded-lg border border-primary/10 bg-surface-elevated px-3 py-2 text-sm">
-                  <div className="font-medium text-primary">{message.fileName || 'Attachment'}</div>
+                  <div className="font-medium text-primary">{message.fileName || t('clinic.teledentistry.messagesDrawer.attachmentFallback')}</div>
                   <div className="text-xs text-secondary">
-                    {message.attachmentAvailable ? 'Attachment tersimpan, tetapi download dinonaktifkan untuk review klinik.' : `Attachment tidak tersedia (${message.mediaTombstoneReason || 'expired/deleted'}).`}
+                    {message.attachmentAvailable
+                      ? t('clinic.teledentistry.messagesDrawer.attachmentStored')
+                      : t('clinic.teledentistry.messagesDrawer.attachmentUnavailable', {
+                        reason: message.mediaTombstoneReason || t('clinic.teledentistry.messagesDrawer.unavailableReason')
+                      })}
                   </div>
                 </div>
               ) : (
@@ -211,22 +239,23 @@ function SummaryField({ label, value }) {
   );
 }
 
-function participantLabelFromIdentity(identity, session) {
+function participantLabelFromIdentity(identity, session, t) {
   const value = String(identity || '');
   if (session?.dentist?.id && value === String(session.dentist.id)) {
-    return `Dokter${session.dentist.name ? ` · ${session.dentist.name}` : ''}`;
+    return `${roleLabel(t, 'dentist')}${session.dentist.name ? ` · ${session.dentist.name}` : ''}`;
   }
   if (session?.patient?.id && value === String(session.patient.id)) {
-    return `Pasien${session.patient.name ? ` · ${session.patient.name}` : ''}`;
+    return `${roleLabel(t, 'patient')}${session.patient.name ? ` · ${session.patient.name}` : ''}`;
   }
   const invited = value.match(/^appointment-\d+:participant-[0-9a-fA-F-]{36}:([a-z_]+)$/);
-  if (invited) return ROLE_LABELS[invited[1]] || invited[1];
+  if (invited) return roleLabel(t, invited[1]);
   const observer = value.match(/^appointment-\d+-observer-\d+$/);
-  if (observer) return ROLE_LABELS.observer;
-  return 'Participant';
+  if (observer) return roleLabel(t, 'observer');
+  return roleLabel(t, 'participant');
 }
 
 function ObserverModal({ appointmentId, session, open, onClose }) {
+  const { t } = useLanguage();
   const remoteContainerRef = useRef(null);
   const sessionRef = useRef(session);
   const [status, setStatus] = useState('idle');
@@ -250,20 +279,22 @@ function ObserverModal({ appointmentId, session, open, onClose }) {
           roomName: tokenSession.video?.roomName || tokenSession.roomName,
           token: tokenSession.video?.token || tokenSession.videoToken || tokenSession.token,
           remoteContainerEl: remoteContainerRef.current,
-          remoteTrackLabeler: (participant) => participantLabelFromIdentity(participant?.identity, sessionRef.current),
+          remoteTrackLabeler: (participant) => participantLabelFromIdentity(participant?.identity, sessionRef.current, t),
           observeOnly: true
         });
         if (!cancelled) setStatus('connected');
       })
-      .catch((err) => {
-        if (!cancelled) {
-          const code = err?.response?.data?.error?.code;
-          setStatus('error');
-          setError(code === 'ROOM_ENDED'
-            ? 'Sesi telah berakhir. Observer tidak dapat bergabung lagi.'
-            : code || err?.message || 'Gagal membuka observer room.');
-        }
-      });
+        .catch((err) => {
+          if (!cancelled) {
+            const code = err?.response?.data?.error?.code;
+            setStatus('error');
+            setError(
+              code === 'ROOM_ENDED'
+                ? t('clinic.teledentistry.observer.roomEnded')
+                : resolveTeledentistryErrorMessage(err, t('clinic.teledentistry.observer.openFailed'), t)
+            );
+          }
+        });
 
     return () => {
       cancelled = true;
@@ -283,18 +314,18 @@ function ObserverModal({ appointmentId, session, open, onClose }) {
       <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">Mode Pemantauan Klinik</h2>
-            <p className="text-xs text-slate-400">Appointment #{appointmentId} · pemantauan sesi teledentistry</p>
+            <h2 className="text-sm font-semibold text-white">{t('clinic.teledentistry.observer.title')}</h2>
+            <p className="text-xs text-slate-400">{t('clinic.teledentistry.observer.appointmentMeta', { appointmentId })}</p>
             <p className="mt-1 text-xs text-slate-500">
-              Observer terhubung tanpa camera/mic. Penyalahgunaan token diaudit dan dapat memicu disconnect.
+              {t('clinic.teledentistry.observer.policyCopy')}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">
-              Kualitas {networkQuality ?? '-'}
+              {t('clinic.teledentistry.labels.quality')} {networkQuality ?? '-'}
             </span>
             <button onClick={handleClose} className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15">
-              Tutup
+              {t('clinic.teledentistry.actions.close')}
             </button>
           </div>
         </header>
@@ -309,25 +340,25 @@ function ObserverModal({ appointmentId, session, open, onClose }) {
           {status !== 'connected' && (
             <div className="absolute inset-0 flex items-center justify-center text-center">
               <div className="rounded-xl bg-slate-900/90 px-4 py-3 text-sm text-slate-200">
-                {status === 'error' ? error : 'Menghubungkan observer ke room...'}
+                {status === 'error' ? error : t('clinic.teledentistry.observer.connecting')}
               </div>
             </div>
           )}
           {status === 'connected' && remoteTrackCount === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-center">
               <div className="rounded-xl bg-slate-900/90 px-4 py-3 text-sm text-slate-300">
-                Terhubung sebagai observer. Menunggu video participant.
+                {t('clinic.teledentistry.observer.connectedWaiting')}
               </div>
             </div>
           )}
           {connectionState === 'reconnecting' && (
             <div className="absolute left-4 top-4 rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white">
-              Koneksi terputus, mencoba menyambungkan ulang...
+              {t('clinic.teledentistry.observer.reconnecting')}
             </div>
           )}
           {connectionState === 'disconnected' && status === 'connected' && (
             <div className="absolute left-4 top-4 rounded-lg bg-slate-800 px-3 py-2 text-sm text-white">
-              Sesi telah berakhir atau koneksi observer terputus.
+              {t('clinic.teledentistry.observer.disconnected')}
             </div>
           )}
           {reconnectError && (
@@ -342,49 +373,51 @@ function ObserverModal({ appointmentId, session, open, onClose }) {
 }
 
 function SessionRow({ session, canObserve, canViewSummary, canViewChat, onObserve, onViewSummary, onViewMessages }) {
+  const { t, language } = useLanguage();
+
   return (
-    <div className="rounded-xl border border-primary/10 bg-surface-elevated p-4 shadow-sm">
+    <div className="rounded-2xl border border-border/40 bg-surface-elevated p-5 shadow-sm transition hover:shadow-md">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-primary">{session.patient?.name || 'Pasien tidak tersedia'}</h3>
-            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${statusClass(session.sessionStatus)}`}>
-              {sessionStatusLabel(session.sessionStatus)}
+            <h3 className="text-base font-semibold text-primary">{session.patient?.name || t('clinic.teledentistry.summaryDrawer.patientFallback')}</h3>
+            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(session.sessionStatus)}`}>
+              {sessionStatusLabel(session.sessionStatus, t)}
             </span>
-            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700">
+            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700">
               Teledentistry
             </span>
           </div>
           <p className="mt-1 text-sm text-secondary">
-            {session.dentist?.name || 'Dokter belum ditentukan'} · {formatDateTime(session.startsAt)} · {session.roomName}
+            {session.dentist?.name || roleLabel(t, 'dentist')} · {formatDateTime(session.startsAt, language)} · {session.roomName}
           </p>
           <p className="mt-1 text-xs text-muted">
-            Ringkasan: {summaryStatusLabel(session.summaryStatus)} · Participant aktif: {session.activeParticipantCount} · Observer: {session.activeObserverCount || 0} · Durasi {formatDuration(session.durationSeconds || 0)}
+            {t('clinic.teledentistry.labels.summary')}: {summaryStatusLabel(session.summaryStatus, t)} · {t('clinic.teledentistry.labels.activeParticipants')}: {session.activeParticipantCount} · {t('clinic.teledentistry.labels.observer')}: {session.activeObserverCount || 0} · {t('clinic.teledentistry.labels.duration')} {formatDuration(session.durationSeconds || 0)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {canViewSummary && (
             <button
               onClick={() => onViewSummary(session.appointmentId)}
-              className="rounded-lg border border-primary/15 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+              className="rounded-xl border border-primary/15 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5"
             >
-              Lihat Ringkasan
+              {t('clinic.teledentistry.actions.viewSummary')}
             </button>
           )}
           {canViewChat && (
             <button
               onClick={() => onViewMessages(session.appointmentId)}
-              className="rounded-lg border border-primary/15 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+              className="rounded-xl border border-primary/15 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5"
             >
-              Riwayat Chat
+              {t('clinic.teledentistry.actions.viewChat')}
             </button>
           )}
           {canObserve && session.canObserve && (
             <button
               onClick={() => onObserve(session.appointmentId)}
-              className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700"
+              className="rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
             >
-              Pantau
+              {t('clinic.teledentistry.actions.observe')}
             </button>
           )}
         </div>
@@ -395,6 +428,7 @@ function SessionRow({ session, canObserve, canViewSummary, canViewChat, onObserv
 
 export default function ClinicTeledentistryPage() {
   const { user } = useAuth();
+  const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
   const clinicRole = getClinicRole(user);
   const fallbackCanObserve = canObserveSessions(clinicRole);
@@ -423,10 +457,10 @@ export default function ClinicTeledentistryPage() {
   });
 
   const tabs = useMemo(() => ([
-    { id: 'live', label: 'Sesi Live', icon: 'Radio', visible: canObserve },
-    { id: 'history', label: 'Riwayat Sesi', icon: 'History', visible: canReadSummaries },
-    { id: 'audit', label: 'Audit Log', icon: 'ShieldCheck', visible: canObserve }
-  ]), [canObserve, canReadSummaries]);
+    { id: 'live', label: t('clinic.teledentistry.tabs.live'), icon: 'Radio', visible: canObserve },
+    { id: 'history', label: t('clinic.teledentistry.tabs.history'), icon: 'History', visible: canReadSummaries },
+    { id: 'audit', label: t('clinic.teledentistry.tabs.audit'), icon: 'ShieldCheck', visible: canObserve }
+  ]), [canObserve, canReadSummaries, t]);
 
   const visibleTabs = tabs.filter((tab) => tab.visible);
 
@@ -450,14 +484,15 @@ export default function ClinicTeledentistryPage() {
       setHistorySessions(history.sessions || []);
       setCounts(live.counts || history.counts || { live: 0, waiting: 0, completed: 0, ended: 0, total: 0 });
     } catch (err) {
-      setError(err?.response?.data?.error?.code || 'Gagal memuat sesi teledentistry klinik.');
+      setError(resolveTeledentistryErrorMessage(err, t('clinic.teledentistry.errors.sessionsFailed'), t));
     } finally {
       setLoading(false);
     }
-  }, [canReadSummaries, date]);
+  }, [canReadSummaries, date, t]);
 
   const loadAudit = useCallback(async () => {
     if (!canObserve) return;
+    setError('');
     try {
       const result = await fetchClinicCommunicationAuditLog({
         date,
@@ -466,9 +501,9 @@ export default function ClinicTeledentistryPage() {
       });
       setAuditEvents(result.events || []);
     } catch (err) {
-      setError(err?.response?.data?.error?.code || 'Gagal memuat audit log.');
+      setError(resolveTeledentistryErrorMessage(err, t('clinic.teledentistry.errors.auditFailed'), t));
     }
-  }, [canObserve, date, eventFilter]);
+  }, [canObserve, date, eventFilter, t]);
 
   useEffect(() => {
     loadSessions();
@@ -503,7 +538,7 @@ export default function ClinicTeledentistryPage() {
       setSummaryState({
         open: true,
         loading: false,
-        error: err?.response?.data?.error?.code || 'Gagal memuat summary.',
+        error: resolveTeledentistryErrorMessage(err, t('clinic.teledentistry.errors.summaryFailed'), t),
         data: null
       });
     }
@@ -524,7 +559,7 @@ export default function ClinicTeledentistryPage() {
       setMessagesState({
         open: true,
         loading: false,
-        error: err?.response?.data?.error?.code || 'Gagal memuat chat history.',
+        error: resolveTeledentistryErrorMessage(err, t('clinic.teledentistry.errors.messagesFailed'), t),
         appointmentId,
         messages: []
       });
@@ -534,10 +569,15 @@ export default function ClinicTeledentistryPage() {
   if (!canReadSummaries) {
     return (
       <div className="flex min-h-screen bg-background theme-transition">
-        <ClinicSideBar />
-        <main className="flex-1 p-8">
+        <div
+          className="flex-shrink-0"
+          style={{ width: 'var(--sidebar-width, 20rem)' }}
+        >
+          <ClinicSideBar />
+        </div>
+        <main className="flex-1 min-w-0 p-6 md:p-8">
           <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
-            Role klinik ini hanya dapat melihat status appointment. Akses teledentistry memerlukan clinic owner atau clinic admin.
+            {t('clinic.teledentistry.accessDenied')}
           </section>
         </main>
       </div>
@@ -546,135 +586,179 @@ export default function ClinicTeledentistryPage() {
 
   return (
     <div className="flex min-h-screen bg-background theme-transition">
-      <ClinicSideBar />
-      <main className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary">Teledentistry</h1>
-            <p className="text-sm text-secondary">Pemantauan sesi, ringkasan final, dan audit teledentistry tingkat klinik.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              className="rounded-lg border border-primary/20 bg-surface px-3 py-2 text-sm text-primary"
-            />
-            <div className="rounded-lg border border-primary/10 bg-surface px-3 py-2 text-sm text-secondary">
-              Live: <span className="font-semibold text-primary">{counts.live || 0}</span>
-            </div>
-          </div>
-        </header>
+      <div
+        className="flex-shrink-0"
+        style={{ width: 'var(--sidebar-width, 20rem)' }}
+      >
+        <ClinicSideBar />
+      </div>
 
-        {canReadSummaries && !canObserve && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Anda memiliki akses riwayat dan ringkasan sesuai policy klinik. Pemantauan live hanya tersedia untuk clinic owner.
-          </div>
-        )}
-
-        <nav className="flex flex-wrap gap-2 border-b border-primary/10 pb-3">
-          {visibleTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                activeTab === tab.id ? 'bg-accent text-white' : 'text-secondary hover:bg-primary/5 hover:text-primary'
-              }`}
-            >
-              <Icon name={tab.icon} size={16} />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {activeTab === 'live' && canObserve && (
-          <section className="space-y-3">
-            {loading ? <p className="text-sm text-secondary">Memuat sesi live...</p> : null}
-            {!loading && liveSessions.length === 0 ? (
-              <div className="rounded-xl border border-primary/10 bg-surface p-6 text-sm text-secondary">
-                Tidak ada sesi teledentistry aktif.
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="p-6 md:p-8 pb-0">
+          <section className="clinic-page-header space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold text-primary">{t('clinic.teledentistry.title')}</h1>
+                <p className="text-sm text-secondary max-w-2xl">
+                  {t('clinic.teledentistry.subtitle')}
+                </p>
               </div>
-            ) : liveSessions.map((session) => (
-              <SessionRow
-                key={session.appointmentId}
-                session={session}
-                canObserve={canObserve}
-                canViewSummary={canReadSummaries}
-                canViewChat={canViewChat}
-                onObserve={setObservingAppointmentId}
-                onViewSummary={openSummary}
-                onViewMessages={openMessages}
-              />
-            ))}
-          </section>
-        )}
-
-        {activeTab === 'history' && (
-          <section className="space-y-3">
-            {historySessions.length === 0 ? (
-              <div className="rounded-xl border border-primary/10 bg-surface p-6 text-sm text-secondary">
-                Tidak ada riwayat sesi pada tanggal ini.
-              </div>
-            ) : historySessions.map((session) => (
-              <SessionRow
-                key={session.appointmentId}
-                session={session}
-                canObserve={false}
-                canViewSummary={canReadSummaries}
-                canViewChat={false}
-                onObserve={setObservingAppointmentId}
-                onViewSummary={openSummary}
-                onViewMessages={openMessages}
-              />
-            ))}
-          </section>
-        )}
-
-        {activeTab === 'audit' && canObserve && (
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <input
-                value={eventFilter}
-                onChange={(event) => setEventFilter(event.target.value)}
-                placeholder="Filter event type"
-                className="rounded-lg border border-primary/20 bg-surface px-3 py-2 text-sm text-primary"
-              />
-              <button onClick={loadAudit} className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white">
-                Refresh Audit
-              </button>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-primary/10 bg-surface-elevated">
-              {auditEvents.length === 0 ? (
-                <p className="p-5 text-sm text-secondary">Tidak ada audit event.</p>
-              ) : auditEvents.map((event) => {
-                const category = auditCategory(event.eventType);
-                return (
-                <div key={event.id} className="border-b border-primary/10 px-4 py-3 last:border-b-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${auditCategoryClass(category)}`}>
-                        {EVENT_CATEGORY_LABELS[category]}
-                      </span>
-                      <div className="font-medium text-primary">{event.eventType}</div>
-                    </div>
-                    <div className="text-xs text-secondary">{formatDateTime(event.occurredAt)}</div>
-                  </div>
-                  <p className="mt-1 text-xs text-secondary">
-                    Appointment #{event.appointmentId} · {event.actorRole || 'system'} · {event.provider || 'local'}
-                  </p>
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
+                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
+                  {t('clinic.teledentistry.liveCount')}: <span className="font-semibold text-primary">{counts.live || 0}</span>
                 </div>
-                );
-              })}
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                  className="rounded-lg border border-border/40 bg-surface px-3 py-2 text-sm text-primary"
+                />
+              </div>
+            </div>
+            <div className="border-t border-border/40 pt-4">
+              <div className="flex flex-wrap gap-2">
+                {visibleTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      activeTab === tab.id
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <Icon name={tab.icon} size={16} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </section>
-        )}
-      </main>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-background theme-transition space-y-8">
+          {canReadSummaries && !canObserve && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {t('clinic.teledentistry.adminLimitedAccess')}
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {activeTab === 'live' && canObserve && (
+            <section className="space-y-4 rounded-3xl border border-border/40 bg-surface-elevated p-5 shadow-sm">
+              {loading ? (
+                <div className="space-y-3">
+                  <div className="h-4 w-48 animate-pulse rounded bg-primary/10" />
+                  <div className="h-24 animate-pulse rounded-2xl bg-primary/5" />
+                </div>
+              ) : null}
+              {!loading && liveSessions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-primary/20 bg-surface p-8 text-center">
+                  <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                    <Icon name="Radio" size={18} />
+                  </div>
+                  <p className="text-base font-medium text-primary">{t('clinic.teledentistry.empty.liveTitle')}</p>
+                  <p className="mt-1 text-sm text-secondary">{t('clinic.teledentistry.empty.liveDescription')}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {liveSessions.map((session) => (
+                    <SessionRow
+                      key={session.appointmentId}
+                      session={session}
+                      canObserve={canObserve}
+                      canViewSummary={canReadSummaries}
+                      canViewChat={canViewChat}
+                      onObserve={setObservingAppointmentId}
+                      onViewSummary={openSummary}
+                      onViewMessages={openMessages}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'history' && (
+            <section className="space-y-4 rounded-3xl border border-border/40 bg-surface-elevated p-5 shadow-sm">
+              {historySessions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-primary/20 bg-surface p-8 text-center">
+                  <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Icon name="History" size={18} />
+                  </div>
+                  <p className="text-base font-medium text-primary">{t('clinic.teledentistry.empty.historyTitle')}</p>
+                  <p className="mt-1 text-sm text-secondary">{t('clinic.teledentistry.empty.historyDescription')}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historySessions.map((session) => (
+                    <SessionRow
+                      key={session.appointmentId}
+                      session={session}
+                      canObserve={false}
+                      canViewSummary={canReadSummaries}
+                      canViewChat={false}
+                      onObserve={setObservingAppointmentId}
+                      onViewSummary={openSummary}
+                      onViewMessages={openMessages}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'audit' && canObserve && (
+            <section className="space-y-4 rounded-3xl border border-border/40 bg-surface-elevated p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <input
+                  value={eventFilter}
+                  onChange={(event) => setEventFilter(event.target.value)}
+                  placeholder={t('clinic.teledentistry.filters.eventType')}
+                  className="w-full rounded-xl border border-primary/20 bg-surface px-3 py-2 text-sm text-primary md:max-w-sm"
+                />
+                <button onClick={loadAudit} className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent/90">
+                  {t('clinic.teledentistry.actions.refreshAudit')}
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-primary/10 bg-surface">
+                {auditEvents.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                      <Icon name="ShieldCheck" size={18} />
+                    </div>
+                    <p className="text-base font-medium text-primary">{t('clinic.teledentistry.empty.auditTitle')}</p>
+                    <p className="mt-1 text-sm text-secondary">{t('clinic.teledentistry.empty.auditDescription')}</p>
+                  </div>
+                ) : auditEvents.map((event) => {
+                  const category = auditCategory(event.eventType);
+                  return (
+                  <div key={event.id} className="border-b border-primary/10 px-4 py-3 last:border-b-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${auditCategoryClass(category)}`}>
+                          {auditCategoryLabel(t, category)}
+                        </span>
+                        <div className="font-medium text-primary">{event.eventType}</div>
+                      </div>
+                      <div className="text-xs text-secondary">{formatDateTime(event.occurredAt, language)}</div>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">
+                      {t('clinic.teledentistry.labels.appointment')} #{event.appointmentId} · {event.actorRole || t('clinic.teledentistry.roles.system')} · {event.provider || 'local'}
+                    </p>
+                  </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
 
       <ObserverModal
         appointmentId={observingAppointmentId}

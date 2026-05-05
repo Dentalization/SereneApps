@@ -411,7 +411,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null) {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const r = await fetch(api('/sessions?page=1&per_page=100'), { headers: authHeaders() });
+      const r = await fetch(api('/sessions?page=1&per_page=30'), { headers: authHeaders() });
       const data = await r.json();
       const all = data.sessions || [];
 
@@ -536,11 +536,13 @@ export default function useDentalAPI(role = 'dentist', dentistId = null) {
 
   const bootstrap = useCallback(async () => {
     setIsBootstrapping(true);
-    const start = Date.now();
-    // Only fetch health + existing sessions — session is created lazily on first message
-    await Promise.all([checkHealth(), fetchSessions()]);
-    const elapsed = Date.now() - start;
-    if (elapsed < 900) await new Promise((r) => setTimeout(r, 900 - elapsed));
+    // Kick off initial data loading immediately, but don't block first paint too long.
+    // If API is slow, the page still opens and data hydrates once requests resolve.
+    const initialRequests = Promise.allSettled([checkHealth(), fetchSessions()]);
+    await Promise.race([
+      initialRequests,
+      new Promise((resolve) => setTimeout(resolve, 1200)),
+    ]);
     setIsBootstrapping(false);
   }, [checkHealth, fetchSessions]);
 

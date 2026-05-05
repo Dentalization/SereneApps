@@ -2,13 +2,14 @@
  * PatientTeledentistryScreen.jsx
  * * Complete teledentistry session UI for the patient side.
  * Handles: Upcoming → Chat → Incoming Call → Active Video Call → Session Ended.
- * * All backend interactions are simulated via local state.
+ * Backend chat, token, video room, attachment, and summary operations are API-backed.
  * All styles are inline for easy modification.
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert, } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert, ActivityIndicator, } from 'react-native';
 import { Camera } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,7 +27,22 @@ import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 // ─── Brand / Theme Constants ───────────────────────────────────────────────────
-const COLORS = THEME_COLORS;
+const COLORS = {
+  ...THEME_COLORS,
+  background: THEME_COLORS.surface || '#F8FAFC',
+  black: '#000000',
+  accent: THEME_COLORS.accent || '#38BDF8',
+  gray100: '#F1F5F9',
+  gray200: '#E2E8F0',
+  gray300: '#CBD5E1',
+  gray400: '#94A3B8',
+  gray500: '#64748B',
+  gray600: '#475569',
+  gray900: '#0F172A',
+  chatSystem: '#EEF2FF',
+  chatUser: THEME_COLORS.primary || '#7C3AED',
+  chatDentist: '#FFFFFF',
+};
 
 // ─── Utility: Format appointment date for display ─────────────────────────────
 const formatAppointmentDateTime = (date) => {
@@ -47,6 +63,35 @@ const formatTimestamp = (date) => {
   const h = date.getHours().toString().padStart(2, '0');
   const m = date.getMinutes().toString().padStart(2, '0');
   return `${h}:${m}`;
+};
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+const waitingRoomMessage = (waitingRoom) => {
+  if (!waitingRoom) return 'Sesi belum siap. Silakan coba lagi beberapa saat.';
+  switch (waitingRoom.state) {
+    case 'payment_pending':
+      return 'Pembayaran belum selesai. Selesaikan pembayaran sebelum bergabung ke video call.';
+    case 'scheduled_waiting':
+      return waitingRoom.opensAt
+        ? `Ruang video dibuka pada ${formatAppointmentDateTime(waitingRoom.opensAt)}.`
+        : 'Ruang video belum dibuka untuk jadwal konsultasi ini.';
+    case 'ended':
+      return 'Sesi video sudah berakhir dan tidak dapat dimasuki kembali.';
+    default:
+      return 'Ruang video belum siap. Silakan coba lagi.';
+  }
+};
+
+const buildPickedAssetFile = (asset) => {
+  if (!asset?.uri) return null;
+  const uriParts = asset.uri.split('/');
+  const fallbackName = `teledentistry-attachment-${Date.now()}.jpg`;
+  return {
+    uri: asset.uri,
+    name: asset.fileName || uriParts[uriParts.length - 1] || fallbackName,
+    type: asset.mimeType || 'image/jpeg',
+  };
 };
 
 // ─── Unique ID Generator ───────────────────────────────────────────────────────
@@ -114,12 +159,29 @@ const PatientTeledentistryScreen = () => {
     incomingCall,
     selectConversation,
     sendMessage,
+    sendAttachmentMessage,
     emitVideoCallResponse,
     emitVideoCallEnded,
     fetchVideoToken,
   } = useChat({ userId: currentUser?.id });
 
-  const { twilioRef, isConnected, isAudioEnabled, isVideoEnabled, remoteParticipantSids, connectError, networkQuality, connect, disconnect, toggleAudio, toggleVideo, flipCamera, handlers } = useTwilioVideoClient();
+  const {
+    twilioRef,
+    isConnected,
+    isAudioEnabled,
+    isVideoEnabled,
+    remoteVideoTracks,
+    remoteParticipants,
+    connectError,
+    connectionState: videoConnectionState,
+    networkQuality,
+    connect,
+    disconnect,
+    toggleAudio,
+    toggleVideo,
+    flipCamera,
+    handlers
+  } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
@@ -127,6 +189,9 @@ const PatientTeledentistryScreen = () => {
   const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [clinicalSummary, setClinicalSummary] = useState(null);
   const [summaryAckStatus, setSummaryAckStatus] = useState('idle');
+  const [callJoinStatus, setCallJoinStatus] = useState('idle');
+  const [callNotice, setCallNotice] = useState(null);
+  const [attachmentUpload, setAttachmentUpload] = useState(null);
 
   // ─── UI State ──────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -313,23 +378,52 @@ const PatientTeledentistryScreen = () => {
 
   const handleAcceptCall = async () => {
     try {
+      if (!appointmentId || callJoinStatus !== 'idle') return;
+      setCallNotice(null);
+      setCallJoinStatus('checking');
+
+      const session = await fetchVideoToken(appointmentId.toString());
+      if (session.canJoinVideo === false || session.waitingRoom?.canJoinVideo === false) {
+        const message = waitingRoomMessage(session.waitingRoom);
+        setCallNotice(message);
+        addSystemMessage(message);
+        setCallJoinStatus('idle');
+        return;
+      }
+      if (!session.token || !session.roomName) {
+        const message = 'Token atau ruang video belum siap. Silakan coba lagi.';
+        setCallNotice(message);
+        addSystemMessage(message);
+        setCallJoinStatus('idle');
+        return;
+      }
+
+      setCallJoinStatus('permissions');
       const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
       const { status: micStatus } = await Camera.requestMicrophonePermissionsAsync();
 
       if (cameraStatus !== 'granted' || micStatus !== 'granted') {
-        Alert.alert('Izin Ditolak', 'Aplikasi memerlukan akses Kamera dan Mikrofon untuk Video Call.');
+        const message = 'Aplikasi memerlukan akses Kamera dan Mikrofon untuk Video Call.';
+        setCallNotice(message);
+        Alert.alert('Izin Ditolak', message);
+        setCallJoinStatus('idle');
         return;
       }
 
-      if (appointmentId) {
-        emitVideoCallResponse(appointmentId.toString(), true);
-        const { token, roomName } = await fetchVideoToken(appointmentId.toString());
-        connect({ roomName, token });
-      }
+      setCallJoinStatus('connecting');
+      emitVideoCallResponse(appointmentId.toString(), true);
+      await connect({ roomName: session.roomName, token: session.token });
       setCallStatus('active');
       addSystemMessage('Video call dimulai.');
     } catch (e) {
-      console.warn('Failed to get permissions', e);
+      const message = e?.response?.data?.error?.code === 'ROOM_ENDED'
+        ? 'Sesi video sudah berakhir dan tidak dapat dimasuki kembali.'
+        : e?.message || 'Gagal memulai video call. Silakan coba lagi.';
+      setCallNotice(message);
+      Alert.alert('Gagal Bergabung', message);
+      console.warn('Failed to join video call', e?.message || e);
+    } finally {
+      setCallJoinStatus('idle');
     }
   };
 
@@ -348,6 +442,7 @@ const PatientTeledentistryScreen = () => {
     }
     disconnect();
     setCallStatus('idle');
+    setCallNotice(null);
     addSystemMessage(`Video call berakhir. Durasi: ${duration}.`);
   };
 
@@ -379,12 +474,59 @@ const PatientTeledentistryScreen = () => {
     }
   };
 
+  const handlePickAttachment = async () => {
+    if (!appointmentId || sessionStatus !== 'active' || attachmentUpload?.status === 'uploading') return;
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Izin Ditolak', 'Izinkan akses galeri untuk mengunggah lampiran konsultasi.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: false,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > MAX_ATTACHMENT_BYTES) {
+        Alert.alert('File Terlalu Besar', 'Ukuran lampiran maksimal 10 MB.');
+        return;
+      }
+
+      const file = buildPickedAssetFile(asset);
+      if (!file) {
+        Alert.alert('Lampiran Tidak Valid', 'File tidak dapat diproses. Silakan pilih file lain.');
+        return;
+      }
+
+      setAttachmentUpload({ status: 'uploading', progress: 0, fileName: file.name });
+      await sendAttachmentMessage({
+        appointmentId: appointmentId.toString(),
+        file,
+        onUploadProgress: (event) => {
+          if (!event.total) return;
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setAttachmentUpload((prev) => prev ? { ...prev, progress } : prev);
+        },
+      });
+      setAttachmentUpload({ status: 'done', progress: 100, fileName: file.name });
+      setTimeout(() => setAttachmentUpload(null), 1600);
+    } catch (error) {
+      setAttachmentUpload({ status: 'error', progress: 0, fileName: null });
+      Alert.alert('Upload Gagal', error?.message || 'Lampiran gagal diunggah. Silakan coba lagi.');
+    }
+  };
+
   useEffect(() => {
     if (connectError && callStatus === 'active') {
-      handleEndCall();
-      addSystemMessage('Koneksi video terputus: ' + connectError);
+      setCallNotice(videoConnectionState === 'reconnecting'
+        ? 'Koneksi video terputus sementara, mencoba menyambungkan ulang...'
+        : `Koneksi video bermasalah: ${connectError}`);
     }
-  }, [connectError, callStatus]);
+  }, [connectError, callStatus, videoConnectionState]);
 
   useEffect(() => {
     if (!appointmentId || sessionStatus !== 'ended') return;
@@ -737,69 +879,96 @@ const PatientTeledentistryScreen = () => {
     if (sessionStatus === 'ended' || sessionStatus === 'upcoming') return null;
 
     return (
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'flex-end',
-          paddingHorizontal: 12,
-          paddingTop: 10,
-          backgroundColor: COLORS.white,
-          borderTopWidth: 1,
-          borderTopColor: COLORS.gray200,
-          paddingBottom: Math.max(insets.bottom, 12),
-        }}
-      >
-        {/* Attachment */}
-        <TouchableOpacity
-          style={{ width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 4 }}
-          activeOpacity={0.7}
-          accessibilityLabel="Unggah Lampiran"
-          accessibilityRole="button"
-        >
-          <MaterialCommunityIcons name="paperclip" size={22} color={COLORS.textMuted || COLORS.gray500} />
-        </TouchableOpacity>
-
-        {/* Text Input */}
+      <View>
+        {attachmentUpload && (
+          <View style={{ backgroundColor: attachmentUpload.status === 'error' ? withOpacity(COLORS.error, 0.1) : withOpacity(COLORS.primary, 0.08), paddingHorizontal: 16, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.gray200 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {attachmentUpload.status === 'uploading' ? (
+                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 8 }} />
+              ) : (
+                <MaterialCommunityIcons
+                  name={attachmentUpload.status === 'done' ? 'check-circle-outline' : 'alert-circle-outline'}
+                  size={16}
+                  color={attachmentUpload.status === 'done' ? COLORS.success : COLORS.error}
+                  style={{ marginRight: 8 }}
+                />
+              )}
+              <Text style={{ flex: 1, ...TYPOGRAPHY.caption, color: attachmentUpload.status === 'error' ? COLORS.error : COLORS.textSecondary, fontWeight: '600' }} numberOfLines={1}>
+                {attachmentUpload.status === 'uploading'
+                  ? `Mengunggah ${attachmentUpload.fileName || 'lampiran'} ${attachmentUpload.progress || 0}%`
+                  : attachmentUpload.status === 'done'
+                    ? 'Lampiran berhasil dikirim'
+                    : 'Lampiran gagal diunggah'}
+              </Text>
+            </View>
+          </View>
+        )}
         <View
           style={{
-            flex: 1,
-            backgroundColor: COLORS.gray100,
-            borderRadius: 22,
-            paddingHorizontal: 14,
-            paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-            maxHeight: 120,
-            justifyContent: 'center',
+            flexDirection: 'row',
+            alignItems: 'flex-end',
+            paddingHorizontal: 12,
+            paddingTop: 10,
+            backgroundColor: COLORS.white,
+            borderTopWidth: attachmentUpload ? 0 : 1,
+            borderTopColor: COLORS.gray200,
+            paddingBottom: Math.max(insets.bottom, 12),
           }}
         >
-          <TextInput
-            style={{ fontSize: 14, color: COLORS.gray900, maxHeight: 100, lineHeight: 20 }}
-            placeholder="Ketik pesan..."
-            placeholderTextColor={COLORS.gray400}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={1000}
-            returnKeyType="default"
-          />
-        </View>
+          {/* Attachment */}
+          <TouchableOpacity
+            style={{ width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 4 }}
+            activeOpacity={0.7}
+            accessibilityLabel="Unggah Lampiran"
+            accessibilityRole="button"
+            onPress={handlePickAttachment}
+            disabled={attachmentUpload?.status === 'uploading'}
+          >
+            <MaterialCommunityIcons name="paperclip" size={22} color={attachmentUpload?.status === 'uploading' ? COLORS.gray300 : (COLORS.textMuted || COLORS.gray500)} />
+          </TouchableOpacity>
 
-        {/* Send Button */}
-        <TouchableOpacity
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginLeft: 6,
-            backgroundColor: inputText.trim() ? COLORS.primary : COLORS.gray200,
-          }}
-          onPress={handleSend}
-          disabled={!inputText.trim()}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? COLORS.white : COLORS.gray400} />
-        </TouchableOpacity>
+          {/* Text Input */}
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: COLORS.gray100,
+              borderRadius: 22,
+              paddingHorizontal: 14,
+              paddingVertical: Platform.OS === 'ios' ? 10 : 4,
+              maxHeight: 120,
+              justifyContent: 'center',
+            }}
+          >
+            <TextInput
+              style={{ fontSize: 14, color: COLORS.gray900, maxHeight: 100, lineHeight: 20 }}
+              placeholder="Ketik pesan..."
+              placeholderTextColor={COLORS.gray400}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={1000}
+              returnKeyType="default"
+            />
+          </View>
+
+          {/* Send Button */}
+          <TouchableOpacity
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginLeft: 6,
+              backgroundColor: inputText.trim() ? COLORS.primary : COLORS.gray200,
+            }}
+            onPress={handleSend}
+            disabled={!inputText.trim()}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? COLORS.white : COLORS.gray400} />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -854,6 +1023,11 @@ const PatientTeledentistryScreen = () => {
             <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.6), letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>Video Call Masuk</Text>
             <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.white, textAlign: 'center', marginBottom: 4 }}>{dentistName}</Text>
             <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.5) }}>{displaySpecialty}</Text>
+            {callNotice && (
+              <View style={{ marginTop: 16, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: withOpacity(COLORS.warning, 0.18), maxWidth: 280 }}>
+                <Text style={{ color: COLORS.white, fontSize: 12, lineHeight: 18, textAlign: 'center', fontWeight: '600' }}>{callNotice}</Text>
+              </View>
+            )}
           </View>
 
           {/* Accept / Reject Buttons */}
@@ -878,14 +1052,21 @@ const PatientTeledentistryScreen = () => {
                 <TouchableOpacity
                   style={{ width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, backgroundColor: COLORS.success }}
                   onPress={handleAcceptCall}
+                  disabled={callJoinStatus !== 'idle'}
                   activeOpacity={0.8}
                   accessibilityLabel="Terima Panggilan"
                   accessibilityRole="button"
                 >
-                  <MaterialCommunityIcons name="video" size={32} color={COLORS.white} />
+                  {callJoinStatus !== 'idle' ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <MaterialCommunityIcons name="video" size={32} color={COLORS.white} />
+                  )}
                 </TouchableOpacity>
               </Animated.View>
-              <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.bodySmall, fontWeight: '600', marginTop: 10 }}>Terima</Text>
+              <Text style={{ color: withOpacity(COLORS.white, 0.7), ...TYPOGRAPHY.bodySmall, fontWeight: '600', marginTop: 10 }}>
+                {callJoinStatus === 'checking' ? 'Cek sesi' : callJoinStatus === 'permissions' ? 'Izin' : callJoinStatus === 'connecting' ? 'Menghubungkan' : 'Terima'}
+              </Text>
             </View>
           </View>
         </LinearGradient>
@@ -896,6 +1077,9 @@ const PatientTeledentistryScreen = () => {
   // ──── Active Video Call Overlay ─────────────────────────────────────────────
   const renderVideoCallOverlay = () => {
     if (callStatus !== 'active') return null;
+    const isReconnecting = videoConnectionState === 'reconnecting';
+    const callStateLabel = isReconnecting ? 'Reconnect' : isConnected ? 'Live' : 'Connecting';
+    const callStateColor = isReconnecting ? COLORS.warning : isConnected ? COLORS.success : COLORS.accent;
 
     return (
       <Animated.View
@@ -916,14 +1100,33 @@ const PatientTeledentistryScreen = () => {
       >
         {/* Remote Participant View / Background */}
         <View style={StyleSheet.absoluteFill}>
-          {remoteParticipantSids.length > 0 ? (
-            <TwilioVideoParticipantView
-              style={{ flex: 1, backgroundColor: COLORS.black }}
-              trackIdentifier={{
-                participantSid: remoteParticipantSids[0],
-                videoTrackSid: ''
-              }}
-            />
+          {remoteVideoTracks.length > 0 ? (
+            <View style={{ flex: 1, backgroundColor: COLORS.black, flexDirection: remoteVideoTracks.length > 1 ? 'row' : 'column', flexWrap: 'wrap' }}>
+              {remoteVideoTracks.slice(0, 4).map((remoteTrack) => (
+                <View
+                  key={`${remoteTrack.participantSid}-${remoteTrack.videoTrackSid}`}
+                  style={{
+                    width: remoteVideoTracks.length > 1 ? '50%' : '100%',
+                    height: remoteVideoTracks.length > 2 ? '50%' : '100%',
+                    backgroundColor: COLORS.black,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <TwilioVideoParticipantView
+                    style={{ flex: 1, backgroundColor: COLORS.black }}
+                    trackIdentifier={{
+                      participantSid: remoteTrack.participantSid,
+                      videoTrackSid: remoteTrack.videoTrackSid
+                    }}
+                  />
+                  <View style={{ position: 'absolute', left: 10, bottom: 10, backgroundColor: withOpacity(COLORS.black, 0.45), borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Text style={{ color: COLORS.white, fontSize: 11, fontWeight: '700' }} numberOfLines={1}>
+                      {remoteTrack.identity?.includes('dentist') ? 'Dokter' : dentistName}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
           ) : (
             <LinearGradient colors={['#0F172A', '#1E293B']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <View style={{ position: 'relative' }}>
@@ -936,7 +1139,9 @@ const PatientTeledentistryScreen = () => {
                 )}
                 <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{dentistName}</Text>
                 <Text style={{ fontSize: 13, color: withOpacity(COLORS.white, 0.5), marginTop: 4, textAlign: 'center' }}>{displaySpecialty}</Text>
-                <Text style={{ fontSize: 14, color: COLORS.accent, marginTop: 12, textAlign: 'center' }}>Menunggu terhubung...</Text>
+                <Text style={{ fontSize: 14, color: COLORS.accent, marginTop: 12, textAlign: 'center' }}>
+                  {remoteParticipants.length > 0 ? 'Audio tersambung. Kamera dokter tidak aktif.' : 'Menunggu terhubung...'}
+                </Text>
               </View>
             </LinearGradient>
           )}
@@ -949,7 +1154,8 @@ const PatientTeledentistryScreen = () => {
               <MaterialCommunityIcons name="arrow-left" size={22} color={COLORS.white} />
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: withOpacity(COLORS.white, 0.15), paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.error, marginRight: 8 }} />
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: callStateColor, marginRight: 8 }} />
+              <Text style={{ color: COLORS.white, fontSize: 11, fontWeight: '700', marginRight: 8 }}>{callStateLabel}</Text>
               <Text style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{formatCallDuration(callDuration)}</Text>
               <MaterialCommunityIcons name="signal-cellular-2" size={14} color={COLORS.white} style={{ marginLeft: 10, marginRight: 4 }} />
               <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700' }}>{networkQuality >= 0 ? networkQuality : '-'}/5</Text>
@@ -971,6 +1177,12 @@ const PatientTeledentistryScreen = () => {
                 <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700' }}>Audio only</Text>
               </TouchableOpacity>
             )}
+          </View>
+        )}
+
+        {callNotice && (
+          <View style={{ position: 'absolute', top: insets.top + (networkQuality >= 0 && networkQuality <= 1 ? 142 : 58), left: 16, right: 16, zIndex: 11, backgroundColor: withOpacity(isReconnecting ? COLORS.warning : COLORS.error, 0.92), borderRadius: 12, padding: 10 }}>
+            <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{callNotice}</Text>
           </View>
         )}
 

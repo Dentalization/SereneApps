@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { attachmentPresentationForMessage } from './communications/attachmentStorageService.js';
 import { recordCommunicationEvent } from './communications.js';
 import {
@@ -44,6 +44,16 @@ function redactMetadata(metadata = {}) {
         if (value instanceof Date) return [key, value.toISOString()];
         return [key, '[redacted-object]'];
       })
+  );
+}
+
+function isCommunicationAuditStorageUnavailable(error) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === 'P2021' || error.code === 'P2022';
+  }
+  const message = String(error?.message || '');
+  return (
+    /communication_events/i.test(message) && /does not exist|unknown/i.test(message)
   );
 }
 
@@ -398,15 +408,21 @@ export async function listClinicCommunicationAudit({ user, date, eventType, dent
   const appointmentIds = appointments.map((appointment) => appointment.id);
   if (!appointmentIds.length) return { clinicRole: context.clinicRole, capabilities: context.capabilities, events: [] };
 
-  const events = await prisma.communicationEvent.findMany({
-    where: {
-      appointmentId: { in: appointmentIds },
-      ...(eventType ? { eventType } : {}),
-      ...(window ? { occurredAt: { gte: window.start, lt: window.end } } : {})
-    },
-    orderBy: { occurredAt: 'desc' },
-    take: Math.min(Math.max(Number(limit) || 100, 1), 250)
-  });
+  let events = [];
+  try {
+    events = await prisma.communicationEvent.findMany({
+      where: {
+        appointmentId: { in: appointmentIds },
+        ...(eventType ? { eventType } : {}),
+        ...(window ? { occurredAt: { gte: window.start, lt: window.end } } : {})
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: Math.min(Math.max(Number(limit) || 100, 1), 250)
+    });
+  } catch (error) {
+    if (!isCommunicationAuditStorageUnavailable(error)) throw error;
+    console.warn('[clinic teledentistry] communication audit storage unavailable:', error.message);
+  }
 
   return {
     clinicRole: context.clinicRole,
@@ -432,5 +448,6 @@ export const __testables = {
   serializeMessage,
   scopedClinicBranchIdsForContext,
   clinicAdminCanViewClinicalSummary,
-  isClinicalVideoSession
+  isClinicalVideoSession,
+  isCommunicationAuditStorageUnavailable
 };

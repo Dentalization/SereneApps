@@ -186,7 +186,10 @@ const PatientEMRList = () => {
 
   return (
     <div className="flex min-h-screen bg-background theme-transition">
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div
+        className="flex-shrink-0"
+        style={{ width: 'var(--sidebar-width, 20rem)' }}
+      >
         <SideBar />
       </div>
       <div className="flex-1 min-w-0">

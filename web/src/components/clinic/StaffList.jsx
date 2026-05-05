@@ -2,9 +2,12 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import AppIcon from '../AppIcon';
 import { resolveMediaUrl } from '../../utils/media';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const StaffList = ({ staff = [] }) => {
-  if (!staff.length) return <div className="text-sm text-secondary">No staff assigned to this branch</div>;
+  const { t } = useLanguage();
+
+  if (!staff.length) return <div className="text-sm text-secondary">{t('common.noStaffAssigned', { defaultValue: 'No staff assigned to this branch' })}</div>;
 
   return (
     <ul className="space-y-3">

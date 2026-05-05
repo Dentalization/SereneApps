@@ -131,6 +131,10 @@ const DetailAppointmentScreen = () => {
   }
 
   const statusConfig = getStatusConfig(appointment?.status);
+  const isVirtualAppointment = appointment?.appointmentType === 'virtual'
+    || appointment?.type === 'virtual'
+    || appointment?.metadata?.appointmentType === 'virtual'
+    || Boolean(appointment?.videoRoomRef);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
@@ -258,7 +262,7 @@ const DetailAppointmentScreen = () => {
 
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
-          {appointment?.appointmentType === 'virtual' && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
+          {isVirtualAppointment && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
             <Button
               mode="contained"
               icon="video"

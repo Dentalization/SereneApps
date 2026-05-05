@@ -1,9 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
-import * as ConversationsSdk from '@twilio/conversations';
 import api from '../services/api';
 
-const ConversationsClient = ConversationsSdk.Client || ConversationsSdk.default?.Client || ConversationsSdk.default;
+let conversationsClientModulePromise;
+
+const loadConversationsClient = async () => {
+  if (!conversationsClientModulePromise) {
+    conversationsClientModulePromise = import('@twilio/conversations');
+  }
+
+  const module = await conversationsClientModulePromise;
+  return module.Client || module.default?.Client || module.default;
+};
 
 /**
  * Mobile version of useChat using Twilio Conversations SDK
@@ -80,8 +88,9 @@ export function useChat({ userId } = {}) {
           try {
             console.log('[useChat] App returned to foreground, forcing token update...');
             const { data } = await api.get(`/communications/appointments/${activeAppointmentId}/token`);
-            if (data?.token) {
-              await client.updateToken(data.token);
+            const refreshedToken = data?.chat?.token || data?.token;
+            if (refreshedToken) {
+              await client.updateToken(refreshedToken);
               setReconnectError(null);
             }
           } catch (e) {
@@ -142,6 +151,7 @@ export function useChat({ userId } = {}) {
       // 3-4. Init / Update Client
       let client = twilioClientRef.current;
       if (!client) {
+        const ConversationsClient = await loadConversationsClient();
         if (!ConversationsClient?.create) {
           throw new Error('Unable to load Twilio Conversations SDK');
         }
@@ -289,13 +299,14 @@ export function useChat({ userId } = {}) {
     }
   }, []);
 
-  const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
+  const sendAttachmentMessage = useCallback(async ({ appointmentId, file, onUploadProgress }) => {
     if (!appointmentId || !file) return;
     try {
       const formData = new FormData();
       formData.append('file', file);
       const { data } = await api.post(`/communications/appointments/${appointmentId}/chat/attachments`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress
       });
       const saved = data?.message;
       if (saved) {
@@ -338,6 +349,7 @@ export function useChat({ userId } = {}) {
         token: data.video?.token || data.videoToken || data.token,
         roomName: data.video?.roomName || data.roomName || data.channelName,
         roomSid: data.video?.roomSid || data.roomSid,
+        canJoinVideo: data.video?.canJoin ?? data.waitingRoom?.canJoinVideo ?? true,
         waitingRoom: data.waitingRoom,
       };
     } catch (error) {

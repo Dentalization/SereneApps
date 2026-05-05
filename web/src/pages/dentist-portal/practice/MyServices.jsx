@@ -208,29 +208,31 @@ const MyServices = () => {
   }, [isIndependent, loadingContext]);
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex theme-transition">
       <SideBar />
-      <div className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <p className="text-sm uppercase tracking-wider text-muted">My Practice</p>
-            <h1 className="text-3xl font-bold text-foreground">Services & Pricing</h1>
-            <p className="text-muted-foreground mt-2">
-              Craft your offerings for teleconsultations, in-person treatments, and specialist care. These services appear directly in your patient booking flow.
-            </p>
-            {contextError && (
-              <p className="text-xs text-warning mt-2">
-                Tidak dapat memuat status dentist Anda. Menampilkan pengaturan praktik mandiri secara default.
+      <main className="flex-1 min-w-0 overflow-y-auto bg-background theme-transition">
+        <div className="p-6 md:p-8 space-y-8">
+        <section className="clinic-page-header space-y-6 rounded-3xl border border-border/40 bg-surface-elevated p-6 shadow-theme-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">My Practice</p>
+              <h1 className="text-3xl font-bold text-foreground">Services & Pricing</h1>
+              <p className="text-muted-foreground mt-2 max-w-3xl">
+                Craft your offerings for teleconsultations, in-person treatments, and specialist care. These services appear directly in your patient booking flow.
               </p>
+              {contextError && (
+                <p className="text-xs text-warning mt-2">
+                  Tidak dapat memuat status dentist Anda. Menampilkan pengaturan praktik mandiri secara default.
+                </p>
+              )}
+            </div>
+            {isIndependent && (
+              <Button onClick={() => handleOpenDialog()} className="w-full md:w-auto">
+                + New Service
+              </Button>
             )}
           </div>
-          {isIndependent && (
-            <Button onClick={() => handleOpenDialog()} className="w-full md:w-auto">
-              + New Service
-            </Button>
-          )}
-        </div>
+        </section>
 
         {message.text && (
           <div
@@ -340,7 +342,7 @@ const MyServices = () => {
           </>
         )}
         </div>
-      </div>
+      </main>
 
       {dialogOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

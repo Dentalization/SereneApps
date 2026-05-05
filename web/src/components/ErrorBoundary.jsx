@@ -1,7 +1,8 @@
 import React from "react";
 import Icon from "./AppIcon";
+import { useLanguage } from "../contexts/LanguageContext";
 
-class ErrorBoundary extends React.Component {
+class ErrorBoundaryBase extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, prevResetKeys: props.resetKeys };
@@ -50,6 +51,8 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state?.hasError) {
+      const t = this.props.t || ((key, params = {}) => params.defaultValue || '');
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-neutral-50">
           <div className="text-center p-8 max-w-md">
@@ -62,8 +65,8 @@ class ErrorBoundary extends React.Component {
               </svg>
             </div>
             <div className="flex flex-col gap-1 text-center">
-              <h1 className="text-2xl font-medium text-neutral-800">Something went wrong</h1>
-              <p className="text-neutral-600 text-base w w-8/12 mx-auto">We encountered an unexpected error while processing your request.</p>
+              <h1 className="text-2xl font-medium text-neutral-800">{t('common.errorBoundaryTitle', { defaultValue: 'Something went wrong' })}</h1>
+              <p className="text-neutral-600 text-base w w-8/12 mx-auto">{t('common.errorBoundaryMessage', { defaultValue: 'We encountered an unexpected error while processing your request.' })}</p>
             </div>
             <div className="flex justify-center items-center mt-6">
               <button
@@ -73,7 +76,7 @@ class ErrorBoundary extends React.Component {
                 className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded flex items-center gap-2 transition-colors duration-200 shadow-sm"
               >
                 <Icon name="ArrowLeft" size={18} color="#fff" />
-                Back
+                {t('common.back', { defaultValue: 'Back' })}
               </button>
             </div>
           </div >
@@ -84,5 +87,10 @@ class ErrorBoundary extends React.Component {
     return this.props?.children;
   }
 }
+
+const ErrorBoundary = (props) => {
+  const { t } = useLanguage();
+  return <ErrorBoundaryBase {...props} t={t} />;
+};
 
 export default ErrorBoundary;
