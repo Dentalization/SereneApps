@@ -5,11 +5,12 @@ import process from 'node:process';
 const root = path.resolve(process.cwd(), 'src');
 const failOnMissingKeys = process.argv.includes('--fail-on-missing-keys');
 const failOnHardcoded = process.argv.includes('--fail-on-hardcoded');
+const failOnParity = process.argv.includes('--fail-on-parity');
 
 const ignoredDirs = new Set(['node_modules', 'build', 'dist']);
 const fileExtensions = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const hardcodedPattern = />\s*([A-Za-zÀ-ž][^<>{}`\n]{1,140})<|(?:placeholder|title|aria-label)=["']([A-Za-zÀ-ž][^"']{1,140})["']|toast\.(?:success|error|info|warning)\(["']([A-Za-zÀ-ž][^"']{1,140})["']/g;
-const tCallPattern = /\bt\(\s*['"]([^'"]+)['"]/g;
+const tCallPattern = /\b(?:t|tSafe)\(\s*['"]([^'"]+)['"]/g;
 
 function walk(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -26,7 +27,10 @@ function walk(dir, files = []) {
 
 function mergeDeep(target, source) {
   if (!source || typeof source !== 'object') return target;
-  const output = Array.isArray(target) ? [...target] : { ...target };
+  if (Array.isArray(source)) return [...source];
+  const output = target && typeof target === 'object' && !Array.isArray(target)
+    ? { ...target }
+    : {};
   for (const key of Object.keys(source)) {
     const sourceValue = source[key];
     if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
@@ -66,6 +70,19 @@ function resolveKey(bundle, key) {
   return key.split('.').reduce((value, part) => (
     value && typeof value === 'object' ? value[part] : undefined
   ), bundle);
+}
+
+function flattenKeys(source, prefix = '', keys = new Set()) {
+  if (!source || typeof source !== 'object') return keys;
+  for (const [key, value] of Object.entries(source)) {
+    const next = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      flattenKeys(value, next, keys);
+    } else {
+      keys.add(next);
+    }
+  }
+  return keys;
 }
 
 function isLikelyNonUserText(value) {
@@ -112,6 +129,14 @@ const missingByLanguage = Object.fromEntries(Object.entries(bundles).map(([langu
   language,
   [...usedKeys.keys()].filter((key) => resolveKey(bundle, key) === undefined).sort()
 ]));
+const flattened = {
+  en: flattenKeys(bundles.en),
+  id: flattenKeys(bundles.id)
+};
+const parity = {
+  onlyInEn: [...flattened.en].filter((key) => !flattened.id.has(key)).sort(),
+  onlyInId: [...flattened.id].filter((key) => !flattened.en.has(key)).sort()
+};
 
 console.log(`i18n audit: ${files.length} source files scanned`);
 console.log(`i18n audit: ${usedKeys.size} translation keys used`);
@@ -119,12 +144,21 @@ for (const [language, missing] of Object.entries(missingByLanguage)) {
   console.log(`i18n audit: ${language} missing keys: ${missing.length}`);
   missing.slice(0, 50).forEach((key) => console.log(`  ${key}`));
 }
+console.log(`i18n audit: keys only in en: ${parity.onlyInEn.length}`);
+parity.onlyInEn.slice(0, 50).forEach((key) => console.log(`  ${key}`));
+console.log(`i18n audit: keys only in id: ${parity.onlyInId.length}`);
+parity.onlyInId.slice(0, 50).forEach((key) => console.log(`  ${key}`));
 console.log(`i18n audit: hardcoded JSX candidates: ${hardcoded.length}`);
 hardcoded.slice(0, 80).forEach((item) => {
   console.log(`  ${item.file}:${item.line} ${item.text}`);
 });
 
 const hasMissingKeys = Object.values(missingByLanguage).some((missing) => missing.length > 0);
-if ((failOnMissingKeys && hasMissingKeys) || (failOnHardcoded && hardcoded.length > 0)) {
+const hasParityDrift = parity.onlyInEn.length > 0 || parity.onlyInId.length > 0;
+if (
+  (failOnMissingKeys && hasMissingKeys)
+  || (failOnParity && hasParityDrift)
+  || (failOnHardcoded && hardcoded.length > 0)
+) {
   process.exit(1);
 }

@@ -407,7 +407,8 @@ export default {
         placeholders: {
           phone: 'Nomor telepon (opsional)',
           position: 'Posisi di klinik (opsional)',
-          department: 'Departemen/unit (opsional)'
+          department: 'Departemen/unit (opsional)',
+          password: 'Kata sandi (minimal 6 karakter)'
         },
         fields: {
           name: 'Nama Lengkap',
@@ -1667,6 +1668,23 @@ export default {
     // Actions
     preferencesSaved: 'Preferensi berhasil disimpan!',
     resetPreferencesConfirm: 'Apakah Anda yakin ingin mengatur ulang semua preferensi ke default?',
+  },
+
+  // Teledentistry
+  teledentistry: {
+    title: 'Teledentistry',
+    activeCall: 'Panggilan Aktif',
+    conversations: 'Percakapan',
+    startCall: 'Mulai Panggilan',
+    endCall: 'Akhiri Panggilan',
+    mute: 'Bisukan',
+    unmute: 'Aktifkan Suara',
+    camera: 'Kamera',
+    shareScreen: 'Bagikan Layar',
+    chat: 'Chat',
+    patientInfo: 'Informasi Pasien',
+    callDuration: 'Durasi Panggilan',
+    callQuality: 'Kualitas Panggilan'
   },
 
   // Reports & Statistics

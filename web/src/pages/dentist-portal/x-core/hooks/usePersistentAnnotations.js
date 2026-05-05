@@ -45,6 +45,7 @@ export default function usePersistentAnnotations({
   const skipNextSaveRef = useRef(false);
   const flushRef = useRef(() => Promise.resolve(null));
   const changeVersionRef = useRef(0);
+  const localWriteTimerRef = useRef(null);
   const annotationsRef = useRef(annotations);
   const lastAnnotationsRef = useRef(annotations);
   const lastAnnotationHashRef = useRef('');
@@ -130,6 +131,40 @@ export default function usePersistentAnnotations({
     }
   }, [draftStorageKey]);
 
+  const cancelScheduledLocalWrite = useCallback(() => {
+    if (!localWriteTimerRef.current || typeof window === 'undefined') return;
+    const { id, type } = localWriteTimerRef.current;
+    if (type === 'idle' && typeof window.cancelIdleCallback === 'function') {
+      window.cancelIdleCallback(id);
+    } else {
+      window.clearTimeout(id);
+    }
+    localWriteTimerRef.current = null;
+  }, []);
+
+  const scheduleLocalSnapshotWrite = useCallback((snapshot) => {
+    if (!snapshot || typeof window === 'undefined') return;
+    cancelScheduledLocalWrite();
+    const writeSnapshot = () => {
+      localWriteTimerRef.current = null;
+      writeDraftBackup(snapshot);
+      writeLocalCache(snapshot.annotations, snapshot.deletedAnnotationIds);
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      localWriteTimerRef.current = {
+        id: window.requestIdleCallback(writeSnapshot, { timeout: 1000 }),
+        type: 'idle',
+      };
+      return;
+    }
+
+    localWriteTimerRef.current = {
+      id: window.setTimeout(writeSnapshot, 0),
+      type: 'timeout',
+    };
+  }, [cancelScheduledLocalWrite, writeDraftBackup, writeLocalCache]);
+
   const buildSaveSnapshot = useCallback(() => {
     if (!seriesUid || !viewerType) return null;
     const normalized = (annotationsRef.current || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
@@ -157,6 +192,7 @@ export default function usePersistentAnnotations({
 
     const snapshot = buildSaveSnapshot();
     if (!snapshot) return Promise.resolve(null);
+    cancelScheduledLocalWrite();
     writeDraftBackup(snapshot);
     writeLocalCache(snapshot.annotations, snapshot.deletedAnnotationIds);
 
@@ -198,7 +234,7 @@ export default function usePersistentAnnotations({
       .finally(() => {
         if (!options.silent) setSaving(false);
       });
-  }, [buildSaveSnapshot, clearDraftBackup, enabled, seriesUid, setAnnotations, studyId, viewerType, writeDraftBackup, writeLocalCache]);
+  }, [buildSaveSnapshot, cancelScheduledLocalWrite, clearDraftBackup, enabled, seriesUid, setAnnotations, studyId, viewerType, writeDraftBackup, writeLocalCache]);
 
   useEffect(() => {
     scopeRef.current = scope || {};
@@ -309,9 +345,8 @@ export default function usePersistentAnnotations({
     }
 
     const snapshot = buildSaveSnapshot();
-    writeDraftBackup(snapshot);
     if (snapshot) {
-      writeLocalCache(snapshot.annotations, snapshot.deletedAnnotationIds);
+      scheduleLocalSnapshotWrite(snapshot);
     }
 
     if (studyId) {
@@ -326,7 +361,7 @@ export default function usePersistentAnnotations({
         saveTimerRef.current = null;
       }
     };
-  }, [annotationHash, buildSaveSnapshot, enabled, flushPendingSave, seriesUid, studyId, viewerType, writeDraftBackup, writeLocalCache]);
+  }, [annotationHash, buildSaveSnapshot, enabled, flushPendingSave, scheduleLocalSnapshotWrite, seriesUid, studyId, viewerType]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -346,11 +381,12 @@ export default function usePersistentAnnotations({
 
     return () => {
       flushForTermination();
+      cancelScheduledLocalWrite();
       window.removeEventListener('pagehide', flushForTermination);
       window.removeEventListener('beforeunload', flushForTermination);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [enabled]);
+  }, [cancelScheduledLocalWrite, enabled]);
 
   return { loading, saving, error };
 }

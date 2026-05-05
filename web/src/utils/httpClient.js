@@ -83,11 +83,8 @@ export function forceLogout(message = 'Your session has expired. Please log in a
 authHttp.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
-    console.log('🔑 AuthHttp: Sending token:', token.substring(0, 20) + '...');
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
-  } else {
-    console.log('⚠️ AuthHttp: No token found');
   }
   return config;
 });

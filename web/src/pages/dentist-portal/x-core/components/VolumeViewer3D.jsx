@@ -97,6 +97,11 @@ import {
     saveLocalAnnotationSession,
 } from '../utils/annotationSessions.mjs';
 import { calculateAnnotationQualityScore, getAnnotationReviewIssues } from '../utils/annotationQuality';
+import {
+    buildSurfaceAnchor,
+    createInteractionQualityController,
+    createRafInputScheduler,
+} from '../utils/annotationPerformance.mjs';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const SAMPLE_DISTANCE_INTERACTIVE = 1.0;
@@ -949,13 +954,18 @@ const VolumeViewer3D = ({
     const surfaceTraceActiveRef = useRef(false);
     const surfacePointerRef = useRef(null);
     const surfaceMoveRafRef = useRef(0);
+    const surfaceInputSchedulerRef = useRef(null);
     const brushDraftCentersRef = useRef([]);
     const brushTraceActiveRef = useRef(false);
     const brushPointerRef = useRef(null);
     const brushMoveRafRef = useRef(0);
+    const brushInputSchedulerRef = useRef(null);
     const mprSyncMoveRafRef = useRef(0);
     const mprSyncPointerRef = useRef(null);
+    const measurementPointerRef = useRef(null);
+    const measurementInputSchedulerRef = useRef(null);
     const lastBrushRenderRef = useRef(0);
+    const annotationInteractionQualityRef = useRef(null);
     const heatmapVolumeActorRef = useRef(null);
     const lastPickDurationRef = useRef(20);
     const projectionCacheRef = useRef({ key: null, cache: new Map() });
@@ -976,7 +986,17 @@ const VolumeViewer3D = ({
     const surfacePickWorkerRequestIdRef = useRef(0);
     const surfacePickWorkerPendingRef = useRef(new Map());
     const surfacePickWorkerFailedRef = useRef(false);
+    const lastSurfacePickAnchorRef = useRef(null);
     const measurementLabelStoreRef = useRef(createMeasurementLabelPositionStore());
+    if (!brushInputSchedulerRef.current) {
+        brushInputSchedulerRef.current = createRafInputScheduler();
+    }
+    if (!surfaceInputSchedulerRef.current) {
+        surfaceInputSchedulerRef.current = createRafInputScheduler();
+    }
+    if (!measurementInputSchedulerRef.current) {
+        measurementInputSchedulerRef.current = createRafInputScheduler();
+    }
 
     // Core state
     const [loading, setLoading] = useState(true);
@@ -1550,10 +1570,41 @@ const VolumeViewer3D = ({
         ctx.renderWindow.render();
     }, [cacheKey, loading, quality, preset]);
 
+    useEffect(() => {
+        annotationInteractionQualityRef.current = createInteractionQualityController({
+            getMapper: () => vtkContextRef.current?.mapper || null,
+            applyBaseQuality: () => {
+                const ctx = vtkContextRef.current;
+                if (!ctx?.mapper) return;
+                applyMapperQuality(ctx.mapper, qualityRef.current, presetRef.current);
+                ctx.renderWindow?.render?.();
+            },
+            render: () => vtkContextRef.current?.renderWindow?.render?.(),
+            interactiveSampleDistance: SAMPLE_DISTANCE_INTERACTIVE,
+            interactiveMaxSamplesPerRay: Math.min(QUALITY_SETTINGS.standard.maxSamples, 420),
+        });
+        return () => {
+            annotationInteractionQualityRef.current?.end?.();
+            annotationInteractionQualityRef.current = null;
+        };
+    }, [cacheKey]);
+
+    const beginAnnotationInteractionQuality = useCallback(() => {
+        annotationInteractionQualityRef.current?.begin?.();
+    }, []);
+
+    const endAnnotationInteractionQuality = useCallback(() => {
+        annotationInteractionQualityRef.current?.end?.();
+    }, []);
+
     useEffect(() => () => {
         if (brushMoveRafRef.current) cancelAnimationFrame(brushMoveRafRef.current);
         if (surfaceMoveRafRef.current) cancelAnimationFrame(surfaceMoveRafRef.current);
         if (mprSyncMoveRafRef.current) cancelAnimationFrame(mprSyncMoveRafRef.current);
+        brushInputSchedulerRef.current?.cancel?.();
+        surfaceInputSchedulerRef.current?.cancel?.();
+        measurementInputSchedulerRef.current?.cancel?.();
+        annotationInteractionQualityRef.current?.end?.();
         if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
         if (autoRotateResumeTimerRef.current) clearTimeout(autoRotateResumeTimerRef.current);
         if (autoRotateIntervalRef.current) clearInterval(autoRotateIntervalRef.current);
@@ -3487,6 +3538,7 @@ const VolumeViewer3D = ({
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
         if (!ctx || !container || !ctx.surfacePickActor || !ctx.sharedPicker) return null;
+        lastSurfacePickAnchorRef.current = null;
 
         const rect = container.getBoundingClientRect();
         const x = event.clientX - rect.left;
@@ -3502,7 +3554,12 @@ const VolumeViewer3D = ({
             const pickedPosition = picked ? picker.getPickPosition?.() : null;
             const pickedCellId = picker.getCellId?.();
             if (pickedCellId >= 0 && pickedPosition && pickedPosition.every((value) => Number.isFinite(value))) {
-                return [...pickedPosition];
+                const point = [...pickedPosition];
+                lastSurfacePickAnchorRef.current = {
+                    point,
+                    cellId: pickedCellId,
+                };
+                return point;
             }
         } catch (_) {
             return null;
@@ -3585,6 +3642,22 @@ const VolumeViewer3D = ({
         pickSurfaceWorldPointFromPointer(event)
     ), [pickSurfaceWorldPointFromPointer]);
 
+    const buildAnnotationSurfaceAnchor = useCallback((point, options = {}) => {
+        if (!isWorldPoint3D(point)) return null;
+        const lastPick = lastSurfacePickAnchorRef.current;
+        const matchesLastPick = lastPick?.point && arraysNearlyEqual(lastPick.point, point, 1e-3);
+        const anchor = buildSurfaceAnchor({
+            point,
+            normal: options.normal,
+            cellId: options.cellId ?? (matchesLastPick ? lastPick.cellId : undefined),
+            barycentric: options.barycentric,
+            meshRevision: cacheKey || seriesUid,
+            screenOffsetPx: options.screenOffsetPx || [0, 0],
+            confidence: options.confidence ?? 0.75,
+        });
+        return Object.keys(anchor).length > 0 ? anchor : null;
+    }, [cacheKey, seriesUid]);
+
     const buildWorldOverlayAnnotation = useCallback((payload = {}) => {
         const type = payload.type;
         if (!['arrow', 'circle', 'text'].includes(type)) return null;
@@ -3604,23 +3677,41 @@ const VolumeViewer3D = ({
 
         if (type === 'text') {
             if (!isWorldPoint3D(payload.worldPoint)) return null;
+            const surfaceAnchor = buildAnnotationSurfaceAnchor(payload.worldPoint, {
+                confidence: 0.74,
+            });
             return {
                 id: payload.id || `annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 type,
                 coordinates: {
                     world_point: payload.worldPoint.map((value) => Number(Number(value).toFixed(3))),
+                    ...(surfaceAnchor ? {
+                        surface_anchor: surfaceAnchor,
+                        surface_point: surfaceAnchor.surface_point,
+                    } : {}),
                 },
                 label: payload.label || '',
                 color: payload.color || activeAnnotationColor || ANNOTATION_COLORS.text,
                 viewer_type: '3d',
                 series_uid: seriesUid,
-                metadata: baseMetadata,
+                metadata: {
+                    ...baseMetadata,
+                    ...(surfaceAnchor?.placement_confidence ? {
+                        placement_confidence: surfaceAnchor.placement_confidence,
+                    } : {}),
+                },
             };
         }
 
         if (!isWorldPoint3D(payload.startWorld) || !isWorldPoint3D(payload.endWorld)) return null;
         const screenStart = payload.startScreen || null;
         const screenEnd = payload.endScreen || null;
+        const surfaceAnchor = buildAnnotationSurfaceAnchor(payload.startWorld, {
+            screenOffsetPx: screenStart && screenEnd
+                ? [screenEnd.x - screenStart.x, screenEnd.y - screenStart.y]
+                : [0, 0],
+            confidence: 0.76,
+        });
         const baseDimension = Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
         if (type === 'arrow' && screenStart && screenEnd) {
             baseMetadata.anchor_mode = 'world_callout';
@@ -3642,13 +3733,22 @@ const VolumeViewer3D = ({
             coordinates: {
                 world_start: payload.startWorld.map((value) => Number(Number(value).toFixed(3))),
                 world_end: payload.endWorld.map((value) => Number(Number(value).toFixed(3))),
+                ...(surfaceAnchor ? {
+                    surface_anchor: surfaceAnchor,
+                    surface_point: surfaceAnchor.surface_point,
+                } : {}),
             },
             color: payload.color || activeAnnotationColor || ANNOTATION_COLORS[type] || '#ffffff',
             viewer_type: '3d',
             series_uid: seriesUid,
-            metadata: baseMetadata,
+            metadata: {
+                ...baseMetadata,
+                ...(surfaceAnchor?.placement_confidence ? {
+                    placement_confidence: surfaceAnchor.placement_confidence,
+                } : {}),
+            },
         };
-    }, [activeAnnotationColor, captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
+    }, [activeAnnotationColor, buildAnnotationSurfaceAnchor, captureCurrentCameraState, seriesUid, viewerSize.height, viewerSize.width]);
 
     useEffect(() => {
         if (loading || error || !viewerSize.width || !viewerSize.height) return;
@@ -4329,6 +4429,9 @@ const VolumeViewer3D = ({
         if (denseCenters.length === 0) return null;
 
         const previousMetadata = baseAnnotation?.metadata || {};
+        const surfaceAnchor = buildAnnotationSurfaceAnchor(denseCenters[0], {
+            confidence: 0.77,
+        });
         return {
             ...(baseAnnotation || {}),
             id: baseAnnotation?.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -4338,6 +4441,10 @@ const VolumeViewer3D = ({
                 world_brush: {
                     centers: denseCenters,
                     radius_mm: Number(safeRadius.toFixed(2)),
+                    ...(surfaceAnchor ? {
+                        surface_anchor: surfaceAnchor,
+                        surface_point: surfaceAnchor.surface_point,
+                    } : {}),
                 },
             },
             viewer_type: '3d',
@@ -4351,11 +4458,14 @@ const VolumeViewer3D = ({
                 segmentation_mode: '3d_volume_brush',
                 brush_stamp_count: denseCenters.length,
                 lesion_volume_mm3: lesionVolumeMm3,
+                ...(surfaceAnchor?.placement_confidence ? {
+                    placement_confidence: surfaceAnchor.placement_confidence,
+                } : {}),
                 finding_type: previousMetadata.finding_type || 'other',
                 severity: previousMetadata.severity || 'S1',
             },
         };
-    }, [captureCurrentCameraState, computeBrushVolumeMm3, seriesUid, viewerSize.height, viewerSize.width]);
+    }, [buildAnnotationSurfaceAnchor, captureCurrentCameraState, computeBrushVolumeMm3, seriesUid, viewerSize.height, viewerSize.width]);
 
     useEffect(() => {
         if (!annotateMode || !selectedWorldAnnotationId) return undefined;
@@ -5231,6 +5341,7 @@ const VolumeViewer3D = ({
                 cancelAnimationFrame(surfaceMoveRafRef.current);
                 surfaceMoveRafRef.current = 0;
             }
+            surfaceInputSchedulerRef.current?.cancel?.();
             setSurfaceTraceActive(false);
             setSurfaceTraceDraft([]);
             setSurfaceTracePreview(null);
@@ -5244,6 +5355,7 @@ const VolumeViewer3D = ({
                 cancelAnimationFrame(brushMoveRafRef.current);
                 brushMoveRafRef.current = 0;
             }
+            brushInputSchedulerRef.current?.cancel?.();
             setBrushTraceActive(false);
             setBrushDraftCenters([]);
             setBrushPreviewPoint(null);
@@ -5257,7 +5369,10 @@ const VolumeViewer3D = ({
         if (!(annotateMode && annotationTool === 'text')) {
             setTextDraft3D(null);
         }
-    }, [annotateMode, annotationTool]);
+        if (!annotateMode || ['select', 'text'].includes(annotationTool)) {
+            endAnnotationInteractionQuality();
+        }
+    }, [annotateMode, annotationTool, endAnnotationInteractionQuality]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -5921,6 +6036,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             setBrushPointerScreen(screenPoint);
             const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             if (!point) return;
+            beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             brushDraftCentersRef.current = [point];
             brushTraceActiveRef.current = true;
@@ -5938,6 +6054,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             const point = pickAnnotationWorldPointFromPointer(event);
             if (!point) return;
             const screenPoint = getViewportPointerPoint(event);
+            beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             setWorldOverlayDraft({
                 type: annotationTool,
@@ -5955,6 +6072,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.stopPropagation();
             const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             if (!point) return;
+            beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
             surfaceTraceDraftRef.current = [point];
             surfaceTraceActiveRef.current = true;
@@ -6021,6 +6139,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     }, [
         annotateMode,
         annotationTool,
+        beginAnnotationInteractionQuality,
         brushRadiusMm,
         implantBrand,
         implantDiameter,
@@ -6037,15 +6156,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         updateBrushScreenRadius,
     ]);
 
-    const processBrushPointerMove = useCallback(() => {
+    const processBrushPointerMove = useCallback((pointerSample = null) => {
         brushMoveRafRef.current = 0;
-        const pointer = brushPointerRef.current;
+        const pointer = pointerSample || brushPointerRef.current;
         if (!pointer || !brushTraceActiveRef.current || !(annotateMode && annotationTool === 'brush')) return;
 
         const now = performance.now();
         const throttleMs = Math.max(16, Math.min(100, lastPickDurationRef.current * 1.5));
         if (now - lastBrushRenderRef.current < throttleMs) {
-            brushMoveRafRef.current = requestAnimationFrame(processBrushPointerMove);
+            brushInputSchedulerRef.current?.push(pointer, processBrushPointerMove);
             return;
         }
         lastBrushRenderRef.current = now;
@@ -6074,9 +6193,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         });
     }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, updateBrushScreenRadius]);
 
-    const processSurfacePointerMove = useCallback(() => {
+    const processSurfacePointerMove = useCallback((pointerSample = null) => {
         surfaceMoveRafRef.current = 0;
-        const pointer = surfacePointerRef.current;
+        const pointer = pointerSample || surfacePointerRef.current;
         if (!pointer || !surfaceTraceActiveRef.current || !(annotateMode && annotationTool === 'freehand')) return;
 
         const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
@@ -6099,6 +6218,17 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         });
     }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
+    const processMeasurementPointerMove = useCallback((pointerSample = null) => {
+        const pointer = pointerSample || measurementPointerRef.current;
+        if (!pointer || (!measureMode3D && !polylineMeasureMode)) return;
+        const point = pickWorldPointFromPointer(pointer);
+        setMeasureHoverPoint((current) => {
+            if (!point) return current ? null : current;
+            if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
+            return [...point];
+        });
+    }, [measureMode3D, pickWorldPointFromPointer, polylineMeasureMode]);
+
     const handleViewportPointerMove = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && isViewportUiEvent(event)) return;
         if (brushTraceActiveRef.current && annotateMode && annotationTool === 'brush') {
@@ -6106,9 +6236,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.stopPropagation();
             setBrushPointerScreen(getViewportPointerPoint(event));
             brushPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
-            if (!brushMoveRafRef.current) {
-                brushMoveRafRef.current = requestAnimationFrame(processBrushPointerMove);
-            }
+            brushInputSchedulerRef.current?.push(brushPointerRef.current, processBrushPointerMove);
             return;
         }
 
@@ -6116,9 +6244,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.preventDefault();
             event.stopPropagation();
             surfacePointerRef.current = { clientX: event.clientX, clientY: event.clientY };
-            if (!surfaceMoveRafRef.current) {
-                surfaceMoveRafRef.current = requestAnimationFrame(processSurfacePointerMove);
-            }
+            surfaceInputSchedulerRef.current?.push(surfacePointerRef.current, processSurfacePointerMove);
             return;
         }
 
@@ -6158,13 +6284,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (!measureMode3D && !polylineMeasureMode) return;
         event.preventDefault();
         event.stopPropagation();
-        const point = pickWorldPointFromPointer(event);
-        setMeasureHoverPoint((current) => {
-            if (!point) return current ? null : current;
-            if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
-            return [...point];
-        });
-    }, [annotateMode, annotationTool, getViewportPointerPoint, implantPlaceMode, isViewportUiEvent, measureMode3D, mprSyncEnabled, polylineMeasureMode, pickWorldPointFromPointer, processBrushPointerMove, processMprSyncPointerMove, processSurfacePointerMove, worldOverlayDraft]);
+        measurementPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+        measurementInputSchedulerRef.current?.push(measurementPointerRef.current, processMeasurementPointerMove);
+    }, [annotateMode, annotationTool, getViewportPointerPoint, implantPlaceMode, isViewportUiEvent, measureMode3D, mprSyncEnabled, polylineMeasureMode, processBrushPointerMove, processMeasurementPointerMove, processMprSyncPointerMove, processSurfacePointerMove, worldOverlayDraft]);
 
     const handleViewportPointerUp = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && !worldOverlayDraft?.startWorld && isViewportUiEvent(event)) return;
@@ -6174,6 +6296,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.currentTarget?.releasePointerCapture?.(event.pointerId);
             brushTraceActiveRef.current = false;
             setBrushTraceActive(false);
+            brushInputSchedulerRef.current?.cancel?.();
+            endAnnotationInteractionQuality();
 
             const releasePoint = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             const rawCenters = [...brushDraftCentersRef.current];
@@ -6199,6 +6323,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.preventDefault();
             event.stopPropagation();
             try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) { }
+            endAnnotationInteractionQuality();
             const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
             const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
             const dragPx = Math.hypot(
@@ -6236,6 +6361,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         event.currentTarget?.releasePointerCapture?.(event.pointerId);
         surfaceTraceActiveRef.current = false;
         setSurfaceTraceActive(false);
+        surfaceInputSchedulerRef.current?.cancel?.();
+        endAnnotationInteractionQuality();
 
         const releasePoint = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
         const rawPath = [...surfaceTraceDraftRef.current];
@@ -6267,6 +6394,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
         const areaMm2 = computeWorldPolygonAreaMm2(simplifiedPath);
         const cameraState = captureCurrentCameraState();
+        const surfaceAnchor = buildAnnotationSurfaceAnchor(simplifiedPath[0], {
+            confidence: 0.78,
+        });
         const nextAnnotation = {
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             type: 'region',
@@ -6274,6 +6404,10 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             coordinates: {
                 world_path: simplifiedPath.map((point) => point.map((value) => Number(value.toFixed(3)))),
                 closed: true,
+                ...(surfaceAnchor ? {
+                    surface_anchor: surfaceAnchor,
+                    surface_point: surfaceAnchor.surface_point,
+                } : {}),
             },
             viewer_type: '3d',
             series_uid: seriesUid,
@@ -6285,23 +6419,30 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 segmentation_mode: '3d_surface_trace',
                 world_point_count: simplifiedPath.length,
                 lesion_area_mm2: Number(areaMm2.toFixed(2)),
+                ...(surfaceAnchor?.placement_confidence ? {
+                    placement_confidence: surfaceAnchor.placement_confidence,
+                } : {}),
                 finding_type: 'other',
                 severity: 'S1',
             },
         };
 
         pushAnnotationChange((current) => [...current, nextAnnotation]);
-    }, [activeAnnotationColor, annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildWorldOverlayAnnotation, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewportCached, pushAnnotationChange, worldOverlayDraft]);
+    }, [activeAnnotationColor, annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildAnnotationSurfaceAnchor, buildWorldOverlayAnnotation, endAnnotationInteractionQuality, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewportCached, pushAnnotationChange, worldOverlayDraft]);
 
     const handleViewportPointerLeave = useCallback(() => {
         setMeasureHoverPoint(null);
+        measurementPointerRef.current = null;
+        measurementInputSchedulerRef.current?.cancel?.();
         if (!brushTraceActiveRef.current) {
             setBrushPreviewPoint(null);
             setBrushPointerScreen(null);
             setBrushScreenRadiusPx(null);
+            brushInputSchedulerRef.current?.cancel?.();
         }
         if (!surfaceTraceActiveRef.current) {
             setSurfaceTracePreview(null);
+            surfaceInputSchedulerRef.current?.cancel?.();
         }
     }, []);
 
