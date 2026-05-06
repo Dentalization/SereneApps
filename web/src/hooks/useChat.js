@@ -9,9 +9,15 @@ import {
   uploadAttachment
 } from '../services/chatService';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import {
+  getChatTokenReadiness,
+  messageFromTokenFetchError
+} from '../utils/teledentistryTokenReadiness.mjs';
 
 export function useChat() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -92,14 +98,27 @@ export function useChat() {
 
       try {
         const data = await fetchAppointmentCommunicationsToken(appointmentId);
-        const twilioToken = data.chat?.token || data.token;
-        const conversationSid = data.chat?.conversationSid || data.conversationSid;
 
         const history = await fetchMessages(appointmentId);
         setMessagesByAppointment((prev) => ({
           ...prev,
           [appointmentId]: history.messages || []
         }));
+
+        const readiness = getChatTokenReadiness(data);
+        if (!readiness.ready) {
+          if (convRef.current) {
+            convRef.current.removeAllListeners();
+            convRef.current = null;
+          }
+          setSocketConnected(false);
+          setConnectionState(readiness.code === 'SESSION_ENDED' ? 'ended' : 'disconnected');
+          setReconnectError(t(readiness.messageKey, { defaultValue: readiness.defaultMessage }));
+          return;
+        }
+
+        const twilioToken = data.chat?.token || data.token;
+        const conversationSid = data.chat?.conversationSid || data.conversationSid;
 
         // Init Twilio client if null
         let client = clientRef.current;
@@ -262,11 +281,17 @@ export function useChat() {
 
       } catch (err) {
         console.error('Failed to select Twilio conversation:', err.message);
+        const readiness = err?.response?.data
+          ? messageFromTokenFetchError(err)
+          : null;
+        const displayError = readiness
+          ? t(readiness.messageKey, { defaultValue: readiness.defaultMessage })
+          : err.message || t('teledentistry.chatReadiness.connectFailed', { defaultValue: 'Failed to connect chat' });
         setConnectionState('disconnected');
-        setReconnectError(err.message || 'Failed to connect chat');
+        setReconnectError(displayError);
       }
     },
-    [user?.id]
+    [t, user?.id]
   );
 
   // ── Actions ──────────────────────────────────────────────────
