@@ -1684,7 +1684,16 @@ export default {
     chat: 'Chat',
     patientInfo: 'Informasi Pasien',
     callDuration: 'Durasi Panggilan',
-    callQuality: 'Kualitas Panggilan'
+    callQuality: 'Kualitas Panggilan',
+    chatReadiness: {
+      tokenResponseMissing: 'Respons sesi teledentistry tidak lengkap. Silakan coba lagi.',
+      paymentPending: 'Pembayaran belum selesai. Chat akan tersedia setelah pembayaran dikonfirmasi.',
+      sessionEnded: 'Sesi teledentistry telah berakhir. Riwayat chat ditampilkan dari arsip lokal.',
+      chatNotReady: 'Chat belum tersedia untuk appointment ini. Silakan coba lagi beberapa saat.',
+      chatTokenMissing: 'Token chat belum tersedia. Silakan coba lagi atau hubungi admin.',
+      conversationNotReady: 'Conversation chat belum siap. Silakan coba lagi beberapa saat.',
+      connectFailed: 'Gagal menghubungkan chat'
+    }
   },
 
   // Reports & Statistics

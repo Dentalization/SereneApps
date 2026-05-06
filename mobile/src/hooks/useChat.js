@@ -319,6 +319,7 @@ export function useChat({ userId } = {}) {
     } catch (error) {
       console.error('[useChat] upload attachment failed:', error.message);
       setReconnectError(error.message || 'Failed to upload attachment');
+      throw error;
     }
   }, []);
 

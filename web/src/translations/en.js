@@ -1719,7 +1719,16 @@ export default {
     chat: 'Chat',
     patientInfo: 'Patient Information',
     callDuration: 'Call Duration',
-    callQuality: 'Call Quality'
+    callQuality: 'Call Quality',
+    chatReadiness: {
+      tokenResponseMissing: 'The teledentistry session response is incomplete. Please try again.',
+      paymentPending: 'Payment is not complete yet. Chat will be available after payment is confirmed.',
+      sessionEnded: 'The teledentistry session has ended. Chat history is shown from the local archive.',
+      chatNotReady: 'Chat is not available for this appointment yet. Please try again shortly.',
+      chatTokenMissing: 'Chat token is not available yet. Please try again or contact admin.',
+      conversationNotReady: 'The chat conversation is not ready yet. Please try again shortly.',
+      connectFailed: 'Failed to connect chat'
+    }
   },
 
   // Reports

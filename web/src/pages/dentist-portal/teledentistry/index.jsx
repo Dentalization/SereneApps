@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
@@ -155,6 +155,11 @@ const Teledentistry = () => {
     if (!activeAppointmentId) return;
     await sendAttachmentMessage({ appointmentId: activeAppointmentId, file });
   };
+
+  const openPreCallChecklist = useCallback(() => {
+    if (!activeAppointmentId) return;
+    setShowPreCallChecklist(true);
+  }, [activeAppointmentId]);
 
   const handleStartVideoCall = async () => {
     if (!activeAppointmentId) return;
@@ -318,7 +323,7 @@ const Teledentistry = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowPreCallChecklist(true)}
+              onClick={openPreCallChecklist}
               disabled={!activeAppointmentId || callState === 'requesting_token' || callState === 'ringing'}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -392,7 +397,7 @@ const Teledentistry = () => {
                 attachmentUpload={attachmentUpload}
                 onSendText={handleSendTextMessage}
                 onUploadAttachment={handleUploadAttachment}
-                onStartVideoCall={handleStartVideoCall}
+                onStartVideoCall={openPreCallChecklist}
               />
             )}
           </section>
