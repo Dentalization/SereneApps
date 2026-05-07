@@ -14,7 +14,8 @@ import ChatMessage from './components/ChatMessage';
 import { ImageLightbox } from './components/VisualFindingsCard';
 import ThinkingLoader from './components/ThinkingLoader';
 import InputBar from './components/InputBar';
-import SessionSidebar from './components/SessionSidebar';
+import ClinicalHistorySidebar from './components/ClinicalHistorySidebar';
+import VerifiedCaseWorkspace from './components/VerifiedCaseWorkspace';
 import ToothScanLoader from '../ui/ToothScanLoader';
 
 // ── Boot Screen ─────────────────────────────────────
@@ -97,9 +98,13 @@ const AIAnalysisPage = () => {
   const { user } = useAuth();
 
   const {
-    sessionId, messages, sessions, isLoading, isBootstrapping, systemHealth,
+    sessionId, messages, sessions, clinicalHistory, caseWorkspace, isLoading, isBootstrapping, systemHealth,
     bootstrap, sendMessage, startNewSession, loadSession, deleteSession,
-    reviewFindings, clearLocalClinicalData,
+    reviewFindings, clearLocalClinicalData, createWorkspaceCase, loadCaseWorkspace,
+    loadClinicalHistoryItem, archiveWorkspaceCase, uploadWorkspaceImages,
+    removeWorkspaceImage, analyzeWorkspaceImages, confirmWorkspaceFinding,
+    rejectWorkspaceFinding, editWorkspaceFinding, addManualWorkspaceFinding,
+    verifyWorkspaceCase, exportWorkspacePdf, exportWorkspaceJson, linkWorkspacePatient,
   } = useDentalAPI('dentist', user?.id, language || 'id');
 
   // Resolve the current session's generated title for the header
@@ -123,6 +128,17 @@ const AIAnalysisPage = () => {
   const handleSuggestedQuestion = useCallback((q) => { sendMessage(q); }, [sendMessage]);
   const handleNewSession = useCallback(async () => { await startNewSession(); setSidebarOpen(false); }, [startNewSession]);
   const handleLoadSession = useCallback(async (sid) => { await loadSession(sid); setSidebarOpen(false); }, [loadSession]);
+  const handleSelectHistory = useCallback(async (item) => { await loadClinicalHistoryItem(item); setSidebarOpen(false); }, [loadClinicalHistoryItem]);
+  const handleArchiveHistory = useCallback(async (item) => { await archiveWorkspaceCase(item); }, [archiveWorkspaceCase]);
+  const handleCreateCase = useCallback(async () => { await createWorkspaceCase({ title: currentSessionTitle || 'Verified dental case' }); }, [createWorkspaceCase, currentSessionTitle]);
+  const handleRefreshCase = useCallback(async () => {
+    if (caseWorkspace.caseRecord?.id) await loadCaseWorkspace(caseWorkspace.caseRecord.id);
+  }, [caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+  const handleLinkPatient = useCallback(async () => {
+    const patientId = window.prompt('Patient ID or code');
+    if (!patientId) return;
+    await linkWorkspacePatient({ patient_id: patientId, patient_code: patientId });
+  }, [linkWorkspacePatient]);
 
   if (isBootstrapping) return <BootScreen label={t('ai.deepDental.booting', { fallbackText: 'Menginisialisasi Serene AI...' })} />;
 
@@ -133,35 +149,34 @@ const AIAnalysisPage = () => {
       {/* 1. App Navigation (Left) */}
       <SideBar />
 
-      {/* 2. Session History Sidebar (Slide-over) */}
-      <SessionSidebar
+      {/* 2. Clinical History Sidebar (Slide-over) */}
+      <ClinicalHistorySidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        sessions={sessions}
+        items={clinicalHistory}
         currentSessionId={sessionId}
-        onSelect={handleLoadSession}
-        onDelete={deleteSession}
+        currentCaseId={caseWorkspace.caseRecord?.id}
+        onSelect={handleSelectHistory}
+        onArchive={handleArchiveHistory}
         onNewSession={handleNewSession}
+        isLoading={caseWorkspace.isLoading}
+        error={caseWorkspace.error}
         labels={{
-          pastAnalyses: t('ai.deepDental.sidebar.pastAnalyses', { fallbackText: 'Analisis terdahulu' }),
+          title: t('ai.deepDental.sidebar.clinicalHistory', { fallbackText: 'Riwayat Klinis' }),
+          subtitle: t('ai.deepDental.sidebar.sessionsAndCases', { fallbackText: 'Sesi dan kasus terverifikasi' }),
           close: t('ai.deepDental.sidebar.close', { fallbackText: 'Tutup riwayat' }),
-          newAnalysis: t('ai.deepDental.newAnalysis', { fallbackText: 'Analisis Baru' }),
-          openSession: t('ai.deepDental.sidebar.openSession', { fallbackText: 'Buka sesi' }),
-          deleteSession: t('ai.deepDental.sidebar.deleteSession', { fallbackText: 'Hapus sesi' }),
-          noHistory: t('ai.deepDental.sidebar.noHistory', { fallbackText: 'Belum ada riwayat' }),
-          emptyDescription: t('ai.deepDental.sidebar.emptyDescription', { fallbackText: 'Mulai analisis baru untuk melihat riwayat.' }),
-          secureStorage: t('ai.deepDental.sidebar.secureStorage', { fallbackText: 'Penyimpanan Aman' }),
-          groups: {
-            Today: t('ai.deepDental.sidebar.today', { fallbackText: 'Hari Ini' }),
-            Yesterday: t('ai.deepDental.sidebar.yesterday', { fallbackText: 'Kemarin' }),
-            'Previous 7 Days': t('ai.deepDental.sidebar.previous7Days', { fallbackText: '7 Hari Terakhir' }),
-            Older: t('ai.deepDental.sidebar.older', { fallbackText: 'Lebih Lama' }),
-          },
+          newSession: t('ai.deepDental.newAnalysis', { fallbackText: 'Kasus Klinis Baru' }),
+          open: t('ai.deepDental.sidebar.openSession', { fallbackText: 'Buka' }),
+          archive: t('ai.deepDental.sidebar.archiveCase', { fallbackText: 'Arsipkan' }),
+          empty: t('ai.deepDental.sidebar.noHistory', { fallbackText: 'Belum ada riwayat' }),
+          emptyDescription: t('ai.deepDental.sidebar.emptyDescription', { fallbackText: 'Mulai kasus atau analisis baru untuk melihat riwayat.' }),
+          sourceOfTruth: t('ai.deepDental.sidebar.backendSource', { fallbackText: 'Backend sebagai sumber data klinis' }),
         }}
       />
 
-      {/* 3. Main Content Area */}
-      <div className="flex-1 flex flex-col h-full relative w-full">
+      {/* 3. Main Content + Verified Case Workspace */}
+      <div className="flex-1 flex h-full min-w-0">
+      <div className="flex-1 flex flex-col h-full relative min-w-0 w-full">
         
         {/* --- TOP HEADER --- */}
         <header className="flex-none relative z-20">
@@ -298,6 +313,30 @@ const AIAnalysisPage = () => {
                 />
             </div>
         </div>
+      </div>
+
+      <VerifiedCaseWorkspace
+        caseRecord={caseWorkspace.caseRecord}
+        images={caseWorkspace.images}
+        findings={caseWorkspace.findings}
+        auditEvents={caseWorkspace.auditEvents}
+        exports={caseWorkspace.exports}
+        timeline={caseWorkspace.timeline}
+        isLoading={caseWorkspace.isLoading}
+        onCreateCase={handleCreateCase}
+        onRefresh={handleRefreshCase}
+        onUploadImages={uploadWorkspaceImages}
+        onRemoveImage={removeWorkspaceImage}
+        onAnalyzeImages={analyzeWorkspaceImages}
+        onConfirmFinding={confirmWorkspaceFinding}
+        onRejectFinding={rejectWorkspaceFinding}
+        onEditFinding={editWorkspaceFinding}
+        onAddManualFinding={addManualWorkspaceFinding}
+        onVerifyCase={verifyWorkspaceCase}
+        onExportPdf={exportWorkspacePdf}
+        onExportJson={exportWorkspaceJson}
+        onLinkPatient={handleLinkPatient}
+      />
       </div>
 
       {/* Lightbox Overlay */}

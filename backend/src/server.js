@@ -31,6 +31,7 @@ import dentistPortalRouter from './routes/dentist-portal.js';
 import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
 import xCoreRouter from './routes/xCoreRoutes.js';
+import verifiedCasesRouter from './routes/verified-cases.js';
 import webhooksRouter from './routes/webhooks.js';
 import { verify } from './utils/tokens.js';
 import {
@@ -213,6 +214,7 @@ app.use(`${prefix}/clinic`, clinicProfileRouter); // Clinic profile (gallery, hi
 app.use(`${prefix}/dentist`, dentistServicesRouter); // Dentist portal services
 app.use(`${prefix}/dentist-portal`, dentistPortalRouter); // Dentist portal patient management
 app.use(`${prefix}/ai-analysis`, aiAnalysisRouter); // AI dental analysis results
+app.use(`${prefix}`, verifiedCasesRouter); // Verified Case Workspace clinical workflow
 app.use(`${prefix}/emr`, emrRouter);
 app.use(`${prefix}/clinics`, clinicsRouter);
 app.use(`${prefix}/dentists`, dentistsRouter);
