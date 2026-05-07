@@ -501,6 +501,134 @@ Query dental knowledge base secara langsung. Returns synthesized answer dengan s
 
 ## 👤 User Management
 
+---
+
+## 🧾 Verified Case Workspace
+
+Endpoint berikut berjalan di API SereneApps (`/v1`), bukan langsung di DeepDental Python API. Browser memakai bearer token aplikasi; service key DeepDental tetap berada di backend.
+
+### POST `/v1/cases`
+Create clinical case workspace.
+
+```json
+{
+  "title": "Bitewing caries follow-up",
+  "patient_id": "optional_patient_id",
+  "session_id": "optional_deepdental_session_id"
+}
+```
+
+### GET `/v1/cases`
+List case history for ClinicalHistorySidebar.
+
+Query:
+- `search`
+- `include_archived=true`
+
+### GET `/v1/cases/{case_id}`
+Returns case detail, images, findings, audit events, and exports.
+
+### PATCH `/v1/cases/{case_id}`
+Update title/status. `{"status":"verified"}` verifies the case after patient linkage and clinician findings exist.
+
+### POST `/v1/cases/{case_id}/archive`
+Archive a clinical case instead of destructive delete.
+
+```json
+{ "reason": "Case closed after export" }
+```
+
+### POST `/v1/cases/{case_id}/images`
+Multipart upload for one or more images.
+
+Fields:
+- `images`: repeated image file field
+
+Each uploaded image receives a stable `image_id`, `storage_ref`, mime metadata, duplicate marker, and upload status.
+
+### POST `/v1/cases/{case_id}/images/{image_id}/quality-check`
+Run per-image quality precheck.
+
+```json
+{
+  "metrics": {
+    "width": 1400,
+    "height": 1000,
+    "blur": 0.08,
+    "brightness": 0.55,
+    "contrast": 0.68,
+    "dentalRelevance": 0.95,
+    "teethVisible": true,
+    "faceVisible": false
+  }
+}
+```
+
+Response includes `quality_score`, `quality_status`, `issues`, `recommendation`, and `can_continue_analysis`.
+
+### POST `/v1/cases/{case_id}/images/{image_id}/analyze`
+Persist AI-assisted result for one case image.
+
+```json
+{
+  "raw_ai_result": {},
+  "normalized_findings": {
+    "findings": [
+      {
+        "label": "caries",
+        "tooth_or_region": "36",
+        "severity": "moderate",
+        "confidence": 0.82,
+        "notes": "AI-assisted preliminary finding"
+      }
+    ]
+  },
+  "annotated_image": {
+    "storage_ref": "/uploads/verified-cases/case/image-annotated.webp",
+    "mime_type": "image/webp"
+  }
+}
+```
+
+AI findings are stored as `ai_suggested`, never as final diagnosis.
+
+### Findings
+
+- `GET /v1/cases/{case_id}/findings`
+- `POST /v1/cases/{case_id}/findings`
+- `PATCH /v1/cases/{case_id}/findings/{finding_id}`
+- `POST /v1/cases/{case_id}/findings/{finding_id}/confirm`
+- `POST /v1/cases/{case_id}/findings/{finding_id}/reject`
+
+Clinician finding statuses:
+- `ai_suggested`
+- `clinician_confirmed`
+- `clinician_rejected`
+- `clinician_edited`
+- `manual_added`
+
+### Audit
+
+`GET /v1/cases/{case_id}/audit`
+
+Audit events are immutable and include actor, role, event type, before/after JSON, reason, timestamp, request id, and device metadata.
+
+### Export
+
+- `POST /v1/cases/{case_id}/export/pdf`
+- `POST /v1/cases/{case_id}/export/json`
+
+Exports require a linked patient and verified case. Each export creates a `case_exported` audit event and a `report_exported` patient timeline event.
+
+### Patient Timeline Linkage
+
+- `POST /v1/cases/{case_id}/link-patient`
+- `GET /v1/patients/{patient_id}/timeline`
+- `GET /v1/sessions/{session_id}/case`
+- `POST /v1/sessions/{session_id}/case`
+
+Timeline cards include event date, case title/status, confirmed findings summary, image count, report link, and related session id.
+
 ### GET `/api/v1/users/me`
 Get informasi user saat ini.
 

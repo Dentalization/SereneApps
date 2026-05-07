@@ -10,7 +10,13 @@ import {
 } from './deepDentalClient.mjs';
 import { clinicalArtifactStore } from './clinicalArtifactStore.mjs';
 import { normalizeVisualFindings } from './deepDentalSchemas.mjs';
-import { buildImageQualityCoach } from './qualityCoach.mjs';
+import { buildImageQualityCoach, readImageDimensions } from './qualityCoach.mjs';
+import { createVerifiedCaseWorkspaceClient } from './verifiedCaseWorkspaceClient.mjs';
+import {
+  buildClinicalHistoryItems,
+  buildQualityMetricsFromFile,
+  createWorkspaceRaceGuard,
+} from './caseWorkspaceModels.mjs';
 
 function classifyError(content = '', err = null) {
   const raw = (content + (err?.message || '') + (err?.code || '')).toLowerCase();
@@ -248,6 +254,17 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [cases, setCases] = useState([]);
+  const [caseWorkspace, setCaseWorkspace] = useState({
+    caseRecord: null,
+    images: [],
+    findings: [],
+    auditEvents: [],
+    exports: [],
+    timeline: [],
+    isLoading: false,
+    error: null,
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [systemHealth, setSystemHealth] = useState(null);
@@ -255,6 +272,8 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
   const titledSessionsRef = useRef(new Set());
   const objectUrlsRef = useRef(new Set());
   const abortControllersRef = useRef(new Set());
+  const workspaceRaceRef = useRef(createWorkspaceRaceGuard());
+  const pendingWorkspaceFilesRef = useRef(new Map());
 
   const client = useMemo(() => createDeepDentalClient({
     config: resolveDeepDentalConfig({
@@ -262,6 +281,8 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     }),
     getAccessToken,
   }), []);
+  const caseClient = useMemo(() => createVerifiedCaseWorkspaceClient(), []);
+  const clinicalHistory = useMemo(() => buildClinicalHistoryItems({ sessions, cases }), [sessions, cases]);
 
   const nextId = () => msgIdRef.current++;
 
@@ -367,6 +388,60 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     }
   }, [client, dentistId]);
 
+  const fetchCases = useCallback(async () => {
+    try {
+      const data = await caseClient.listCases();
+      const nextCases = Array.isArray(data.cases) ? data.cases : [];
+      setCases(nextCases);
+      return nextCases;
+    } catch (err) {
+      console.error('Failed to fetch verified cases:', err);
+      return [];
+    }
+  }, [caseClient]);
+
+  const loadCaseWorkspace = useCallback(async (caseId) => {
+    if (!caseId) return null;
+    const guard = workspaceRaceRef.current.start(caseId);
+    setCaseWorkspace((current) => ({ ...current, isLoading: true, error: null }));
+
+    try {
+      const data = await caseClient.getCase(caseId);
+      if (!guard.isActive()) return null;
+
+      const caseRecord = data.case || null;
+      let timeline = [];
+      if (caseRecord?.patient_id) {
+        try {
+          const timelineData = await caseClient.getPatientTimeline(caseRecord.patient_id);
+          if (!guard.isActive()) return null;
+          timeline = timelineData.timeline_events || [];
+        } catch {
+          timeline = [];
+        }
+      }
+
+      const nextWorkspace = {
+        caseRecord,
+        images: data.images || [],
+        findings: data.findings || [],
+        auditEvents: data.audit_events || [],
+        exports: data.exports || [],
+        timeline,
+        isLoading: false,
+        error: null,
+      };
+      setCaseWorkspace(nextWorkspace);
+      await fetchCases();
+      return nextWorkspace;
+    } catch (err) {
+      if (guard.isActive()) {
+        setCaseWorkspace((current) => ({ ...current, isLoading: false, error: err }));
+      }
+      return null;
+    }
+  }, [caseClient, fetchCases]);
+
   const loadSession = useCallback(async (sid) => {
     try {
       abortRequests();
@@ -429,10 +504,17 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       });
 
       setMessages(loaded);
+      try {
+        const sessionCase = await caseClient.getSessionCase(sid);
+        if (sessionCase.case?.id) await loadCaseWorkspace(sessionCase.case.id);
+        else setCaseWorkspace((current) => current.caseRecord?.session_id === sid ? current : { ...current, caseRecord: null, images: [], findings: [], auditEvents: [], exports: [], timeline: [], error: null });
+      } catch {
+        setCaseWorkspace((current) => current.caseRecord?.session_id === sid ? current : { ...current, caseRecord: null, images: [], findings: [], auditEvents: [], exports: [], timeline: [], error: null });
+      }
     } catch (err) {
       console.error('Failed to load session:', err);
     }
-  }, [abortRequests, client, createTrackedObjectUrl, revokeObjectUrls]);
+  }, [abortRequests, caseClient, client, createTrackedObjectUrl, loadCaseWorkspace, revokeObjectUrls]);
 
   const deleteSession = useCallback(async (sid) => {
     try {
@@ -456,13 +538,13 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
   const bootstrap = useCallback(async () => {
     setIsBootstrapping(true);
     await clinicalArtifactStore.purgeExpired();
-    const initialRequests = Promise.allSettled([checkHealth(), fetchSessions()]);
+    const initialRequests = Promise.allSettled([checkHealth(), fetchSessions(), fetchCases()]);
     await Promise.race([
       initialRequests,
       new Promise((resolve) => setTimeout(resolve, 1200)),
     ]);
     setIsBootstrapping(false);
-  }, [checkHealth, fetchSessions]);
+  }, [checkHealth, fetchCases, fetchSessions]);
 
   const sendMessage = useCallback(async (message, imageFile = null) => {
     const trimmedMessage = message.trim();
@@ -560,6 +642,39 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
           userImageType: imageFile.type,
           visualFindings: findings ? { ...findings } : null,
         });
+
+        try {
+          const title = generateSessionTitle(trimmedMessage, imageFile);
+          const sessionCase = await caseClient.createSessionCase(activeSid, { title });
+          const linkedCase = sessionCase.case;
+          if (linkedCase?.id) {
+            const uploaded = await caseClient.uploadImages(linkedCase.id, [imageFile]);
+            const uploadedImage = uploaded.images?.[0];
+            if (uploadedImage?.id) {
+              pendingWorkspaceFilesRef.current.set(uploadedImage.id, imageFile);
+              const dimensions = await readImageDimensions(imageFile);
+              const qualityData = await caseClient.runQualityCheck(
+                linkedCase.id,
+                uploadedImage.id,
+                buildQualityMetricsFromFile(imageFile, dimensions || {})
+              );
+              const canAnalyze = qualityData.quality_check?.can_continue_analysis !== false;
+              if (canAnalyze) {
+                await caseClient.recordImageAnalysis(linkedCase.id, uploadedImage.id, {
+                  raw_ai_result: analysisData,
+                  normalized_findings: findings,
+                  annotated_image: {
+                    storage_ref: uploadedImage.annotated_image_ref || uploadedImage.storage_ref,
+                    mime_type: findings?.annotated_image_mime_type || imageFile.type,
+                  },
+                });
+              }
+              await loadCaseWorkspace(linkedCase.id);
+            }
+          }
+        } catch (workspaceError) {
+          console.warn('Verified Case Workspace sync failed:', workspaceError?.message || workspaceError);
+        }
       } else {
         const chatData = await client.chat({
           message: trimmedMessage,
@@ -622,7 +737,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       abortControllersRef.current.delete(requestController);
       setIsLoading(false);
     }
-  }, [addMessage, client, createSession, createTrackedObjectUrl, language, role, sessionId]);
+  }, [addMessage, caseClient, client, createSession, createTrackedObjectUrl, language, loadCaseWorkspace, role, sessionId]);
 
   const reviewFindings = useCallback((messageId, status) => {
     const updatedAt = new Date().toISOString();
@@ -645,11 +760,223 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     )));
   }, []);
 
+  const createWorkspaceCase = useCallback(async ({ title = null, patientId = null } = {}) => {
+    setCaseWorkspace((current) => ({ ...current, isLoading: true, error: null }));
+    try {
+      const body = {
+        title: title || 'Verified dental case',
+        ...(patientId ? { patient_id: patientId } : {}),
+      };
+      const data = sessionId
+        ? await caseClient.createSessionCase(sessionId, body)
+        : await caseClient.createCase(body);
+      if (data.case?.id) {
+        await fetchCases();
+        return loadCaseWorkspace(data.case.id);
+      }
+      return null;
+    } catch (err) {
+      setCaseWorkspace((current) => ({ ...current, isLoading: false, error: err }));
+      return null;
+    }
+  }, [caseClient, fetchCases, loadCaseWorkspace, sessionId]);
+
+  const loadClinicalHistoryItem = useCallback(async (item) => {
+    if (!item) return;
+    if (item.type === 'case' && item.caseId) {
+      await loadCaseWorkspace(item.caseId);
+      if (item.sessionId) await loadSession(item.sessionId);
+      return;
+    }
+    if (item.sessionId) await loadSession(item.sessionId);
+  }, [loadCaseWorkspace, loadSession]);
+
+  const archiveWorkspaceCase = useCallback(async (itemOrCase, reason = 'Archived from Clinical History Sidebar') => {
+    const caseId = itemOrCase?.caseId || itemOrCase?.id || caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    try {
+      await caseClient.archiveCase(caseId, { reason });
+      await fetchCases();
+      if (caseWorkspace.caseRecord?.id === caseId) {
+        setCaseWorkspace({
+          caseRecord: null,
+          images: [],
+          findings: [],
+          auditEvents: [],
+          exports: [],
+          timeline: [],
+          isLoading: false,
+          error: null,
+        });
+      }
+    } catch (err) {
+      setCaseWorkspace((current) => ({ ...current, error: err }));
+    }
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases]);
+
+  const uploadWorkspaceImages = useCallback(async (files = []) => {
+    if (!files.length) return;
+    let activeCase = caseWorkspace.caseRecord;
+    if (!activeCase?.id) {
+      const createdWorkspace = await createWorkspaceCase({ title: files[0]?.name?.replace(/\.[^.]+$/, '') || 'Verified dental case' });
+      activeCase = createdWorkspace?.caseRecord;
+    }
+    if (!activeCase?.id) return;
+
+    setCaseWorkspace((current) => ({ ...current, isLoading: true, error: null }));
+    try {
+      const uploaded = await caseClient.uploadImages(activeCase.id, files);
+      (uploaded.images || []).forEach((image, index) => {
+        const file = files[index];
+        if (file) pendingWorkspaceFilesRef.current.set(image.id, file);
+      });
+
+      await Promise.all((uploaded.images || []).map(async (image, index) => {
+        const file = files[index];
+        if (!file || !image.id) return null;
+        const dimensions = await readImageDimensions(file);
+        return caseClient.runQualityCheck(activeCase.id, image.id, buildQualityMetricsFromFile(file, dimensions || {}));
+      }));
+
+      await loadCaseWorkspace(activeCase.id);
+      await fetchCases();
+    } catch (err) {
+      setCaseWorkspace((current) => ({ ...current, isLoading: false, error: err }));
+    }
+  }, [caseClient, caseWorkspace.caseRecord, createWorkspaceCase, fetchCases, loadCaseWorkspace]);
+
+  const removeWorkspaceImage = useCallback(async (image) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId || !image?.id) return;
+    try {
+      await caseClient.removeImage(caseId, image.id);
+      pendingWorkspaceFilesRef.current.delete(image.id);
+      await loadCaseWorkspace(caseId);
+    } catch (err) {
+      setCaseWorkspace((current) => ({ ...current, error: err }));
+    }
+  }, [caseClient, caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+
+  const analyzeWorkspaceImages = useCallback(async (imagesToAnalyze = []) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId || imagesToAnalyze.length === 0) return;
+    setCaseWorkspace((current) => ({ ...current, isLoading: true, error: null }));
+
+    try {
+      for (const image of imagesToAnalyze) {
+        const file = pendingWorkspaceFilesRef.current.get(image.id);
+        let analysisData = {
+          summary: 'AI analysis record created from stored case image metadata.',
+          visual_findings: { findings: [], image_quality: image.quality_status || 'checked' },
+        };
+        let findings = normalizeVisualFindings(analysisData.visual_findings);
+
+        if (file) {
+          const formData = new FormData();
+          formData.append('image', file);
+          formData.append('context', 'Analisis klinis multi-image untuk Verified Case Workspace. Label semua temuan sebagai preliminary AI suggestion.');
+          formData.append('role', role);
+          formData.append('language', language);
+          formData.append('include_annotated', 'true');
+          analysisData = await client.analyzeImage(formData);
+          findings = normalizeVisualFindings(analysisData.visual_findings || analysisData);
+        }
+
+        await caseClient.recordImageAnalysis(caseId, image.id, {
+          raw_ai_result: analysisData,
+          normalized_findings: findings,
+          annotated_image: {
+            storage_ref: image.annotated_image_ref || image.storage_ref,
+            mime_type: findings?.annotated_image_mime_type || image.mime_type,
+          },
+        });
+      }
+
+      await loadCaseWorkspace(caseId);
+      await fetchCases();
+    } catch (err) {
+      setCaseWorkspace((current) => ({ ...current, isLoading: false, error: err }));
+    }
+  }, [caseClient, caseWorkspace.caseRecord?.id, client, fetchCases, language, loadCaseWorkspace, role]);
+
+  const confirmWorkspaceFinding = useCallback(async (finding, patch = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId || !finding?.id) return;
+    await caseClient.confirmFinding(caseId, finding.id, patch);
+    await loadCaseWorkspace(caseId);
+  }, [caseClient, caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+
+  const rejectWorkspaceFinding = useCallback(async (finding, reason = '') => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId || !finding?.id) return;
+    await caseClient.rejectFinding(caseId, finding.id, { reason });
+    await loadCaseWorkspace(caseId);
+  }, [caseClient, caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+
+  const editWorkspaceFinding = useCallback(async (finding, patch = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId || !finding?.id) return;
+    await caseClient.editFinding(caseId, finding.id, patch);
+    await loadCaseWorkspace(caseId);
+  }, [caseClient, caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+
+  const addManualWorkspaceFinding = useCallback(async (finding = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    await caseClient.addManualFinding(caseId, finding);
+    await loadCaseWorkspace(caseId);
+  }, [caseClient, caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
+
+  const verifyWorkspaceCase = useCallback(async () => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    await caseClient.patchCase(caseId, { status: 'verified' });
+    await loadCaseWorkspace(caseId);
+    await fetchCases();
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);
+
+  const exportWorkspacePdf = useCallback(async (options = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    await caseClient.exportPdf(caseId, options);
+    await loadCaseWorkspace(caseId);
+    await fetchCases();
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);
+
+  const exportWorkspaceJson = useCallback(async (options = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    await caseClient.exportJson(caseId, options);
+    await loadCaseWorkspace(caseId);
+    await fetchCases();
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);
+
+  const linkWorkspacePatient = useCallback(async (patientInput = {}) => {
+    const caseId = caseWorkspace.caseRecord?.id;
+    if (!caseId) return;
+    const patientId = patientInput.patient_id || patientInput.patientId || patientInput.id;
+    if (!patientId) return;
+    await caseClient.linkPatient(caseId, patientInput);
+    await loadCaseWorkspace(caseId);
+    await fetchCases();
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);
+
   const startNewSession = useCallback(() => {
     abortRequests();
     revokeObjectUrls();
+    workspaceRaceRef.current.cancel();
     setSessionId(null);
     setMessages([]);
+    setCaseWorkspace({
+      caseRecord: null,
+      images: [],
+      findings: [],
+      auditEvents: [],
+      exports: [],
+      timeline: [],
+      isLoading: false,
+      error: null,
+    });
   }, [abortRequests, revokeObjectUrls]);
 
   const clearLocalClinicalData = useCallback(async () => {
@@ -665,6 +992,9 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     sessionId,
     messages,
     sessions,
+    cases,
+    clinicalHistory,
+    caseWorkspace,
     isLoading,
     isBootstrapping,
     systemHealth,
@@ -674,8 +1004,24 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     loadSession,
     deleteSession,
     fetchSessions,
+    fetchCases,
     reviewFindings,
     clearLocalClinicalData,
+    createWorkspaceCase,
+    loadCaseWorkspace,
+    loadClinicalHistoryItem,
+    archiveWorkspaceCase,
+    uploadWorkspaceImages,
+    removeWorkspaceImage,
+    analyzeWorkspaceImages,
+    confirmWorkspaceFinding,
+    rejectWorkspaceFinding,
+    editWorkspaceFinding,
+    addManualWorkspaceFinding,
+    verifyWorkspaceCase,
+    exportWorkspacePdf,
+    exportWorkspaceJson,
+    linkWorkspacePatient,
   };
 }
 

@@ -87,3 +87,54 @@ The IndexedDB cache is browser-local and retention-based, not encrypted applicat
 ## Recommended Next Feature Slice
 
 Build Verified Case Workspace persistence: multi-image case records, clinician-confirmed findings, exportable summary, patient timeline linkage, and audit events for AI draft versus clinician-confirmed output.
+
+## Verified Case Workspace Implementation
+
+The dentist AI page now includes a backend-owned clinical case workflow beside the existing chat flow. The workflow is not a chat attachment shortcut: it uses case records, case images, quality checks, AI findings, clinician findings, immutable audit events, exports, and patient timeline events.
+
+### Backend Case Contract
+
+The Node API exposes these authenticated endpoints under `/v1`:
+
+- `POST /cases`, `GET /cases`, `GET /cases/{case_id}`, `PATCH /cases/{case_id}`, `POST /cases/{case_id}/archive`
+- `POST /cases/{case_id}/images`, `GET /cases/{case_id}/images`, `DELETE /cases/{case_id}/images/{image_id}`
+- `POST /cases/{case_id}/images/{image_id}/quality-check`
+- `POST /cases/{case_id}/images/{image_id}/analyze`
+- `GET /cases/{case_id}/findings`, `POST /cases/{case_id}/findings`, `PATCH /cases/{case_id}/findings/{finding_id}`
+- `POST /cases/{case_id}/findings/{finding_id}/confirm`, `POST /cases/{case_id}/findings/{finding_id}/reject`
+- `GET /cases/{case_id}/audit`
+- `POST /cases/{case_id}/export/pdf`, `POST /cases/{case_id}/export/json`
+- `POST /cases/{case_id}/link-patient`
+- `GET /patients/{patient_id}/timeline`
+- `GET /sessions/{session_id}/case`, `POST /sessions/{session_id}/case`
+
+Dentist/admin roles can create cases, upload images, run quality checks, analyze images, confirm/reject/edit findings, verify cases, archive cases, and export reports. Patient timeline reads are limited to the patient themself unless the actor is dentist/admin.
+
+### Data Model
+
+Migration `048_create_verified_case_workspace.sql` defines:
+
+- `verified_cases`
+- `case_images`
+- `image_quality_checks`
+- `ai_findings`
+- `clinician_findings`
+- `case_audit_events`
+- `case_exports`
+- `patient_timeline_events`
+
+Case statuses are explicit: `draft`, `images_uploaded`, `quality_checked`, `analysis_completed`, `pending_clinician_review`, `verified`, `exported`, and `archived`.
+
+### Frontend Workflow
+
+The AI page now uses:
+
+- `ClinicalHistorySidebar` for merged chat/case history with filters, search, status badges, image count, timeline indicator, and low-quality warning.
+- `VerifiedCaseWorkspace` for multi-image upload, per-image quality state, AI analysis, clinician confirmation, audit trail, export, and timeline linkage.
+- `verifiedCaseWorkspaceClient.mjs` for the new case API contract through authenticated backend calls.
+
+Images are uploaded to backend case endpoints and receive stable `image_id` values. The UI may keep temporary preview URLs, but case state, findings, audit events, exports, and timeline records are loaded from backend APIs.
+
+### Current Caveat
+
+The in-repo service implementation is intentionally domain-complete and testable, with a SQL migration included for persistent storage. If the deployed backend has not yet wired this service to the database layer, case state will need the migration-backed repository implementation before production rollout across server restarts.

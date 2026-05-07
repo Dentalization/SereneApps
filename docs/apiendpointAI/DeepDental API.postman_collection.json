@@ -1,1181 +1,2000 @@
 {
-	"info": {
-		"_postman_id": "b0c2189f-62b4-4bd8-a3b2-7604717ae4df",
-		"name": "DeepDental API",
-		"description": "REST API for DeepDental AI-powered teledentistry assistant.\n\n## Authentication\nAll endpoints require `X-API-Key` header.\n\n## Quick Start\n1. Set your `api_key` in the environment\n2. Call 'Create Session' - session_id will be auto-saved\n3. Use any Chat or Image endpoint - all data is auto-captured\n\n## Auto-Save Features\n- session_id: Auto-saved on Create Session\n- last_message_id: Auto-saved on Chat responses\n- All environment variables are validated before requests\n\n## Dentist Portal Hardening Update (2026-05-07)\nDentist portal browser traffic must use the application backend proxy. Direct Postman calls still use X-API-Key. Runtime dentist flows use role=dentist and language=id. Image reasoning uses /images/analyze; /analysis/from-detections is the formal contract for detector-output handoff.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "29741804"
-	},
-	"item": [
-		{
-			"name": "Health",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Server is healthy', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test('All components are available', function() {",
-									"    const json = pm.response.json();",
-									"    pm.expect(json.status).to.eql('ok');",
-									"    console.log('✅ Components:', JSON.stringify(json.components));",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/health",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"health"
-							]
-						},
-						"description": "Check API health status and component availability. No authentication required."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Sessions",
-			"item": [
-				{
-					"name": "Create Session",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Session created successfully', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"if (jsonData.id) {",
-									"    pm.environment.set('session_id', jsonData.id);",
-									"    console.log('✅ session_id disimpan:', jsonData.id);",
-									"}",
-									"",
-									"if (jsonData.user_id) {",
-									"    pm.environment.set('user_id', jsonData.user_id);",
-									"    console.log('✅ user_id disimpan:', jsonData.user_id);",
-									"}",
-									"",
-									"pm.test('Session has valid ID', function() {",
-									"    pm.expect(jsonData.id).to.be.a('string');",
-									"    pm.expect(jsonData.id.length).to.be.greaterThan(0);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"postman_test\",\n    \"dentist_id\": \"{{user_id}}\"\n  }\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/sessions",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions"
-							]
-						},
-						"description": "Create a new chat session.\n\n**Auto-save:** session_id dan user_id akan otomatis disimpan ke environment."
-					},
-					"response": []
-				},
-				{
-					"name": "List Sessions",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('List sessions successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"pm.test('Response has pagination info', function() {",
-									"    pm.expect(jsonData).to.have.property('total');",
-									"    pm.expect(jsonData).to.have.property('sessions');",
-									"});",
-									"",
-									"// Auto-select first session if no session_id set",
-									"const currentSessionId = pm.environment.get('session_id');",
-									"if ((!currentSessionId || currentSessionId === '') && jsonData.sessions && jsonData.sessions.length > 0) {",
-									"    const firstSession = jsonData.sessions[0];",
-									"    pm.environment.set('session_id', firstSession.id);",
-									"    console.log('✅ Auto-selected session_id:', firstSession.id);",
-									"}",
-									"",
-									"console.log(`📋 Total sessions: ${jsonData.total}`);"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/sessions?page=1&per_page=20",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "per_page",
-									"value": "20"
-								}
-							]
-						},
-						"description": "List all sessions for the authenticated user.\n\n**Auto-save:** Jika session_id belum diset, akan otomatis memilih session pertama."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Session",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.warn('⚠️ session_id belum diset. Jalankan \"Create Session\" atau \"List Sessions\" terlebih dahulu.');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Get session successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"console.log(`📝 Session role: ${jsonData.role}, messages: ${jsonData.message_count || 0}`);"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/sessions/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions",
-								"{{session_id}}"
-							]
-						},
-						"description": "Get details of a specific session."
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Session",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.warn('⚠️ session_id belum diset!');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200 || pm.response.code === 204) {",
-									"    pm.environment.set('session_id', '');",
-									"    pm.environment.set('last_message_id', '');",
-									"    console.log('🗑️ Session deleted, environment cleared');",
-									"}",
-									"",
-									"pm.test('Session deleted', function() {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "DELETE",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/sessions/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions",
-								"{{session_id}}"
-							]
-						},
-						"description": "Delete a session and all its messages.\n\n**Auto-clear:** session_id dan last_message_id akan otomatis dikosongkan."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Session Messages",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.warn('⚠️ session_id belum diset!');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Get messages successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"if (Array.isArray(jsonData)) {",
-									"    console.log(`💬 Total messages: ${jsonData.length}`);",
-									"    ",
-									"    // Save last message ID",
-									"    if (jsonData.length > 0) {",
-									"        const lastMsg = jsonData[jsonData.length - 1];",
-									"        if (lastMsg.id) {",
-									"            pm.environment.set('last_message_id', lastMsg.id);",
-									"        }",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/sessions/{{session_id}}/messages",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions",
-								"{{session_id}}",
-								"messages"
-							]
-						},
-						"description": "Get all messages in a session (conversation history)."
-					},
-					"response": []
-				},
-				{
-					"name": "Clear Session Messages",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.warn('⚠️ session_id belum diset!');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200 || pm.response.code === 204) {",
-									"    pm.environment.set('last_message_id', '');",
-									"    console.log('🗑️ Messages cleared');",
-									"}",
-									"",
-									"pm.test('Messages cleared', function() {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "DELETE",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/sessions/{{session_id}}/messages",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions",
-								"{{session_id}}",
-								"messages"
-							]
-						},
-						"description": "Clear all messages in a session (keep the session)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Chat",
-			"item": [
-				{
-					"name": "Chat (JSON)",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.error('❌ session_id WAJIB diset! Jalankan \"Create Session\" terlebih dahulu.');",
-									"    throw new Error('session_id is required');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Chat response successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"// Save message_id",
-									"if (jsonData.message_id) {",
-									"    pm.environment.set('last_message_id', jsonData.message_id);",
-									"    console.log('✅ last_message_id disimpan:', jsonData.message_id);",
-									"}",
-									"",
-									"// Log sources count",
-									"if (jsonData.sources && jsonData.sources.length > 0) {",
-									"    console.log(`📚 Sources: ${jsonData.sources.length} referensi`);",
-									"}",
-									"",
-									"// Log visual findings",
-									"if (jsonData.visual_findings) {",
-									"    console.log(`🔍 Visual findings: ${jsonData.visual_findings.detections?.length || 0} deteksi`);",
-									"    if (jsonData.visual_findings.annotated_image_base64) {",
-									"        console.log('🖼️ Annotated image tersedia');",
-									"    }",
-									"}",
-									"",
-									"pm.test('Response has content', function() {",
-									"    pm.expect(jsonData.content).to.be.a('string');",
-									"    pm.expect(jsonData.content.length).to.be.greaterThan(0);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"message\": \"Apa penyebab gigi berlubang?\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/chat",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"chat"
-							]
-						},
-						"description": "Send a chat message with optional base64-encoded images.\n\n**Auto-save:** message_id akan otomatis disimpan.\n\nTo include images, add to the body:\n```json\n\"images\": [\n  {\"data\": \"base64_encoded_image_data\", \"filename\": \"photo.jpg\"}\n]\n```"
-					},
-					"response": []
-				},
-				{
-					"name": "Chat with Upload (Multipart)",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"const sessionId = pm.environment.get('session_id');",
-									"if (!sessionId || sessionId === '') {",
-									"    console.error('❌ session_id WAJIB diset! Jalankan \"Create Session\" terlebih dahulu.');",
-									"    throw new Error('session_id is required');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Chat with upload successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"// Save message_id",
-									"if (jsonData.message_id) {",
-									"    pm.environment.set('last_message_id', jsonData.message_id);",
-									"    console.log('✅ last_message_id disimpan:', jsonData.message_id);",
-									"}",
-									"",
-									"// Log visual findings",
-									"if (jsonData.visual_findings) {",
-									"    const vf = jsonData.visual_findings;",
-									"    console.log(`🔍 Concern level: ${vf.concern_level}`);",
-									"    console.log(`🔍 Detections: ${vf.detections?.length || 0}`);",
-									"    if (vf.annotated_image_base64) {",
-									"        console.log('🖼️ Annotated image tersedia (base64)');",
-									"        // Save flag that we have annotated image",
-									"        pm.environment.set('has_annotated_image', 'true');",
-									"    }",
-									"} else {",
-									"    console.log('ℹ️ Tidak ada visual_findings (mungkin tidak ada gambar)');",
-									"}",
-									"",
-									"pm.test('Response has content', function() {",
-									"    pm.expect(jsonData.content).to.be.a('string');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "message",
-									"value": "Tolong analisis foto gigi ini",
-									"type": "text"
-								},
-								{
-									"key": "session_id",
-									"value": "{{session_id}}",
-									"type": "text"
-								},
-								{
-									"key": "role",
-									"value": "dentist",
-									"type": "text"
-								},
-								{
-									"key": "language",
-									"value": "id",
-									"type": "text"
-								},
-								{
-									"key": "images",
-									"description": "Select image file(s) to upload",
-									"type": "file",
-									"src": []
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/chat/upload",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"chat",
-								"upload"
-							]
-						},
-						"description": "Send a chat message with image file uploads.\n\n**Auto-save:** message_id dan has_annotated_image flag akan otomatis disimpan."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Images",
-			"item": [
-				{
-					"name": "Analyze Image (Full)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Image analysis successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"// Log analysis results",
-									"console.log(`📊 Image quality: ${jsonData.image_quality}`);",
-									"console.log(`⚠️ Concern level: ${jsonData.concern_level}`);",
-									"console.log(`🔍 Detections: ${jsonData.detections?.length || 0}`);",
-									"console.log(`📝 Findings: ${jsonData.findings?.length || 0}`);",
-									"console.log(`⏱️ Processing time: ${jsonData.processing_time_ms?.toFixed(0)}ms`);",
-									"",
-									"if (jsonData.annotated_image_base64) {",
-									"    console.log('🖼️ Annotated image tersedia');",
-									"    pm.environment.set('last_annotated_image', 'available');",
-									"}",
-									"",
-									"// Log detections detail",
-									"if (jsonData.detections && jsonData.detections.length > 0) {",
-									"    jsonData.detections.forEach((det, i) => {",
-									"        console.log(`  ${det.mark_id}: ${det.label} (${(det.confidence * 100).toFixed(1)}%)`);",
-									"    });",
-									"}",
-									"",
-									"pm.test('Has image quality assessment', function() {",
-									"    pm.expect(jsonData.image_quality).to.be.a('string');",
-									"});",
-									"",
-									"pm.test('Has concern level', function() {",
-									"    pm.expect(jsonData.concern_level).to.be.a('string');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "image",
-									"description": "Dental image to analyze",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "context",
-									"value": "",
-									"description": "Additional context for analysis",
-									"type": "text"
-								},
-								{
-									"key": "role",
-									"value": "dentist",
-									"type": "text"
-								},
-								{
-									"key": "include_annotated",
-									"value": "true",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/images/analyze",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"images",
-								"analyze"
-							]
-						},
-						"description": "Full visual analysis with YOLO detection and Gemini interpretation.\n\nReturns:\n- Findings with mark references [1], [2]\n- Image quality assessment\n- Recommendations\n- Annotated image (base64)\n\n**Console output:** Detail setiap deteksi akan di-log ke console."
-					},
-					"response": []
-				},
-				{
-					"name": "Detect Only (YOLO)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Detection successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"console.log(`🔍 Detections: ${jsonData.detections?.length || 0}`);",
-									"console.log(`⏱️ Processing time: ${jsonData.processing_time_ms?.toFixed(0)}ms`);",
-									"",
-									"if (jsonData.annotated_image_base64) {",
-									"    console.log('🖼️ Annotated image tersedia');",
-									"}",
-									"",
-									"// Log detections",
-									"if (jsonData.detections && jsonData.detections.length > 0) {",
-									"    jsonData.detections.forEach((det, i) => {",
-									"        console.log(`  ${det.mark_id}: ${det.label} (${(det.confidence * 100).toFixed(1)}%)`);",
-									"    });",
-									"} else {",
-									"    console.log('ℹ️ Tidak ada patologi terdeteksi');",
-									"}",
-									"",
-									"pm.test('Response has detections array', function() {",
-									"    pm.expect(jsonData.detections).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "image",
-									"description": "Dental image to analyze",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "include_annotated",
-									"value": "true",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/images/detect",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"images",
-								"detect"
-							]
-						},
-						"description": "YOLO detection only (no LLM analysis).\n\nFaster endpoint for just detecting pathologies without detailed analysis.\n\nDetectable pathologies:\n- Calculus\n- Caries\n- Gingivitis\n- Hypodontia\n- Tooth discoloration\n- Ulcers"
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Knowledge",
-			"item": [
-				{
-					"name": "Query Knowledge Base",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Knowledge query successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"// Log answer preview",
-									"if (jsonData.answer) {",
-									"    const preview = jsonData.answer.substring(0, 200);",
-									"    console.log(`📖 Answer preview: ${preview}...`);",
-									"}",
-									"",
-									"// Log sources",
-									"if (jsonData.sources && jsonData.sources.length > 0) {",
-									"    console.log(`📚 Sources (${jsonData.sources.length}):`);",
-									"    jsonData.sources.forEach((src, i) => {",
-									"        console.log(`  [${i + 1}] ${src.source} (page ${src.page || 'N/A'})`);",
-									"    });",
-									"}",
-									"",
-									"pm.test('Response has answer', function() {",
-									"    pm.expect(jsonData.answer).to.be.a('string');",
-									"});",
-									"",
-									"pm.test('Response has sources', function() {",
-									"    pm.expect(jsonData.sources).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"question\": \"What are the treatment options for periodontitis?\",\n  \"role\": \"dentist\",\n  \"k\": 4\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/knowledge/query",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"knowledge",
-								"query"
-							]
-						},
-						"description": "Query the dental knowledge base directly.\n\nReturns synthesized answer with IEEE-style citations [1], [2], etc.\n\nParameters:\n- question: The question to ask\n- role: dentist (clinical detail) or patient (simple language)\n- k: Number of sources to retrieve (1-10)"
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Users",
-			"item": [
-				{
-					"name": "Get Current User",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Get user successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"",
-									"// Save user_id",
-									"if (jsonData.id) {",
-									"    pm.environment.set('user_id', jsonData.id);",
-									"    console.log('✅ user_id disimpan:', jsonData.id);",
-									"}",
-									"",
-									"console.log(`👤 User: ${jsonData.id}`);",
-									"console.log(`🏢 Tenant: ${jsonData.tenant_id}`);",
-									"if (jsonData.preferences) {",
-									"    console.log(`⚙️ Preferences:`, JSON.stringify(jsonData.preferences));",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/users/me",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"users",
-								"me"
-							]
-						},
-						"description": "Get current user information based on API key.\n\n**Auto-save:** user_id akan otomatis disimpan."
-					},
-					"response": []
-				},
-				{
-					"name": "Update Preferences",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test('Update preferences successful', function() {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"const jsonData = pm.response.json();",
-									"console.log('✅ Preferences updated:', JSON.stringify(jsonData.preferences));"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"default_role\": \"dentist\",\n  \"language_preference\": \"id\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/users/me/preferences",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"users",
-								"me",
-								"preferences"
-							]
-						},
-						"description": "Update user preferences.\n\nOptions:\n- default_role: dentist | patient\n- language_preference: en | id | bilingual"
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Dentist Portal Contract",
-			"description": "Examples aligned with the dentist portal runtime flow after hardening.",
-			"item": [
-				{
-					"name": "Create Dentist Session (id)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"deepdental_pro\",\n    \"dentist_id\": \"{{user_id}}\",\n    \"schema_version\": \"2026-05-07.deepdental.session.v1\"\n  }\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/sessions",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions"
-							]
-						},
-						"description": "Creates the same dentist/id session shape used by the web dentist portal."
-					},
-					"response": []
-				},
-				{
-					"name": "Analyze Image (Dentist Portal Flow)",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "image",
-									"description": "Select dental image file",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "context",
-									"value": "Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.",
-									"type": "text"
-								},
-								{
-									"key": "role",
-									"value": "dentist",
-									"type": "text"
-								},
-								{
-									"key": "language",
-									"value": "id",
-									"type": "text"
-								},
-								{
-									"key": "include_annotated",
-									"value": "true",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/images/analyze",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"images",
-								"analyze"
-							]
-						},
-						"description": "Supported image-analysis path used by the frontend. Response should include visual_findings.schema_version and annotated_image_mime_type when annotated output exists."
-					},
-					"response": []
-				},
-				{
-					"name": "Analysis From Detections (Formal Contract)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"contract\": \"analysis_from_detections\",\n  \"schema_version\": \"{{analysis_from_detections_schema}}\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"message\": \"Apa prioritas klinisnya?\",\n  \"detections\": [\n    {\n      \"mark_id\": \"[1]\",\n      \"label\": \"caries\",\n      \"confidence\": 0.91,\n      \"bbox\": [\n        120,\n        80,\n        200,\n        150\n      ]\n    }\n  ],\n  \"image_metadata\": {\n    \"file_name\": \"scan.png\",\n    \"mime_type\": \"image/png\",\n    \"size_bytes\": 1200000\n  }\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/analysis/from-detections",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"analysis",
-								"from-detections"
-							]
-						},
-						"description": "Typed endpoint contract that replaces embedding detector output inside normal chat prompt text."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Negative Cases",
-			"description": "Manual QA matrix for hardening regressions.",
-			"item": [
-				{
-					"name": "Invalid API Key",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-API-Key",
-								"value": "invalid-key"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/sessions?page=1&per_page=1",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "per_page",
-									"value": "1"
-								}
-							]
-						},
-						"description": "Expect 401/403 from direct DeepDental API. Browser path should never expose this key."
-					},
-					"response": []
-				},
-				{
-					"name": "Missing Annotated Mime Type",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "image",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "include_annotated",
-									"value": "true",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/images/detect",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"images",
-								"detect"
-							]
-						},
-						"description": "If annotated_image_base64 is returned without annotated_image_mime_type, frontend records schema warning and uses an explicit fallback."
-					},
-					"response": []
-				},
-				{
-					"name": "Missing Session",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"message\": \"Tes tanpa session\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/chat",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"chat"
-							]
-						},
-						"description": "Expect validation failure for missing session_id."
-					},
-					"response": []
-				}
-			]
-		}
-	],
-	"auth": {
-		"type": "apikey",
-		"apikey": [
-			{
-				"key": "key",
-				"value": "X-API-Key",
-				"type": "string"
-			},
-			{
-				"key": "value",
-				"value": "{{api_key}}",
-				"type": "string"
-			},
-			{
-				"key": "in",
-				"value": "header",
-				"type": "string"
-			}
-		]
-	},
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					"// Global pre-request script",
-					"const apiKey = pm.environment.get('api_key');",
-					"if (!apiKey || apiKey === 'dd_live_your_api_key_here') {",
-					"    console.warn('⚠️ API Key belum diset! Jalankan scripts/create_api_key.py terlebih dahulu.');",
-					"}"
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					"// Global test script - log response time",
-					"if (pm.response) {",
-					"    console.log(`📊 Response time: ${pm.response.responseTime}ms`);",
-					"    ",
-					"    // Check for common error codes",
-					"    if (pm.response.code === 401) {",
-					"        console.error('❌ Authentication failed - periksa API key');",
-					"    } else if (pm.response.code === 404) {",
-					"        console.error('❌ Resource not found - periksa session_id atau endpoint');",
-					"    } else if (pm.response.code >= 500) {",
-					"        console.error('❌ Server error - cek log server');",
-					"    }",
-					"}"
-				]
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:8000/api/v1"
-		},
-		{
-			"key": "schema_version",
-			"value": "2026-05-07.deepdental.visual-findings.v1"
-		},
-		{
-			"key": "analysis_from_detections_schema",
-			"value": "2026-05-07.deepdental.analysis-from-detections.v1"
-		},
-		{
-			"key": "portal_proxy_base_url",
-			"value": "http://localhost:4000/py-api/api/v1"
-		}
-	]
+  "info": {
+    "_postman_id": "b0c2189f-62b4-4bd8-a3b2-7604717ae4df",
+    "name": "DeepDental API",
+    "description": "REST API for DeepDental AI-powered teledentistry assistant.\n\n## Authentication\nAll endpoints require `X-API-Key` header.\n\n## Quick Start\n1. Set your `api_key` in the environment\n2. Call 'Create Session' - session_id will be auto-saved\n3. Use any Chat or Image endpoint - all data is auto-captured\n\n## Auto-Save Features\n- session_id: Auto-saved on Create Session\n- last_message_id: Auto-saved on Chat responses\n- All environment variables are validated before requests\n\n## Dentist Portal Hardening Update (2026-05-07)\nDentist portal browser traffic must use the application backend proxy. Direct Postman calls still use X-API-Key. Runtime dentist flows use role=dentist and language=id. Image reasoning uses /images/analyze; /analysis/from-detections is the formal contract for detector-output handoff.\n\nVerified Case Workspace endpoints were added on 2026-05-07 for clinical case workflows: multi-image upload, quality checks, AI-assisted findings, clinician confirmation, audit, exports, timeline linkage, and session-case linkage.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "29741804"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Server is healthy', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('All components are available', function() {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('ok');",
+                  "    console.log('✅ Components:', JSON.stringify(json.components));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check API health status and component availability. No authentication required."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "Create Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Session created successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('session_id', jsonData.id);",
+                  "    console.log('✅ session_id disimpan:', jsonData.id);",
+                  "}",
+                  "",
+                  "if (jsonData.user_id) {",
+                  "    pm.environment.set('user_id', jsonData.user_id);",
+                  "    console.log('✅ user_id disimpan:', jsonData.user_id);",
+                  "}",
+                  "",
+                  "pm.test('Session has valid ID', function() {",
+                  "    pm.expect(jsonData.id).to.be.a('string');",
+                  "    pm.expect(jsonData.id.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"postman_test\",\n    \"dentist_id\": \"{{user_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions"
+              ]
+            },
+            "description": "Create a new chat session.\n\n**Auto-save:** session_id dan user_id akan otomatis disimpan ke environment."
+          },
+          "response": []
+        },
+        {
+          "name": "List Sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List sessions successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has pagination info', function() {",
+                  "    pm.expect(jsonData).to.have.property('total');",
+                  "    pm.expect(jsonData).to.have.property('sessions');",
+                  "});",
+                  "",
+                  "// Auto-select first session if no session_id set",
+                  "const currentSessionId = pm.environment.get('session_id');",
+                  "if ((!currentSessionId || currentSessionId === '') && jsonData.sessions && jsonData.sessions.length > 0) {",
+                  "    const firstSession = jsonData.sessions[0];",
+                  "    pm.environment.set('session_id', firstSession.id);",
+                  "    console.log('✅ Auto-selected session_id:', firstSession.id);",
+                  "}",
+                  "",
+                  "console.log(`📋 Total sessions: ${jsonData.total}`);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions?page=1&per_page=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List all sessions for the authenticated user.\n\n**Auto-save:** Jika session_id belum diset, akan otomatis memilih session pertama."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.warn('⚠️ session_id belum diset. Jalankan \"Create Session\" atau \"List Sessions\" terlebih dahulu.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Get session successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "console.log(`📝 Session role: ${jsonData.role}, messages: ${jsonData.message_count || 0}`);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}"
+              ]
+            },
+            "description": "Get details of a specific session."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Session",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.warn('⚠️ session_id belum diset!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 204) {",
+                  "    pm.environment.set('session_id', '');",
+                  "    pm.environment.set('last_message_id', '');",
+                  "    console.log('🗑️ Session deleted, environment cleared');",
+                  "}",
+                  "",
+                  "pm.test('Session deleted', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}"
+              ]
+            },
+            "description": "Delete a session and all its messages.\n\n**Auto-clear:** session_id dan last_message_id akan otomatis dikosongkan."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Messages",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.warn('⚠️ session_id belum diset!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Get messages successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "if (Array.isArray(jsonData)) {",
+                  "    console.log(`💬 Total messages: ${jsonData.length}`);",
+                  "    ",
+                  "    // Save last message ID",
+                  "    if (jsonData.length > 0) {",
+                  "        const lastMsg = jsonData[jsonData.length - 1];",
+                  "        if (lastMsg.id) {",
+                  "            pm.environment.set('last_message_id', lastMsg.id);",
+                  "        }",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}",
+                "messages"
+              ]
+            },
+            "description": "Get all messages in a session (conversation history)."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Session Messages",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.warn('⚠️ session_id belum diset!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 204) {",
+                  "    pm.environment.set('last_message_id', '');",
+                  "    console.log('🗑️ Messages cleared');",
+                  "}",
+                  "",
+                  "pm.test('Messages cleared', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}",
+                "messages"
+              ]
+            },
+            "description": "Clear all messages in a session (keep the session)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Chat (JSON)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.error('❌ session_id WAJIB diset! Jalankan \"Create Session\" terlebih dahulu.');",
+                  "    throw new Error('session_id is required');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Chat response successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Save message_id",
+                  "if (jsonData.message_id) {",
+                  "    pm.environment.set('last_message_id', jsonData.message_id);",
+                  "    console.log('✅ last_message_id disimpan:', jsonData.message_id);",
+                  "}",
+                  "",
+                  "// Log sources count",
+                  "if (jsonData.sources && jsonData.sources.length > 0) {",
+                  "    console.log(`📚 Sources: ${jsonData.sources.length} referensi`);",
+                  "}",
+                  "",
+                  "// Log visual findings",
+                  "if (jsonData.visual_findings) {",
+                  "    console.log(`🔍 Visual findings: ${jsonData.visual_findings.detections?.length || 0} deteksi`);",
+                  "    if (jsonData.visual_findings.annotated_image_base64) {",
+                  "        console.log('🖼️ Annotated image tersedia');",
+                  "    }",
+                  "}",
+                  "",
+                  "pm.test('Response has content', function() {",
+                  "    pm.expect(jsonData.content).to.be.a('string');",
+                  "    pm.expect(jsonData.content.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Apa penyebab gigi berlubang?\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Send a chat message with optional base64-encoded images.\n\n**Auto-save:** message_id akan otomatis disimpan.\n\nTo include images, add to the body:\n```json\n\"images\": [\n  {\"data\": \"base64_encoded_image_data\", \"filename\": \"photo.jpg\"}\n]\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Chat with Upload (Multipart)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionId = pm.environment.get('session_id');",
+                  "if (!sessionId || sessionId === '') {",
+                  "    console.error('❌ session_id WAJIB diset! Jalankan \"Create Session\" terlebih dahulu.');",
+                  "    throw new Error('session_id is required');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Chat with upload successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Save message_id",
+                  "if (jsonData.message_id) {",
+                  "    pm.environment.set('last_message_id', jsonData.message_id);",
+                  "    console.log('✅ last_message_id disimpan:', jsonData.message_id);",
+                  "}",
+                  "",
+                  "// Log visual findings",
+                  "if (jsonData.visual_findings) {",
+                  "    const vf = jsonData.visual_findings;",
+                  "    console.log(`🔍 Concern level: ${vf.concern_level}`);",
+                  "    console.log(`🔍 Detections: ${vf.detections?.length || 0}`);",
+                  "    if (vf.annotated_image_base64) {",
+                  "        console.log('🖼️ Annotated image tersedia (base64)');",
+                  "        // Save flag that we have annotated image",
+                  "        pm.environment.set('has_annotated_image', 'true');",
+                  "    }",
+                  "} else {",
+                  "    console.log('ℹ️ Tidak ada visual_findings (mungkin tidak ada gambar)');",
+                  "}",
+                  "",
+                  "pm.test('Response has content', function() {",
+                  "    pm.expect(jsonData.content).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "message",
+                  "value": "Tolong analisis foto gigi ini",
+                  "type": "text"
+                },
+                {
+                  "key": "session_id",
+                  "value": "{{session_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "role",
+                  "value": "dentist",
+                  "type": "text"
+                },
+                {
+                  "key": "language",
+                  "value": "id",
+                  "type": "text"
+                },
+                {
+                  "key": "images",
+                  "description": "Select image file(s) to upload",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/chat/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "chat",
+                "upload"
+              ]
+            },
+            "description": "Send a chat message with image file uploads.\n\n**Auto-save:** message_id dan has_annotated_image flag akan otomatis disimpan."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Images",
+      "item": [
+        {
+          "name": "Analyze Image (Full)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Image analysis successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Log analysis results",
+                  "console.log(`📊 Image quality: ${jsonData.image_quality}`);",
+                  "console.log(`⚠️ Concern level: ${jsonData.concern_level}`);",
+                  "console.log(`🔍 Detections: ${jsonData.detections?.length || 0}`);",
+                  "console.log(`📝 Findings: ${jsonData.findings?.length || 0}`);",
+                  "console.log(`⏱️ Processing time: ${jsonData.processing_time_ms?.toFixed(0)}ms`);",
+                  "",
+                  "if (jsonData.annotated_image_base64) {",
+                  "    console.log('🖼️ Annotated image tersedia');",
+                  "    pm.environment.set('last_annotated_image', 'available');",
+                  "}",
+                  "",
+                  "// Log detections detail",
+                  "if (jsonData.detections && jsonData.detections.length > 0) {",
+                  "    jsonData.detections.forEach((det, i) => {",
+                  "        console.log(`  ${det.mark_id}: ${det.label} (${(det.confidence * 100).toFixed(1)}%)`);",
+                  "    });",
+                  "}",
+                  "",
+                  "pm.test('Has image quality assessment', function() {",
+                  "    pm.expect(jsonData.image_quality).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('Has concern level', function() {",
+                  "    pm.expect(jsonData.concern_level).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "description": "Dental image to analyze",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "context",
+                  "value": "",
+                  "description": "Additional context for analysis",
+                  "type": "text"
+                },
+                {
+                  "key": "role",
+                  "value": "dentist",
+                  "type": "text"
+                },
+                {
+                  "key": "include_annotated",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/images/analyze",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "images",
+                "analyze"
+              ]
+            },
+            "description": "Full visual analysis with YOLO detection and Gemini interpretation.\n\nReturns:\n- Findings with mark references [1], [2]\n- Image quality assessment\n- Recommendations\n- Annotated image (base64)\n\n**Console output:** Detail setiap deteksi akan di-log ke console."
+          },
+          "response": []
+        },
+        {
+          "name": "Detect Only (YOLO)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Detection successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "console.log(`🔍 Detections: ${jsonData.detections?.length || 0}`);",
+                  "console.log(`⏱️ Processing time: ${jsonData.processing_time_ms?.toFixed(0)}ms`);",
+                  "",
+                  "if (jsonData.annotated_image_base64) {",
+                  "    console.log('🖼️ Annotated image tersedia');",
+                  "}",
+                  "",
+                  "// Log detections",
+                  "if (jsonData.detections && jsonData.detections.length > 0) {",
+                  "    jsonData.detections.forEach((det, i) => {",
+                  "        console.log(`  ${det.mark_id}: ${det.label} (${(det.confidence * 100).toFixed(1)}%)`);",
+                  "    });",
+                  "} else {",
+                  "    console.log('ℹ️ Tidak ada patologi terdeteksi');",
+                  "}",
+                  "",
+                  "pm.test('Response has detections array', function() {",
+                  "    pm.expect(jsonData.detections).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "description": "Dental image to analyze",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "include_annotated",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/images/detect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "images",
+                "detect"
+              ]
+            },
+            "description": "YOLO detection only (no LLM analysis).\n\nFaster endpoint for just detecting pathologies without detailed analysis.\n\nDetectable pathologies:\n- Calculus\n- Caries\n- Gingivitis\n- Hypodontia\n- Tooth discoloration\n- Ulcers"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "item": [
+        {
+          "name": "Query Knowledge Base",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Knowledge query successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Log answer preview",
+                  "if (jsonData.answer) {",
+                  "    const preview = jsonData.answer.substring(0, 200);",
+                  "    console.log(`📖 Answer preview: ${preview}...`);",
+                  "}",
+                  "",
+                  "// Log sources",
+                  "if (jsonData.sources && jsonData.sources.length > 0) {",
+                  "    console.log(`📚 Sources (${jsonData.sources.length}):`);",
+                  "    jsonData.sources.forEach((src, i) => {",
+                  "        console.log(`  [${i + 1}] ${src.source} (page ${src.page || 'N/A'})`);",
+                  "    });",
+                  "}",
+                  "",
+                  "pm.test('Response has answer', function() {",
+                  "    pm.expect(jsonData.answer).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('Response has sources', function() {",
+                  "    pm.expect(jsonData.sources).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What are the treatment options for periodontitis?\",\n  \"role\": \"dentist\",\n  \"k\": 4\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/knowledge/query",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "knowledge",
+                "query"
+              ]
+            },
+            "description": "Query the dental knowledge base directly.\n\nReturns synthesized answer with IEEE-style citations [1], [2], etc.\n\nParameters:\n- question: The question to ask\n- role: dentist (clinical detail) or patient (simple language)\n- k: Number of sources to retrieve (1-10)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Get user successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Save user_id",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('user_id', jsonData.id);",
+                  "    console.log('✅ user_id disimpan:', jsonData.id);",
+                  "}",
+                  "",
+                  "console.log(`👤 User: ${jsonData.id}`);",
+                  "console.log(`🏢 Tenant: ${jsonData.tenant_id}`);",
+                  "if (jsonData.preferences) {",
+                  "    console.log(`⚙️ Preferences:`, JSON.stringify(jsonData.preferences));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Get current user information based on API key.\n\n**Auto-save:** user_id akan otomatis disimpan."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Preferences",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Update preferences successful', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "console.log('✅ Preferences updated:', JSON.stringify(jsonData.preferences));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_role\": \"dentist\",\n  \"language_preference\": \"id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/me/preferences",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "preferences"
+              ]
+            },
+            "description": "Update user preferences.\n\nOptions:\n- default_role: dentist | patient\n- language_preference: en | id | bilingual"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dentist Portal Contract",
+      "description": "Examples aligned with the dentist portal runtime flow after hardening.",
+      "item": [
+        {
+          "name": "Create Dentist Session (id)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"deepdental_pro\",\n    \"dentist_id\": \"{{user_id}}\",\n    \"schema_version\": \"2026-05-07.deepdental.session.v1\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions"
+              ]
+            },
+            "description": "Creates the same dentist/id session shape used by the web dentist portal."
+          },
+          "response": []
+        },
+        {
+          "name": "Analyze Image (Dentist Portal Flow)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "description": "Select dental image file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "context",
+                  "value": "Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.",
+                  "type": "text"
+                },
+                {
+                  "key": "role",
+                  "value": "dentist",
+                  "type": "text"
+                },
+                {
+                  "key": "language",
+                  "value": "id",
+                  "type": "text"
+                },
+                {
+                  "key": "include_annotated",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/images/analyze",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "images",
+                "analyze"
+              ]
+            },
+            "description": "Supported image-analysis path used by the frontend. Response should include visual_findings.schema_version and annotated_image_mime_type when annotated output exists."
+          },
+          "response": []
+        },
+        {
+          "name": "Analysis From Detections (Formal Contract)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contract\": \"analysis_from_detections\",\n  \"schema_version\": \"{{analysis_from_detections_schema}}\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"message\": \"Apa prioritas klinisnya?\",\n  \"detections\": [\n    {\n      \"mark_id\": \"[1]\",\n      \"label\": \"caries\",\n      \"confidence\": 0.91,\n      \"bbox\": [\n        120,\n        80,\n        200,\n        150\n      ]\n    }\n  ],\n  \"image_metadata\": {\n    \"file_name\": \"scan.png\",\n    \"mime_type\": \"image/png\",\n    \"size_bytes\": 1200000\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analysis/from-detections",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "analysis",
+                "from-detections"
+              ]
+            },
+            "description": "Typed endpoint contract that replaces embedding detector output inside normal chat prompt text."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Negative Cases",
+      "description": "Manual QA matrix for hardening regressions.",
+      "item": [
+        {
+          "name": "Invalid API Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "invalid-key"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sessions?page=1&per_page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Expect 401/403 from direct DeepDental API. Browser path should never expose this key."
+          },
+          "response": []
+        },
+        {
+          "name": "Missing Annotated Mime Type",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "include_annotated",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/images/detect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "images",
+                "detect"
+              ]
+            },
+            "description": "If annotated_image_base64 is returned without annotated_image_mime_type, frontend records schema warning and uses an explicit fallback."
+          },
+          "response": []
+        },
+        {
+          "name": "Missing Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Tes tanpa session\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Expect validation failure for missing session_id."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Verified Case Workspace",
+      "description": "SereneApps clinical case workflow endpoints. Use bearer auth; do not send DeepDental service keys from the browser.",
+      "item": [
+        {
+          "name": "Create Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bitewing caries follow-up\",\n  \"patient_id\": \"{{patient_id}}\",\n  \"session_id\": \"{{session_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Cases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases?search=caries",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "caries"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Case Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Case",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"verified\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Archive Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/archive",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "archive"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Case closed after report export\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Case Images",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/images",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "images"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Case Images",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/images",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "images"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Case Image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/images/{{image_id}}",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "images",
+                "{{image_id}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Admin archive after verification\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Run Image Quality Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/images/{{image_id}}/quality-check",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "images",
+                "{{image_id}}",
+                "quality-check"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metrics\": {\n    \"width\": 1400,\n    \"height\": 1000,\n    \"blur\": 0.08,\n    \"brightness\": 0.55,\n    \"contrast\": 0.68,\n    \"dentalRelevance\": 0.95,\n    \"teethVisible\": true,\n    \"faceVisible\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Record Image AI Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/images/{{image_id}}/analyze",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "images",
+                "{{image_id}}",
+                "analyze"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"raw_ai_result\": {\n    \"model\": \"deepdental-local\"\n  },\n  \"normalized_findings\": {\n    \"findings\": [\n      {\n        \"label\": \"caries\",\n        \"tooth_or_region\": \"36\",\n        \"severity\": \"moderate\",\n        \"confidence\": 0.82,\n        \"notes\": \"AI-assisted preliminary finding\"\n      }\n    ]\n  },\n  \"annotated_image\": {\n    \"storage_ref\": \"/uploads/verified-cases/case/image-annotated.webp\",\n    \"mime_type\": \"image/webp\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Findings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/findings",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "findings"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Manual Finding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/findings",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "findings"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"gingival inflammation\",\n  \"tooth_or_region\": \"lower anterior\",\n  \"severity\": \"mild\",\n  \"notes\": \"Manual clinician finding\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Edit Finding",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/findings/{{finding_id}}",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "findings",
+                "{{finding_id}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"severity\": \"severe\",\n  \"notes\": \"Edited by clinician after exam\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Finding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/findings/{{finding_id}}/confirm",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "findings",
+                "{{finding_id}}",
+                "confirm"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Confirmed by clinician\",\n  \"urgent_referral\": false,\n  \"needs_in_person_exam\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Finding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/findings/{{finding_id}}/reject",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "findings",
+                "{{finding_id}}",
+                "reject"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Artifact or duplicate marker\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Audit Trail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/audit",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "audit"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/export/pdf",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "export",
+                "pdf"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redacted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/export/json",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "export",
+                "json"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redacted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Link Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/link-patient",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "cases",
+                "{{case_id}}",
+                "link-patient"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"patient_code\": \"P-{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Patient Timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/patients/{{patient_id}}/timeline",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "patients",
+                "{{patient_id}}",
+                "timeline"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Case",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/sessions/{{session_id}}/case",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}",
+                "case"
+              ],
+              "query": []
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Or Link Session Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{app_access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{serene_api_base_url}}/sessions/{{session_id}}/case",
+              "host": [
+                "{{serene_api_base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{session_id}}",
+                "case"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Session-linked clinical case\",\n  \"patient_id\": \"{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "const apiKey = pm.environment.get('api_key');",
+          "if (!apiKey || apiKey === 'dd_live_your_api_key_here') {",
+          "    console.warn('⚠️ API Key belum diset! Jalankan scripts/create_api_key.py terlebih dahulu.');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script - log response time",
+          "if (pm.response) {",
+          "    console.log(`📊 Response time: ${pm.response.responseTime}ms`);",
+          "    ",
+          "    // Check for common error codes",
+          "    if (pm.response.code === 401) {",
+          "        console.error('❌ Authentication failed - periksa API key');",
+          "    } else if (pm.response.code === 404) {",
+          "        console.error('❌ Resource not found - periksa session_id atau endpoint');",
+          "    } else if (pm.response.code >= 500) {",
+          "        console.error('❌ Server error - cek log server');",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api/v1"
+    },
+    {
+      "key": "schema_version",
+      "value": "2026-05-07.deepdental.visual-findings.v1"
+    },
+    {
+      "key": "analysis_from_detections_schema",
+      "value": "2026-05-07.deepdental.analysis-from-detections.v1"
+    },
+    {
+      "key": "portal_proxy_base_url",
+      "value": "http://localhost:4000/py-api/api/v1"
+    },
+    {
+      "key": "serene_api_base_url",
+      "value": "http://localhost:4000/v1"
+    },
+    {
+      "key": "app_access_token",
+      "value": ""
+    },
+    {
+      "key": "case_id",
+      "value": "case_000001"
+    },
+    {
+      "key": "image_id",
+      "value": "image_000001"
+    },
+    {
+      "key": "finding_id",
+      "value": "finding_000001"
+    },
+    {
+      "key": "patient_id",
+      "value": "patient-1"
+    }
+  ]
 }
