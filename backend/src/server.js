@@ -33,6 +33,11 @@ import emrRouter from './routes/emr.js';
 import xCoreRouter from './routes/xCoreRoutes.js';
 import webhooksRouter from './routes/webhooks.js';
 import { verify } from './utils/tokens.js';
+import {
+  buildDeepDentalProxyHeaders,
+  getDeepDentalProxyAuthError,
+  isDeepDentalApiPath,
+} from './utils/deepDentalProxy.js';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
 import { start as startOutboxWorker } from './services/events/outboxWorker.js';
@@ -48,7 +53,11 @@ BigInt.prototype.toJSON = function () { return this.toString(); };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const pyApiBase = (process.env.XCORE_PY_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const pyApiBase = (
+  process.env.DEEPDENTAL_API_BASE_URL ||
+  process.env.XCORE_PY_API_BASE_URL ||
+  'http://127.0.0.1:8000'
+).replace(/\/$/, '');
 
 const app = express();
 const server = http.createServer(app);
@@ -103,19 +112,33 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
 
 app.use('/py-api', async (req, res) => {
-  const targetUrl = new URL(req.originalUrl.replace(/^\/py-api/, '') || '/', `${pyApiBase}/`);
+  const proxyPath = req.originalUrl.replace(/^\/py-api/, '') || '/';
+  const targetUrl = new URL(proxyPath, `${pyApiBase}/`);
+  const backendApiKey = process.env.DEEPDENTAL_API_KEY || process.env.SERENE_AI_API_KEY || '';
+
+  const authError = getDeepDentalProxyAuthError({
+    path: targetUrl.pathname,
+    authorization: req.headers.authorization || '',
+    backendApiKey,
+    verifyToken: verify,
+  });
+
+  if (authError) {
+    return res.status(authError.status).json({
+      error: {
+        code: authError.code,
+        message: authError.code === 'deepdental_proxy_not_configured'
+          ? 'DeepDental proxy is missing a backend API key.'
+          : 'DeepDental proxy request is not authorized.'
+      }
+    });
+  }
 
   try {
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (value == null) continue;
-      if (['host', 'connection', 'content-length'].includes(key.toLowerCase())) continue;
-      if (Array.isArray(value)) {
-        value.forEach((item) => headers.append(key, item));
-      } else {
-        headers.set(key, value);
-      }
-    }
+    const headers = buildDeepDentalProxyHeaders({
+      incomingHeaders: req.headers,
+      backendApiKey: isDeepDentalApiPath(targetUrl.pathname) ? backendApiKey : '',
+    });
 
     const init = {
       method: req.method,
@@ -129,6 +152,9 @@ app.use('/py-api', async (req, res) => {
         if (!headers.has('content-type')) {
           headers.set('content-type', 'application/json');
         }
+      } else if (req.headers['content-length'] || req.headers['transfer-encoding']) {
+        init.body = req;
+        init.duplex = 'half';
       }
     }
 

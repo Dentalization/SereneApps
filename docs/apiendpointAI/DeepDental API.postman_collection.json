@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "b0c2189f-62b4-4bd8-a3b2-7604717ae4df",
 		"name": "DeepDental API",
-		"description": "REST API for DeepDental AI-powered teledentistry assistant.\n\n## Authentication\nAll endpoints require `X-API-Key` header.\n\n## Quick Start\n1. Set your `api_key` in the environment\n2. Call 'Create Session' - session_id will be auto-saved\n3. Use any Chat or Image endpoint - all data is auto-captured\n\n## Auto-Save Features\n- session_id: Auto-saved on Create Session\n- last_message_id: Auto-saved on Chat responses\n- All environment variables are validated before requests",
+		"description": "REST API for DeepDental AI-powered teledentistry assistant.\n\n## Authentication\nAll endpoints require `X-API-Key` header.\n\n## Quick Start\n1. Set your `api_key` in the environment\n2. Call 'Create Session' - session_id will be auto-saved\n3. Use any Chat or Image endpoint - all data is auto-captured\n\n## Auto-Save Features\n- session_id: Auto-saved on Create Session\n- last_message_id: Auto-saved on Chat responses\n- All environment variables are validated before requests\n\n## Dentist Portal Hardening Update (2026-05-07)\nDentist portal browser traffic must use the application backend proxy. Direct Postman calls still use X-API-Key. Runtime dentist flows use role=dentist and language=id. Image reasoning uses /images/analyze; /analysis/from-detections is the formal contract for detector-output handoff.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "29741804"
 	},
@@ -97,7 +97,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"role\": \"patient\",\n  \"language\": \"bilingual\",\n  \"metadata\": {\n    \"source\": \"postman_test\"\n  }\n}"
+							"raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"postman_test\",\n    \"dentist_id\": \"{{user_id}}\"\n  }\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/sessions",
@@ -444,7 +444,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"message\": \"Apa penyebab gigi berlubang?\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"patient\",\n  \"language\": \"bilingual\"\n}"
+							"raw": "{\n  \"message\": \"Apa penyebab gigi berlubang?\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/chat",
@@ -531,12 +531,12 @@
 								},
 								{
 									"key": "role",
-									"value": "patient",
+									"value": "dentist",
 									"type": "text"
 								},
 								{
 									"key": "language",
-									"value": "bilingual",
+									"value": "id",
 									"type": "text"
 								},
 								{
@@ -630,7 +630,7 @@
 								},
 								{
 									"key": "role",
-									"value": "patient",
+									"value": "dentist",
 									"type": "text"
 								},
 								{
@@ -873,7 +873,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"default_role\": \"dentist\",\n  \"language_preference\": \"bilingual\"\n}"
+							"raw": "{\n  \"default_role\": \"dentist\",\n  \"language_preference\": \"id\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/users/me/preferences",
@@ -887,6 +887,217 @@
 							]
 						},
 						"description": "Update user preferences.\n\nOptions:\n- default_role: dentist | patient\n- language_preference: en | id | bilingual"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Dentist Portal Contract",
+			"description": "Examples aligned with the dentist portal runtime flow after hardening.",
+			"item": [
+				{
+					"name": "Create Dentist Session (id)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"metadata\": {\n    \"source\": \"deepdental_pro\",\n    \"dentist_id\": \"{{user_id}}\",\n    \"schema_version\": \"2026-05-07.deepdental.session.v1\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sessions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"sessions"
+							]
+						},
+						"description": "Creates the same dentist/id session shape used by the web dentist portal."
+					},
+					"response": []
+				},
+				{
+					"name": "Analyze Image (Dentist Portal Flow)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"description": "Select dental image file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "context",
+									"value": "Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.",
+									"type": "text"
+								},
+								{
+									"key": "role",
+									"value": "dentist",
+									"type": "text"
+								},
+								{
+									"key": "language",
+									"value": "id",
+									"type": "text"
+								},
+								{
+									"key": "include_annotated",
+									"value": "true",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/images/analyze",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"images",
+								"analyze"
+							]
+						},
+						"description": "Supported image-analysis path used by the frontend. Response should include visual_findings.schema_version and annotated_image_mime_type when annotated output exists."
+					},
+					"response": []
+				},
+				{
+					"name": "Analysis From Detections (Formal Contract)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"contract\": \"analysis_from_detections\",\n  \"schema_version\": \"{{analysis_from_detections_schema}}\",\n  \"session_id\": \"{{session_id}}\",\n  \"role\": \"dentist\",\n  \"language\": \"id\",\n  \"message\": \"Apa prioritas klinisnya?\",\n  \"detections\": [\n    {\n      \"mark_id\": \"[1]\",\n      \"label\": \"caries\",\n      \"confidence\": 0.91,\n      \"bbox\": [\n        120,\n        80,\n        200,\n        150\n      ]\n    }\n  ],\n  \"image_metadata\": {\n    \"file_name\": \"scan.png\",\n    \"mime_type\": \"image/png\",\n    \"size_bytes\": 1200000\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/analysis/from-detections",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"analysis",
+								"from-detections"
+							]
+						},
+						"description": "Typed endpoint contract that replaces embedding detector output inside normal chat prompt text."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Negative Cases",
+			"description": "Manual QA matrix for hardening regressions.",
+			"item": [
+				{
+					"name": "Invalid API Key",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "invalid-key"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sessions?page=1&per_page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"sessions"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Expect 401/403 from direct DeepDental API. Browser path should never expose this key."
+					},
+					"response": []
+				},
+				{
+					"name": "Missing Annotated Mime Type",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "include_annotated",
+									"value": "true",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/images/detect",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"images",
+								"detect"
+							]
+						},
+						"description": "If annotated_image_base64 is returned without annotated_image_mime_type, frontend records schema warning and uses an explicit fallback."
+					},
+					"response": []
+				},
+				{
+					"name": "Missing Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"Tes tanpa session\",\n  \"role\": \"dentist\",\n  \"language\": \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat"
+							]
+						},
+						"description": "Expect validation failure for missing session_id."
 					},
 					"response": []
 				}
@@ -953,6 +1164,18 @@
 		{
 			"key": "base_url",
 			"value": "http://localhost:8000/api/v1"
+		},
+		{
+			"key": "schema_version",
+			"value": "2026-05-07.deepdental.visual-findings.v1"
+		},
+		{
+			"key": "analysis_from_detections_schema",
+			"value": "2026-05-07.deepdental.analysis-from-detections.v1"
+		},
+		{
+			"key": "portal_proxy_base_url",
+			"value": "http://localhost:4000/py-api/api/v1"
 		}
 	]
 }

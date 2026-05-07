@@ -8,6 +8,7 @@ import {
   Maximize2, X, ChevronDown, ChevronUp, Activity, Crosshair,
   Stethoscope, Lightbulb, AlertCircle,
 } from 'lucide-react';
+import { buildAnnotatedImageDataUrl } from './deepDentalSchemas.mjs';
 
 const CONCERN_CONFIG = {
   minimal: { icon: CheckCircle, accent: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' },
@@ -107,7 +108,13 @@ const FindingItem = ({ finding, index }) => {
   );
 };
 
-export default function VisualFindingsCard({ findings, onImageClick }) {
+export default function VisualFindingsCard({
+  findings,
+  review = null,
+  caseWorkspace = null,
+  onImageClick,
+  onReview,
+}) {
   const [expanded, setExpanded] = useState(true);
   const [showAllDetections, setShowAllDetections] = useState(false);
 
@@ -122,6 +129,8 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
   const recommendations = findings.recommendations || [];
   const visibleDetections = showAllDetections ? detections : detections.slice(0, 6);
   const hasAnnotated = !!findings.annotated_image_base64;
+  const annotatedImageSrc = buildAnnotatedImageDataUrl(findings);
+  const reviewStatus = review?.status || 'pending_clinician_review';
 
   return (
     <motion.div
@@ -144,6 +153,7 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
           </div>
           <button
             onClick={() => setExpanded(!expanded)}
+            aria-label={expanded ? 'Collapse clinical findings' : 'Expand clinical findings'}
             className="p-1.5 rounded-lg hover:bg-surface text-muted transition-colors"
           >
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -194,13 +204,14 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
                   className="relative group rounded-xl overflow-hidden border border-primary"
                 >
                   <img
-                    src={`data:image/jpeg;base64,${findings.annotated_image_base64}`}
+                    src={annotatedImageSrc}
                     alt="AI-annotated dental scan"
                     className="w-full rounded-xl"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <button
-                    onClick={() => onImageClick?.(findings.annotated_image_base64)}
+                    onClick={() => onImageClick?.(annotatedImageSrc)}
+                    aria-label="Open annotated dental scan full size"
                     className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/70 backdrop-blur-sm text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-all hover:bg-black/80"
                   >
                     <Maximize2 className="w-3 h-3" />
@@ -230,6 +241,7 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
                   {detections.length > 6 && (
                     <button
                       onClick={() => setShowAllDetections(!showAllDetections)}
+                      aria-label={showAllDetections ? 'Show fewer pathology markers' : `Show all ${detections.length} pathology markers`}
                       className="mt-2 text-xs text-accent hover:underline font-medium"
                     >
                       {showAllDetections ? 'Show less' : `Show all ${detections.length} detections`}
@@ -290,6 +302,56 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
                   </p>
                 </div>
               )}
+
+              {(clinicalFindings.length > 0 || detections.length > 0) && (
+                <div className="rounded-xl border border-primary bg-surface px-3 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wider">
+                        Clinician Review
+                      </p>
+                      <p className="text-[11px] text-muted mt-1">
+                        {reviewStatus === 'confirmed'
+                          ? 'Findings confirmed by clinician.'
+                          : reviewStatus === 'needs_revision'
+                            ? 'Marked for clinical revision.'
+                            : 'AI draft awaiting clinician confirmation.'}
+                      </p>
+                      {caseWorkspace && (
+                        <p className="text-[10px] text-muted mt-1">
+                          Workspace prepared: {caseWorkspace.imageCount || 0} image, export {caseWorkspace.exportReady ? 'ready' : 'pending'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onReview?.('needs_revision')}
+                        aria-label="Mark AI findings as needing revision"
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                          reviewStatus === 'needs_revision'
+                            ? 'bg-amber-500/15 text-amber-700 border-amber-500/30'
+                            : 'bg-surface-elevated text-muted border-primary hover:text-primary'
+                        }`}
+                      >
+                        Revise
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onReview?.('confirmed')}
+                        aria-label="Confirm AI findings as reviewed by clinician"
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                          reviewStatus === 'confirmed'
+                            ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
+                            : 'bg-accent text-white border-accent hover:bg-accent-hover'
+                        }`}
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -301,8 +363,8 @@ export default function VisualFindingsCard({ findings, onImageClick }) {
 /**
  * ImageLightbox — Fullscreen image viewer
  */
-export function ImageLightbox({ base64, onClose }) {
-  if (!base64) return null;
+export function ImageLightbox({ imageSrc, onClose }) {
+  if (!imageSrc) return null;
   return (
     <AnimatePresence>
       <motion.div
@@ -321,12 +383,13 @@ export function ImageLightbox({ base64, onClose }) {
           onClick={(e) => e.stopPropagation()}
         >
           <img
-            src={`data:image/jpeg;base64,${base64}`}
+            src={imageSrc}
             alt="Full-size annotated scan"
             className="max-w-full max-h-[90vh] rounded-xl object-contain"
           />
           <button
             onClick={onClose}
+            aria-label="Close annotated image preview"
             className="absolute -top-3 -right-3 p-2 rounded-full bg-surface-elevated border border-primary text-primary hover:bg-surface transition-colors shadow-lg"
           >
             <X className="w-5 h-5" />

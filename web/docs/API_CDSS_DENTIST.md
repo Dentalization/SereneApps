@@ -1,10 +1,14 @@
 # DeepDental API Documentation
 
 **Version:** 1.0.0  
-**Base URL:** `/api/v1`  
-**Authentication:** X-API-Key header
+**Backend Base URL:** `/api/v1`  
+**Dentist Portal Proxy:** `/py-api/api/v1`  
+**Server-to-DeepDental Authentication:** `X-API-Key` injected by backend proxy only  
+**Browser-to-Proxy Authentication:** app `Authorization: Bearer <access token>`
 
 AI-powered teledentistry assistant REST API untuk diagnosis dental menggunakan computer vision dan LLM.
+
+> Security note: web clients must not call DeepDental directly with a long-lived service key. The dentist portal uses `/py-api/api/v1`; the Node backend validates the app bearer token, strips any client-supplied service key, and injects the DeepDental key from backend environment.
 
 ---
 
@@ -33,14 +37,17 @@ Check API health status dan status komponen individual.
 ### POST `/api/v1/sessions`
 Membuat sesi chat baru. Setiap sesi memiliki riwayat percakapan yang terisolasi.
 
-**Headers:**
+**Headers for direct backend/API tooling:**
 - `X-API-Key` (required): API key untuk autentikasi
+
+**Headers from dentist portal browser to proxy:**
+- `Authorization: Bearer <access token>`
 
 **Request Body:**
 ```json
 {
-  "role": "patient",           // "patient" (awam) | "dentist" (profesional)
-  "language": "bilingual",      // "id" | "en" | "bilingual"
+  "role": "dentist",            // "patient" (awam) | "dentist" (profesional)
+  "language": "id",             // "id" | "en" | "bilingual"
   "metadata": {}                // optional metadata
 }
 ```
@@ -49,8 +56,9 @@ Membuat sesi chat baru. Setiap sesi memiliki riwayat percakapan yang terisolasi.
 ```json
 {
   "role": "dentist",
-  "language": "bilingual",
+  "language": "id",
   "metadata": {
+    "source": "deepdental_pro",
     "clinic_id": "clinic_123",
     "specialization": "endodontist"
   }
@@ -63,8 +71,8 @@ Membuat sesi chat baru. Setiap sesi memiliki riwayat percakapan yang terisolasi.
   "id": "session_uuid",
   "user_id": "user_uuid",
   "tenant_id": "tenant_uuid",
-  "role": "patient",
-  "language": "bilingual",
+  "role": "dentist",
+  "language": "id",
   "created_at": "2025-12-24T00:00:00Z",
   "updated_at": "2025-12-24T00:00:00Z",
   "message_count": 0,
@@ -267,6 +275,7 @@ Kirim pesan chat dengan optional base64-encoded images.
     }
   ],
   "visual_findings": {
+    "schema_version": "2026-05-07.deepdental.visual-findings.v1",
     "image_quality": "good",
     "findings": [
       {
@@ -289,7 +298,8 @@ Kirim pesan chat dengan optional base64-encoded images.
     "concern_level": "moderate",
     "recommendations": ["Konsultasi dengan dokter gigi", "Pemeriksaan lebih lanjut"],
     "limitations": "Image quality affects accuracy",
-    "annotated_image_base64": "base64_annotated_image"
+    "annotated_image_base64": "base64_annotated_image",
+    "annotated_image_mime_type": "image/png"
   },
   "suggested_questions": [
     "Bagaimana cara merawat karies?",
@@ -315,6 +325,43 @@ Kirim pesan chat dengan file upload (multipart form-data).
 
 **Response 200:** Same as `/api/v1/chat`
 
+**Dentist portal behavior:** text-only chat uses `/api/v1/chat` JSON. Image analysis uses `/api/v1/images/analyze`. The portal no longer sends a detection-summary prompt through `/chat/upload` without an image file.
+
+---
+
+### POST `/api/v1/analysis/from-detections`
+Formal contract for converting already-computed detector output into clinical reasoning. This endpoint replaces any prompt-only workaround that embeds detector output inside ordinary chat text.
+
+**Headers:**
+- `X-API-Key` (required for direct API tooling)
+
+**Request Body:**
+```json
+{
+  "contract": "analysis_from_detections",
+  "schema_version": "2026-05-07.deepdental.analysis-from-detections.v1",
+  "session_id": "session_uuid",
+  "role": "dentist",
+  "language": "id",
+  "message": "Apa prioritas klinisnya?",
+  "detections": [
+    {
+      "mark_id": "[1]",
+      "label": "caries",
+      "confidence": 0.91,
+      "bbox": [120, 80, 200, 150]
+    }
+  ],
+  "image_metadata": {
+    "file_name": "scan.png",
+    "mime_type": "image/png",
+    "size_bytes": 1200000
+  }
+}
+```
+
+**Response 200:** Same clinical response envelope as `/api/v1/chat`, with `visual_findings.schema_version` and `visual_findings.annotated_image_mime_type` when annotated output is present.
+
 ---
 
 ## 🖼️ Image Analysis
@@ -334,6 +381,7 @@ Analisis visual lengkap dengan SoM grounding. Menggunakan YOLO untuk deteksi dan
 **Response 200:**
 ```json
 {
+  "schema_version": "2026-05-07.deepdental.visual-findings.v1",
   "image_quality": "good",
   "findings": [
     {
@@ -357,6 +405,7 @@ Analisis visual lengkap dengan SoM grounding. Menggunakan YOLO untuk deteksi dan
   "recommendations": ["Konsultasi dokter gigi", "Foto X-ray"],
   "limitations": "Lighting conditions may affect accuracy",
   "annotated_image_base64": "base64_image_with_marks",
+  "annotated_image_mime_type": "image/jpeg",
   "suggested_questions": ["Apa penyebab karies?", "Bagaimana pencegahannya?"],
   "processing_time_ms": 1250
 }
@@ -377,6 +426,7 @@ YOLO detection only (tanpa LLM analysis). Lebih cepat untuk deteksi patologi tan
 **Response 200:**
 ```json
 {
+  "schema_version": "2026-05-07.deepdental.visual-findings.v1",
   "detections": [
     {
       "mark_id": "[1]",
@@ -392,6 +442,7 @@ YOLO detection only (tanpa LLM analysis). Lebih cepat untuk deteksi patologi tan
     }
   ],
   "annotated_image_base64": "base64_image",
+  "annotated_image_mime_type": "image/png",
   "processing_time_ms": 350
 }
 ```

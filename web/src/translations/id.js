@@ -2029,7 +2029,50 @@ export default {
     // Error Messages
     uploadError: 'Gagal mengunggah gambar',
     analysisError: 'Maaf, saya mengalami error. Silakan coba lagi.',
-    connectionError: 'Tidak dapat terhubung ke layanan AI'
+    connectionError: 'Tidak dapat terhubung ke layanan AI',
+    deepDental: {
+      booting: 'Menginisialisasi Serene AI...',
+      clinicalAssistant: 'Asisten Klinis',
+      newAnalysis: 'Analisis Baru',
+      analyzing: 'Menganalisis...',
+      verifyNotice: 'Serene AI dapat keliru. Verifikasi temuan klinis.',
+      clearLocalData: 'Bersihkan data klinis lokal',
+      clearLocalDataShort: 'Bersihkan Lokal',
+      empty: {
+        title: 'Siap Menganalisis',
+        subtitle: 'Unggah gambar dental atau jelaskan kasus untuk mendapatkan analisis AI, temuan klinis, dan rekomendasi perawatan.',
+        pathology: 'Deteksi Patologi',
+        clinical: 'Analisis Klinis',
+        evidence: 'Berbasis Bukti'
+      },
+      input: {
+        placeholder: 'Tanyakan diagnosis atau unggah scan...',
+        dropToAnalyze: 'Lepas untuk dianalisis',
+        attachImage: 'Lampirkan gambar dental',
+        removeImage: 'Hapus gambar',
+        messageInput: 'Pesan analisis dental',
+        send: 'Kirim permintaan analisis',
+        fileInput: 'Pilih gambar dental'
+      },
+      qualityCoach: {
+        title: 'Quality Coach',
+        ready: 'Kualitas awal cukup untuk analisis.'
+      },
+      sidebar: {
+        open: 'Buka riwayat analisis',
+        close: 'Tutup riwayat',
+        pastAnalyses: 'Analisis terdahulu',
+        openSession: 'Buka sesi',
+        deleteSession: 'Hapus sesi',
+        noHistory: 'Belum ada riwayat',
+        emptyDescription: 'Mulai analisis baru untuk melihat riwayat.',
+        secureStorage: 'Penyimpanan Aman',
+        today: 'Hari Ini',
+        yesterday: 'Kemarin',
+        previous7Days: '7 Hari Terakhir',
+        older: 'Lebih Lama'
+      }
+    }
   },
   patients: {
     title: 'Manajemen Pasien',

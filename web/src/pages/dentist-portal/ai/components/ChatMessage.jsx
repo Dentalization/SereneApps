@@ -4,6 +4,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Bot, User, AlertCircle, BookOpen, Construction, WifiOff, ServerCrash, FileWarning, RefreshCw, Camera } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import VisualFindingsCard from './VisualFindingsCard';
 
 /**
@@ -27,24 +30,32 @@ const messageVariants = {
   visible: { opacity: 1, y: 0, scale: 1 },
 };
 
-function renderMarkdown(text) {
+function SafeMarkdown({ text }) {
   if (!text) return null;
-  let html = text
-    // Bold **text**
-    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-    // Bullet lines: "* text" or "- text" → list items (BEFORE italic to prevent * bullets becoming <em>)
-    .replace(/^\*\s+(.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-    .replace(/^-\s+(.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-    // Numbered list: "1. text"
-    .replace(/^\d+\.\s+(.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
-    // Horizontal rules
-    .replace(/^---$/gm, '<hr class="border-current opacity-10 my-3"/>')
-    // Strip any remaining stray * characters
-    .replace(/\*/g, '')
-    // Line breaks
-    .replace(/\n{2,}/g, '<br/><br/>')
-    .replace(/\n/g, '<br/>');
-  return <div className="prose-dental" dangerouslySetInnerHTML={{ __html: html }} />;
+
+  return (
+    <div className="prose-dental space-y-2">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
+        components={{
+          p: ({ children }) => <p className="leading-relaxed">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          ul: ({ children }) => <ul className="ml-4 list-disc space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="ml-4 list-decimal space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+          hr: () => <hr className="border-current opacity-10 my-3" />,
+          a: ({ href, children }) => (
+            <a href={href} rel="noreferrer" target="_blank" className="text-accent underline underline-offset-2">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function SourcesCitations({ sources }) {
@@ -94,7 +105,12 @@ function SuggestedQuestions({ questions, onSelect }) {
   );
 }
 
-export default function ChatMessage({ message, onImageClick, onSuggestedQuestion }) {
+export default function ChatMessage({
+  message,
+  onImageClick,
+  onSuggestedQuestion,
+  onReviewFindings,
+}) {
   const { type, content, image, sources, visualFindings, suggestedQuestions } = message;
 
   if (type === 'error') {
@@ -279,12 +295,18 @@ export default function ChatMessage({ message, onImageClick, onSuggestedQuestion
       </div>
       <div className="flex-1 min-w-0">
         <div className="px-5 py-4 rounded-2xl rounded-tl-md text-sm leading-relaxed bg-surface-elevated border border-primary text-primary shadow-sm theme-transition">
-          {renderMarkdown(content)}
+          <SafeMarkdown text={content} />
           <SourcesCitations sources={sources} />
           <SuggestedQuestions questions={suggestedQuestions} onSelect={onSuggestedQuestion} />
         </div>
         {visualFindings && (
-          <VisualFindingsCard findings={visualFindings} onImageClick={onImageClick} />
+          <VisualFindingsCard
+            findings={visualFindings}
+            review={message.review}
+            caseWorkspace={message.caseWorkspace}
+            onImageClick={onImageClick}
+            onReview={(status) => onReviewFindings?.(message.id, status)}
+          />
         )}
       </div>
     </motion.div>

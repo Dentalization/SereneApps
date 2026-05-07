@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const sourcePath = path.resolve(
-  '/Users/adrianhalim/SereneApps/web/src/pages/dentist-portal/x-core/components/VolumeViewer3D.jsx'
+  new URL('../src/pages/dentist-portal/x-core/components/VolumeViewer3D.jsx', import.meta.url).pathname
 );
 
 test('projectWorldToViewportCached is declared before prewarmWorldOverlayProjectionCache', () => {

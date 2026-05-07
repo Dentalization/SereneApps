@@ -83,7 +83,7 @@ const Header = () => {
         className={`fixed inset-x-10 top-4 z-[999] transition-all duration-300 ease-in-out border-b rounded-[25px] backdrop-saturate-100
         ${
           isScrolled
-            ? 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-slate-200/50 dark:border-slate-800/50 shadow-md py-2'
+            ? 'bg-white/80 dark:bg-gradient-to-r dark:from-slate-950/95 dark:via-slate-900/85 dark:to-purple-900/60 backdrop-blur-md border-slate-200/50 dark:border-purple-400/30 shadow-md dark:shadow-2xl dark:shadow-purple-500/15 py-2'
             : 'bg-transparent border-transparent py-4'
         }`}
       >
@@ -113,7 +113,7 @@ const Header = () => {
             </Link>
 
             {/* --- DESKTOP NAVIGATION --- */}
-            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 rounded-full px-2 py-1 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-md">
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/50 dark:bg-gradient-to-r dark:from-slate-950/80 dark:via-slate-900/75 dark:to-purple-900/50 rounded-full px-2 py-1 border border-slate-200/50 dark:border-purple-400/40 backdrop-blur-md shadow-sm dark:shadow-xl dark:shadow-purple-500/20">
               {navigationItems.map((item) => {
                 const active = isActivePath(item.path)
                 return (

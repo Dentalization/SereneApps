@@ -19,7 +19,7 @@ import ToothScanLoader from '../ui/ToothScanLoader';
 
 // ── Boot Screen ─────────────────────────────────────
 
-function BootScreen() {
+function BootScreen({ label = 'Menginisialisasi Serene AI...' }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background theme-transition">
       <motion.div
@@ -28,7 +28,7 @@ function BootScreen() {
         className="flex flex-col items-center"
       >
         {/* 1. The 3D Tooth Scanner Animation */}
-        <ToothScanLoader text="Initializing Serene AI..." />
+        <ToothScanLoader text={label} />
 
         {/* 2. Loading Progress Bar (Updated colors to match scanner) */}
         <div className="w-48 h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mt-8">
@@ -46,7 +46,7 @@ function BootScreen() {
 
 // ── Empty State ─────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ labels = {} }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -62,15 +62,15 @@ function EmptyState() {
         >
           <Sparkles className="w-10 h-10 text-indigo-500" />
         </motion.div>
-        <h2 className="text-xl font-bold text-primary mb-2">Ready to Analyze</h2>
+        <h2 className="text-xl font-bold text-primary mb-2">{labels.title || 'Siap Menganalisis'}</h2>
         <p className="text-sm text-muted leading-relaxed mb-6">
-          Upload a dental image or describe a case to get AI-powered analysis with pathology detection, clinical findings, and treatment recommendations.
+          {labels.subtitle || 'Unggah gambar dental atau jelaskan kasus untuk mendapatkan analisis AI, temuan klinis, dan rekomendasi perawatan.'}
         </p>
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            { icon: '🦷', label: 'Pathology Detection', sub: 'YOLO AI' },
-            { icon: '🔬', label: 'Clinical Analysis', sub: 'Gemini LLM' },
-            { icon: '📚', label: 'Evidence-Based', sub: 'Knowledge RAG' },
+            { icon: 'P', label: labels.pathology || 'Deteksi Patologi', sub: 'YOLO AI' },
+            { icon: 'K', label: labels.clinical || 'Analisis Klinis', sub: 'LLM' },
+            { icon: 'E', label: labels.evidence || 'Berbasis Bukti', sub: 'Knowledge RAG' },
           ].map((item, i) => (
             <motion.div
               key={i}
@@ -79,7 +79,7 @@ function EmptyState() {
               transition={{ delay: 0.3 + i * 0.1 }}
               className="p-3 rounded-xl bg-surface border border-primary hover:border-indigo-500/30 transition-colors"
             >
-              <span className="text-2xl">{item.icon}</span>
+              <span className="text-lg font-bold text-indigo-500">{item.icon}</span>
               <p className="text-[11px] font-medium text-primary mt-2">{item.label}</p>
               <p className="text-[9px] text-muted mt-0.5">{item.sub}</p>
             </motion.div>
@@ -93,13 +93,14 @@ function EmptyState() {
 // ── Main Page ───────────────────────────────────────
 
 const AIAnalysisPage = () => {
-  useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
 
   const {
     sessionId, messages, sessions, isLoading, isBootstrapping, systemHealth,
     bootstrap, sendMessage, startNewSession, loadSession, deleteSession,
-  } = useDentalAPI('dentist', user?.id);
+    reviewFindings, clearLocalClinicalData,
+  } = useDentalAPI('dentist', user?.id, language || 'id');
 
   // Resolve the current session's generated title for the header
   const currentSessionTitle = sessions.find(s => s.id === sessionId)?.metadata?.title || null;
@@ -123,7 +124,7 @@ const AIAnalysisPage = () => {
   const handleNewSession = useCallback(async () => { await startNewSession(); setSidebarOpen(false); }, [startNewSession]);
   const handleLoadSession = useCallback(async (sid) => { await loadSession(sid); setSidebarOpen(false); }, [loadSession]);
 
-  if (isBootstrapping) return <BootScreen />;
+  if (isBootstrapping) return <BootScreen label={t('ai.deepDental.booting', { fallbackText: 'Menginisialisasi Serene AI...' })} />;
 
   const isOnline = systemHealth?.status === 'ok';
 
@@ -141,6 +142,22 @@ const AIAnalysisPage = () => {
         onSelect={handleLoadSession}
         onDelete={deleteSession}
         onNewSession={handleNewSession}
+        labels={{
+          pastAnalyses: t('ai.deepDental.sidebar.pastAnalyses', { fallbackText: 'Analisis terdahulu' }),
+          close: t('ai.deepDental.sidebar.close', { fallbackText: 'Tutup riwayat' }),
+          newAnalysis: t('ai.deepDental.newAnalysis', { fallbackText: 'Analisis Baru' }),
+          openSession: t('ai.deepDental.sidebar.openSession', { fallbackText: 'Buka sesi' }),
+          deleteSession: t('ai.deepDental.sidebar.deleteSession', { fallbackText: 'Hapus sesi' }),
+          noHistory: t('ai.deepDental.sidebar.noHistory', { fallbackText: 'Belum ada riwayat' }),
+          emptyDescription: t('ai.deepDental.sidebar.emptyDescription', { fallbackText: 'Mulai analisis baru untuk melihat riwayat.' }),
+          secureStorage: t('ai.deepDental.sidebar.secureStorage', { fallbackText: 'Penyimpanan Aman' }),
+          groups: {
+            Today: t('ai.deepDental.sidebar.today', { fallbackText: 'Hari Ini' }),
+            Yesterday: t('ai.deepDental.sidebar.yesterday', { fallbackText: 'Kemarin' }),
+            'Previous 7 Days': t('ai.deepDental.sidebar.previous7Days', { fallbackText: '7 Hari Terakhir' }),
+            Older: t('ai.deepDental.sidebar.older', { fallbackText: 'Lebih Lama' }),
+          },
+        }}
       />
 
       {/* 3. Main Content Area */}
@@ -158,6 +175,7 @@ const AIAnalysisPage = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSidebarOpen(true)}
+                aria-label={t('ai.deepDental.sidebar.open', { fallbackText: 'Buka riwayat analisis' })}
                 className="p-2 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all shadow-sm"
               >
                 <Menu className="w-5 h-5" />
@@ -175,7 +193,9 @@ const AIAnalysisPage = () => {
                 <div>
                   <h1 className="text-sm font-bold text-slate-800 dark:text-white leading-none">Serene AI</h1>
                   <div className="flex items-center gap-1 mt-1">
-                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Clinical Assistant</span>
+                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      {t('ai.deepDental.clinicalAssistant', { fallbackText: 'Asisten Klinis' })}
+                    </span>
                     {sessionId && (
                         <>
                             <ChevronRight className="w-3 h-3 text-slate-300" />
@@ -201,11 +221,22 @@ const AIAnalysisPage = () => {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleNewSession}
+                aria-label={t('ai.deepDental.newAnalysis', { fallbackText: 'Analisis Baru' })}
                 className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all overflow-hidden"
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 <Zap className="w-4 h-4 fill-current" />
-                <span className="text-sm font-semibold relative">New Analysis</span>
+                <span className="text-sm font-semibold relative">{t('ai.deepDental.newAnalysis', { fallbackText: 'Analisis Baru' })}</span>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={clearLocalClinicalData}
+                aria-label={t('ai.deepDental.clearLocalData', { fallbackText: 'Bersihkan data klinis lokal' })}
+                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200/70 dark:border-slate-700/70 text-xs font-semibold text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                {t('ai.deepDental.clearLocalDataShort', { fallbackText: 'Bersihkan Lokal' })}
               </motion.button>
             </div>
           </div>
@@ -215,7 +246,13 @@ const AIAnalysisPage = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
           <div className="max-w-3xl mx-auto space-y-6 pb-4">
             {messages.length === 0 ? (
-              <EmptyState />
+              <EmptyState labels={{
+                title: t('ai.deepDental.empty.title', { fallbackText: 'Siap Menganalisis' }),
+                subtitle: t('ai.deepDental.empty.subtitle', { fallbackText: 'Unggah gambar dental atau jelaskan kasus untuk mendapatkan analisis AI, temuan klinis, dan rekomendasi perawatan.' }),
+                pathology: t('ai.deepDental.empty.pathology', { fallbackText: 'Deteksi Patologi' }),
+                clinical: t('ai.deepDental.empty.clinical', { fallbackText: 'Analisis Klinis' }),
+                evidence: t('ai.deepDental.empty.evidence', { fallbackText: 'Berbasis Bukti' }),
+              }} />
             ) : (
               <>
                 <AnimatePresence mode="popLayout">
@@ -225,11 +262,12 @@ const AIAnalysisPage = () => {
                       message={msg}
                       onImageClick={setLightboxImage}
                       onSuggestedQuestion={handleSuggestedQuestion}
+                      onReviewFindings={reviewFindings}
                     />
                   ))}
                 </AnimatePresence>
                 <AnimatePresence>
-                  {isLoading && <ThinkingLoader />}
+                  {isLoading && <ThinkingLoader label={t('ai.deepDental.analyzing', { fallbackText: 'Menganalisis...' })} />}
                 </AnimatePresence>
                 {/* Scroll Anchor */}
                 <div ref={messagesEndRef} className="h-1" />
@@ -241,7 +279,23 @@ const AIAnalysisPage = () => {
         {/* --- INPUT BAR AREA --- */}
         <div className="flex-none p-4 md:p-6 bg-background/50 backdrop-blur-sm z-20">
             <div className="max-w-3xl mx-auto">
-                <InputBar onSend={handleSend} isLoading={isLoading} />
+                <InputBar
+                  onSend={handleSend}
+                  isLoading={isLoading}
+                  labels={{
+                    placeholder: t('ai.deepDental.input.placeholder', { fallbackText: 'Tanyakan diagnosis atau unggah scan...' }),
+                    dropToAnalyze: t('ai.deepDental.input.dropToAnalyze', { fallbackText: 'Lepas untuk dianalisis' }),
+                    attachImage: t('ai.deepDental.input.attachImage', { fallbackText: 'Lampirkan gambar dental' }),
+                    removeImage: t('ai.deepDental.input.removeImage', { fallbackText: 'Hapus gambar' }),
+                    messageInput: t('ai.deepDental.input.messageInput', { fallbackText: 'Pesan analisis dental' }),
+                    send: t('ai.deepDental.input.send', { fallbackText: 'Kirim permintaan analisis' }),
+                    analyzing: t('ai.deepDental.analyzing', { fallbackText: 'Menganalisis...' }),
+                    qualityCoach: t('ai.deepDental.qualityCoach.title', { fallbackText: 'Quality Coach' }),
+                    qualityReady: t('ai.deepDental.qualityCoach.ready', { fallbackText: 'Kualitas awal cukup untuk analisis.' }),
+                    verifyNotice: t('ai.deepDental.verifyNotice', { fallbackText: 'Serene AI dapat keliru. Verifikasi temuan klinis.' }),
+                    fileInput: t('ai.deepDental.input.fileInput', { fallbackText: 'Pilih gambar dental' }),
+                  }}
+                />
             </div>
         </div>
       </div>
@@ -249,7 +303,7 @@ const AIAnalysisPage = () => {
       {/* Lightbox Overlay */}
       <AnimatePresence>
         {lightboxImage && (
-          <ImageLightbox base64={lightboxImage} onClose={() => setLightboxImage(null)} />
+          <ImageLightbox imageSrc={lightboxImage} onClose={() => setLightboxImage(null)} />
         )}
       </AnimatePresence>
     </div>

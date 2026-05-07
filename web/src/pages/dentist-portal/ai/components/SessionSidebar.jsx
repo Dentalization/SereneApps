@@ -33,10 +33,12 @@ export default function SessionSidebar({
   currentSessionId, 
   onSelect, 
   onDelete, 
-  onNewSession 
+  onNewSession,
+  labels = {},
 }) {
   
   const groupedSessions = useMemo(() => groupSessionsByDate(sessions), [sessions]);
+  const groupLabels = labels.groups || {};
 
   return (
     <>
@@ -72,7 +74,7 @@ export default function SessionSidebar({
                 </div>
                 <div>
                   <h1 className="text-lg font-semibold text-primary">History</h1>
-                  <p className="text-xs text-secondary">Past Analyses</p>
+                  <p className="text-xs text-secondary">{labels.pastAnalyses || 'Analisis terdahulu'}</p>
                 </div>
               </div>
               
@@ -80,7 +82,8 @@ export default function SessionSidebar({
               <button 
                 onClick={onClose} 
                 className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 transition-colors"
-                title="Close Sidebar"
+                title={labels.close || 'Tutup riwayat'}
+                aria-label={labels.close || 'Tutup riwayat'}
               >
                 <X size={18} />
               </button>
@@ -94,7 +97,7 @@ export default function SessionSidebar({
               className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-xl bg-accent text-white shadow-lg shadow-accent/20 hover:bg-accent-hover transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <Plus size={18} strokeWidth={2.5} />
-              <span className="font-medium text-sm">New Analysis</span>
+              <span className="font-medium text-sm">{labels.newAnalysis || 'Analisis Baru'}</span>
             </button>
           </div>
 
@@ -108,21 +111,26 @@ export default function SessionSidebar({
                 <div key={groupName} className="mb-4">
                   {/* Section Label */}
                   <div className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-[0.3em] text-muted font-semibold">
-                    {groupName}
+                    {groupLabels[groupName] || groupName}
                   </div>
                   
                   <div className="space-y-1">
                     {groupItems.map((session) => {
                       const isActive = session.id === currentSessionId;
                       return (
-                        <div key={session.id} className="relative group">
-                          <button
-                            onClick={() => onSelect(session.id)}
-                            className={`w-full flex items-center rounded-lg px-3 py-2.5 space-x-3 transition-all duration-200 ${
+                        <div
+                          key={session.id}
+                          className={`relative group flex items-center rounded-lg px-3 py-2.5 space-x-3 transition-all duration-200 ${
                               isActive 
                                 ? 'bg-accent/10 text-accent border border-accent/20' 
                                 : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary border border-transparent'
                             }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onSelect(session.id)}
+                            aria-label={`${labels.openSession || 'Buka sesi'} ${session.metadata?.title || session.id}`}
+                            className="flex min-w-0 flex-1 items-center space-x-3 text-left"
                           >
                             <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                               <MessageSquare size={18} className={isActive ? "text-accent" : "text-muted opacity-70 group-hover:text-primary group-hover:opacity-100"} />
@@ -141,17 +149,18 @@ export default function SessionSidebar({
                               </div>
                             </div>
 
-                            {/* Delete Action (Visible on Hover) */}
-                            <div 
-                              role="button"
-                              onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
-                              className={`
-                                p-1.5 rounded-md hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 transition-colors
-                                ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
-                              `}
-                            >
-                              <Trash2 size={14} />
-                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+                            aria-label={`${labels.deleteSession || 'Hapus sesi'} ${session.metadata?.title || session.id}`}
+                            className={`
+                              p-1.5 rounded-md hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 transition-colors
+                              ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'}
+                            `}
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       );
@@ -167,8 +176,8 @@ export default function SessionSidebar({
                 <div className="w-12 h-12 rounded-full bg-surface border border-primary/20 flex items-center justify-center mb-3">
                   <Calendar className="w-6 h-6 text-muted" />
                 </div>
-                <p className="text-sm font-medium text-primary">No history</p>
-                <p className="text-xs text-secondary mt-1 max-w-[150px]">Start a new analysis to see your sessions here.</p>
+                <p className="text-sm font-medium text-primary">{labels.noHistory || 'Belum ada riwayat'}</p>
+                <p className="text-xs text-secondary mt-1 max-w-[150px]">{labels.emptyDescription || 'Mulai analisis baru untuk melihat riwayat.'}</p>
               </div>
             )}
           </div>
@@ -177,7 +186,7 @@ export default function SessionSidebar({
           <div className="border-t border-primary p-3 bg-surface/50">
              <div className="flex items-center justify-center gap-2 text-[10px] text-muted uppercase tracking-wider">
                 <Activity size={12} />
-                <span>Secure Storage</span>
+                <span>{labels.secureStorage || 'Penyimpanan Aman'}</span>
              </div>
           </div>
 
