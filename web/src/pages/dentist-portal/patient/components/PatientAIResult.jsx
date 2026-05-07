@@ -4,6 +4,7 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 import AnalysisSummaryRenderer from './AnalysisSummaryRenderer';
 import { stripDiagnosisIntro, cleanAIDentistOutput } from '../../../../utils/aiTextHelpers';
 import { aiHttp, http } from '../../../../utils/httpClient';
+import { buildAnnotatedImageDataUrl } from '../../ai/components/deepDentalSchemas.mjs';
 
 // ── Error Classifier ────────────────────────────────
 function classifyAIError(content = '', err = null) {
@@ -784,7 +785,12 @@ const PatientAIResult = ({ patient }) => {
         for (const msg of msgs) {
           const vf = msg.visual_findings || msg.metadata?.visual_findings || msg.analysis?.visual_findings;
           const b64 = vf?.annotated_image_base64 || msg.annotated_image_base64 || msg.metadata?.annotated_image_base64;
-          if (b64 && !annotatedUri) annotatedUri = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
+          if (b64 && !annotatedUri) {
+            annotatedUri = buildAnnotatedImageDataUrl({
+              ...(vf || {}),
+              annotated_image_base64: b64,
+            });
+          }
           if (!originalUri) { const imgArr = msg.images || msg.metadata?.images; if (Array.isArray(imgArr) && imgArr.length > 0) { const first = imgArr[0]; originalUri = typeof first === 'string' ? first : (first?.url || first?.uri || null); } }
           if (vf?.detections?.length > 0 && detections.length === 0) detections = vf.detections;
           if (vf?.findings?.length > 0 && findings.length === 0) findings = vf.findings;

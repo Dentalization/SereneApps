@@ -4,12 +4,12 @@ import path from 'node:path';
 import test from 'node:test';
 
 const dentistPortalSource = fs.readFileSync(
-  path.resolve('web/src/pages/dentist-portal/teledentistry/index.jsx'),
+  new URL('../src/pages/dentist-portal/teledentistry/index.jsx', import.meta.url),
   'utf8'
 );
 
 const mobileChatHookSource = fs.readFileSync(
-  path.resolve('mobile/src/hooks/useChat.js'),
+  new URL('../../mobile/src/hooks/useChat.js', import.meta.url),
   'utf8'
 );
 

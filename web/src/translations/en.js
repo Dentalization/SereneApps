@@ -2068,7 +2068,50 @@ export default {
     // Error Messages
     uploadError: 'Failed to upload image',
     analysisError: 'Sorry, I encountered an error. Please try again.',
-    connectionError: 'Unable to connect to AI service'
+    connectionError: 'Unable to connect to AI service',
+    deepDental: {
+      booting: 'Initializing Serene AI...',
+      clinicalAssistant: 'Clinical Assistant',
+      newAnalysis: 'New Analysis',
+      analyzing: 'Analyzing...',
+      verifyNotice: 'Serene AI can make mistakes. Verify clinical findings.',
+      clearLocalData: 'Clear local clinical data',
+      clearLocalDataShort: 'Clear Local',
+      empty: {
+        title: 'Ready to Analyze',
+        subtitle: 'Upload a dental image or describe a case to get AI-powered analysis, clinical findings, and treatment recommendations.',
+        pathology: 'Pathology Detection',
+        clinical: 'Clinical Analysis',
+        evidence: 'Evidence-Based'
+      },
+      input: {
+        placeholder: 'Ask about diagnosis or upload a scan...',
+        dropToAnalyze: 'Drop to analyze',
+        attachImage: 'Attach dental image',
+        removeImage: 'Remove image',
+        messageInput: 'Dental analysis message',
+        send: 'Send analysis request',
+        fileInput: 'Select dental image'
+      },
+      qualityCoach: {
+        title: 'Quality Coach',
+        ready: 'Initial quality is sufficient for analysis.'
+      },
+      sidebar: {
+        open: 'Open analysis history',
+        close: 'Close history',
+        pastAnalyses: 'Past Analyses',
+        openSession: 'Open session',
+        deleteSession: 'Delete session',
+        noHistory: 'No history',
+        emptyDescription: 'Start a new analysis to see your sessions here.',
+        secureStorage: 'Secure Storage',
+        today: 'Today',
+        yesterday: 'Yesterday',
+        previous7Days: 'Previous 7 Days',
+        older: 'Older'
+      }
+    }
   },
   patients: {
     title: 'Patient Management',

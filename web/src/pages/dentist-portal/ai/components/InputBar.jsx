@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Paperclip, X, Sparkles, UploadCloud } from 'lucide-react';
+import { Send, Paperclip, X, Sparkles, UploadCloud, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { buildImageQualityCoach, readImageDimensions } from './qualityCoach.mjs';
 
-export default function InputBar({ onSend, isLoading }) {
+export default function InputBar({ onSend, isLoading, labels = {} }) {
   const [text, setText] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [qualityCoach, setQualityCoach] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileRef = useRef(null);
   const textareaRef = useRef(null);
@@ -18,19 +20,31 @@ export default function InputBar({ onSend, isLoading }) {
     }
   }, [text]);
 
-  const handleFile = (file) => {
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
+
+  const handleFile = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    const initialCoach = buildImageQualityCoach(file);
+    setQualityCoach(initialCoach);
+    const dimensions = await readImageDimensions(file);
+    setQualityCoach(buildImageQualityCoach(file, dimensions));
   };
 
   const handleSubmit = (e) => {
     e?.preventDefault();
     if ((!text.trim() && !imageFile) || isLoading) return;
+    if (imageFile && qualityCoach && !qualityCoach.canAnalyze) return;
     onSend(text.trim(), imageFile);
     setText('');
     setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImagePreview(null);
+    setQualityCoach(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
@@ -50,9 +64,13 @@ export default function InputBar({ onSend, isLoading }) {
 
   const removeImage = () => {
     setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImagePreview(null);
+    setQualityCoach(null);
     if (fileRef.current) fileRef.current.value = '';
   };
+
+  const canSend = !isLoading && (text.trim() || imageFile) && (!imageFile || !qualityCoach || qualityCoach.canAnalyze);
 
   return (
     // ANCHOR FIX: 
@@ -91,6 +109,7 @@ export default function InputBar({ onSend, isLoading }) {
                 />
                 <button
                   onClick={removeImage}
+                  aria-label={labels.removeImage || 'Remove selected image'}
                   className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1.5 shadow-md hover:scale-110 transition-transform"
                 >
                   <X size={12} strokeWidth={3} />
@@ -122,7 +141,7 @@ export default function InputBar({ onSend, isLoading }) {
                 className="absolute inset-0 z-20 rounded-[32px] bg-indigo-500/95 backdrop-blur-sm flex items-center justify-center text-white font-semibold"
               >
                 <UploadCloud className="w-8 h-8 mr-3 animate-bounce" />
-                Drop to analyze
+                {labels.dropToAnalyze || 'Lepas untuk dianalisis'}
               </motion.div>
             )}
           </AnimatePresence>
@@ -132,6 +151,7 @@ export default function InputBar({ onSend, isLoading }) {
             whileHover={{ scale: 1.1, backgroundColor: "rgba(0,0,0,0.05)" }}
             whileTap={{ scale: 0.95 }}
             onClick={() => fileRef.current?.click()}
+            aria-label={labels.attachImage || 'Attach dental image'}
             className="p-3 mb-0.5 rounded-full text-slate-400 hover:text-indigo-600 transition-colors"
           >
             <Paperclip className="w-5 h-5" />
@@ -142,7 +162,8 @@ export default function InputBar({ onSend, isLoading }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about diagnosis or upload a scan..."
+            placeholder={labels.placeholder || 'Tanyakan diagnosis atau unggah scan...'}
+            aria-label={labels.messageInput || 'Dental analysis message'}
             className="flex-1 max-h-32 bg-transparent py-3.5 text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none border-none outline-none ring-0 focus:ring-0 leading-relaxed"
             style={{ scrollbarWidth: 'none' }}
             rows={1}
@@ -151,12 +172,13 @@ export default function InputBar({ onSend, isLoading }) {
           <motion.button
             type="button"
             onClick={handleSubmit}
-            disabled={isLoading || (!text.trim() && !imageFile)}
+            disabled={!canSend}
+            aria-label={isLoading ? (labels.analyzing || 'Analyzing') : (labels.send || 'Send analysis request')}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={`
               p-3 rounded-full mb-0.5 flex items-center justify-center transition-all duration-300 shadow-sm
-              ${(text.trim() || imageFile) 
+              ${canSend
                 ? 'bg-indigo-600 text-white shadow-indigo-500/30' 
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed shadow-none'}
             `}
@@ -169,8 +191,28 @@ export default function InputBar({ onSend, isLoading }) {
           </motion.button>
         </div>
 
+        {imageFile && qualityCoach && (
+          <div className="mt-3 mx-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 px-4 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              {qualityCoach.status === 'ready' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5" />
+              ) : (
+                <AlertTriangle className={`w-4 h-4 mt-0.5 ${qualityCoach.status === 'blocked' ? 'text-rose-500' : 'text-amber-500'}`} />
+              )}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  {labels.qualityCoach || 'Quality Coach'}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  {qualityCoach.suggestions[0] || labels.qualityReady || 'Kualitas awal cukup untuk analisis.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <p className="text-center text-[10px] text-slate-400/70 font-medium mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500 select-none">
-          Serene AI can make mistakes. Verify clinical findings.
+          {labels.verifyNotice || 'Serene AI dapat keliru. Verifikasi temuan klinis.'}
         </p>
 
         <input
@@ -178,6 +220,7 @@ export default function InputBar({ onSend, isLoading }) {
           type="file"
           accept="image/*"
           className="hidden"
+          aria-label={labels.fileInput || 'Select dental image'}
           onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
         />
       </motion.div>

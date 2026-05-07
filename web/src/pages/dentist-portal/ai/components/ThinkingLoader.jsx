@@ -5,7 +5,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Bot, Loader2 } from 'lucide-react';
 
-export default function ThinkingLoader() {
+export default function ThinkingLoader({ label = 'Menganalisis...' }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -19,7 +19,7 @@ export default function ThinkingLoader() {
       <div className="flex-1 max-w-md px-5 py-4 rounded-2xl rounded-tl-md bg-surface-elevated border border-primary shadow-sm theme-transition">
         <div className="flex items-center gap-3 mb-3">
           <Loader2 className="w-4 h-4 text-accent animate-spin" />
-          <span className="text-xs font-medium text-accent">Analyzing...</span>
+          <span className="text-xs font-medium text-accent">{label}</span>
         </div>
         <div className="space-y-2.5">
           {[80, 60, 40].map((w, i) => (

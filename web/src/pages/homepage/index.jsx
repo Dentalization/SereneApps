@@ -22,12 +22,12 @@ const Homepage = () => {
       */}
       <Header />
 
-      <div className="min-h-screen bg-surface-elevated theme-transition pt-16"> 
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 theme-transition pt-16"> 
         {/* Added pt-16 (padding-top) so content doesn't hide behind the fixed header */}
 
         {/* HERO SECTION */}
         {/* We keep overflow-hidden ONLY on this specific section if needed for background effects */}
-        <section className="relative isolate overflow-hidden bg-gradient-to-br from-accent/5 to-accent/10">
+        <section className="relative isolate overflow-hidden bg-slate-50 dark:bg-slate-950">
           
           {/* Aurora Background (if you uncomment it later) */}
           {/* <div className="absolute top-0 left-0 right-0 h-[15vh] z-0 pointer-events-none">

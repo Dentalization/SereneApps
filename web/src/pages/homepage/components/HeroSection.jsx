@@ -99,7 +99,7 @@ const HeroSection = () => {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-slate-900">
+    <section className="relative -mt-4 pt-20 pb-20 lg:pt-28 lg:pb-28 overflow-hidden bg-slate-50 dark:bg-slate-950">
       
       {/* Background Decor */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.03]">
@@ -107,7 +107,7 @@ const HeroSection = () => {
         <div className="absolute bottom-20 right-20 w-40 h-40 bg-purple-500 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           
           {/* LEFT CONTENT */}
