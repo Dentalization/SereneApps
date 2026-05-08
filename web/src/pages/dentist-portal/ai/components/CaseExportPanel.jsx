@@ -17,7 +17,7 @@ export default function CaseExportPanel({
 }) {
   const [redacted, setRedacted] = useState(true);
   const [pendingFormat, setPendingFormat] = useState(null);
-  const canExport = Boolean(caseRecord?.patient_id) && ['verified', 'exported'].includes(caseRecord?.status);
+  const canExport = Boolean(caseRecord?.patient_id) && caseRecord?.status === 'verified';
 
   const runExport = async (format) => {
     setPendingFormat(format);

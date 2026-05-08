@@ -137,4 +137,18 @@ Images are uploaded to backend case endpoints and receive stable `image_id` valu
 
 ### Current Caveat
 
-The in-repo service implementation is intentionally domain-complete and testable, with a SQL migration included for persistent storage. If the deployed backend has not yet wired this service to the database layer, case state will need the migration-backed repository implementation before production rollout across server restarts.
+The case route now defaults to a DB-backed repository using migration `048_create_verified_case_workspace.sql`. The previous in-memory store is retained only for unit tests or explicit local mock mode via `VERIFIED_CASE_WORKSPACE_STORE=memory`.
+
+### Hardening Added On 2026-05-08
+
+- Internal case, image, finding, audit, export, and timeline IDs are UUIDs.
+- Uploaded image bytes are written through `verifiedCaseImageStorage` and returned as retrievable signed/local URLs.
+- `/cases/{case_id}/images/{image_id}/analyze` loads the stored image server-side and runs the backend AI adapter; it no longer accepts browser-provided raw AI findings as the source of truth.
+- Analysis is blocked unless the latest quality check exists and has `can_continue_analysis === true`.
+- `PATCH /cases/{case_id}` updates safe metadata only; verification is handled by `POST /cases/{case_id}/verify`.
+- Default PDF/JSON exports require `case.status === verified`.
+- Audit events are immutable at repository contract level and migration trigger level.
+- `verified_cases` includes `tenant_id` and `clinic_id`, and route/service access uses actor tenant/clinic scope.
+- Patient timeline reads compare patient ids with string-safe equality for patient actors.
+- Patient linkage is done through a confirmation modal instead of `window.prompt`.
+- The workspace is available on mobile/tablet through Case, Findings, Audit, Export, and Timeline tabs.

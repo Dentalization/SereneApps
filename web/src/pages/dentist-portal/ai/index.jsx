@@ -16,6 +16,7 @@ import ThinkingLoader from './components/ThinkingLoader';
 import InputBar from './components/InputBar';
 import ClinicalHistorySidebar from './components/ClinicalHistorySidebar';
 import VerifiedCaseWorkspace from './components/VerifiedCaseWorkspace';
+import PatientLinkModal from './components/PatientLinkModal';
 import ToothScanLoader from '../ui/ToothScanLoader';
 
 // ── Boot Screen ─────────────────────────────────────
@@ -111,6 +112,8 @@ const AIAnalysisPage = () => {
   const currentSessionTitle = sessions.find(s => s.id === sessionId)?.metadata?.title || null;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [patientLinkOpen, setPatientLinkOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
 
@@ -134,10 +137,9 @@ const AIAnalysisPage = () => {
   const handleRefreshCase = useCallback(async () => {
     if (caseWorkspace.caseRecord?.id) await loadCaseWorkspace(caseWorkspace.caseRecord.id);
   }, [caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
-  const handleLinkPatient = useCallback(async () => {
-    const patientId = window.prompt('Patient ID or code');
-    if (!patientId) return;
-    await linkWorkspacePatient({ patient_id: patientId, patient_code: patientId });
+  const handleLinkPatient = useCallback(() => setPatientLinkOpen(true), []);
+  const handleConfirmPatientLink = useCallback(async (patient) => {
+    await linkWorkspacePatient(patient);
   }, [linkWorkspacePatient]);
 
   if (isBootstrapping) return <BootScreen label={t('ai.deepDental.booting', { fallbackText: 'Menginisialisasi Serene AI...' })} />;
@@ -230,6 +232,15 @@ const AIAnalysisPage = () => {
 
             {/* Right: Status & Actions */}
             <div className="flex items-center gap-4">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setWorkspaceOpen(true)}
+                aria-label="Open verified case workspace"
+                className="xl:hidden flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 text-xs font-semibold text-indigo-600 dark:border-indigo-800 dark:text-indigo-300"
+              >
+                Case
+              </motion.button>
 
               {/* Action Button */}
               <motion.button
@@ -316,6 +327,8 @@ const AIAnalysisPage = () => {
       </div>
 
       <VerifiedCaseWorkspace
+        isOpen={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
         caseRecord={caseWorkspace.caseRecord}
         images={caseWorkspace.images}
         findings={caseWorkspace.findings}
@@ -338,6 +351,12 @@ const AIAnalysisPage = () => {
         onLinkPatient={handleLinkPatient}
       />
       </div>
+
+      <PatientLinkModal
+        isOpen={patientLinkOpen}
+        onClose={() => setPatientLinkOpen(false)}
+        onConfirm={handleConfirmPatientLink}
+      />
 
       {/* Lightbox Overlay */}
       <AnimatePresence>

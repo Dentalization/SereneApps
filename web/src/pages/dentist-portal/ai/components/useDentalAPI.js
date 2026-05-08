@@ -250,6 +250,25 @@ function createCaseWorkspaceDraft({ sessionId, imageFile, findings }) {
   };
 }
 
+function buildVisualFindingsFromCaseAnalysis({ analysis = {}, qualityCheck = null } = {}) {
+  const aiFindings = analysis.findings || analysis.analysis?.findings || [];
+  return normalizeVisualFindings({
+    image_quality: qualityCheck?.quality_status || 'quality_checked',
+    concern_level: aiFindings.some((finding) => ['critical', 'severe'].includes(finding.severity)) ? 'high' : 'moderate',
+    findings: aiFindings.map((finding) => ({
+      location: finding.tooth_or_region,
+      tooth_or_region: finding.tooth_or_region,
+      severity: finding.severity,
+      confidence: finding.confidence,
+      description: finding.notes || finding.label,
+      label: finding.label,
+    })),
+    recommendations: qualityCheck?.recommendation ? [qualityCheck.recommendation] : [],
+    limitations: 'AI-assisted case findings are preliminary until clinician confirmation.',
+    annotated_image_mime_type: analysis.image?.annotated_image_mime_type || analysis.analysis?.image?.annotated_image_mime_type || null,
+  });
+}
+
 export default function useDentalAPI(role = 'dentist', dentistId = null, language = 'id') {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -622,27 +641,6 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       let suggestedQuestions = [];
 
       if (imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        formData.append('context', trimmedMessage || 'Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.');
-        formData.append('role', role);
-        formData.append('language', language);
-        formData.append('include_annotated', 'true');
-
-        const analysisData = await client.analyzeImage(formData, requestController.signal);
-        findings = normalizeVisualFindings(analysisData.visual_findings || analysisData);
-        textContent = extractTextContent(analysisData) || analysisData.summary || analysisData.overall_assessment || '';
-        sources = analysisData.sources || [];
-        suggestedQuestions = analysisData.suggested_questions || [];
-
-        await clinicalArtifactStore.saveSessionEntry(activeSid, {
-          msgSnippet: trimmedMessage.slice(0, 80),
-          userImageBlob: imageFile,
-          userImageName: imageFile.name,
-          userImageType: imageFile.type,
-          visualFindings: findings ? { ...findings } : null,
-        });
-
         try {
           const title = generateSessionTitle(trimmedMessage, imageFile);
           const sessionCase = await caseClient.createSessionCase(activeSid, { title });
@@ -658,22 +656,31 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
                 uploadedImage.id,
                 buildQualityMetricsFromFile(imageFile, dimensions || {})
               );
-              const canAnalyze = qualityData.quality_check?.can_continue_analysis !== false;
+              const qualityCheck = qualityData.quality_check;
+              const canAnalyze = qualityCheck?.can_continue_analysis !== false;
               if (canAnalyze) {
-                await caseClient.recordImageAnalysis(linkedCase.id, uploadedImage.id, {
-                  raw_ai_result: analysisData,
-                  normalized_findings: findings,
-                  annotated_image: {
-                    storage_ref: uploadedImage.annotated_image_ref || uploadedImage.storage_ref,
-                    mime_type: findings?.annotated_image_mime_type || imageFile.type,
-                  },
+                const analysisData = await caseClient.recordImageAnalysis(linkedCase.id, uploadedImage.id, {
+                  context: trimmedMessage || 'Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.',
                 });
+                const analysis = analysisData.analysis || analysisData;
+                findings = buildVisualFindingsFromCaseAnalysis({ analysis, qualityCheck });
+                textContent = buildSummary(findings) || 'Analisis server-side selesai. Temuan masih berupa AI suggestion dan menunggu konfirmasi klinisi.';
+              } else {
+                findings = normalizeVisualFindings({
+                  image_quality: qualityCheck?.quality_status || 'needs_retake',
+                  concern_level: 'moderate',
+                  findings: [],
+                  recommendations: [qualityCheck?.recommendation || 'Retake image before AI analysis.'],
+                  limitations: 'Image analysis was blocked by the clinical quality gate.',
+                });
+                textContent = `Quality precheck memblokir analisis gambar ini: ${qualityCheck?.recommendation || 'ambil ulang gambar sebelum analisis.'}`;
               }
               await loadCaseWorkspace(linkedCase.id);
             }
           }
         } catch (workspaceError) {
-          console.warn('Verified Case Workspace sync failed:', workspaceError?.message || workspaceError);
+          console.warn('Verified Case Workspace analysis failed:', workspaceError?.message || workspaceError);
+          throw workspaceError;
         }
       } else {
         const chatData = await client.chat({
@@ -864,31 +871,8 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
 
     try {
       for (const image of imagesToAnalyze) {
-        const file = pendingWorkspaceFilesRef.current.get(image.id);
-        let analysisData = {
-          summary: 'AI analysis record created from stored case image metadata.',
-          visual_findings: { findings: [], image_quality: image.quality_status || 'checked' },
-        };
-        let findings = normalizeVisualFindings(analysisData.visual_findings);
-
-        if (file) {
-          const formData = new FormData();
-          formData.append('image', file);
-          formData.append('context', 'Analisis klinis multi-image untuk Verified Case Workspace. Label semua temuan sebagai preliminary AI suggestion.');
-          formData.append('role', role);
-          formData.append('language', language);
-          formData.append('include_annotated', 'true');
-          analysisData = await client.analyzeImage(formData);
-          findings = normalizeVisualFindings(analysisData.visual_findings || analysisData);
-        }
-
         await caseClient.recordImageAnalysis(caseId, image.id, {
-          raw_ai_result: analysisData,
-          normalized_findings: findings,
-          annotated_image: {
-            storage_ref: image.annotated_image_ref || image.storage_ref,
-            mime_type: findings?.annotated_image_mime_type || image.mime_type,
-          },
+          context: 'Analisis klinis multi-image untuk Verified Case Workspace. Label semua temuan sebagai preliminary AI suggestion.',
         });
       }
 
@@ -897,7 +881,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
     } catch (err) {
       setCaseWorkspace((current) => ({ ...current, isLoading: false, error: err }));
     }
-  }, [caseClient, caseWorkspace.caseRecord?.id, client, fetchCases, language, loadCaseWorkspace, role]);
+  }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);
 
   const confirmWorkspaceFinding = useCallback(async (finding, patch = {}) => {
     const caseId = caseWorkspace.caseRecord?.id;
@@ -930,7 +914,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
   const verifyWorkspaceCase = useCallback(async () => {
     const caseId = caseWorkspace.caseRecord?.id;
     if (!caseId) return;
-    await caseClient.patchCase(caseId, { status: 'verified' });
+    await caseClient.verifyCase(caseId);
     await loadCaseWorkspace(caseId);
     await fetchCases();
   }, [caseClient, caseWorkspace.caseRecord?.id, fetchCases, loadCaseWorkspace]);

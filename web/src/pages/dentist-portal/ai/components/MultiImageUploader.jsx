@@ -133,7 +133,7 @@ export default function MultiImageUploader({
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {images.map((image) => {
             const precheck = localPrechecks[image.file_name] || localPrechecks[image.name] || {};
-            const preview = image.previewUrl || precheck.previewUrl || image.storage_ref;
+            const preview = image.previewUrl || precheck.previewUrl || image.signed_url || image.storage_ref;
             const qualityStatus = image.quality_check?.quality_status || image.quality_status || precheck.localQuality?.status;
             const issues = image.quality_check?.issues || [];
             return (
