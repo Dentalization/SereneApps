@@ -1105,7 +1105,7 @@
     },
     {
       "name": "Verified Case Workspace",
-      "description": "SereneApps clinical case workflow endpoints. Use bearer auth; do not send DeepDental service keys from the browser.",
+      "description": "SereneApps clinical case workflow endpoints. Use bearer auth; do not send DeepDental service keys from the browser.\n\nHardening: IDs are UUIDs, case data is DB-backed, image bytes must be storage-backed, /analyze runs server-side after quality gate, PATCH cannot mutate status, and default exports require verified cases.",
       "item": [
         {
           "name": "Create Case",
@@ -1202,7 +1202,7 @@
         {
           "name": "Verify Case",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               {
                 "key": "Authorization",
@@ -1216,19 +1216,19 @@
               }
             ],
             "url": {
-              "raw": "{{serene_api_base_url}}/cases/{{case_id}}",
+              "raw": "{{serene_api_base_url}}/cases/{{case_id}}/verify",
               "host": [
                 "{{serene_api_base_url}}"
               ],
               "path": [
                 "cases",
-                "{{case_id}}"
-              ],
-              "query": []
+                "{{case_id}}",
+                "verify"
+              ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"verified\"\n}",
+              "raw": "{}",
               "options": {
                 "raw": {
                   "language": "json"

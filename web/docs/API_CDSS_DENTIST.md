@@ -529,7 +529,10 @@ Query:
 Returns case detail, images, findings, audit events, and exports.
 
 ### PATCH `/v1/cases/{case_id}`
-Update title/status. `{"status":"verified"}` verifies the case after patient linkage and clinician findings exist.
+Update safe case metadata only, such as title or last message preview. This endpoint must not mutate case status.
+
+### POST `/v1/cases/{case_id}/verify`
+Verify the case after patient linkage and clinician findings exist.
 
 ### POST `/v1/cases/{case_id}/archive`
 Archive a clinical case instead of destructive delete.
@@ -567,30 +570,19 @@ Run per-image quality precheck.
 Response includes `quality_score`, `quality_status`, `issues`, `recommendation`, and `can_continue_analysis`.
 
 ### POST `/v1/cases/{case_id}/images/{image_id}/analyze`
-Persist AI-assisted result for one case image.
+Run server-side AI analysis for one stored case image. The backend loads `case_images.storage_ref`, checks the latest quality check, runs the AI adapter, stores annotated image output, and persists preliminary AI findings.
 
 ```json
 {
-  "raw_ai_result": {},
-  "normalized_findings": {
-    "findings": [
-      {
-        "label": "caries",
-        "tooth_or_region": "36",
-        "severity": "moderate",
-        "confidence": 0.82,
-        "notes": "AI-assisted preliminary finding"
-      }
-    ]
-  },
-  "annotated_image": {
-    "storage_ref": "/uploads/verified-cases/case/image-annotated.webp",
-    "mime_type": "image/webp"
-  }
+  "context": "Analisis klinis multi-image untuk Verified Case Workspace."
 }
 ```
 
 AI findings are stored as `ai_suggested`, never as final diagnosis.
+
+Errors:
+- `400 quality_check_required`
+- `400 image_quality_blocks_analysis`
 
 ### Findings
 
@@ -619,6 +611,8 @@ Audit events are immutable and include actor, role, event type, before/after JSO
 - `POST /v1/cases/{case_id}/export/json`
 
 Exports require a linked patient and verified case. Each export creates a `case_exported` audit event and a `report_exported` patient timeline event.
+
+Default exports reject non-verified cases with `400 case_verification_required`. Draft exports may only be produced by explicitly requesting draft mode and must be marked `DRAFT — NOT CLINICIAN VERIFIED`.
 
 ### Patient Timeline Linkage
 

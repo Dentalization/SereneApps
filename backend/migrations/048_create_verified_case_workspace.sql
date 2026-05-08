@@ -2,8 +2,12 @@
 -- Supports sessions, patients, case images, quality checks, AI/clinician findings,
 -- immutable audit events, exports, and patient timeline linkage.
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS verified_cases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NULL,
+  clinic_id TEXT NULL,
   patient_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   session_id VARCHAR(255) NULL,
   title TEXT NOT NULL,
@@ -111,7 +115,7 @@ CREATE TABLE IF NOT EXISTS clinician_findings (
 
 CREATE TABLE IF NOT EXISTS case_audit_events (
   event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  case_id UUID NOT NULL REFERENCES verified_cases(id) ON DELETE CASCADE,
+  case_id UUID NOT NULL REFERENCES verified_cases(id) ON DELETE RESTRICT,
   actor_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   actor_role VARCHAR(64) NOT NULL,
   event_type VARCHAR(96) NOT NULL,
@@ -152,6 +156,7 @@ CREATE TABLE IF NOT EXISTS patient_timeline_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_verified_cases_patient_updated ON verified_cases(patient_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_verified_cases_tenant_clinic_updated ON verified_cases(tenant_id, clinic_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_verified_cases_session ON verified_cases(session_id);
 CREATE INDEX IF NOT EXISTS idx_verified_cases_status_updated ON verified_cases(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_case_images_case ON case_images(case_id);
@@ -176,6 +181,38 @@ CREATE TRIGGER trigger_verified_case_updated_at
 BEFORE UPDATE ON verified_cases
 FOR EACH ROW
 EXECUTE FUNCTION update_verified_case_updated_at();
+
+CREATE OR REPLACE FUNCTION prevent_case_audit_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'case_audit_events are immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_case_audit_events_no_update ON case_audit_events;
+CREATE TRIGGER trigger_case_audit_events_no_update
+BEFORE UPDATE ON case_audit_events
+FOR EACH ROW
+EXECUTE FUNCTION prevent_case_audit_event_mutation();
+
+DROP TRIGGER IF EXISTS trigger_case_audit_events_no_delete ON case_audit_events;
+CREATE TRIGGER trigger_case_audit_events_no_delete
+BEFORE DELETE ON case_audit_events
+FOR EACH ROW
+EXECUTE FUNCTION prevent_case_audit_event_mutation();
+
+CREATE OR REPLACE FUNCTION prevent_verified_case_hard_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'verified_cases must be archived, not deleted';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_verified_cases_no_delete ON verified_cases;
+CREATE TRIGGER trigger_verified_cases_no_delete
+BEFORE DELETE ON verified_cases
+FOR EACH ROW
+EXECUTE FUNCTION prevent_verified_case_hard_delete();
 
 COMMENT ON TABLE verified_cases IS 'Clinical case workspace records linking sessions, patients, images, findings, exports, and timeline events.';
 COMMENT ON TABLE case_audit_events IS 'Immutable case audit log; events must never be deleted or updated by application code.';

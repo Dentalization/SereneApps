@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { buildVerifiedCasePdf } from './verifiedCasePdfExport.js';
 
 export const CASE_STATUSES = Object.freeze({
   DRAFT: 'draft',
@@ -70,12 +71,7 @@ function requireRole(actor, allowedRoles, code = 'permission_denied') {
 }
 
 function createCounterIdFactory() {
-  const counters = new Map();
-  return (prefix) => {
-    const next = (counters.get(prefix) || 0) + 1;
-    counters.set(prefix, next);
-    return `${prefix}_${String(next).padStart(6, '0')}`;
-  };
+  return () => crypto.randomUUID();
 }
 
 function hashFile(file = {}) {
@@ -719,3 +715,570 @@ export function createVerifiedCaseWorkspaceStore({ now = () => new Date(), idFac
 }
 
 export const verifiedCaseWorkspaceStore = createVerifiedCaseWorkspaceStore();
+
+const STATUS_TRANSITIONS = Object.freeze({
+  [CASE_STATUSES.DRAFT]: new Set([CASE_STATUSES.IMAGES_UPLOADED, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.IMAGES_UPLOADED]: new Set([CASE_STATUSES.QUALITY_CHECKED, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.QUALITY_CHECKED]: new Set([CASE_STATUSES.ANALYSIS_COMPLETED, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.ANALYSIS_COMPLETED]: new Set([CASE_STATUSES.PENDING_CLINICIAN_REVIEW, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.PENDING_CLINICIAN_REVIEW]: new Set([CASE_STATUSES.VERIFIED, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.VERIFIED]: new Set([CASE_STATUSES.EXPORTED, CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.EXPORTED]: new Set([CASE_STATUSES.ARCHIVED]),
+  [CASE_STATUSES.ARCHIVED]: new Set([]),
+});
+
+function getActorScope(actor = {}) {
+  const normalized = normalizeActor(actor);
+  return {
+    ...normalized,
+    tenantId: actor.tenantId || actor.tenant_id || null,
+    clinicId: actor.clinicId || actor.clinic_id || null,
+  };
+}
+
+function createClinicalError(code, status = 400) {
+  const error = new Error(code);
+  error.code = code;
+  error.status = status;
+  return error;
+}
+
+function assertTransition(currentStatus, nextStatus) {
+  if (currentStatus === nextStatus) return;
+  if (!STATUS_TRANSITIONS[currentStatus]?.has(nextStatus)) {
+    throw createClinicalError('invalid_case_status_transition');
+  }
+}
+
+function isSafePatientId(value) {
+  return value === null || value === undefined || /^[0-9]+$/.test(String(value));
+}
+
+function extractAiFindings(normalizedFindings = {}) {
+  if (Array.isArray(normalizedFindings.findings)) return normalizedFindings.findings;
+  if (Array.isArray(normalizedFindings.detections)) {
+    return normalizedFindings.detections.map((detection) => ({
+      label: detection.label || 'AI finding',
+      tooth_or_region: detection.tooth_or_region || detection.location || null,
+      severity: detection.severity || normalizedFindings.concern_level || 'mild',
+      confidence: detection.confidence ?? null,
+      notes: detection.description || '',
+    }));
+  }
+  return [];
+}
+
+export function createVerifiedCaseWorkspaceService({
+  repository,
+  storage,
+  aiAdapter,
+  now = () => new Date(),
+} = {}) {
+  if (!repository) throw new Error('repository_required');
+  if (!storage) throw new Error('storage_required');
+
+  const timestamp = () => isoNow(now);
+
+  async function getCaseOrThrow(caseId, actor) {
+    const caseRecord = await repository.getCase(caseId, { actor });
+    if (!caseRecord) throw createClinicalError('case_not_found', 404);
+    return caseRecord;
+  }
+
+  async function recordAudit({ caseId, actor, eventType, before = null, after = null, reason = null }) {
+    const normalizedActor = getActorScope(actor);
+    return repository.createAuditEvent({
+      case_id: caseId,
+      actor_id: normalizedActor.id,
+      actor_role: normalizedActor.role,
+      event_type: eventType,
+      before_json: before,
+      after_json: after,
+      reason,
+      created_at: timestamp(),
+    });
+  }
+
+  async function transitionCase(caseRecord, nextStatus, actor, patch = {}, eventType = 'case_updated', reason = null) {
+    assertTransition(caseRecord.status, nextStatus);
+    const before = deepClone(caseRecord);
+    const updated = await repository.updateCase(caseRecord.id, {
+      ...patch,
+      status: nextStatus,
+      updated_at: timestamp(),
+    }, { actor });
+    await recordAudit({ caseId: caseRecord.id, actor, eventType, before, after: updated, reason });
+    return updated;
+  }
+
+  async function recordTimeline({ caseRecord, actor, eventType, details = {} }) {
+    if (!caseRecord.patient_id) return null;
+    const findings = await repository.listFindings(caseRecord.id);
+    const confirmed = findings
+      .filter((finding) => [FINDING_STATUSES.CLINICIAN_CONFIRMED, FINDING_STATUSES.CLINICIAN_EDITED, FINDING_STATUSES.MANUAL_ADDED].includes(finding.status))
+      .map((finding) => finding.label)
+      .join(', ');
+    const images = await repository.listImages(caseRecord.id);
+    return repository.createTimelineEvent({
+      patient_id: caseRecord.patient_id,
+      case_id: caseRecord.id,
+      event_type: eventType,
+      event_date: timestamp(),
+      case_title: caseRecord.title,
+      case_status: caseRecord.status,
+      confirmed_findings_summary: confirmed,
+      image_count: images.filter((image) => !image.archived).length,
+      report_link: details.report_link || null,
+      related_session_id: caseRecord.session_id || null,
+      details,
+    });
+  }
+
+  const service = {
+    repository,
+    storage,
+
+    async createCase({ title = 'Untitled dental case', patientId = null, patientCode = null, sessionId = null, actor } = {}) {
+      const normalizedActor = requireRole(actor, CLINICIAN_ROLES);
+      const scope = getActorScope(actor);
+      if (!isSafePatientId(patientId)) throw createClinicalError('invalid_patient_id');
+      const caseRecord = await repository.createCase({
+        tenant_id: scope.tenantId,
+        clinic_id: scope.clinicId,
+        patient_id: patientId || null,
+        patient_code: patientCode || null,
+        session_id: sessionId || null,
+        title,
+        status: CASE_STATUSES.DRAFT,
+        created_by: normalizedActor.id,
+        created_at: timestamp(),
+        updated_at: timestamp(),
+        metadata: {},
+      });
+      await recordAudit({ caseId: caseRecord.id, actor, eventType: 'case_created', after: caseRecord });
+      if (patientId) await recordTimeline({ caseRecord, actor, eventType: 'case_created' });
+      return caseRecord;
+    },
+
+    async listCases({ actor, includeArchived = false, search = '' } = {}) {
+      requireRole(actor, CLINICIAN_ROLES);
+      return repository.listCases({ actor, includeArchived, search });
+    },
+
+    async getCase(caseId, { actor } = {}) {
+      return getCaseOrThrow(caseId, actor);
+    },
+
+    async patchCase({ caseId, patch = {}, actor }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      if (patch.status !== undefined) throw createClinicalError('status_mutation_not_allowed');
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const before = deepClone(caseRecord);
+      const updated = await repository.updateCase(caseId, {
+        title: patch.title,
+        last_message_preview: patch.last_message_preview,
+        updated_at: timestamp(),
+      }, { actor });
+      await recordAudit({ caseId, actor, eventType: 'case_updated', before, after: updated, reason: patch.reason || null });
+      return updated;
+    },
+
+    async linkPatient({ caseId, patientId, patientCode = null, patientName = null, actor }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      if (!isSafePatientId(patientId)) throw createClinicalError('invalid_patient_id');
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const before = deepClone(caseRecord);
+      const updated = await repository.updateCase(caseId, {
+        patient_id: patientId,
+        patient_code: patientCode,
+        patient_name: patientName,
+        updated_at: timestamp(),
+      }, { actor });
+      await recordAudit({ caseId, actor, eventType: 'patient_linked', before, after: updated });
+      await recordAudit({ caseId, actor, eventType: 'timeline_linked', after: { patient_id: patientId, patient_code: patientCode } });
+      await recordTimeline({ caseRecord: updated, actor, eventType: 'case_created' });
+      return updated;
+    },
+
+    async addCaseImage({ caseId, file, actor }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      if ([CASE_STATUSES.VERIFIED, CASE_STATUSES.EXPORTED, CASE_STATUSES.ARCHIVED].includes(caseRecord.status)) {
+        throw createClinicalError('case_locked');
+      }
+      const fileMeta = normalizeFile(file);
+      const stored = await storage.putOriginalImage(file.buffer, {
+        caseId,
+        fileName: fileMeta.file_name,
+        mimeType: fileMeta.mime_type,
+      });
+      const duplicate = await repository.findDuplicateImage(caseId, fileMeta.content_hash);
+      const image = await repository.createImage({
+        case_id: caseId,
+        ...fileMeta,
+        storage_ref: stored.storageRef,
+        duplicate_of: duplicate?.id || null,
+        upload_status: 'uploaded',
+        archived: false,
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      });
+      image.signed_url = await storage.getSignedUrl(image.storage_ref);
+      if (caseRecord.status === CASE_STATUSES.DRAFT) {
+        const updated = await transitionCase(caseRecord, CASE_STATUSES.IMAGES_UPLOADED, actor, {}, 'image_uploaded');
+        await recordTimeline({ caseRecord: updated, actor, eventType: 'images_uploaded', details: { image_id: image.id } });
+      } else {
+        await recordAudit({ caseId, actor, eventType: 'image_uploaded', after: image });
+      }
+      return image;
+    },
+
+    async listImages(caseId, { actor } = {}) {
+      await getCaseOrThrow(caseId, actor);
+      const images = await repository.listImages(caseId);
+      return Promise.all(images.map(async (image) => ({
+        ...image,
+        signed_url: await storage.getSignedUrl(image.storage_ref),
+        annotated_image_signed_url: image.annotated_image_ref ? await storage.getSignedUrl(image.annotated_image_ref) : null,
+      })));
+    },
+
+    async removeCaseImage({ caseId, imageId, actor, reason = null }) {
+      const normalizedActor = getActorScope(actor);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const image = await repository.getImage(caseId, imageId);
+      if (!image) throw createClinicalError('image_not_found', 404);
+      const locked = [CASE_STATUSES.VERIFIED, CASE_STATUSES.EXPORTED, CASE_STATUSES.ARCHIVED].includes(caseRecord.status);
+      if (locked && (normalizedActor.role !== 'admin' || !reason)) throw createClinicalError('image_remove_locked');
+      requireRole(actor, locked ? new Set(['admin']) : CLINICIAN_ROLES);
+      const updated = await repository.updateImage(caseId, imageId, { archived: true, updated_at: timestamp() });
+      await storage.archiveObject(image.storage_ref);
+      if (image.annotated_image_ref) await storage.archiveObject(image.annotated_image_ref);
+      await recordAudit({ caseId, actor, eventType: 'image_removed', before: image, after: updated, reason });
+      return updated;
+    },
+
+    async runQualityCheck({ caseId, imageId, actor, metrics = {} }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const image = await repository.getImage(caseId, imageId);
+      if (!image) throw createClinicalError('image_not_found', 404);
+      const evaluated = evaluateQuality(metrics, image.duplicate_of);
+      const check = await repository.createQualityCheck({
+        case_id: caseId,
+        image_id: imageId,
+        ...evaluated,
+        metrics,
+        checked_by: normalizeActor(actor).id,
+        created_at: timestamp(),
+      });
+      await repository.updateImage(caseId, imageId, { quality_status: check.quality_status, updated_at: timestamp() });
+      if (![CASE_STATUSES.QUALITY_CHECKED, CASE_STATUSES.ANALYSIS_COMPLETED, CASE_STATUSES.PENDING_CLINICIAN_REVIEW, CASE_STATUSES.VERIFIED, CASE_STATUSES.EXPORTED, CASE_STATUSES.ARCHIVED].includes(caseRecord.status)) {
+        await transitionCase(caseRecord, CASE_STATUSES.QUALITY_CHECKED, actor, {}, 'image_quality_checked');
+      } else {
+        await recordAudit({ caseId, actor, eventType: 'image_quality_checked', after: check });
+      }
+      if (!check.can_continue_analysis) {
+        await recordAudit({ caseId, actor, eventType: 'image_retake_requested', after: check, reason: check.recommendation });
+      }
+      return check;
+    },
+
+    async recordImageAnalysis({ caseId, imageId, actor, context = null }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      if ([CASE_STATUSES.VERIFIED, CASE_STATUSES.EXPORTED, CASE_STATUSES.ARCHIVED].includes(caseRecord.status)) {
+        throw createClinicalError('case_locked');
+      }
+      const image = await repository.getImage(caseId, imageId);
+      if (!image) throw createClinicalError('image_not_found', 404);
+      const latestQuality = await repository.getLatestQualityCheck(caseId, imageId);
+      if (!latestQuality) throw createClinicalError('quality_check_required');
+      if (latestQuality.can_continue_analysis !== true) throw createClinicalError('image_quality_blocks_analysis');
+      if (!aiAdapter?.analyzeImage) throw createClinicalError('ai_analysis_adapter_required');
+
+      await recordAudit({ caseId, actor, eventType: 'image_analysis_started', after: { image_id: imageId } });
+      const imageBuffer = await storage.getObjectBuffer(image.storage_ref);
+      const aiResult = await aiAdapter.analyzeImage({ imageBuffer, image, context });
+      let annotatedRef = image.annotated_image_ref || null;
+      let annotatedMime = image.annotated_image_mime_type || null;
+      if (aiResult.annotated_image_base64) {
+        const storedAnnotated = await storage.putAnnotatedImage(aiResult.annotated_image_base64, {
+          caseId,
+          fileName: `annotated-${image.file_name}`,
+          mimeType: aiResult.annotated_image_mime_type || image.mime_type,
+        });
+        annotatedRef = storedAnnotated.storageRef;
+        annotatedMime = aiResult.annotated_image_mime_type || image.mime_type;
+      }
+      const updatedImage = await repository.updateImage(caseId, imageId, {
+        annotated_image_ref: annotatedRef,
+        annotated_image_mime_type: annotatedMime,
+        updated_at: timestamp(),
+      });
+      const createdFindings = [];
+      for (const finding of extractAiFindings(aiResult.normalized_findings || {})) {
+        createdFindings.push(await repository.createAiFinding({
+          case_id: caseId,
+          image_id: imageId,
+          label: finding.label || finding.description || 'AI finding',
+          tooth_or_region: finding.tooth_or_region || finding.location || null,
+          severity: finding.severity || 'mild',
+          confidence: finding.confidence ?? null,
+          source: 'ai',
+          status: FINDING_STATUSES.AI_SUGGESTED,
+          notes: finding.notes || finding.description || '',
+          raw_ai_result: aiResult.raw_ai_result || {},
+          created_at: timestamp(),
+          updated_at: timestamp(),
+        }));
+      }
+      for (const finding of createdFindings) {
+        await recordAudit({ caseId, actor, eventType: 'ai_finding_created', after: finding });
+      }
+      let workingCase = caseRecord;
+      if (workingCase.status === CASE_STATUSES.IMAGES_UPLOADED) {
+        workingCase = await transitionCase(workingCase, CASE_STATUSES.QUALITY_CHECKED, actor, {}, 'image_quality_checked');
+      }
+      if (workingCase.status === CASE_STATUSES.QUALITY_CHECKED) {
+        workingCase = await transitionCase(
+          workingCase,
+          CASE_STATUSES.ANALYSIS_COMPLETED,
+          actor,
+          { last_message_preview: createdFindings.map((finding) => finding.label).join(', ') },
+          'image_analysis_completed'
+        );
+        workingCase = await transitionCase(workingCase, CASE_STATUSES.PENDING_CLINICIAN_REVIEW, actor, {}, 'case_updated');
+      } else if (workingCase.status === CASE_STATUSES.ANALYSIS_COMPLETED) {
+        await recordAudit({ caseId, actor, eventType: 'image_analysis_completed', after: { image_id: imageId, finding_count: createdFindings.length } });
+        workingCase = await transitionCase(workingCase, CASE_STATUSES.PENDING_CLINICIAN_REVIEW, actor, {}, 'case_updated');
+      } else if (workingCase.status === CASE_STATUSES.PENDING_CLINICIAN_REVIEW) {
+        const before = deepClone(workingCase);
+        workingCase = await repository.updateCase(caseId, {
+          last_message_preview: createdFindings.map((finding) => finding.label).join(', '),
+          updated_at: timestamp(),
+        }, { actor });
+        await recordAudit({ caseId, actor, eventType: 'image_analysis_completed', before, after: workingCase });
+      } else {
+        throw createClinicalError('invalid_case_status_transition');
+      }
+      const pending = workingCase;
+      await recordTimeline({ caseRecord: pending, actor, eventType: 'analysis_completed' });
+      return {
+        image: {
+          ...updatedImage,
+          annotated_image_signed_url: updatedImage.annotated_image_ref ? await storage.getSignedUrl(updatedImage.annotated_image_ref) : null,
+        },
+        findings: createdFindings,
+        case: pending,
+      };
+    },
+
+    async listFindings(caseId, { actor } = {}) {
+      await getCaseOrThrow(caseId, actor);
+      return repository.listFindings(caseId);
+    },
+
+    async createClinicianFinding({ caseId, actor, finding }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      await getCaseOrThrow(caseId, actor);
+      const record = await repository.createClinicianFinding({
+        case_id: caseId,
+        image_id: finding.image_id || null,
+        label: finding.label,
+        tooth_or_region: finding.tooth_or_region || null,
+        severity: finding.severity || 'mild',
+        confidence: finding.confidence ?? null,
+        source: 'clinician',
+        status: FINDING_STATUSES.MANUAL_ADDED,
+        notes: finding.notes || null,
+        urgent_referral: Boolean(finding.urgent_referral),
+        needs_in_person_exam: Boolean(finding.needs_in_person_exam),
+        confirmed_by: normalizeActor(actor).id,
+        confirmed_at: timestamp(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      });
+      await recordAudit({ caseId, actor, eventType: 'manual_finding_added', after: record });
+      return record;
+    },
+
+    async confirmFinding({ caseId, findingId, actor, patch = {} }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const finding = await repository.getFinding(caseId, findingId);
+      if (!finding) throw createClinicalError('finding_not_found', 404);
+      const record = await repository.createClinicianFinding({
+        case_id: caseId,
+        image_id: finding.image_id || null,
+        label: patch.label || finding.label,
+        tooth_or_region: patch.tooth_or_region ?? finding.tooth_or_region ?? null,
+        severity: patch.severity || finding.severity || 'mild',
+        confidence: patch.confidence ?? finding.confidence ?? null,
+        source: finding.source || 'ai',
+        status: FINDING_STATUSES.CLINICIAN_CONFIRMED,
+        notes: patch.notes ?? finding.notes ?? null,
+        urgent_referral: Boolean(patch.urgent_referral),
+        needs_in_person_exam: Boolean(patch.needs_in_person_exam),
+        confirmed_by: normalizeActor(actor).id,
+        confirmed_at: timestamp(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      });
+      await recordAudit({ caseId, actor, eventType: 'finding_confirmed', after: record });
+      return record;
+    },
+
+    async rejectFinding({ caseId, findingId, actor, reason = null }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const finding = await repository.getFinding(caseId, findingId);
+      if (!finding) throw createClinicalError('finding_not_found', 404);
+      const record = await repository.createClinicianFinding({
+        case_id: caseId,
+        image_id: finding.image_id || null,
+        label: finding.label,
+        tooth_or_region: finding.tooth_or_region || null,
+        severity: finding.severity || 'mild',
+        confidence: finding.confidence ?? null,
+        source: finding.source || 'ai',
+        status: FINDING_STATUSES.CLINICIAN_REJECTED,
+        notes: reason || finding.notes || null,
+        urgent_referral: false,
+        needs_in_person_exam: false,
+        confirmed_by: normalizeActor(actor).id,
+        confirmed_at: timestamp(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      });
+      await recordAudit({ caseId, actor, eventType: 'finding_rejected', after: record, reason });
+      return record;
+    },
+
+    async updateFinding({ caseId, findingId, actor, patch = {} }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const finding = await repository.getFinding(caseId, findingId);
+      if (!finding) throw createClinicalError('finding_not_found', 404);
+      const record = await repository.createClinicianFinding({
+        case_id: caseId,
+        image_id: patch.image_id || finding.image_id || null,
+        label: patch.label || finding.label,
+        tooth_or_region: patch.tooth_or_region ?? finding.tooth_or_region ?? null,
+        severity: patch.severity || finding.severity || 'mild',
+        confidence: patch.confidence ?? finding.confidence ?? null,
+        source: 'clinician',
+        status: FINDING_STATUSES.CLINICIAN_EDITED,
+        notes: patch.notes ?? finding.notes ?? null,
+        urgent_referral: Boolean(patch.urgent_referral),
+        needs_in_person_exam: Boolean(patch.needs_in_person_exam),
+        confirmed_by: normalizeActor(actor).id,
+        confirmed_at: timestamp(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      });
+      await recordAudit({ caseId, actor, eventType: 'finding_edited', after: record });
+      return record;
+    },
+
+    async verifyCase({ caseId, actor }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      if (!caseRecord.patient_id) throw createClinicalError('patient_link_required');
+      const findings = await repository.listFindings(caseId);
+      const hasClinicianFinding = findings.some((finding) => [FINDING_STATUSES.CLINICIAN_CONFIRMED, FINDING_STATUSES.CLINICIAN_EDITED, FINDING_STATUSES.MANUAL_ADDED].includes(finding.status));
+      if (!hasClinicianFinding) throw createClinicalError('clinician_finding_required');
+      const verified = await transitionCase(caseRecord, CASE_STATUSES.VERIFIED, actor, {
+        verified_by: normalizeActor(actor).id,
+        verified_at: timestamp(),
+      }, 'case_verified');
+      await recordTimeline({ caseRecord: verified, actor, eventType: 'clinician_verified' });
+      return verified;
+    },
+
+    async exportCase({ caseId, format, actor, redacted = false, draft = false }) {
+      requireRole(actor, EXPORT_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      if (!draft && caseRecord.status !== CASE_STATUSES.VERIFIED) throw createClinicalError('case_verification_required');
+      if (!caseRecord.patient_id) throw createClinicalError('patient_link_required');
+      if (!['pdf', 'json'].includes(format)) throw createClinicalError('unsupported_export_format');
+      const images = await service.listImages(caseId, { actor });
+      const qualityChecks = [];
+      for (const image of images) qualityChecks.push(...await repository.listQualityChecks(caseId, image.id));
+      const findings = await repository.listFindings(caseId);
+      const aiFindings = findings.filter((finding) => finding.status === FINDING_STATUSES.AI_SUGGESTED);
+      const clinicianFindings = findings.filter((finding) => finding.status !== FINDING_STATUSES.AI_SUGGESTED);
+      const auditEvents = await repository.listAuditEvents(caseId);
+      const previousExports = await repository.listExports(caseId);
+      const exportedAt = timestamp();
+      const payload = format === 'json'
+        ? {
+            warning: draft ? 'DRAFT — NOT CLINICIAN VERIFIED' : undefined,
+            case: redacted ? { ...caseRecord, patient_id: 'REDACTED', patient_code: 'REDACTED', patient_name: 'REDACTED' } : caseRecord,
+            images,
+            quality_checks: qualityChecks,
+            ai_findings: aiFindings,
+            clinician_findings: clinicianFindings,
+            audit_events: auditEvents,
+            timeline_linkage: { patient_id: redacted ? 'REDACTED' : caseRecord.patient_id, linked: true },
+            exported_at: exportedAt,
+          }
+        : await buildVerifiedCasePdf({ caseRecord, images, qualityChecks, aiFindings, clinicianFindings, auditEvents, exports: previousExports, storage, redacted, exportedAt });
+      const storageResult = format === 'pdf'
+        ? await storage.putAnnotatedImage(payload, { caseId, fileName: `${caseId}.pdf`, mimeType: 'application/pdf' })
+        : await storage.putAnnotatedImage(Buffer.from(JSON.stringify(payload, null, 2)), { caseId, fileName: `${caseId}.json`, mimeType: 'application/json' });
+      const exportRecord = await repository.createExport({
+        case_id: caseId,
+        format,
+        redacted: Boolean(redacted),
+        mime_type: format === 'pdf' ? 'application/pdf' : 'application/json',
+        storage_ref: storageResult.storageRef,
+        exported_by: normalizeActor(actor).id,
+        exported_at: exportedAt,
+        metadata: { draft: Boolean(draft), payload },
+      });
+      const exportedCase = await transitionCase(caseRecord, CASE_STATUSES.EXPORTED, actor, { exported_at: exportedAt }, 'case_exported');
+      await recordTimeline({ caseRecord: exportedCase, actor, eventType: 'report_exported', details: { report_link: exportRecord.storage_ref, export_id: exportRecord.id, format } });
+      return { ...exportRecord, payload, signed_url: await storage.getSignedUrl(exportRecord.storage_ref) };
+    },
+
+    async archiveCase({ caseId, actor, reason }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      if (!reason) throw createClinicalError('archive_reason_required');
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const archived = await transitionCase(caseRecord, CASE_STATUSES.ARCHIVED, actor, { archived_at: timestamp() }, 'case_archived', reason);
+      return archived;
+    },
+
+    async listAuditEvents(caseId, { actor } = {}) {
+      await getCaseOrThrow(caseId, actor);
+      return repository.listAuditEvents(caseId);
+    },
+
+    async listExports(caseId, { actor } = {}) {
+      await getCaseOrThrow(caseId, actor);
+      return repository.listExports(caseId);
+    },
+
+    async getPatientTimeline(patientId, { actor } = {}) {
+      const normalizedActor = getActorScope(actor);
+      if (normalizedActor.role === 'patient' && String(normalizedActor.id) !== String(patientId)) {
+        throw createClinicalError('permission_denied', 403);
+      }
+      return repository.listPatientTimeline(patientId, { actor });
+    },
+
+    async getSessionCase(sessionId, { actor } = {}) {
+      requireRole(actor, CLINICIAN_ROLES);
+      return repository.findCaseBySession(sessionId, { actor });
+    },
+
+    async linkSessionCase({ sessionId, caseId, actor }) {
+      requireRole(actor, CLINICIAN_ROLES);
+      const caseRecord = await getCaseOrThrow(caseId, actor);
+      const before = deepClone(caseRecord);
+      const updated = await repository.updateCase(caseId, { session_id: sessionId, updated_at: timestamp() }, { actor });
+      await recordAudit({ caseId, actor, eventType: 'case_updated', before, after: updated, reason: 'Linked case to session' });
+      return updated;
+    },
+  };
+
+  return service;
+}

@@ -3,6 +3,7 @@ import { authHttp } from '../../../../utils/httpClient.js';
 export const VERIFIED_CASE_ENDPOINTS = Object.freeze({
   cases: '/cases',
   caseById: (caseId) => `/cases/${caseId}`,
+  verifyCase: (caseId) => `/cases/${caseId}/verify`,
   archiveCase: (caseId) => `/cases/${caseId}/archive`,
   caseImages: (caseId) => `/cases/${caseId}/images`,
   caseImage: (caseId, imageId) => `/cases/${caseId}/images/${imageId}`,
@@ -30,6 +31,7 @@ export function createVerifiedCaseWorkspaceClient({ http = authHttp } = {}) {
     createCase: (body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.cases, body).then(unwrapData),
     getCase: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseById(caseId)).then(unwrapData),
     patchCase: (caseId, body = {}) => http.patch(VERIFIED_CASE_ENDPOINTS.caseById(caseId), body).then(unwrapData),
+    verifyCase: (caseId) => http.post(VERIFIED_CASE_ENDPOINTS.verifyCase(caseId), {}).then(unwrapData),
     archiveCase: (caseId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.archiveCase(caseId), body).then(unwrapData),
     getSessionCase: (sessionId) => http.get(VERIFIED_CASE_ENDPOINTS.sessionCase(sessionId)).then(unwrapData),
     createSessionCase: (sessionId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.sessionCase(sessionId), body).then(unwrapData),
