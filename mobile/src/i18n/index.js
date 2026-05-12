@@ -1,5 +1,5 @@
-import id from './id';
-import en from './en';
+import id from './id.js';
+import en from './en.js';
 
 export const translations = { id, en };
 
@@ -16,10 +16,15 @@ export function translate(locale = 'id', key, params = {}) {
     resolveTranslation(locale, key) ??
     resolveTranslation('en', key) ??
     fallbackText ??
-    key;
+    '';
+
+  const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+  if (isDev && template === '' && !fallbackText) {
+    console.warn(`[mobile-i18n] Missing translation key: ${key}`);
+  }
 
   if (typeof template !== 'string') {
-    return String(template ?? fallbackText ?? key);
+    return String(template ?? fallbackText ?? '');
   }
 
   return Object.entries(params).reduce((output, [param, value]) => (

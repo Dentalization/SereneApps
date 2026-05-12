@@ -91,5 +91,27 @@ test('review photos are feature-flagged metadata-only and mobile i18n foundation
   assert.doesNotMatch(review, /uri: photo\.uri/);
   assert.match(i18n, /fallbackText/);
   assert.match(hook, /useSelector/);
-  assert.match(hook, /state\.settings\.language/);
+  assert.match(hook, /state\.settings\?\.language/);
+});
+
+test('final teledentistry polish prevents i18n and call retry regressions', () => {
+  const i18nHook = read('src/hooks/useI18n.js');
+  const i18nRuntime = read('src/i18n/index.js');
+  const tele = read('src/features/appointment/screens/PatientTeledentistryScreen.jsx');
+
+  assert.match(i18nHook, /state\.settings\?\.language/);
+  assert.match(i18nHook, /normalizedLanguage/);
+
+  assert.doesNotMatch(i18nRuntime, /fallbackText \?\? key/);
+  assert.match(i18nRuntime, /fallbackText \?\? ''/);
+
+  const completeAcceptCallIndex = tele.indexOf('const completeAcceptCall');
+  const connectIndex = tele.indexOf('await connect', completeAcceptCallIndex);
+  const emitAcceptedIndex = tele.indexOf('emitVideoCallResponse', completeAcceptCallIndex);
+  assert.ok(connectIndex > completeAcceptCallIndex);
+  assert.ok(emitAcceptedIndex > connectIndex);
+
+  assert.match(tele, /const handleRetryText/);
+  assert.match(tele, /pendingTextRetry\.text/);
+  assert.match(tele, /onPress=\{handleRetryText\}/);
 });

@@ -504,11 +504,33 @@ const PatientTeledentistryScreen = () => {
 
   const completeAcceptCall = async (session, { enableVideo = true } = {}) => {
     setCallJoinStatus('connecting');
-    emitVideoCallResponse(appointmentId.toString(), true);
     await connect({ roomName: session.roomName, token: session.token, enableVideo });
+    emitVideoCallResponse(appointmentId.toString(), true);
     setCallStatus('active');
     setCallJoinStatus('idle');
     addSystemMessage(enableVideo ? 'Video call dimulai.' : 'Video call dimulai dalam mode audio saja.');
+  };
+
+  const handleRetryText = async () => {
+    if (!pendingTextRetry?.text || !appointmentId || sessionStatus !== 'active') return;
+
+    try {
+      const saved = await sendMessage({
+        appointmentId: appointmentId.toString(),
+        text: pendingTextRetry.text,
+      });
+
+      if (saved) {
+        setPendingTextRetry(null);
+      }
+    } catch (error) {
+      setPendingTextRetry((prev) => ({
+        ...prev,
+        message: error?.message || t('mobile.teledentistry.chat.sendFailed', {
+          fallbackText: 'Pesan gagal dikirim. Teks tetap disimpan agar dapat dicoba lagi.',
+        }),
+      }));
+    }
   };
 
   const handleAcceptCall = async () => {
@@ -1187,7 +1209,7 @@ const PatientTeledentistryScreen = () => {
             <Text style={{ flex: 1, marginLeft: 8, ...TYPOGRAPHY.caption, color: COLORS.error, fontWeight: '700' }} numberOfLines={1}>
               {pendingTextRetry.message}
             </Text>
-            <TouchableOpacity onPress={handleSend} accessibilityRole="button" accessibilityLabel={t('mobile.teledentistry.chat.retrySend', { fallbackText: 'Coba kirim ulang' })}>
+            <TouchableOpacity onPress={handleRetryText} accessibilityRole="button" accessibilityLabel={t('mobile.teledentistry.chat.retrySend', { fallbackText: 'Coba kirim ulang' })}>
               <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '900' }}>
                 {t('mobile.teledentistry.chat.retrySend', { fallbackText: 'Coba kirim ulang' })}
               </Text>
