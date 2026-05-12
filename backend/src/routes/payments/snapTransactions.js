@@ -6,6 +6,35 @@ import midtransService from '../../services/payments/midtransService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const SNAP_EXPIRY_MS = 15 * 60 * 1000;
+
+export function resolveSnapExpiry(value, now = new Date()) {
+  const parsed = value ? new Date(value) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) return parsed;
+  return new Date(now.getTime() + SNAP_EXPIRY_MS);
+}
+
+export function canReuseSnapIntent(intent, now = new Date()) {
+  if (!intent || !['pending', 'requires_action'].includes(intent.status)) return false;
+  const snapToken = intent.metadata && typeof intent.metadata === 'object' && !Array.isArray(intent.metadata)
+    ? intent.metadata.snapToken
+    : null;
+  if (!snapToken || !intent.redirectUrl) return false;
+  if (!intent.expiresAt) return true;
+  return new Date(intent.expiresAt).getTime() > now.getTime();
+}
+
+export function buildSnapResponse(intent) {
+  const snapToken = intent.metadata && typeof intent.metadata === 'object' && !Array.isArray(intent.metadata)
+    ? intent.metadata.snapToken
+    : null;
+  return {
+    snapToken,
+    redirectUrl: intent.redirectUrl,
+    paymentIntentId: intent.id.toString(),
+    expiresAt: intent.expiresAt ? new Date(intent.expiresAt).toISOString() : null
+  };
+}
 
 async function getAppointmentForPayment(appointmentId, userId) {
   const appointment = await prisma.appointment.findUnique({
@@ -58,16 +87,20 @@ router.post('/', authenticateToken, async (req, res) => {
     });
 
     if (existingIntent) {
-       let snapToken = null;
-       if (existingIntent.metadata && typeof existingIntent.metadata === 'object' && !Array.isArray(existingIntent.metadata)) {
-           // We store snapToken inside metadata on intent creation
-           snapToken = existingIntent.metadata.snapToken;
+       if (canReuseSnapIntent(existingIntent)) {
+         return res.status(200).json(buildSnapResponse(existingIntent));
        }
-       if (snapToken) {
-         return res.status(200).json({
-           snapToken,
-           redirectUrl: existingIntent.redirectUrl,
-           paymentIntentId: existingIntent.id.toString()
+       if (['pending', 'requires_action'].includes(existingIntent.status)) {
+         await prisma.paymentIntent.update({
+           where: { id: existingIntent.id },
+           data: {
+             status: 'expired',
+             idempotencyKey: `${idempotencyKey}:expired:${existingIntent.id.toString()}`,
+             metadata: {
+               ...(existingIntent.metadata && typeof existingIntent.metadata === 'object' && !Array.isArray(existingIntent.metadata) ? existingIntent.metadata : {}),
+               expiredByClientRetry: true
+             }
+           }
          });
        }
     }
@@ -93,12 +126,13 @@ router.post('/', authenticateToken, async (req, res) => {
       name: `Konsultasi Teledentistry - drg. ${appointment.dentist.name.split(',')[0]}`,
     }];
 
-    const { snapToken, redirectUrl } = await midtransService.createSnapTransaction({
+    const { snapToken, redirectUrl, expiresAt: providerExpiresAt, expiryTime } = await midtransService.createSnapTransaction({
       orderId,
       grossAmount,
       customerDetails,
       itemDetails
     });
+    const expiresAt = resolveSnapExpiry(providerExpiresAt || expiryTime);
 
     // 8. Insert tracking intent natively
     const paymentIntent = await prisma.paymentIntent.create({
@@ -112,16 +146,13 @@ router.post('/', authenticateToken, async (req, res) => {
         idempotencyKey,
         providerOrderId: orderId,
         metadata: { snapToken },
-        redirectUrl
+        redirectUrl,
+        expiresAt
       }
     });
 
     // 9. Return execution block correctly
-    return res.status(200).json({
-      snapToken,
-      redirectUrl,
-      paymentIntentId: paymentIntent.id.toString()
-    });
+    return res.status(200).json(buildSnapResponse(paymentIntent));
 
   } catch (error) {
     if (error.code === 'MIDTRANS_API_ERROR') {
@@ -154,5 +185,11 @@ router.post('/', authenticateToken, async (req, res) => {
     });
   }
 });
+
+export const __testables = {
+  buildSnapResponse,
+  canReuseSnapIntent,
+  resolveSnapExpiry
+};
 
 export default router;

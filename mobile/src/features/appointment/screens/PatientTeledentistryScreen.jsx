@@ -17,7 +17,9 @@ import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
 import { useChat } from '../../../hooks/useChat';
+import { useI18n } from '../../../hooks/useI18n';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
+import PreCallSystemCheckSheet from '../../../components/teledentistry/PreCallSystemCheckSheet';
 import {
   acknowledgeAppointmentClinicalSummary,
   getAppointmentClinicalSummary,
@@ -119,6 +121,7 @@ const PatientTeledentistryScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   // Route params (from DetailAppointmentScreen or wherever)
   const {
@@ -187,6 +190,7 @@ const PatientTeledentistryScreen = () => {
     connectError,
     connectionState: videoConnectionState,
     networkQuality,
+    networkQualityEvent,
     connect,
     disconnect,
     toggleAudio,
@@ -206,6 +210,8 @@ const PatientTeledentistryScreen = () => {
   const [attachmentUpload, setAttachmentUpload] = useState(null);
   const [lowQualityCard, setLowQualityCard] = useState(null);
   const [showConnectionDiagnostics, setShowConnectionDiagnostics] = useState(false);
+  const [preCallSystemCheck, setPreCallSystemCheck] = useState({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false });
+  const [pendingTextRetry, setPendingTextRetry] = useState(null);
   const qualityHistoryRef = useRef([]);
   const lowQualityRef = useRef([]);
   const [healthFormStatus, setHealthFormStatus] = useState('loading');
@@ -484,8 +490,25 @@ const PatientTeledentistryScreen = () => {
   const handleSend = async () => {
     const trimmed = inputText.trim();
     if (!trimmed || sessionStatus !== 'active') return;
-    setInputText('');
-    await sendMessage({ appointmentId: appointmentId?.toString(), text: trimmed });
+    try {
+      const saved = await sendMessage({ appointmentId: appointmentId?.toString(), text: trimmed });
+      if (saved) {
+        setInputText('');
+        setPendingTextRetry(null);
+      }
+    } catch (error) {
+      setPendingTextRetry({ text: trimmed, message: error?.message || t('mobile.teledentistry.chat.sendFailed', { fallbackText: 'Pesan gagal dikirim. Teks tetap disimpan agar dapat dicoba lagi.' }) });
+      Alert.alert('Pesan Gagal', error?.message || t('mobile.teledentistry.chat.sendFailed', { fallbackText: 'Pesan gagal dikirim. Teks tetap disimpan agar dapat dicoba lagi.' }));
+    }
+  };
+
+  const completeAcceptCall = async (session, { enableVideo = true } = {}) => {
+    setCallJoinStatus('connecting');
+    emitVideoCallResponse(appointmentId.toString(), true);
+    await connect({ roomName: session.roomName, token: session.token, enableVideo });
+    setCallStatus('active');
+    setCallJoinStatus('idle');
+    addSystemMessage(enableVideo ? 'Video call dimulai.' : 'Video call dimulai dalam mode audio saja.');
   };
 
   const handleAcceptCall = async () => {
@@ -514,19 +537,51 @@ const PatientTeledentistryScreen = () => {
       const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
       const { status: micStatus } = await Camera.requestMicrophonePermissionsAsync();
 
-      if (cameraStatus !== 'granted' || micStatus !== 'granted') {
-        const message = 'Aplikasi memerlukan akses Kamera dan Mikrofon untuk Video Call.';
+      const micGranted = micStatus === 'granted';
+      const cameraGranted = cameraStatus === 'granted';
+      const checks = [
+        {
+          key: 'camera',
+          label: t('mobile.teledentistry.preCall.camera', { fallbackText: 'Kamera' }),
+          status: cameraGranted ? 'passed' : 'warning',
+          message: cameraGranted ? 'Kamera siap.' : 'Kamera tidak aktif. Anda masih dapat bergabung audio saja.',
+        },
+        {
+          key: 'microphone',
+          label: t('mobile.teledentistry.preCall.microphone', { fallbackText: 'Mikrofon' }),
+          status: micGranted ? 'passed' : 'failed',
+          message: micGranted ? 'Mikrofon siap.' : 'Izinkan mikrofon sebelum bergabung.',
+        },
+        {
+          key: 'connection',
+          label: t('mobile.teledentistry.preCall.connection', { fallbackText: 'Koneksi' }),
+          status: networkQuality >= 0 && networkQuality <= 1 ? 'warning' : 'passed',
+          message: networkQuality >= 0 ? `Kualitas jaringan ${networkQuality}/5.` : 'Koneksi akan dipantau saat panggilan dimulai.',
+        },
+        {
+          key: 'battery',
+          label: t('mobile.teledentistry.preCall.battery', { fallbackText: 'Baterai' }),
+          status: 'unknown',
+          message: t('mobile.teledentistry.preCall.unavailable', { fallbackText: 'Tidak tersedia' }),
+        },
+      ];
+
+      if (!micGranted) {
+        const message = 'Aplikasi memerlukan akses Mikrofon untuk Video Call.';
         setCallNotice(message);
+        setPreCallSystemCheck({ visible: true, session, checks, canJoin: false, audioOnly: !cameraGranted });
         Alert.alert('Izin Ditolak', message);
         setCallJoinStatus('idle');
         return;
       }
 
-      setCallJoinStatus('connecting');
-      emitVideoCallResponse(appointmentId.toString(), true);
-      await connect({ roomName: session.roomName, token: session.token });
-      setCallStatus('active');
-      addSystemMessage('Video call dimulai.');
+      setPreCallSystemCheck({
+        visible: true,
+        session,
+        checks,
+        canJoin: true,
+        audioOnly: !cameraGranted,
+      });
     } catch (e) {
       const message = e?.response?.data?.error?.code === 'ROOM_ENDED'
         ? 'Sesi video sudah berakhir dan tidak dapat dimasuki kembali.'
@@ -535,7 +590,7 @@ const PatientTeledentistryScreen = () => {
       Alert.alert('Gagal Bergabung', message);
       console.warn('Failed to join video call', e?.message || e);
     } finally {
-      setCallJoinStatus('idle');
+      if (!preCallSystemCheck.visible) setCallJoinStatus('idle');
     }
   };
 
@@ -587,22 +642,23 @@ const PatientTeledentistryScreen = () => {
   };
 
   useEffect(() => {
-    if (networkQuality < 0) return;
-    const now = Date.now();
+    if (!networkQualityEvent || networkQualityEvent.quality < 0) return;
+    const now = networkQualityEvent.timestamp || Date.now();
+    const quality = networkQualityEvent.quality;
     qualityHistoryRef.current = [
       ...qualityHistoryRef.current.slice(-24),
-      { quality: networkQuality, timestamp: now },
+      { quality, timestamp: now },
     ];
-    if (networkQuality > 1) return;
+    if (quality > 1) return;
     lowQualityRef.current = [...lowQualityRef.current.filter((item) => now - item <= 30000), now];
     if (lowQualityRef.current.length >= 3) {
       if (isVideoEnabled) toggleVideo();
-      const message = 'Kualitas jaringan sangat rendah. Video dimatikan untuk menjaga audio.';
+      const message = t('mobile.teledentistry.network.autoAudioOnly', { fallbackText: 'Kualitas jaringan sangat rendah. Video dimatikan untuk menjaga audio.' });
       setLowQualityCard({ id: `quality-${now}`, message });
       addSystemMessage(message);
       lowQualityRef.current = [];
     }
-  }, [addSystemMessage, isVideoEnabled, networkQuality, toggleVideo]);
+  }, [addSystemMessage, isVideoEnabled, networkQualityEvent?.sequence, t, toggleVideo]);
 
   const handlePickAttachment = async () => {
     if (!appointmentId || sessionStatus !== 'active' || attachmentUpload?.status === 'uploading') return;
@@ -970,7 +1026,17 @@ const PatientTeledentistryScreen = () => {
                 }}
                 style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 12, backgroundColor: COLORS.warning, paddingHorizontal: 12, paddingVertical: 7 }}
               >
-                <Text style={{ color: COLORS.white, fontWeight: '800', fontSize: 12 }}>Coba hidupkan video lagi</Text>
+                <Text style={{ color: COLORS.white, fontWeight: '800', fontSize: 12 }}>
+                  {t('mobile.teledentistry.network.retryVideo', { fallbackText: 'Coba hidupkan video lagi' })}
+                </Text>
+              </TouchableOpacity>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 8 }}>
+                {t('mobile.teledentistry.network.autoAudioOnlyDescription', { fallbackText: 'Video dimatikan sementara agar suara tetap stabil.' })}
+              </Text>
+              <TouchableOpacity onPress={() => setShowConnectionDiagnostics(true)} style={{ marginTop: 8 }}>
+                <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12 }}>
+                  {t('mobile.teledentistry.network.diagnostics', { fallbackText: 'Diagnostik Koneksi' })}
+                </Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity onPress={() => setLowQualityCard(null)} accessibilityLabel="Tutup peringatan jaringan">
@@ -1113,6 +1179,19 @@ const PatientTeledentistryScreen = () => {
                     : 'Lampiran gagal diunggah'}
               </Text>
             </View>
+          </View>
+        )}
+        {pendingTextRetry && (
+          <View style={{ backgroundColor: withOpacity(COLORS.error, 0.08), paddingHorizontal: 16, paddingVertical: 8, borderTopWidth: 1, borderTopColor: withOpacity(COLORS.error, 0.2), flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.error} />
+            <Text style={{ flex: 1, marginLeft: 8, ...TYPOGRAPHY.caption, color: COLORS.error, fontWeight: '700' }} numberOfLines={1}>
+              {pendingTextRetry.message}
+            </Text>
+            <TouchableOpacity onPress={handleSend} accessibilityRole="button" accessibilityLabel={t('mobile.teledentistry.chat.retrySend', { fallbackText: 'Coba kirim ulang' })}>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '900' }}>
+                {t('mobile.teledentistry.chat.retrySend', { fallbackText: 'Coba kirim ulang' })}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
         <View
@@ -1659,6 +1738,33 @@ const PatientTeledentistryScreen = () => {
               </View>
             </View>
           )}
+
+          <PreCallSystemCheckSheet
+            visible={preCallSystemCheck.visible}
+            checks={preCallSystemCheck.checks}
+            canJoin={preCallSystemCheck.canJoin}
+            audioOnly={preCallSystemCheck.audioOnly}
+            joining={callJoinStatus === 'connecting'}
+            labels={{
+              title: t('mobile.teledentistry.preCall.title', { fallbackText: 'Pemeriksaan Sebelum Panggilan' }),
+              close: t('common.actions.close', { fallbackText: 'Tutup' }),
+              ready: t('mobile.teledentistry.preCall.ready', { fallbackText: 'Siap bergabung' }),
+              joinAudioOnly: t('mobile.teledentistry.preCall.joinAudioOnly', { fallbackText: 'Bergabung audio saja' }),
+            }}
+            onClose={() => setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false })}
+            onJoin={async () => {
+              if (!preCallSystemCheck.session) return;
+              try {
+                await completeAcceptCall(preCallSystemCheck.session, { enableVideo: !preCallSystemCheck.audioOnly });
+                setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false });
+              } catch (error) {
+                const message = error?.message || 'Gagal memulai video call. Silakan coba lagi.';
+                setCallNotice(message);
+                Alert.alert('Gagal Bergabung', message);
+                setCallJoinStatus('idle');
+              }
+            }}
+          />
 
           {/* Global Twilio Video Engine */}
       <TwilioVideo ref={twilioRef} {...handlers} />

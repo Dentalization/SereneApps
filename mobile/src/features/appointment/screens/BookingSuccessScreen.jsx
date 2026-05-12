@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 import { formatCurrency } from '../../../utils/formatters';
+import { FEATURES } from '../../../config/features';
 
 const COLORS = THEME_COLORS;
 
@@ -325,36 +326,40 @@ const BookingSuccessScreen = () => {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          <TouchableOpacity
-            onPress={handleAddToCalendar}
-            accessibilityLabel="Tambah ke Kalender"
-            accessibilityRole="button"
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: COLORS.surfaceElevated,
-              paddingVertical: 14,
-              borderRadius: 16,
-              marginRight: 10,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          >
-            <MaterialCommunityIcons name="calendar-plus" size={20} color={COLORS.primary} />
-            <Text style={{ marginLeft: 8, fontWeight: '600', color: COLORS.primary }}>
-              Tambah ke Kalender
-            </Text>
-          </TouchableOpacity>
+          {FEATURES.nativeCalendarIntegration && (
+            <TouchableOpacity
+              onPress={handleAddToCalendar}
+              accessibilityLabel="Tambah ke Kalender"
+              accessibilityRole="button"
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: COLORS.surfaceElevated,
+                paddingVertical: 14,
+                borderRadius: 16,
+                marginRight: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            >
+              <MaterialCommunityIcons name="calendar-plus" size={20} color={COLORS.primary} />
+              <Text style={{ marginLeft: 8, fontWeight: '600', color: COLORS.primary }}>
+                Tambah ke Kalender
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             onPress={handleShare}
             accessibilityLabel="Bagikan Kode Booking"
             accessibilityRole="button"
             style={{
-              width: 52,
+              flex: FEATURES.nativeCalendarIntegration ? 0 : 1,
+              width: FEATURES.nativeCalendarIntegration ? 52 : undefined,
               height: 52,
+              flexDirection: 'row',
               borderRadius: 16,
               backgroundColor: COLORS.surfaceElevated,
               alignItems: 'center',
@@ -364,6 +369,11 @@ const BookingSuccessScreen = () => {
             }}
           >
             <MaterialCommunityIcons name="share-variant" size={22} color={COLORS.textSecondary} />
+            {!FEATURES.nativeCalendarIntegration && (
+              <Text style={{ marginLeft: 8, fontWeight: '600', color: COLORS.textSecondary }}>
+                Bagikan Kode Booking
+              </Text>
+            )}
           </TouchableOpacity>
         </Animated.View>
 

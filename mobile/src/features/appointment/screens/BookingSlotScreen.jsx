@@ -10,6 +10,7 @@ import { getClinicById } from '../../../services/clinicService';
 import { DENTISTS, SLOT_AVAILABILITY } from '../data/appointments';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { useI18n } from '../../../hooks/useI18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
@@ -117,6 +118,7 @@ const BookingSlotScreen = () => {
   const [selectedService, setSelectedService] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
+  const { t } = useI18n();
   
   const insets = useSafeAreaInsets();
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
@@ -363,7 +365,7 @@ const BookingSlotScreen = () => {
         const available = data?.slots || data?.availableSlots || [];
         return [date, available.filter((slot) => normalizeSlot(slot).isAvailable).length];
       } catch (_error) {
-        return [date, 0];
+        return [date, null];
       }
     })).then((entries) => {
       if (!ignore) setSlotCounts(Object.fromEntries(entries));
@@ -569,8 +571,15 @@ const BookingSlotScreen = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 20 }}>
             {dateOptions.map((date) => {
               const count = slotCounts[date];
+              const isUnknown = count === null || count === undefined;
               const disabled = count === 0 && date !== selectedDate && !slotCountsLoading;
-              const dotColor = count > 5 ? COLORS.success : count > 0 ? COLORS.warning : COLORS.border;
+              const dotColor = isUnknown
+                ? COLORS.textMuted
+                : count > 5
+                  ? COLORS.success
+                  : count > 0
+                    ? COLORS.warning
+                    : COLORS.border;
               return (
                 <TouchableOpacity
                   key={date}
@@ -581,7 +590,9 @@ const BookingSlotScreen = () => {
                   }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: selectedDate === date, disabled }}
-                  accessibilityLabel={`Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                  accessibilityLabel={isUnknown
+                    ? `Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}. ${t('mobile.booking.availabilityUnknown', { fallbackText: 'Ketersediaan belum dapat dipastikan. Ketuk untuk mencoba memuat jadwal.' })}`
+                    : `Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}`}
                   style={{
                     paddingHorizontal: 16,
                     paddingVertical: 10,
@@ -599,7 +610,7 @@ const BookingSlotScreen = () => {
                   <View style={{ alignItems: 'center', height: 8, marginTop: 5 }}>
                     {slotCountsLoading && count === undefined ? (
                       <ActivityIndicator animating size={8} color={selectedDate === date ? COLORS.surfaceElevated : COLORS.primary} />
-                    ) : count > 0 ? (
+                    ) : count > 0 || count === null ? (
                       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor }} />
                     ) : null}
                   </View>
@@ -607,6 +618,11 @@ const BookingSlotScreen = () => {
               );
             })}
           </ScrollView>
+          {(slotCounts[selectedDate] === null) && (
+            <Text style={{ marginHorizontal: 20, marginTop: 8, ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>
+              {t('mobile.booking.availabilityUnknown', { fallbackText: 'Ketersediaan belum dapat dipastikan. Ketuk untuk mencoba memuat jadwal.' })}
+            </Text>
+          )}
         </View>
 
         <View style={{ marginTop: 24 }}>

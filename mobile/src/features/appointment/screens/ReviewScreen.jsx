@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import api from '../../../services/api';
+import { FEATURES } from '../../../config/features';
+import { useI18n } from '../../../hooks/useI18n';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
@@ -75,6 +77,7 @@ const ReviewScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   const {
     appointmentId,
@@ -109,11 +112,12 @@ const ReviewScreen = () => {
         rating,
         categoryRatings,
         tags: selectedTags,
-        photos: photos.map((photo) => ({
-          uri: photo.uri,
-          fileName: photo.fileName,
-          mimeType: photo.mimeType,
-        })),
+        ...(FEATURES.reviewPhotoUpload ? {
+          photos: photos.map((photo) => ({
+            fileName: photo.fileName,
+            mimeType: photo.mimeType,
+          }))
+        } : {}),
         comment: comment.trim() || undefined,
       });
       Alert.alert(
@@ -339,17 +343,23 @@ const ReviewScreen = () => {
             }}
           />
 
-          <TouchableOpacity
-            onPress={pickReviewPhoto}
-            disabled={photos.length >= 3}
-            style={{ marginTop: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: 12, flexDirection: 'row', alignItems: 'center', opacity: photos.length >= 3 ? 0.6 : 1 }}
-          >
-            <MaterialCommunityIcons name="camera-plus-outline" size={20} color={COLORS.primary} />
-            <Text style={{ marginLeft: 8, ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '800' }}>
-              Tambah foto (opsional)
+          {FEATURES.reviewPhotoUpload ? (
+            <TouchableOpacity
+              onPress={pickReviewPhoto}
+              disabled={photos.length >= 3}
+              style={{ marginTop: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: 12, flexDirection: 'row', alignItems: 'center', opacity: photos.length >= 3 ? 0.6 : 1 }}
+            >
+              <MaterialCommunityIcons name="camera-plus-outline" size={20} color={COLORS.primary} />
+              <Text style={{ marginLeft: 8, ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '800' }}>
+                Tambah foto (opsional)
+              </Text>
+              <Text style={{ marginLeft: 'auto', ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{photos.length}/3</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ marginTop: 14, ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>
+              {t('mobile.review.photoMetadataOnly', { fallbackText: 'Foto ulasan belum diunggah ke server pada versi ini.' })}
             </Text>
-            <Text style={{ marginLeft: 'auto', ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{photos.length}/3</Text>
-          </TouchableOpacity>
+          )}
         </View>
 
         {/* Submit */}

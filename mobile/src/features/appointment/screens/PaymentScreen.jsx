@@ -9,6 +9,7 @@ import { formatCurrency } from '../../../utils/formatters';
 import { createSnapTransaction, getPaymentStatus, reconcilePayment } from '../../../services/paymentService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { useI18n } from '../../../hooks/useI18n';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
@@ -19,6 +20,7 @@ const PaymentScreen = () => {
   const route = useRoute();
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
+  const { t } = useI18n();
 
   // Params from BookingConfirm
   const { appointmentId, dentist, slot, date, fee, paymentMethod } = route.params || {};
@@ -69,6 +71,7 @@ const PaymentScreen = () => {
     } catch (error) {
       if (__DEV__) console.error('[PaymentScreen] Init error:', error);
       setLoading(false);
+      setStatus('error');
       showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
     }
   }, [appointmentId, showToast]);
@@ -139,12 +142,17 @@ const PaymentScreen = () => {
 
   const handleStatusChange = (newStatus) => {
     const successStatuses = ['succeeded', 'settlement', 'capture'];
-    const failureStatuses = ['failed', 'deny', 'cancel', 'expire'];
+    const expiredStatuses = ['expire', 'expired'];
+    const failureStatuses = ['failed', 'deny', 'cancel'];
 
     if (successStatuses.includes(newStatus)) {
       stopPolling();
       setStatus('succeeded');
       handleSuccess();
+      return true;
+    } else if (expiredStatuses.includes(newStatus)) {
+      stopPolling();
+      setStatus('expired');
       return true;
     } else if (failureStatuses.includes(newStatus)) {
       stopPolling();
@@ -207,6 +215,8 @@ const PaymentScreen = () => {
     if (redirectUrl) Linking.openURL(redirectUrl);
   };
 
+  const canRetryPayment = ['expired', 'failed', 'deny', 'cancel', 'error'].includes(status);
+  const canOpenPayment = Boolean(redirectUrl) && !loading && !['expired', 'failed', 'deny', 'cancel', 'error'].includes(status);
   const timerLabel = `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
 
   // Prevent accidental back navigation during active payment session
@@ -229,7 +239,9 @@ const PaymentScreen = () => {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.surface }}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ ...TYPOGRAPHY.bodyLarge, marginTop: 16 }}>Menyiapkan gerbang pembayaran...</Text>
+        <Text style={{ ...TYPOGRAPHY.bodyLarge, marginTop: 16 }}>
+          {t('mobile.payment.preparing', { fallbackText: 'Menyiapkan gerbang pembayaran...' })}
+        </Text>
       </View>
     );
   }
@@ -251,7 +263,9 @@ const PaymentScreen = () => {
           >
             <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.surfaceElevated} />
           </TouchableOpacity>
-          <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.surfaceElevated, marginLeft: 16 }}>Pembayaran</Text>
+          <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.surfaceElevated, marginLeft: 16 }}>
+            {t('mobile.payment.title', { fallbackText: 'Pembayaran' })}
+          </Text>
         </View>
 
         <View style={{ alignItems: 'center' }}>
@@ -273,7 +287,9 @@ const PaymentScreen = () => {
             </View>
             <View style={{ marginLeft: 16 }}>
               <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>
-                {status === 'expired' ? 'Pembayaran Kedaluwarsa' : 'Menunggu Pembayaran'}
+                {status === 'expired'
+                  ? t('mobile.payment.expiredTitle', { fallbackText: 'Pembayaran Kedaluwarsa' })
+                  : t('mobile.payment.pendingTitle', { fallbackText: 'Menunggu Pembayaran' })}
               </Text>
               <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>Selesaikan pembayaran sebelum waktu habis</Text>
             </View>
@@ -286,22 +302,24 @@ const PaymentScreen = () => {
           <Button
             mode="contained"
             onPress={handleOpenPayment}
-            disabled={!redirectUrl || status === 'expired'}
+            disabled={!canOpenPayment}
             style={{ marginTop: 20, borderRadius: 12 }}
             buttonColor={COLORS.primary}
             contentStyle={{ height: 48 }}
             accessibilityLabel="Buka Halaman Pembayaran di Browser"
           >
-            Buka Halaman Pembayaran
+            {t('mobile.payment.openPayment', { fallbackText: 'Buka Halaman Pembayaran' })}
           </Button>
-          <Button
-            mode="text"
-            onPress={initPayment}
-            style={{ marginTop: 8 }}
-            textColor={COLORS.primary}
-          >
-            Coba buat transaksi baru
-          </Button>
+          {canRetryPayment && (
+            <Button
+              mode="text"
+              onPress={initPayment}
+              style={{ marginTop: 8 }}
+              textColor={COLORS.primary}
+            >
+              {t('mobile.payment.retryPayment', { fallbackText: 'Coba buat transaksi baru' })}
+            </Button>
+          )}
         </View>
 
         {/* Order Summary */}
