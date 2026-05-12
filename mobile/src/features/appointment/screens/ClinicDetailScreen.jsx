@@ -6,7 +6,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
-import useNearbyClinics from '../../../hooks/useNearbyClinics';
 import resolveMediaUrl from '../../../utils/media';
 import StatPill from '../../../components/shared/StatPill';
 import { getClinicById as fetchClinicById } from '../../../services/clinicService';
@@ -683,6 +682,7 @@ const ClinicDetailScreen = () => {
                     key={`gallery-${item?.id || idx}`}
                     source={{ uri: imageUrl }}
                     style={{ width: 220, height: 140, borderRadius: 20, marginRight: 14 }}
+                    resizeMode="cover"
                   />
                 );
               })}

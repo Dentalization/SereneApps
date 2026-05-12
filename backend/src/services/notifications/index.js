@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { notificationConfig, isEmailConfigured, isPushConfigured, isSmsConfigured } from './config.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATION_EVENTS, getTemplate } from './templates.js';
 import { calculateBackoffSeconds, nowPlusSeconds, buildRecipientSnapshot } from './utils.js';
-import { sendPushNotification } from './providers/push.js';
+import { sendExpoPushNotification, sendPushNotification } from './providers/push.js';
 import { sendEmailNotification } from './providers/email.js';
 import { sendSmsNotification } from './providers/sms.js';
 
@@ -67,6 +67,10 @@ function determineRecipients(eventType, appointment, payload) {
     const initiatorId = payload?.initiatorId ? payload.initiatorId.toString() : null;
     if (!initiatorId) return recipients;
     return recipients.filter((entry) => entry.user.id.toString() !== initiatorId);
+  }
+
+  if (Array.isArray(payload?.recipientRoles) && payload.recipientRoles.length > 0) {
+    return recipients.filter((entry) => payload.recipientRoles.includes(entry.role));
   }
 
   return recipients;
@@ -163,20 +167,45 @@ async function dispatchJob(job) {
       }
     });
     const preferredProviders = payload.providers || null;
-    const tokens = devices
-      .filter((device) => !preferredProviders || preferredProviders.includes(device.provider))
+    const filteredDevices = devices.filter((device) => !preferredProviders || preferredProviders.includes(device.provider));
+    const fcmTokens = filteredDevices
+      .filter((device) => device.provider !== 'expo')
+      .map((device) => device.deviceToken);
+    const expoTokens = filteredDevices
+      .filter((device) => device.provider === 'expo')
       .map((device) => device.deviceToken);
 
-    if (!tokens.length) {
+    if (!fcmTokens.length && !expoTokens.length) {
       throw new Error('No active push tokens for recipient');
     }
 
-    await sendPushNotification({
-      tokens,
-      notification: payload.notification,
-      data: payload.data || {},
-      apnsOptions: payload.apnsOptions || {}
-    });
+    const errors = [];
+    if (fcmTokens.length) {
+      try {
+        await sendPushNotification({
+          tokens: fcmTokens,
+          notification: payload.notification,
+          data: payload.data || {},
+          apnsOptions: payload.apnsOptions || {}
+        });
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (expoTokens.length) {
+      try {
+        await sendExpoPushNotification({
+          tokens: expoTokens,
+          notification: payload.notification,
+          data: payload.data || {}
+        });
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length && errors.length === Number(Boolean(fcmTokens.length)) + Number(Boolean(expoTokens.length))) {
+      throw errors[0];
+    }
     return;
   }
 

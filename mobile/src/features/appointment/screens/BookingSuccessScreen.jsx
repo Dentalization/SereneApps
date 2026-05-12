@@ -5,8 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors as THEME_COLORS } from '../../../theme/colors';
+import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+import { formatCurrency } from '../../../utils/formatters';
 
 const COLORS = THEME_COLORS;
 
@@ -76,8 +77,13 @@ const BookingSuccessScreen = () => {
   };
 
   const handleAddToCalendar = () => {
-    // TODO: Implement calendar integration
-    console.log('Add to calendar');
+    // TODO: Full implementation with expo-calendar
+    const { Alert } = require('react-native');
+    Alert.alert(
+      'Tambah ke Kalender',
+      `Janji temu dengan ${dentist?.name}\n${dateLabel}, ${slotTime} WIB\n\nFitur ini akan segera tersedia.`,
+      [{ text: 'OK' }]
+    );
   };
 
   const handleShare = async () => {

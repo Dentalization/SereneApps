@@ -48,27 +48,44 @@ const normalizeAppointmentError = (error, fallbackMessage) => {
  */
 export const createAppointment = async ({
   dentist_id,
+  dentistId,
   clinic_id,
+  clinicBranchId,
   date,
   time,
+  startsAt,
+  endsAt,
   duration = 60,
   type = 'onsite',
+  appointmentType,
   reason = 'Konsultasi gigi',
   notes = '',
   metadata = null,
 }) => {
   try {
-    // Build ISO datetime strings for start and end
-    // Backend expects start/end in ISO 8601 format
-    const startDateTime = new Date(`${date}T${time}:00+07:00`);
-    const endDateTime = new Date(startDateTime.getTime() + duration * 60 * 1000);
+    const resolvedDentistId = dentist_id ?? dentistId;
+    const resolvedClinicId = clinic_id ?? clinicBranchId;
+    const resolvedType = appointmentType || type;
+    const startDateTime = startsAt
+      ? new Date(startsAt)
+      : new Date(`${date}T${time}:00+07:00`);
+    const endDateTime = endsAt
+      ? new Date(endsAt)
+      : new Date(startDateTime.getTime() + duration * 60 * 1000);
+
+    if (!resolvedDentistId) {
+      throw new Error('Dokter belum dipilih.');
+    }
+    if (Number.isNaN(startDateTime.getTime()) || Number.isNaN(endDateTime.getTime())) {
+      throw new Error('Waktu janji temu tidak valid.');
+    }
 
     const payload = {
-      dentistId: dentist_id,
-      clinicBranchId: clinic_id,
+      dentistId: resolvedDentistId,
+      clinicBranchId: resolvedClinicId,
       start: startDateTime.toISOString(),
       end: endDateTime.toISOString(),
-      appointmentType: type, // 'virtual' or 'onsite'
+      appointmentType: resolvedType, // 'virtual' or 'onsite'
       reason,
       notes,
       metadata,
@@ -197,6 +214,24 @@ export const acknowledgeAppointmentClinicalSummary = async (id) => {
   }
 };
 
+export const getPreSessionHealthForm = async (id) => {
+  try {
+    const response = await api.get(`/appointments/${id}/pre-session-health-form`);
+    return response.data;
+  } catch (error) {
+    throw normalizeAppointmentError(error, 'Gagal memuat formulir pra-sesi');
+  }
+};
+
+export const savePreSessionHealthForm = async (id, payload) => {
+  try {
+    const response = await api.put(`/appointments/${id}/pre-session-health-form`, payload);
+    return response.data;
+  } catch (error) {
+    throw normalizeAppointmentError(error, 'Gagal menyimpan formulir pra-sesi');
+  }
+};
+
 /**
  * Cancel an appointment
  * @param {number|string} id - Appointment ID
@@ -256,7 +291,10 @@ export default {
   getCompletedAppointments,
   getAppointmentById,
   getAppointmentClinicalSummary,
+  acknowledgeAppointmentClinicalSummary,
+  getPreSessionHealthForm,
   cancelAppointment,
   rescheduleAppointment,
+  savePreSessionHealthForm,
   getAvailableSlots,
 };

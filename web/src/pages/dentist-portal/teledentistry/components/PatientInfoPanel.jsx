@@ -35,9 +35,109 @@ const CollapsedPanel = ({ isExpanded, onToggleExpanded }) => (
   </div>
 );
 
+const DetailRow = ({ label, value }) => (
+  <div className="rounded-lg border border-primary/10 bg-surface px-3 py-2">
+    <dt className="text-[10px] uppercase tracking-wide text-muted">{label}</dt>
+    <dd className="mt-1 text-xs text-primary leading-relaxed whitespace-pre-wrap">
+      {value || 'Tidak diisi'}
+    </dd>
+  </div>
+);
+
+const PreSessionHealthFormCard = ({ state }) => {
+  const status = state?.status || 'idle';
+  const form = state?.form || null;
+
+  if (status === 'loading') {
+    return (
+      <div className="p-4 border-b border-primary/10 theme-transition">
+        <div className="rounded-xl border border-primary/10 bg-surface p-3">
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <Icon name="Loader2" size={14} className="animate-spin" />
+            Memuat pre-session form...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="p-4 border-b border-primary/10 theme-transition">
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 rounded-lg bg-amber-500/10 p-2 text-amber-700">
+              <Icon name="AlertTriangle" size={15} />
+            </span>
+            <div>
+              <h5 className="text-xs font-semibold text-primary">Pre-session health form</h5>
+              <p className="mt-1 text-xs text-muted leading-relaxed">
+                Form pra-sesi belum dapat dimuat. Sesi tetap dapat berjalan karena form ini opsional.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!form) {
+    return (
+      <div className="p-4 border-b border-primary/10 theme-transition">
+        <div className="rounded-xl border border-dashed border-primary/20 bg-surface p-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 rounded-lg bg-accent/10 p-2 text-accent">
+              <Icon name="ClipboardList" size={15} />
+            </span>
+            <div>
+              <h5 className="text-xs font-semibold text-primary">Pre-session health form</h5>
+              <p className="mt-1 text-xs text-muted leading-relaxed">
+                Pasien belum mengisi form pra-sesi. Form ini opsional, jadi sesi tetap dapat berjalan.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 border-b border-primary/10 theme-transition space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h5 className="text-xs font-semibold text-primary">Pre-session health form</h5>
+          <p className="text-[11px] text-muted mt-0.5">
+            Diisi pasien {form.submittedAt ? new Date(form.submittedAt).toLocaleString('id-ID') : ''}
+          </p>
+        </div>
+        <span className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-semibold text-green-700">
+          Submitted
+        </span>
+      </div>
+
+      <dl className="space-y-2">
+        <DetailRow label="Keluhan utama" value={form.symptoms} />
+        <div className="rounded-lg border border-primary/10 bg-surface px-3 py-2">
+          <dt className="text-[10px] uppercase tracking-wide text-muted">Skala nyeri</dt>
+          <dd className="mt-1 flex items-center gap-2 text-xs text-primary">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/10 font-bold text-accent">
+              {form.painLevel ?? '-'}
+            </span>
+            <span>{form.painLevel ? `${form.painLevel}/10` : 'Tidak diisi'}</span>
+          </dd>
+        </div>
+        <DetailRow label="Alergi" value={form.allergies} />
+        <DetailRow label="Obat yang dikonsumsi" value={form.medications} />
+        <DetailRow label="Catatan tambahan" value={form.notes} />
+      </dl>
+    </div>
+  );
+};
+
 const PatientInfoPanel = ({
   conversation,
   presence = [],
+  preSessionHealthForm,
   onScheduleAppointment,
   onViewMedicalHistory,
   isExpanded,
@@ -130,6 +230,8 @@ const PatientInfoPanel = ({
               </div>
             </div>
           </div>
+
+          <PreSessionHealthFormCard state={preSessionHealthForm} />
 
           <div className="p-4 border-b border-primary/10 theme-transition space-y-3">
             <h5 className="text-xs font-semibold text-primary">Conversation Overview</h5>

@@ -123,8 +123,16 @@ const BookingFailedScreen = () => {
   };
 
   const handleContactSupport = () => {
-    // TODO: Implement support contact
-    console.log('Contact support');
+    const { Alert } = require('react-native');
+    Alert.alert(
+      'Hubungi Customer Service',
+      'Tim kami siap membantu Anda melalui WhatsApp atau email.',
+      [
+        { text: 'Batal', style: 'cancel' },
+        { text: 'WhatsApp', onPress: () => Linking.openURL('https://wa.me/6281234567890').catch(() => {}) },
+        { text: 'Email', onPress: () => Linking.openURL('mailto:support@sereneapps.id').catch(() => {}) },
+      ]
+    );
   };
 
   const handleGoHome = () => {

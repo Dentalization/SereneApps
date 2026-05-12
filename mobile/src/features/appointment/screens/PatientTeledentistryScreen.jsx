@@ -21,6 +21,8 @@ import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 import {
   acknowledgeAppointmentClinicalSummary,
   getAppointmentClinicalSummary,
+  getPreSessionHealthForm,
+  savePreSessionHealthForm,
 } from '../../../services/appointmentService';
 
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
@@ -32,6 +34,7 @@ const COLORS = {
   background: THEME_COLORS.surface || '#F8FAFC',
   black: '#000000',
   accent: THEME_COLORS.accent || '#38BDF8',
+  primaryDark: THEME_COLORS.primaryDark || '#1A0A30', // ISSUE-006: ensure fallback
   gray100: '#F1F5F9',
   gray200: '#E2E8F0',
   gray300: '#CBD5E1',
@@ -147,7 +150,14 @@ const PatientTeledentistryScreen = () => {
   const [currentUser, setCurrentUser] = useState(null);
   useEffect(() => {
     AsyncStorage.getItem('user').then((json) => {
-      if (json) setCurrentUser(JSON.parse(json));
+      if (json) {
+        try {
+          setCurrentUser(JSON.parse(json));
+        } catch (_parseErr) {
+          // RISK-002: Corrupted user data — silently ignore
+          if (__DEV__) console.warn('[Teledentistry] Corrupt user data in AsyncStorage');
+        }
+      }
     }).catch(() => { });
   }, []);
 
@@ -160,6 +170,8 @@ const PatientTeledentistryScreen = () => {
     selectConversation,
     sendMessage,
     sendAttachmentMessage,
+    sendTypingIndicator,
+    typingParticipants,
     emitVideoCallResponse,
     emitVideoCallEnded,
     fetchVideoToken,
@@ -192,6 +204,16 @@ const PatientTeledentistryScreen = () => {
   const [callJoinStatus, setCallJoinStatus] = useState('idle');
   const [callNotice, setCallNotice] = useState(null);
   const [attachmentUpload, setAttachmentUpload] = useState(null);
+  const [healthFormStatus, setHealthFormStatus] = useState('loading');
+  const [healthFormSaving, setHealthFormSaving] = useState(false);
+  const [showHealthForm, setShowHealthForm] = useState(false);
+  const [healthForm, setHealthForm] = useState({
+    symptoms: '',
+    painLevel: null,
+    allergies: '',
+    medications: '',
+    notes: '',
+  });
 
   // ─── UI State ──────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -205,6 +227,7 @@ const PatientTeledentistryScreen = () => {
   // ─── Refs ──────────────────────────────────────────────────────────────────
   const scrollViewRef = useRef(null);
   const callTimerRef = useRef(null);
+  const typingThrottleRef = useRef(0);
 
   // ─── Animations ────────────────────────────────────────────────────────────
   const incomingCallAnim = useRef(new Animated.Value(0)).current;
@@ -228,7 +251,46 @@ const PatientTeledentistryScreen = () => {
     return all;
   }, [chatMessagesFromSocket, systemMessages, currentUser?.id]);
 
-  // ─── Join chat room on mount ───────────────────────────────────────────────
+  const healthFormSubmitted = healthFormStatus === 'submitted';
+
+  // ─── Pre-session health form status. This form is optional. ───────────────
+  useEffect(() => {
+    let ignore = false;
+    if (!appointmentId || !currentUser?.id) {
+      setHealthFormStatus('submitted');
+      return () => { ignore = true; };
+    }
+
+    setHealthFormStatus('loading');
+    getPreSessionHealthForm(appointmentId.toString())
+      .then((result) => {
+        if (ignore) return;
+        if (result?.form) {
+          setHealthForm({
+            symptoms: result.form.symptoms || '',
+            painLevel: result.form.painLevel || null,
+            allergies: result.form.allergies || '',
+            medications: result.form.medications || '',
+            notes: result.form.notes || '',
+          });
+          setHealthFormStatus('submitted');
+          setShowHealthForm(false);
+        } else {
+          setHealthFormStatus('missing');
+          setShowHealthForm(false);
+        }
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setHealthFormStatus('error');
+        setShowHealthForm(false);
+        setCallNotice(error?.message || 'Gagal memuat formulir pra-sesi.');
+      });
+
+    return () => { ignore = true; };
+  }, [appointmentId, currentUser?.id]);
+
+  // ─── Join chat room. The pre-session health form is optional. ─────────────
   useEffect(() => {
     if (appointmentId && currentUser?.id) {
       selectConversation(appointmentId.toString());
@@ -369,6 +431,52 @@ const PatientTeledentistryScreen = () => {
   }, [incomingCall, appointmentId]);
 
   // ─── Actions ───────────────────────────────────────────────────────────────
+  const handleSaveHealthForm = async () => {
+    if (!appointmentId || healthFormSaving) return;
+    const payload = {
+      symptoms: healthForm.symptoms.trim(),
+      painLevel: healthForm.painLevel ? Number(healthForm.painLevel) : null,
+      allergies: healthForm.allergies.trim(),
+      medications: healthForm.medications.trim(),
+      notes: healthForm.notes.trim(),
+      answers: {
+        source: 'patient_mobile_pre_session',
+        optional: true,
+      },
+    };
+
+    setHealthFormSaving(true);
+    try {
+      const result = await savePreSessionHealthForm(appointmentId.toString(), payload);
+      setHealthFormStatus('submitted');
+      setShowHealthForm(false);
+      addSystemMessage('Form kesehatan pra-sesi berhasil dikirim ke dokter.');
+      if (result?.form) {
+        setHealthForm({
+          symptoms: result.form.symptoms || '',
+          painLevel: result.form.painLevel || null,
+          allergies: result.form.allergies || '',
+          medications: result.form.medications || '',
+          notes: result.form.notes || '',
+        });
+      }
+    } catch (error) {
+      setHealthFormStatus('error');
+      Alert.alert('Gagal Menyimpan', error?.message || 'Form kesehatan pra-sesi gagal disimpan.');
+    } finally {
+      setHealthFormSaving(false);
+    }
+  };
+
+  const handleInputTextChange = (text) => {
+    setInputText(text);
+    if (!text.trim() || sessionStatus !== 'active' || !appointmentId) return;
+    const now = Date.now();
+    if (now - typingThrottleRef.current < 2500) return;
+    typingThrottleRef.current = now;
+    sendTypingIndicator?.(appointmentId.toString());
+  };
+
   const handleSend = async () => {
     const trimmed = inputText.trim();
     if (!trimmed || sessionStatus !== 'active') return;
@@ -736,6 +844,9 @@ const PatientTeledentistryScreen = () => {
           </View>
         )}
         <View
+          accessible={true}
+          accessibilityLabel={`Pesan dari ${isUser ? 'Anda' : dentistName}: ${msg.text}, dikirim pada ${formatTimestamp(msg.timestamp)}`}
+          accessibilityRole="text"
           style={{
             maxWidth: '75%',
             paddingHorizontal: 14,
@@ -781,14 +892,70 @@ const PatientTeledentistryScreen = () => {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      {/* Date separator */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-        <View style={{ flex: 1, height: 1, backgroundColor: COLORS.gray200 }} />
-        <Text style={{ marginHorizontal: 12, fontSize: 12, color: COLORS.gray500, fontWeight: '500' }}>Hari ini</Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: COLORS.gray200 }} />
-      </View>
+      {/* Date separator — ISSUE-014: dynamic date */}
+      {(() => {
+        const now = new Date();
+        const firstMsg = chatMessages[0];
+        const msgDate = firstMsg ? firstMsg.timestamp : now;
+        const isToday = msgDate.toDateString() === now.toDateString();
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const isYesterday = msgDate.toDateString() === yesterday.toDateString();
+        const label = isToday ? 'Hari ini' : isYesterday ? 'Kemarin' : msgDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        return (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.gray200 }} />
+            <Text style={{ marginHorizontal: 12, fontSize: 12, color: COLORS.gray500, fontWeight: '500' }}>{label}</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.gray200 }} />
+          </View>
+        );
+      })()}
 
       {chatMessages.map(renderMessage)}
+
+      {sessionStatus === 'active' && healthFormStatus !== 'loading' && !healthFormSubmitted && (
+        <TouchableOpacity
+          onPress={() => setShowHealthForm(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Isi form kesehatan pra-sesi opsional"
+          style={{ marginTop: 8, marginBottom: 12, borderRadius: 18, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.24), backgroundColor: withOpacity(COLORS.primary, 0.08), padding: 14, flexDirection: 'row', alignItems: 'center' }}
+        >
+          <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+            <MaterialCommunityIcons name="clipboard-pulse-outline" size={20} color={COLORS.white} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.primaryDark, fontWeight: '800' }}>
+              Form kesehatan opsional
+            </Text>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>
+              Boleh dilewati. Isi jika ingin memberi konteks awal ke dokter.
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+      )}
+
+      {typingParticipants?.length > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginLeft: 36 }}>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: COLORS.chatDentist,
+            borderWidth: 1,
+            borderColor: COLORS.gray200,
+            borderRadius: 18,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+          }}>
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <MaterialCommunityIcons name="message-processing-outline" size={16} color={COLORS.primary} />
+            </Animated.View>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginLeft: 8, fontWeight: '700' }}>
+              Dokter sedang mengetik...
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Upcoming banner */}
       {sessionStatus === 'upcoming' && resolvedAppointmentDate && (
@@ -928,27 +1095,33 @@ const PatientTeledentistryScreen = () => {
           </TouchableOpacity>
 
           {/* Text Input */}
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: COLORS.gray100,
-              borderRadius: 22,
-              paddingHorizontal: 14,
-              paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-              maxHeight: 120,
-              justifyContent: 'center',
-            }}
-          >
-            <TextInput
-              style={{ fontSize: 14, color: COLORS.gray900, maxHeight: 100, lineHeight: 20 }}
-              placeholder="Ketik pesan..."
-              placeholderTextColor={COLORS.gray400}
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-              maxLength={1000}
-              returnKeyType="default"
-            />
+          <View style={{ flex: 1 }}>
+            <View
+              style={{
+                backgroundColor: COLORS.gray100,
+                borderRadius: 22,
+                paddingHorizontal: 14,
+                paddingVertical: Platform.OS === 'ios' ? 10 : 4,
+                maxHeight: 120,
+                justifyContent: 'center',
+              }}
+            >
+              <TextInput
+                style={{ fontSize: 14, color: COLORS.gray900, maxHeight: 100, lineHeight: 20 }}
+                placeholder="Ketik pesan..."
+                placeholderTextColor={COLORS.gray400}
+                value={inputText}
+                onChangeText={handleInputTextChange}
+                multiline
+                maxLength={1000}
+                returnKeyType="default"
+              />
+            </View>
+            {inputText.length > 800 && (
+              <Text style={{ fontSize: 10, color: COLORS.textMuted, textAlign: 'right', marginTop: 4, marginRight: 8 }}>
+                {inputText.length}/1000
+              </Text>
+            )}
           </View>
 
           {/* Send Button */}
@@ -969,6 +1142,130 @@ const PatientTeledentistryScreen = () => {
             <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? COLORS.white : COLORS.gray400} />
           </TouchableOpacity>
         </View>
+      </View>
+    );
+  };
+
+  const renderPreSessionHealthForm = () => {
+    if (!showHealthForm) return null;
+
+    return (
+      <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 120, backgroundColor: withOpacity(COLORS.black, 0.55), justifyContent: 'flex-end' }}>
+        <Animated.View style={{ maxHeight: '92%', borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', backgroundColor: COLORS.white }}>
+          <LinearGradient
+            colors={[COLORS.primaryDark, COLORS.primary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ paddingTop: 20, paddingHorizontal: 20, paddingBottom: 18 }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 46, height: 46, borderRadius: 18, backgroundColor: withOpacity(COLORS.white, 0.16), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <MaterialCommunityIcons name="clipboard-pulse-outline" size={24} color={COLORS.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.white }}>Form Kesehatan Pra-Sesi</Text>
+                <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.white, 0.75), marginTop: 3 }}>
+                  Opsional. Dokter dapat membacanya jika Anda memilih untuk mengisi.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowHealthForm(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Lewati form kesehatan pra-sesi"
+                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: withOpacity(COLORS.white, 0.14) }}
+              >
+                <MaterialCommunityIcons name="close" size={20} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+
+          <ScrollView style={{ paddingHorizontal: 20 }} contentContainerStyle={{ paddingTop: 18, paddingBottom: Math.max(insets.bottom, 18) + 76 }}>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, lineHeight: 20, marginBottom: 16 }}>
+              Anda tetap bisa masuk chat dan video tanpa mengisi form ini. Jika diisi, dokter mendapat konteks awal sebelum sesi.
+            </Text>
+
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, fontWeight: '800', marginBottom: 8 }}>Keluhan utama</Text>
+            <TextInput
+              value={healthForm.symptoms}
+              onChangeText={(symptoms) => setHealthForm((prev) => ({ ...prev, symptoms }))}
+              placeholder="Contoh: nyeri gigi kanan bawah sejak kemarin"
+              placeholderTextColor={COLORS.gray400}
+              multiline
+              style={{ minHeight: 86, borderRadius: 16, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.gray100, padding: 12, color: COLORS.gray900, textAlignVertical: 'top', marginBottom: 16 }}
+            />
+
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, fontWeight: '800', marginBottom: 8 }}>Skala nyeri</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 }}>
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((level) => {
+                const active = Number(healthForm.painLevel) === level;
+                return (
+                  <TouchableOpacity
+                    key={level}
+                    onPress={() => setHealthForm((prev) => ({ ...prev, painLevel: level }))}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Skala nyeri ${level}`}
+                    style={{ width: '18%', marginRight: '2%', marginBottom: 8, borderRadius: 14, paddingVertical: 10, alignItems: 'center', backgroundColor: active ? COLORS.primary : COLORS.gray100, borderWidth: 1, borderColor: active ? COLORS.primary : COLORS.gray200 }}
+                  >
+                    <Text style={{ fontWeight: '800', color: active ? COLORS.white : COLORS.textSecondary }}>{level}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {[
+              ['allergies', 'Alergi', 'Contoh: alergi ibuprofen atau tidak ada'],
+              ['medications', 'Obat yang sedang dikonsumsi', 'Contoh: amoxicillin, paracetamol, atau tidak ada'],
+              ['notes', 'Catatan tambahan', 'Tambahkan foto/riwayat singkat bila perlu'],
+            ].map(([key, label, placeholder]) => (
+              <View key={key} style={{ marginBottom: 14 }}>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, fontWeight: '800', marginBottom: 8 }}>{label}</Text>
+                <TextInput
+                  value={healthForm[key]}
+                  onChangeText={(value) => setHealthForm((prev) => ({ ...prev, [key]: value }))}
+                  placeholder={placeholder}
+                  placeholderTextColor={COLORS.gray400}
+                  multiline={key === 'notes'}
+                  style={{ minHeight: key === 'notes' ? 72 : 46, borderRadius: 16, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.gray100, padding: 12, color: COLORS.gray900, textAlignVertical: key === 'notes' ? 'top' : 'center' }}
+                />
+              </View>
+            ))}
+
+            {healthFormStatus === 'error' && (
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.error, marginTop: 2 }}>
+                Form belum tersinkron. Periksa koneksi lalu coba simpan lagi.
+              </Text>
+            )}
+          </ScrollView>
+
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 14), backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.gray200 }}>
+            <TouchableOpacity
+              onPress={handleSaveHealthForm}
+              disabled={healthFormSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Simpan form kesehatan pra-sesi"
+              style={{ borderRadius: 18, backgroundColor: COLORS.primary, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+            >
+              {healthFormSaving ? (
+                <ActivityIndicator size="small" color={COLORS.white} style={{ marginRight: 8 }} />
+              ) : (
+                <MaterialCommunityIcons name="check-decagram" size={18} color={COLORS.white} style={{ marginRight: 8 }} />
+              )}
+              <Text style={{ color: COLORS.white, fontWeight: '800' }}>
+                {healthFormSaving ? 'Menyimpan...' : 'Simpan Form'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowHealthForm(false)}
+              disabled={healthFormSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Lewati form kesehatan"
+              style={{ marginTop: 10, paddingVertical: 10, alignItems: 'center' }}
+            >
+              <Text style={{ color: COLORS.textSecondary, fontWeight: '700' }}>Lewati dulu</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </View>
     );
   };
@@ -1150,7 +1447,7 @@ const PatientTeledentistryScreen = () => {
         {/* Top Bar: Timer + Back */}
         <SafeAreaView style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
-            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} onPress={handleEndCall}>
+            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} onPress={handleEndCall} accessibilityLabel="Kembali" accessibilityRole="button">
               <MaterialCommunityIcons name="arrow-left" size={22} color={COLORS.white} />
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: withOpacity(COLORS.white, 0.15), paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
@@ -1283,6 +1580,7 @@ const PatientTeledentistryScreen = () => {
       </KeyboardAvoidingView>
 
       {/* Overlays */}
+      {renderPreSessionHealthForm()}
       {renderIncomingCallOverlay()}
       {renderVideoCallOverlay()}
 

@@ -49,3 +49,11 @@ test('Verified Case Workspace exposes mobile tabs for teledentistry devices', ()
   assert.match(workspace, /xl:hidden/);
   assert.match(workspace, /activeMobileTab/);
 });
+
+test('case export UI does not expose draft exports as a normal verified export path', () => {
+  const source = read('web/src/pages/dentist-portal/ai/components/CaseExportPanel.jsx');
+
+  assert.match(source, /caseRecord\?\.status === 'verified'/);
+  assert.doesNotMatch(source, /draft:\s*true/);
+  assert.match(source, /DRAFT - NOT CLINICIAN VERIFIED/);
+});

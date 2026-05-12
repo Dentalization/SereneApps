@@ -31,7 +31,7 @@ import dentistPortalRouter from './routes/dentist-portal.js';
 import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
 import xCoreRouter from './routes/xCoreRoutes.js';
-import verifiedCasesRouter from './routes/verified-cases.js';
+import verifiedCasesRouter, { assertVerifiedCaseWorkspaceRuntimeMode } from './routes/verified-cases.js';
 import webhooksRouter from './routes/webhooks.js';
 import { verify } from './utils/tokens.js';
 import {
@@ -182,7 +182,12 @@ app.use('/py-api', async (req, res) => {
   }
 });
 
-// Serve static files from uploads directory
+// Verified case clinical images must be retrieved through signed case-storage URLs.
+app.use('/uploads/verified-cases', (_req, res) => {
+  res.status(404).json({ error: { code: 'verified_case_uploads_not_public', message: 'Verified case image storage is not public.' } });
+});
+
+// Serve static files from uploads directory for non-clinical legacy assets.
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Swagger API Documentation
@@ -235,6 +240,7 @@ app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 app.use(errorHandler);
 
 const port = process.env.PORT || 4000;
+assertVerifiedCaseWorkspaceRuntimeMode();
 validateAttachmentStorageConfiguration();
 server.listen(port, () => {
   console.log(`API listening on :${port}`);

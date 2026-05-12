@@ -24,12 +24,14 @@ export function useChat({ userId } = {}) {
   const [activeAppointmentId, setActiveAppointmentId] = useState(null);
   const [messagesByAppointment, setMessagesByAppointment] = useState({});
   const [presenceMap, setPresenceMap] = useState({});
+  const [typingByAppointment, setTypingByAppointment] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
   const [connectionState, setConnectionState] = useState('disconnected');
   const [reconnectError, setReconnectError] = useState(null);
 
   const twilioClientRef = useRef(null);
   const activeConversationRef = useRef(null);
+  const typingTimersRef = useRef({});
 
   // ── Fetch conversations from REST API ────────────────────────
   const fetchConversations = useCallback(async () => {
@@ -113,8 +115,33 @@ export function useChat({ userId } = {}) {
         twilioClientRef.current.shutdown();
         twilioClientRef.current = null;
       }
+      Object.values(typingTimersRef.current).forEach(clearTimeout);
+      typingTimersRef.current = {};
     };
   }, []);
+
+  // ── RISK-003: Proactive token refresh (every 55 min) ─────────
+  useEffect(() => {
+    if (!activeAppointmentId) return;
+
+    const REFRESH_INTERVAL = 55 * 60 * 1000; // 55 minutes
+    const interval = setInterval(async () => {
+      const client = twilioClientRef.current;
+      if (!client) return;
+      try {
+        const { data } = await api.get(`/communications/appointments/${activeAppointmentId}/token`);
+        const newToken = data?.chat?.token || data?.token;
+        if (newToken) {
+          await client.updateToken(newToken);
+          if (__DEV__) console.log('[useChat] Proactive token refresh succeeded');
+        }
+      } catch (e) {
+        console.warn('[useChat] Proactive token refresh failed:', e.message);
+      }
+    }, REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [activeAppointmentId]);
 
   // ── INIT TWILIO SDK / Select Conversation ────────────────────
   const selectConversation = useCallback(async (appointmentId) => {
@@ -123,6 +150,7 @@ export function useChat({ userId } = {}) {
     try {
       // 1-2. Fetch token with retry logic for provision race condition
       let data;
+      let aborted = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const response = await api.get(`/communications/appointments/${appointmentId}/token`);
@@ -131,8 +159,15 @@ export function useChat({ userId } = {}) {
         } catch (err) {
           const errorCode = err.response?.data?.error?.code;
           if (['CONVERSATION_NOT_PROVISIONED', 'COMMUNICATIONS_NOT_READY'].includes(errorCode) && attempt < 2) {
-            console.log(`[useChat] Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
-            await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+            if (__DEV__) console.log(`[useChat] Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, 2000 * Math.pow(2, attempt));
+              // BUG-007: Allow abort on unmount
+              if (aborted) {
+                clearTimeout(timer);
+                reject(new Error('Aborted'));
+              }
+            });
             continue;
           }
           throw err;
@@ -192,6 +227,45 @@ export function useChat({ userId } = {}) {
       conversation.on('participantUpdated', () => updatePresence());
       conversation.on('participantJoined', () => updatePresence());
       conversation.on('participantLeft', () => updatePresence());
+
+      const clearTypingParticipant = (participantKey) => {
+        setTypingByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          return {
+            ...prev,
+            [appointmentId]: current.filter((identity) => identity !== participantKey)
+          };
+        });
+      };
+
+      conversation.on('typingStarted', (participant) => {
+        const identity = participant?.identity || participant?.sid || '';
+        if (!identity || identity === String(userId)) return;
+        const timerKey = `${appointmentId}:${identity}`;
+        if (typingTimersRef.current[timerKey]) {
+          clearTimeout(typingTimersRef.current[timerKey]);
+        }
+        setTypingByAppointment((prev) => {
+          const current = prev[appointmentId] || [];
+          if (current.includes(identity)) return prev;
+          return { ...prev, [appointmentId]: [...current, identity] };
+        });
+        typingTimersRef.current[timerKey] = setTimeout(() => {
+          clearTypingParticipant(identity);
+          delete typingTimersRef.current[timerKey];
+        }, 5000);
+      });
+
+      conversation.on('typingEnded', (participant) => {
+        const identity = participant?.identity || participant?.sid || '';
+        if (!identity || identity === String(userId)) return;
+        const timerKey = `${appointmentId}:${identity}`;
+        if (typingTimersRef.current[timerKey]) {
+          clearTimeout(typingTimersRef.current[timerKey]);
+          delete typingTimersRef.current[timerKey];
+        }
+        clearTypingParticipant(identity);
+      });
 
       // 6. onMessageAdded
       conversation.on('messageAdded', (message) => {
@@ -299,6 +373,17 @@ export function useChat({ userId } = {}) {
     }
   }, []);
 
+  const sendTypingIndicator = useCallback((appointmentId) => {
+    if (!appointmentId || activeAppointmentId !== appointmentId) return;
+    const conversation = activeConversationRef.current;
+    if (!conversation?.typing) return;
+    try {
+      conversation.typing();
+    } catch (error) {
+      if (__DEV__) console.warn('[useChat] typing indicator failed:', error.message);
+    }
+  }, [activeAppointmentId]);
+
   const sendAttachmentMessage = useCallback(async ({ appointmentId, file, onUploadProgress }) => {
     if (!appointmentId || !file) return;
     try {
@@ -369,9 +454,11 @@ export function useChat({ userId } = {}) {
     activeConversation,
     activeAppointmentId,
     messages: activeMessages,
+    typingParticipants: activeAppointmentId ? typingByAppointment[activeAppointmentId] || [] : [],
     incomingCall,
     selectConversation,
     sendMessage,
+    sendTypingIndicator,
     sendAttachmentMessage,
     refreshConversations,
     emitVideoCall,

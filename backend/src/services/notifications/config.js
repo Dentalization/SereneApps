@@ -35,6 +35,9 @@ export const notificationConfig = {
   fcm: {
     serviceAccount: parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT_JSON || '')
   },
+  expo: {
+    enabled: (process.env.EXPO_PUSH_ENABLED || 'true').toLowerCase() !== 'false'
+  },
   apns: {
     enabled: (process.env.APNS_ENABLED || 'false').toLowerCase() === 'true',
     keyId: process.env.APNS_KEY_ID || '',
@@ -49,7 +52,7 @@ export const notificationConfig = {
 };
 
 export function isPushConfigured() {
-  return Boolean(notificationConfig.fcm.serviceAccount);
+  return Boolean(notificationConfig.fcm.serviceAccount || notificationConfig.expo.enabled);
 }
 
 export function isEmailConfigured() {

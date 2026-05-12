@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { PaperProvider } from 'react-native-paper';
 import { Provider as ReduxProvider, useSelector } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
@@ -20,6 +20,7 @@ import {
   PixelRatio 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { subscribeAppointmentReminderResponses } from './src/services/pushNotificationService';
 
 // --- UTILS RESPONSIVE (Agar konsisten dengan screen lain) ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -199,11 +200,17 @@ function AppContent() {
   try {
     const isDarkMode = useSelector((state) => state?.settings?.isDarkMode || false);
     const theme = isDarkMode ? darkTheme : lightTheme;
+    const navigationRef = useNavigationContainerRef();
+
+    useEffect(() => {
+      const unsubscribe = subscribeAppointmentReminderResponses(navigationRef);
+      return unsubscribe;
+    }, [navigationRef]);
 
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
-          <NavigationContainer>
+          <NavigationContainer ref={navigationRef}>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} />
             <React.Suspense
               fallback={null} // Fallback null karena Splash ditangani di App level

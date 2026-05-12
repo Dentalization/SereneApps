@@ -17,6 +17,12 @@ const upload = multer({
 
 let defaultServicePromise = null;
 
+function assertVerifiedCaseWorkspaceRuntimeMode(env = process.env) {
+  if (env.NODE_ENV === 'production' && env.VERIFIED_CASE_WORKSPACE_STORE === 'memory') {
+    throw new Error('verified_case_memory_store_forbidden');
+  }
+}
+
 async function createDefaultDbBackedService() {
   const { query } = await import('../db.js');
   return createVerifiedCaseWorkspaceService({
@@ -27,6 +33,7 @@ async function createDefaultDbBackedService() {
 }
 
 async function getDefaultService() {
+  assertVerifiedCaseWorkspaceRuntimeMode();
   if (process.env.VERIFIED_CASE_WORKSPACE_STORE === 'memory') {
     return verifiedCaseWorkspaceStore;
   }
@@ -39,8 +46,8 @@ function actorFromRequest(req) {
   return {
     id: req.user?.id || req.user?.userId,
     role: roles.includes('admin') ? 'admin' : roles.includes('dentist') ? 'dentist' : roles.includes('patient') ? 'patient' : roles[0],
-    tenantId: req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || null,
-    clinicId: req.user?.clinicId || req.user?.clinic_id || req.headers['x-clinic-id'] || null,
+    tenantId: req.user?.tenantId || req.user?.tenant_id || null,
+    clinicId: req.user?.clinicId || req.user?.clinic_id || null,
   };
 }
 
@@ -59,6 +66,9 @@ function sendStoreError(res, error) {
     code.includes('quality') ||
     code.includes('transition') ||
     code.includes('mutation') ? 400 :
+    code.includes('scope') ||
+    code.includes('signed_storage') ||
+    code.includes('signed') ? 403 :
     500);
   return sendError(res, status, code, code.replace(/_/g, ' '));
 }
@@ -76,6 +86,17 @@ function asyncRoute(handler) {
 function createVerifiedCasesRouter({ service = null, serviceFactory = null } = {}) {
   const router = express.Router();
   const resolveService = async () => service || (serviceFactory ? serviceFactory() : getDefaultService());
+
+  router.get('/case-storage/:token', asyncRoute(async (req, res) => {
+    const svc = await resolveService();
+    if (!svc.storage?.getSignedObject) {
+      return sendError(res, 404, 'storage_object_not_found', 'Storage object not found.');
+    }
+    const object = await svc.storage.getSignedObject(req.params.token);
+    res.setHeader('Content-Type', object.metadata?.mimeType || object.metadata?.mime_type || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(object.buffer);
+  }));
 
   router.get('/cases', authenticateToken, requireRoles(['dentist', 'admin']), asyncRoute(async (req, res) => {
     const svc = await resolveService();
@@ -313,5 +334,5 @@ function createVerifiedCasesRouter({ service = null, serviceFactory = null } = {
 
 const router = createVerifiedCasesRouter();
 
-export { createVerifiedCasesRouter };
+export { assertVerifiedCaseWorkspaceRuntimeMode, createVerifiedCasesRouter };
 export default router;

@@ -25,9 +25,10 @@ async function withServer(service, fn) {
   app.use('/v1', createVerifiedCasesRouter({ service }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const baseUrl = `${origin}/v1`;
   try {
-    await fn(baseUrl);
+    await fn(baseUrl, origin);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -47,14 +48,13 @@ function makeService() {
   });
 }
 
-async function jsonFetch(baseUrl, path, body, bearerToken = token({ sub: '1001', roles: ['dentist'], clinicId: 'clinic-a', tenantId: 'tenant-a' })) {
+async function jsonFetch(baseUrl, path, body, bearerToken = token({ sub: '1001', roles: ['dentist'], clinicId: 'clinic-a', tenantId: 'tenant-a' }), extraHeaders = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       Authorization: `Bearer ${bearerToken}`,
       'Content-Type': 'application/json',
-      'x-clinic-id': 'clinic-a',
-      'x-tenant-id': 'tenant-a',
+      ...extraHeaders,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -71,6 +71,39 @@ test('route analyze without quality check returns 400 quality_check_required', a
     const { response, data } = await jsonFetch(baseUrl, `/cases/${created.id}/images/${image.id}/analyze`, {});
     assert.equal(response.status, 400);
     assert.equal(data.error.code, 'quality_check_required');
+  });
+});
+
+test('route ignores tenant header fallback and rejects dentist tokens without clinic scope', async () => {
+  const service = makeService();
+  await service.createCase({ title: 'Scoped case', actor: { id: '1001', role: 'dentist', clinicId: 'clinic-a', tenantId: 'tenant-a' } });
+
+  await withServer(service, async (baseUrl) => {
+    const { response, data } = await jsonFetch(
+      baseUrl,
+      '/cases',
+      undefined,
+      token({ sub: '9999', roles: ['dentist'] }),
+      { 'x-clinic-id': 'clinic-a', 'x-tenant-id': 'tenant-a' }
+    );
+    assert.equal(response.status, 403);
+    assert.equal(data.error.code, 'tenant_scope_required');
+  });
+});
+
+test('route serves uploaded images through signed case storage endpoint', async () => {
+  const service = makeService();
+  const actor = { id: '1001', role: 'dentist', clinicId: 'clinic-a', tenantId: 'tenant-a' };
+  const created = await service.createCase({ title: 'Signed storage', actor });
+  const image = await service.addCaseImage({ caseId: created.id, file: imageFile(), actor });
+
+  assert.match(image.signed_url, /^\/v1\/case-storage\//);
+  assert.doesNotMatch(image.signed_url, /^\/uploads\/verified-cases\//);
+
+  await withServer(service, async (_baseUrl, origin) => {
+    const response = await fetch(`${origin}${image.signed_url}`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'image!');
   });
 });
 

@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS verified_cases (
   )
 );
 
+ALTER TABLE verified_cases ADD COLUMN IF NOT EXISTS tenant_id TEXT NULL;
+ALTER TABLE verified_cases ADD COLUMN IF NOT EXISTS clinic_id TEXT NULL;
+
 CREATE TABLE IF NOT EXISTS case_images (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   case_id UUID NOT NULL REFERENCES verified_cases(id) ON DELETE CASCADE,
@@ -126,6 +129,11 @@ CREATE TABLE IF NOT EXISTS case_audit_events (
   device_metadata JSONB NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE case_audit_events DROP CONSTRAINT IF EXISTS case_audit_events_case_id_fkey;
+ALTER TABLE case_audit_events
+  ADD CONSTRAINT case_audit_events_case_id_fkey
+  FOREIGN KEY (case_id) REFERENCES verified_cases(id) ON DELETE RESTRICT;
 
 CREATE TABLE IF NOT EXISTS case_exports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

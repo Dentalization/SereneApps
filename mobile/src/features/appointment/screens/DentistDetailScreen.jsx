@@ -5,7 +5,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getDentistById } from '../../../services/dentistService';
-import { API_BASE_URL } from '../../../services/api';
 import resolveMediaUrl from '../../../utils/media';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import ValidationToast from '../../settings/components/ValidationToast';
@@ -42,8 +41,8 @@ const Section = ({ title, children, action, style }) => (
   </View>
 );
 
-const DICEBEAR_BG = encodeURIComponent('8B5CF6,A78BFA,C4B5FD,DDD6FE');
-const API_BASE = API_BASE_URL.replace(/\/$/, '');
+const DICEBEAR_BG = '8B5CF6';
+// API_BASE removed — was unused (ISSUE-017)
 
 const normalizeDicebear = (url = '', fallbackSeed) => {
   if (!url || typeof url !== 'string') {
@@ -180,10 +179,10 @@ const DentistDetailScreen = () => {
             name: service,
             price: dentistData.consultation_fee,
           })),
-          availability: workingHours
+          workingHours: workingHours
             ? Object.entries(workingHours).map(([day, hours]) => ({
                 day: day.charAt(0).toUpperCase() + day.slice(1),
-                slots: hours === 'Tutup' ? [] : [hours.split('-')[0]],
+                slots: hours === 'Tutup' ? [] : [hours],
               }))
             : [],
           achievements: dentistData.is_verified
@@ -212,7 +211,7 @@ const DentistDetailScreen = () => {
           isVerified: dentistData.is_verified,
           licenseNumber: dentistData.license_number,
           registrationNumber: dentistData.registration_number,
-          patientsHelped: Math.floor(Math.random() * 1000) + 500, // TODO: Add to backend
+          patientsHelped: dentistData.patients_count || dentistData.patientsHelped || null, // BUG-005: stable fallback, no random
           responseTime: '2 jam', // TODO: Add to backend
         };
 
@@ -261,11 +260,18 @@ const DentistDetailScreen = () => {
       params: { dentistId: dentist?.id, dentist, ...appendClinicContext },
     });
 
-  const handleMessage = () =>
-    navigation.navigate('AppointmentTab', {
-      screen: 'BookingSlot',
-      params: { dentistId: dentist?.id, dentist, ...appendClinicContext },
-    });
+  const handleMessage = () => {
+    // ISSUE-003: show alert to book first instead of navigating to BookingSlot
+    const { Alert } = require('react-native');
+    Alert.alert(
+      'Buat Janji Dulu',
+      'Chat dengan dokter tersedia setelah membuat janji temu.',
+      [
+        { text: 'Nanti', style: 'cancel' },
+        { text: 'Buat Janji', onPress: handleBook },
+      ]
+    );
+  };
 
   const handleCall = () => {
     if (dentist?.contact?.phone) {
@@ -354,7 +360,7 @@ const DentistDetailScreen = () => {
         </View>
         <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '600' }}>{label}</Text>
       </View>
-      <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>{value}</Text>
+      <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary }}>{value !== null && value !== undefined ? value : '—'}</Text>
     </View>
   );
 
@@ -565,7 +571,7 @@ const DentistDetailScreen = () => {
                 }}
               >
                 <Text style={{ fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{slot.day}</Text>
-                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{slot.slots.join(' • ')}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{slot.slots.length === 0 ? 'Tutup' : slot.slots.join(' • ')}</Text>
               </View>
             ))}
           </Section>
@@ -642,9 +648,11 @@ const DentistDetailScreen = () => {
       <View
         style={{
           position: 'absolute',
+          bottom: 0,
           left: 0,
           right: 0,
               padding: 20,
+          paddingBottom: insets.bottom + 20,
           backgroundColor: withOpacity(COLORS.surface, 0.95),
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,

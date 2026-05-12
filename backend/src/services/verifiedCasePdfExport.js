@@ -33,9 +33,11 @@ export async function buildVerifiedCasePdf({
   exports = [],
   storage,
   redacted = false,
+  draft = false,
   exportedAt = new Date().toISOString(),
 } = {}) {
-  const doc = new PDFDocument({ margin: 48, size: 'LETTER', info: { Title: 'DeepDental Verified Case Report' } });
+  const reportTitle = draft ? 'DeepDental Draft Case Report' : 'DeepDental Verified Case Report';
+  const doc = new PDFDocument({ margin: 48, size: 'LETTER', compress: false, info: { Title: reportTitle } });
   const chunks = [];
   doc.on('data', (chunk) => chunks.push(chunk));
   const done = new Promise((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
@@ -44,9 +46,20 @@ export async function buildVerifiedCasePdf({
     ? 'REDACTED'
     : textValue(caseRecord.patient_code || caseRecord.patient_id, 'Unlinked patient');
 
-  doc.fontSize(18).font('Helvetica-Bold').text('DeepDental Verified Case Report');
+  if (draft) {
+    doc.rect(48, 38, 516, 34).fill('#7f1d1d');
+    doc.fillColor('white').fontSize(14).font('Helvetica-Bold').text('DRAFT - NOT CLINICIAN VERIFIED', 56, 48);
+    doc.fillColor('black').moveDown(2);
+  }
+
+  doc.fontSize(18).font('Helvetica-Bold').text(reportTitle);
   doc.moveDown(0.4);
   doc.fontSize(9).font('Helvetica').text('AI-assisted findings are preliminary. Final interpretation requires clinician judgment and in-person examination when clinically indicated.');
+  if (draft) {
+    doc.moveDown(0.3);
+    doc.font('Helvetica-Bold').text('DRAFT - NOT CLINICIAN VERIFIED. This export is not valid as a finalized clinical report.');
+    doc.font('Helvetica');
+  }
 
   writeSection(doc, 'Case Metadata');
   doc.text(`Case ID: ${caseRecord.id}`);

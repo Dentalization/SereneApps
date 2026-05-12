@@ -115,13 +115,19 @@ export const templates = {
       const start = formatDate(appointment.startsAt || appointment.starts_at);
       const partner = counterpartName(recipientRole, appointment);
       const lead = payload.leadTimeLabel || 'upcoming';
+      const isJoinReminder = payload.joinAvailable === true;
       return {
         push: {
-          title: 'Appointment Reminder',
-          body: `Reminder: ${partner} awaits you ${lead} (${start}).`,
+          title: isJoinReminder ? 'Konsultasi dimulai sebentar lagi' : 'Appointment Reminder',
+          body: isJoinReminder
+            ? `Konsultasi dengan ${partner} dimulai ${lead}. Ketuk untuk masuk.`
+            : `Reminder: ${partner} awaits you ${lead} (${start}).`,
           data: {
             appointment_id: appointment.id.toString(),
-            event_type: 'appointment_reminder'
+            event_type: 'appointment_reminder',
+            screen: isJoinReminder ? 'PatientTeledentistry' : 'DetailAppointment',
+            dentist_name: appointment.dentist?.name || '',
+            starts_at: (appointment.startsAt || appointment.starts_at)?.toISOString?.() || ''
           }
         },
         email: {

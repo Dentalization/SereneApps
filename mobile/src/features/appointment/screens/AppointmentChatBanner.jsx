@@ -27,24 +27,39 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
     .substring(0, 2)
     .toUpperCase();
 
-  const { isChatReady, timeLabel } = useMemo(() => {
-    if (!appointment?.startsAt) return { isChatReady: true, timeLabel: null };
-    const startsAt = new Date(appointment.startsAt);
-    const now = new Date();
-    const diff = startsAt.getTime() - now.getTime();
+  const [timeState, setTimeState] = React.useState({ isChatReady: true, timeLabel: null });
 
-    if (diff <= 0) {
-      return { isChatReady: true, timeLabel: null };
+  React.useEffect(() => {
+    if (!appointment?.startsAt) {
+      setTimeState({ isChatReady: true, timeLabel: null });
+      return;
     }
-    if (diff <= CHAT_READY_THRESHOLD_MS) {
-      return { isChatReady: true, timeLabel: null };
-    }
-    // More than 2 hours away
-    const hours = Math.floor(diff / (60 * 60 * 1000));
-    const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
-    const label = hours > 0 ? `${hours} jam ${mins} menit lagi` : `${mins} menit lagi`;
-    return { isChatReady: false, timeLabel: label };
+
+    const calculateTime = () => {
+      const startsAt = new Date(appointment.startsAt);
+      const now = new Date();
+      const diff = startsAt.getTime() - now.getTime();
+
+      if (diff <= 0 || diff <= CHAT_READY_THRESHOLD_MS) {
+        return { isChatReady: true, timeLabel: null };
+      }
+      
+      const hours = Math.floor(diff / (60 * 60 * 1000));
+      const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      const label = hours > 0 ? `${hours} jam ${mins} menit lagi` : `${mins} menit lagi`;
+      return { isChatReady: false, timeLabel: label };
+    };
+
+    setTimeState(calculateTime());
+    
+    const interval = setInterval(() => {
+      setTimeState(calculateTime());
+    }, 60000); // update every minute
+
+    return () => clearInterval(interval);
   }, [appointment?.startsAt]);
+
+  const { isChatReady, timeLabel } = timeState;
 
   return (
     <TouchableOpacity
@@ -101,7 +116,7 @@ const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
               borderRadius: 6,
               backgroundColor: COLORS.success,
               borderWidth: 2,
-              borderColor: isChatReady ? withOpacity(COLORS.success, 0.1) : COLORS.surface,
+              borderColor: COLORS.surfaceElevated,
             }}
           />
         )}

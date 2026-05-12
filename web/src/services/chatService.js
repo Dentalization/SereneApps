@@ -86,6 +86,11 @@ export async function acknowledgeClinicalSummary(appointmentId) {
   return data;
 }
 
+export async function fetchPreSessionHealthForm(appointmentId) {
+  const { data } = await authHttp.get(`/appointments/${appointmentId}/pre-session-health-form`);
+  return data;
+}
+
 export async function listCommunicationParticipants(appointmentId) {
   const { data } = await authHttp.get(`/communications/appointments/${appointmentId}/participants`);
   return data?.participants || [];
