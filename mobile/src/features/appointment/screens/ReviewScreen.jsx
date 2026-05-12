@@ -7,13 +7,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import api from '../../../services/api';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
 
-const StarPicker = ({ value, onChange }) => {
+const StarPicker = ({ value, onChange, size = 36 }) => {
   const scaleAnims = useRef([1, 2, 3, 4, 5].map(() => new Animated.Value(1))).current;
 
   const handlePress = (star) => {
@@ -52,7 +53,7 @@ const StarPicker = ({ value, onChange }) => {
           >
             <MaterialCommunityIcons
               name={star <= value ? 'star' : 'star-outline'}
-              size={36}
+              size={size}
               color={star <= value ? COLORS.warning : COLORS.border}
             />
           </TouchableOpacity>
@@ -84,6 +85,13 @@ const ReviewScreen = () => {
   } = route.params || {};
 
   const [rating, setRating] = useState(0);
+  const [categoryRatings, setCategoryRatings] = useState({
+    communication: 0,
+    timeliness: 0,
+    quality: 0,
+  });
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [photos, setPhotos] = useState([]);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -99,6 +107,13 @@ const ReviewScreen = () => {
         dentistId,
         clinicBranchId,
         rating,
+        categoryRatings,
+        tags: selectedTags,
+        photos: photos.map((photo) => ({
+          uri: photo.uri,
+          fileName: photo.fileName,
+          mimeType: photo.mimeType,
+        })),
         comment: comment.trim() || undefined,
       });
       Alert.alert(
@@ -111,6 +126,33 @@ const ReviewScreen = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const updateCategoryRating = (key, value) => {
+    const next = { ...categoryRatings, [key]: value };
+    setCategoryRatings(next);
+    const values = Object.values(next).filter(Boolean);
+    if (values.length) {
+      setRating(Math.round(values.reduce((sum, item) => sum + item, 0) / values.length));
+    }
+  };
+
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) => (
+      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]
+    ));
+  };
+
+  const pickReviewPhoto = async () => {
+    if (photos.length >= 3) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 3 - photos.length,
+    });
+    if (result.canceled) return;
+    setPhotos((prev) => [...prev, ...(result.assets || [])].slice(0, 3));
   };
 
   // Two-letter initials from dentist name
@@ -244,6 +286,38 @@ const ReviewScreen = () => {
           }}
         >
           <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary, marginBottom: 12 }}>
+            Detail Penilaian
+          </Text>
+          {[
+            ['communication', 'Komunikasi Dokter'],
+            ['timeliness', 'Ketepatan Jadwal'],
+            ['quality', 'Kualitas Konsultasi'],
+          ].map(([key, label]) => (
+            <View key={key} style={{ marginBottom: 14 }}>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginBottom: 6, fontWeight: '700' }}>{label}</Text>
+              <StarPicker value={categoryRatings[key]} onChange={(value) => updateCategoryRating(key, value)} size={24} />
+            </View>
+          ))}
+
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary, marginBottom: 12, marginTop: 4 }}>
+            Tag pengalaman
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 14 }}>
+            {['Dokter ramah', 'Tepat waktu', 'Penjelasan jelas', 'Ruangan bersih', 'Harga terjangkau'].map((tag) => {
+              const selected = selectedTags.includes(tag);
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => toggleTag(tag)}
+                  style={{ borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: selected ? COLORS.primary : COLORS.surface, borderWidth: 1, borderColor: selected ? COLORS.primary : COLORS.border }}
+                >
+                  <Text style={{ ...TYPOGRAPHY.caption, color: selected ? COLORS.white : COLORS.textSecondary, fontWeight: '800' }}>{tag}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary, marginBottom: 12 }}>
             Komentar (opsional)
           </Text>
           <TextInput
@@ -264,6 +338,18 @@ const ReviewScreen = () => {
               textAlignVertical: 'top',
             }}
           />
+
+          <TouchableOpacity
+            onPress={pickReviewPhoto}
+            disabled={photos.length >= 3}
+            style={{ marginTop: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: 12, flexDirection: 'row', alignItems: 'center', opacity: photos.length >= 3 ? 0.6 : 1 }}
+          >
+            <MaterialCommunityIcons name="camera-plus-outline" size={20} color={COLORS.primary} />
+            <Text style={{ marginLeft: 8, ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '800' }}>
+              Tambah foto (opsional)
+            </Text>
+            <Text style={{ marginLeft: 'auto', ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{photos.length}/3</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Submit */}

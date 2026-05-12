@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
+import { View, ScrollView, Image, TouchableOpacity, StatusBar, Linking, Animated, Easing } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,6 +13,7 @@ import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { API_BASE_URL } from '../../../services/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors as COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
@@ -56,6 +57,24 @@ const formatClinicDistance = (distanceKm) => {
   return '—';
 };
 
+const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAY_LABELS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+
+const normalizeHours = (hours) => {
+  if (!hours || typeof hours !== 'object') return [];
+  return DAY_KEYS.map((key, index) => {
+    const value = hours[key] || hours[DAY_LABELS[index]?.toLowerCase?.()] || hours[index];
+    const open = value?.open || value?.openTime || value?.start || value?.from;
+    const close = value?.close || value?.closeTime || value?.end || value?.to;
+    const closed = value?.closed || value === null || value === 'closed' || value === 'Tutup';
+    return {
+      key,
+      label: DAY_LABELS[index],
+      value: closed || (!open && !close) ? 'Tutup' : `${open || '—'}–${close || '—'}`,
+    };
+  });
+};
+
 // Section Component
 
 const Section = ({ title, description, children, onLayout }) => (
@@ -82,12 +101,17 @@ const ClinicDetailScreen = () => {
   const [clinic, setClinic] = useState(initialClinic);
   const [loading, setLoading] = useState(!initialClinic);
   const [error, setError] = useState(null);
+  const [favoriteClinicIds, setFavoriteClinicIds] = useState([]);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
+  const favoriteScale = useRef(new Animated.Value(1)).current;
+  const hoursAnim = useRef(new Animated.Value(0)).current;
 
   const { toast, showToast, hideToast } = useToast();
 
   // Store section positions
   const sectionPositions = useRef({
     kontak: 0,
+    jam: 0,
     keunggulan: 0,
     layanan: 0,
     dokter: 0,
@@ -99,6 +123,24 @@ const ClinicDetailScreen = () => {
 
   const clinicId = route.params?.clinicId || initialClinic?.id;
   const isLiveClinicId = /^\d+$/.test(clinicId?.toString?.() || '');
+
+  useEffect(() => {
+    AsyncStorage.getItem('favoriteClinicIds')
+      .then((value) => setFavoriteClinicIds(JSON.parse(value || '[]')))
+      .catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    if (!clinic?.id || !clinic?.name) return;
+    AsyncStorage.getItem('recentlyViewedClinics')
+      .then((value) => {
+        const current = JSON.parse(value || '[]');
+        const entry = { id: clinic.id?.toString?.() || clinic.id, name: clinic.name };
+        const next = [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, 5);
+        return AsyncStorage.setItem('recentlyViewedClinics', JSON.stringify(next));
+      })
+      .catch(() => null);
+  }, [clinic?.id, clinic?.name]);
 
   useEffect(() => {
     let ignore = false;
@@ -197,6 +239,7 @@ const ClinicDetailScreen = () => {
 
   const sections = [
     { id: 'kontak', label: 'Kontak', icon: 'map-marker' },
+    { id: 'jam', label: 'Jam', icon: 'clock-outline' },
     { id: 'keunggulan', label: 'Keunggulan', icon: 'star' },
     { id: 'layanan', label: 'Layanan', icon: 'medical-bag' },
     { id: 'dokter', label: 'Dokter', icon: 'doctor' },
@@ -255,6 +298,32 @@ const ClinicDetailScreen = () => {
     if (clinic?.phone || clinic?.contact?.phone) {
       Linking.openURL(`tel:${clinic?.phone || clinic?.contact?.phone}`).catch(() => { });
     }
+  };
+
+  const toggleFavorite = () => {
+    const id = clinic?.id?.toString?.() || clinic?.id;
+    if (!id) return;
+    const next = favoriteClinicIds.includes(id)
+      ? favoriteClinicIds.filter((item) => item !== id)
+      : [...favoriteClinicIds, id];
+    setFavoriteClinicIds(next);
+    AsyncStorage.setItem('favoriteClinicIds', JSON.stringify(next)).catch(() => null);
+    favoriteScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(favoriteScale, { toValue: 1.35, friction: 3, useNativeDriver: true }),
+      Animated.spring(favoriteScale, { toValue: 1, friction: 4, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const toggleHours = () => {
+    const next = !hoursExpanded;
+    setHoursExpanded(next);
+    Animated.timing(hoursAnim, {
+      toValue: next ? 1 : 0,
+      duration: 250,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start();
   };
 
   if (loading) {
@@ -339,9 +408,10 @@ const ClinicDetailScreen = () => {
               <MaterialCommunityIcons name="arrow-left" size={22} color="white" />
             </TouchableOpacity>
             <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Detail Klinik</Text>
-            <TouchableOpacity
-              onPress={handleBook}
-              accessibilityLabel="Buat Janji Temu"
+            <Animated.View style={{ transform: [{ scale: favoriteScale }] }}>
+              <TouchableOpacity
+              onPress={toggleFavorite}
+              accessibilityLabel="Simpan klinik"
               accessibilityRole="button"
               style={{
                 width: 48,
@@ -352,8 +422,13 @@ const ClinicDetailScreen = () => {
                 justifyContent: 'center',
               }}
             >
-              <MaterialCommunityIcons name="calendar" size={22} color="white" />
-            </TouchableOpacity>
+              <MaterialCommunityIcons
+                name={favoriteClinicIds.includes(clinic?.id?.toString?.() || clinic?.id) ? 'heart' : 'heart-outline'}
+                size={22}
+                color={favoriteClinicIds.includes(clinic?.id?.toString?.() || clinic?.id) ? COLORS.error : 'white'}
+              />
+              </TouchableOpacity>
+            </Animated.View>
           </View>
 
           <View style={{ marginTop: 24 }}>
@@ -483,6 +558,56 @@ const ClinicDetailScreen = () => {
                 <MaterialCommunityIcons name="email" size={18} color={COLORS.primary} />
                 <Text style={{ marginLeft: 8, color: COLORS.textPrimary }}>{clinic.email}</Text>
               </View>
+            </View>
+          </Section>
+
+          <Section
+            title="Jam Operasional"
+            description="Periksa jam buka sebelum datang ke klinik."
+            onLayout={(e) => handleSectionLayout('jam', e)}
+          >
+            <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' }}>
+              <TouchableOpacity
+                onPress={toggleHours}
+                accessibilityRole="button"
+                accessibilityLabel="Lihat jam operasional klinik"
+                style={{ padding: 16, flexDirection: 'row', alignItems: 'center' }}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: withOpacity(clinic.isOpenNow ? COLORS.success : COLORS.error, 0.12), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <MaterialCommunityIcons name="clock-outline" size={20} color={clinic.isOpenNow ? COLORS.success : COLORS.error} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...TYPOGRAPHY.bodyLarge, color: COLORS.textPrimary, fontWeight: '800' }}>
+                    {clinic.openStatus || 'Jam operasional tersedia'}
+                  </Text>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: clinic.isOpenNow ? COLORS.success : COLORS.error, marginTop: 2, fontWeight: '700' }}>
+                    {clinic.isOpenNow ? 'Buka Sekarang' : 'Tutup'}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name={hoursExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={COLORS.textMuted} />
+              </TouchableOpacity>
+              <Animated.View style={{ maxHeight: hoursAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }), overflow: 'hidden' }}>
+                {normalizeHours(clinic.operatingHours).map((row, index) => {
+                  const jsDay = new Date().getDay();
+                  const todayIndex = jsDay === 0 ? 6 : jsDay - 1;
+                  const isToday = index === todayIndex;
+                  return (
+                    <View
+                      key={row.key}
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: isToday ? withOpacity(COLORS.primary, 0.08) : 'transparent',
+                      }}
+                    >
+                      <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, fontWeight: isToday ? '800' : '600' }}>{row.label}</Text>
+                      <Text style={{ ...TYPOGRAPHY.bodySmall, color: row.value === 'Tutup' ? COLORS.error : COLORS.textSecondary, fontWeight: '700' }}>{row.value}</Text>
+                    </View>
+                  );
+                })}
+              </Animated.View>
             </View>
           </Section>
 

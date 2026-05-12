@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image, Alert, RefreshControl } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image, Alert, RefreshControl, Animated } from 'react-native';
 import { Text, Button, ActivityIndicator, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -27,6 +27,8 @@ const DetailAppointmentScreen = () => {
   const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [loading, setLoading] = useState(!route.params?.appointment);
   const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const chatPulse = useRef(new Animated.Value(0)).current;
 
   const fetchDetail = useCallback(async (showLoading = true) => {
     if (!appointmentId) return;
@@ -58,6 +60,22 @@ const DetailAppointmentScreen = () => {
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!appointment?.startsAt) return;
+    const remaining = new Date(appointment.startsAt).getTime() - now.getTime();
+    if (remaining <= 0 && remaining > -2500) {
+      Animated.sequence([
+        Animated.timing(chatPulse, { toValue: 1, duration: 250, useNativeDriver: false }),
+        Animated.timing(chatPulse, { toValue: 0, duration: 900, useNativeDriver: false }),
+      ]).start();
+    }
+  }, [appointment?.startsAt, chatPulse, now]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -140,6 +158,20 @@ const DetailAppointmentScreen = () => {
     || appointment?.type === 'virtual'
     || appointment?.metadata?.appointmentType === 'virtual'
     || Boolean(appointment?.videoRoomRef);
+  const remainingMs = appointment?.startsAt ? new Date(appointment.startsAt).getTime() - now.getTime() : 0;
+  const remainingLabel = remainingMs > 60 * 60 * 1000
+    ? `${Math.floor(remainingMs / 3600000)}j ${Math.floor((remainingMs % 3600000) / 60000)}m`
+    : remainingMs > 0
+      ? `${Math.floor(remainingMs / 60000)}m ${Math.floor((remainingMs % 60000) / 1000)}s`
+      : 'Mulai sekarang';
+  const lifecycleSteps = ['Dipesan', 'Dikonfirmasi', 'Berlangsung', 'Selesai'];
+  const currentStep = appointment?.status === 'completed' || appointment?.status === 'finished'
+    ? 3
+    : appointment?.status === 'confirmed'
+      ? 1
+      : remainingMs <= 0 && ['scheduled', 'confirmed'].includes(appointment?.status)
+        ? 2
+        : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
@@ -160,6 +192,40 @@ const DetailAppointmentScreen = () => {
           </TouchableOpacity>
           <View style={{ backgroundColor: withOpacity(COLORS.white, 0.2), paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
             <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.surfaceElevated, fontWeight: '700' }}>#{appointmentId?.toString().slice(-6).toUpperCase()}</Text>
+          </View>
+        </View>
+
+        {['scheduled', 'confirmed'].includes(appointment?.status) && (
+          <View style={{ marginTop: 18, backgroundColor: COLORS.surfaceElevated, borderRadius: 22, padding: 16, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.14) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 7, borderColor: withOpacity(COLORS.primary, 0.18), alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '900', textAlign: 'center' }}>{remainingLabel}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '800', textTransform: 'uppercase' }}>Sesi dimulai dalam</Text>
+                <Text style={{ ...TYPOGRAPHY.bodyLarge, color: COLORS.textPrimary, fontWeight: '800', marginTop: 4 }}>
+                  Siapkan koneksi dan dokumen pendukung sebelum masuk ruang konsultasi.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View style={{ marginTop: 20, backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16 }}>
+          <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 14 }}>Status Janji Temu</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            {lifecycleSteps.map((step, index) => {
+              const done = index < currentStep;
+              const active = index === currentStep;
+              return (
+                <View key={step} style={{ flex: 1, alignItems: 'center' }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: done ? COLORS.success : active ? COLORS.primary : COLORS.border, alignItems: 'center', justifyContent: 'center' }}>
+                    {done ? <MaterialCommunityIcons name="check" size={14} color={COLORS.white} /> : null}
+                  </View>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: active ? COLORS.primary : COLORS.textMuted, marginTop: 6, textAlign: 'center', fontWeight: active ? '800' : '600' }}>{step}</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -220,6 +286,7 @@ const DetailAppointmentScreen = () => {
 
         {/* Chat Banner */}
         {(appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
+          <Animated.View style={{ borderRadius: 20, borderWidth: chatPulse.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }), borderColor: chatPulse.interpolate({ inputRange: [0, 1], outputRange: [withOpacity(COLORS.primary, 0), COLORS.primary] }) }}>
           <AppointmentChatBanner 
             appointment={appointment} 
             onPress={() => navigation.navigate('PatientTeledentistry', { 
@@ -231,6 +298,7 @@ const DetailAppointmentScreen = () => {
               dentistInitials: appointment?.dentist?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
             })}
           />
+          </Animated.View>
         )}
 
         {(appointment?.status === 'completed' || appointment?.status === 'finished') && (

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -7,6 +7,7 @@ import {
   StatusBar,
   RefreshControl,
   ImageBackground,
+  Animated,
 } from 'react-native';
 import {
   ActivityIndicator,
@@ -19,6 +20,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import useNearbyClinics from '../../../hooks/useNearbyClinics';
 import resolveMediaUrl from '../../../utils/media';
@@ -29,6 +31,7 @@ import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 const COLORS = THEME_COLORS;
 const filters = [
   { key: 'all', label: 'Semua' },
+  { key: 'saved', label: 'Tersimpan' },
   { key: 'nearby', label: 'Terdekat' },
   { key: 'highest_rated', label: 'Rating Tertinggi' },
   { key: 'available_today', label: 'Tersedia Hari Ini' },
@@ -117,6 +120,17 @@ const ActionButton = ({ label, icon, onPress, variant }) => {
   );
 };
 
+const ClinicCardSkeleton = ({ shimmer }) => (
+  <Animated.View style={{ opacity: shimmer, height: 240, borderRadius: 24, backgroundColor: COLORS.border, marginBottom: 20, overflow: 'hidden', padding: 20, justifyContent: 'flex-end' }}>
+    <View style={{ width: '58%', height: 18, borderRadius: 9, backgroundColor: withOpacity(COLORS.white, 0.75), marginBottom: 10 }} />
+    <View style={{ width: '76%', height: 12, borderRadius: 6, backgroundColor: withOpacity(COLORS.white, 0.55), marginBottom: 18 }} />
+    <View style={{ flexDirection: 'row' }}>
+      <View style={{ flex: 1, height: 40, borderRadius: 999, backgroundColor: withOpacity(COLORS.white, 0.5), marginRight: 12 }} />
+      <View style={{ flex: 1, height: 40, borderRadius: 999, backgroundColor: withOpacity(COLORS.white, 0.7) }} />
+    </View>
+  </Animated.View>
+);
+
 const ClinicSearchScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -124,6 +138,10 @@ const ClinicSearchScreen = () => {
 
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [favoriteClinicIds, setFavoriteClinicIds] = useState([]);
+  const [recentlyViewedClinics, setRecentlyViewedClinics] = useState([]);
+  const [filterToast, setFilterToast] = useState(null);
+  const shimmer = useRef(new Animated.Value(0.3)).current;
 
   // PERF-003: Debounce search query to avoid lag when typing
   useEffect(() => {
@@ -134,6 +152,36 @@ const ClinicSearchScreen = () => {
   }, [searchInput]);
 
   const [selectedFilter, setSelectedFilter] = useState('all');
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 0.7, duration: 600, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [shimmer]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      AsyncStorage.getItem('clinicSearchFilter'),
+      AsyncStorage.getItem('favoriteClinicIds'),
+      AsyncStorage.getItem('recentlyViewedClinics'),
+    ]).then(([savedFilter, favorites, recent]) => {
+      if (!mounted) return;
+      if (savedFilter && filters.some((filter) => filter.key === savedFilter)) {
+        setSelectedFilter(savedFilter);
+      }
+      setFavoriteClinicIds(JSON.parse(favorites || '[]'));
+      setRecentlyViewedClinics(JSON.parse(recent || '[]'));
+    }).catch(() => null);
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem('clinicSearchFilter', selectedFilter).catch(() => null);
+  }, [selectedFilter]);
 
   const {
     clinics,
@@ -194,6 +242,9 @@ const ClinicSearchScreen = () => {
       case 'available_today':
         data = data.filter(isClinicAvailable);
         break;
+      case 'saved':
+        data = data.filter((clinic) => favoriteClinicIds.includes(clinic.id?.toString?.() || clinic.id));
+        break;
       case 'insurance':
         data = data.filter((clinic) =>
           (clinic.highlights || []).some((item) => {
@@ -212,7 +263,18 @@ const ClinicSearchScreen = () => {
     }
 
     return data;
-  }, [clinics, searchQuery, selectedFilter]);
+  }, [clinics, searchQuery, selectedFilter, favoriteClinicIds]);
+
+  useEffect(() => {
+    if (loading || selectedFilter === 'all' || searchQuery.trim() || filteredClinics.length > 0 || clinics.length === 0) return;
+    setFilterToast('Tidak ada hasil untuk filter ini, menampilkan semua klinik.');
+    const resetTimer = setTimeout(() => setSelectedFilter('all'), 1500);
+    const toastTimer = setTimeout(() => setFilterToast(null), 4500);
+    return () => {
+      clearTimeout(resetTimer);
+      clearTimeout(toastTimer);
+    };
+  }, [filteredClinics.length, clinics.length, loading, searchQuery, selectedFilter]);
 
   const stats = useMemo(() => {
     const total = clinics.length;
@@ -292,12 +354,13 @@ const ClinicSearchScreen = () => {
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.heroBack, { opacity: 0.4 }]}
-              disabled
-              // TODO: Create NearbyDentistsScreen and register in AppointmentNavigator
+              style={styles.heroBack}
+              onPress={() => setSelectedFilter((prev) => (prev === 'saved' ? 'all' : 'saved'))}
+              accessibilityLabel="Lihat klinik tersimpan"
+              accessibilityRole="button"
             >
               <MaterialCommunityIcons
-                name="map-search"
+                name={selectedFilter === 'saved' ? 'heart' : 'heart-outline'}
                 size={22}
                 color="white"
               />
@@ -355,31 +418,65 @@ const ClinicSearchScreen = () => {
           {filters.map((filter) => {
             const active = selectedFilter === filter.key;
             return (
-              <Chip
-                key={filter.key}
-                selected={active}
-                onPress={() => setSelectedFilter(filter.key)}
-                accessibilityLabel={`Filter ${filter.label}`}
-                accessibilityRole="button"
-                style={{
-                  marginRight: 10,
-                  height: 38,
-                  backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
-                  borderColor: active ? COLORS.primary : COLORS.border,
-                  borderWidth: 1,
-                }}
-                textStyle={{
-                  color: active ? COLORS.primary : COLORS.textSecondary,
-                  fontWeight: '600',
-                }}
-              >
-                {filter.label}
-              </Chip>
+              <View key={filter.key} style={{ marginRight: 10 }}>
+                <Chip
+                  selected={active}
+                  onPress={() => setSelectedFilter(filter.key)}
+                  accessibilityLabel={`Filter ${filter.label}`}
+                  accessibilityRole="button"
+                  style={{
+                    height: 38,
+                    backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
+                    borderColor: active ? COLORS.primary : COLORS.border,
+                    borderWidth: 1,
+                  }}
+                  textStyle={{
+                    color: active ? COLORS.primary : COLORS.textSecondary,
+                    fontWeight: '600',
+                  }}
+                >
+                  {filter.label}
+                </Chip>
+                {active && filter.key !== 'all' ? (
+                  <View style={{ position: 'absolute', top: 3, right: 3, width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.primary }} />
+                ) : null}
+              </View>
             );
           })}
         </ScrollView>
 
+        {recentlyViewedClinics.length > 0 && (
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ marginLeft: 20, marginBottom: 8, ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '800', textTransform: 'uppercase' }}>
+              Terakhir Dikunjungi
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 20 }}>
+              {recentlyViewedClinics.map((clinic) => (
+                <TouchableOpacity
+                  key={clinic.id}
+                  onPress={() => navigation.navigate('ClinicDetail', { clinicId: clinic.id, clinic })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Buka klinik ${clinic.name}`}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, borderWidth: 1, borderColor: COLORS.border, marginRight: 10 }}
+                >
+                  <MaterialCommunityIcons name="hospital-building" size={15} color={COLORS.primary} />
+                  <Text numberOfLines={1} style={{ marginLeft: 8, maxWidth: 150, ...TYPOGRAPHY.caption, color: COLORS.textPrimary, fontWeight: '700' }}>{clinic.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          {filterToast ? (
+            <TouchableOpacity
+              onPress={() => setFilterToast(null)}
+              style={{ backgroundColor: withOpacity(COLORS.primary, 0.1), borderColor: withOpacity(COLORS.primary, 0.2), borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14 }}
+            >
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '700' }}>{filterToast}</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {error ? (
             <TouchableOpacity
               onPress={refresh}
@@ -443,21 +540,8 @@ const ClinicSearchScreen = () => {
           ) : null}
 
           {loading && !clinics.length ? (
-            <View
-              style={{
-                alignItems: 'center',
-                paddingVertical: 40,
-              }}
-            >
-              <ActivityIndicator
-                animating
-                color={COLORS.primary}
-              />
-              <Text
-                style={{ marginTop: 12, color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}
-              >
-                Memuat klinik terdekat...
-              </Text>
+            <View>
+              {[0, 1, 2, 3].map((item) => <ClinicCardSkeleton key={item} shimmer={shimmer} />)}
             </View>
           ) : null}
 
@@ -552,6 +636,12 @@ const ClinicSearchScreen = () => {
                           {formatDistance(clinic)}
                         </Text>
                       </View>
+
+                      {favoriteClinicIds.includes(clinic.id?.toString?.() || clinic.id) ? (
+                        <View style={{ position: 'absolute', top: 0, right: 0, width: 34, height: 34, borderRadius: 17, backgroundColor: withOpacity(COLORS.error, 0.95), alignItems: 'center', justifyContent: 'center' }}>
+                          <MaterialCommunityIcons name="heart" size={18} color={COLORS.white} />
+                        </View>
+                      ) : null}
 
                       <View
                         style={{

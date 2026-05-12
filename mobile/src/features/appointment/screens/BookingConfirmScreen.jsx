@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Animated } from 'react-native';
 import { Text, Button, Chip, TextInput, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
-import { createAppointment } from '../../../services/appointmentService';
+import { createAppointment, savePreSessionHealthForm } from '../../../services/appointmentService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
@@ -27,6 +27,7 @@ const BookingConfirmScreen = () => {
   const type = route.params?.type || appointmentFromList?.type || 'onsite';
   const service = route.params?.service || null;
   const slot = route.params?.slot || appointmentFromList?.slot;
+  const durationMinutes = route.params?.durationMinutes || route.params?.metadata?.durationMinutes || slot?.duration || 30;
   const slotTime = slot?.time || new Date(selectedDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   const fee = (service?.price != null ? service.price : null)
     ?? slot?.raw?.fee
@@ -38,6 +39,16 @@ const BookingConfirmScreen = () => {
   const [reminder, setReminder] = useState(30);
   const [payment, setPayment] = useState('card');
   const [isCreating, setIsCreating] = useState(false);
+  const [healthFormExpanded, setHealthFormExpanded] = useState(false);
+  const [healthFormSent, setHealthFormSent] = useState(false);
+  const [healthForm, setHealthForm] = useState({
+    symptoms: '',
+    painLevel: null,
+    allergies: '',
+    medications: '',
+    notes: '',
+  });
+  const healthFormAnim = useRef(new Animated.Value(0)).current;
   const isReschedule = route.params?.isReschedule === true;
   const originalAppointmentId = route.params?.originalAppointmentId || null;
   const routeMetadata = route.params?.metadata || {};
@@ -45,6 +56,20 @@ const BookingConfirmScreen = () => {
 
   const summaryDate = new Date(selectedDate);
   const dateLabel = summaryDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const toggleHealthForm = () => {
+    const next = !healthFormExpanded;
+    setHealthFormExpanded(next);
+    Animated.timing(healthFormAnim, {
+      toValue: next ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const healthFormHasContent = Object.entries(healthForm).some(([key, value]) => (
+    key === 'painLevel' ? value != null : Boolean(value?.trim?.())
+  ));
 
   const handleConfirm = async () => {
     setIsCreating(true);
@@ -58,11 +83,13 @@ const BookingConfirmScreen = () => {
         appointmentType: type,
         serviceId: service?.id,
         reason: notes || undefined,
+        duration: durationMinutes,
         reminderMinutes: reminder,
         isReschedule,
         originalAppointmentId,
         metadata: {
           ...routeMetadata,
+          durationMinutes,
           reminderMinutes: reminder,
           source: routeMetadata.rebookingFromAppointmentId ? 'smart_rebooking' : 'standard_booking',
         },
@@ -70,6 +97,22 @@ const BookingConfirmScreen = () => {
 
       const appointmentId = result?.data?.id || result?.id;
       if (!appointmentId) throw new Error('Failed to create appointment');
+
+      if (healthFormHasContent) {
+        try {
+          await savePreSessionHealthForm(appointmentId, {
+            symptoms: healthForm.symptoms,
+            painLevel: healthForm.painLevel,
+            allergies: healthForm.allergies,
+            medications: healthForm.medications,
+            notes: healthForm.notes,
+            answers: { source: 'booking_confirm_optional_nudge', optional: true },
+          });
+          setHealthFormSent(true);
+        } catch (_healthFormError) {
+          // Optional form should never block booking or payment.
+        }
+      }
 
       navigation.navigate('Payment', {
         appointmentId,
@@ -80,6 +123,7 @@ const BookingConfirmScreen = () => {
         service,
         notes,
         reminder,
+        durationMinutes,
         fee,
         paymentMethod: payment,
         isReschedule,
@@ -174,6 +218,7 @@ const BookingConfirmScreen = () => {
             type={type}
             dateLabel={dateLabel}
             timeLabel={slotTime}
+            durationMinutes={durationMinutes}
             clinic={dentist?.clinic}
           />
 
@@ -188,6 +233,74 @@ const BookingConfirmScreen = () => {
               activeOutlineColor={COLORS.primary}
               style={{ backgroundColor: COLORS.surfaceElevated }}
             />
+          </Section>
+
+          <Section title='Formulir Kesehatan Pra-Sesi'>
+            <TouchableOpacity
+              onPress={toggleHealthForm}
+              accessibilityRole="button"
+              accessibilityLabel="Isi formulir kesehatan pra-sesi opsional"
+              style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 18, borderWidth: 1, borderColor: healthFormExpanded ? COLORS.primary : COLORS.border, padding: 14 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: withOpacity(COLORS.primary, 0.12), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <MaterialCommunityIcons name="clipboard-pulse-outline" size={22} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, fontWeight: '800' }}>Isi sekarang dan hemat waktu saat sesi</Text>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>Opsional. Dokter akan melihatnya sebelum konsultasi.</Text>
+                </View>
+                {healthFormSent ? (
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.success, fontWeight: '800' }}>Form terkirim</Text>
+                ) : (
+                  <MaterialCommunityIcons name={healthFormExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={COLORS.textMuted} />
+                )}
+              </View>
+              <Animated.View style={{ maxHeight: healthFormAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 420] }), overflow: 'hidden' }}>
+                <View style={{ paddingTop: 14 }}>
+                  <TextInput
+                    mode="outlined"
+                    label="Keluhan utama"
+                    value={healthForm.symptoms}
+                    onChangeText={(symptoms) => setHealthForm((prev) => ({ ...prev, symptoms }))}
+                    multiline
+                    outlineColor={COLORS.border}
+                    activeOutlineColor={COLORS.primary}
+                    style={{ backgroundColor: COLORS.surfaceElevated, marginBottom: 10 }}
+                  />
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, fontWeight: '800', marginBottom: 8 }}>Skala nyeri</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
+                    {Array.from({ length: 10 }, (_, index) => index + 1).map((level) => (
+                      <Chip
+                        key={level}
+                        selected={healthForm.painLevel === level}
+                        onPress={() => setHealthForm((prev) => ({ ...prev, painLevel: level }))}
+                        style={{ marginRight: 6, marginBottom: 6, backgroundColor: healthForm.painLevel === level ? COLORS.primary : COLORS.border }}
+                        textStyle={{ color: healthForm.painLevel === level ? COLORS.surfaceElevated : COLORS.textSecondary, fontWeight: '700' }}
+                      >
+                        {level}
+                      </Chip>
+                    ))}
+                  </View>
+                  {[
+                    ['allergies', 'Alergi'],
+                    ['medications', 'Obat yang sedang dikonsumsi'],
+                    ['notes', 'Catatan tambahan'],
+                  ].map(([key, label]) => (
+                    <TextInput
+                      key={key}
+                      mode="outlined"
+                      label={label}
+                      value={healthForm[key]}
+                      onChangeText={(value) => setHealthForm((prev) => ({ ...prev, [key]: value }))}
+                      outlineColor={COLORS.border}
+                      activeOutlineColor={COLORS.primary}
+                      style={{ backgroundColor: COLORS.surfaceElevated, marginBottom: 10 }}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
+            </TouchableOpacity>
           </Section>
 
           <Section title='Pengingat'>
@@ -306,7 +419,7 @@ const ProgressIndicator = ({ current }) => (
   </View>
 );
 
-const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
+const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel, durationMinutes }) => {
   const isIndependent = dentist?.dentistType === 'independent' || !dentist?.clinicContext?.profileId;
   const locationName = clinic?.name ||
     dentist?.clinicContext?.name ||
@@ -321,10 +434,14 @@ const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
         <View>
           <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{dateLabel}</Text>
-          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>{timeLabel} WIB</Text>
+          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>{timeLabel} WIB · {durationMinutes} menit</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>{type === 'virtual' ? 'Virtual visit' : 'Tatap muka'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name={type === 'virtual' ? 'video' : 'map-marker'} size={16} color={COLORS.primary} />
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginLeft: 4 }}>{type === 'virtual' ? 'Konsultasi Video Online' : 'Tatap muka'}</Text>
+            {type === 'virtual' ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.success, marginLeft: 6 }} /> : null}
+          </View>
           <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary, marginTop: 4 }}>{locationName}</Text>
           {isIndependent && (
             <Text style={{ ...TYPOGRAPHY.overline, color: COLORS.primary, marginTop: 2 }}>Dokter Mandiri</Text>
@@ -340,6 +457,14 @@ const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel }) => {
           <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 2 }}>{dentist?.specialty}</Text>
         </View>
       </View>
+      {type === 'virtual' ? (
+        <View style={{ marginTop: 14, borderRadius: 14, backgroundColor: withOpacity(COLORS.primary, 0.08), padding: 10, flexDirection: 'row', alignItems: 'center' }}>
+          <MaterialCommunityIcons name="video-wireless-outline" size={17} color={COLORS.primary} />
+          <Text style={{ marginLeft: 8, flex: 1, ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '700' }}>
+            Anda akan mendapat link video 15 menit sebelum sesi.
+          </Text>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 };

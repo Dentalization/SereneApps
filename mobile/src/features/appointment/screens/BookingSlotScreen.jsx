@@ -102,11 +102,15 @@ const BookingSlotScreen = () => {
   };
   const [selectedDate, setSelectedDate] = useState(route.params?.date || dateOptions[0]);
   const [slotType, setSlotType] = useState(route.params?.type || 'onsite');
+  const [durationMinutes, setDurationMinutes] = useState(route.params?.durationMinutes || 30);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const selectedBarAnim = useRef(new Animated.Value(60)).current;
 
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotError, setSlotError] = useState(null);
+  const [slotCounts, setSlotCounts] = useState({});
+  const [slotCountsLoading, setSlotCountsLoading] = useState(false);
 
   const [services, setServices] = useState([]);
   const [servicesLoading, setServicesLoading] = useState(false);
@@ -333,10 +337,56 @@ const BookingSlotScreen = () => {
     };
   }, [dentistId, selectedDate, clinicIdForInfo, dentist?.clinicContext?.profileId, isLiveDentistId]); // Closed correctly
 
-  const filteredSlots = useMemo(
-    () => slots.filter((slot) => slot.type === slotType && slot.isAvailable),
-    [slots, slotType]
-  );
+  useEffect(() => {
+    Animated.timing(selectedBarAnim, {
+      toValue: selectedSlot ? 0 : 60,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
+  }, [selectedBarAnim, selectedSlot]);
+
+  useEffect(() => {
+    let ignore = false;
+    const clinicProfileRef =
+      clinicIdForInfo ||
+      dentist?.clinicContext?.profileId ||
+      dentist?.clinics?.[0]?.id ||
+      dentist?.primaryClinicId;
+    const isLiveClinicRef = /^\d+$/.test((clinicProfileRef || '').toString());
+    if (!isLiveDentistId || !clinicProfileRef || !isLiveClinicRef) return undefined;
+
+    setSlotCountsLoading(true);
+    Promise.all(dateOptions.slice(0, 7).map(async (date) => {
+      try {
+        const response = await getDentistAvailableSlots(dentistId, date, clinicProfileRef);
+        const data = response?.data || response;
+        const available = data?.slots || data?.availableSlots || [];
+        return [date, available.filter((slot) => normalizeSlot(slot).isAvailable).length];
+      } catch (_error) {
+        return [date, 0];
+      }
+    })).then((entries) => {
+      if (!ignore) setSlotCounts(Object.fromEntries(entries));
+    }).finally(() => {
+      if (!ignore) setSlotCountsLoading(false);
+    });
+
+    return () => { ignore = true; };
+  }, [clinicIdForInfo, dateOptions, dentist?.clinicContext?.profileId, dentistId, isLiveDentistId]);
+
+  const filteredSlots = useMemo(() => {
+    const hasEnoughDuration = (slot) => {
+      if (slotType !== 'virtual') return true;
+      if (slot.duration === durationMinutes) return true;
+      const startsAt = slot.raw?.startsAt ? new Date(slot.raw.startsAt) : null;
+      const endsAt = slot.raw?.endsAt ? new Date(slot.raw.endsAt) : null;
+      if (!startsAt || !endsAt || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+        return slot.duration >= durationMinutes;
+      }
+      return (endsAt.getTime() - startsAt.getTime()) / 60000 >= durationMinutes;
+    };
+    return slots.filter((slot) => slot.type === slotType && slot.isAvailable && hasEnoughDuration(slot));
+  }, [durationMinutes, slots, slotType]);
 
   const groupedSlots = useMemo(() => {
     const buckets = { morning: [], afternoon: [], evening: [] };
@@ -365,9 +415,17 @@ const BookingSlotScreen = () => {
       type: slotType,
       service: slotType === 'virtual' ? null : selectedService,
       fee: slotType === 'virtual' ? (dentist?.consultationFee || selectedSlot?.raw?.fee || 0) : selectedService?.price,
-      metadata: rebookingFromAppointmentId ? { rebookingFromAppointmentId } : null,
+      durationMinutes,
+      metadata: {
+        ...(rebookingFromAppointmentId ? { rebookingFromAppointmentId } : {}),
+        durationMinutes,
+      },
     });
   };
+
+  const nearestAvailableDate = useMemo(() => (
+    dateOptions.find((date) => date !== selectedDate && (slotCounts[date] || 0) > 0)
+  ), [dateOptions, selectedDate, slotCounts]);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
@@ -509,31 +567,45 @@ const BookingSlotScreen = () => {
             Pilih tanggal
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 20 }}>
-            {dateOptions.map((date) => (
-              <TouchableOpacity
-                key={date}
-                onPress={() => {
-                  setSelectedDate(date);
-                  setSelectedSlot(null);
-                }}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: selectedDate === date }}
-                accessibilityLabel={`Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}`}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 18,
-                  backgroundColor: selectedDate === date ? COLORS.primary : COLORS.surfaceElevated,
-                  borderWidth: 1,
-                  borderColor: selectedDate === date ? COLORS.primary : COLORS.border,
-                  marginRight: 12,
-                }}
-              >
-                <Text style={{ color: selectedDate === date ? COLORS.surfaceElevated : COLORS.textSecondary, fontWeight: '600' }}>
-                  {new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {dateOptions.map((date) => {
+              const count = slotCounts[date];
+              const disabled = count === 0 && date !== selectedDate && !slotCountsLoading;
+              const dotColor = count > 5 ? COLORS.success : count > 0 ? COLORS.warning : COLORS.border;
+              return (
+                <TouchableOpacity
+                  key={date}
+                  onPress={() => {
+                    if (disabled) return;
+                    setSelectedDate(date);
+                    setSelectedSlot(null);
+                  }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: selectedDate === date, disabled }}
+                  accessibilityLabel={`Tanggal ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 18,
+                    backgroundColor: selectedDate === date ? COLORS.primary : COLORS.surfaceElevated,
+                    borderWidth: 1,
+                    borderColor: selectedDate === date ? COLORS.primary : COLORS.border,
+                    marginRight: 12,
+                    opacity: disabled ? 0.45 : 1,
+                  }}
+                >
+                  <Text style={{ color: selectedDate === date ? COLORS.surfaceElevated : COLORS.textSecondary, fontWeight: '600' }}>
+                    {new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </Text>
+                  <View style={{ alignItems: 'center', height: 8, marginTop: 5 }}>
+                    {slotCountsLoading && count === undefined ? (
+                      <ActivityIndicator animating size={8} color={selectedDate === date ? COLORS.surfaceElevated : COLORS.primary} />
+                    ) : count > 0 ? (
+                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor }} />
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -623,6 +695,42 @@ const BookingSlotScreen = () => {
           </View>
         )}
 
+        {slotType === 'virtual' && (
+          <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 }}>
+              Durasi konsultasi
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {[15, 30, 45, 60].map((minutes) => {
+                const active = durationMinutes === minutes;
+                return (
+                  <TouchableOpacity
+                    key={minutes}
+                    onPress={() => {
+                      setDurationMinutes(minutes);
+                      setSelectedSlot(null);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Durasi ${minutes} menit`}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 16,
+                      marginRight: 10,
+                      backgroundColor: active ? withOpacity(COLORS.primary, 0.12) : COLORS.surfaceElevated,
+                      borderWidth: 1,
+                      borderColor: active ? COLORS.primary : COLORS.border,
+                    }}
+                  >
+                    <Text style={{ color: active ? COLORS.primary : COLORS.textSecondary, fontWeight: '800' }}>{minutes} mnt</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
           {slotError ? (
             <Text style={{ color: COLORS.error, marginBottom: 8, ...TYPOGRAPHY.bodySmall }}>{slotError}</Text>
@@ -636,12 +744,29 @@ const BookingSlotScreen = () => {
           ) : null}
 
           {!slotsLoading && !filteredSlots.length ? (
-            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+            <View style={{ alignItems: 'center', paddingVertical: 20, backgroundColor: COLORS.surfaceElevated, borderRadius: 22, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 16 }}>
               <MaterialCommunityIcons name='calendar-remove' size={48} color={withOpacity(COLORS.primary, 0.2)} />
               <Text style={{ ...TYPOGRAPHY.h4, color: COLORS.textPrimary, marginTop: 12 }}>Belum ada jadwal</Text>
               <Text style={{ color: COLORS.textSecondary, textAlign: 'center', marginTop: 4, ...TYPOGRAPHY.bodySmall }}>
-                Pilih tanggal lain atau ubah tipe sesi untuk melihat pilihan lain.
+                {nearestAvailableDate ? 'Kami menemukan jadwal terdekat untuk dokter ini.' : 'Belum ada slot dalam 7 hari ke depan. Coba dokter lain atau ubah tipe sesi.'}
               </Text>
+              {nearestAvailableDate ? (
+                <TouchableOpacity
+                  onPress={() => setSelectedDate(nearestAvailableDate)}
+                  style={{ marginTop: 14, borderRadius: 14, backgroundColor: withOpacity(COLORS.primary, 0.12), paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pilih tanggal slot terdekat"
+                >
+                  <MaterialCommunityIcons name="calendar-search" size={18} color={COLORS.primary} />
+                  <Text style={{ marginLeft: 8, color: COLORS.primary, fontWeight: '800' }}>
+                    Pilih {new Date(nearestAvailableDate).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 14 }} accessibilityRole="button" accessibilityLabel="Coba dokter lain">
+                  <Text style={{ color: COLORS.primary, fontWeight: '800' }}>Coba dokter lain</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : null}
 
@@ -684,6 +809,20 @@ const BookingSlotScreen = () => {
       </ScrollView>
 
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: COLORS.surfaceElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, shadowColor: COLORS.textPrimary, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 }}>
+        {selectedSlot ? (
+          <Animated.View style={{ transform: [{ translateY: selectedBarAnim }], marginBottom: 12, borderRadius: 18, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.2), backgroundColor: withOpacity(COLORS.primary, 0.08), padding: 12, flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name={slotType === 'virtual' ? 'video-outline' : 'hospital-building'} size={20} color={COLORS.primary} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>Pilihan Anda</Text>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, fontWeight: '800' }}>
+                {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} · {selectedSlot.time} WIB · {slotType === 'virtual' ? `${durationMinutes} mnt virtual` : 'tatap muka'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setSelectedSlot(null)} accessibilityRole="button" accessibilityLabel="Hapus pilihan jadwal">
+              <MaterialCommunityIcons name="close" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </Animated.View>
+        ) : null}
         <Button 
           mode='contained' 
           icon='check' 

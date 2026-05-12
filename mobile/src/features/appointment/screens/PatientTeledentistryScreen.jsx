@@ -204,6 +204,10 @@ const PatientTeledentistryScreen = () => {
   const [callJoinStatus, setCallJoinStatus] = useState('idle');
   const [callNotice, setCallNotice] = useState(null);
   const [attachmentUpload, setAttachmentUpload] = useState(null);
+  const [lowQualityCard, setLowQualityCard] = useState(null);
+  const [showConnectionDiagnostics, setShowConnectionDiagnostics] = useState(false);
+  const qualityHistoryRef = useRef([]);
+  const lowQualityRef = useRef([]);
   const [healthFormStatus, setHealthFormStatus] = useState('loading');
   const [healthFormSaving, setHealthFormSaving] = useState(false);
   const [showHealthForm, setShowHealthForm] = useState(false);
@@ -582,6 +586,24 @@ const PatientTeledentistryScreen = () => {
     }
   };
 
+  useEffect(() => {
+    if (networkQuality < 0) return;
+    const now = Date.now();
+    qualityHistoryRef.current = [
+      ...qualityHistoryRef.current.slice(-24),
+      { quality: networkQuality, timestamp: now },
+    ];
+    if (networkQuality > 1) return;
+    lowQualityRef.current = [...lowQualityRef.current.filter((item) => now - item <= 30000), now];
+    if (lowQualityRef.current.length >= 3) {
+      if (isVideoEnabled) toggleVideo();
+      const message = 'Kualitas jaringan sangat rendah. Video dimatikan untuk menjaga audio.';
+      setLowQualityCard({ id: `quality-${now}`, message });
+      addSystemMessage(message);
+      lowQualityRef.current = [];
+    }
+  }, [addSystemMessage, isVideoEnabled, networkQuality, toggleVideo]);
+
   const handlePickAttachment = async () => {
     if (!appointmentId || sessionStatus !== 'active' || attachmentUpload?.status === 'uploading') return;
     try {
@@ -933,6 +955,29 @@ const PatientTeledentistryScreen = () => {
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.primary} />
         </TouchableOpacity>
+      )}
+
+      {lowQualityCard && (
+        <View style={{ marginTop: 8, marginBottom: 12, borderRadius: 18, borderWidth: 1, borderColor: withOpacity(COLORS.warning, 0.34), backgroundColor: withOpacity(COLORS.warning, 0.12), padding: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            <MaterialCommunityIcons name="signal-cellular-outline" size={20} color={COLORS.warning} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, fontWeight: '800' }}>{lowQualityCard.message}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!isVideoEnabled) toggleVideo();
+                  setLowQualityCard(null);
+                }}
+                style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 12, backgroundColor: COLORS.warning, paddingHorizontal: 12, paddingVertical: 7 }}
+              >
+                <Text style={{ color: COLORS.white, fontWeight: '800', fontSize: 12 }}>Coba hidupkan video lagi</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={() => setLowQualityCard(null)} accessibilityLabel="Tutup peringatan jaringan">
+              <MaterialCommunityIcons name="close" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {typingParticipants?.length > 0 && (
@@ -1457,7 +1502,14 @@ const PatientTeledentistryScreen = () => {
               <MaterialCommunityIcons name="signal-cellular-2" size={14} color={COLORS.white} style={{ marginLeft: 10, marginRight: 4 }} />
               <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '700' }}>{networkQuality >= 0 ? networkQuality : '-'}/5</Text>
             </View>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }} />
+            <TouchableOpacity
+              onPress={() => setShowConnectionDiagnostics(true)}
+              accessibilityLabel="Diagnostik Koneksi"
+              accessibilityRole="button"
+              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.15), justifyContent: 'center', alignItems: 'center' }}
+            >
+              <MaterialCommunityIcons name="dots-horizontal" size={22} color={COLORS.white} />
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
 
@@ -1580,11 +1632,35 @@ const PatientTeledentistryScreen = () => {
       </KeyboardAvoidingView>
 
       {/* Overlays */}
-      {renderPreSessionHealthForm()}
-      {renderIncomingCallOverlay()}
-      {renderVideoCallOverlay()}
+          {renderPreSessionHealthForm()}
+          {renderIncomingCallOverlay()}
+          {renderVideoCallOverlay()}
+          {showConnectionDiagnostics && (
+            <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 130, backgroundColor: withOpacity(COLORS.black, 0.45), justifyContent: 'flex-end' }}>
+              <View style={{ backgroundColor: COLORS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: Math.max(insets.bottom, 20) }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <MaterialCommunityIcons name="chart-line" size={22} color={COLORS.primary} />
+                  <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary, marginLeft: 10, flex: 1 }}>Diagnostik Koneksi</Text>
+                  <TouchableOpacity onPress={() => setShowConnectionDiagnostics(false)} accessibilityLabel="Tutup diagnostik koneksi">
+                    <MaterialCommunityIcons name="close" size={22} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                {qualityHistoryRef.current.slice(-8).map((item) => (
+                  <View key={item.timestamp} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.gray100 }}>
+                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, width: 78 }}>
+                      {new Date(item.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </Text>
+                    <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: COLORS.gray100, overflow: 'hidden' }}>
+                      <View style={{ width: `${Math.max(8, (item.quality / 5) * 100)}%`, height: '100%', backgroundColor: item.quality <= 1 ? COLORS.error : item.quality <= 2 ? COLORS.warning : COLORS.success }} />
+                    </View>
+                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, marginLeft: 10, fontWeight: '800' }}>{item.quality}/5</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
 
-      {/* Global Twilio Video Engine */}
+          {/* Global Twilio Video Engine */}
       <TwilioVideo ref={twilioRef} {...handlers} />
     </View>
   );
