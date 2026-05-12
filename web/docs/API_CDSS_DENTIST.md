@@ -547,7 +547,7 @@ Multipart upload for one or more images.
 Fields:
 - `images`: repeated image file field
 
-Each uploaded image receives a stable `image_id`, `storage_ref`, mime metadata, duplicate marker, and upload status.
+Each uploaded image receives a stable `image_id`, `storage_ref`, mime metadata, duplicate marker, upload status, and signed retrieval URL. Verified case images are not served from public `/uploads/verified-cases` paths; clients use `GET /v1/case-storage/{signed_token}` URLs returned by the API.
 
 ### POST `/v1/cases/{case_id}/images/{image_id}/quality-check`
 Run per-image quality precheck.
@@ -612,7 +612,17 @@ Audit events are immutable and include actor, role, event type, before/after JSO
 
 Exports require a linked patient and verified case. Each export creates a `case_exported` audit event and a `report_exported` patient timeline event.
 
-Default exports reject non-verified cases with `400 case_verification_required`. Draft exports may only be produced by explicitly requesting draft mode and must be marked `DRAFT — NOT CLINICIAN VERIFIED`.
+Default exports reject non-verified cases with `400 case_verification_required`. Draft exports may only be produced by explicitly requesting draft mode and must be marked `DRAFT - NOT CLINICIAN VERIFIED`; draft exports do not move the case into `exported` status and do not create verified report timeline linkage.
+
+### Case Storage Download
+
+`GET /v1/case-storage/{signed_token}`
+
+Returns the stored original, annotated, PDF, or JSON export object only when the HMAC-signed token is valid and unexpired. This endpoint replaces public static access to verified clinical artifacts.
+
+### Tenant And Clinic Scope
+
+Verified Case Workspace routes derive `tenant_id` and `clinic_id` from authenticated JWT claims, not caller-supplied headers. Dentist tokens without tenant/clinic scope are rejected with `403 tenant_scope_required`.
 
 ### Patient Timeline Linkage
 

@@ -14,7 +14,10 @@ import { useChat } from '../../../hooks/useChat';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCallState } from '../../../hooks/useCallState';
 import { useToast } from '../../../contexts/ToastContext';
-import { recordCommunicationClientEvent } from '../../../services/chatService';
+import {
+  fetchPreSessionHealthForm,
+  recordCommunicationClientEvent
+} from '../../../services/chatService';
 
 const MIN_LOADING_MS = 900;
 
@@ -58,6 +61,7 @@ const Teledentistry = () => {
   const [chatLoading, setChatLoading] = useState(false);
   const [showPostCallSummary, setShowPostCallSummary] = useState(false);
   const [showPreCallChecklist, setShowPreCallChecklist] = useState(false);
+  const [preSessionHealthForm, setPreSessionHealthForm] = useState({ status: 'idle', form: null, error: null });
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
 
@@ -248,6 +252,35 @@ const Teledentistry = () => {
     recordCommunicationClientEvent(activeAppointmentId, 'waiting_room_entered', { surface: 'dentist_web' }).catch(() => null);
   }, [activeAppointmentId]);
 
+  useEffect(() => {
+    let ignore = false;
+    if (!activeAppointmentId) {
+      setPreSessionHealthForm({ status: 'idle', form: null, error: null });
+      return () => { ignore = true; };
+    }
+
+    setPreSessionHealthForm({ status: 'loading', form: null, error: null });
+    fetchPreSessionHealthForm(activeAppointmentId)
+      .then((result) => {
+        if (ignore) return;
+        setPreSessionHealthForm({
+          status: result?.form ? 'submitted' : 'missing',
+          form: result?.form || null,
+          error: null
+        });
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setPreSessionHealthForm({
+          status: 'error',
+          form: null,
+          error: error?.message || 'Failed to load pre-session health form'
+        });
+      });
+
+    return () => { ignore = true; };
+  }, [activeAppointmentId]);
+
   if (loading || bootstrapping) {
     return (
       <div className="min-h-screen bg-surface flex theme-transition dentist-skeleton">
@@ -405,6 +438,7 @@ const Teledentistry = () => {
           <PatientInfoPanel
             conversation={activeConversation}
             presence={selectedPresence}
+            preSessionHealthForm={preSessionHealthForm}
             isExpanded={isPatientPanelExpanded}
             onToggleExpanded={setIsPatientPanelExpanded}
             onScheduleAppointment={handleScheduleAppointment}

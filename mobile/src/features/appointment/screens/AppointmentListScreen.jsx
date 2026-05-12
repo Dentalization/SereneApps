@@ -1,20 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Dimensions, Platform } from 'react-native';
-import { Text, Button, useTheme, Surface, Avatar, IconButton } from 'react-native-paper';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Animated } from 'react-native';
+import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppointments } from '../../../services/appointmentService';
+import { registerAppointmentReminderPushToken } from '../../../services/pushNotificationService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
-
-// Dimensi Layar
-const { width } = Dimensions.get('window');
 
 // --- KOMPONEN PENDUKUNG ---
 
@@ -38,7 +38,7 @@ const ModernEmptyState = ({ title, description, icon, action }) => (
 );
 
 // 2. Modern Card Component
-const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
+const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0 }) => {
   const navigation = useNavigation();
   const starts = new Date(appointment.startsAt);
   const dayNumber = starts.getDate();
@@ -47,6 +47,7 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
 
   const isVirtual = appointment.type === 'virtual';
   const isPaid = appointment.payment?.status === 'succeeded';
+  const isHistory = appointment.status === 'completed' || new Date(appointment.startsAt) < new Date();
 
   // --- OVERDUE LOGIC ---
   // Backend sudah auto-mark status 'overdue' untuk jadwal lewat & belum bayar
@@ -170,7 +171,20 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
 
       {/* Footer Actions */}
       <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-        {isOverdue ? (
+        {isHistory && !isOverdue ? (
+          <Button
+            mode="contained"
+            buttonColor={COLORS.primary}
+            textColor={COLORS.surfaceElevated}
+            style={{ borderRadius: 12, elevation: 0 }}
+            labelStyle={{ fontWeight: '700', fontSize: 13 }}
+            icon="calendar-refresh"
+            onPress={onRebook}
+            accessibilityLabel="Pesan Lagi dengan Dokter yang Sama"
+          >
+            Pesan Lagi
+          </Button>
+        ) : isOverdue ? (
           <Button
             mode="outlined"
             textColor={COLORS.error}
@@ -261,18 +275,92 @@ const ModernAppointmentCard = ({ appointment, onPress, unreadCount = 0 }) => {
   );
 };
 
+const SwipeQuickActions = ({ appointment, onDetail, onRebook }) => {
+  const isHistory = appointment.status === 'completed' || new Date(appointment.startsAt) < new Date();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'stretch', marginBottom: 20, paddingLeft: 8 }}>
+      {isHistory ? (
+        <TouchableOpacity
+          onPress={onRebook}
+          accessibilityRole="button"
+          accessibilityLabel="Pesan Lagi"
+          style={{ width: 92, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}
+        >
+          <MaterialCommunityIcons name="calendar-refresh" size={22} color={COLORS.surfaceElevated} />
+          <Text style={{ color: COLORS.surfaceElevated, fontWeight: '800', fontSize: 12, marginTop: 4 }}>Pesan Lagi</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          onPress={onDetail}
+          accessibilityRole="button"
+          accessibilityLabel="Lihat Detail"
+          style={{ width: 84, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.12), alignItems: 'center', justifyContent: 'center', marginLeft: 8, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.22) }}
+        >
+          <MaterialCommunityIcons name="file-document-outline" size={22} color={COLORS.primary} />
+          <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12, marginTop: 4 }}>Detail</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+// 3. Animated List Item Wrapper (ANIM-003)
+const AnimatedListItem = ({ children, index }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 350,
+      delay: Math.min(index * 100, 1000), // Stagger cap at 10 items to prevent huge delays
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+
+  return (
+    <Animated.View style={{
+      opacity: anim,
+      transform: [{
+        translateY: anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [30, 0]
+        })
+      }]
+    }}>
+      {children}
+    </Animated.View>
+  );
+};
+
 // --- MAIN SCREEN ---
 
 const AppointmentListScreen = ({ unreadMap = {} }) => {
   const theme = useTheme();
   const navigation = useNavigation();
   const [tab, setTab] = useState('upcoming');
+  const fadeAnim = useRef(new Animated.Value(1)).current; // UX-001: Cross fade
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(null);
   const { toast, showToast, hideToast } = useToast();
+  const insets = useSafeAreaInsets(); // UX-002: SafeAreaInsets
+
+  const handleTabChange = (newTab) => {
+    if (tab === newTab) return;
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      setTab(newTab);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
 
   // ... (Logika Auth & Fetch sama seperti sebelumnya, tidak diubah logic-nya) ...
   const checkAuthStatus = useCallback(async () => {
@@ -314,6 +402,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           videoRoomRef: apt.videoRoomRef,
           dentist: {
             id: apt.dentistId,
+            profileId: apt.dentist?.profileId || apt.dentist?.dentistProfileId || apt.metadata?.dentistProfileId || null,
             name: apt.dentist?.name || 'Dokter Gigi',
             title: apt.dentist?.title || null,
             specialty: apt.dentist?.specialization || 'Dokter Gigi Umum',
@@ -322,6 +411,8 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           },
           clinic: {
             id: apt.clinicBranchId,
+            branchId: apt.clinicBranchId,
+            profileId: apt.clinicBranch?.clinicProfileId || null,
             name: apt.dentist?.dentistType === 'independent' ? (apt.dentist?.clinicName || 'Praktik Mandiri') : (apt.clinicBranch?.branchName || apt.clinicBranch?.name || 'Klinik'),
             address: apt.dentist?.dentistType === 'independent' ? apt.dentist?.clinicAddress : apt.clinicBranch?.streetAddress,
           },
@@ -354,7 +445,44 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
   useFocusEffect(useCallback(() => { fetchAppointments(false); }, [fetchAppointments]));
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    registerAppointmentReminderPushToken()
+      .catch((err) => {
+        if (__DEV__) console.warn('[AppointmentList] Push reminder registration skipped:', err?.message || err);
+      });
+  }, [isLoggedIn]);
+
   const onRefresh = () => { setRefreshing(true); fetchAppointments(false); };
+
+  const handleOpenDetail = useCallback((appointment) => {
+    navigation.navigate('DetailAppointment', { appointmentId: appointment.id, appointment });
+  }, [navigation]);
+
+  const handleRebook = useCallback((appointment) => {
+    const profileId = appointment.dentist?.profileId || appointment.dentist?.id;
+    navigation.navigate('BookingSlot', {
+      dentistId: profileId,
+      dentist: {
+        id: profileId,
+        userId: appointment.dentist?.id,
+        name: appointment.dentist?.name,
+        specialty: appointment.dentist?.specialty,
+        avatarUrl: appointment.dentist?.avatar,
+        dentistType: appointment.dentist?.dentistType,
+        clinicContext: {
+          profileId: appointment.clinic?.profileId,
+          branchId: appointment.clinic?.branchId || appointment.clinic?.id,
+          name: appointment.clinic?.name,
+          address: appointment.clinic?.address,
+        },
+      },
+      clinicId: appointment.clinic?.profileId,
+      clinicBranchId: appointment.clinic?.branchId || appointment.clinic?.id,
+      type: appointment.type || 'virtual',
+      rebookingFromAppointmentId: appointment.id,
+    });
+  }, [navigation]);
 
   // Filter Logic — overdue atau waktu sudah lewat masuk ke tab Riwayat (sesuai request)
   const filteredAppointments = appointments
@@ -398,7 +526,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         colors={[COLORS.primary, COLORS.primaryLight]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ paddingTop: 60, paddingBottom: 30, paddingHorizontal: 24, borderBottomRightRadius: 32, borderBottomLeftRadius: 32 }}
+        style={{ paddingTop: Math.max(insets.top, 20) + 20, paddingBottom: 30, paddingHorizontal: 24, borderBottomRightRadius: 32, borderBottomLeftRadius: 32 }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
@@ -425,7 +553,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         {/* Floating Tabs */}
         <View style={{ flexDirection: 'row', marginHorizontal: 24, backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 6, marginBottom: 16, shadowColor: COLORS.textPrimary, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 }}>
           <TouchableOpacity
-            onPress={() => setTab('upcoming')}
+            onPress={() => handleTabChange('upcoming')}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === 'upcoming' }}
             accessibilityLabel={`Tab Akan Datang, ${upcomingCount} janji`}
@@ -434,7 +562,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
             <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '700', color: tab === 'upcoming' ? COLORS.primary : COLORS.textMuted }}>Akan Datang ({upcomingCount})</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setTab('history')}
+            onPress={() => handleTabChange('history')}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === 'history' }}
             accessibilityLabel={`Tab Riwayat, ${historyCount} janji`}
@@ -445,61 +573,79 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         </View>
 
         {/* Scrollable List */}
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />}
-        >
-          {loading || isLoggedIn === null ? (
-            <View style={{ marginTop: 50, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={{ marginTop: 16, color: COLORS.textMuted, fontWeight: '500' }}>Sinkronisasi jadwal...</Text>
-            </View>
-          ) : isLoggedIn === false ? (
-            <ModernEmptyState
-              icon="lock-outline"
-              title="Akses Terbatas"
-              description="Login untuk melihat jadwal konsultasi dan riwayat perawatan gigi Anda."
-              action={
-                <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => navigation.navigate('SettingsTab', { screen: 'Login' })}>
-                  Login Sekarang
-                </Button>
-              }
-            />
-          ) : error && filteredAppointments.length === 0 ? (
-            <ModernEmptyState
-              icon="wifi-alert"
-              title="Koneksi Bermasalah"
-              description={error}
-              action={
-                <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => fetchAppointments()}>
-                  Coba Lagi
-                </Button>
-              }
-            />
-          ) : filteredAppointments.length === 0 ? (
-            <ModernEmptyState
-              icon={tab === 'upcoming' ? 'calendar-blank-outline' : 'history'}
-              title={tab === 'upcoming' ? "Tidak Ada Jadwal" : "Belum Ada Riwayat"}
-              description={tab === 'upcoming' ? "Anda belum memiliki jadwal konsultasi gigi dalam waktu dekat." : "Anda belum menyelesaikan sesi konsultasi apapun."}
-              action={
-                tab === 'upcoming' && (
-                  <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => navigation.navigate('ClinicSearch')}>
-                    Buat Janji Baru
-                  </Button>
-                )
-              }
-            />
-          ) : (
-            filteredAppointments.map((appointment) => (
-              <ModernAppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                unreadCount={unreadMap[appointment.id] || 0}
-                onPress={() => navigation.navigate('DetailAppointment', { appointmentId: appointment.id, appointment })}
-              />
-            ))
-          )}
-        </ScrollView>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          <FlatList
+            data={filteredAppointments}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={() => (
+              loading || isLoggedIn === null ? (
+                <View style={{ marginTop: 50, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                  <Text style={{ marginTop: 16, color: COLORS.textMuted, fontWeight: '500' }}>Sinkronisasi jadwal...</Text>
+                </View>
+              ) : isLoggedIn === false ? (
+                <ModernEmptyState
+                  icon="lock-outline"
+                  title="Akses Terbatas"
+                  description="Login untuk melihat jadwal konsultasi dan riwayat perawatan gigi Anda."
+                  action={
+                    <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => navigation.navigate('SettingsTab', { screen: 'Login' })}>
+                      Login Sekarang
+                    </Button>
+                  }
+                />
+              ) : error ? (
+                <ModernEmptyState
+                  icon="wifi-alert"
+                  title="Koneksi Bermasalah"
+                  description={error}
+                  action={
+                    <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => fetchAppointments()}>
+                      Coba Lagi
+                    </Button>
+                  }
+                />
+              ) : (
+                <ModernEmptyState
+                  icon={tab === 'upcoming' ? 'calendar-blank-outline' : 'history'}
+                  title={tab === 'upcoming' ? "Tidak Ada Jadwal" : "Belum Ada Riwayat"}
+                  description={tab === 'upcoming' ? "Anda belum memiliki jadwal konsultasi gigi dalam waktu dekat." : "Anda belum menyelesaikan sesi konsultasi apapun."}
+                  action={
+                    tab === 'upcoming' && (
+                      <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => navigation.navigate('ClinicSearch')}>
+                        Buat Janji Baru
+                      </Button>
+                    )
+                  }
+                />
+              )
+            )}
+            renderItem={({ item, index }) => (
+              <AnimatedListItem index={index}>
+                <Swipeable
+                  overshootRight={false}
+                  renderRightActions={() => (
+                    <SwipeQuickActions
+                      appointment={item}
+                      onDetail={() => handleOpenDetail(item)}
+                      onRebook={() => handleRebook(item)}
+                    />
+                  )}
+                >
+                  <ModernAppointmentCard
+                    appointment={item}
+                    unreadCount={unreadMap[item.id] || 0}
+                    onPress={() => handleOpenDetail(item)}
+                    onRebook={() => handleRebook(item)}
+                  />
+                </Swipeable>
+              </AnimatedListItem>
+            )}
+          />
+        </Animated.View>
       </View>
 
       <ValidationToast

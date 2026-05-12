@@ -1341,6 +1341,25 @@
           "response": []
         },
         {
+          "name": "Download Signed Case Storage Object",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/case-storage/{{signed_storage_token}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "case-storage",
+                "{{signed_storage_token}}"
+              ]
+            },
+            "description": "Download a verified case original image, annotated image, PDF, or JSON export through a signed, expiring case-storage token. Verified clinical artifacts are not public /uploads files."
+          },
+          "response": []
+        },
+        {
           "name": "Remove Case Image",
           "request": {
             "method": "DELETE",
@@ -1455,7 +1474,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"raw_ai_result\": {\n    \"model\": \"deepdental-local\"\n  },\n  \"normalized_findings\": {\n    \"findings\": [\n      {\n        \"label\": \"caries\",\n        \"tooth_or_region\": \"36\",\n        \"severity\": \"moderate\",\n        \"confidence\": 0.82,\n        \"notes\": \"AI-assisted preliminary finding\"\n      }\n    ]\n  },\n  \"annotated_image\": {\n    \"storage_ref\": \"/uploads/verified-cases/case/image-annotated.webp\",\n    \"mime_type\": \"image/webp\"\n  }\n}",
+              "raw": "{\n  \"raw_ai_result\": {\n    \"model\": \"deepdental-local\"\n  },\n  \"normalized_findings\": {\n    \"findings\": [\n      {\n        \"label\": \"caries\",\n        \"tooth_or_region\": \"36\",\n        \"severity\": \"moderate\",\n        \"confidence\": 0.82,\n        \"notes\": \"AI-assisted preliminary finding\"\n      }\n    ]\n  },\n  \"annotated_image\": {\n    \"storage_ref\": \"signed://case-storage/annotated-image-token\",\n    \"mime_type\": \"image/webp\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"

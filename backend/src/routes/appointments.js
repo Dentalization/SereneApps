@@ -147,6 +147,7 @@ function serializeDentistWithProfile(user, dentistProfile) {
     email: user.email || null,
     phone: user.phone_number ?? user.phoneNumber ?? null,
     avatar: user.avatar_url ?? user.avatarUrl ?? null,
+    profileId: dentistProfile?.id?.toString?.() ?? dentistProfile?.id ?? null,
     title: dentistProfile?.title || null,
     specialization: dentistProfile?.primarySpecialization || dentistProfile?.primary_specialization || 'Dokter Gigi Umum',
     dentistType: dentistProfile?.dentistType || dentistProfile?.dentist_type || 'clinic',
@@ -233,6 +234,81 @@ function serializeAppointment(appointment) {
       createdAt: toIsoString(latestPayment.createdAt)
     } : null
   };
+}
+
+function serializePreSessionHealthForm(form) {
+  if (!form) return null;
+  return {
+    id: form.id?.toString?.() ?? form.id,
+    appointmentId: form.appointmentId?.toString?.() ?? form.appointment_id?.toString?.() ?? null,
+    patientId: form.patientId?.toString?.() ?? form.patient_id?.toString?.() ?? null,
+    symptoms: form.symptoms || '',
+    painLevel: form.painLevel ?? form.pain_level ?? null,
+    allergies: form.allergies || '',
+    medications: form.medications || '',
+    notes: form.notes || '',
+    answers: form.answers || {},
+    submittedAt: toIsoString(form.submittedAt ?? form.submitted_at),
+    updatedAt: toIsoString(form.updatedAt ?? form.updated_at)
+  };
+}
+
+function normalizeHealthFormPayload(body = {}) {
+  const trim = (value, max = 4000) => (
+    typeof value === 'string' ? value.trim().slice(0, max) : ''
+  );
+  const painRaw = body.painLevel ?? body.pain_level;
+  const painLevel = painRaw === null || painRaw === undefined || painRaw === ''
+    ? null
+    : Number(painRaw);
+
+  if (painLevel !== null && (!Number.isInteger(painLevel) || painLevel < 1 || painLevel > 10)) {
+    const error = new Error('INVALID_PAIN_LEVEL');
+    error.code = 'invalid_pain_level';
+    throw error;
+  }
+
+  return {
+    symptoms: trim(body.symptoms),
+    painLevel,
+    allergies: trim(body.allergies),
+    medications: trim(body.medications),
+    notes: trim(body.notes),
+    answers: body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers)
+      ? body.answers
+      : {}
+  };
+}
+
+async function findAppointmentForHealthForm(appointmentId, userId) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    select: {
+      id: true,
+      patientId: true,
+      dentistId: true,
+      startsAt: true,
+      status: true,
+      consultationType: true,
+      videoRoomRef: true
+    }
+  });
+
+  if (!appointment) {
+    const error = new Error('APPOINTMENT_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const isPatient = appointment.patientId === userId;
+  const isDentist = appointment.dentistId === userId;
+  if (!isPatient && !isDentist) {
+    const error = new Error('FORBIDDEN');
+    error.status = 403;
+    throw error;
+  }
+
+  return { appointment, isPatient, isDentist };
 }
 
 function hasRole(roles = [], target) {
@@ -360,6 +436,7 @@ router.post(
       end,
       reason,
       notes,
+      metadata,
       appointmentType // 'virtual' or 'onsite'
     } = req.body || {};
 
@@ -511,6 +588,7 @@ router.post(
             reason: reason || null,
             notes: notes || null,
             metadata: {
+              ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
               appointmentType: inputType || 'onsite' // Also keep in metadata
             }
           }
@@ -1023,6 +1101,107 @@ router.patch(
 );
 
 router.get(
+  '/:appointmentId/pre-session-health-form',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const appointmentId = toBigInt(req.params.appointmentId, 'appointmentId');
+      const userId = toBigInt(req.user.id, 'userId');
+      const { appointment, isPatient } = await findAppointmentForHealthForm(appointmentId, userId);
+
+      const form = await prisma.appointmentPreSessionHealthForm.findUnique({
+        where: { appointmentId }
+      });
+
+      return res.json({
+        appointmentId: appointment.id.toString(),
+        form: serializePreSessionHealthForm(form),
+        required: false,
+        canEdit: isPatient && ['scheduled', 'confirmed'].includes(appointment.status),
+        status: form ? 'submitted' : 'missing'
+      });
+    } catch (error) {
+      if (error.status === 404) {
+        return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan.');
+      }
+      if (error.status === 403) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke formulir pra-sesi ini.');
+      }
+      if (error.message && error.message.startsWith('INVALID_')) {
+        return sendError(res, 400, 'invalid_appointment_id', 'ID janji temu tidak valid.');
+      }
+      console.error('Error fetching pre-session health form:', error);
+      return sendError(res, 500, 'fetch_health_form_failed', 'Gagal memuat formulir pra-sesi.');
+    }
+  }
+);
+
+router.put(
+  '/:appointmentId/pre-session-health-form',
+  authenticateToken,
+  requireRoles(['patient']),
+  async (req, res) => {
+    try {
+      const appointmentId = toBigInt(req.params.appointmentId, 'appointmentId');
+      const userId = toBigInt(req.user.id, 'userId');
+      const { appointment, isPatient } = await findAppointmentForHealthForm(appointmentId, userId);
+
+      if (!isPatient) {
+        return sendError(res, 403, 'forbidden', 'Hanya pasien pada janji temu ini yang dapat mengisi formulir pra-sesi.');
+      }
+      if (!['scheduled', 'confirmed'].includes(appointment.status)) {
+        return sendError(res, 409, 'health_form_locked', 'Formulir pra-sesi tidak dapat diubah untuk status janji temu ini.');
+      }
+
+      const payload = normalizeHealthFormPayload(req.body || {});
+      const form = await prisma.appointmentPreSessionHealthForm.upsert({
+        where: { appointmentId },
+        create: {
+          appointmentId,
+          patientId: userId,
+          symptoms: payload.symptoms || null,
+          painLevel: payload.painLevel,
+          allergies: payload.allergies || null,
+          medications: payload.medications || null,
+          notes: payload.notes || null,
+          answers: payload.answers
+        },
+        update: {
+          symptoms: payload.symptoms || null,
+          painLevel: payload.painLevel,
+          allergies: payload.allergies || null,
+          medications: payload.medications || null,
+          notes: payload.notes || null,
+          answers: payload.answers
+        }
+      });
+
+      return res.json({
+        appointmentId: appointment.id.toString(),
+        form: serializePreSessionHealthForm(form),
+        required: false,
+        status: 'submitted'
+      });
+    } catch (error) {
+      if (error.status === 404) {
+        return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan.');
+      }
+      if (error.status === 403) {
+        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke formulir pra-sesi ini.');
+      }
+      if (error.code === 'invalid_pain_level') {
+        return sendError(res, 400, 'invalid_pain_level', 'Skala nyeri harus berupa angka 1 sampai 10.');
+      }
+      if (error.message && error.message.startsWith('INVALID_')) {
+        return sendError(res, 400, 'invalid_appointment_id', 'ID janji temu tidak valid.');
+      }
+      console.error('Error saving pre-session health form:', error);
+      return sendError(res, 500, 'save_health_form_failed', 'Gagal menyimpan formulir pra-sesi.');
+    }
+  }
+);
+
+router.get(
   '/:appointmentId',
   authenticateToken,
   async (req, res) => {
@@ -1430,6 +1609,7 @@ router.get(
               dentistProfile: {
                 take: 1,
                 select: {
+                  id: true,
                   title: true,
                   primarySpecialization: true,
                   dentist_type: true,

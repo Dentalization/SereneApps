@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Linking, BackHandler, AppState } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, Linking, BackHandler, AppState, StyleSheet } from 'react-native';
 import { Text, Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -33,6 +33,12 @@ const PaymentScreen = () => {
 
   const pollInterval = useRef(null);
   const appState = useRef(AppState.currentState);
+  const paymentIntentIdRef = useRef(paymentIntentId);
+  const mountedRef = useRef(true);
+
+  // Keep ref in sync
+  useEffect(() => { paymentIntentIdRef.current = paymentIntentId; }, [paymentIntentId]);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // 1. Initialize Transaction
   useEffect(() => {
@@ -52,7 +58,7 @@ const PaymentScreen = () => {
         setLoading(false);
         // We don't start polling immediately; wait for user to return or manually check
       } catch (error) {
-        console.error('[PaymentScreen] Init error:', error);
+        if (__DEV__) console.error('[PaymentScreen] Init error:', error);
         setLoading(false);
         showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
       }
@@ -61,15 +67,18 @@ const PaymentScreen = () => {
     if (appointmentId) initPayment();
   }, [appointmentId]);
 
-  // 2. AppState Listener for Foreground Reconcile
+  // 2. AppState Listener for Foreground Reconcile (uses ref to avoid stale closure)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        console.log('[PaymentScreen] App came to foreground, reconciling...');
-        handleSync();
+        if (__DEV__) console.log('[PaymentScreen] App came to foreground, reconciling...');
+        // Use ref to always have latest paymentIntentId
+        if (paymentIntentIdRef.current && mountedRef.current) {
+          handleSync();
+        }
       }
       appState.current = nextAppState;
     });
@@ -77,7 +86,7 @@ const PaymentScreen = () => {
     return () => {
       subscription.remove();
     };
-  }, [paymentIntentId]);
+  }, []);
 
   // 3. Status Polling (10s interval, only when active)
   useEffect(() => {
@@ -88,10 +97,10 @@ const PaymentScreen = () => {
 
         try {
           const result = await getPaymentStatus(paymentIntentId);
-          console.log('[PaymentScreen] Polling status:', result.status);
+          if (__DEV__) console.log('[PaymentScreen] Polling status:', result.status);
           handleStatusChange(result.status);
         } catch (error) {
-          console.log('[PaymentScreen] Poll error:', error.message);
+          if (__DEV__) console.log('[PaymentScreen] Poll error:', error.message);
         }
       }, 10000); // Increased to 10s
     }
@@ -130,7 +139,7 @@ const PaymentScreen = () => {
     try {
       setChecking(true);
       // Try reconciliation first (checks with provider)
-      console.log('[PaymentScreen] Syncing transaction...');
+      if (__DEV__) console.log('[PaymentScreen] Syncing transaction...');
       const result = await reconcilePayment(paymentIntentId);
       
       const wasFinal = handleStatusChange(result.newStatus);
@@ -140,7 +149,7 @@ const PaymentScreen = () => {
         if (!polling) setPolling(true);
       }
     } catch (error) {
-      console.error('[PaymentScreen] Sync error:', error);
+      if (__DEV__) console.error('[PaymentScreen] Sync error:', error);
       // Fallback to simple status check
       try {
         const result = await getPaymentStatus(paymentIntentId);
@@ -300,7 +309,7 @@ const PaymentScreen = () => {
       </ScrollView>
 
       {(loading || checking) && (
-        <View style={{ ...View.absoluteFillObject, backgroundColor: withOpacity(COLORS.white, 0.7), justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: withOpacity(COLORS.white, 0.7), justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           {checking && <Text style={{ ...TYPOGRAPHY.bodySmall, marginTop: 12, color: COLORS.primary, fontWeight: '600' }}>Menyinkronkan status...</Text>}
         </View>

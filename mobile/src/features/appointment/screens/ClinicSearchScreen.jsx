@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -122,7 +122,17 @@ const ClinicSearchScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // PERF-003: Debounce search query to avoid lag when typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchInput);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
   const [selectedFilter, setSelectedFilter] = useState('all');
 
   const {
@@ -282,12 +292,9 @@ const ClinicSearchScreen = () => {
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.heroBack}
-              onPress={() =>
-                navigation.navigate('NearbyDentists', {
-                  maxDistanceKm: 5,
-                })
-              }
+              style={[styles.heroBack, { opacity: 0.4 }]}
+              disabled
+              // TODO: Create NearbyDentistsScreen and register in AppointmentNavigator
             >
               <MaterialCommunityIcons
                 name="map-search"
@@ -320,8 +327,8 @@ const ClinicSearchScreen = () => {
 
           <Searchbar
             placeholder="Cari nama klinik atau lokasi"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={searchInput}
+            onChangeText={setSearchInput}
             style={styles.heroSearch}
             inputStyle={{ color: COLORS.textPrimary, ...TYPOGRAPHY.body }}
             iconColor={COLORS.textMuted}

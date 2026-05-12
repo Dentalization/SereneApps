@@ -7,11 +7,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
 import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
+import { createAppointment } from '../../../services/appointmentService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
+
+import useToast from '../../../hooks/useToast';
 
 const BookingConfirmScreen = () => {
   const theme = useTheme();
@@ -34,26 +37,59 @@ const BookingConfirmScreen = () => {
   const [notes, setNotes] = useState('');
   const [reminder, setReminder] = useState(30);
   const [payment, setPayment] = useState('card');
+  const [isCreating, setIsCreating] = useState(false);
   const isReschedule = route.params?.isReschedule === true;
   const originalAppointmentId = route.params?.originalAppointmentId || null;
+  const routeMetadata = route.params?.metadata || {};
+  const { toast, showToast, hideToast } = useToast();
 
   const summaryDate = new Date(selectedDate);
   const dateLabel = summaryDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const handleConfirm = () => {
-    navigation.navigate('Payment', {
-      dentist,
-      slot,
-      date: selectedDate,
-      type,
-      service,
-      notes,
-      reminder,
-      fee,
-      paymentMethod: payment,
-      isReschedule,
-      originalAppointmentId,
-    });
+  const handleConfirm = async () => {
+    setIsCreating(true);
+    try {
+      // BUG-003: Create appointment via API before navigating to payment
+      const result = await createAppointment({
+        dentistId: dentist?.id,
+        clinicBranchId: dentist?.clinicContext?.branchId,
+        startsAt: slot?.raw?.startsAt || `${selectedDate}T${slot?.time || '09:00'}:00`,
+        endsAt: slot?.raw?.endsAt,
+        appointmentType: type,
+        serviceId: service?.id,
+        reason: notes || undefined,
+        reminderMinutes: reminder,
+        isReschedule,
+        originalAppointmentId,
+        metadata: {
+          ...routeMetadata,
+          reminderMinutes: reminder,
+          source: routeMetadata.rebookingFromAppointmentId ? 'smart_rebooking' : 'standard_booking',
+        },
+      });
+
+      const appointmentId = result?.data?.id || result?.id;
+      if (!appointmentId) throw new Error('Failed to create appointment');
+
+      navigation.navigate('Payment', {
+        appointmentId,
+        dentist,
+        slot,
+        date: selectedDate,
+        type,
+        service,
+        notes,
+        reminder,
+        fee,
+        paymentMethod: payment,
+        isReschedule,
+        originalAppointmentId,
+      });
+    } catch (error) {
+      showToast(error?.message || 'Gagal membuat janji temu. Silakan coba lagi.', 'error');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(240);
@@ -225,12 +261,14 @@ const BookingConfirmScreen = () => {
           mode='contained'
           icon='arrow-right'
           onPress={handleConfirm}
+          loading={isCreating}
+          disabled={isCreating}
           buttonColor={COLORS.primary}
           contentStyle={{ paddingVertical: 6 }}
           labelStyle={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700' }}
           accessibilityLabel={isReschedule ? 'Ubah Jadwal' : 'Lanjut ke Pembayaran'}
         >
-          {isReschedule ? 'Ubah Jadwal' : 'Lanjut ke Pembayaran'}
+          {isCreating ? 'Membuat janji...' : isReschedule ? 'Ubah Jadwal' : 'Lanjut ke Pembayaran'}
         </Button>
       </View>
     </View>
@@ -256,7 +294,7 @@ const ProgressIndicator = ({ current }) => (
             }}
           >
             {completed ? (
-              <MaterialCommunityIcons name="check" size={18} color={COLORS.textPrimary} />
+              <MaterialCommunityIcons name="check" size={18} color={COLORS.surfaceElevated} />
             ) : (
               <Text style={{ color: active ? COLORS.textPrimary : COLORS.textMuted, fontWeight: '700' }}>{step}</Text>
             )}

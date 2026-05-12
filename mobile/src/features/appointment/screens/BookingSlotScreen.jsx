@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image, Platform, Animated } from 'react-native';
 import { ActivityIndicator, Text, Chip, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,7 +16,7 @@ import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
 
-const getUpcomingDates = (days = 5) => {
+const getUpcomingDates = (days = 14) => {
   const today = new Date();
   return Array.from({ length: days }, (_, index) => {
     const d = new Date(today);
@@ -58,37 +58,7 @@ const normalizeSlot = (slot) => {
   };
 };
 
-// Generate default slots when no data available
-const generateDefaultSlots = () => {
-  const defaultSlots = [];
-  const times = [
-    { time: '09:00', type: 'onsite' },
-    { time: '09:30', type: 'virtual' },
-    { time: '10:00', type: 'onsite' },
-    { time: '10:30', type: 'virtual' },
-    { time: '11:00', type: 'onsite' },
-    { time: '13:00', type: 'onsite' },
-    { time: '13:30', type: 'virtual' },
-    { time: '14:00', type: 'onsite' },
-    { time: '14:30', type: 'virtual' },
-    { time: '15:00', type: 'onsite' },
-    { time: '15:30', type: 'virtual' },
-    { time: '16:00', type: 'onsite' },
-  ];
-  
-  times.forEach((slot, index) => {
-    defaultSlots.push({
-      id: `default-${index}`,
-      time: slot.time,
-      duration: 30,
-      type: slot.type,
-      isAvailable: true,
-      raw: slot,
-    });
-  });
-  
-  return defaultSlots;
-};
+// ISSUE-007: generateDefaultSlots removed — no more fake slot data
 
 const BookingSlotScreen = () => {
   const theme = useTheme();
@@ -100,6 +70,7 @@ const BookingSlotScreen = () => {
   const routeClinicContext = route.params?.clinicContext || route.params?.dentist?.clinicContext;
   const clinicIdForInfo = route.params?.clinicId || routeClinicContext?.profileId;
   const clinicBranchParam = route.params?.clinicBranchId || routeClinicContext?.branchId;
+  const rebookingFromAppointmentId = route.params?.rebookingFromAppointmentId || null;
   const fallbackDentist =
     initialDentist ||
     DENTISTS.find((doc) => doc.id === dentistId) ||
@@ -116,7 +87,19 @@ const BookingSlotScreen = () => {
   const [dentistLoading, setDentistLoading] = useState(!initialDentist);
   const [dentistError, setDentistError] = useState(null);
 
-  const dateOptions = useMemo(() => getUpcomingDates(5), []);
+  const dateOptions = useMemo(() => getUpcomingDates(14), []);
+
+  // ANIM-001: Slot selection spring bounce
+  const slotScaleAnim = useRef(new Animated.Value(1)).current;
+  const animateSlotSelect = () => {
+    slotScaleAnim.setValue(0.92);
+    Animated.spring(slotScaleAnim, {
+      toValue: 1,
+      friction: 3,
+      tension: 160,
+      useNativeDriver: true,
+    }).start();
+  };
   const [selectedDate, setSelectedDate] = useState(route.params?.date || dateOptions[0]);
   const [slotType, setSlotType] = useState(route.params?.type || 'onsite');
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -280,32 +263,30 @@ const BookingSlotScreen = () => {
 
       const isLiveClinicRef = /^\d+$/.test((clinicProfileRef || '').toString());
       
-      console.log('📅 [BookingSlot] Loading slots for:', {
+      if (__DEV__) console.log('📅 [BookingSlot] Loading slots for:', {
         dentistId,
         selectedDate,
         clinicIdForInfo,
         clinicProfileRef,
         clinicBranchRef,
-        'clinicContext.profileId': dentist?.clinicContext?.profileId,
-        'clinicContext.branchId': dentist?.clinicContext?.branchId,
       });
       
       // Fallback if no valid clinic ID for live dentist
       if (!clinicProfileRef || !isLiveClinicRef) {
-        console.log('📍 [BookingSlot] Using fallback slots (clinic ID not available)');
+        if (__DEV__) console.log('📍 [BookingSlot] No live clinic ID, using seed data only');
         const fallback = SLOT_AVAILABILITY.find(
           (entry) => entry.dentistId === dentistId && entry.date === selectedDate
         );
         const fallbackSlots = fallback?.slots?.length 
           ? fallback.slots.map(normalizeSlot) 
-          : generateDefaultSlots();
+          : []; // ISSUE-007: No fake slots — show empty state instead
         
         if (!ignore) {
           setSlots(fallbackSlots);
           if (fallbackSlots.length && !selectedSlot) {
             setSelectedSlot(fallbackSlots[0]);
           }
-          setSlotError(null);
+          setSlotError(fallbackSlots.length === 0 ? 'Tidak ada jadwal tersedia untuk tanggal ini.' : null);
           setSlotsLoading(false);
         }
         return;
@@ -315,31 +296,29 @@ const BookingSlotScreen = () => {
         if (!isLiveDentistId) {
           throw new Error('Using fallback data for demo dentist');
         }
-        console.log('🌐 [BookingSlot] Calling API getDentistAvailableSlots...');
+        if (__DEV__) console.log('🌐 [BookingSlot] Calling API getDentistAvailableSlots...');
         const response = await getDentistAvailableSlots(dentistId, selectedDate, clinicProfileRef);
-        console.log('✅ [BookingSlot] Got slots response:', response);
+        if (__DEV__) console.log('✅ [BookingSlot] Got slots response:', response);
         const data = response?.data || response;
         const available = data?.slots || data?.availableSlots || [];
         
         if (!ignore) {
-          const normalizedSlots = available.length > 0 
-            ? available.map(normalizeSlot) 
-            : generateDefaultSlots();
+          const normalizedSlots = available.map(normalizeSlot);
           setSlots(normalizedSlots);
-          setSlotError(null);
+          setSlotError(normalizedSlots.length === 0 ? 'Tidak ada jadwal tersedia untuk tanggal ini.' : null);
         }
       } catch (err) {
-        console.log('🔍 [BookingSlot] Failed to fetch slots:', err.message);
+        if (__DEV__) console.log('🔍 [BookingSlot] Failed to fetch slots:', err.message);
         if (!ignore) {
           if (isLiveDentistId) {
-            showToast('Gagal memuat jadwal, menggunakan jadwal contoh', 'warning');
+            showToast('Gagal memuat jadwal. Coba pilih tanggal lain.', 'warning');
           }
-          setSlotError(null);
           const fallback = SLOT_AVAILABILITY.find((entry) => entry.dentistId === dentistId && entry.date === selectedDate);
           const fallbackSlots = fallback?.slots?.length 
             ? fallback.slots.map(normalizeSlot) 
-            : generateDefaultSlots();
+            : [];
           setSlots(fallbackSlots);
+          setSlotError(fallbackSlots.length === 0 ? 'Gagal memuat jadwal. Silakan coba lagi.' : null);
         }
       } finally {
         if (!ignore) {
@@ -386,6 +365,7 @@ const BookingSlotScreen = () => {
       type: slotType,
       service: slotType === 'virtual' ? null : selectedService,
       fee: slotType === 'virtual' ? (dentist?.consultationFee || selectedSlot?.raw?.fee || 0) : selectedService?.price,
+      metadata: rebookingFromAppointmentId ? { rebookingFromAppointmentId } : null,
     });
   };
 
@@ -501,6 +481,29 @@ const BookingSlotScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingTop: headerHeight + 16, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
+        {rebookingFromAppointmentId && (
+          <View style={{ marginHorizontal: 20, marginTop: 18, borderRadius: 20, overflow: 'hidden' }}>
+            <LinearGradient
+              colors={[withOpacity(COLORS.primary, 0.16), withOpacity(COLORS.primaryLight, 0.1)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ padding: 16, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.24), borderRadius: 20 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 16, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <MaterialCommunityIcons name="calendar-refresh" size={22} color={COLORS.white} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '800', color: COLORS.textPrimary }}>Pesan lagi dengan dokter yang sama</Text>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 3 }}>
+                    Kami langsung membawa Anda ke pilihan jadwal tanpa mencari ulang.
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
         <View style={{ marginTop: 24 }}>
           <Text style={{ marginLeft: 20, ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 }}>
             Pilih tanggal
@@ -649,26 +652,29 @@ const BookingSlotScreen = () => {
                 {group.data.map((slot) => {
                   const active = selectedSlot?.id === slot.id;
                   return (
-                    <TouchableOpacity
+                    <Animated.View
                       key={slot.id}
-                      onPress={() => setSelectedSlot(slot)}
-                      accessibilityLabel={`Pukul ${slot.time}, Durasi ${slot.duration} menit`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      style={{
-                        width: '31%',
-                        marginBottom: 12,
-                        paddingVertical: 12,
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        borderColor: active ? COLORS.primary : COLORS.border,
-                        backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
-                        alignItems: 'center',
-                      }}
+                      style={{ width: '31%', transform: active ? [{ scale: slotScaleAnim }] : [] }}
                     >
-                      <Text style={{ fontWeight: '700', color: active ? COLORS.primary : COLORS.textPrimary }}>{slot.time}</Text>
-                      <Text style={{ fontSize: 12, color: COLORS.textMuted }}>{slot.duration} menit</Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { setSelectedSlot(slot); animateSlotSelect(); }}
+                        accessibilityLabel={`Pukul ${slot.time}, Durasi ${slot.duration} menit`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        style={{
+                          marginBottom: 12,
+                          paddingVertical: 12,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: active ? COLORS.primary : COLORS.border,
+                          backgroundColor: active ? withOpacity(COLORS.primary, 0.1) : COLORS.surfaceElevated,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ fontWeight: '700', color: active ? COLORS.primary : COLORS.textPrimary }}>{slot.time}</Text>
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted }}>{slot.duration} menit</Text>
+                      </TouchableOpacity>
+                    </Animated.View>
                   );
                 })}
               </View>

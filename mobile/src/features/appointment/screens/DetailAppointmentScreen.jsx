@@ -33,14 +33,19 @@ const DetailAppointmentScreen = () => {
     try {
       if (showLoading) setLoading(true);
       const result = await getAppointmentById(appointmentId);
-      setAppointment(result.data);
-      try {
-        const summaryResult = await getAppointmentClinicalSummary(appointmentId);
-        setClinicalSummary(summaryResult.summary || null);
-        setClinicalSummaryStatus(summaryResult.status || 'pending');
-      } catch (_summaryError) {
-        setClinicalSummary(null);
-        setClinicalSummaryStatus('pending');
+      const appointmentData = result.data;
+      setAppointment(appointmentData);
+      
+      // ISSUE-016: Only fetch clinical summary for completed appointments
+      if (appointmentData?.status === 'completed' || appointmentData?.status === 'finished') {
+        try {
+          const summaryResult = await getAppointmentClinicalSummary(appointmentId);
+          setClinicalSummary(summaryResult.summary || null);
+          setClinicalSummaryStatus(summaryResult.status || 'pending');
+        } catch (_summaryError) {
+          setClinicalSummary(null);
+          setClinicalSummaryStatus('pending');
+        }
       }
     } catch (error) {
       showToast(error.message || 'Gagal memuat detail janji temu', 'error');
@@ -302,7 +307,13 @@ const DetailAppointmentScreen = () => {
             <Button
               mode="contained"
               icon="star"
-              onPress={() => navigation.navigate('Review', { appointmentId, dentist: appointment?.dentist })}
+              onPress={() => navigation.navigate('Review', { 
+                appointmentId, 
+                dentistId: appointment?.dentist?.id || appointment?.dentistId,
+                dentistName: appointment?.dentist?.name,
+                dentistTitle: appointment?.dentist?.title || 'drg.',
+                clinicBranchId: appointment?.clinicBranchId,
+              })}
               style={{ borderRadius: 12 }}
               buttonColor={COLORS.primary}
             >

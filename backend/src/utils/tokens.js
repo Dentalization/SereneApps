@@ -4,7 +4,12 @@ const ACCESS_TTL = process.env.ACCESS_TTL || '15m';
 const REFRESH_TTL = process.env.REFRESH_TTL || '7d';
 
 export function signAccess(user) {
-  return jwt.sign({ sub: user.id, roles: user.roles || [] }, process.env.JWT_SECRET, { expiresIn: ACCESS_TTL });
+  return jwt.sign({
+    sub: user.id,
+    roles: user.roles || [],
+    tenantId: user.tenantId || user.tenant_id || null,
+    clinicId: user.clinicId || user.clinic_id || null,
+  }, process.env.JWT_SECRET, { expiresIn: ACCESS_TTL });
 }
 
 export function signRefresh(user) {
@@ -35,7 +40,11 @@ export function authenticateToken(req, res, next) {
     req.user = {
       id: userId,
       userId, // legacy alias used across older routes
-      roles: decoded.roles || []
+      roles: decoded.roles || [],
+      tenantId: decoded.tenantId || decoded.tenant_id || null,
+      tenant_id: decoded.tenant_id || decoded.tenantId || null,
+      clinicId: decoded.clinicId || decoded.clinic_id || null,
+      clinic_id: decoded.clinic_id || decoded.clinicId || null
     };
     next();
   } catch (error) {

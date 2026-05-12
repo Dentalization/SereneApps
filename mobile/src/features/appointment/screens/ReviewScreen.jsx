@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  View, TouchableOpacity, StatusBar, ScrollView, TextInput, Alert
+  View, TouchableOpacity, StatusBar, ScrollView, TextInput, Alert, Animated
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -13,26 +13,54 @@ import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
 
-const StarPicker = ({ value, onChange }) => (
-  <View style={{ flexDirection: 'row', gap: 8 }}>
-    {[1, 2, 3, 4, 5].map((star) => (
-      <TouchableOpacity
-        key={star}
-        onPress={() => onChange(star)}
-        activeOpacity={0.7}
-        accessibilityLabel={`${star} Bintang`}
-        accessibilityRole="button"
-        accessibilityState={{ selected: star <= value }}
-      >
-        <MaterialCommunityIcons
-          name={star <= value ? 'star' : 'star-outline'}
-          size={36}
-          color={star <= value ? COLORS.warning : COLORS.border}
-        />
-      </TouchableOpacity>
-    ))}
-  </View>
-);
+const StarPicker = ({ value, onChange }) => {
+  const scaleAnims = useRef([1, 2, 3, 4, 5].map(() => new Animated.Value(1))).current;
+
+  const handlePress = (star) => {
+    onChange(star);
+    // Pop animation (ANIM-005)
+    Animated.sequence([
+      Animated.timing(scaleAnims[star - 1], {
+        toValue: 1.3,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnims[star - 1], {
+        toValue: 1,
+        friction: 3,
+        tension: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  return (
+    <View 
+      style={{ flexDirection: 'row', gap: 8 }}
+      accessible={true}
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Pilih rating bintang dari 1 hingga 5"
+    >
+      {[1, 2, 3, 4, 5].map((star, index) => (
+        <Animated.View key={star} style={{ transform: [{ scale: scaleAnims[index] }] }}>
+          <TouchableOpacity
+            onPress={() => handlePress(star)}
+            activeOpacity={0.7}
+            accessibilityLabel={`${star} dari 5 bintang`}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: star === value, selected: star <= value }}
+          >
+            <MaterialCommunityIcons
+              name={star <= value ? 'star' : 'star-outline'}
+              size={36}
+              color={star <= value ? COLORS.warning : COLORS.border}
+            />
+          </TouchableOpacity>
+        </Animated.View>
+      ))}
+    </View>
+  );
+};
 
 const ratingLabels = {
   1: 'Sangat Buruk',
@@ -51,6 +79,7 @@ const ReviewScreen = () => {
     appointmentId,
     dentistId,
     dentistName = 'Dokter Gigi',
+    dentistTitle = 'drg.',
     clinicBranchId = null,
   } = route.params || {};
 
@@ -169,7 +198,7 @@ const ReviewScreen = () => {
             </Text>
           </View>
           <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>
-            drg. {dentistName}
+            {dentistTitle} {dentistName}
           </Text>
           <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 4 }}>
             Bagaimana pengalaman Anda?
@@ -240,10 +269,10 @@ const ReviewScreen = () => {
         {/* Submit */}
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || rating === 0}
           activeOpacity={0.85}
           style={{
-            backgroundColor: submitting ? COLORS.border : COLORS.primary,
+            backgroundColor: (submitting || rating === 0) ? COLORS.border : COLORS.primary,
             borderRadius: 16,
             padding: 16,
             alignItems: 'center',

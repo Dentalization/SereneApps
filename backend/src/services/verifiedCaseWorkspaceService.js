@@ -55,7 +55,7 @@ function deepClone(value) {
 
 function normalizeActor(actor = {}) {
   return {
-    id: actor.id?.toString?.() || actor.userId?.toString?.() || 'system',
+    id: actor.id?.toString?.() || actor.userId?.toString?.() || null,
     role: actor.role || actor.roles?.[0] || 'system',
   };
 }
@@ -347,7 +347,7 @@ export function createVerifiedCaseWorkspaceStore({ now = () => new Date(), idFac
       id,
       case_id: caseId,
       ...fileMeta,
-      storage_ref: `/uploads/verified-cases/${caseId}/${id}-${fileMeta.file_name}`,
+      storage_ref: `mock://verified-cases/${caseId}/${id}-${fileMeta.file_name}`,
       annotated_image_ref: null,
       annotated_image_mime_type: null,
       duplicate_of: duplicate?.id || null,
@@ -601,7 +601,7 @@ export function createVerifiedCaseWorkspaceStore({ now = () => new Date(), idFac
       format,
       redacted: Boolean(redacted),
       mime_type: format === 'pdf' ? 'application/pdf' : 'application/json',
-      storage_ref: `/uploads/verified-cases/${caseId}/exports/${format}-${Date.now()}`,
+      storage_ref: `mock://verified-cases/${caseId}/exports/${format}-${Date.now()}`,
       exported_by: normalizedActor.id,
       exported_at: timestamp,
       payload: null,
@@ -743,6 +743,14 @@ function createClinicalError(code, status = 400) {
   return error;
 }
 
+function requireTenantScope(actor) {
+  const scope = getActorScope(actor);
+  if (scope.role === 'dentist' && !scope.tenantId && !scope.clinicId) {
+    throw createClinicalError('tenant_scope_required', 403);
+  }
+  return scope;
+}
+
 function assertTransition(currentStatus, nextStatus) {
   if (currentStatus === nextStatus) return;
   if (!STATUS_TRANSITIONS[currentStatus]?.has(nextStatus)) {
@@ -780,6 +788,7 @@ export function createVerifiedCaseWorkspaceService({
   const timestamp = () => isoNow(now);
 
   async function getCaseOrThrow(caseId, actor) {
+    requireTenantScope(actor);
     const caseRecord = await repository.getCase(caseId, { actor });
     if (!caseRecord) throw createClinicalError('case_not_found', 404);
     return caseRecord;
@@ -840,7 +849,7 @@ export function createVerifiedCaseWorkspaceService({
 
     async createCase({ title = 'Untitled dental case', patientId = null, patientCode = null, sessionId = null, actor } = {}) {
       const normalizedActor = requireRole(actor, CLINICIAN_ROLES);
-      const scope = getActorScope(actor);
+      const scope = requireTenantScope(actor);
       if (!isSafePatientId(patientId)) throw createClinicalError('invalid_patient_id');
       const caseRecord = await repository.createCase({
         tenant_id: scope.tenantId,
@@ -862,6 +871,7 @@ export function createVerifiedCaseWorkspaceService({
 
     async listCases({ actor, includeArchived = false, search = '' } = {}) {
       requireRole(actor, CLINICIAN_ROLES);
+      requireTenantScope(actor);
       return repository.listCases({ actor, includeArchived, search });
     },
 
@@ -1210,7 +1220,7 @@ export function createVerifiedCaseWorkspaceService({
       const exportedAt = timestamp();
       const payload = format === 'json'
         ? {
-            warning: draft ? 'DRAFT — NOT CLINICIAN VERIFIED' : undefined,
+            warning: draft ? 'DRAFT - NOT CLINICIAN VERIFIED' : undefined,
             case: redacted ? { ...caseRecord, patient_id: 'REDACTED', patient_code: 'REDACTED', patient_name: 'REDACTED' } : caseRecord,
             images,
             quality_checks: qualityChecks,
@@ -1220,7 +1230,7 @@ export function createVerifiedCaseWorkspaceService({
             timeline_linkage: { patient_id: redacted ? 'REDACTED' : caseRecord.patient_id, linked: true },
             exported_at: exportedAt,
           }
-        : await buildVerifiedCasePdf({ caseRecord, images, qualityChecks, aiFindings, clinicianFindings, auditEvents, exports: previousExports, storage, redacted, exportedAt });
+        : await buildVerifiedCasePdf({ caseRecord, images, qualityChecks, aiFindings, clinicianFindings, auditEvents, exports: previousExports, storage, redacted, draft, exportedAt });
       const storageResult = format === 'pdf'
         ? await storage.putAnnotatedImage(payload, { caseId, fileName: `${caseId}.pdf`, mimeType: 'application/pdf' })
         : await storage.putAnnotatedImage(Buffer.from(JSON.stringify(payload, null, 2)), { caseId, fileName: `${caseId}.json`, mimeType: 'application/json' });
@@ -1234,6 +1244,16 @@ export function createVerifiedCaseWorkspaceService({
         exported_at: exportedAt,
         metadata: { draft: Boolean(draft), payload },
       });
+      if (draft) {
+        await recordAudit({
+          caseId,
+          actor,
+          eventType: 'case_exported',
+          after: { ...exportRecord, draft: true, warning: 'DRAFT - NOT CLINICIAN VERIFIED' },
+          reason: 'DRAFT - NOT CLINICIAN VERIFIED',
+        });
+        return { ...exportRecord, payload, signed_url: await storage.getSignedUrl(exportRecord.storage_ref) };
+      }
       const exportedCase = await transitionCase(caseRecord, CASE_STATUSES.EXPORTED, actor, { exported_at: exportedAt }, 'case_exported');
       await recordTimeline({ caseRecord: exportedCase, actor, eventType: 'report_exported', details: { report_link: exportRecord.storage_ref, export_id: exportRecord.id, format } });
       return { ...exportRecord, payload, signed_url: await storage.getSignedUrl(exportRecord.storage_ref) };
