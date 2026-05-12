@@ -421,6 +421,7 @@ const Teledentistry = () => {
           conversations={conversations}
           presenceMap={presenceMap}
           selectedAppointmentId={activeAppointmentId}
+          loading={loading || bootstrapping}
           onSelectConversation={handleConversationSelect}
           onStartVideo={handleDashboardStartVideo}
           onViewPreSession={handleDashboardViewPreSession}

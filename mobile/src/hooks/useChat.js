@@ -367,9 +367,11 @@ export function useChat({ userId } = {}) {
           return { ...prev, [appointmentId]: [...current, saved] };
         });
       }
+      return saved;
     } catch (error) {
       console.error('[useChat] send text failed:', error.message);
       setReconnectError(error.message || 'Failed to send message');
+      throw error;
     }
   }, []);
 

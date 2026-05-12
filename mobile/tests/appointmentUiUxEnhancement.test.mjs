@@ -54,5 +54,42 @@ test('appointment and teledentistry UX hardening surfaces are present', () => {
   assert.match(tele, /Diagnostik Koneksi/);
   assert.match(tele, /Kualitas jaringan sangat rendah/);
   assert.match(review, /Komunikasi Dokter/);
-  assert.match(review, /Tambah foto \(opsional\)/);
+  assert.match(review, /photoMetadataOnly/);
+});
+
+test('pr104 hardening covers repeated network events, chat failures, payment retry, and slot unknown states', () => {
+  const videoHook = read('src/hooks/useTwilioVideoClient.js');
+  const chatHook = read('src/hooks/useChat.js');
+  const tele = read('src/features/appointment/screens/PatientTeledentistryScreen.jsx');
+  const payment = read('src/features/appointment/screens/PaymentScreen.jsx');
+  const slots = read('src/features/appointment/screens/BookingSlotScreen.jsx');
+
+  assert.match(videoHook, /networkQualityEvent/);
+  assert.match(videoHook, /sequence: prev\.sequence \+ 1/);
+  assert.match(tele, /networkQualityEvent\?\.sequence/);
+  assert.match(tele, /setLowQualityCard/);
+  assert.match(tele, /PreCallSystemCheckSheet/);
+  assert.match(tele, /preCallSystemCheck/);
+  assert.match(chatHook, /throw error/);
+  assert.match(chatHook, /return saved/);
+  assert.match(tele, /setPendingTextRetry/);
+  assert.match(payment, /canRetryPayment/);
+  assert.match(payment, /\['expired', 'failed', 'deny', 'cancel', 'error'\]/);
+  assert.match(slots, /return \[date, null\]/);
+  assert.match(slots, /isUnknown/);
+  assert.match(slots, /Ketersediaan belum dapat dipastikan/);
+});
+
+test('review photos are feature-flagged metadata-only and mobile i18n foundation exists', () => {
+  const features = read('src/config/features.js');
+  const review = read('src/features/appointment/screens/ReviewScreen.jsx');
+  const i18n = read('src/i18n/index.js');
+  const hook = read('src/hooks/useI18n.js');
+
+  assert.match(features, /reviewPhotoUpload: false/);
+  assert.match(review, /FEATURES\.reviewPhotoUpload/);
+  assert.doesNotMatch(review, /uri: photo\.uri/);
+  assert.match(i18n, /fallbackText/);
+  assert.match(hook, /useSelector/);
+  assert.match(hook, /state\.settings\.language/);
 });

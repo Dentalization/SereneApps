@@ -9,9 +9,14 @@ import {
   applyPaymentStatus,
   VALID_PAYMENT_STATUSES
 } from '../services/payments/status.js';
+import snapTransactionsRouter from './payments/snapTransactions.js';
+import paymentStatusRouter from './payments/status.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+router.use('/snap-transactions', snapTransactionsRouter);
+router.use('/', paymentStatusRouter);
 
 function toBigInt(value, fieldName) {
   try {

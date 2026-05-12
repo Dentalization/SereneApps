@@ -15,6 +15,11 @@ export function useTwilioVideoClient() {
   const [connectError, setConnectError] = useState(null);
   const [connectionState, setConnectionState] = useState('disconnected');
   const [networkQuality, setNetworkQuality] = useState(-1);
+  const [networkQualityEvent, setNetworkQualityEvent] = useState({
+    quality: -1,
+    timestamp: null,
+    sequence: 0,
+  });
 
   const rememberParticipant = useCallback((participant) => {
     if (!participant?.sid) return;
@@ -175,7 +180,13 @@ export function useTwilioVideoClient() {
 
   const onNetworkQualityLevelChanged = ({ participant, isLocalUser, quality }) => {
      if (isLocalUser) {
-        setNetworkQuality(quality);
+        const nextQuality = Number.isFinite(quality) ? quality : -1;
+        setNetworkQuality(nextQuality);
+        setNetworkQualityEvent((prev) => ({
+          quality: nextQuality,
+          timestamp: Date.now(),
+          sequence: prev.sequence + 1,
+        }));
      }
   };
 
@@ -203,6 +214,7 @@ export function useTwilioVideoClient() {
     connectError,
     connectionState,
     networkQuality,
+    networkQualityEvent,
     connect,
     disconnect,
     toggleAudio,
