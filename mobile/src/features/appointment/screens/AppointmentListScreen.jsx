@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Animated } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Animated, ScrollView } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -15,6 +15,17 @@ import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 
 const COLORS = THEME_COLORS;
+
+const formatRelativeSync = (date, now = new Date()) => {
+  if (!date) return 'belum pernah';
+  const seconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+  if (seconds < 60) return 'baru saja';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} menit lalu`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  return `${Math.floor(hours / 24)} hari lalu`;
+};
 
 // --- KOMPONEN PENDUKUNG ---
 
@@ -36,6 +47,57 @@ const ModernEmptyState = ({ title, description, icon, action }) => (
     {action}
   </View>
 );
+
+const UpcomingOnboardingEmptyState = ({ onClinicSearch, onDentistSearch }) => {
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(arrowAnim, { toValue: 8, duration: 500, useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [arrowAnim]);
+
+  return (
+    <View style={{ paddingHorizontal: 12, paddingTop: 28 }}>
+      <LinearGradient colors={[withOpacity(COLORS.primary, 0.14), COLORS.surfaceElevated]} style={{ borderRadius: 28, padding: 22, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.18) }}>
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ width: 96, height: 96, borderRadius: 34, backgroundColor: withOpacity(COLORS.primary, 0.1), alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <MaterialCommunityIcons name="seat-recline-normal" size={44} color={COLORS.primary} />
+          </View>
+          <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary, textAlign: 'center' }}>Mulai perjalanan perawatan gigi Anda</Text>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 21, marginTop: 8 }}>
+            Temukan dokter, konsultasi virtual, dan simpan ringkasan medis digital dalam satu alur.
+          </Text>
+        </View>
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ marginTop: 18 }}>
+          {[
+            ['chat-processing-outline', 'Chat langsung dengan dokter'],
+            ['video-outline', 'Video konsultasi HD'],
+            ['file-document-check-outline', 'Ringkasan medis digital'],
+          ].map(([icon, label]) => (
+            <View key={label} style={{ width: 220, borderRadius: 20, backgroundColor: COLORS.white, padding: 16, marginRight: 12, borderWidth: 1, borderColor: COLORS.border }}>
+              <MaterialCommunityIcons name={icon} size={24} color={COLORS.primary} />
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary, fontWeight: '800', marginTop: 10 }}>{label}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <Animated.View style={{ alignItems: 'center', marginTop: 14, transform: [{ translateY: arrowAnim }] }}>
+          <MaterialCommunityIcons name="arrow-down" size={20} color={COLORS.primary} />
+        </Animated.View>
+        <View style={{ flexDirection: 'row', marginTop: 14 }}>
+          <Button mode="contained" onPress={onClinicSearch} style={{ flex: 1, borderRadius: 14, marginRight: 8 }} buttonColor={COLORS.primary}>
+            Cari Klinik
+          </Button>
+          <Button mode="outlined" onPress={onDentistSearch} style={{ flex: 1, borderRadius: 14, borderColor: COLORS.primary }} textColor={COLORS.primary}>
+            Dokter Terdekat
+          </Button>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+};
 
 // 2. Modern Card Component
 const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0 }) => {
@@ -343,6 +405,8 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [nowTick, setNowTick] = useState(new Date());
   const { toast, showToast, hideToast } = useToast();
   const insets = useSafeAreaInsets(); // UX-002: SafeAreaInsets
 
@@ -426,8 +490,10 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         }));
 
         setAppointments(transformed);
+        setLastSyncedAt(new Date());
       } else {
         setAppointments([]);
+        setLastSyncedAt(new Date());
       }
     } catch (err) {
       const message = err?.message || 'Gagal memuat janji temu';
@@ -444,6 +510,11 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
   useFocusEffect(useCallback(() => { fetchAppointments(false); }, [fetchAppointments]));
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -517,6 +588,16 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
     const isPast = new Date(apt.startsAt) < new Date();
     return isPast || apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'overdue';
   }).length;
+  const attentionCount = useMemo(() => {
+    const now = Date.now();
+    return appointments.reduce((count, apt) => {
+      const startsAt = new Date(apt.startsAt).getTime();
+      const within24h = startsAt >= now && startsAt <= now + 24 * 60 * 60 * 1000;
+      const unread = unreadMap[apt.id] || 0;
+      const overdue = apt.status === 'overdue';
+      return count + (within24h ? 1 : 0) + (unread > 0 ? 1 : 0) + (overdue ? 1 : 0);
+    }, 0);
+  }, [appointments, unreadMap]);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
@@ -544,6 +625,11 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
             }}
           >
             <MaterialCommunityIcons name="plus" size={28} color={COLORS.surfaceElevated} />
+            {attentionCount > 0 ? (
+              <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.surfaceElevated }}>
+                <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '900' }}>{attentionCount > 9 ? '9+' : attentionCount}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -570,6 +656,17 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           >
             <Text style={{ ...TYPOGRAPHY.bodySmall, fontWeight: '700', color: tab === 'history' ? COLORS.primary : COLORS.textMuted }}>Riwayat ({historyCount})</Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={{ marginHorizontal: 24, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+          {refreshing ? (
+            <ActivityIndicator size={12} color={COLORS.primary} style={{ marginRight: 8 }} />
+          ) : (
+            <MaterialCommunityIcons name="sync" size={13} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+          )}
+          <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '600' }}>
+            {refreshing ? 'Memperbarui...' : `Diperbarui ${formatRelativeSync(lastSyncedAt, nowTick)}`}
+          </Text>
         </View>
 
         {/* Scrollable List */}
@@ -608,18 +705,16 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
                     </Button>
                   }
                 />
+              ) : tab === 'upcoming' ? (
+                <UpcomingOnboardingEmptyState
+                  onClinicSearch={() => navigation.navigate('ClinicSearch')}
+                  onDentistSearch={() => navigation.navigate('ClinicSearch', { initialFilter: 'nearby_dentists' })}
+                />
               ) : (
                 <ModernEmptyState
-                  icon={tab === 'upcoming' ? 'calendar-blank-outline' : 'history'}
-                  title={tab === 'upcoming' ? "Tidak Ada Jadwal" : "Belum Ada Riwayat"}
-                  description={tab === 'upcoming' ? "Anda belum memiliki jadwal konsultasi gigi dalam waktu dekat." : "Anda belum menyelesaikan sesi konsultasi apapun."}
-                  action={
-                    tab === 'upcoming' && (
-                      <Button mode="contained" style={{ borderRadius: 12, marginTop: 10 }} onPress={() => navigation.navigate('ClinicSearch')}>
-                        Buat Janji Baru
-                      </Button>
-                    )
-                  }
+                  icon="history"
+                  title="Belum Ada Riwayat"
+                  description="Anda belum menyelesaikan sesi konsultasi apapun."
                 />
               )
             )}

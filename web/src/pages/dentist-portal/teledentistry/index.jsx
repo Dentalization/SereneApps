@@ -10,6 +10,7 @@ import IncomingCallModal from './components/IncomingCallModal';
 import NewConsultationModal from './components/NewConsultationModal';
 import PostCallSummaryPanel from './components/PostCallSummaryPanel';
 import PreCallChecklistModal from './components/PreCallChecklistModal';
+import SessionDashboard from './SessionDashboard';
 import { useChat } from '../../../hooks/useChat';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCallState } from '../../../hooks/useCallState';
@@ -61,6 +62,7 @@ const Teledentistry = () => {
   const [chatLoading, setChatLoading] = useState(false);
   const [showPostCallSummary, setShowPostCallSummary] = useState(false);
   const [showPreCallChecklist, setShowPreCallChecklist] = useState(false);
+  const [preCallAppointmentId, setPreCallAppointmentId] = useState(null);
   const [preSessionHealthForm, setPreSessionHealthForm] = useState({ status: 'idle', form: null, error: null });
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
@@ -142,13 +144,13 @@ const Teledentistry = () => {
     return () => clearTimeout(timer);
   }, [callState, endCall, toast]);
 
-  const handleConversationSelect = (conversation) => {
+  const handleConversationSelect = useCallback((conversation) => {
     if (conversation.appointmentId === activeAppointmentId) return;
     setChatLoading(true);
     selectConversation(conversation.appointmentId);
     // Simulation of data transition
     setTimeout(() => setChatLoading(false), 400);
-  };
+  }, [activeAppointmentId, selectConversation]);
 
   const handleSendTextMessage = async (text) => {
     if (!activeAppointmentId) return;
@@ -162,15 +164,33 @@ const Teledentistry = () => {
 
   const openPreCallChecklist = useCallback(() => {
     if (!activeAppointmentId) return;
+    setPreCallAppointmentId(activeAppointmentId);
     setShowPreCallChecklist(true);
   }, [activeAppointmentId]);
 
-  const handleStartVideoCall = async () => {
-    if (!activeAppointmentId) return;
+  const handleDashboardStartVideo = useCallback((appointmentId) => {
+    const conversation = conversations.find((item) => item.appointmentId === appointmentId);
+    if (conversation && appointmentId !== activeAppointmentId) {
+      handleConversationSelect(conversation);
+    }
+    setPreCallAppointmentId(appointmentId);
+    setShowPreCallChecklist(true);
+  }, [activeAppointmentId, conversations, handleConversationSelect]);
+
+  const handleDashboardViewPreSession = useCallback((appointmentId) => {
+    const conversation = conversations.find((item) => item.appointmentId === appointmentId);
+    if (conversation && appointmentId !== activeAppointmentId) {
+      handleConversationSelect(conversation);
+    }
+    setIsPatientPanelExpanded(true);
+  }, [activeAppointmentId, conversations, handleConversationSelect]);
+
+  const handleStartVideoCall = async (appointmentIdOverride = activeAppointmentId) => {
+    if (!appointmentIdOverride) return;
     try {
-      await initiateCall(activeAppointmentId);
+      await initiateCall(appointmentIdOverride);
       // Notify the other participant via socket
-      emitVideoCall(activeAppointmentId);
+      emitVideoCall(appointmentIdOverride);
     } catch (error) {
       toast.error('Failed to start video call. Please try again.');
     }
@@ -397,6 +417,15 @@ const Teledentistry = () => {
           </div>
         )}
 
+        <SessionDashboard
+          conversations={conversations}
+          presenceMap={presenceMap}
+          selectedAppointmentId={activeAppointmentId}
+          onSelectConversation={handleConversationSelect}
+          onStartVideo={handleDashboardStartVideo}
+          onViewPreSession={handleDashboardViewPreSession}
+        />
+
         <div className="flex flex-1 min-h-0">
           <aside className="w-80 bg-surface-elevated border-r border-primary/20 flex flex-col theme-transition">
             <div className="px-4 py-4 border-b border-primary/10">
@@ -465,12 +494,17 @@ const Teledentistry = () => {
         />
       )}
       <PreCallChecklistModal
-        appointmentId={activeAppointmentId}
+        appointmentId={preCallAppointmentId || activeAppointmentId}
         open={showPreCallChecklist}
-        onClose={() => setShowPreCallChecklist(false)}
-        onJoin={() => {
+        onClose={() => {
           setShowPreCallChecklist(false);
-          handleStartVideoCall();
+          setPreCallAppointmentId(null);
+        }}
+        onJoin={() => {
+          const appointmentId = preCallAppointmentId || activeAppointmentId;
+          setShowPreCallChecklist(false);
+          setPreCallAppointmentId(null);
+          handleStartVideoCall(appointmentId);
         }}
       />
       <PostCallSummaryPanel

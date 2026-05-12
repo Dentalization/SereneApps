@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Linking, BackHandler, AppState, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Linking, BackHandler, AppState, StyleSheet, Alert } from 'react-native';
 import { Text, Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -30,6 +30,8 @@ const PaymentScreen = () => {
   const [redirectUrl, setRedirectUrl] = useState(null);
   const [status, setStatus] = useState('pending');
   const [polling, setPolling] = useState(false);
+  const [expiresAt, setExpiresAt] = useState(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(15 * 60);
 
   const pollInterval = useRef(null);
   const appState = useRef(AppState.currentState);
@@ -40,32 +42,59 @@ const PaymentScreen = () => {
   useEffect(() => { paymentIntentIdRef.current = paymentIntentId; }, [paymentIntentId]);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
+  const stopPolling = useCallback(() => {
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
+    }
+    setPolling(false);
+  }, []);
+
+  const initPayment = useCallback(async () => {
+    if (!appointmentId) return;
+    try {
+      setLoading(true);
+      setStatus('pending');
+      const result = await createSnapTransaction(appointmentId);
+
+      setPaymentIntentId(result.paymentIntentId);
+      setRedirectUrl(result.redirectUrl);
+      const expiry = result.expiresAt || result.expiryTime || result.metadata?.expiresAt;
+      const expiryDate = expiry ? new Date(expiry) : new Date(Date.now() + 15 * 60 * 1000);
+      setExpiresAt(expiryDate);
+      setRemainingSeconds(Math.max(0, Math.floor((expiryDate.getTime() - Date.now()) / 1000)));
+
+      setLoading(false);
+      setPolling(true);
+    } catch (error) {
+      if (__DEV__) console.error('[PaymentScreen] Init error:', error);
+      setLoading(false);
+      showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
+    }
+  }, [appointmentId, showToast]);
+
   // 1. Initialize Transaction
   useEffect(() => {
-    const initPayment = async () => {
-      try {
-        setLoading(true);
-        const result = await createSnapTransaction(appointmentId);
+    initPayment();
+  }, [initPayment]);
 
-        setPaymentIntentId(result.paymentIntentId);
-        setRedirectUrl(result.redirectUrl);
-
-        // Auto-open if redirect URL exists
-        if (result.redirectUrl) {
-          Linking.openURL(result.redirectUrl);
-        }
-
-        setLoading(false);
-        // We don't start polling immediately; wait for user to return or manually check
-      } catch (error) {
-        if (__DEV__) console.error('[PaymentScreen] Init error:', error);
-        setLoading(false);
-        showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
+  useEffect(() => {
+    if (!expiresAt || status !== 'pending') return undefined;
+    const timer = setInterval(() => {
+      const seconds = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+      setRemainingSeconds(seconds);
+      if (seconds <= 0) {
+        clearInterval(timer);
+        stopPolling();
+        setStatus('expired');
+        Alert.alert('Waktu pembayaran habis', 'Ingin mencoba lagi?', [
+          { text: 'Batal', style: 'cancel', onPress: () => navigation.navigate('AppointmentList') },
+          { text: 'Coba Lagi', onPress: initPayment },
+        ]);
       }
-    };
-
-    if (appointmentId) initPayment();
-  }, [appointmentId]);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt, initPayment, navigation, status, stopPolling]);
 
   // 2. AppState Listener for Foreground Reconcile (uses ref to avoid stale closure)
   useEffect(() => {
@@ -107,14 +136,6 @@ const PaymentScreen = () => {
 
     return () => stopPolling();
   }, [polling, paymentIntentId]);
-
-  const stopPolling = () => {
-    if (pollInterval.current) {
-      clearInterval(pollInterval.current);
-      pollInterval.current = null;
-    }
-    setPolling(false);
-  };
 
   const handleStatusChange = (newStatus) => {
     const successStatuses = ['succeeded', 'settlement', 'capture'];
@@ -186,6 +207,8 @@ const PaymentScreen = () => {
     if (redirectUrl) Linking.openURL(redirectUrl);
   };
 
+  const timerLabel = `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
+
   // Prevent accidental back navigation during active payment session
   useFocusEffect(
     React.useCallback(() => {
@@ -234,6 +257,10 @@ const PaymentScreen = () => {
         <View style={{ alignItems: 'center' }}>
           <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.white, 0.8), textTransform: 'uppercase', letterSpacing: 1 }}>TOTAL PEMBAYARAN</Text>
           <Text style={{ ...TYPOGRAPHY.h1, color: COLORS.surfaceElevated, fontSize: 32, marginTop: 4 }}>{formatCurrency(fee)}</Text>
+          <View style={{ marginTop: 12, borderRadius: 999, backgroundColor: remainingSeconds <= 5 * 60 ? COLORS.error : COLORS.warning, paddingHorizontal: 14, paddingVertical: 7, flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name="timer-sand" size={16} color={COLORS.white} />
+            <Text style={{ marginLeft: 6, color: COLORS.white, fontWeight: '900' }}>{timerLabel}</Text>
+          </View>
         </View>
       </LinearGradient>
 
@@ -245,8 +272,10 @@ const PaymentScreen = () => {
               <MaterialCommunityIcons name="clock-outline" size={24} color={COLORS.primary} />
             </View>
             <View style={{ marginLeft: 16 }}>
-              <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>Menunggu Pembayaran</Text>
-              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>Selesaikan pembayaran di jendela baru</Text>
+              <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>
+                {status === 'expired' ? 'Pembayaran Kedaluwarsa' : 'Menunggu Pembayaran'}
+              </Text>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>Selesaikan pembayaran sebelum waktu habis</Text>
             </View>
           </View>
 
@@ -257,12 +286,21 @@ const PaymentScreen = () => {
           <Button
             mode="contained"
             onPress={handleOpenPayment}
+            disabled={!redirectUrl || status === 'expired'}
             style={{ marginTop: 20, borderRadius: 12 }}
             buttonColor={COLORS.primary}
             contentStyle={{ height: 48 }}
             accessibilityLabel="Buka Halaman Pembayaran di Browser"
           >
             Buka Halaman Pembayaran
+          </Button>
+          <Button
+            mode="text"
+            onPress={initPayment}
+            style={{ marginTop: 8 }}
+            textColor={COLORS.primary}
+          >
+            Coba buat transaksi baru
           </Button>
         </View>
 

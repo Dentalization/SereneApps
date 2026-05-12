@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Animated, Share } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, ScrollView, TouchableOpacity, StatusBar, Animated, Share, Alert } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
@@ -21,6 +21,7 @@ const BookingSuccessScreen = () => {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const [confetti, setConfetti] = useState([]);
 
   // Data from PaymentScreen
   const dentist = route.params?.dentist;
@@ -43,6 +44,32 @@ const BookingSuccessScreen = () => {
   const slotTime = slot?.time || summaryDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
   useEffect(() => {
+    const particles = Array.from({ length: 60 }, (_, index) => ({
+      id: index,
+      color: [COLORS.primary, COLORS.success, COLORS.warning, '#FF6B9D', '#38BDF8'][index % 5],
+      fall: new Animated.Value(0),
+      drift: new Animated.Value(0),
+      startX: (index % 12) * 28 - 150,
+      targetX: ((index * 37) % 240) - 120,
+      duration: 800 + ((index * 53) % 600),
+    }));
+    setConfetti(particles);
+    particles.forEach((particle) => {
+      Animated.parallel([
+        Animated.timing(particle.fall, {
+          toValue: 1,
+          duration: particle.duration,
+          useNativeDriver: true,
+        }),
+        Animated.spring(particle.drift, {
+          toValue: 1,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    const cleanup = setTimeout(() => setConfetti([]), 2000);
+
     // Start animations
     Animated.sequence([
       Animated.spring(scaleAnim, {
@@ -64,6 +91,7 @@ const BookingSuccessScreen = () => {
         }),
       ]),
     ]).start();
+    return () => clearTimeout(cleanup);
   }, []);
 
   const handleGoToAppointments = () => {
@@ -77,11 +105,9 @@ const BookingSuccessScreen = () => {
   };
 
   const handleAddToCalendar = () => {
-    // TODO: Full implementation with expo-calendar
-    const { Alert } = require('react-native');
     Alert.alert(
       'Tambah ke Kalender',
-      `Janji temu dengan ${dentist?.name}\n${dateLabel}, ${slotTime} WIB\n\nFitur ini akan segera tersedia.`,
+      `Janji temu dengan ${dentist?.name}\n${dateLabel}, ${slotTime} WIB\n\nIntegrasi kalender native membutuhkan modul expo-calendar di build berikutnya.`,
       [{ text: 'OK' }]
     );
   };
@@ -99,6 +125,26 @@ const BookingSuccessScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 260, zIndex: 20, alignItems: 'center' }}>
+        {confetti.map((particle) => (
+          <Animated.View
+            key={particle.id}
+            style={{
+              position: 'absolute',
+              top: 0,
+              width: 6,
+              height: 6,
+              borderRadius: 2,
+              backgroundColor: particle.color,
+              transform: [
+                { translateX: particle.drift.interpolate({ inputRange: [0, 1], outputRange: [particle.startX, particle.targetX] }) },
+                { translateY: particle.fall.interpolate({ inputRange: [0, 1], outputRange: [-10, 240] }) },
+                { rotate: particle.fall.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+              ],
+            }}
+          />
+        ))}
+      </View>
 
       <ScrollView
         contentContainerStyle={{

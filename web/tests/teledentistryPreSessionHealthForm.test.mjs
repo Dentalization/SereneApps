@@ -22,3 +22,16 @@ test('dentist teledentistry portal fetches and renders patient pre-session healt
   assert.match(panel, /Skala nyeri/);
   assert.match(panel, /Obat yang dikonsumsi/);
 });
+
+test('dentist teledentistry dashboard surfaces today sessions and pre-session actions', () => {
+  const dashboard = read('src/pages/dentist-portal/teledentistry/SessionDashboard.jsx');
+  const page = read('src/pages/dentist-portal/teledentistry/index.jsx');
+
+  assert.match(dashboard, /Dashboard Sesi Hari Ini/);
+  assert.match(dashboard, /Mulai Chat/);
+  assert.match(dashboard, /Mulai Video/);
+  assert.match(dashboard, /ClipboardCheck/);
+  assert.match(page, /SessionDashboard/);
+  assert.match(page, /handleDashboardStartVideo/);
+  assert.match(page, /handleDashboardViewPreSession/);
+});
