@@ -82,7 +82,12 @@ class ConversationsAdapter {
       .services(this.serviceSid)
       .conversations(conversationSid)
       .messages
-      .create({ author, body, attributes: JSON.stringify(attributes || {}) });
+      .create({
+        author,
+        body,
+        attributes: JSON.stringify(attributes || {}),
+        xTwilioWebhookEnabled: 'true'
+      });
       
     return {
       messageSid: message.sid,

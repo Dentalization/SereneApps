@@ -48,6 +48,7 @@ router.post('/', express.urlencoded({ extended: false }), async (req, res) => {
     event.RoomSid || event.RoomName || 'unknown-room',
     event.StatusCallbackEvent || 'unknown-event',
     event.ParticipantSid || event.ParticipantIdentity || '',
+    event.TrackSid || event.TrackName || event.TrackKind || '',
     event.Timestamp || ''
   ].filter(Boolean).join(':');
 

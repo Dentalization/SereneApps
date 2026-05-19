@@ -551,7 +551,7 @@ const authenticateTokenFlexible = (req, res, next) => {
   }
   
   try {
-    console.log('🔑 Verifying token:', token.substring(0, 20) + '...');
+    console.log('🔑 Verifying admin document token presence:', { hasToken: Boolean(token) });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = { id: decoded.sub, roles: decoded.roles || [] };
     console.log('✅ Token verified for user:', req.user.id, 'roles:', req.user.roles);

@@ -12,7 +12,7 @@ const getAccessToken = async () => {
   try {
     return await AsyncStorage.getItem('accessToken');
   } catch (error) {
-    console.error('Error getting access token:', error);
+    console.error('[patientService] Error reading auth state:', error);
     return null;
   }
 };
@@ -207,7 +207,9 @@ export const updatePatientProfile = async (profileData) => {
     const backendData = transformToBackendFormat(profileData);
 
     if (__DEV__) {
-      console.log('🔑 Access Token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'NULL');
+      console.debug('[patientService] update profile auth present', {
+        hasAccessToken: Boolean(accessToken),
+      });
       console.log('📤 Updating patient profile (after transform):', backendData);
     }
 
@@ -294,7 +296,11 @@ export const uploadPatientAvatar = async (avatarFile) => {
       throw new Error('No access token found');
     }
 
-    console.log('� Access Token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'NULL');
+    if (__DEV__) {
+      console.debug('[patientService] upload avatar auth present', {
+        hasAccessToken: Boolean(accessToken),
+      });
+    }
     console.log('�📤 Uploading avatar...', avatarFile.name);
 
     const formData = new FormData();

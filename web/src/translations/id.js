@@ -1685,6 +1685,18 @@ export default {
     patientInfo: 'Informasi Pasien',
     callDuration: 'Durasi Panggilan',
     callQuality: 'Kualitas Panggilan',
+    dashboard: {
+      title: 'Dashboard Sesi Hari Ini',
+      subtitle: 'Appointment virtual yang live, menunggu, dan akan datang.',
+      empty: 'Tidak ada sesi hari ini',
+      formSubmitted: 'Form pra-sesi sudah diisi',
+      status: {
+        live: 'Live',
+        waiting: 'Menunggu',
+        upcoming: 'Akan Datang',
+        completed: 'Selesai'
+      }
+    },
     chatReadiness: {
       tokenResponseMissing: 'Respons sesi teledentistry tidak lengkap. Silakan coba lagi.',
       paymentPending: 'Pembayaran belum selesai. Chat akan tersedia setelah pembayaran dikonfirmasi.',
@@ -2062,6 +2074,10 @@ export default {
         open: 'Buka riwayat analisis',
         close: 'Tutup riwayat',
         pastAnalyses: 'Analisis terdahulu',
+        clinicalHistory: 'Riwayat Klinis',
+        sessionsAndCases: 'Sesi dan kasus terverifikasi',
+        archiveCase: 'Arsipkan kasus',
+        backendSource: 'Backend sebagai sumber data klinis',
         openSession: 'Buka sesi',
         deleteSession: 'Hapus sesi',
         noHistory: 'Belum ada riwayat',

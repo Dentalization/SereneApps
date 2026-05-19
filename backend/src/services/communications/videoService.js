@@ -46,7 +46,7 @@ export default class VideoService {
     try {
       const room = await this.client.video.v1.rooms.create({
         uniqueName: roomName,
-        type: 'go',
+        type: 'group',
         statusCallback: this.webhookBaseUrl
           ? `${callbackBase}/webhooks/twilio/video`
           : undefined

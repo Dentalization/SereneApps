@@ -35,6 +35,7 @@ async function recordVideoEvent(event, eventType, appointmentId, userId = null, 
     event.RoomSid,
     event.StatusCallbackEvent,
     event.ParticipantSid || event.ParticipantIdentity || '',
+    event.TrackSid || event.TrackName || event.TrackKind || '',
     event.Timestamp || ''
   ].filter(Boolean).join(':');
 
