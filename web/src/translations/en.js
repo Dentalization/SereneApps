@@ -1720,6 +1720,18 @@ export default {
     patientInfo: 'Patient Information',
     callDuration: 'Call Duration',
     callQuality: 'Call Quality',
+    dashboard: {
+      title: 'Today\'s Session Dashboard',
+      subtitle: 'Live, waiting, and upcoming virtual appointments.',
+      empty: 'No sessions today',
+      formSubmitted: 'Pre-session form submitted',
+      status: {
+        live: 'Live',
+        waiting: 'Waiting',
+        upcoming: 'Upcoming',
+        completed: 'Completed'
+      }
+    },
     chatReadiness: {
       tokenResponseMissing: 'The teledentistry session response is incomplete. Please try again.',
       paymentPending: 'Payment is not complete yet. Chat will be available after payment is confirmed.',
@@ -2101,6 +2113,10 @@ export default {
         open: 'Open analysis history',
         close: 'Close history',
         pastAnalyses: 'Past Analyses',
+        clinicalHistory: 'Clinical History',
+        sessionsAndCases: 'Verified sessions and cases',
+        archiveCase: 'Archive case',
+        backendSource: 'Backend as the clinical data source',
         openSession: 'Open session',
         deleteSession: 'Delete session',
         noHistory: 'No history',
