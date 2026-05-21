@@ -16,6 +16,10 @@ import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
 const COLORS = THEME_COLORS;
 
 const formatRupiah = (value = 0) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+const formatSlots = (slots) => {
+  const safeSlots = Array.isArray(slots) ? slots : [];
+  return safeSlots.length === 0 ? 'Tutup' : safeSlots.join(' • ');
+};
 
 const Section = ({ title, children, action, style }) => (
   <View
@@ -253,6 +257,13 @@ const DentistDetailScreen = () => {
     clinicId: dentist?.clinicContext?.profileId,
     clinicBranchId: dentist?.clinicContext?.branchId,
   };
+
+  const specialties = Array.isArray(dentist?.specialties) ? dentist.specialties : [];
+  const services = Array.isArray(dentist?.services) ? dentist.services : [];
+  const workingHours = Array.isArray(dentist?.workingHours) ? dentist.workingHours : [];
+  const achievements = Array.isArray(dentist?.achievements) ? dentist.achievements : [];
+  const stories = Array.isArray(dentist?.stories) ? dentist.stories : [];
+  const gallery = Array.isArray(dentist?.gallery) ? dentist.gallery : [];
 
   const handleBook = () =>
     navigation.navigate('AppointmentTab', {
@@ -524,7 +535,7 @@ const DentistDetailScreen = () => {
 
           <Section title="Spesialisasi">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-              {dentist.specialties?.map((item) => (
+              {specialties.map((item) => (
                 <View
                   key={item}
                   style={{
@@ -543,7 +554,7 @@ const DentistDetailScreen = () => {
           </Section>
 
           <Section title="Layanan">
-            {dentist.services?.map((service) => (
+            {services.map((service) => (
               <View
                 key={service.name}
                 style={{
@@ -561,7 +572,7 @@ const DentistDetailScreen = () => {
           </Section>
 
           <Section title="Ketersediaan Jadwal">
-            {dentist.workingHours?.map((slot) => (
+            {workingHours.map((slot) => (
               <View
                 key={slot.day}
                 style={{
@@ -571,13 +582,13 @@ const DentistDetailScreen = () => {
                 }}
               >
                 <Text style={{ fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{slot.day}</Text>
-                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{slot.slots.length === 0 ? 'Tutup' : slot.slots.join(' • ')}</Text>
+                <Text style={{ color: COLORS.textSecondary, ...TYPOGRAPHY.bodySmall }}>{formatSlots(slot?.slots)}</Text>
               </View>
             ))}
           </Section>
 
           <Section title="Pencapaian">
-            {dentist.achievements?.map((ach) => (
+            {achievements.map((ach) => (
               <View key={ach.title} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                 <MaterialCommunityIcons name="trophy" size={18} color={COLORS.warning} />
                 <Text style={{ marginLeft: 10, fontWeight: '600', color: COLORS.textPrimary, ...TYPOGRAPHY.bodySmall }}>{ach.title}</Text>
@@ -587,7 +598,7 @@ const DentistDetailScreen = () => {
           </Section>
 
           <Section title="Cerita Pasien">
-            {dentist.stories?.map((story) => (
+            {stories.map((story) => (
               <View
                 key={story.patient}
                 style={{
@@ -616,7 +627,7 @@ const DentistDetailScreen = () => {
 
           <Section title="Galeri">
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {dentist.gallery?.map((url, index) => (
+              {gallery.map((url, index) => (
                 <Image
                   key={`${url}-${index}`}
                   source={{ uri: url }}
