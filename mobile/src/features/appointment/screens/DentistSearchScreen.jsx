@@ -101,24 +101,21 @@ const extractClinicContext = (dentist = {}) => {
   };
 };
 
-const mapDentist = (dentist) => {
-  const years = dentist.yearsOfExperience || 0;
-  const baseRating = 4 + Math.min(1, years / 15);
-  const clinicContext = extractClinicContext(dentist);
-
+// Dentists from hook are already normalized, just ensure consistency
+const ensureDentistNormalized = (dentist) => {
+  // Hook returns normalized data with: id, name, specialty, clinic, rating, reviews, price, image, clinicContext, raw, distanceKm
   return {
-    id: dentist.id?.toString() || dentist.userId?.toString(),
-    name: dentist.name || dentist.clinicName || 'Dokter Gigi',
-    specialty: dentist.specialization || dentist.specialty || 'Dokter Gigi Umum',
-    clinic: dentist.clinicName || dentist.clinicAddress || 'Alamat Klinik',
-    rating: Number(baseRating.toFixed(1)),
-    reviews: dentist.reviewCount || 0,
-    price: dentist.consultationFee || 0,
-    image: resolveAvatar(pickAvatarPath(dentist), dentist.id),
-    consultationTypes: dentist.consultationTypes,
-    clinicContext,
-    raw: dentist,
-    distance: dentist.distance || dentist.distanceKm || 0,
+    id: dentist.id,
+    name: dentist.name || 'Dokter Gigi',
+    specialty: dentist.specialty || 'Dokter Gigi Umum',
+    clinic: dentist.clinic || 'Klinik gigimu',
+    rating: Number(dentist.rating || 4),
+    reviews: dentist.reviews || 0,
+    price: dentist.price || 0,
+    image: dentist.image,
+    clinicContext: dentist.clinicContext,
+    raw: dentist.raw,
+    distance: dentist.distanceKm || 0,
   };
 };
 
@@ -142,8 +139,8 @@ const DentistSearchScreen = () => {
   } = useNearbyDentists({
     radius: 12,
     limit: 50,
-    allowRadiusExpansion: false,
-    strictRadius: true,
+    autoFetch: true,
+    type: 'clinic',
   });
 
   // Debounce search
@@ -153,6 +150,14 @@ const DentistSearchScreen = () => {
     }, 300);
     return () => clearTimeout(handler);
   }, [searchInput]);
+
+  // Log dentists data for debugging
+  useEffect(() => {
+    if (dentists && dentists.length > 0) {
+      console.log('🦷 [DentistSearchScreen] Received', dentists.length, 'dentists from hook');
+      console.log('🦷 [DentistSearchScreen] First dentist:', JSON.stringify(dentists[0], null, 2));
+    }
+  }, [dentists]);
 
   // Persist filter preference
   useEffect(() => {
@@ -181,11 +186,17 @@ const DentistSearchScreen = () => {
   // Apply filtering and searching
   useEffect(() => {
     if (!Array.isArray(dentists)) {
+      console.log('🦷 [DentistSearchScreen] dentists is not an array:', typeof dentists);
       setFilteredDentists([]);
       return;
     }
 
-    let data = dentists.map(mapDentist);
+    console.log('🦷 [DentistSearchScreen] Starting filter with', dentists.length, 'dentists');
+    let data = dentists.map(ensureDentistNormalized);
+    console.log('🦷 [DentistSearchScreen] After normalization:', data.length, 'dentists');
+    if (data.length > 0) {
+      console.log('🦷 [DentistSearchScreen] First normalized dentist:', JSON.stringify(data[0], null, 2));
+    }
 
     // Search filter
     if (searchQuery.trim()) {
@@ -196,6 +207,7 @@ const DentistSearchScreen = () => {
         const clinicMatch = dentist.clinic?.toLowerCase().includes(q);
         return nameMatch || specialtyMatch || clinicMatch;
       });
+      console.log('🦷 [DentistSearchScreen] After search filter:', data.length, 'dentists');
     }
 
     // Apply sort/filter
@@ -215,11 +227,12 @@ const DentistSearchScreen = () => {
         break;
     }
 
+    console.log('🦷 [DentistSearchScreen] Final filtered data:', data.length, 'dentists');
     setFilteredDentists(data);
   }, [dentists, searchQuery, selectedFilter]);
 
   const stats = useMemo(() => {
-    const mapped = dentists.map(mapDentist);
+    const mapped = dentists.map(ensureDentistNormalized);
     const total = mapped.length;
     const nearby = mapped.filter((d) => (d.distance || 0) <= 10).length;
     const avgRating = total
@@ -229,6 +242,12 @@ const DentistSearchScreen = () => {
   }, [dentists]);
 
   const handleProfile = (dentist) => {
+    console.log('🦷 [DentistSearchScreen] handleProfile called with:', dentist.id, dentist.name);
+    console.log('🦷 [DentistSearchScreen] Navigating to DentistDetail with:', {
+      dentistId: dentist.id,
+      dentist: dentist.raw,
+      clinicContext: dentist.clinicContext,
+    });
     navigation.navigate('DentistDetail', {
       dentistId: dentist.id,
       dentist: dentist.raw,
@@ -324,6 +343,14 @@ const DentistSearchScreen = () => {
           <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={theme.colors.primary} />
         }
       >
+        {/* Debug Info */}
+        {__DEV__ && (
+          <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, marginBottom: 12 }}>
+            <Text style={{ fontSize: 10, color: '#666', fontFamily: 'monospace' }}>
+              dentists: {dentists.length} | filtered: {filteredDentists.length} | loading: {loading ? '1' : '0'} | error: {error ? '1' : '0'}
+            </Text>
+          </View>
+        )}
         {/* Filter Chips */}
         <View style={{ flexDirection: 'row', marginBottom: 20, gap: 8 }}>
           {['all', 'nearby', 'highest_rated'].map((filter) => {
@@ -377,6 +404,28 @@ const DentistSearchScreen = () => {
             <Text style={{ color: '#9F1239', fontSize: 13 }}>{error}</Text>
             <Text style={{ color: '#9F1239', marginTop: 8, fontWeight: '600' }}>Ketuk untuk coba lagi</Text>
           </TouchableOpacity>
+        )}
+
+        {/* No Dentists Found State */}
+        {!loading && !error && dentists.length === 0 && (
+          <View
+            style={{
+              padding: 24,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+              alignItems: 'center',
+              backgroundColor: 'white',
+            }}
+          >
+            <MaterialCommunityIcons name="hospital-box-outline" size={48} color="#94A3B8" />
+            <Text style={{ marginTop: 12, fontWeight: '600', color: '#0F172A', fontSize: 16 }}>
+              Dokter Tidak Ditemukan
+            </Text>
+            <Text style={{ color: '#94A3B8', marginTop: 4, textAlign: 'center' }}>
+              Tidak ada dokter tersedia di area Anda. Coba lagi atau ubah preferensi lokasi.
+            </Text>
+          </View>
         )}
 
         {/* Empty State */}
@@ -452,9 +501,11 @@ const DentistSearchScreen = () => {
                 >
                   {dentist.specialty}
                 </Text>
+                {/* Clinic Name */}
                 <Text
                   style={{
-                    color: '#94A3B8',
+                    color: '#0F172A',
+                    fontWeight: '500',
                     marginTop: 2,
                     fontSize: normalize(11),
                   }}
@@ -462,6 +513,19 @@ const DentistSearchScreen = () => {
                 >
                   {dentist.clinic}
                 </Text>
+                {/* Clinic Address */}
+                {dentist.clinicContext?.address && (
+                  <Text
+                    style={{
+                      color: '#94A3B8',
+                      marginTop: 1,
+                      fontSize: normalize(9),
+                    }}
+                    numberOfLines={1}
+                  >
+                    {dentist.clinicContext.address}
+                  </Text>
+                )}
                 <View
                   style={{
                     flexDirection: 'row',
