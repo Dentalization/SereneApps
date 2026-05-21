@@ -470,6 +470,84 @@ const DentistSearchScreen = () => {
           </View>
         )}
 
+        {/* Test Card (DEV ONLY) */}
+        {__DEV__ && filteredDentists.length === 0 && !loading && (
+          <View
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 24,
+              padding: normalize(16),
+              marginBottom: 16,
+              shadowColor: '#0F172A',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.08,
+              shadowRadius: 18,
+              elevation: 4,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+              opacity: 0.6,
+            }}
+          >
+            <Text style={{ color: '#999', fontWeight: '600', marginBottom: 8 }}>
+              TEST CARD (No real data)
+            </Text>
+            <View style={{ flexDirection: 'row' }}>
+              <Image
+                source={{ uri: 'https://api.dicebear.com/7.x/avataaars/png?seed=test&size=256' }}
+                style={{
+                  width: normalize(70),
+                  height: normalize(70),
+                  borderRadius: 20,
+                  marginRight: 16,
+                  backgroundColor: '#F1F5F9',
+                }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
+                  Dr. Test Dentist
+                </Text>
+                <Text style={{ color: theme.colors.primary, fontWeight: '600', marginTop: 2, fontSize: normalize(12) }}>
+                  General Dentistry
+                </Text>
+                <Text style={{ color: '#0F172A', fontWeight: '500', marginTop: 2, fontSize: normalize(11) }}>
+                  Test Clinic
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                  <MaterialCommunityIcons name="star" size={14} color="#FACC15" />
+                  <Text style={{ marginLeft: 4, color: '#475569', fontWeight: '600', fontSize: normalize(11) }}>
+                    4.5 · 2.5 km
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ color: '#94A3B8', fontSize: normalize(10) }}>Mulai dari</Text>
+                <Text style={{ fontWeight: '700', color: '#0F172A', marginTop: 2, fontSize: normalize(14) }}>
+                  Rp 150.000
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity
+                  onPress={() => console.log('TEST: info button clicked')}
+                  activeOpacity={0.7}
+                  style={{ borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 12, height: normalize(36), marginRight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <MaterialCommunityIcons name="information-outline" size={16} color="#475569" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => console.log('TEST: book button clicked')}
+                  activeOpacity={0.7}
+                  style={{ borderRadius: 16, paddingHorizontal: 16, height: normalize(36), flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.primary, justifyContent: 'center' }}
+                >
+                  <MaterialCommunityIcons name="calendar-check" size={16} color="white" style={{ marginRight: 6 }} />
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: normalize(12) }}>Pesan</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Dentist Cards */}
         {filteredDentists.map((dentist) => (
           <View
@@ -596,6 +674,7 @@ const DentistSearchScreen = () => {
               <View style={{ flexDirection: 'row' }}>
                 <TouchableOpacity
                   onPress={() => handleProfile(dentist)}
+                  activeOpacity={0.7}
                   style={{
                     borderRadius: 16,
                     borderWidth: 1,
@@ -612,6 +691,7 @@ const DentistSearchScreen = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => handleBook(dentist)}
+                  activeOpacity={0.7}
                   style={{
                     borderRadius: 16,
                     paddingHorizontal: 16,
