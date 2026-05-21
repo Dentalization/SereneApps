@@ -246,18 +246,26 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
-      <aside className="h-full w-full max-w-2xl bg-surface-elevated shadow-2xl border-l border-primary/20 flex flex-col">
-        <header className="px-5 py-4 border-b border-primary/10 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,13,26,0.62)', backdropFilter: 'blur(10px)' }}>
+      <aside
+        className="flex h-full w-full max-w-2xl flex-col shadow-2xl"
+        style={{
+          background: 'rgba(26,21,40,0.96)',
+          borderLeft: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+        }}
+      >
+        <header className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
-            <h2 className="text-lg font-semibold text-primary">Ringkasan Pasca Konsultasi</h2>
-            <p className="text-sm text-secondary">
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--td-text-main)' }}>Ringkasan Pasca Konsultasi</h2>
+            <p className="text-sm" style={{ color: 'var(--td-text-muted)' }}>
               {conversation?.patient?.name || 'Pasien'} • Appointment #{appointmentId}
             </p>
           </div>
           <button
             onClick={handleClose}
-            className="p-2 rounded-lg hover:bg-primary/10 text-muted"
+            className="rounded-lg p-2 transition-all duration-150 hover:scale-105"
+            style={{ color: 'var(--td-text-muted)', background: 'rgba(255,255,255,0.04)' }}
             aria-label="Close summary"
           >
             <Icon name="X" size={18} />
@@ -265,13 +273,13 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         </header>
 
         {error && (
-          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.22)' }}>
             {error}
           </div>
         )}
 
         {isFinalized && (
-          <div className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac', border: '1px solid rgba(34,197,94,0.2)' }}>
             <div>Ringkasan sudah final dan tampil sebagai read-only.</div>
             <div className="mt-1 text-xs">
               {summaryMeta.patientAcknowledgedAt
@@ -282,22 +290,23 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         )}
 
         {followUpTasks.length > 0 && (
-          <div className="mx-5 mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--td-text-sub)', border: '1px solid rgba(124,58,237,0.22)' }}>
             Follow-up task dibuat: {followUpTasks[0].title} {followUpTasks[0].dueAt ? `• ${new Date(followUpTasks[0].dueAt).toLocaleString()}` : ''}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 scrollbar-minimal">
           {!isFinalized && (
-            <section className="rounded-lg border border-primary/10 bg-surface px-3 py-3">
-              <div className="mb-2 text-sm font-medium text-primary">Template cepat</div>
+            <section className="rounded-lg px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="mb-2 text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Template cepat</div>
               <div className="flex flex-wrap gap-2">
                 {SUMMARY_TEMPLATES.map((template) => (
                   <button
                     key={template.label}
                     type="button"
                     onClick={() => applyTemplate(template)}
-                    className="rounded-lg border border-primary/15 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150"
+                    style={{ color: 'var(--td-text-sub)', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.16)' }}
                   >
                     {template.label}
                   </button>
@@ -312,39 +321,40 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
           <Field label="Rencana tindakan" required value={form.plan} disabled={isFinalized} onChange={(value) => updateField('plan', value)} />
           <Field label="Rekomendasi lanjutan" value={form.recommendationsText} disabled={isFinalized} onChange={(value) => updateField('recommendationsText', value)} />
 
-          <label className="flex items-center gap-3 rounded-lg border border-primary/10 px-3 py-2">
+          <label className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <input
               type="checkbox"
               checked={form.followUpNeeded}
               disabled={isFinalized}
               onChange={(event) => updateField('followUpNeeded', event.target.checked)}
             />
-            <span className="text-sm font-medium text-primary">Follow-up diperlukan</span>
+            <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Follow-up diperlukan</span>
           </label>
 
           {form.followUpNeeded && (
             <label className="block">
-              <span className="text-sm font-medium text-primary">Jadwal follow-up</span>
+              <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Jadwal follow-up</span>
               <input
                 type="datetime-local"
                 value={form.followUpAt}
                 disabled={isFinalized}
                 onChange={(event) => updateField('followUpAt', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-primary/20 bg-surface px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
               />
             </label>
           )}
         </div>
 
-        <footer className="px-5 py-4 border-t border-primary/10 flex items-center justify-between">
-          <div className="text-xs text-muted">
+        <footer className="flex items-center justify-between px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-xs" style={{ color: 'var(--td-text-muted)' }}>
             {status === 'saving' ? 'Menyimpan...' : dirty ? 'Belum tersimpan' : 'Tersimpan'}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleSave} disabled={isFinalized || status === 'saving'} className="px-4 py-2 rounded-lg border border-primary/20 text-primary disabled:opacity-50">
+            <button onClick={handleSave} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-sub)' }}>
               Save draft
             </button>
-            <button onClick={handleFinalize} disabled={isFinalized || status === 'saving'} className="px-4 py-2 rounded-lg bg-accent text-white disabled:opacity-50">
+            <button onClick={handleFinalize} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 text-white disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}>
               Finalize
             </button>
           </div>
@@ -357,7 +367,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
 function Field({ label, value, onChange, disabled = false, required = false }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-primary">
+      <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>
         {label}{required ? <span className="text-red-500"> *</span> : null}
       </span>
       <textarea
@@ -365,7 +375,8 @@ function Field({ label, value, onChange, disabled = false, required = false }) {
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        className="mt-1 w-full resize-y rounded-lg border border-primary/20 bg-surface px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-80"
+        className="mt-1 w-full resize-y rounded-lg px-3 py-2 text-sm focus:outline-none disabled:opacity-80"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
       />
     </label>
   );

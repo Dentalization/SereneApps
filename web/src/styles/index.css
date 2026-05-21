@@ -41,6 +41,30 @@ body {
 /* Smooth sidebar collapse/expand across all portals */
 :root {
   --sidebar-width-transition: width 620ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Teledentistry dark-glass redesign tokens */
+  --td-app-bg: #0f0d1a;
+  --td-panel-bg: #1a1528;
+  --td-surface: #221d33;
+  --td-surface-2: #2d2640;
+  --td-accent: #7c3aed;
+  --td-accent-hover: #6d28d9;
+  --td-accent-glow: rgba(124, 58, 237, 0.25);
+  --td-accent-ring: rgba(124, 58, 237, 0.15);
+  --td-send: #7c3aed;
+  --td-send-hover: #6d28d9;
+  --td-send-glow: rgba(124, 58, 237, 0.4);
+  --td-bubble-out-from: #4c1d95;
+  --td-bubble-out-to: #5b21b6;
+  --td-bubble-out-border: rgba(167, 139, 250, 0.15);
+  --td-bubble-in-bg: rgba(34, 29, 51, 0.92);
+  --td-bubble-in-border: rgba(255, 255, 255, 0.04);
+  --td-text-main: #f1eeff;
+  --td-text-sub: #a89fc0;
+  --td-text-muted: #6b6383;
+  --td-border: rgba(124, 58, 237, 0.12);
+  --td-border-dim: rgba(255, 255, 255, 0.04);
+  --td-border-glass: rgba(255, 255, 255, 0.06);
 }
 
 .flex-shrink-0[style*='--sidebar-width'] {
@@ -63,6 +87,112 @@ body {
 
 .hide-scrollbar::-webkit-scrollbar {
   display: none;             /* Safari and Chrome */
+}
+
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-accent) transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border-radius: 9999px;
+  opacity: 0.4;
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(26, 21, 40, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-deep {
+    background: rgba(15, 13, 26, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .bubble-pop-in {
+    animation: bubblePopIn 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  }
+
+  .scrollbar-minimal {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 58, 237, 0.2) transparent;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-thumb {
+    background: rgba(124, 58, 237, 0.2);
+    border-radius: 4px;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+    background: rgba(124, 58, 237, 0.4);
+  }
+}
+
+@keyframes bubblePopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(124, 58, 237, 0);
+  }
+}
+
+@keyframes pulseGlow {
+  from {
+    filter: drop-shadow(0 8px 16px rgba(124, 58, 237, 0.1));
+    transform: scale(1);
+  }
+  to {
+    filter: drop-shadow(0 18px 36px rgba(124, 58, 237, 0.4));
+    transform: scale(1.04);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 /* Animation keyframes */

@@ -1,22 +1,146 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
+import { useTheme } from '../../../../contexts/ThemeContext';
+import { getAvatarGradient, getInitials } from '../../../../utils/avatarGradients';
+
+const formatDisplayName = (conversation) => conversation.patient?.name || 'Unknown Patient';
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  if (diff < 60 * 60 * 1000) {
+    return `${Math.max(1, Math.floor(diff / (60 * 1000)))}m`;
+  }
+  if (diff < 24 * 60 * 60 * 1000) {
+    return `${Math.floor(diff / (60 * 60 * 1000))}h`;
+  }
+  return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+};
+
+const EmptyContactState = () => (
+  <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+    <Icon
+      name="Inbox"
+      size={32}
+      style={{
+        color: 'rgba(124,58,237,0.3)',
+        marginBottom: '1rem',
+        animation: 'pulseGlow 3s infinite alternate',
+      }}
+    />
+    <p className="text-sm font-medium" style={{ color: 'var(--td-text-sub)' }}>
+      No active sessions
+    </p>
+    <p className="mt-1 text-xs" style={{ color: 'var(--td-text-muted)' }}>
+      Incoming appointments will appear here
+    </p>
+  </div>
+);
+
+const ConversationRow = ({ conversation, active, online, onSelect, isDark }) => {
+  const name = formatDisplayName(conversation);
+  const lastMessage = conversation.lastMessage;
+  const unread = conversation.unreadCount || 0;
+  const avatarStyle = getAvatarGradient(name, isDark);
+
+  return (
+    <button
+      onClick={onSelect}
+      aria-selected={active}
+      role="tab"
+      className="group relative flex w-full items-stretch text-left outline-none transition-all duration-200 hover:translate-x-[3px]"
+      style={{
+        background: active ? 'linear-gradient(90deg, rgba(124,58,237,0.18), rgba(124,58,237,0.04) 68%, transparent)' : 'transparent',
+        borderLeft: `3px solid ${active ? 'var(--td-accent)' : 'transparent'}`,
+      }}
+    >
+      <div
+        className="flex min-w-0 flex-1 gap-3 px-4 py-3 transition-colors duration-200"
+        style={{
+          borderBottom: '1px solid rgba(255,255,255,0.035)',
+        }}
+      >
+        <div className="relative flex-shrink-0">
+          <div
+            className="flex h-11 w-11 items-center justify-center overflow-hidden text-sm font-bold text-white"
+            style={{
+              ...avatarStyle,
+              boxShadow: active ? '0 8px 20px rgba(124,58,237,0.25)' : '0 4px 12px rgba(0,0,0,0.25)',
+            }}
+          >
+            {conversation.patient?.avatar ? (
+              <img src={conversation.patient.avatar} alt={name} className="h-full w-full object-cover" />
+            ) : (
+              getInitials(name)
+            )}
+          </div>
+          {online && (
+            <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-35" />
+              <span
+                className="relative inline-flex h-3.5 w-3.5 rounded-full border-2"
+                style={{
+                  background: '#22c55e',
+                  borderColor: 'var(--td-panel-bg)',
+                  boxShadow: '0 0 0 2px rgba(34,197,94,0.22)',
+                }}
+              />
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="truncate text-sm font-semibold" style={{ color: active ? 'var(--td-text-main)' : 'var(--td-text-sub)' }}>
+              {name}
+            </h4>
+            <span className="flex-shrink-0 text-right font-mono text-[10px]" style={{ color: 'var(--td-text-muted)' }}>
+              {formatTime(lastMessage?.createdAt)}
+            </span>
+          </div>
+
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs" style={{ color: active ? 'rgba(241,238,255,0.72)' : 'var(--td-text-muted)' }}>
+            {lastMessage?.messageType === 'file' ? (
+              <>
+                <Icon name="Paperclip" size={12} className="flex-shrink-0" style={{ color: 'rgba(124,58,237,0.65)' }} />
+                <span className="truncate">Shared file: {lastMessage.fileName || 'Attachment'}</span>
+              </>
+            ) : (
+              <span className="truncate">{lastMessage?.message || 'No messages yet'}</span>
+            )}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between">
+            <span
+              className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+              style={{ background: 'rgba(124,58,237,0.1)', color: 'rgba(167,139,250,0.85)' }}
+            >
+              #{conversation.appointmentId}
+            </span>
+            {unread > 0 && (
+              <span
+                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white"
+                style={{
+                  background: 'var(--td-accent)',
+                  boxShadow: '0 0 14px rgba(124,58,237,0.45)',
+                  animation: 'badgePulse 1.5s infinite',
+                }}
+              >
+                {unread}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+};
 
 const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, onConversationSelect }) => {
-  const formatDisplayName = (conversation) => conversation.patient?.name || 'Unknown Patient';
-
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    if (diff < 60 * 60 * 1000) {
-      return `${Math.max(1, Math.floor(diff / (60 * 1000)))}m ago`;
-    }
-    if (diff < 24 * 60 * 60 * 1000) {
-      return `${Math.floor(diff / (60 * 60 * 1000))}h ago`;
-    }
-    return date.toLocaleDateString();
-  };
+  const [searchQuery, setSearchQuery] = useState('');
+  const { isDark } = useTheme();
 
   const isOnline = (conversation) => {
     const ids = presenceMap[conversation.appointmentId];
@@ -24,105 +148,75 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
     return ids.some((id) => id !== conversation.dentist?.id);
   };
 
+  const filteredConversations = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((conversation) => {
+      const patient = conversation.patient || {};
+      return [patient.name, patient.email, String(conversation.appointmentId || '')]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [conversations, searchQuery]);
+
   return (
-    <div className="flex-1 overflow-y-auto">
-      {conversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-in fade-in zoom-in duration-500">
-          <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-6 border border-primary/10 shadow-inner">
-            <Icon name="MessageSquare" size={32} className="text-primary/40" />
-          </div>
-          <h3 className="text-lg font-semibold text-primary mb-2">No active sessions</h3>
-          <p className="text-sm text-secondary max-w-[200px] leading-relaxed">
-            Your consultation queue is currently empty. Incoming calls will appear here.
-          </p>
+    <div
+      className="flex flex-1 flex-col overflow-hidden"
+      style={{
+        background: 'rgba(15,13,26,0.6)',
+        borderRight: '1px solid rgba(255,255,255,0.05)',
+      }}
+    >
+      <div
+        className="flex-shrink-0 px-4 py-3"
+        style={{
+          background: 'linear-gradient(180deg, rgba(15,13,26,0.9) 0%, rgba(15,13,26,0.4) 100%)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+        }}
+      >
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--td-text-muted)', letterSpacing: '0.1em' }}>
+          Percakapan
+        </h2>
+        <div className="relative">
+          <Icon
+            name="Search"
+            size={13}
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--td-text-muted)' }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Cari pasien..."
+            className="w-full rounded-xl py-2 pl-8 pr-3 text-xs transition-all duration-300 focus:outline-none"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: 'var(--td-text-main)',
+              boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          />
         </div>
-      ) : (
-        <div className="space-y-1 px-2 pt-4">
-          {conversations.map((conversation) => {
-            const active = selectedAppointmentId === conversation.appointmentId;
-            const lastMessage = conversation.lastMessage;
-            const unreadCount = conversation.unreadCount || 0;
-            const online = isOnline(conversation);
+      </div>
 
-            return (
-              <button
-                key={conversation.appointmentId}
-                onClick={() => onConversationSelect(conversation)}
-                aria-selected={active}
-                role="tab"
-                className={`mx-2 mb-1 rounded-xl cursor-pointer theme-transition relative transition-all duration-200 w-[calc(100%-2rem)] text-left ${
-                  active
-                    ? 'bg-gradient-to-r from-accent/10 to-accent/5 border border-accent/20 shadow-lg shadow-accent/10'
-                    : 'hover:bg-surface/50 hover:shadow-sm border border-transparent'
-                }`}
-              >
-                <div className="px-4 py-3">
-                  <div className="flex items-start space-x-3">
-                    <div className="relative flex-shrink-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center theme-transition border-2 transition-all duration-200 ${
-                        active ? 'bg-accent text-white border-accent shadow-lg' : 'bg-surface border-primary/10'
-                      }`}>
-                        {conversation.patient?.avatar ? (
-                          <img
-                            src={conversation.patient.avatar}
-                            alt={formatDisplayName(conversation)}
-                            className="w-10 h-10 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <span className={`text-xs font-bold transition-colors duration-200 ${
-                            active ? 'text-white' : 'text-muted'
-                          }`}>
-                            {formatDisplayName(conversation)
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      {online && (
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border border-surface-elevated"></div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-1">
-                        <h4 className={`text-sm font-semibold truncate theme-transition transition-colors duration-200 ${
-                          active ? 'text-accent' : 'text-primary'
-                        }`}>
-                          {formatDisplayName(conversation)}
-                        </h4>
-                        <span className="text-xs text-muted theme-transition ml-2 flex-shrink-0">
-                          {formatTime(lastMessage?.createdAt)}
-                        </span>
-                      </div>
-
-                      <p className={`text-xs truncate mb-2 theme-transition transition-colors duration-200 ${
-                        active ? 'text-accent/80' : 'text-secondary'
-                      }`}>
-                        {lastMessage?.messageType === 'file'
-                          ? `Shared file: ${lastMessage.fileName || 'Attachment'}`
-                          : lastMessage?.message || 'No messages yet'}
-                      </p>
-
-                      <div className="flex items-center justify-between">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/5 text-primary">
-                          #{conversation.appointmentId}
-                        </span>
-                        {unreadCount > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] text-xs font-medium text-white bg-accent rounded-full">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="flex-1 overflow-y-auto scrollbar-minimal">
+        {filteredConversations.length === 0 ? (
+          <EmptyContactState />
+        ) : (
+          filteredConversations.map((conversation) => (
+            <ConversationRow
+              key={conversation.appointmentId}
+              conversation={conversation}
+              active={selectedAppointmentId === conversation.appointmentId}
+              online={isOnline(conversation)}
+              onSelect={() => onConversationSelect(conversation)}
+              isDark={isDark}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 };
