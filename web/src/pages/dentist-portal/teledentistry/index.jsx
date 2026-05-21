@@ -303,55 +303,69 @@ const Teledentistry = () => {
 
   if (loading || bootstrapping) {
     return (
-      <div className="min-h-screen bg-surface flex theme-transition dentist-skeleton">
+      <div className="flex min-h-screen dentist-skeleton" style={{ background: 'var(--td-app-bg)' }}>
         <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
           <SideBar />
         </div>
         <main className="flex-1 min-w-0 flex flex-col h-screen">
-          <div className="px-6 py-4 border-b border-primary/20 bg-surface-elevated skeleton-surface">
+          <div
+            className="px-6 py-4 skeleton-surface"
+            style={{
+              background: 'rgba(26,21,40,0.88)',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}
+          >
             <div className="flex items-center justify-between">
               <div className="space-y-2">
-                <div className="h-4 w-36 bg-accent/10 rounded animate-pulse"></div>
-                <div className="h-6 w-64 bg-accent/20 rounded animate-pulse"></div>
+                <div className="h-4 w-36 rounded animate-pulse" style={{ background: 'rgba(124,58,237,0.16)' }}></div>
+                <div className="h-6 w-64 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.08)' }}></div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="h-9 w-28 bg-accent/10 rounded-lg animate-pulse"></div>
-                <div className="h-9 w-32 bg-accent/10 rounded-lg animate-pulse"></div>
+                <div className="h-9 w-28 rounded-lg animate-pulse" style={{ background: 'rgba(124,58,237,0.16)' }}></div>
+                <div className="h-9 w-32 rounded-lg animate-pulse" style={{ background: 'rgba(255,255,255,0.08)' }}></div>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-1 min-h-0">
-            <div className="w-80 bg-surface-elevated border-r border-primary/20 p-4 skeleton-surface">
+          <div
+            className="m-3 flex flex-1 min-h-0 overflow-hidden rounded-2xl skeleton-surface"
+            style={{
+              background: 'rgba(15,13,26,0.4)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div className="w-80 p-4" style={{ background: 'rgba(15,13,26,0.6)', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="space-y-4">
                 {Array.from({ length: 6 }).map((_, idx) => (
                   <div key={idx} className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-surface rounded-full animate-pulse"></div>
+                    <div className="w-12 h-12 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.07)' }}></div>
                     <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-surface rounded animate-pulse"></div>
-                      <div className="h-3 bg-surface rounded w-3/4 animate-pulse"></div>
+                      <div className="h-4 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.07)' }}></div>
+                      <div className="h-3 rounded w-3/4 animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }}></div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="flex-1 flex flex-col items-stretch justify-between bg-surface skeleton-surface px-8 py-6">
+            <div className="flex-1 flex flex-col items-stretch justify-between px-8 py-6" style={{ background: 'var(--td-app-bg)' }}>
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, idx) => (
-                  <div key={idx} className="h-20 rounded-2xl bg-surface-elevated border border-primary/15 animate-pulse"></div>
+                  <div key={idx} className="h-20 rounded-2xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.05)' }}></div>
                 ))}
               </div>
-              <div className="h-16 rounded-xl bg-surface-elevated border border-primary/15 animate-pulse"></div>
+              <div className="h-16 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.05)' }}></div>
             </div>
-            <div className="w-80 bg-surface-elevated border-l border-primary/20 skeleton-surface">
+            <div className="w-80 skeleton-surface" style={{ background: 'rgba(15,13,26,0.7)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="h-full w-full flex flex-col">
-                <div className="p-4 border-b border-primary/20">
-                  <div className="h-4 w-40 rounded bg-accent/10 animate-pulse"></div>
+                <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="h-4 w-40 rounded animate-pulse" style={{ background: 'rgba(124,58,237,0.16)' }}></div>
                 </div>
                 <div className="flex-1 p-6 space-y-4">
-                  <div className="h-12 rounded-xl bg-accent/10 animate-pulse"></div>
-                  <div className="h-24 rounded-2xl bg-accent/10 animate-pulse"></div>
-                  <div className="h-32 rounded-2xl bg-accent/5 animate-pulse"></div>
+                  <div className="h-12 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }}></div>
+                  <div className="h-24 rounded-2xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }}></div>
+                  <div className="h-32 rounded-2xl animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }}></div>
                 </div>
               </div>
             </div>
@@ -362,54 +376,84 @@ const Teledentistry = () => {
   }
 
   return (
-    <div className="min-h-screen bg-surface flex theme-transition">
+    <div className="min-h-screen flex" style={{ background: 'var(--td-app-bg)' }}>
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <SideBar />
       </div>
-      <main className="flex-1 min-w-0 flex flex-col h-screen">
-        <div className="px-6 py-4 border-b border-primary/20 bg-surface-elevated theme-transition flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <main className="flex-1 min-w-0 flex flex-col h-screen rounded-xl m-4" style={{ overflow: 'hidden' }}>
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-6 py-3.5"
+          style={{
+            background: 'rgba(26, 21, 40, 0.88)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            zIndex: 10,
+          }}
+        >
           <div>
-            <h1 className="text-2xl font-semibold text-primary">Konsol Teledentistry</h1>
-            <p className="text-sm text-secondary">
-              Kelola konsultasi virtual, pesan aman, dan kolaborasi real-time dengan pasien.
-            </p>
+            <div className="mb-0.5 flex items-center gap-1.5">
+              <span style={{ color: 'var(--td-text-muted)', fontSize: '0.72rem' }}>Dentist Portal</span>
+              <span style={{ color: 'var(--td-text-muted)', fontSize: '0.72rem' }}>/</span>
+              <span style={{ color: 'var(--td-text-sub)', fontSize: '0.72rem', fontWeight: 600 }}>Teledentistry</span>
+            </div>
+            <h1 className="font-bold tracking-tight" style={{ color: 'var(--td-text-main)', fontSize: '1.25rem' }}>
+              Teledentistry
+            </h1>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={openPreCallChecklist}
-              disabled={!activeAppointmentId || callState === 'requesting_token' || callState === 'ringing'}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {callState === 'requesting_token' ? (
-                <Icon name="Loader2" size={16} className="animate-spin" />
-              ) : (
-                <Icon name="Video" size={16} />
-              )}
-              <span>{callState === 'requesting_token' ? 'Menghubungkan...' : 'Mulai Panggilan'}</span>
-            </button>
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowPostCallSummary(true)}
               disabled={!activeAppointmentId}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/20 text-primary hover:bg-primary/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-150 hover:-translate-y-px disabled:opacity-40"
+              style={{ color: 'var(--td-text-sub)' }}
             >
-              <Icon name="ClipboardList" size={16} />
+              <Icon name="ClipboardList" size={14} />
               <span>Ringkasan</span>
             </button>
             <button
               onClick={() => setShowNewConsultation(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-hover transition-all duration-200"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-all duration-150 hover:-translate-y-px"
+              style={{
+                color: 'var(--td-text-main)',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
             >
-              <Icon name="Plus" size={16} />
+              <Icon name="Plus" size={14} />
               <span>Konsultasi Baru</span>
+            </button>
+            <button
+              onClick={openPreCallChecklist}
+              disabled={!activeAppointmentId || callState === 'requesting_token' || callState === 'ringing'}
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-bold transition-all duration-150 hover:-translate-y-px disabled:translate-y-0 disabled:opacity-40"
+              style={{
+                background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                color: '#fff',
+                boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+              }}
+            >
+              {callState === 'requesting_token' ? (
+                <Icon name="Loader2" size={14} className="animate-spin" />
+              ) : (
+                <Icon name="Video" size={14} />
+              )}
+              <span>{callState === 'requesting_token' ? 'Menghubungkan...' : 'Mulai Panggilan'}</span>
             </button>
           </div>
         </div>
 
         {/* Network Banner */}
         {activeAppointmentId && !socketConnected && !loading && !bootstrapping && (
-          <div className="w-full bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 shadow-sm z-40 relative">
-            <Icon name="WifiOff" size={16} className="animate-pulse" />
-            <span className="text-sm font-medium leading-none tracking-wide">
+          <div
+            className="flex w-full items-center justify-center gap-2 px-4 py-2"
+            style={{
+              background: 'rgba(239,68,68,0.15)',
+              borderBottom: '1px solid rgba(239,68,68,0.2)',
+            }}
+          >
+            <Icon name="WifiOff" size={14} className="animate-pulse" style={{ color: '#f87171' }} />
+            <span className="text-xs font-semibold" style={{ color: '#fca5a5' }}>
               {reconnectError || (connectionState === 'connecting'
                 ? 'Menghubungkan ulang sesi chat...'
                 : 'Koneksi terputus. Mencoba menghubungkan kembali...')}
@@ -427,12 +471,16 @@ const Teledentistry = () => {
           onViewPreSession={handleDashboardViewPreSession}
         />
 
-        <div className="flex flex-1 min-h-0">
-          <aside className="w-80 bg-surface-elevated border-r border-primary/20 flex flex-col theme-transition">
-            <div className="px-4 py-4 border-b border-primary/10">
-              <h2 className="text-sm font-semibold text-primary">Percakapan</h2>
-              <p className="text-xs text-muted mt-1">Pilih untuk membuka kanal pasien</p>
-            </div>
+        <div
+          className="mx-3 mb-3 flex flex-1 min-h-0 overflow-hidden rounded-2xl"
+          style={{
+            background: 'rgba(15, 13, 26, 0.4)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)',
+          }}
+        >
+          <aside className="flex w-80 flex-col">
             <ConversationList
               conversations={conversations}
               presenceMap={presenceMap}
@@ -441,7 +489,7 @@ const Teledentistry = () => {
             />
           </aside>
 
-          <section className="flex-1 flex flex-col min-w-0 bg-surface theme-transition">
+          <section className="flex min-w-0 flex-1 flex-col">
             {videoSession && callState === 'connected' ? (
               <VideoCallInterface
                 conversation={activeConversation}

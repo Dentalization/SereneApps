@@ -11,6 +11,32 @@ const CONSULTATION_TYPES = [
   { value: 'second_opinion', label: 'Second Opinion' },
 ];
 
+const AVATAR_GRADIENTS = [
+  ['#7C3AED', '#4f46e5'],
+  ['#6d28d9', '#9333ea'],
+  ['#4f46e5', '#0ea5e9'],
+  ['#7c3aed', '#ec4899'],
+  ['#2563eb', '#7c3aed'],
+  ['#9333ea', '#db2777'],
+  ['#0891b2', '#7c3aed'],
+  ['#d97706', '#7c3aed'],
+];
+
+function getAvatarGradient(name = '') {
+  const hash = [...String(name)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const [from, to] = AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
+  return { background: `linear-gradient(135deg, ${from}, ${to})` };
+}
+
+function getInitials(name = '') {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || '??';
+}
+
 const NewConsultationModal = ({ onClose, onSubmit }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,17 +118,33 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-elevated rounded-3xl shadow-2xl w-full max-w-lg mx-4 theme-transition border border-primary/10 overflow-hidden">
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center"
+      style={{
+        background: 'rgba(15,13,26,0.75)',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      <div
+        className="mx-4 w-full max-w-lg overflow-hidden"
+        style={{
+          background: 'rgba(26,21,40,0.95)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '1.5rem',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+        }}
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-primary/10 flex items-center justify-between">
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
-            <h3 className="text-lg font-semibold text-primary theme-transition">New Consultation</h3>
-            <p className="text-xs text-muted theme-transition mt-0.5">Start a virtual consultation with a patient</p>
+            <h3 className="text-lg font-semibold" style={{ color: 'var(--td-text-main)' }}>New Consultation</h3>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--td-text-muted)' }}>Start a virtual consultation with a patient</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-muted hover:text-primary hover:bg-surface rounded-lg theme-transition"
+            className="rounded-lg p-2 transition-all duration-150 hover:scale-105"
+            style={{ color: 'var(--td-text-muted)', background: 'rgba(255,255,255,0.04)' }}
             aria-label="Close"
           >
             <Icon name="X" size={18} />
@@ -110,17 +152,18 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5 scrollbar-minimal">
           {/* Patient Search */}
           <div>
-            <label className="block text-xs font-semibold text-primary mb-2 theme-transition">
+            <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--td-text-sub)' }}>
               Select Patient
             </label>
             <div className="relative">
               <Icon
                 name="Search"
                 size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--td-text-muted)' }}
               />
               <input
                 ref={searchInputRef}
@@ -131,17 +174,22 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
                   setSelectedAppointment(null);
                 }}
                 placeholder="Search by name or email..."
-                className="w-full pl-9 pr-3 py-2.5 border border-primary/10 rounded-xl bg-surface text-primary text-sm focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent theme-transition"
+                className="w-full rounded-xl py-2.5 pl-9 pr-3 text-sm focus:outline-none"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'var(--td-text-main)',
+                }}
               />
             </div>
 
             {/* Patient Results */}
             {!selectedAppointment && searchQuery.trim() && (
-              <div className="mt-2 border border-primary/10 rounded-xl overflow-hidden bg-surface theme-transition">
+              <div className="mt-2 overflow-hidden rounded-xl" style={{ background: 'rgba(15,13,26,0.72)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 {loading ? (
-                  <div className="px-4 py-3 text-xs text-muted text-center">Loading...</div>
+                  <div className="px-4 py-3 text-center text-xs" style={{ color: 'var(--td-text-muted)' }}>Loading...</div>
                 ) : filteredAppointments.length === 0 ? (
-                  <div className="px-4 py-3 text-xs text-muted text-center">No matching upcoming virtual appointments found</div>
+                  <div className="px-4 py-3 text-center text-xs" style={{ color: 'var(--td-text-muted)' }}>No matching upcoming virtual appointments found</div>
                 ) : (
                   filteredAppointments.map((appt) => (
                     <button
@@ -150,22 +198,19 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
                         setSelectedAppointment(appt);
                         setSearchQuery(appt.patient.name || '');
                       }}
-                      className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent/5 transition-colors text-left"
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-semibold text-accent">
-                          {(appt.patient.name || '?')
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .toUpperCase()}
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white" style={getAvatarGradient(appt.patient.name || '?')}>
+                        <span>
+                          {getInitials(appt.patient.name || '?')}
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-primary truncate theme-transition">
-                          {appt.patient.name} <span className="text-muted font-normal">({new Date(appt.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'})})</span>
+                        <p className="truncate text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>
+                          {appt.patient.name} <span className="font-normal" style={{ color: 'var(--td-text-muted)' }}>({new Date(appt.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'})})</span>
                         </p>
-                        <p className="text-xs text-muted truncate theme-transition">
+                        <p className="truncate text-xs" style={{ color: 'var(--td-text-muted)' }}>
                           #{appt.id} • {appt.patient.email || 'No email'}
                         </p>
                       </div>
@@ -177,9 +222,9 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
 
             {/* Selected Patient Chip */}
             {selectedAppointment && (
-              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/10 border border-accent/20">
-                <span className="text-xs font-medium text-accent">{selectedAppointment.patient.name}</span>
-                <span className="text-[10px] text-accent/60 bg-accent/10 px-1.5 rounded-full block border border-accent/20">
+              <div className="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.22)' }}>
+                <span className="text-xs font-medium" style={{ color: 'var(--td-accent)' }}>{selectedAppointment.patient.name}</span>
+                <span className="block rounded-full px-1.5 text-[10px]" style={{ color: 'rgba(167,139,250,0.75)', background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.22)' }}>
                   #{selectedAppointment.id}
                 </span>
                 <button
@@ -187,7 +232,8 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
                     setSelectedAppointment(null);
                     setSearchQuery('');
                   }}
-                  className="text-accent/60 hover:text-accent ml-1"
+                  className="ml-1"
+                  style={{ color: 'rgba(167,139,250,0.75)' }}
                   aria-label="Remove patient"
                 >
                   <Icon name="X" size={12} />
@@ -198,7 +244,7 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
 
           {/* Consultation Type */}
           <div>
-            <label className="block text-xs font-semibold text-primary mb-2 theme-transition">
+            <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--td-text-sub)' }}>
               Consultation Type
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -206,10 +252,16 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
                 <button
                   key={type.value}
                   onClick={() => setConsultationType(type.value)}
-                  className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 border ${consultationType === type.value
-                      ? 'bg-accent/10 border-accent/30 text-accent'
-                      : 'bg-surface border-primary/10 text-primary hover:border-accent/20 theme-transition'
-                    }`}
+                  className="rounded-xl px-3 py-2.5 text-xs font-medium transition-all duration-200"
+                  style={consultationType === type.value ? {
+                    background: 'rgba(124,58,237,0.14)',
+                    border: '1px solid rgba(124,58,237,0.35)',
+                    color: 'var(--td-accent)',
+                  } : {
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: 'var(--td-text-sub)',
+                  }}
                 >
                   {type.label}
                 </button>
@@ -219,31 +271,38 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-semibold text-primary mb-2 theme-transition">
-              Notes <span className="font-normal text-muted">(optional)</span>
+            <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--td-text-sub)' }}>
+              Notes <span className="font-normal" style={{ color: 'var(--td-text-muted)' }}>(optional)</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add any relevant notes for this consultation..."
               rows={3}
-              className="w-full px-3 py-2.5 border border-primary/10 rounded-xl bg-surface text-primary text-sm resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent theme-transition"
+              className="w-full resize-none rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: 'var(--td-text-main)',
+              }}
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-primary/10 flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-muted hover:text-primary hover:bg-surface transition-all duration-200 theme-transition"
+            className="rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--td-text-sub)' }}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmitClick}
             disabled={!selectedAppointment || submitting}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}
           >
             {submitting ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

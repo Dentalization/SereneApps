@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useTheme } from '../../../contexts/ThemeContext';
+import { getAvatarGradient, getInitials } from '../../../utils/avatarGradients';
 
 const toDate = (value) => {
   const date = value ? new Date(value) : null;
@@ -26,11 +28,17 @@ const sessionStatus = (conversation, presenceMap = {}) => {
   return patientOnline ? 'waiting' : 'upcoming';
 };
 
-const statusStyles = {
-  live: 'border-green-400 bg-green-500/5 text-green-700',
-  waiting: 'border-amber-300 bg-amber-500/5 text-amber-700',
-  upcoming: 'border-primary/15 bg-surface-elevated text-primary',
-  completed: 'border-slate-200 bg-slate-50 text-slate-500 opacity-75',
+const statusConfig = {
+  live: { dot: '#22c55e', label: 'LIVE', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.2)' },
+  waiting: { dot: '#f59e0b', label: 'WAITING', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+  upcoming: { dot: '#7C3AED', label: 'UPCOMING', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.2)' },
+  completed: { dot: '#6b7280', label: 'DONE', bg: 'rgba(107,114,128,0.05)', border: 'rgba(107,114,128,0.15)' },
+};
+
+const iconButtonStyle = {
+  color: 'var(--td-text-muted)',
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.06)',
 };
 
 const SessionDashboard = ({
@@ -43,6 +51,7 @@ const SessionDashboard = ({
   onViewPreSession,
 }) => {
   const { t } = useLanguage();
+  const { isDark } = useTheme();
   const statusLabels = useMemo(() => ({
     live: t('teledentistry.dashboard.status.live', { fallbackText: 'Live' }),
     waiting: t('teledentistry.dashboard.status.waiting', { fallbackText: 'Menunggu' }),
@@ -72,15 +81,22 @@ const SessionDashboard = ({
 
   if (loading) {
     return (
-      <div className="border-b border-primary/10 bg-surface px-5 py-4">
-        <div className="mb-3 h-4 w-44 animate-pulse rounded bg-primary/10" />
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+      <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="mb-2.5 flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
+          <div className="h-3 w-36 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-minimal">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="h-28 rounded-xl border border-primary/10 bg-surface-elevated p-3">
-              <div className="h-4 w-32 animate-pulse rounded bg-primary/10" />
-              <div className="mt-4 h-3 w-24 animate-pulse rounded bg-primary/10" />
-              <div className="mt-5 h-6 w-40 animate-pulse rounded bg-primary/10" />
-            </div>
+            <div
+              key={item}
+              className="h-[66px] flex-shrink-0 animate-pulse rounded-xl"
+              style={{
+                width: '220px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}
+            />
           ))}
         </div>
       </div>
@@ -89,36 +105,56 @@ const SessionDashboard = ({
 
   if (!sessions.length) {
     return (
-      <div className="border-b border-primary/10 bg-surface px-5 py-4">
-        <h2 className="text-sm font-semibold text-primary">
-          {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
-        </h2>
-        <div className="mt-3 rounded-xl border border-dashed border-primary/20 bg-surface-elevated px-4 py-5 text-sm text-muted">
-          {t('teledentistry.dashboard.empty', { fallbackText: 'Tidak ada sesi hari ini' })}
+      <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="mb-2.5 flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--td-text-sub)', letterSpacing: '0.08em' }}>
+            {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
+          </span>
+        </div>
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: 'var(--td-text-muted)',
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px dashed rgba(124,58,237,0.25)',
+          }}
+        >
+          <Icon name="CalendarClock" size={16} style={{ color: 'var(--td-accent)' }} />
+          <span>{t('teledentistry.dashboard.empty', { fallbackText: 'Tidak ada sesi hari ini' })}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="border-b border-primary/10 bg-surface px-5 py-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-primary">
+    <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="mb-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--td-text-sub)', letterSpacing: '0.08em' }}>
             {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
-          </h2>
-          <p className="text-xs text-muted">
-            {t('teledentistry.dashboard.subtitle', { fallbackText: 'Live, menunggu, dan appointment virtual terdekat.' })}
-          </p>
+          </span>
+          <span
+            className="rounded-md px-1.5 py-0.5 font-mono text-xs"
+            style={{ color: 'var(--td-accent)', background: 'rgba(124,58,237,0.12)' }}
+          >
+            {sessions.length}
+          </span>
         </div>
-        <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-          {sessions.length} sesi
+        <span className="text-[10px] font-medium" style={{ color: 'var(--td-text-muted)' }}>
+          {t('teledentistry.dashboard.subtitle', { fallbackText: 'Live, menunggu, dan appointment virtual terdekat.' })}
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-minimal">
         {sessions.map(({ conversation, status, startsAt }) => {
           const selected = selectedAppointmentId === conversation.appointmentId;
           const patient = conversation.patient || {};
+          const cfg = statusConfig[status] || statusConfig.upcoming;
+          const initials = getInitials(patient.name || 'Pasien');
+          const avatarStyle = getAvatarGradient(patient.name || 'Pasien', isDark);
+
           return (
             <div
               key={conversation.appointmentId}
@@ -131,48 +167,77 @@ const SessionDashboard = ({
                   onSelectConversation?.(conversation);
                 }
               }}
-              className={`min-w-0 rounded-xl border p-3 text-left transition ${statusStyles[status]} ${selected ? 'ring-2 ring-primary/30' : ''}`}
+              className="flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5"
+              style={{
+                background: selected
+                  ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
+                  : cfg.bg,
+                border: `1px solid ${selected ? 'rgba(124,58,237,0.5)' : cfg.border}`,
+                boxShadow: selected ? '0 4px 16px rgba(124,58,237,0.2)' : 'none',
+                minWidth: '220px',
+              }}
+              aria-label={`${patient.name || 'Pasien'} ${statusLabels[status]}`}
             >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 text-sm font-bold text-primary">
-                  {(patient.name || 'P').slice(0, 2).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-primary">{patient.name || 'Pasien'}</p>
-                    {status === 'live' ? (
-                      <span className="relative flex h-2.5 w-2.5" aria-label={statusLabels.live}>
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-600" />
-                      </span>
-                    ) : null}
-                    {conversation.preSessionHealthFormStatus === 'submitted' || conversation.hasPreSessionHealthForm ? (
-                      <Icon name="ClipboardCheck" size={14} className="text-green-600" title={t('teledentistry.dashboard.formSubmitted', { fallbackText: 'Form pra-sesi sudah diisi' })} />
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    {startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Hari ini'} · {statusLabels[status]}
-                  </p>
-                </div>
-                {conversation.unreadCount > 0 ? (
-                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                    {conversation.unreadCount}
-                  </span>
-                ) : null}
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center text-xs font-bold text-white" style={avatarStyle}>
+                {patient.avatar ? (
+                  <img src={patient.avatar} alt={patient.name || 'Pasien'} className="h-full w-full object-cover" style={{ borderRadius: '10px' }} />
+                ) : (
+                  initials
+                )}
               </div>
-              <div className="mt-3 flex gap-2">
-                <span className="inline-flex items-center gap-1 rounded-lg bg-white/70 px-2 py-1 text-[11px] font-semibold">
-                  <Icon name="MessageCircle" size={12} /> Mulai Chat
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold" style={{ color: 'var(--td-text-main)' }}>
+                    {patient.name || 'Pasien'}
+                  </span>
+                  {status === 'live' ? (
+                    <span className="relative flex h-2 w-2 flex-shrink-0" aria-label={statusLabels.live}>
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: cfg.dot }} />
+                      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: cfg.dot }} />
+                    </span>
+                  ) : null}
+                  {conversation.preSessionHealthFormStatus === 'submitted' || conversation.hasPreSessionHealthForm ? (
+                    <Icon name="ClipboardCheck" size={12} style={{ color: '#22c55e' }} title={t('teledentistry.dashboard.formSubmitted', { fallbackText: 'Form pra-sesi sudah diisi' })} />
+                  ) : null}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="font-mono text-[9px]" style={{ color: 'var(--td-text-muted)' }}>
+                    #{conversation.appointmentId}
+                  </span>
+                  <span style={{ color: 'var(--td-text-muted)', fontSize: '9px' }}>·</span>
+                  <span className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cfg.dot }} title={statusLabels[status]}>
+                    {cfg.label}
+                  </span>
+                  <span style={{ color: 'var(--td-text-muted)', fontSize: '9px' }}>·</span>
+                  <span className="font-mono text-[9px]" style={{ color: 'var(--td-text-muted)' }}>
+                    {startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Hari ini'}
+                  </span>
+                </div>
+              </div>
+
+              {conversation.unreadCount > 0 ? (
+                <span
+                  className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
+                  style={{ background: 'var(--td-accent)', animation: 'badgePulse 1.5s infinite' }}
+                >
+                  {conversation.unreadCount}
                 </span>
+              ) : null}
+
+              <div className="flex flex-shrink-0 items-center gap-1">
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onStartVideo?.(conversation.appointmentId);
+                    onSelectConversation?.(conversation);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg bg-white/70 px-2 py-1 text-[11px] font-semibold"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 hover:scale-110"
+                  style={iconButtonStyle}
+                  title="Mulai Chat"
+                  aria-label="Mulai Chat"
                 >
-                  <Icon name="Video" size={12} /> Mulai Video
+                  <Icon name="MessageCircle" size={12} />
                 </button>
                 <button
                   type="button"
@@ -180,9 +245,28 @@ const SessionDashboard = ({
                     event.stopPropagation();
                     onViewPreSession?.(conversation.appointmentId);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg bg-white/70 px-2 py-1 text-[11px] font-semibold"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 hover:scale-110"
+                  style={iconButtonStyle}
+                  title="Form"
+                  aria-label="Form pra-sesi"
                 >
-                  <Icon name="ClipboardList" size={12} /> Form
+                  <Icon name="ClipboardList" size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onStartVideo?.(conversation.appointmentId);
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-white transition-all duration-150 hover:scale-110"
+                  style={{
+                    background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                    boxShadow: '0 2px 8px rgba(124,58,237,0.35)',
+                  }}
+                  title="Mulai Video"
+                  aria-label="Mulai Video"
+                >
+                  <Icon name="Video" size={12} />
                 </button>
               </div>
             </div>

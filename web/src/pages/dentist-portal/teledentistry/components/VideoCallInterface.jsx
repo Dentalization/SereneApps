@@ -7,6 +7,23 @@ import {
 } from '../../../../services/chatService';
 import NetworkQualityBadge from './NetworkQualityBadge';
 
+const AVATAR_GRADIENTS = [
+  ['#7C3AED', '#4f46e5'],
+  ['#6d28d9', '#9333ea'],
+  ['#4f46e5', '#0ea5e9'],
+  ['#7c3aed', '#ec4899'],
+  ['#2563eb', '#7c3aed'],
+  ['#9333ea', '#db2777'],
+  ['#0891b2', '#7c3aed'],
+  ['#d97706', '#7c3aed'],
+];
+
+function getAvatarGradient(name = '') {
+  const hash = [...String(name)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const [from, to] = AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
+  return { background: `linear-gradient(135deg, ${from}, ${to})` };
+}
+
 const VideoCallInterface = ({
   conversation,
   videoSession,
@@ -191,17 +208,18 @@ const VideoCallInterface = ({
   return (
     <div
       id="video-call-container"
-      className="relative h-full bg-black flex flex-col overflow-hidden"
+      className="relative flex h-full flex-col overflow-hidden"
+      style={{ background: 'var(--td-app-bg)' }}
       onMouseMove={resetControlsTimer}
       onTouchMove={resetControlsTimer}
       onTouchStart={resetControlsTimer}
     >
-      <div className={`absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-black/50 to-transparent transition-opacity duration-300 ${
+      <div className={`absolute left-0 right-0 top-0 z-10 p-4 transition-opacity duration-300 ${
         showControls ? 'opacity-100' : 'opacity-0'
-      }`}>
+      }`} style={{ background: 'linear-gradient(180deg, rgba(15,13,26,0.8) 0%, transparent 100%)' }}>
         <div className="flex items-center justify-between text-white">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={getAvatarGradient(remoteName)}>
               <span className="text-sm font-medium">
                 {remoteInitials}
               </span>
@@ -238,9 +256,13 @@ const VideoCallInterface = ({
       <div className="flex-1 relative">
         <div className="w-full h-full relative">
           <video ref={remoteVideoRef} className="w-full h-full object-cover" autoPlay playsInline />
-          <div className="absolute inset-0 bg-gray-800 flex items-center justify-center" hidden={isJoined}>
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            hidden={isJoined}
+            style={{ background: 'linear-gradient(135deg, rgba(15,13,26,0.96), rgba(34,29,51,0.96))' }}
+          >
             <div className="text-center text-white">
-              <div className="w-24 h-24 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full text-2xl font-bold text-white" style={getAvatarGradient(remoteName)}>
                 <span className="text-2xl font-medium">
                   {remoteInitials}
                 </span>
@@ -257,9 +279,10 @@ const VideoCallInterface = ({
             style={{
               top: `${pipPos.y}px`,
               right: `${pipPos.x}px`,
-              cursor: isDragging ? 'grabbing' : 'grab'
+              cursor: isDragging ? 'grabbing' : 'grab',
+              border: '2px solid rgba(124,58,237,0.4)'
             }}
-            className="absolute w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border-2 border-white/20 shadow-2xl z-20 group"
+            className="group absolute z-20 h-36 w-48 overflow-hidden rounded-lg shadow-2xl"
           >
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <Icon name="Move" size={20} className="text-white" />
@@ -274,38 +297,36 @@ const VideoCallInterface = ({
         )}
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/50 to-transparent transition-opacity duration-300 ${
+      <div className={`absolute bottom-0 left-0 right-0 p-6 transition-opacity duration-300 ${
         showControls ? 'opacity-100' : 'opacity-0'
-      }`}>
+      }`} style={{ background: 'linear-gradient(0deg, rgba(15,13,26,0.85) 0%, transparent 100%)' }}>
         <div className="flex items-center justify-center space-x-4">
           {!observeOnly && (
             <>
               <button
                 onClick={toggleAudio}
-                className={`p-4 rounded-full transition-colors ${
-                  audioEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className="rounded-full p-4 transition-all duration-150 hover:scale-105"
+                style={{ background: audioEnabled ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.7)' }}
               >
                 <Icon name={audioEnabled ? 'Mic' : 'MicOff'} size={20} className="text-white" />
               </button>
 
               <button
                 onClick={toggleVideo}
-                className={`p-4 rounded-full transition-colors ${
-                  videoEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className="rounded-full p-4 transition-all duration-150 hover:scale-105"
+                style={{ background: videoEnabled ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.7)' }}
               >
                 <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} className="text-white" />
               </button>
             </>
           )}
 
-          <button onClick={handleEndCall} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-colors" title="Leave call">
+          <button onClick={handleEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105" style={{ background: 'rgba(239,68,68,0.85)' }} title="Leave call">
             <Icon name="PhoneOff" size={20} className="text-white" />
           </button>
 
           {allowHardEnd && !observeOnly && (
-            <button onClick={handleHardEndCall} className="p-4 bg-red-800 hover:bg-red-900 rounded-full transition-colors" title="End room for everyone">
+            <button onClick={handleHardEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105" style={{ background: 'rgba(127,29,29,0.85)' }} title="End room for everyone">
               <Icon name="ShieldX" size={20} className="text-white" />
             </button>
           )}
