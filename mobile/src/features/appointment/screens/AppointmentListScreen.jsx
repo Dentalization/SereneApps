@@ -708,7 +708,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
               ) : tab === 'upcoming' ? (
                 <UpcomingOnboardingEmptyState
                   onClinicSearch={() => navigation.navigate('ClinicSearch')}
-                  onDentistSearch={() => navigation.navigate('ClinicSearch', { initialFilter: 'nearby_dentists' })}
+                  onDentistSearch={() => navigation.navigate('DentistSearch')}
                 />
               ) : (
                 <ModernEmptyState

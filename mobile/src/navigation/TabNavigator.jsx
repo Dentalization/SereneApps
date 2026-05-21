@@ -19,7 +19,7 @@ const Tab = createBottomTabNavigator();
 
 // List route yang tabbar-nya disembunyikan
 const HIDDEN_TAB_ROUTES = new Set([
-  'ClinicSearch', 'ClinicDetail', 'ClinicDetailScreen', 'DentistDetail',
+  'ClinicSearch', 'ClinicDetail', 'ClinicDetailScreen', 'DentistSearch', 'DentistDetail',
   'DentistDetailScreen', 'BookingSlot', 'BookingSlotScreen', 'BookingConfirm',
   'BookingConfirmScreen', 'Payment', 'PaymentScreen', 'BookingSuccess',
   'BookingSuccessScreen', 'BookingFailed', 'BookingFailedScreen', 'DetailAppointment',

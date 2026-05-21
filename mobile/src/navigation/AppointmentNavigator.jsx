@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import AppointmentListScreen from '../features/appointment/screens/AppointmentListScreen';
 import ClinicSearchScreen from '../features/appointment/screens/ClinicSearchScreen';
 import ClinicDetailScreen from '../features/appointment/screens/ClinicDetailScreen';
+import DentistSearchScreen from '../features/appointment/screens/DentistSearchScreen';
 import DentistDetailScreen from '../features/appointment/screens/DentistDetailScreen';
 import BookingSlotScreen from '../features/appointment/screens/BookingSlotScreen';
 import BookingConfirmScreen from '../features/appointment/screens/BookingConfirmScreen';
@@ -28,6 +29,7 @@ const AppointmentNavigator = () => {
     >
       <Stack.Screen name="AppointmentList" component={AppointmentListScreen} />
       <Stack.Screen name="ClinicSearch" component={ClinicSearchScreen} />
+      <Stack.Screen name="DentistSearch" component={DentistSearchScreen} />
       <Stack.Screen name="ClinicDetail" component={ClinicDetailScreen} />
       <Stack.Screen name="DentistDetail" component={DentistDetailScreen} />
       <Stack.Screen name="BookingSlot" component={BookingSlotScreen} />
