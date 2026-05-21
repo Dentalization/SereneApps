@@ -371,6 +371,7 @@ const DentistSearchScreen = () => {
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 160 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={theme.colors.primary} />
         }
@@ -562,8 +563,10 @@ const DentistSearchScreen = () => {
 
         {/* Dentist Cards */}
         {filteredDentists.map((dentist) => (
-          <View
+          <TouchableOpacity
             key={dentist.id}
+            onPress={() => handleProfile(dentist)}
+            activeOpacity={0.95}
             style={{
               backgroundColor: 'white',
               borderRadius: 24,
@@ -732,7 +735,7 @@ const DentistSearchScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
 
