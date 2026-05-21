@@ -242,12 +242,25 @@ const DentistSearchScreen = () => {
   }, [dentists]);
 
   const handleProfile = (dentist) => {
-    console.log('🦷 [DentistSearchScreen] handleProfile called with:', dentist.id, dentist.name);
-    console.log('🦷 [DentistSearchScreen] Navigating to DentistDetail with:', {
+    console.log('🦷 [DentistSearchScreen] handleProfile called');
+    console.log('🦷 Dentist object keys:', Object.keys(dentist || {}));
+    console.log('🦷 dentist.id:', dentist?.id);
+    console.log('🦷 dentist.name:', dentist?.name);
+    console.log('🦷 dentist.raw exists?:', !!dentist?.raw);
+    console.log('🦷 dentist.clinicContext exists?:', !!dentist?.clinicContext);
+    
+    if (!dentist?.id || !dentist?.raw) {
+      console.error('🦷 [DentistSearchScreen] Missing required data:', { id: dentist?.id, rawExists: !!dentist?.raw });
+      showToast('Data dokter tidak lengkap', 'error');
+      return;
+    }
+    
+    console.log('🦷 [DentistSearchScreen] Navigation data:', {
       dentistId: dentist.id,
-      dentist: dentist.raw,
-      clinicContext: dentist.clinicContext,
+      dentistRawKeys: Object.keys(dentist.raw || {}),
+      clinicContextKeys: Object.keys(dentist.clinicContext || {}),
     });
+    
     navigation.navigate('DentistDetail', {
       dentistId: dentist.id,
       dentist: dentist.raw,
@@ -256,6 +269,13 @@ const DentistSearchScreen = () => {
   };
 
   const handleBook = (dentist) => {
+    console.log('🦷 [DentistSearchScreen] handleBook called');
+    if (!dentist?.id || !dentist?.raw) {
+      console.error('🦷 [DentistSearchScreen] Missing required data for booking');
+      showToast('Data dokter tidak lengkap', 'error');
+      return;
+    }
+    
     navigation.navigate('BookingSlot', {
       dentistId: dentist.id,
       dentist: dentist.raw,
