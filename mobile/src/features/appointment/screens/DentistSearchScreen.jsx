@@ -241,7 +241,7 @@ const DentistSearchScreen = () => {
     return { total, nearby, avgRating };
   }, [dentists]);
 
-  const handleProfile = (dentist) => {
+    const handleProfile = (dentist) => {
     console.log('🦷 [DentistSearchScreen] handleProfile called');
     console.log('🦷 Dentist object keys:', Object.keys(dentist || {}));
     console.log('🦷 dentist.id:', dentist?.id);
@@ -261,11 +261,17 @@ const DentistSearchScreen = () => {
       clinicContextKeys: Object.keys(dentist.clinicContext || {}),
     });
     
-    navigation.navigate('DentistDetail', {
-      dentistId: dentist.id,
-      dentist: dentist.raw,
-      clinicContext: dentist.clinicContext,
-    });
+    try {
+      navigation.navigate('DentistDetail', {
+        dentistId: dentist.id,
+        dentist: dentist.raw,
+        clinicContext: dentist.clinicContext,
+      });
+      console.log('🦷 [DentistSearchScreen] Navigation succeeded');
+    } catch (navError) {
+      console.error('🦷 [DentistSearchScreen] Navigation error:', navError);
+      showToast('Gagal membuka detail dokter', 'error');
+    }
   };
 
   const handleBook = (dentist) => {
@@ -276,11 +282,17 @@ const DentistSearchScreen = () => {
       return;
     }
     
-    navigation.navigate('BookingSlot', {
-      dentistId: dentist.id,
-      dentist: dentist.raw,
-      clinicContext: dentist.clinicContext,
-    });
+    try {
+      navigation.navigate('BookingSlot', {
+        dentistId: dentist.id,
+        dentist: dentist.raw,
+        clinicContext: dentist.clinicContext,
+      });
+      console.log('🦷 [DentistSearchScreen] Booking navigation succeeded');
+    } catch (navError) {
+      console.error('🦷 [DentistSearchScreen] Booking navigation error:', navError);
+      showToast('Gagal membuka booking', 'error');
+    }
   };
 
   return (
