@@ -147,9 +147,10 @@ const AIAnalysisPage = () => {
   const isOnline = systemHealth?.status === 'ok';
 
   return (
-    <div className="flex h-screen bg-background theme-transition overflow-hidden">
-      {/* 1. App Navigation (Left) */}
-      <SideBar />
+    <div className="min-h-screen flex bg-surface-elevated theme-transition">
+      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <SideBar />
+      </div>
 
       {/* 2. Clinical History Sidebar (Slide-over) */}
       <ClinicalHistorySidebar
@@ -171,21 +172,18 @@ const AIAnalysisPage = () => {
           open: t('ai.deepDental.sidebar.openSession', { fallbackText: 'Buka' }),
           archive: t('ai.deepDental.sidebar.archiveCase', { fallbackText: 'Arsipkan' }),
           empty: t('ai.deepDental.sidebar.noHistory', { fallbackText: 'Belum ada riwayat' }),
-          emptyDescription: t('ai.deepDental.sidebar.emptyDescription', { fallbackText: 'Mulai kasus atau analisis baru untuk melihat riwayat.' }),
+          emptyDescription: t('ai.deepDental.sidebar.emptyDescription', { fallbackTevxt: 'Mulai kasus atau analisis baru untuk melihat riwayat.' }),
           sourceOfTruth: t('ai.deepDental.sidebar.backendSource', { fallbackText: 'Backend sebagai sumber data klinis' }),
         }}
       />
 
       {/* 3. Main Content + Verified Case Workspace */}
-      <div className="flex-1 flex h-full min-w-0">
-      <div className="flex-1 flex flex-col h-full relative min-w-0 w-full">
+      <div className="flex-1 min-w-0 flex flex-col h-screen rounded-2xl m-4 overflow-hidden bg-surface border border-border/50 shadow-theme-sm">
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         
         {/* --- TOP HEADER --- */}
-        <header className="flex-none relative z-20">
-          {/* Glass Background with subtle border */}
-          <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50" />
-          
-          <div className="relative flex items-center justify-between px-6 py-4">
+        <header className="flex-none">
+          <div className="flex items-center justify-between px-6 pt-5 pb-3 bg-surface/90 backdrop-blur-md border-b border-border/40">
             {/* Left: Branding & Menu */}
             <div className="flex items-center gap-4">
               <motion.button
@@ -235,11 +233,13 @@ const AIAnalysisPage = () => {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setWorkspaceOpen(true)}
-                aria-label="Open verified case workspace"
-                className="xl:hidden flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 text-xs font-semibold text-indigo-600 dark:border-indigo-800 dark:text-indigo-300"
+                onClick={() => setWorkspaceOpen((prev) => !prev)}
+                aria-label={workspaceOpen
+                  ? t('ai.deepDental.workspace.close', { fallbackText: 'Close case workspace' })
+                  : t('ai.deepDental.workspace.open', { fallbackText: 'Open case workspace' })}
+                className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 text-xs font-semibold text-indigo-600 dark:border-indigo-800 dark:text-indigo-300"
               >
-                Case
+                {t('ai.deepDental.workspace.short', { fallbackText: 'Workspace' })}
               </motion.button>
 
               {/* Action Button */}
@@ -268,43 +268,45 @@ const AIAnalysisPage = () => {
           </div>
         </header>
 
-        {/* --- SCROLLABLE MESSAGES --- */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
-          <div className="max-w-3xl mx-auto space-y-6 pb-4">
-            {messages.length === 0 ? (
-              <EmptyState labels={{
-                title: t('ai.deepDental.empty.title', { fallbackText: 'Siap Menganalisis' }),
-                subtitle: t('ai.deepDental.empty.subtitle', { fallbackText: 'Unggah gambar dental atau jelaskan kasus untuk mendapatkan analisis AI, temuan klinis, dan rekomendasi perawatan.' }),
-                pathology: t('ai.deepDental.empty.pathology', { fallbackText: 'Deteksi Patologi' }),
-                clinical: t('ai.deepDental.empty.clinical', { fallbackText: 'Analisis Klinis' }),
-                evidence: t('ai.deepDental.empty.evidence', { fallbackText: 'Berbasis Bukti' }),
-              }} />
-            ) : (
-              <>
-                <AnimatePresence mode="popLayout">
-                  {messages.map((msg) => (
-                    <ChatMessage
-                      key={msg.id}
-                      message={msg}
-                      onImageClick={setLightboxImage}
-                      onSuggestedQuestion={handleSuggestedQuestion}
-                      onReviewFindings={reviewFindings}
-                    />
-                  ))}
-                </AnimatePresence>
-                <AnimatePresence>
-                  {isLoading && <ThinkingLoader label={t('ai.deepDental.analyzing', { fallbackText: 'Menganalisis...' })} />}
-                </AnimatePresence>
-                {/* Scroll Anchor */}
-                <div ref={messagesEndRef} className="h-1" />
-              </>
-            )}
-          </div>
-        </div>
+        <div className="flex-1 flex min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* --- SCROLLABLE MESSAGES --- */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
+              <div className="max-w-3xl mx-auto space-y-6 pb-4">
+                {messages.length === 0 ? (
+                  <EmptyState labels={{
+                    title: t('ai.deepDental.empty.title', { fallbackText: 'Siap Menganalisis' }),
+                    subtitle: t('ai.deepDental.empty.subtitle', { fallbackText: 'Unggah gambar dental atau jelaskan kasus untuk mendapatkan analisis AI, temuan klinis, dan rekomendasi perawatan.' }),
+                    pathology: t('ai.deepDental.empty.pathology', { fallbackText: 'Deteksi Patologi' }),
+                    clinical: t('ai.deepDental.empty.clinical', { fallbackText: 'Analisis Klinis' }),
+                    evidence: t('ai.deepDental.empty.evidence', { fallbackText: 'Berbasis Bukti' }),
+                  }} />
+                ) : (
+                  <>
+                    <AnimatePresence mode="popLayout">
+                      {messages.map((msg) => (
+                        <ChatMessage
+                          key={msg.id}
+                          message={msg}
+                          onImageClick={setLightboxImage}
+                          onSuggestedQuestion={handleSuggestedQuestion}
+                          onReviewFindings={reviewFindings}
+                        />
+                      ))}
+                    </AnimatePresence>
+                    <AnimatePresence>
+                      {isLoading && <ThinkingLoader label={t('ai.deepDental.analyzing', { fallbackText: 'Menganalisis...' })} />}
+                    </AnimatePresence>
+                    {/* Scroll Anchor */}
+                    <div ref={messagesEndRef} className="h-1" />
+                  </>
+                )}
+              </div>
+            </div>
 
-        {/* --- INPUT BAR AREA --- */}
-        <div className="flex-none p-4 md:p-6 bg-background/50 backdrop-blur-sm z-20">
-            <div className="max-w-3xl mx-auto">
+            {/* --- INPUT BAR AREA --- */}
+            <div className="flex-none p-4 md:p-6 bg-surface/80 backdrop-blur-sm border-t border-border/40">
+              <div className="max-w-3xl mx-auto">
                 <InputBar
                   onSend={handleSend}
                   isLoading={isLoading}
@@ -322,34 +324,36 @@ const AIAnalysisPage = () => {
                     fileInput: t('ai.deepDental.input.fileInput', { fallbackText: 'Pilih gambar dental' }),
                   }}
                 />
+              </div>
             </div>
-        </div>
-      </div>
+          </div>
 
-      <VerifiedCaseWorkspace
-        isOpen={workspaceOpen}
-        onClose={() => setWorkspaceOpen(false)}
-        caseRecord={caseWorkspace.caseRecord}
-        images={caseWorkspace.images}
-        findings={caseWorkspace.findings}
-        auditEvents={caseWorkspace.auditEvents}
-        exports={caseWorkspace.exports}
-        timeline={caseWorkspace.timeline}
-        isLoading={caseWorkspace.isLoading}
-        onCreateCase={handleCreateCase}
-        onRefresh={handleRefreshCase}
-        onUploadImages={uploadWorkspaceImages}
-        onRemoveImage={removeWorkspaceImage}
-        onAnalyzeImages={analyzeWorkspaceImages}
-        onConfirmFinding={confirmWorkspaceFinding}
-        onRejectFinding={rejectWorkspaceFinding}
-        onEditFinding={editWorkspaceFinding}
-        onAddManualFinding={addManualWorkspaceFinding}
-        onVerifyCase={verifyWorkspaceCase}
-        onExportPdf={exportWorkspacePdf}
-        onExportJson={exportWorkspaceJson}
-        onLinkPatient={handleLinkPatient}
-      />
+          <VerifiedCaseWorkspace
+            isOpen={workspaceOpen}
+            onToggle={() => setWorkspaceOpen((prev) => !prev)}
+            caseRecord={caseWorkspace.caseRecord}
+            images={caseWorkspace.images}
+            findings={caseWorkspace.findings}
+            auditEvents={caseWorkspace.auditEvents}
+            exports={caseWorkspace.exports}
+            timeline={caseWorkspace.timeline}
+            isLoading={caseWorkspace.isLoading}
+            onCreateCase={handleCreateCase}
+            onRefresh={handleRefreshCase}
+            onUploadImages={uploadWorkspaceImages}
+            onRemoveImage={removeWorkspaceImage}
+            onAnalyzeImages={analyzeWorkspaceImages}
+            onConfirmFinding={confirmWorkspaceFinding}
+            onRejectFinding={rejectWorkspaceFinding}
+            onEditFinding={editWorkspaceFinding}
+            onAddManualFinding={addManualWorkspaceFinding}
+            onVerifyCase={verifyWorkspaceCase}
+            onExportPdf={exportWorkspacePdf}
+            onExportJson={exportWorkspaceJson}
+            onLinkPatient={handleLinkPatient}
+          />
+        </div>
+      </main>
       </div>
 
       <PatientLinkModal

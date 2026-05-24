@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { authenticateToken } from '../../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import midtransService from '../../services/payments/midtransService.js';
+import { resolvePaymentOwner } from '../../services/payments/ownership.js';
+import { ensureInvoiceForPaymentIntent } from '../../services/payments/financials.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -135,20 +137,37 @@ router.post('/', authenticateToken, async (req, res) => {
     const expiresAt = resolveSnapExpiry(providerExpiresAt || expiryTime);
 
     // 8. Insert tracking intent natively
-    const paymentIntent = await prisma.paymentIntent.create({
-      data: {
-        appointmentId: appointment.id,
-        patientId: appointment.patientId,
-        amount: grossAmount,
-        currency: 'IDR',
-        status: 'pending',
-        provider: 'midtrans',
-        idempotencyKey,
-        providerOrderId: orderId,
-        metadata: { snapToken },
-        redirectUrl,
-        expiresAt
-      }
+    const owner = resolvePaymentOwner(appointment);
+
+    const paymentIntent = await prisma.$transaction(async (tx) => {
+      const intent = await tx.paymentIntent.create({
+        data: {
+          appointmentId: appointment.id,
+          patientId: appointment.patientId,
+          ownerType: owner.ownerType,
+          ownerClinicId: owner.ownerClinicId,
+          ownerDentistId: owner.ownerDentistId,
+          amount: grossAmount,
+          currency: 'IDR',
+          status: 'requires_action',
+          provider: 'midtrans',
+          idempotencyKey,
+          providerOrderId: orderId,
+          metadata: { snapToken },
+          redirectUrl,
+          expiresAt
+        }
+      });
+
+      await ensureInvoiceForPaymentIntent({
+        tx,
+        paymentIntent: intent,
+        appointment,
+        patient: appointment.patient,
+        items: itemDetails
+      });
+
+      return intent;
     });
 
     // 9. Return execution block correctly

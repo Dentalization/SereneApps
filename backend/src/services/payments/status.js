@@ -1,11 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import { ensureCommunicationResourcesForAppointment, emitAppointmentEvent } from '../communications.js';
 import { queueNotificationEvent } from '../notifications/index.js';
+import { recordLedgerEntryIfMissing } from './ledger.js';
+import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
 
 const prisma = new PrismaClient();
 
-export const VALID_PAYMENT_STATUSES = ['pending', 'requires_action', 'authorized', 'succeeded', 'failed', 'cancelled'];
-export const FINAL_PAYMENT_STATUSES = ['succeeded', 'failed', 'cancelled'];
+export const PAYMENT_STATUSES = Object.freeze({
+  PENDING: 'pending',
+  REQUIRES_ACTION: 'requires_action',
+  PAID: 'paid',
+  SETTLED: 'settled',
+  FAILED: 'failed',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled',
+  REFUNDED: 'refunded',
+  PARTIAL_REFUND: 'partial_refund'
+});
+
+export const VALID_PAYMENT_STATUSES = Object.values(PAYMENT_STATUSES);
 
 const appointmentSelect = {
   id: true,
@@ -14,16 +27,20 @@ const appointmentSelect = {
   status: true,
   chatRoomRef: true,
   videoRoomRef: true,
-  commStatus: true
+  commStatus: true,
+  ownerType: true,
+  ownerClinicId: true
 };
 
 function mapStatusToAppointment(status) {
   switch (status) {
-    case 'succeeded':
+    case PAYMENT_STATUSES.PAID:
+    case PAYMENT_STATUSES.SETTLED:
       return 'confirmed';
-    case 'failed':
+    case PAYMENT_STATUSES.FAILED:
+    case PAYMENT_STATUSES.EXPIRED:
       return 'payment_failed';
-    case 'cancelled':
+    case PAYMENT_STATUSES.CANCELLED:
       return 'cancelled';
     default:
       return null;
@@ -32,11 +49,13 @@ function mapStatusToAppointment(status) {
 
 function mapStatusToEvent(status) {
   switch (status) {
-    case 'succeeded':
+    case PAYMENT_STATUSES.PAID:
+    case PAYMENT_STATUSES.SETTLED:
       return 'appointment_confirmed';
-    case 'failed':
+    case PAYMENT_STATUSES.FAILED:
+    case PAYMENT_STATUSES.EXPIRED:
       return 'appointment_payment_failed';
-    case 'cancelled':
+    case PAYMENT_STATUSES.CANCELLED:
       return 'appointment_cancelled';
     default:
       return 'payment_status_updated';
@@ -77,6 +96,40 @@ async function syncCommunications(appointment, status) {
   return null;
 }
 
+function canTransition(fromStatus, toStatus) {
+  if (fromStatus === toStatus) return true;
+  const allowed = {
+    [PAYMENT_STATUSES.PENDING]: [
+      PAYMENT_STATUSES.REQUIRES_ACTION,
+      PAYMENT_STATUSES.PAID,
+      PAYMENT_STATUSES.FAILED,
+      PAYMENT_STATUSES.EXPIRED,
+      PAYMENT_STATUSES.CANCELLED
+    ],
+    [PAYMENT_STATUSES.REQUIRES_ACTION]: [
+      PAYMENT_STATUSES.PAID,
+      PAYMENT_STATUSES.FAILED,
+      PAYMENT_STATUSES.EXPIRED,
+      PAYMENT_STATUSES.CANCELLED
+    ],
+    [PAYMENT_STATUSES.PAID]: [
+      PAYMENT_STATUSES.SETTLED,
+      PAYMENT_STATUSES.REFUNDED,
+      PAYMENT_STATUSES.PARTIAL_REFUND
+    ],
+    [PAYMENT_STATUSES.SETTLED]: [
+      PAYMENT_STATUSES.REFUNDED,
+      PAYMENT_STATUSES.PARTIAL_REFUND
+    ],
+    [PAYMENT_STATUSES.PARTIAL_REFUND]: [
+      PAYMENT_STATUSES.REFUNDED
+    ]
+  };
+
+  const nextStatuses = allowed[fromStatus] || [];
+  return nextStatuses.includes(toStatus);
+}
+
 export async function applyPaymentStatus({
   paymentIntentId,
   newStatus,
@@ -114,8 +167,8 @@ export async function applyPaymentStatus({
       };
     }
 
-    if (FINAL_PAYMENT_STATUSES.includes(intent.status) && intent.status !== newStatus) {
-      const error = new Error('PAYMENT_ALREADY_FINAL');
+    if (!canTransition(intent.status, newStatus)) {
+      const error = new Error('PAYMENT_STATUS_TRANSITION_INVALID');
       error.status = 400;
       throw error;
     }
@@ -155,15 +208,54 @@ export async function applyPaymentStatus({
       });
     }
 
-    if (FINAL_PAYMENT_STATUSES.includes(newStatus)) {
-      await tx.paymentLedger.create({
-        data: {
-          paymentIntentId: intent.id,
-          entryType: 'charge',
-          status: newStatus,
-          amount: updatedIntent.amount,
-          metadata: mergedProviderResponse
-        }
+    if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED].includes(newStatus)) {
+      await recordLedgerEntryIfMissing({
+        paymentIntentId: intent.id,
+        entryType: newStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge',
+        status: newStatus,
+        amount: updatedIntent.amount,
+        metadata: mergedProviderResponse
+      });
+
+      await recordFinancialEntry({
+        tx,
+        paymentIntent: updatedIntent,
+        appointment: updatedIntent.appointment,
+        entryType: newStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge',
+        status: newStatus,
+        direction: 'credit',
+        amount: updatedIntent.amount,
+        source: updatedIntent.provider || 'midtrans',
+        metadata: mergedProviderResponse
+      });
+
+      await ensureInvoiceForPaymentIntent({
+        tx,
+        paymentIntent: updatedIntent,
+        appointment: updatedIntent.appointment,
+        patient: updatedIntent.patient
+      });
+    }
+
+    if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(newStatus)) {
+      await recordLedgerEntryIfMissing({
+        paymentIntentId: intent.id,
+        entryType: 'refund',
+        status: newStatus,
+        amount: updatedIntent.amount,
+        metadata: mergedProviderResponse
+      });
+
+      await recordFinancialEntry({
+        tx,
+        paymentIntent: updatedIntent,
+        appointment: updatedIntent.appointment,
+        entryType: 'refund',
+        status: newStatus,
+        direction: 'debit',
+        amount: updatedIntent.amount,
+        source: updatedIntent.provider || 'midtrans',
+        metadata: mergedProviderResponse
       });
     }
 

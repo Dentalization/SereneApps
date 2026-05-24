@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Edit3, Plus, ShieldCheck, Stethoscope, XCircle } from 'lucide-react';
+import { useLanguage } from '../../../../contexts/LanguageContext';
 
 const STATUS_LABELS = {
   ai_suggested: 'AI suggestion',
@@ -93,6 +94,7 @@ export default function ClinicianFindingPanel({
   onVerifyCase,
   labels = {},
 }) {
+  const { t } = useLanguage();
   const [editingId, setEditingId] = useState(null);
   const [addingManual, setAddingManual] = useState(false);
   const [rejectingId, setRejectingId] = useState(null);
@@ -102,11 +104,15 @@ export default function ClinicianFindingPanel({
   const canVerify = clinicianFindings.some((finding) => ['clinician_confirmed', 'clinician_edited', 'manual_added'].includes(finding.status));
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-2xl border border-border/40 bg-surface p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{labels.title || 'Clinician findings'}</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{labels.subtitle || 'Review AI suggestions separately from final clinician findings.'}</p>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {labels.title || t('ai.deepDental.workspace.findings.title', { fallbackText: 'Clinician findings' })}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {labels.subtitle || t('ai.deepDental.workspace.findings.subtitle', { fallbackText: 'Review AI suggestions separately from final clinician findings.' })}
+          </p>
         </div>
         <button
           type="button"
@@ -114,7 +120,7 @@ export default function ClinicianFindingPanel({
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300"
         >
           <Plus className="h-4 w-4" />
-          {labels.addManual || 'Manual finding'}
+          {labels.addManual || t('ai.deepDental.workspace.findings.manualFinding', { fallbackText: 'Manual finding' })}
         </button>
       </div>
 
@@ -130,10 +136,14 @@ export default function ClinicianFindingPanel({
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
             <Stethoscope className="h-4 w-4" />
-            AI suggestion
+            {t('ai.deepDental.workspace.findings.aiSuggestion', { fallbackText: 'AI suggestion' })}
           </div>
           <div className="space-y-2">
-            {aiFindings.length === 0 && <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">No AI suggestions yet.</p>}
+            {aiFindings.length === 0 && (
+              <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">
+                {t('ai.deepDental.workspace.findings.noAI', { fallbackText: 'No AI suggestions yet.' })}
+              </p>
+            )}
             {aiFindings.map((finding) => (
               <div key={finding.id} className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
                 <div className="flex items-start justify-between gap-2">
@@ -183,10 +193,14 @@ export default function ClinicianFindingPanel({
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
             <ShieldCheck className="h-4 w-4" />
-            Clinician confirmed
+            {t('ai.deepDental.workspace.findings.confirmed', { fallbackText: 'Clinician confirmed' })}
           </div>
           <div className="space-y-2">
-            {clinicianFindings.length === 0 && <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">No clinician findings confirmed yet.</p>}
+            {clinicianFindings.length === 0 && (
+              <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">
+                {t('ai.deepDental.workspace.findings.noConfirmed', { fallbackText: 'No clinician findings confirmed yet.' })}
+              </p>
+            )}
             {clinicianFindings.map((finding) => (
               <div key={finding.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-start justify-between gap-2">
@@ -212,7 +226,9 @@ export default function ClinicianFindingPanel({
             onClick={onVerifyCase}
             className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {caseStatus === 'verified' || caseStatus === 'exported' ? 'Case verified' : 'Verify case'}
+            {caseStatus === 'verified' || caseStatus === 'exported'
+              ? 'Case verified'
+              : t('ai.deepDental.workspace.findings.verifyCase', { fallbackText: 'Verify case' })}
           </button>
         </div>
       </div>

@@ -3,11 +3,7 @@ import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { getAvatarGradient, getInitials } from '../../../utils/avatarGradients';
-
-const toDate = (value) => {
-  const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date : null;
-};
+import { parseDateValue } from './utils/dateUtils';
 
 function identityMatchesUser(rawIdentity, userId) {
   const identity = String(rawIdentity || '');
@@ -29,16 +25,53 @@ const sessionStatus = (conversation, presenceMap = {}) => {
 };
 
 const statusConfig = {
-  live: { dot: '#22c55e', label: 'LIVE', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.2)' },
-  waiting: { dot: '#f59e0b', label: 'WAITING', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-  upcoming: { dot: '#7C3AED', label: 'UPCOMING', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.2)' },
-  completed: { dot: '#6b7280', label: 'DONE', bg: 'rgba(107,114,128,0.05)', border: 'rgba(107,114,128,0.15)' },
+  live: { dot: '#22c55e', label: 'LIVE' },
+  waiting: { dot: '#f59e0b', label: 'WAITING' },
+  upcoming: { dot: '#7C3AED', label: 'UPCOMING' },
+  completed: { dot: '#6b7280', label: 'DONE' },
 };
 
-const iconButtonStyle = {
-  color: 'var(--td-text-muted)',
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.06)',
+const statusBadgeStyles = {
+  live: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-200/50 dark:border-green-900/30',
+  waiting: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200/50 dark:border-amber-900/30',
+  upcoming: 'bg-accent/10 text-accent border-accent/20',
+  completed: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200/50 dark:border-slate-800/30',
+};
+
+const getRelativeDateLabel = (startsAt, t, language) => {
+  if (!startsAt) {
+    return t('clinic.teledentistry.date.unknown', { defaultValue: '-' });
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDate = new Date(startsAt);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const diffTime = targetDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffTime / 86400000);
+
+  let relativeDayLabel = '';
+  if (diffDays === 0) {
+    relativeDayLabel = t('clinic.teledentistry.date.today', { defaultValue: 'Hari ini' });
+  } else if (diffDays === 1) {
+    relativeDayLabel = t('clinic.teledentistry.date.tomorrow', { defaultValue: 'Besok' });
+  } else if (diffDays === -1) {
+    relativeDayLabel = t('clinic.teledentistry.date.yesterday', { defaultValue: 'Kemarin' });
+  } else {
+    relativeDayLabel = startsAt.toLocaleDateString(language === 'id' ? 'id-ID' : 'en-US', {
+      day: 'numeric',
+      month: 'short',
+    });
+  }
+
+  const timeStr = startsAt.toLocaleTimeString(language === 'id' ? 'id-ID' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${relativeDayLabel}, ${timeStr}`;
 };
 
 const SessionDashboard = ({
@@ -50,7 +83,7 @@ const SessionDashboard = ({
   onStartVideo,
   onViewPreSession,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { isDark } = useTheme();
   const statusLabels = useMemo(() => ({
     live: t('teledentistry.dashboard.status.live', { fallbackText: 'Live' }),
@@ -60,17 +93,49 @@ const SessionDashboard = ({
   }), [t]);
 
   const sessions = useMemo(() => {
-    const todayKey = new Date().toDateString();
     return conversations
-      .filter((conversation) => {
-        const date = toDate(conversation.startsAt || conversation.appointmentStartsAt || conversation.scheduledAt);
-        return !date || date.toDateString() === todayKey;
+      .map((conversation) => {
+        const startsAt = parseDateValue(
+          conversation.startsAt
+            || conversation.starts_at
+            || conversation.appointmentStartsAt
+            || conversation.scheduledAt
+            || conversation.scheduled_time
+            || conversation.appointment?.startsAt
+            || conversation.appointment?.starts_at
+            || conversation.appointment?.scheduledAt
+            || conversation.appointment?.scheduled_time
+        );
+        const status = sessionStatus(conversation, presenceMap);
+        return {
+          conversation,
+          status,
+          startsAt,
+        };
       })
-      .map((conversation) => ({
-        conversation,
-        status: sessionStatus(conversation, presenceMap),
-        startsAt: toDate(conversation.startsAt || conversation.appointmentStartsAt || conversation.scheduledAt),
-      }))
+      .filter(({ startsAt, status }) => {
+        // Always show live or waiting sessions
+        if (status === 'live' || status === 'waiting') return true;
+
+        if (!startsAt) return true;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const targetDate = new Date(startsAt);
+        targetDate.setHours(0, 0, 0, 0);
+
+        const diffTime = targetDate.getTime() - today.getTime();
+        const diffDays = Math.round(diffTime / 86400000);
+
+        // For completed sessions, only show if they were scheduled for today
+        if (status === 'completed') {
+          return diffDays === 0;
+        }
+
+        // Show upcoming sessions
+        return true;
+      })
       .sort((a, b) => {
         const order = { live: 0, waiting: 1, upcoming: 2, completed: 3 };
         if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
@@ -81,21 +146,15 @@ const SessionDashboard = ({
 
   if (loading) {
     return (
-      <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex-shrink-0 px-6 pt-2 pb-4 bg-surface/90 border-b border-border/40 shadow-sm backdrop-blur-md">
         <div className="mb-2.5 flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
-          <div className="h-3 w-36 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
+          <div className="h-4 w-28 animate-pulse rounded bg-border/40" />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-minimal">
+        <div className="flex gap-2.5 overflow-x-auto py-2.5 -my-2.5 scrollbar-minimal">
           {[0, 1, 2].map((item) => (
             <div
               key={item}
-              className="h-[66px] flex-shrink-0 animate-pulse rounded-xl"
-              style={{
-                width: '220px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}
+              className="h-[62px] flex-shrink-0 animate-pulse rounded-2xl w-[220px] bg-surface-elevated border border-border/40 shadow-sm"
             />
           ))}
         </div>
@@ -105,22 +164,14 @@ const SessionDashboard = ({
 
   if (!sessions.length) {
     return (
-      <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex-shrink-0 px-6 pt-2 pb-4 bg-surface/90 border-b border-border/40 shadow-sm backdrop-blur-md">
         <div className="mb-2.5 flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
-          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--td-text-sub)', letterSpacing: '0.08em' }}>
+          <span className="text-sm font-semibold text-primary">
             {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
           </span>
         </div>
-        <div
-          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
-          style={{
-            color: 'var(--td-text-muted)',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px dashed rgba(124,58,237,0.25)',
-          }}
-        >
-          <Icon name="CalendarClock" size={16} style={{ color: 'var(--td-accent)' }} />
+        <div className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-muted bg-surface-elevated border border-dashed border-border/60 shadow-sm">
+          <Icon name="CalendarClock" size={16} className="text-accent" />
           <span>{t('teledentistry.dashboard.empty', { fallbackText: 'Tidak ada sesi hari ini' })}</span>
         </div>
       </div>
@@ -128,26 +179,22 @@ const SessionDashboard = ({
   }
 
   return (
-    <div className="flex-shrink-0 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="flex-shrink-0 px-6 pt-2 pb-4 bg-surface/90 border-b border-border/40 shadow-sm backdrop-blur-md">
       <div className="mb-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full" style={{ background: 'var(--td-accent)' }} />
-          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--td-text-sub)', letterSpacing: '0.08em' }}>
+          <span className="text-sm font-semibold text-primary">
             {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
           </span>
-          <span
-            className="rounded-md px-1.5 py-0.5 font-mono text-xs"
-            style={{ color: 'var(--td-accent)', background: 'rgba(124,58,237,0.12)' }}
-          >
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium text-accent bg-accent/10">
             {sessions.length}
           </span>
         </div>
-        <span className="text-[10px] font-medium" style={{ color: 'var(--td-text-muted)' }}>
+        <span className="text-[11px] text-muted">
           {t('teledentistry.dashboard.subtitle', { fallbackText: 'Live, menunggu, dan appointment virtual terdekat.' })}
         </span>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-minimal">
+      <div className="flex gap-2.5 overflow-x-auto py-2.5 -my-2.5 scrollbar-minimal">
         {sessions.map(({ conversation, status, startsAt }) => {
           const selected = selectedAppointmentId === conversation.appointmentId;
           const patient = conversation.patient || {};
@@ -167,20 +214,14 @@ const SessionDashboard = ({
                   onSelectConversation?.(conversation);
                 }
               }}
-              className="flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5"
-              style={{
-                background: selected
-                  ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
-                  : cfg.bg,
-                border: `1px solid ${selected ? 'rgba(124,58,237,0.5)' : cfg.border}`,
-                boxShadow: selected ? '0 4px 16px rgba(124,58,237,0.2)' : 'none',
-                minWidth: '220px',
-              }}
+              className={`flex flex-shrink-0 cursor-pointer items-center gap-3 rounded-2xl px-3.5 py-3 transition-all duration-300 hover:-translate-y-0.5 border shadow-theme-sm hover:shadow-theme-md ${selected ? 'bg-accent/5 border-accent/50 ring-1 ring-accent/15' : 'bg-surface-elevated border-border/50 hover:border-accent/30'}`}
+              style={{ minWidth: '220px' }}
+              title="Mulai Chat"
               aria-label={`${patient.name || 'Pasien'} ${statusLabels[status]}`}
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center text-xs font-bold text-white" style={avatarStyle}>
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center text-xs font-bold text-white rounded-full overflow-hidden shadow-sm" style={avatarStyle}>
                 {patient.avatar ? (
-                  <img src={patient.avatar} alt={patient.name || 'Pasien'} className="h-full w-full object-cover" style={{ borderRadius: '10px' }} />
+                  <img src={patient.avatar} alt={patient.name || 'Pasien'} className="h-full w-full object-cover" />
                 ) : (
                   initials
                 )}
@@ -188,81 +229,65 @@ const SessionDashboard = ({
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-semibold" style={{ color: 'var(--td-text-main)' }}>
+                  <span className="truncate text-sm font-semibold text-primary">
                     {patient.name || 'Pasien'}
                   </span>
                   {status === 'live' ? (
                     <span className="relative flex h-2 w-2 flex-shrink-0" aria-label={statusLabels.live}>
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: cfg.dot }} />
-                      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: cfg.dot }} />
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 bg-green-500" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
                     </span>
                   ) : null}
                   {conversation.preSessionHealthFormStatus === 'submitted' || conversation.hasPreSessionHealthForm ? (
-                    <Icon name="ClipboardCheck" size={12} style={{ color: '#22c55e' }} title={t('teledentistry.dashboard.formSubmitted', { fallbackText: 'Form pra-sesi sudah diisi' })} />
+                    <Icon name="ClipboardCheck" size={12} className="text-green-500" title={t('teledentistry.dashboard.formSubmitted', { fallbackText: 'Form pra-sesi sudah diisi' })} />
                   ) : null}
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--td-text-muted)' }}>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="font-mono text-[9px] text-muted">
                     #{conversation.appointmentId}
                   </span>
-                  <span style={{ color: 'var(--td-text-muted)', fontSize: '9px' }}>·</span>
-                  <span className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cfg.dot }} title={statusLabels[status]}>
+                  <span className="text-muted text-[9px]">·</span>
+                  <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold border leading-none ${statusBadgeStyles[status]}`}>
                     {cfg.label}
                   </span>
-                  <span style={{ color: 'var(--td-text-muted)', fontSize: '9px' }}>·</span>
-                  <span className="font-mono text-[9px]" style={{ color: 'var(--td-text-muted)' }}>
-                    {startsAt ? startsAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Hari ini'}
+                  <span className="text-muted text-[9px]">·</span>
+                  <span className="font-mono text-[9px] text-muted">
+                    {getRelativeDateLabel(startsAt, t, language)}
                   </span>
                 </div>
               </div>
 
               {conversation.unreadCount > 0 ? (
                 <span
-                  className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
-                  style={{ background: 'var(--td-accent)', animation: 'badgePulse 1.5s infinite' }}
+                  className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white bg-accent"
+                  style={{ animation: 'badgePulse 1.5s infinite' }}
                 >
                   {conversation.unreadCount}
                 </span>
               ) : null}
 
-              <div className="flex flex-shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelectConversation?.(conversation);
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 hover:scale-110"
-                  style={iconButtonStyle}
-                  title="Mulai Chat"
-                  aria-label="Mulai Chat"
-                >
-                  <Icon name="MessageCircle" size={12} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onViewPreSession?.(conversation.appointmentId);
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 hover:scale-110"
-                  style={iconButtonStyle}
-                  title="Form"
-                  aria-label="Form pra-sesi"
-                >
-                  <Icon name="ClipboardList" size={12} />
-                </button>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                {(conversation.preSessionHealthFormStatus === 'submitted' || conversation.hasPreSessionHealthForm) && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onViewPreSession?.(conversation.appointmentId);
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-xl transition-all duration-200 text-secondary bg-surface-elevated border border-border/40 hover:text-accent hover:border-accent/30 hover:shadow-sm"
+                    title="Form pra-sesi"
+                    aria-label="Form pra-sesi"
+                  >
+                    <Icon name="ClipboardList" size={12} />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     onStartVideo?.(conversation.appointmentId);
                   }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-white transition-all duration-150 hover:scale-110"
-                  style={{
-                    background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
-                    boxShadow: '0 2px 8px rgba(124,58,237,0.35)',
-                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-xl text-white transition-all duration-200 bg-accent hover:bg-accent-hover shadow-sm hover:scale-105"
                   title="Mulai Video"
                   aria-label="Mulai Video"
                 >

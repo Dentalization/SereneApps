@@ -12,10 +12,10 @@ export default function NetworkQualityBadge({ level = 5, compact = false }) {
   const value = Number.isFinite(Number(level)) ? Number(level) : 0;
   const state = value >= 4 ? 'excellent' : value >= 3 ? 'good' : value >= 2 ? 'fair' : 'poor';
   const tone = state === 'poor'
-    ? 'bg-red-500/20 text-red-100 border-red-300/30'
+    ? 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/50'
     : state === 'fair'
-      ? 'bg-amber-500/20 text-amber-100 border-amber-300/30'
-      : 'bg-emerald-500/20 text-emerald-100 border-emerald-300/30';
+      ? 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/50'
+      : 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50';
 
   return (
     <div className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 ${tone}`}>

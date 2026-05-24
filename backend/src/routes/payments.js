@@ -9,6 +9,8 @@ import {
   applyPaymentStatus,
   VALID_PAYMENT_STATUSES
 } from '../services/payments/status.js';
+import { resolvePaymentOwner } from '../services/payments/ownership.js';
+import { ensureInvoiceForPaymentIntent } from '../services/payments/financials.js';
 import snapTransactionsRouter from './payments/snapTransactions.js';
 import paymentStatusRouter from './payments/status.js';
 
@@ -30,12 +32,15 @@ function toBigInt(value, fieldName) {
 
 function serializePaymentIntent(intent) {
   if (!intent) return null;
-  return {
-    id: intent.id.toString(),
-    appointmentId: intent.appointmentId?.toString?.() ?? intent.appointment_id?.toString?.() ?? null,
-    patientId: intent.patientId?.toString?.() ?? intent.patient_id?.toString?.() ?? null,
-    amount: intent.amount,
-    currency: intent.currency,
+    return {
+      id: intent.id.toString(),
+      appointmentId: intent.appointmentId?.toString?.() ?? intent.appointment_id?.toString?.() ?? null,
+      patientId: intent.patientId?.toString?.() ?? intent.patient_id?.toString?.() ?? null,
+      ownerType: intent.ownerType ?? intent.owner_type ?? null,
+      ownerClinicId: intent.ownerClinicId?.toString?.() ?? intent.owner_clinic_id?.toString?.() ?? null,
+      ownerDentistId: intent.ownerDentistId?.toString?.() ?? intent.owner_dentist_id?.toString?.() ?? null,
+      amount: intent.amount,
+      currency: intent.currency,
     status: intent.status,
     provider: intent.provider,
     idempotencyKey: intent.idempotencyKey ?? intent.idempotency_key ?? null,
@@ -141,14 +146,18 @@ router.post(
         select: { id: true, status: true }
       }).catch(() => null);
 
-      if (existingIntent && !['succeeded', 'failed', 'cancelled'].includes(existingIntent.status)) {
+      if (existingIntent && !['paid', 'settled', 'failed', 'cancelled', 'expired', 'refunded', 'partial_refund'].includes(existingIntent.status)) {
         return res.status(409).json({ error: 'Active payment intent already exists for this appointment' });
       }
 
+      const owner = resolvePaymentOwner(appointment);
       const paymentIntent = await prisma.paymentIntent.create({
         data: {
           appointmentId,
           patientId,
+          ownerType: owner.ownerType,
+          ownerClinicId: owner.ownerClinicId,
+          ownerDentistId: owner.ownerDentistId,
           amount: parsedAmount,
           currency,
           status: 'pending',
@@ -200,6 +209,22 @@ router.post(
           appointment: true,
           patient: { select: { id: true, name: true, email: true, phone_number: true } }
         }
+      });
+
+      await prisma.$transaction(async (tx) => {
+        await ensureInvoiceForPaymentIntent({
+          tx,
+          paymentIntent: updatedIntent,
+          appointment,
+          patient: appointment.patient,
+          items: [
+            {
+              name: appointment.reason || 'Dental Appointment',
+              quantity: 1,
+              price: parsedAmount
+            }
+          ]
+        });
       });
 
       return res.status(201).json({
@@ -269,6 +294,108 @@ router.post(
         return res.status(error.status).json({ error: error.message.toLowerCase() });
       }
       return res.status(500).json({ error: 'Failed to update payment intent' });
+    }
+  }
+);
+
+router.get(
+  '/invoices/:invoiceId',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { invoiceId } = req.params;
+      const parsedInvoiceId = toBigInt(invoiceId, 'invoiceId');
+
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: parsedInvoiceId },
+        include: {
+          items: true,
+          patient: { select: { id: true, name: true, email: true, phone_number: true } },
+          paymentIntent: true,
+          appointment: {
+            include: {
+              dentist: { select: { name: true } }
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+
+      const userId = toBigInt(req.user.id, 'userId');
+      const userRoles = req.user.roles || [];
+      const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
+
+      // 1. Patient check
+      const isPatient = invoice.patientId === userId;
+
+      // 2. Dentist check (only if dentist owns the invoice)
+      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+
+      // 3. Clinic check (only if clinic owns the invoice and user belongs to clinic)
+      let isClinicStaff = false;
+      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+        // Resolve clinic profile for current user
+        let userClinicProfile = await prisma.clinicProfile.findFirst({
+          where: { userId }
+        });
+        if (!userClinicProfile) {
+          const staffRecord = await prisma.clinicStaff.findFirst({
+            where: { userId },
+            select: { clinicProfileId: true }
+          });
+          if (staffRecord) {
+            userClinicProfile = { id: staffRecord.clinicProfileId };
+          }
+        }
+        if (userClinicProfile && userClinicProfile.id === invoice.ownerClinicId) {
+          isClinicStaff = true;
+        }
+      }
+
+      if (!isPatient && !isDentist && !isClinicStaff && !isAdmin) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Serialize BigInts cleanly
+      const serializedInvoice = {
+        ...invoice,
+        id: invoice.id.toString(),
+        appointmentId: invoice.appointmentId?.toString?.() ?? null,
+        paymentIntentId: invoice.paymentIntentId?.toString?.() ?? null,
+        patientId: invoice.patientId.toString(),
+        ownerClinicId: invoice.ownerClinicId?.toString?.() ?? null,
+        ownerDentistId: invoice.ownerDentistId?.toString?.() ?? null,
+        items: invoice.items.map((item) => ({
+          ...item,
+          id: item.id.toString(),
+          invoiceId: item.invoiceId.toString()
+        })),
+        patient: invoice.patient ? {
+          id: invoice.patient.id.toString(),
+          name: invoice.patient.name,
+          email: invoice.patient.email,
+          phone: invoice.patient.phone_number
+        } : null,
+        paymentIntent: invoice.paymentIntent ? serializePaymentIntent(invoice.paymentIntent) : null,
+        appointment: invoice.appointment ? {
+          ...invoice.appointment,
+          id: invoice.appointment.id.toString(),
+          dentistId: invoice.appointment.dentistId.toString(),
+          patientId: invoice.appointment.patientId.toString(),
+          dentist: invoice.appointment.dentist
+        } : null
+      };
+
+      return res.json({ invoice: serializedInvoice });
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+      if (error.status === 400 && error.message?.startsWith('INVALID_')) {
+        return res.status(400).json({ error: error.message.replace('INVALID_', '').toLowerCase() });
+      }
+      return res.status(500).json({ error: 'Failed to fetch invoice' });
     }
   }
 );

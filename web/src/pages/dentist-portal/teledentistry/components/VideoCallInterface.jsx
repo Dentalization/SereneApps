@@ -208,18 +208,17 @@ const VideoCallInterface = ({
   return (
     <div
       id="video-call-container"
-      className="relative flex h-full flex-col overflow-hidden"
-      style={{ background: 'var(--td-app-bg)' }}
+      className="relative flex h-full flex-col overflow-hidden bg-surface"
       onMouseMove={resetControlsTimer}
       onTouchMove={resetControlsTimer}
       onTouchStart={resetControlsTimer}
     >
-      <div className={`absolute left-0 right-0 top-0 z-10 p-4 transition-opacity duration-300 ${
+      <div className={`absolute left-0 right-0 top-0 z-10 p-4 transition-opacity duration-300 bg-gradient-to-b from-surface/80 to-transparent ${
         showControls ? 'opacity-100' : 'opacity-0'
-      }`} style={{ background: 'linear-gradient(180deg, rgba(15,13,26,0.8) 0%, transparent 100%)' }}>
-        <div className="flex items-center justify-between text-white">
+      }`}>
+        <div className="flex items-center justify-between text-primary">
           <div className="flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={getAvatarGradient(remoteName)}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm" style={getAvatarGradient(remoteName)}>
               <span className="text-sm font-medium">
                 {remoteInitials}
               </span>
@@ -229,19 +228,19 @@ const VideoCallInterface = ({
                 <h3 className="text-sm font-medium">{remoteName}</h3>
                 <NetworkQualityBadge level={networkQuality} compact />
               </div>
-              <p className="text-xs text-gray-300">
+              <p className="text-xs text-muted">
                 {connectionState === 'reconnecting' ? 'Reconnecting' : isJoined ? 'Connected' : 'Connecting'} • {formatDuration(callDuration)}
               </p>
               {reconnectError && (
-                <p className="text-xs text-amber-200 mt-0.5">{reconnectError}</p>
+                <p className="text-xs text-amber-500 mt-0.5">{reconnectError}</p>
               )}
               {networkQuality <= 1 && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-100">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
                   <span>Kualitas jaringan buruk. Pertimbangkan audio-only.</span>
                   {videoEnabled && (
                     <button
                       onClick={handleSwitchToAudioOnly}
-                      className="rounded-md border border-amber-200/40 px-2 py-1 font-semibold text-amber-50 hover:bg-amber-200/10"
+                      className="rounded-md border border-amber-300 dark:border-amber-700 px-2 py-1 font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/30"
                     >
                       Audio only
                     </button>
@@ -257,18 +256,17 @@ const VideoCallInterface = ({
         <div className="w-full h-full relative">
           <video ref={remoteVideoRef} className="w-full h-full object-cover" autoPlay playsInline />
           <div
-            className="absolute inset-0 flex items-center justify-center"
+            className="absolute inset-0 flex items-center justify-center bg-surface-elevated"
             hidden={isJoined}
-            style={{ background: 'linear-gradient(135deg, rgba(15,13,26,0.96), rgba(34,29,51,0.96))' }}
           >
-            <div className="text-center text-white">
-              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full text-2xl font-bold text-white" style={getAvatarGradient(remoteName)}>
+            <div className="text-center text-primary">
+              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full text-2xl font-bold text-white shadow-md shadow-accent/20" style={getAvatarGradient(remoteName)}>
                 <span className="text-2xl font-medium">
                   {remoteInitials}
                 </span>
               </div>
               <p className="text-lg font-medium">{remoteName}</p>
-              <p className="text-sm text-gray-300">Connecting video...</p>
+              <p className="text-sm text-muted">Connecting video...</p>
             </div>
           </div>
         </div>
@@ -280,9 +278,8 @@ const VideoCallInterface = ({
               top: `${pipPos.y}px`,
               right: `${pipPos.x}px`,
               cursor: isDragging ? 'grabbing' : 'grab',
-              border: '2px solid rgba(124,58,237,0.4)'
             }}
-            className="group absolute z-20 h-36 w-48 overflow-hidden rounded-lg shadow-2xl"
+            className="group absolute z-20 h-36 w-48 overflow-hidden rounded-lg shadow-2xl border-2 border-accent/40"
           >
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <Icon name="Move" size={20} className="text-white" />
@@ -297,37 +294,35 @@ const VideoCallInterface = ({
         )}
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 p-6 transition-opacity duration-300 ${
+      <div className={`absolute bottom-0 left-0 right-0 p-6 transition-opacity duration-300 bg-gradient-to-t from-surface/85 to-transparent ${
         showControls ? 'opacity-100' : 'opacity-0'
-      }`} style={{ background: 'linear-gradient(0deg, rgba(15,13,26,0.85) 0%, transparent 100%)' }}>
+      }`}>
         <div className="flex items-center justify-center space-x-4">
           {!observeOnly && (
             <>
               <button
                 onClick={toggleAudio}
-                className="rounded-full p-4 transition-all duration-150 hover:scale-105"
-                style={{ background: audioEnabled ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.7)' }}
+                className={`rounded-full p-4 transition-all duration-150 hover:scale-105 ${audioEnabled ? 'bg-surface-elevated/80 text-primary' : 'bg-red-500/80 text-white'}`}
               >
-                <Icon name={audioEnabled ? 'Mic' : 'MicOff'} size={20} className="text-white" />
+                <Icon name={audioEnabled ? 'Mic' : 'MicOff'} size={20} />
               </button>
 
               <button
                 onClick={toggleVideo}
-                className="rounded-full p-4 transition-all duration-150 hover:scale-105"
-                style={{ background: videoEnabled ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.7)' }}
+                className={`rounded-full p-4 transition-all duration-150 hover:scale-105 ${videoEnabled ? 'bg-surface-elevated/80 text-primary' : 'bg-red-500/80 text-white'}`}
               >
-                <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} className="text-white" />
+                <Icon name={videoEnabled ? 'Video' : 'VideoOff'} size={20} />
               </button>
             </>
           )}
 
-          <button onClick={handleEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105" style={{ background: 'rgba(239,68,68,0.85)' }} title="Leave call">
-            <Icon name="PhoneOff" size={20} className="text-white" />
+          <button onClick={handleEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105 bg-red-500/85 text-white" title="Leave call">
+            <Icon name="PhoneOff" size={20} />
           </button>
 
           {allowHardEnd && !observeOnly && (
-            <button onClick={handleHardEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105" style={{ background: 'rgba(127,29,29,0.85)' }} title="End room for everyone">
-              <Icon name="ShieldX" size={20} className="text-white" />
+            <button onClick={handleHardEndCall} className="rounded-full p-4 transition-all duration-150 hover:scale-105 bg-red-800/85 text-white" title="End room for everyone">
+              <Icon name="ShieldX" size={20} />
             </button>
           )}
         </div>

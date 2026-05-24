@@ -207,6 +207,12 @@ function serializeAppointment(appointment) {
       : appointment.clinic_branch_id
         ? appointment.clinic_branch_id.toString()
         : null,
+    ownerType: appointment.ownerType ?? appointment.owner_type ?? 'dentist',
+    ownerClinicId: appointment.ownerClinicId
+      ? appointment.ownerClinicId.toString()
+      : appointment.owner_clinic_id
+        ? appointment.owner_clinic_id.toString()
+        : null,
     startsAt: toIsoString(appointment.startsAt ?? appointment.starts_at),
     endsAt: toIsoString(appointment.endsAt ?? appointment.ends_at),
     status: appointment.status,
@@ -484,6 +490,7 @@ router.post(
 
       // Resolve clinic branch to avoid writing inconsistent foreign keys
       let resolvedClinicBranchId = null;
+      let resolvedClinicProfileId = null;
       if (dentistType !== 'independent') {
         // First, treat incoming value as a branch id
         if (clinicBranchId) {
@@ -493,6 +500,7 @@ router.post(
           });
           if (branchById && branchById.isActive) {
             resolvedClinicBranchId = branchById.id;
+            resolvedClinicProfileId = branchById.clinicProfileId;
           } else {
             // If not a branch id, try interpreting as clinic_profile_id
             const branchByProfile = await prisma.clinicBranch.findFirst({
@@ -501,6 +509,7 @@ router.post(
             });
             if (branchByProfile) {
               resolvedClinicBranchId = branchByProfile.id;
+              resolvedClinicProfileId = branchByProfile.clinicProfileId;
             }
           }
         }
@@ -513,6 +522,7 @@ router.post(
           });
           if (branchFromProfile) {
             resolvedClinicBranchId = branchFromProfile.id;
+            resolvedClinicProfileId = branchFromProfile.clinicProfileId;
           }
         }
 
@@ -536,13 +546,18 @@ router.post(
         return sendError(res, 400, 'cannot_book_past', 'Janji temu tidak bisa dijadwalkan pada waktu yang sudah lewat.');
       }
 
+      const ownerType = dentistType !== 'independent' ? 'clinic' : 'dentist';
+      const ownerClinicId = ownerType === 'clinic' ? resolvedClinicProfileId : null;
+
       console.log('[APPOINTMENT POST] Validation passed:', {
         dentistId: dentistId.toString(),
         patientId: patientId.toString(),
         resolvedClinicBranchId: resolvedClinicBranchId?.toString() || null,
         startsAt: startsAt.toISOString(),
         endsAt: endsAt.toISOString(),
-        dentistType
+        dentistType,
+        ownerType,
+        ownerClinicId: ownerClinicId?.toString() || null
       });
 
       let createdAppointment;
@@ -581,6 +596,8 @@ router.post(
             dentistId,
             patientId,
             clinicBranchId: resolvedClinicBranchId,
+            ownerType,
+            ownerClinicId,
             startsAt,
             endsAt,
             status: 'scheduled',

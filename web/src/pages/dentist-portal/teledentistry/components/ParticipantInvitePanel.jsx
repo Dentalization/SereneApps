@@ -111,18 +111,18 @@ export default function ParticipantInvitePanel({ appointmentId }) {
   };
 
   return (
-    <section className="space-y-4 p-3" style={{ background: 'rgba(255,255,255,0.025)' }}>
+    <section className="space-y-4 p-3 bg-surface/30">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--td-text-main)' }}>Third-party participants</h3>
-          <p className="text-xs" style={{ color: 'var(--td-text-muted)' }}>Guardian/interpreter access remains appointment-scoped.</p>
+          <h3 className="text-sm font-semibold text-primary">Third-party participants</h3>
+          <p className="text-xs text-muted">Guardian/interpreter access remains appointment-scoped.</p>
         </div>
-        <Icon name="Users" size={18} style={{ color: 'var(--td-text-muted)' }} />
+        <Icon name="Users" size={18} className="text-muted" />
       </div>
 
-      {error && <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.22)' }}>{error}</div>}
+      {error && <div className="rounded-md px-3 py-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50">{error}</div>}
       {latestInvite && (
-        <div className="break-all rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac', border: '1px solid rgba(34,197,94,0.2)' }}>
+        <div className="break-all rounded-md px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
           Invite created. Share link/token once: {latestInvite}
         </div>
       )}
@@ -132,8 +132,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
           <select
             value={form.role}
             onChange={(event) => updateField('role', event.target.value)}
-            className="rounded-lg px-2 py-2 text-sm"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+            className="rounded-lg px-2 py-2 text-sm bg-surface-elevated border border-border/40 text-primary focus:outline-none focus:ring-1 focus:ring-accent/50"
           >
             {ROLE_OPTIONS.map((role) => (
               <option key={role.value} value={role.value}>{role.label}</option>
@@ -143,8 +142,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
             value={form.displayName}
             onChange={(event) => updateField('displayName', event.target.value)}
             placeholder="Name"
-            className="rounded-lg px-2 py-2 text-sm"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+            className="rounded-lg px-2 py-2 text-sm bg-surface-elevated border border-border/40 text-primary placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent/50"
             required
           />
         </div>
@@ -153,21 +151,18 @@ export default function ParticipantInvitePanel({ appointmentId }) {
           onChange={(event) => updateField('email', event.target.value)}
           type="email"
           placeholder="Email"
-          className="w-full rounded-lg px-2 py-2 text-sm"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+          className="w-full rounded-lg px-2 py-2 text-sm bg-surface-elevated border border-border/40 text-primary placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent/50"
         />
         <input
           value={form.phone}
           onChange={(event) => updateField('phone', event.target.value)}
           placeholder="Phone"
-          className="w-full rounded-lg px-2 py-2 text-sm"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+          className="w-full rounded-lg px-2 py-2 text-sm bg-surface-elevated border border-border/40 text-primary placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent/50"
         />
         <button
           type="submit"
           disabled={status === 'saving'}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 4px 12px rgba(124,58,237,0.28)' }}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-accent shadow-sm disabled:opacity-50 transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           <Icon name={status === 'saving' ? 'Loader2' : 'Send'} size={14} className={status === 'saving' ? 'animate-spin' : ''} />
           Invite
@@ -176,20 +171,19 @@ export default function ParticipantInvitePanel({ appointmentId }) {
 
       <div className="space-y-2">
         {participants.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--td-text-muted)' }}>No additional participants invited.</p>
+          <p className="text-xs text-muted">No additional participants invited.</p>
         ) : participants.map((participant) => (
-          <div key={participant.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div key={participant.id} className="flex items-center justify-between rounded-lg px-3 py-2 bg-surface/30 border border-border/40">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>{participant.displayName}</p>
-              <p className="text-xs capitalize" style={{ color: 'var(--td-text-muted)' }}>{participant.role} • {participant.status}</p>
+              <p className="truncate text-sm font-medium text-primary">{participant.displayName}</p>
+              <p className="text-xs capitalize text-muted">{participant.role} • {participant.status}</p>
             </div>
             <div className="flex items-center gap-1">
               {['invited', 'verified'].includes(participant.status) && (
                 <button
                   onClick={() => handleResend(participant.id)}
                   disabled={status === 'saving'}
-                  className="rounded-md p-2 disabled:opacity-50"
-                  style={{ color: 'var(--td-accent)', background: 'rgba(124,58,237,0.08)' }}
+                  className="rounded-md p-2 disabled:opacity-50 text-accent bg-accent/10 hover:bg-accent/20 transition-colors"
                   aria-label="Resend invite"
                   title="Resend invite"
                 >
@@ -200,8 +194,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
                 <button
                   onClick={() => handleRegenerate(participant.id)}
                   disabled={status === 'saving'}
-                  className="rounded-md p-2 disabled:opacity-50"
-                  style={{ color: '#fbbf24', background: 'rgba(245,158,11,0.08)' }}
+                  className="rounded-md p-2 disabled:opacity-50 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
                   aria-label="Regenerate access"
                   title="Regenerate access"
                 >
@@ -212,8 +205,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
                 <button
                   onClick={() => handleKick(participant.id)}
                   disabled={status === 'saving'}
-                  className="rounded-md p-2 disabled:opacity-50"
-                  style={{ color: '#f87171', background: 'rgba(239,68,68,0.08)' }}
+                  className="rounded-md p-2 disabled:opacity-50 text-red-500 bg-red-500/10 hover:bg-red-500/20 transition-colors"
                   aria-label="Kick participant"
                   title="Kick participant"
                 >
@@ -224,8 +216,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
                 <button
                   onClick={() => handleRevoke(participant.id)}
                   disabled={status === 'saving'}
-                  className="rounded-md p-2 disabled:opacity-50"
-                  style={{ color: '#f87171', background: 'rgba(239,68,68,0.08)' }}
+                  className="rounded-md p-2 disabled:opacity-50 text-red-500 bg-red-500/10 hover:bg-red-500/20 transition-colors"
                   aria-label="Revoke participant"
                   title="Revoke participant"
                 >

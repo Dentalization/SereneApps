@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import { mapMidtransStatus } from './statusMapping.js';
+import { PAYMENT_STATUSES } from './status.js';
+import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
 
 export async function handleMidtransCallback(body, tx) {
   const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
@@ -12,41 +15,129 @@ export async function handleMidtransCallback(body, tx) {
   }
 
   // Step 2 — Status mapping
-  let mappedStatus;
-  const rawStatus = body.transaction_status;
-  const fraudStatus = body.fraud_status;
+  const { internalStatus: mappedStatus, failureReason } = mapMidtransStatus({
+    transactionStatus: body.transaction_status,
+    fraudStatus: body.fraud_status
+  });
 
-  if (rawStatus === 'settlement' || (rawStatus === 'capture' && fraudStatus === 'accept')) {
-    mappedStatus = 'succeeded';
-  } else if (rawStatus === 'deny' || rawStatus === 'expire' || rawStatus === 'cancel') {
-    mappedStatus = 'failed';
-  } else if (rawStatus === 'pending' || rawStatus === 'authorize') {
+  if (mappedStatus === PAYMENT_STATUSES.PENDING) {
     return { skipped: true, reason: 'pending status' };
-  } else {
-    // Unhandled arbitrary status — treat as failed safely to prevent lingering holds
-    mappedStatus = 'failed';
   }
 
   // Step 3 — Update payment_intents
   const paymentIntent = await tx.paymentIntent.findUnique({
-    where: { providerOrderId: body.order_id }
+    where: { providerOrderId: body.order_id },
+    include: {
+      appointment: true,
+      patient: { select: { id: true, name: true, email: true, phone_number: true } }
+    }
   });
 
   if (!paymentIntent) {
     throw { code: 'PAYMENT_INTENT_NOT_FOUND', retryable: false };
   }
 
-  await tx.paymentIntent.update({
+  const mergedProviderResponse = {
+    ...(paymentIntent.providerResponse || {}),
+    ...body,
+    ...(failureReason ? { failureReason } : {})
+  };
+
+  const updatedIntent = await tx.paymentIntent.update({
     where: { id: paymentIntent.id },
     data: {
       status: mappedStatus,
-      callbackVerifiedAt: new Date()
+      callbackVerifiedAt: new Date(),
+      providerResponse: mergedProviderResponse,
+      metadata: failureReason
+        ? { ...(paymentIntent.metadata || {}), failureReason }
+        : paymentIntent.metadata
     }
   });
 
+  if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED].includes(mappedStatus)) {
+    const entryType = mappedStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge';
+    const existingLedger = await tx.paymentLedger.findFirst({
+      where: {
+        paymentIntentId: paymentIntent.id,
+        entryType,
+        status: mappedStatus,
+        amount: paymentIntent.amount
+      }
+    });
+
+    if (!existingLedger) {
+      await tx.paymentLedger.create({
+        data: {
+          paymentIntentId: paymentIntent.id,
+          entryType,
+          status: mappedStatus,
+          amount: paymentIntent.amount,
+          metadata: mergedProviderResponse
+        }
+      });
+    }
+
+    await recordFinancialEntry({
+      tx,
+      paymentIntent: updatedIntent,
+      appointment: paymentIntent.appointment,
+      entryType,
+      status: mappedStatus,
+      direction: 'credit',
+      amount: paymentIntent.amount,
+      source: paymentIntent.provider || 'midtrans',
+      metadata: mergedProviderResponse
+    });
+
+    await ensureInvoiceForPaymentIntent({
+      tx,
+      paymentIntent: updatedIntent,
+      appointment: paymentIntent.appointment,
+      patient: paymentIntent.patient
+    });
+  }
+
+  if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(mappedStatus)) {
+    const existingLedger = await tx.paymentLedger.findFirst({
+      where: {
+        paymentIntentId: paymentIntent.id,
+        entryType: 'refund',
+        status: mappedStatus,
+        amount: paymentIntent.amount
+      }
+    });
+
+    if (!existingLedger) {
+      await tx.paymentLedger.create({
+        data: {
+          paymentIntentId: paymentIntent.id,
+          entryType: 'refund',
+          status: mappedStatus,
+          amount: paymentIntent.amount,
+          metadata: mergedProviderResponse
+        }
+      });
+    }
+
+    await recordFinancialEntry({
+      tx,
+      paymentIntent: updatedIntent,
+      appointment: paymentIntent.appointment,
+      entryType: 'refund',
+      status: mappedStatus,
+      direction: 'debit',
+      amount: paymentIntent.amount,
+      source: paymentIntent.provider || 'midtrans',
+      metadata: mergedProviderResponse
+    });
+  }
+
   // Step 4 — Emit outbox event
-  if (mappedStatus === 'succeeded' || mappedStatus === 'failed') {
-    const eventType = mappedStatus === 'succeeded' ? 'payment_settled' : 'payment_failed';
+  if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED, PAYMENT_STATUSES.CANCELLED, PAYMENT_STATUSES.EXPIRED].includes(mappedStatus)) {
+    const eventType = mappedStatus === PAYMENT_STATUSES.FAILED || mappedStatus === PAYMENT_STATUSES.CANCELLED || mappedStatus === PAYMENT_STATUSES.EXPIRED
+      ? 'payment_failed'
+      : 'payment_settled';
     
     await tx.domainEventOutbox.create({
       data: {

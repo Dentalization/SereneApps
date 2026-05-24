@@ -973,6 +973,11 @@ export default {
       title: 'Teledentistry',
       subtitle: 'Pemantauan sesi, ringkasan final, dan audit teledentistry tingkat klinik.',
       liveCount: 'Live',
+      date: {
+        today: 'Hari ini',
+        tomorrow: 'Besok',
+        yesterday: 'Kemarin'
+      },
       tabs: {
         live: 'Sesi Live',
         history: 'Riwayat Sesi',
@@ -1083,6 +1088,51 @@ export default {
         messagesFailed: 'Gagal memuat riwayat chat konsultasi.',
         forbidden: 'Akses teledentistry tidak diizinkan untuk akun ini.',
         appointmentNotFound: 'Janji temu tidak ditemukan.'
+      }
+    },
+    billing: {
+      title: 'Billing & Asuransi',
+      subtitle: 'Kelola invoice, pembayaran, dan klaim asuransi',
+      tabs: {
+        invoices: 'Invoice',
+        payments: 'Pembayaran',
+        claims: 'Klaim Asuransi',
+        promos: 'Promo & Paket'
+      },
+      payments: {
+        title: 'Riwayat Pembayaran',
+        searchPlaceholder: 'Cari pembayaran...',
+        allMethods: 'Semua Metode',
+        recordPayment: 'Catat Pembayaran',
+        stats: {
+          total: 'Total Pembayaran',
+          completed: 'Selesai',
+          pending: 'Menunggu',
+          today: 'Hari Ini'
+        },
+        methods: {
+          cash: 'Tunai',
+          transfer: 'Transfer Bank',
+          qris: 'QRIS',
+          debit: 'Kartu Debit',
+          credit: 'Kartu Kredit'
+        },
+        status: {
+          completed: 'Selesai',
+          pending: 'Menunggu',
+          failed: 'Gagal',
+          refunded: 'Dikembalikan'
+        },
+        table: {
+          paymentId: 'ID Pembayaran',
+          invoice: 'Invoice',
+          patient: 'Pasien',
+          amount: 'Jumlah',
+          method: 'Metode',
+          receivedBy: 'Diterima Oleh',
+          status: 'Status',
+          actions: 'Aksi'
+        }
       }
     },
     publicProfile: {
@@ -1537,6 +1587,78 @@ export default {
       }
     },
     ai: {
+      deepDental: {
+        workspace: {
+          title: 'Ruang Kasus',
+          open: 'Buka ruang kasus',
+          close: 'Tutup ruang kasus',
+          short: 'Ruang Kasus',
+          header: {
+            title: 'Ruang Kasus Terverifikasi',
+            description: 'Buat kasus klinis untuk melampirkan gambar, temuan, ekspor, dan acara linimasa.',
+            caseId: 'Kasus {{id}}'
+          },
+          actions: {
+            refresh: 'Segarkan',
+            createCase: 'Buat kasus'
+          },
+          tabs: {
+            case: 'Kasus',
+            findings: 'Temuan',
+            audit: 'Audit',
+            export: 'Ekspor',
+            timeline: 'Linimasa'
+          },
+          imageUpload: {
+            title: 'Unggah kasus multi-gambar',
+            subtitle: 'Lampirkan semua gambar diagnostik ke satu kasus klinis.',
+            imageCount: 'gambar',
+            dropZone: 'Lepaskan gambar gigi di sini',
+            fileFormats: 'JPG, PNG, WebP, HEIC. Beberapa file didukung.',
+            selectButton: 'Pilih gambar',
+            locked: 'Gambar terkunci setelah verifikasi klinisi.'
+          },
+          analysis: {
+            title: 'Analisis berbantu AI',
+            subtitle: 'Jalankan hanya setelah prapemeriksaan kualitas per-gambar.',
+            button: 'Analisis gambar yang memenuhi syarat ({{count}})'
+          },
+          findings: {
+            title: 'Temuan klinisi',
+            subtitle: 'Tinjau saran AI secara terpisah dari temuan klinisi final.',
+            manualFinding: 'Temuan manual',
+            aiSuggestion: 'Saran AI',
+            noAI: 'Belum ada saran AI.',
+            confirmed: 'Dikonfirmasi klinisi',
+            noConfirmed: 'Belum ada temuan klinisi yang dikonfirmasi.',
+            verifyCase: 'Verifikasi kasus'
+          },
+          audit: {
+            title: 'Jejak audit',
+            subtitle: 'Tindakan klinis yang tidak dapat diubah dan hanya dapat dibaca.',
+            empty: 'Belum ada acara audit.'
+          },
+          export: {
+            title: 'Ekspor kasus',
+            subtitle: 'Hasilkan laporan PDF atau JSON yang dapat diaudit.',
+            redact: 'Redaksi pengenal pasien dalam muatan ekspor jika didukung',
+            blocked: 'Tautkan pasien dan verifikasi kasus sebelum ekspor.',
+            pdfButton: 'PDF',
+            jsonButton: 'JSON',
+            draftLabel: 'DRAF - BELUM DIVERIFIKASI KLINISI'
+          },
+          timeline: {
+            title: 'Linimasa pasien',
+            subtitle: 'Batu loncatan kasus yang terkait dengan perawatan longitudinal.',
+            unlinked: 'Belum ada pasien yang ditautkan.',
+            linkPatient: 'Tautkan pasien',
+            empty: 'Belum ada acara linimasa.',
+            images: 'gambar',
+            session: 'Sesi',
+            reportLinked: 'Laporan tertaut'
+          }
+        }
+      },
       empty: {
         title: 'Belum Ada Analisis AI',
         description: 'Pasien ini belum menggunakan fitur diagnostik AI.'
@@ -2051,6 +2173,86 @@ export default {
         title: 'Belum Ada Rencana Perawatan',
         description: 'Buat rencana perawatan untuk mulai merencanakan perawatan pasien ini.',
         action: 'Buat Rencana Pertama'
+      }
+    }
+  },
+  dentistTeledentistry: {
+    title: 'Teledentistry',
+    subtitle: 'Manajemen konsultasi virtual dan sesi',
+    breadcrumb: {
+      portal: 'Portal Dokter Gigi',
+      teledentistry: 'Teledentistry'
+    },
+    header: {
+      title: 'Teledentistry'
+    },
+    actions: {
+      summary: 'Ringkasan',
+      newConsultation: 'Konsultasi Baru',
+      startCall: 'Mulai Panggilan',
+      connecting: 'Menghubungkan...'
+    },
+    postCallSummary: {
+      title: 'Ringkasan Pasca Konsultasi',
+      finalized: 'Ringkasan sudah final dan tampil sebagai read-only.'
+    },
+    newConsultation: {
+      title: 'Konsultasi Baru',
+      subtitle: 'Mulai konsultasi virtual dengan pasien'
+    },
+    search: {
+      placeholder: 'Cari pasien...'
+    },
+    patientInfo: {
+      title: 'Informasi Pasien',
+      selectPatient: 'Pilih percakapan untuk melihat detail pasien',
+      details: {
+        title: 'Detail Pasien',
+        email: 'Email',
+        phone: 'Telepon',
+        role: 'Peran',
+        notProvided: 'Tidak disediakan',
+        unknown: 'Pasien tidak diketahui'
+      },
+      preSessionForm: {
+        title: 'Form kesehatan pra-sesi',
+        loading: 'Memuat form pra-sesi...',
+        error: 'Form pra-sesi belum dapat dimuat. Sesi tetap dapat berjalan karena form ini opsional.',
+        notFilled: 'Pasien belum mengisi form pra-sesi. Form ini opsional, jadi sesi tetap dapat berjalan.',
+        submittedBy: 'Diisi pasien',
+        status: 'Dikirim',
+        chiefComplaint: 'Keluhan utama',
+        painScale: 'Skala nyeri',
+        allergies: 'Alergi',
+        medications: 'Obat yang dikonsumsi',
+        additionalNotes: 'Catatan tambahan',
+        notFilled_text: 'Tidak diisi',
+        notProvided_text: 'Tidak disediakan'
+      },
+      conversation: {
+        title: 'Percakapan',
+        unread: 'Belum dibaca',
+        lastActivity: 'Aktivitas terakhir',
+        lastRead: 'Dibaca terakhir',
+        lastMessage: 'Pesan terakhir',
+        sharedFile: 'File dibagikan: {{fileName}}',
+        attachment: 'Lampiran',
+        justNow: 'baru saja',
+        minutesAgo: '{{minutes}}m yang lalu',
+        hoursAgo: '{{hours}}j yang lalu'
+      },
+      quickActions: {
+        title: 'Aksi cepat',
+        scheduleFollowUp: 'Jadwalkan tindak lanjut',
+        viewMedicalHistory: 'Lihat riwayat medis'
+      },
+      onlineStatus: {
+        online: 'Online',
+        offline: 'Offline'
+      },
+      footer: {
+        chatDescription: 'Chat, video, dan lampiran terkait dengan janji temu #{{appointmentId}}. Unduhan memerlukan sesi terautentikasi dan mengikuti kebijakan ukuran/jenis lampiran.',
+        moreContext: 'Butuh konteks lebih? Buka catatan janji temu atau profil pasien dari dashboard klinik; panel ini mencerminkan data langsung dari API komunikasi.'
       }
     }
   },

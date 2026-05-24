@@ -2,6 +2,7 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { verifyMidtransSignature } from '../services/payments/midtrans.js';
 import { applyPaymentStatus } from '../services/payments/status.js';
+import { mapMidtransStatus } from '../services/payments/statusMapping.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -34,42 +35,36 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // 3. Extract IDs from order_id (format: appointment-{id}-intent-{id})
+    // 3. Resolve paymentIntentId from order_id (formats: appointment-{id}-intent-{id} OR provider_order_id)
     const orderId = notification.order_id || '';
-    const intentMatch = orderId.match(/intent-(\d+)/);
-    const intentIdStr = intentMatch ? intentMatch[1] : null;
+    let paymentIntentId = null;
 
-    if (!intentIdStr) {
-      console.error('[PaymentWebhook] ❌ Failed to parse paymentIntentId from order_id:', orderId);
-      return res.status(400).json({ error: 'Invalid order_id format' });
+    const intentMatch = orderId.match(/intent-(\d+)/);
+    if (intentMatch) {
+      paymentIntentId = BigInt(intentMatch[1]);
+    } else {
+      // Fallback search in DB by providerOrderId
+      const intent = await prisma.paymentIntent.findUnique({
+        where: { providerOrderId: orderId }
+      });
+      if (intent) {
+        paymentIntentId = intent.id;
+      }
     }
 
-    const paymentIntentId = BigInt(intentIdStr);
+    if (!paymentIntentId) {
+      console.error('[PaymentWebhook] ❌ Failed to resolve paymentIntentId from order_id:', orderId);
+      return res.status(400).json({ error: 'Invalid order_id or payment intent not found' });
+    }
 
     // 4. Map Midtrans status to internal status
-    const midtransStatus = notification.transaction_status;
-    const fraudStatus = notification.fraud_status;
-
-    let internalStatus = 'pending';
-    let failureReason = null;
-
-    if (midtransStatus === 'capture') {
-      if (fraudStatus === 'challenge') {
-        internalStatus = 'requires_action';
-      } else if (fraudStatus === 'accept') {
-        internalStatus = 'succeeded';
-      }
-    } else if (midtransStatus === 'settlement') {
-      internalStatus = 'succeeded';
-    } else if (midtransStatus === 'cancel' || midtransStatus === 'deny' || midtransStatus === 'expire') {
-      internalStatus = midtransStatus === 'cancel' ? 'cancelled' : 'failed';
-      failureReason = midtransStatus;
-    } else if (midtransStatus === 'pending') {
-      internalStatus = 'pending';
-    }
+    const { internalStatus, failureReason } = mapMidtransStatus({
+      transactionStatus: notification.transaction_status,
+      fraudStatus: notification.fraud_status
+    });
 
     // 5. Apply Status Update
-    console.log(`[PaymentWebhook] Mapping "${midtransStatus}" -> "${internalStatus}" for intent ${paymentIntentId}`);
+    console.log(`[PaymentWebhook] Mapping "${notification.transaction_status}" -> "${internalStatus}" for intent ${paymentIntentId}`);
     
     await applyPaymentStatus({
       paymentIntentId,

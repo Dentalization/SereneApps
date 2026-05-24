@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ImagePlus, Loader2, RefreshCw, Trash2, UploadCloud, XCircle } from 'lucide-react';
+import { useLanguage } from '../../../../contexts/LanguageContext';
 import { buildImageQualityCoach, readImageDimensions } from './qualityCoach.mjs';
 import { validateWorkspaceImages } from './caseWorkspaceModels.mjs';
 
@@ -26,6 +27,7 @@ export default function MultiImageUploader({
   onRetry,
   labels = {},
 }) {
+  const { t } = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
   const [rejections, setRejections] = useState([]);
   const [localPrechecks, setLocalPrechecks] = useState({});
@@ -69,17 +71,21 @@ export default function MultiImageUploader({
     handleFiles(event.dataTransfer?.files);
   };
 
-  const lockedLabel = labels.locked || 'Images are locked after clinician verification.';
+  const lockedLabel = labels.locked || t('ai.deepDental.workspace.imageUpload.locked', { fallbackText: 'Images are locked after clinician verification.' });
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-2xl border border-border/40 bg-surface p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{labels.title || 'Multi-image case upload'}</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{labels.subtitle || 'Attach all diagnostic images to one clinical case.'}</p>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {labels.title || t('ai.deepDental.workspace.imageUpload.title', { fallbackText: 'Multi-image case upload' })}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {labels.subtitle || t('ai.deepDental.workspace.imageUpload.subtitle', { fallbackText: 'Attach all diagnostic images to one clinical case.' })}
+          </p>
         </div>
-        <span className="rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-500 dark:border-slate-700">
-          {images.length} {labels.images || 'images'}
+        <span className="rounded-full border border-border/40 px-2 py-1 text-[11px] font-semibold text-slate-500">
+          {images.length} {labels.images || t('ai.deepDental.workspace.imageUpload.imageCount', { fallbackText: 'images' })}
         </span>
       </div>
 
@@ -90,14 +96,18 @@ export default function MultiImageUploader({
         className={`rounded-xl border border-dashed p-4 text-center transition-colors ${
           isDragOver
             ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30'
-            : 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900'
+            : 'border-border/40 bg-surface-elevated/60'
         } ${disabled || verified ? 'opacity-60' : ''}`}
       >
         <UploadCloud className="mx-auto h-7 w-7 text-indigo-500" />
         <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-          {verified ? lockedLabel : labels.drop || 'Drop dental images here'}
+          {verified
+            ? lockedLabel
+            : labels.drop || t('ai.deepDental.workspace.imageUpload.dropZone', { fallbackText: 'Drop dental images here' })}
         </p>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{labels.help || 'JPG, PNG, WebP, HEIC. Multiple files supported.'}</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {labels.help || t('ai.deepDental.workspace.imageUpload.fileFormats', { fallbackText: 'JPG, PNG, WebP, HEIC. Multiple files supported.' })}
+        </p>
         <button
           type="button"
           disabled={disabled || verified}
@@ -105,7 +115,7 @@ export default function MultiImageUploader({
           className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           <ImagePlus className="h-4 w-4" />
-          {labels.select || 'Select images'}
+          {labels.select || t('ai.deepDental.workspace.imageUpload.selectButton', { fallbackText: 'Select images' })}
         </button>
         <input
           ref={inputRef}

@@ -2,58 +2,9 @@ import { useState } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import AppIcon from '../../../../components/AppIcon';
 
-const PaymentsView = () => {
+const PaymentsView = ({ payments = [], loading = false }) => {
   const { t } = useLanguage();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-
-  // Mock data
-  const payments = [
-    {
-      id: 'PAY-2024-001',
-      invoice: 'INV-2024-001',
-      patient: 'Ahmad Sutrisno',
-      amount: 750000,
-      method: 'cash',
-      status: 'completed',
-      receivedBy: 'Dr. Sarah',
-      receivedAt: '2024-01-15 14:30',
-      notes: 'Pembayaran tunai'
-    },
-    {
-      id: 'PAY-2024-002',
-      invoice: 'INV-2024-002',
-      patient: 'Siti Nurhaliza',
-      amount: 1200000,
-      method: 'transfer',
-      status: 'completed',
-      receivedBy: 'Admin Staff',
-      receivedAt: '2024-01-16 10:15',
-      bankAccount: 'BCA 1234567890',
-      notes: 'Transfer bank verified'
-    },
-    {
-      id: 'PAY-2024-003',
-      invoice: 'INV-2024-003',
-      patient: 'Budi Santoso',
-      amount: 500000,
-      method: 'qris',
-      status: 'pending',
-      receivedBy: 'Dr. John',
-      receivedAt: '2024-01-16 15:20',
-      notes: 'Menunggu konfirmasi QRIS'
-    },
-    {
-      id: 'PAY-2024-004',
-      invoice: 'INV-2024-004',
-      patient: 'Diana Putri',
-      amount: 300000,
-      method: 'debit',
-      status: 'completed',
-      receivedBy: 'Admin Staff',
-      receivedAt: '2024-01-16 11:45',
-      notes: 'Pembayaran EDC berhasil'
-    }
-  ];
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('id-ID', {
@@ -116,12 +67,12 @@ const PaymentsView = () => {
     return statusMap[status] || status;
   };
 
-  // Calculate statistics
-  const totalPayments = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  // Calculate statistics dynamically
+  const totalPayments = payments.reduce((sum, payment) => sum + (payment.status === 'completed' ? payment.amount : 0), 0);
   const completedPayments = payments.filter(p => p.status === 'completed').length;
   const pendingPayments = payments.filter(p => p.status === 'pending').length;
   const todayPayments = payments.filter(p => 
-    new Date(p.receivedAt).toDateString() === new Date().toDateString()
+    p.status === 'completed' && new Date(p.receivedAt).toDateString() === new Date().toDateString()
   ).length;
 
   return (
@@ -195,13 +146,6 @@ const PaymentsView = () => {
             <option value="debit">{t('clinic.billing.payments.methods.debit') || 'Debit'}</option>
           </select>
         </div>
-        <button 
-          onClick={() => setShowPaymentModal(true)}
-          className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors flex items-center gap-2"
-        >
-          <AppIcon name="Plus" size={16} />
-          {t('clinic.billing.payments.recordPayment') || 'Catat Pembayaran'}
-        </button>
       </div>
 
       {/* Payments List */}
@@ -211,94 +155,93 @@ const PaymentsView = () => {
             {t('clinic.billing.payments.title') || 'Riwayat Pembayaran'}
           </h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-surface">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.paymentId') || 'ID Pembayaran'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.invoice') || 'Invoice'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.patient') || 'Pasien'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.amount') || 'Jumlah'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.method') || 'Metode'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.receivedBy') || 'Diterima Oleh'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.status') || 'Status'}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                  {t('clinic.billing.payments.table.actions') || 'Aksi'}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-primary/10">
-              {payments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-surface transition-colors">
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="text-sm font-medium text-primary">{payment.id}</div>
-                      <div className="text-xs text-secondary">
-                        {new Date(payment.receivedAt).toLocaleDateString('id-ID')}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-primary">{payment.invoice}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-primary">{payment.patient}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-primary">
-                      {formatCurrency(payment.amount)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <AppIcon name={getMethodIcon(payment.method)} size={14} />
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getMethodColor(payment.method)}`}>
-                        {getMethodText(payment.method)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-primary">{payment.receivedBy}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(payment.status)}`}>
-                      {getStatusText(payment.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex space-x-2">
-                      <button className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
-                        <AppIcon name="Eye" size={16} />
-                      </button>
-                      <button className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
-                        <AppIcon name="Download" size={16} />
-                      </button>
-                      {payment.status === 'pending' && (
-                        <button className="p-1 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded">
-                          <AppIcon name="Check" size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
+
+        {payments.length === 0 ? (
+          <div className="p-12 text-center space-y-2">
+            <AppIcon name="CreditCard" className="mx-auto text-muted/40" size={48} />
+            <p className="font-medium text-foreground">No payments received yet</p>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Payments processed online via Midtrans will appear here automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-surface">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.paymentId') || 'ID Pembayaran'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.invoice') || 'Invoice'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.patient') || 'Pasien'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.amount') || 'Jumlah'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.method') || 'Metode'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.receivedBy') || 'Diterima Oleh'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
+                    {t('clinic.billing.payments.table.status') || 'Status'}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-primary/10">
+                {payments.map((payment) => (
+                  <tr key={payment.id} className="hover:bg-surface transition-colors">
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="text-sm font-medium text-primary">{payment.id}</div>
+                        <div className="text-xs text-secondary">
+                          {new Date(payment.receivedAt).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-primary">{payment.invoice}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-primary">{payment.patient}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-semibold text-primary">
+                        {formatCurrency(payment.amount)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <AppIcon name={getMethodIcon(payment.method)} size={14} />
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getMethodColor(payment.method)}`}>
+                          {getMethodText(payment.method)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-primary">{payment.receivedBy}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(payment.status)}`}>
+                        {getStatusText(payment.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

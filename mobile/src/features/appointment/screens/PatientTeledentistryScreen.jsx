@@ -480,7 +480,8 @@ const PatientTeledentistryScreen = () => {
 
   const handleInputTextChange = (text) => {
     setInputText(text);
-    if (!text.trim() || sessionStatus !== 'active' || !appointmentId) return;
+    const isEndedAndDentistLast = sessionStatus === 'ended' && chatMessages[chatMessages.length - 1]?.role === 'dentist';
+    if (!text.trim() || (sessionStatus !== 'active' && !isEndedAndDentistLast) || !appointmentId) return;
     const now = Date.now();
     if (now - typingThrottleRef.current < 2500) return;
     typingThrottleRef.current = now;
@@ -489,7 +490,8 @@ const PatientTeledentistryScreen = () => {
 
   const handleSend = async () => {
     const trimmed = inputText.trim();
-    if (!trimmed || sessionStatus !== 'active') return;
+    const isEndedAndDentistLast = sessionStatus === 'ended' && chatMessages[chatMessages.length - 1]?.role === 'dentist';
+    if (!trimmed || (sessionStatus !== 'active' && !isEndedAndDentistLast)) return;
     try {
       const saved = await sendMessage({ appointmentId: appointmentId?.toString(), text: trimmed });
       if (saved) {
@@ -512,7 +514,8 @@ const PatientTeledentistryScreen = () => {
   };
 
   const handleRetryText = async () => {
-    if (!pendingTextRetry?.text || !appointmentId || sessionStatus !== 'active') return;
+    const isEndedAndDentistLast = sessionStatus === 'ended' && chatMessages[chatMessages.length - 1]?.role === 'dentist';
+    if (!pendingTextRetry?.text || !appointmentId || (sessionStatus !== 'active' && !isEndedAndDentistLast)) return;
 
     try {
       const saved = await sendMessage({
@@ -683,7 +686,8 @@ const PatientTeledentistryScreen = () => {
   }, [addSystemMessage, isVideoEnabled, networkQualityEvent?.sequence, t, toggleVideo]);
 
   const handlePickAttachment = async () => {
-    if (!appointmentId || sessionStatus !== 'active' || attachmentUpload?.status === 'uploading') return;
+    const isEndedAndDentistLast = sessionStatus === 'ended' && chatMessages[chatMessages.length - 1]?.role === 'dentist';
+    if (!appointmentId || (sessionStatus !== 'active' && !isEndedAndDentistLast) || attachmentUpload?.status === 'uploading') return;
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -1176,7 +1180,12 @@ const PatientTeledentistryScreen = () => {
 
   // ──── Input Bar ────────────────────────────────────────────────────────────
   const renderInputBar = () => {
-    if (sessionStatus === 'ended' || sessionStatus === 'upcoming') return null;
+    if (sessionStatus === 'upcoming') return null;
+    if (sessionStatus === 'ended') {
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      const isDentistLastSender = lastMessage && lastMessage.role === 'dentist';
+      if (!isDentistLastSender) return null;
+    }
 
     return (
       <View>

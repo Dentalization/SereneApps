@@ -103,44 +103,27 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9998] flex items-center justify-center"
-      style={{
-        background: 'rgba(15,13,26,0.75)',
-        backdropFilter: 'blur(12px)',
-      }}
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-md"
     >
       <div
-        className="mx-4 w-full max-w-sm p-8"
-        style={{
-          background: 'rgba(26,21,40,0.95)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '1.5rem',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        }}
+        className="mx-4 w-full max-w-sm p-8 bg-surface/95 backdrop-blur-lg border border-border/40 rounded-[1.5rem] shadow-2xl"
       >
         {/* Patient Avatar with Pulse Ring */}
         <div className="flex flex-col items-center mb-6">
           <div className="relative mb-4">
             {/* Pulsing rings */}
-            <div className="absolute inset-0 rounded-full animate-ping opacity-75" style={{ background: 'rgba(124,58,237,0.3)', animationDuration: '2s' }} />
+            <div className="absolute inset-0 rounded-full animate-ping opacity-75 bg-accent/30" style={{ animationDuration: '2s' }} />
             <div
-              className="absolute rounded-full"
+              className="absolute rounded-full animate-pulse bg-accent/10"
               style={{
                 inset: '-0.75rem',
-                background: 'rgba(124,58,237,0.12)',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                animationDelay: '0.5s',
+                animationDuration: '2s',
               }}
             />
             {/* Avatar */}
             <div
-              className="relative flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white"
-              style={{
-                ...getAvatarGradient(patientName),
-                border: '2px solid rgba(124,58,237,0.4)',
-                boxShadow: '0 0 0 6px rgba(124,58,237,0.12)',
-              }}
+              className="relative flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white border-2 border-accent/40 shadow-[0_0_0_6px_rgba(124,58,237,0.12)]"
+              style={getAvatarGradient(patientName)}
             >
               {conversation?.patient?.avatar ? (
                 <img
@@ -155,20 +138,19 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
           </div>
 
           {/* Patient Info */}
-          <h3 className="text-lg font-semibold" style={{ color: 'var(--td-text-main)' }}>{patientName}</h3>
-          <p className="mt-1 text-sm" style={{ color: 'var(--td-text-sub)' }}>Incoming video consultation</p>
+          <h3 className="text-lg font-semibold text-primary">{patientName}</h3>
+          <p className="mt-1 text-sm text-secondary">Incoming video consultation</p>
 
           {/* Countdown Progress Bar */}
-          <div className="mt-4 h-1 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-surface-elevated border border-border/40">
             <div 
-              className="h-full transition-all duration-1000 ease-linear"
+              className="h-full transition-all duration-1000 ease-linear bg-gradient-to-r from-accent to-purple-600"
               style={{
                 width: `${(countdown / AUTO_DECLINE_SECONDS) * 100}%`,
-                background: 'linear-gradient(90deg, #7C3AED, #9333ea)',
               }}
             />
           </div>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--td-text-muted)' }}>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-muted">
             Auto-declining in {countdown}s
           </p>
         </div>
@@ -183,10 +165,10 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
             className="flex flex-col items-center gap-2 group"
             aria-label="Decline call"
           >
-            <div className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-200 group-hover:scale-105 group-disabled:opacity-50" style={{ background: 'rgba(239,68,68,0.85)', boxShadow: '0 4px 12px rgba(239,68,68,0.35)' }}>
-              <Icon name="PhoneOff" size={22} className="text-white" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-200 group-hover:scale-105 group-disabled:opacity-50 bg-red-500/85 hover:bg-red-500 text-white shadow-red-500/20">
+              <Icon name="PhoneOff" size={22} />
             </div>
-            <span className="text-xs font-medium" style={{ color: 'var(--td-text-muted)' }}>Decline</span>
+            <span className="text-xs font-medium text-muted">Decline</span>
           </button>
 
           {/* Accept */}
@@ -197,14 +179,14 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
             className="flex flex-col items-center gap-2 group"
             aria-label="Accept call"
           >
-            <div className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-200 group-hover:scale-105 group-disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 4px 12px rgba(124,58,237,0.45)' }}>
+            <div className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-200 group-hover:scale-105 group-disabled:opacity-50 bg-accent hover:bg-accent/90 text-white shadow-accent/20">
               {isConnecting ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <Icon name="Video" size={22} className="text-white" />
+                <Icon name="Video" size={22} />
               )}
             </div>
-            <span className="text-xs font-medium" style={{ color: 'var(--td-text-muted)' }}>
+            <span className="text-xs font-medium text-muted">
               {isConnecting ? 'Connecting...' : 'Accept'}
             </span>
           </button>
