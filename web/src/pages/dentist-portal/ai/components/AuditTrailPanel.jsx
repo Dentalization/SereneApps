@@ -1,5 +1,6 @@
 import React from 'react';
 import { ClipboardList } from 'lucide-react';
+import { useLanguage } from '../../../../contexts/LanguageContext';
 
 function formatTime(value) {
   if (!value) return '';
@@ -13,24 +14,31 @@ function labelEvent(type = '') {
 }
 
 export default function AuditTrailPanel({ events = [], labels = {} }) {
+  const { t } = useLanguage();
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-2xl border border-border/40 bg-surface p-4">
       <div className="mb-4 flex items-center gap-2">
         <ClipboardList className="h-4 w-4 text-indigo-500" />
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{labels.title || 'Audit trail'}</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{labels.subtitle || 'Read-only immutable clinical actions.'}</p>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {labels.title || t('ai.deepDental.workspace.audit.title', { fallbackText: 'Audit trail' })}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {labels.subtitle || t('ai.deepDental.workspace.audit.subtitle', { fallbackText: 'Read-only immutable clinical actions.' })}
+          </p>
         </div>
       </div>
 
       {events.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">{labels.empty || 'No audit events yet.'}</p>
+        <p className="rounded-xl border border-border/40 bg-surface-elevated/60 p-3 text-xs text-slate-500">
+          {labels.empty || t('ai.deepDental.workspace.audit.empty', { fallbackText: 'No audit events yet.' })}
+        </p>
       ) : (
         <ol className="space-y-3">
           {events.map((event) => (
-            <li key={event.event_id} className="relative border-l border-slate-200 pl-4 dark:border-slate-800">
-              <span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-white bg-indigo-500 dark:border-slate-950" />
-              <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+            <li key={event.event_id} className="relative border-l border-border/40 pl-4">
+              <span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-surface bg-indigo-500" />
+              <div className="rounded-xl bg-surface-elevated/60 p-3 border border-border/30">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{labelEvent(event.event_type)}</p>

@@ -22,14 +22,40 @@ function localDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function formatDateTime(value, language = 'id') {
+function formatDateTime(value, language = 'id', t) {
   if (!value) return '-';
-  return new Date(value).toLocaleString(language === 'id' ? 'id-ID' : 'en-US', {
-    day: '2-digit',
-    month: 'short',
+  const dateObj = new Date(value);
+  if (Number.isNaN(dateObj.getTime())) return '-';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDate = new Date(dateObj);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const diffTime = targetDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffTime / 86400000);
+
+  let relativeDayLabel = '';
+  if (diffDays === 0) {
+    relativeDayLabel = t ? t('clinic.teledentistry.date.today', { defaultValue: 'Hari ini' }) : (language === 'id' ? 'Hari ini' : 'Today');
+  } else if (diffDays === 1) {
+    relativeDayLabel = t ? t('clinic.teledentistry.date.tomorrow', { defaultValue: 'Besok' }) : (language === 'id' ? 'Besok' : 'Tomorrow');
+  } else if (diffDays === -1) {
+    relativeDayLabel = t ? t('clinic.teledentistry.date.yesterday', { defaultValue: 'Kemarin' }) : (language === 'id' ? 'Kemarin' : 'Yesterday');
+  } else {
+    relativeDayLabel = dateObj.toLocaleDateString(language === 'id' ? 'id-ID' : 'en-US', {
+      day: '2-digit',
+      month: 'short'
+    });
+  }
+
+  const timeStr = dateObj.toLocaleTimeString(language === 'id' ? 'id-ID' : 'en-US', {
     hour: '2-digit',
     minute: '2-digit'
   });
+
+  return `${relativeDayLabel}, ${timeStr}`;
 }
 
 function formatDuration(seconds = 0) {
@@ -120,7 +146,7 @@ function statusClass(status) {
 }
 
 function SummaryDrawer({ open, summary, loading, error, onClose }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   if (!open) return null;
   const body = summary?.summary;
   return (
@@ -159,7 +185,7 @@ function SummaryDrawer({ open, summary, loading, error, onClose }) {
               <SummaryField label={t('clinic.teledentistry.summaryDrawer.recommendations')} value={(body.recommendations || []).join('\n')} />
               <div className="rounded-xl border border-primary/10 bg-surface p-4 text-sm text-secondary">
                 {t('clinic.teledentistry.summaryDrawer.followUp')}: {body.followUpNeeded
-                  ? `${t('clinic.teledentistry.summaryDrawer.followUpYes')}${body.followUpAt ? ` · ${formatDateTime(body.followUpAt, language)}` : ''}`
+                  ? `${t('clinic.teledentistry.summaryDrawer.followUpYes')}${body.followUpAt ? ` · ${formatDateTime(body.followUpAt, language, t)}` : ''}`
                   : t('clinic.teledentistry.summaryDrawer.followUpNo')}
               </div>
             </>
@@ -206,7 +232,7 @@ function MessagesDrawer({ open, messagesState, onClose }) {
             <div key={message.id} className="rounded-xl border border-primary/10 bg-surface p-4">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-semibold text-primary">{message.senderName}</span>
-                <span className="text-xs text-muted">{formatDateTime(message.createdAt, language)}</span>
+                <span className="text-xs text-muted">{formatDateTime(message.createdAt, language, t)}</span>
               </div>
               {message.messageType === 'file' ? (
                 <div className="mt-2 rounded-lg border border-primary/10 bg-surface-elevated px-3 py-2 text-sm">
@@ -389,7 +415,7 @@ function SessionRow({ session, canObserve, canViewSummary, canViewChat, onObserv
             </span>
           </div>
           <p className="mt-1 text-sm text-secondary">
-            {session.dentist?.name || roleLabel(t, 'dentist')} · {formatDateTime(session.startsAt, language)} · {session.roomName}
+            {session.dentist?.name || roleLabel(t, 'dentist')} · {formatDateTime(session.startsAt, language, t)} · {session.roomName}
           </p>
           <p className="mt-1 text-xs text-muted">
             {t('clinic.teledentistry.labels.summary')}: {summaryStatusLabel(session.summaryStatus, t)} · {t('clinic.teledentistry.labels.activeParticipants')}: {session.activeParticipantCount} · {t('clinic.teledentistry.labels.observer')}: {session.activeObserverCount || 0} · {t('clinic.teledentistry.labels.duration')} {formatDuration(session.durationSeconds || 0)}
@@ -746,7 +772,7 @@ export default function ClinicTeledentistryPage() {
                         </span>
                         <div className="font-medium text-primary">{event.eventType}</div>
                       </div>
-                      <div className="text-xs text-secondary">{formatDateTime(event.occurredAt, language)}</div>
+                      <div className="text-xs text-secondary">{formatDateTime(event.occurredAt, language, t)}</div>
                     </div>
                     <p className="mt-1 text-xs text-secondary">
                       {t('clinic.teledentistry.labels.appointment')} #{event.appointmentId} · {event.actorRole || t('clinic.teledentistry.roles.system')} · {event.provider || 'local'}

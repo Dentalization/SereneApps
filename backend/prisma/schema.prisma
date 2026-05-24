@@ -40,6 +40,10 @@ model User {
   notifications                                                  Notification[]
   patientProfile                                                 PatientProfile?
   paymentIntents                                                 PaymentIntent[]
+  ownedPaymentIntents                                            PaymentIntent[]              @relation("PaymentIntentOwnerDentist")
+  financialLedgerEntries                                         FinancialLedgerEntry[]       @relation("FinancialLedgerDentist")
+  ownedInvoices                                                  Invoice[]                   @relation("InvoiceOwnerDentist")
+  invoices                                                       Invoice[]
   refreshTokens                                                  RefreshToken[]
   user_devices                                                   UserDevice[]
   createdTreatmentPlans                                          TreatmentPlan[]            @relation("DentistTreatmentPlans")
@@ -161,6 +165,10 @@ model ClinicProfile {
   branches                   ClinicBranch[]
   user                       User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   staff                      ClinicStaff[]
+  ownedPaymentIntents        PaymentIntent[]     @relation("PaymentIntentOwnerClinic")
+  financialLedgerEntries     FinancialLedgerEntry[] @relation("FinancialLedgerClinic")
+  invoices                   Invoice[]          @relation("InvoiceOwnerClinic")
+  ownedAppointments          Appointment[]
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
   @@index([nibNumber], map: "idx_clinic_profiles_nib")
@@ -264,6 +272,8 @@ model Appointment {
   dentistId          BigInt                     @map("dentist_id")
   patientId          BigInt                     @map("patient_id")
   clinicBranchId     BigInt?                    @map("clinic_branch_id")
+  ownerType          String                     @default("dentist") @map("owner_type") @db.VarChar(24)
+  ownerClinicId      BigInt?                    @map("owner_clinic_id")
   startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
   endsAt             DateTime                   @map("ends_at") @db.Timestamptz(6)
   status             String                     @default("scheduled") @db.VarChar
@@ -282,12 +292,15 @@ model Appointment {
   consultationType   String?                    @default("onsite") @map("consultation_type") @db.VarChar
   statusHistory      AppointmentStatusHistory[]
   clinicBranch       ClinicBranch?              @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
+  ownerClinic        ClinicProfile?             @relation(fields: [ownerClinicId], references: [id], onUpdate: NoAction)
   dentist            User                       @relation("DentistAppointments", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   patient            User                       @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   rescheduledFrom    Appointment?               @relation("AppointmentRescheduleChain", fields: [rescheduledFromId], references: [id], onUpdate: NoAction)
   rescheduledTo      Appointment[]              @relation("AppointmentRescheduleChain")
   chatRoom           ChatRoom?
   paymentIntents     PaymentIntent[]            @relation("AppointmentPaymentIntents")
+  invoices           Invoice[]                  @relation("AppointmentInvoices")
+  financialEntries   FinancialLedgerEntry[]
   videoSessions      VideoSession[]
   communicationEvents CommunicationEvent[]
   clinicalSummary    AppointmentClinicalSummary?
@@ -343,6 +356,9 @@ model PaymentIntent {
   id                BigInt          @id @default(autoincrement())
   appointmentId     BigInt          @map("appointment_id")
   patientId         BigInt          @map("patient_id")
+  ownerType         String          @default("dentist") @map("owner_type") @db.VarChar(24)
+  ownerClinicId     BigInt?         @map("owner_clinic_id")
+  ownerDentistId    BigInt?         @map("owner_dentist_id")
   amount            Int
   currency          String          @default("IDR") @db.VarChar
   status            String          @default("pending") @db.VarChar
@@ -361,10 +377,16 @@ model PaymentIntent {
   callbackVerifiedAt DateTime?      @map("callback_verified_at") @db.Timestamptz(6)
   appointment       Appointment     @relation("AppointmentPaymentIntents", fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   patient           User            @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ownerClinic       ClinicProfile?  @relation("PaymentIntentOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist      User?           @relation("PaymentIntentOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
   ledgerEntries     PaymentLedger[]
+  financialEntries  FinancialLedgerEntry[]
+  invoices          Invoice[]       @relation("PaymentIntentInvoices")
 
   @@index([patientId, createdAt(sort: Desc)], map: "idx_payment_intents_patient")
   @@index([status], map: "idx_payment_intents_status")
+  @@index([ownerType, ownerClinicId], map: "idx_payment_intents_owner_clinic")
+  @@index([ownerType, ownerDentistId], map: "idx_payment_intents_owner_dentist")
   @@index([providerOrderId], map: "idx_payment_intents_provider_order_id")
   @@index([reconciliationStatus, updatedAt(sort: Desc)], map: "idx_payment_intents_reconciliation")
   @@map("payment_intents")
@@ -383,6 +405,81 @@ model PaymentLedger {
   @@index([paymentIntentId, status], map: "idx_payment_ledgers_intent_status")
   @@index([createdAt(sort: Desc)], map: "idx_payment_ledgers_created_at")
   @@map("payment_ledgers")
+}
+
+model FinancialLedgerEntry {
+  id              BigInt        @id @default(autoincrement())
+  paymentIntentId BigInt?       @map("payment_intent_id")
+  appointmentId   BigInt?       @map("appointment_id")
+  ownerType       String        @map("owner_type") @db.VarChar(24)
+  ownerClinicId   BigInt?       @map("owner_clinic_id")
+  ownerDentistId  BigInt?       @map("owner_dentist_id")
+  entryType       String        @map("entry_type") @db.VarChar(32)
+  status          String        @db.VarChar(32)
+  direction       String        @db.VarChar(16)
+  amount          Int
+  currency        String        @default("IDR") @db.VarChar(8)
+  source          String?       @db.VarChar(32)
+  metadata        Json?         @default("{}")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  paymentIntent   PaymentIntent? @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  appointment     Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  ownerClinic     ClinicProfile? @relation("FinancialLedgerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist    User?          @relation("FinancialLedgerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+
+  @@index([ownerType, ownerClinicId, createdAt(sort: Desc)], map: "idx_financial_ledger_clinic")
+  @@index([ownerType, ownerDentistId, createdAt(sort: Desc)], map: "idx_financial_ledger_dentist")
+  @@index([paymentIntentId, createdAt(sort: Desc)], map: "idx_financial_ledger_intent")
+  @@map("financial_ledger_entries")
+}
+
+model Invoice {
+  id              BigInt        @id @default(autoincrement())
+  appointmentId   BigInt?       @map("appointment_id")
+  paymentIntentId BigInt?       @map("payment_intent_id")
+  patientId       BigInt        @map("patient_id")
+  ownerType       String        @map("owner_type") @db.VarChar(24)
+  ownerClinicId   BigInt?       @map("owner_clinic_id")
+  ownerDentistId  BigInt?       @map("owner_dentist_id")
+  reference       String?       @db.VarChar(64)
+  status          String        @default("issued") @db.VarChar(24)
+  subtotal        Int
+  tax             Int           @default(0)
+  discount        Int           @default(0)
+  total           Int
+  currency        String        @default("IDR") @db.VarChar(8)
+  issuedAt        DateTime?     @map("issued_at") @db.Timestamptz(6)
+  dueAt           DateTime?     @map("due_at") @db.Timestamptz(6)
+  paidAt          DateTime?     @map("paid_at") @db.Timestamptz(6)
+  metadata        Json?         @default("{}")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment     Appointment?  @relation("AppointmentInvoices", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  paymentIntent   PaymentIntent? @relation("PaymentIntentInvoices", fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  patient         User          @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ownerClinic     ClinicProfile? @relation("InvoiceOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist    User?          @relation("InvoiceOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+  items           InvoiceLineItem[]
+
+  @@index([ownerType, ownerClinicId, createdAt(sort: Desc)], map: "idx_invoices_owner_clinic")
+  @@index([ownerType, ownerDentistId, createdAt(sort: Desc)], map: "idx_invoices_owner_dentist")
+  @@index([patientId, createdAt(sort: Desc)], map: "idx_invoices_patient")
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          BigInt   @id @default(autoincrement())
+  invoiceId   BigInt   @map("invoice_id")
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Int      @map("unit_price")
+  total       Int
+  metadata    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([invoiceId], map: "idx_invoice_items_invoice")
+  @@map("invoice_items")
 }
 
 model ChatRoom {

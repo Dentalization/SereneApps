@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
+import { useLanguage } from '../../../../contexts/LanguageContext';
 import {
   fetchClinicalSummary,
   finalizeClinicalSummary,
@@ -109,6 +110,7 @@ const SUMMARY_TEMPLATES = [
 ];
 
 export default function PostCallSummaryPanel({ appointmentId, conversation, open, onClose }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState(EMPTY_FORM);
   const [status, setStatus] = useState('idle');
   const [summaryStatus, setSummaryStatus] = useState('pending');
@@ -246,26 +248,20 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,13,26,0.62)', backdropFilter: 'blur(10px)' }}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-md">
       <aside
-        className="flex h-full w-full max-w-2xl flex-col shadow-2xl"
-        style={{
-          background: 'rgba(26,21,40,0.96)',
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        }}
+        className="flex h-full w-full max-w-2xl flex-col shadow-2xl bg-surface border-l border-border/40"
       >
-        <header className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <header className="flex items-center justify-between px-5 py-4 border-b border-border/40">
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--td-text-main)' }}>Ringkasan Pasca Konsultasi</h2>
-            <p className="text-sm" style={{ color: 'var(--td-text-muted)' }}>
+            <h2 className="text-lg font-semibold text-primary">{t('dentistTeledentistry.postCallSummary.title')}</h2>
+            <p className="text-sm text-muted">
               {conversation?.patient?.name || 'Pasien'} • Appointment #{appointmentId}
             </p>
           </div>
           <button
             onClick={handleClose}
-            className="rounded-lg p-2 transition-all duration-150 hover:scale-105"
-            style={{ color: 'var(--td-text-muted)', background: 'rgba(255,255,255,0.04)' }}
+            className="rounded-lg p-2 transition-all duration-150 hover:scale-105 text-muted hover:bg-surface-elevated hover:text-primary"
             aria-label="Close summary"
           >
             <Icon name="X" size={18} />
@@ -273,13 +269,13 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         </header>
 
         {error && (
-          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.22)' }}>
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50">
             {error}
           </div>
         )}
 
         {isFinalized && (
-          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac', border: '1px solid rgba(34,197,94,0.2)' }}>
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
             <div>Ringkasan sudah final dan tampil sebagai read-only.</div>
             <div className="mt-1 text-xs">
               {summaryMeta.patientAcknowledgedAt
@@ -290,23 +286,22 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         )}
 
         {followUpTasks.length > 0 && (
-          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--td-text-sub)', border: '1px solid rgba(124,58,237,0.22)' }}>
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm bg-accent/10 text-secondary border border-accent/20">
             Follow-up task dibuat: {followUpTasks[0].title} {followUpTasks[0].dueAt ? `• ${new Date(followUpTasks[0].dueAt).toLocaleString()}` : ''}
           </div>
         )}
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 scrollbar-minimal">
           {!isFinalized && (
-            <section className="rounded-lg px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="mb-2 text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Template cepat</div>
+            <section className="rounded-lg px-3 py-3 bg-surface/30 border border-border/40">
+              <div className="mb-2 text-sm font-medium text-primary">Template cepat</div>
               <div className="flex flex-wrap gap-2">
                 {SUMMARY_TEMPLATES.map((template) => (
                   <button
                     key={template.label}
                     type="button"
                     onClick={() => applyTemplate(template)}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150"
-                    style={{ color: 'var(--td-text-sub)', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.16)' }}
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 text-secondary bg-accent/10 border border-accent/20 hover:bg-accent/20"
                   >
                     {template.label}
                   </button>
@@ -321,40 +316,40 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
           <Field label="Rencana tindakan" required value={form.plan} disabled={isFinalized} onChange={(value) => updateField('plan', value)} />
           <Field label="Rekomendasi lanjutan" value={form.recommendationsText} disabled={isFinalized} onChange={(value) => updateField('recommendationsText', value)} />
 
-          <label className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <label className="flex items-center gap-3 rounded-lg px-3 py-2 bg-surface/30 border border-border/40">
             <input
               type="checkbox"
               checked={form.followUpNeeded}
               disabled={isFinalized}
               onChange={(event) => updateField('followUpNeeded', event.target.checked)}
+              className="accent-accent"
             />
-            <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Follow-up diperlukan</span>
+            <span className="text-sm font-medium text-primary">Follow-up diperlukan</span>
           </label>
 
           {form.followUpNeeded && (
             <label className="block">
-              <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>Jadwal follow-up</span>
+              <span className="text-sm font-medium text-primary">Jadwal follow-up</span>
               <input
                 type="datetime-local"
                 value={form.followUpAt}
                 disabled={isFinalized}
                 onChange={(event) => updateField('followUpAt', event.target.value)}
-                className="mt-1 w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm focus:outline-none bg-surface-elevated border border-border/40 text-primary focus:ring-1 focus:ring-accent/50"
               />
             </label>
           )}
         </div>
 
-        <footer className="flex items-center justify-between px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-xs" style={{ color: 'var(--td-text-muted)' }}>
+        <footer className="flex items-center justify-between px-5 py-4 border-t border-border/40 bg-surface/90 backdrop-blur-sm">
+          <div className="text-xs text-muted">
             {status === 'saving' ? 'Menyimpan...' : dirty ? 'Belum tersimpan' : 'Tersimpan'}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleSave} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-sub)' }}>
+            <button onClick={handleSave} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 disabled:opacity-50 bg-surface-elevated border border-border/40 text-secondary hover:bg-surface/80">
               Save draft
             </button>
-            <button onClick={handleFinalize} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 text-white disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}>
+            <button onClick={handleFinalize} disabled={isFinalized || status === 'saving'} className="rounded-lg px-4 py-2 text-white disabled:opacity-50 bg-accent shadow-sm hover:scale-105 transition-transform active:scale-95">
               Finalize
             </button>
           </div>
@@ -367,7 +362,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
 function Field({ label, value, onChange, disabled = false, required = false }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium" style={{ color: 'var(--td-text-main)' }}>
+      <span className="text-sm font-medium text-primary">
         {label}{required ? <span className="text-red-500"> *</span> : null}
       </span>
       <textarea
@@ -375,8 +370,7 @@ function Field({ label, value, onChange, disabled = false, required = false }) {
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        className="mt-1 w-full resize-y rounded-lg px-3 py-2 text-sm focus:outline-none disabled:opacity-80"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--td-text-main)' }}
+        className="mt-1 w-full resize-y rounded-lg px-3 py-2 text-sm focus:outline-none disabled:opacity-80 bg-surface-elevated border border-border/40 text-primary focus:ring-1 focus:ring-accent/50"
       />
     </label>
   );

@@ -903,6 +903,8 @@ export async function listChatRoomsForUser(userId) {
         channelName: room.channelName,
         conversationSid: room.twilio_conversation_sid || null,
         commStatus: appointment.commStatus,
+        startsAt: appointment.startsAt,
+        status: appointment.status,
         patient: appointment.patient
           ? {
               id: appointment.patient.id.toString(),

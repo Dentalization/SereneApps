@@ -3,6 +3,7 @@ import crypto from 'crypto';
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
 const MIDTRANS_CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || '';
 const MIDTRANS_BASE_URL = process.env.MIDTRANS_BASE_URL || 'https://app.sandbox.midtrans.com';
+const MIDTRANS_API_BASE_URL = process.env.MIDTRANS_API_BASE_URL || 'https://api.sandbox.midtrans.com';
 const MIDTRANS_MOCK_MODE = (process.env.MIDTRANS_MOCK_MODE || '').toLowerCase() === 'true';
 
 function buildAuthHeader() {
@@ -104,6 +105,69 @@ export async function createMidtransTransaction({ paymentIntent, appointment, pa
     rawResponse: data,
     expiresAt: data.expiry_time ? new Date(data.expiry_time) : null
   };
+}
+
+export async function refundMidtransTransaction({ orderId, amount, reason }) {
+  if (MIDTRANS_MOCK_MODE) {
+    return {
+      status: 'mock_refund',
+      order_id: orderId,
+      amount,
+      reason
+    };
+  }
+
+  const authHeader = buildAuthHeader();
+  const payload = {
+    refund_key: `refund-${Date.now()}`,
+    amount,
+    reason
+  };
+
+  const response = await fetch(`${MIDTRANS_API_BASE_URL}/v2/${orderId}/refund`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    const error = new Error(`MIDTRANS_REFUND_ERROR_${response.status}`);
+    error.details = errorBody;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function cancelMidtransTransaction(orderId) {
+  if (MIDTRANS_MOCK_MODE) {
+    return {
+      status: 'mock_cancel',
+      order_id: orderId
+    };
+  }
+
+  const authHeader = buildAuthHeader();
+  const response = await fetch(`${MIDTRANS_API_BASE_URL}/v2/${orderId}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader
+    }
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    const error = new Error(`MIDTRANS_CANCEL_ERROR_${response.status}`);
+    error.details = errorBody;
+    throw error;
+  }
+
+  return response.json();
 }
 
 export function verifyMidtransSignature({ orderId, statusCode, grossAmount, signatureKey }) {

@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import midtransService from './midtransService.js';
+import { mapMidtransStatus } from './statusMapping.js';
+import { PAYMENT_STATUSES } from './status.js';
 
 const prisma = new PrismaClient();
 
@@ -19,7 +21,7 @@ export async function reconcilePayment(paymentIntentId) {
     const previousStatus = paymentIntent.status;
 
     // 2. Already final
-    if (previousStatus === 'succeeded' || previousStatus === 'failed') {
+    if ([PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED, PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND, PAYMENT_STATUSES.CANCELLED, PAYMENT_STATUSES.EXPIRED].includes(previousStatus)) {
       await tx.paymentIntent.update({
         where: { id: intentIdBigInt },
         data: { lastReconciledAt: new Date() }
@@ -40,19 +42,10 @@ export async function reconcilePayment(paymentIntentId) {
     }
 
     // 4. Map Midtrans response identically handling identical webhooks logic
-    let mappedStatus = 'pending';
-    const rawStatus = midtransStatus.transaction_status;
-    const fraudStatus = midtransStatus.fraud_status;
-
-    if (rawStatus === 'settlement' || (rawStatus === 'capture' && fraudStatus === 'accept')) {
-      mappedStatus = 'succeeded';
-    } else if (rawStatus === 'deny' || rawStatus === 'expire' || rawStatus === 'cancel') {
-      mappedStatus = 'failed';
-    } else if (rawStatus === 'pending' || rawStatus === 'authorize') {
-      mappedStatus = 'pending';
-    } else {
-      mappedStatus = 'failed'; 
-    }
+    const { internalStatus: mappedStatus } = mapMidtransStatus({
+      transactionStatus: midtransStatus.transaction_status,
+      fraudStatus: midtransStatus.fraud_status
+    });
 
     // 5. Native State Mutations enforcing optimistic lock tracking against webhooks
     if (mappedStatus !== previousStatus) {
@@ -65,16 +58,16 @@ export async function reconcilePayment(paymentIntentId) {
         }
       });
 
-      if (mappedStatus === 'succeeded' || mappedStatus === 'failed') {
-        const eventType = mappedStatus === 'succeeded' ? 'payment_settled' : 'payment_failed';
-        
-        const existingOutbox = await tx.domainEventOutbox.findFirst({
-           where: {
-             aggregateId: String(paymentIntent.id),
-             aggregateType: 'payment_intent',
-             eventType
-           }
-        });
+       if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED].includes(mappedStatus)) {
+         const eventType = mappedStatus === PAYMENT_STATUSES.FAILED ? 'payment_failed' : 'payment_settled';
+         
+         const existingOutbox = await tx.domainEventOutbox.findFirst({
+            where: {
+              aggregateId: String(paymentIntent.id),
+              aggregateType: 'payment_intent',
+              eventType
+            }
+         });
 
         if (!existingOutbox) {
            await tx.domainEventOutbox.create({

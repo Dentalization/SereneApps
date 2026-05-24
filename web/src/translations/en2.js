@@ -973,6 +973,11 @@ export default {
       title: 'Teledentistry',
       subtitle: 'Monitor sessions, finalized summaries, and clinic-level teledentistry audits.',
       liveCount: 'Live',
+      date: {
+        today: 'Today',
+        tomorrow: 'Tomorrow',
+        yesterday: 'Yesterday'
+      },
       tabs: {
         live: 'Live Sessions',
         history: 'Session History',
@@ -1083,6 +1088,51 @@ export default {
         messagesFailed: 'Failed to load consultation chat history.',
         forbidden: 'Teledentistry access is not allowed for this account.',
         appointmentNotFound: 'Appointment was not found.'
+      }
+    },
+    billing: {
+      title: 'Billing & Insurance',
+      subtitle: 'Manage invoices, payments, and insurance claims',
+      tabs: {
+        invoices: 'Invoice',
+        payments: 'Payments',
+        claims: 'Insurance Claims',
+        promos: 'Promos & Packages'
+      },
+      payments: {
+        title: 'Payment History',
+        searchPlaceholder: 'Search payments...',
+        allMethods: 'All Methods',
+        recordPayment: 'Record Payment',
+        stats: {
+          total: 'Total Payments',
+          completed: 'Completed',
+          pending: 'Pending',
+          today: 'Today'
+        },
+        methods: {
+          cash: 'Cash',
+          transfer: 'Bank Transfer',
+          qris: 'QRIS',
+          debit: 'Debit Card',
+          credit: 'Credit Card'
+        },
+        status: {
+          completed: 'Success',
+          pending: 'Pending',
+          failed: 'Failed',
+          refunded: 'Refunded'
+        },
+        table: {
+          paymentId: 'Payment ID',
+          invoice: 'Invoice',
+          patient: 'Patient',
+          amount: 'Amount',
+          method: 'Method',
+          receivedBy: 'Received By',
+          status: 'Status',
+          actions: 'Actions'
+        }
       }
     },
     publicProfile: {
@@ -1537,6 +1587,78 @@ export default {
       }
     },
     ai: {
+      deepDental: {
+        workspace: {
+          title: 'Case Workspace',
+          open: 'Open case workspace',
+          close: 'Close case workspace',
+          short: 'Workspace',
+          header: {
+            title: 'Verified Case Workspace',
+            description: 'Create a clinical case to attach images, findings, exports, and timeline events.',
+            caseId: 'Case {{id}}'
+          },
+          actions: {
+            refresh: 'Refresh',
+            createCase: 'Create case'
+          },
+          tabs: {
+            case: 'Case',
+            findings: 'Findings',
+            audit: 'Audit',
+            export: 'Export',
+            timeline: 'Timeline'
+          },
+          imageUpload: {
+            title: 'Multi-image case upload',
+            subtitle: 'Attach all diagnostic images to one clinical case.',
+            imageCount: 'images',
+            dropZone: 'Drop dental images here',
+            fileFormats: 'JPG, PNG, WebP, HEIC. Multiple files supported.',
+            selectButton: 'Select images',
+            locked: 'Images are locked after clinician verification.'
+          },
+          analysis: {
+            title: 'AI-assisted analysis',
+            subtitle: 'Run only after per-image quality precheck.',
+            button: 'Analyze eligible images ({{count}})'
+          },
+          findings: {
+            title: 'Clinician findings',
+            subtitle: 'Review AI suggestions separately from final clinician findings.',
+            manualFinding: 'Manual finding',
+            aiSuggestion: 'AI suggestion',
+            noAI: 'No AI suggestions yet.',
+            confirmed: 'Clinician confirmed',
+            noConfirmed: 'No clinician findings confirmed yet.',
+            verifyCase: 'Verify case'
+          },
+          audit: {
+            title: 'Audit trail',
+            subtitle: 'Read-only immutable clinical actions.',
+            empty: 'No audit events yet.'
+          },
+          export: {
+            title: 'Case export',
+            subtitle: 'Generate auditable PDF or JSON reports.',
+            redact: 'Redact patient identifier in export payload where supported',
+            blocked: 'Link a patient and verify the case before export.',
+            pdfButton: 'PDF',
+            jsonButton: 'JSON',
+            draftLabel: 'DRAFT - NOT CLINICIAN VERIFIED'
+          },
+          timeline: {
+            title: 'Patient timeline',
+            subtitle: 'Case milestones linked to longitudinal care.',
+            unlinked: 'No patient linked yet.',
+            linkPatient: 'Link patient',
+            empty: 'No timeline events yet.',
+            images: 'images',
+            session: 'Session',
+            reportLinked: 'Report linked'
+          }
+        }
+      },
       empty: {
         title: 'No AI Analysis Available',
         description: "This patient hasn't used the AI diagnostic feature yet."
@@ -2052,6 +2174,86 @@ export default {
         title: 'No Treatment Plans',
         description: "Create a treatment plan to start planning this patient's dental care.",
         action: 'Create First Treatment Plan'
+      }
+    }
+  },
+  dentistTeledentistry: {
+    title: 'Teledentistry',
+    subtitle: 'Virtual consultations and session management',
+    breadcrumb: {
+      portal: 'Dentist Portal',
+      teledentistry: 'Teledentistry'
+    },
+    header: {
+      title: 'Teledentistry'
+    },
+    actions: {
+      summary: 'Summary',
+      newConsultation: 'New Consultation',
+      startCall: 'Start Call',
+      connecting: 'Connecting...'
+    },
+    postCallSummary: {
+      title: 'Post-Consultation Summary',
+      finalized: 'Summary is finalized and displayed as read-only.'
+    },
+    newConsultation: {
+      title: 'New Consultation',
+      subtitle: 'Start a virtual consultation with a patient'
+    },
+    search: {
+      placeholder: 'Search patient...'
+    },
+    patientInfo: {
+      title: 'Patient Info',
+      selectPatient: 'Select a conversation to view patient details',
+      details: {
+        title: 'Patient Details',
+        email: 'Email',
+        phone: 'Phone',
+        role: 'Role',
+        notProvided: 'Not provided',
+        unknown: 'Unknown patient'
+      },
+      preSessionForm: {
+        title: 'Pre-session health form',
+        loading: 'Loading pre-session form...',
+        error: 'Pre-session form could not be loaded. The session can still proceed as this form is optional.',
+        notFilled: 'Patient has not filled out the pre-session form. This form is optional, so the session can still proceed.',
+        submittedBy: 'Filled by patient',
+        status: 'Submitted',
+        chiefComplaint: 'Chief Complaint',
+        painScale: 'Pain Scale',
+        allergies: 'Allergies',
+        medications: 'Medications',
+        additionalNotes: 'Additional Notes',
+        notFilled_text: 'Not filled',
+        notProvided_text: 'Not provided'
+      },
+      conversation: {
+        title: 'Conversation',
+        unread: 'Unread',
+        lastActivity: 'Last activity',
+        lastRead: 'Last read',
+        lastMessage: 'Last message',
+        sharedFile: 'Shared file: {{fileName}}',
+        attachment: 'Attachment',
+        justNow: 'just now',
+        minutesAgo: '{{minutes}}m ago',
+        hoursAgo: '{{hours}}h ago'
+      },
+      quickActions: {
+        title: 'Quick actions',
+        scheduleFollowUp: 'Schedule follow-up',
+        viewMedicalHistory: 'View medical history'
+      },
+      onlineStatus: {
+        online: 'Online',
+        offline: 'Offline'
+      },
+      footer: {
+        chatDescription: 'Chat, video, and attachments are linked to appointment #{{appointmentId}}. Downloads require an authenticated session and follow the attachment size/type policy.',
+        moreContext: 'Need more context? Open the appointment record or patient profile from the clinic dashboard; this panel mirrors live data from the communications API.'
       }
     }
   },

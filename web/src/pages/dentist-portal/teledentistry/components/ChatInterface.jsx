@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
+import { useLanguage } from '../../../../contexts/LanguageContext';
+import { parseDateValue } from '../utils/dateUtils';
 
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
 const FILE_BASE_URL = (import.meta.env.VITE_FILE_BASE_URL || API_BASE).replace(/\/$/, '');
@@ -74,7 +76,7 @@ const ImageThumbnail = ({ src, alt, onClick }) => {
   return (
     <div className="relative cursor-pointer" onClick={onClick}>
       {!loaded && (
-        <div className="h-[120px] w-[200px] animate-pulse rounded-lg" style={{ background: 'rgba(255,255,255,0.06)' }} />
+        <div className="h-[120px] w-[200px] animate-pulse rounded-lg bg-surface-elevated border border-border/40" />
       )}
       <img
         src={src}
@@ -97,12 +99,43 @@ const ChatInterface = ({
   attachmentUpload = { status: 'idle', progress: 0, error: '' },
   onSendText,
   onUploadAttachment,
-  onStartVideoCall
+  onStartVideoCall,
+  connectionState,
+  reconnectError
 }) => {
+  const { t, language } = useLanguage();
   const [message, setMessage] = useState('');
   const [attachmentError, setAttachmentError] = useState('');
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const getMessageDateLabel = (dateVal) => {
+    const dateObj = parseDateValue(dateVal);
+    if (!dateObj) return '';
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const targetDate = new Date(dateObj);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / 86400000);
+
+    if (diffDays === 0) {
+      return t('clinic.teledentistry.date.today', { defaultValue: 'Hari ini' });
+    } else if (diffDays === 1) {
+      return t('clinic.teledentistry.date.tomorrow', { defaultValue: 'Besok' });
+    } else if (diffDays === -1) {
+      return t('clinic.teledentistry.date.yesterday', { defaultValue: 'Kemarin' });
+    } else {
+      return dateObj.toLocaleDateString(language === 'id' ? 'id-ID' : 'en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,41 +147,25 @@ const ChatInterface = ({
 
   if (!conversation) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4" style={{ background: '#0f0d1a' }}>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-surface">
         <div
-          style={{
-            animation: 'pulseGlow 3s infinite alternate',
-            filter: 'drop-shadow(0 8px 16px rgba(124,58,237,0.15))',
-          }}
+          className="animate-pulse"
         >
-          <div
-            className="flex h-20 w-20 items-center justify-center rounded-2xl"
-            style={{
-              background: 'rgba(124,58,237,0.1)',
-              border: '1px solid rgba(124,58,237,0.15)',
-            }}
-          >
-            <Icon name="MessageSquare" size={32} style={{ color: 'rgba(124,58,237,0.5)' }} />
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent/10 border border-accent/20">
+            <Icon name="MessageSquare" size={32} className="text-accent/50" />
           </div>
         </div>
 
         <div className="text-center">
-          <p className="text-sm font-semibold" style={{ color: 'var(--td-text-sub)' }}>
+          <p className="text-sm font-semibold text-secondary">
             Select a conversation
           </p>
-          <p className="mt-1 text-xs" style={{ color: 'var(--td-text-muted)' }}>
+          <p className="mt-1 text-xs text-muted">
             Choose a patient session from the left
           </p>
         </div>
 
-        <div
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px]"
-          style={{
-            color: 'var(--td-text-muted)',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}
-        >
+        <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] text-muted bg-surface-elevated border border-border/40">
           <Icon name="Lock" size={10} />
           End-to-end encrypted · HIPAA compliant
         </div>
@@ -189,7 +206,9 @@ const ChatInterface = ({
   };
 
   const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateObj = parseDateValue(timestamp);
+    if (!dateObj) return '';
+    return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const renderFileContent = (msg, isMine = false) => {
@@ -226,15 +245,14 @@ const ChatInterface = ({
           <span className="text-xs font-medium">{msg.fileName || 'Attachment'}</span>
         </div>
         {msg.mediaScanStatus && msg.mediaScanStatus !== 'clean' && (
-          <div className="text-xs" style={{ color: isMine ? 'rgba(255,255,255,0.72)' : 'var(--td-text-muted)' }}>
+          <div className={`text-xs ${isMine ? 'text-white/70' : 'text-muted'}`}>
             Scan: {msg.mediaScanStatus === 'pending' ? 'menunggu' : msg.mediaScanStatus}
           </div>
         )}
         {msg.fileUrl && (
           <button
             onClick={openFile}
-            className="text-xs underline"
-            style={{ color: isMine ? 'rgba(255,255,255,0.82)' : 'var(--td-accent)' }}
+            className={`text-xs underline ${isMine ? 'text-white/80' : 'text-accent'}`}
           >
             View file
           </button>
@@ -255,45 +273,30 @@ const ChatInterface = ({
   const renderMessage = (msg, index) => {
     const isMine = msg.senderId === currentUserId?.toString();
     const groupedWithNext = isGroupedWithinTwoMinutes(msg, messages[index + 1]);
-
     return (
       <div key={msg.id} className={`flex ${groupedWithNext ? 'mb-1' : 'mb-2'} ${isMine ? 'justify-end' : 'justify-start'}`}>
         <div
-          className="bubble-pop-in max-w-[68%] px-3.5 py-2.5"
-          style={isMine ? {
-            background: 'linear-gradient(135deg, var(--td-bubble-out-from), var(--td-bubble-out-to))',
-            border: '1px solid var(--td-bubble-out-border)',
-            borderRadius: '1.1rem 0 1.1rem 1.1rem',
-            boxShadow: '0 2px 8px rgba(76,29,149,0.3)',
-            color: 'var(--td-text-main)',
-            wordBreak: 'break-word',
-          } : {
-            background: 'var(--td-bubble-in-bg)',
-            backdropFilter: 'blur(6px)',
-            border: '1px solid var(--td-bubble-in-border)',
-            borderRadius: '0 1.1rem 1.1rem 1.1rem',
-            color: 'var(--td-text-main)',
-            wordBreak: 'break-word',
-          }}
+          className={`bubble-pop-in max-w-[68%] px-3.5 py-2.5 rounded-2xl shadow-sm ${isMine ? 'bg-accent text-white' : 'bg-surface-elevated text-primary border border-border/40'}`}
+          style={{ wordBreak: 'break-word' }}
         >
           {msg.messageType === 'file' ? (
             renderFileContent(msg, isMine)
           ) : (
-            <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--td-text-main)', wordBreak: 'break-word' }}>
+            <p className={`text-sm leading-relaxed whitespace-pre-line ${isMine ? 'text-white' : 'text-primary'}`} style={{ wordBreak: 'break-word' }}>
               {msg.message}
             </p>
           )}
 
           {!groupedWithNext && (
             <div className="mt-1 flex items-center justify-end gap-1">
-              <span className="font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <span className={`font-mono text-[10px] ${isMine ? 'text-white/60' : 'text-muted'}`}>
                 {formatTimestamp(msg.createdAt)}
               </span>
               {isMine && (
                 <Icon
                   name="CheckCheck"
                   size={11}
-                  style={{ color: msg.isRead ? 'var(--td-accent)' : 'rgba(255,255,255,0.35)' }}
+                  className={msg.isRead ? 'text-white' : 'text-white/50'}
                 />
               )}
             </div>
@@ -307,19 +310,12 @@ const ChatInterface = ({
   const online = presence?.some((id) => id !== conversation.dentist?.id);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden" style={{ background: '#0f0d1a' }}>
-      <div
-        className="flex flex-shrink-0 items-center justify-between px-4 py-3"
-        style={{
-          background: 'linear-gradient(180deg, rgba(26,21,40,0.95), rgba(26,21,40,0.78))',
-          backdropFilter: 'blur(16px)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-        }}
-      >
+    <div className="relative flex h-full flex-col overflow-hidden bg-surface">
+      <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 ">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div
-              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl text-sm font-bold text-white"
+              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl text-sm font-bold text-white shadow-sm"
               style={getAvatarGradient(patientName)}
             >
               {conversation.patient?.avatar ? (
@@ -333,17 +329,16 @@ const ChatInterface = ({
               )}
             </div>
             <span
-              className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2"
-              style={{ background: online ? '#22c55e' : 'var(--td-text-muted)', borderColor: 'var(--td-panel-bg)' }}
+              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface ${online ? 'bg-green-500' : 'bg-muted'}`}
             />
           </div>
           <div>
-            <h3 className="text-sm font-bold" style={{ color: 'var(--td-text-main)' }}>
+            <h3 className="text-sm font-bold text-primary">
               {patientName}
             </h3>
             <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: online ? '#22c55e' : 'var(--td-text-muted)' }} />
-              <span className="text-[11px]" style={{ color: 'var(--td-text-muted)' }}>
+              <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-green-500' : 'bg-muted'}`} />
+              <span className="text-[11px] text-muted">
                 {online ? 'Active now' : 'Offline'} · #{conversation.appointmentId}
               </span>
             </div>
@@ -353,12 +348,7 @@ const ChatInterface = ({
         <div className="flex items-center gap-1">
           <button
             onClick={onStartVideoCall}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all duration-150 hover:-translate-y-px"
-            style={{
-              background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
-              color: '#fff',
-              boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
-            }}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all duration-150 hover:-translate-y-px bg-accent text-white shadow-sm hover:shadow-md"
             title="Mulai panggilan video"
           >
             <Icon name="Video" size={12} />
@@ -367,133 +357,127 @@ const ChatInterface = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-minimal" style={{ padding: '1.5rem 2rem 6rem' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-minimal px-8 pt-6 pb-24">
         {loading ? (
           <div className="space-y-4">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className="h-16 w-2/3 animate-pulse rounded-2xl"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.04)' }}
+                  className="h-16 w-2/3 animate-pulse rounded-2xl bg-surface-elevated border border-border/40"
                 />
               </div>
             ))}
           </div>
         ) : (
           <>
-            {messages.length > 0 && (
-              <div className="my-4 flex items-center justify-center">
-                <span
-                  className="rounded-full px-3 py-1 text-[10px] font-medium"
-                  style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)' }}
-                >
-                  Today
-                </span>
-              </div>
-            )}
-            {messages.map(renderMessage)}
+            {messages.map((msg, index) => {
+              const prevMsg = messages[index - 1];
+              const msgDate = parseDateValue(msg.createdAt);
+              const prevMsgDate = prevMsg ? parseDateValue(prevMsg.createdAt) : null;
+              const msgDateStr = msgDate ? msgDate.toDateString() : '';
+              const prevMsgDateStr = prevMsgDate ? prevMsgDate.toDateString() : '';
+              const showSeparator = msgDateStr && msgDateStr !== prevMsgDateStr;
+
+              return (
+                <React.Fragment key={msg.id || index}>
+                  {showSeparator && msgDate && (
+                    <div className="my-4 flex items-center justify-center">
+                      <span className="rounded-full px-3 py-1 text-[10px] font-medium text-muted bg-surface-elevated border border-border/40">
+                        {getMessageDateLabel(msgDate)}
+                      </span>
+                    </div>
+                  )}
+                  {renderMessage(msg, index)}
+                </React.Fragment>
+              );
+            })}
             <div ref={messagesEndRef} />
           </>
         )}
       </div>
 
       <div
-        className="absolute bottom-0 left-0 right-0 flex-shrink-0"
-        style={{
-          padding: '1.25rem 1.5rem 1.5rem',
-          background: 'linear-gradient(0deg, rgba(15,13,26,0.97) 0%, transparent 100%)',
-          pointerEvents: 'none',
-        }}
+        className="absolute bottom-0 left-0 right-0 flex-shrink-0 px-6 pb-6 pt-4"
       >
-        {(attachmentError || attachmentUpload.status !== 'idle') && (
-          <div
-            className="mb-2 rounded-lg px-3 py-1.5 text-xs"
-            style={{
-              background: attachmentError || attachmentUpload.status === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(124,58,237,0.12)',
-              border: attachmentError || attachmentUpload.status === 'error' ? '1px solid rgba(239,68,68,0.22)' : '1px solid rgba(124,58,237,0.2)',
-              color: attachmentError || attachmentUpload.status === 'error' ? '#fca5a5' : 'var(--td-text-sub)',
-              pointerEvents: 'auto',
-            }}
-          >
-            {attachmentError ? (
-              <span>{attachmentError}</span>
-            ) : attachmentUpload.status === 'uploading' ? (
-              <div className="flex items-center gap-2">
-                <Icon name="Loader2" size={11} className="animate-spin" />
-                <span>Mengupload... {attachmentUpload.progress || 0}%</span>
-                <div className="h-1 flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-300"
-                    style={{ width: `${attachmentUpload.progress || 0}%`, background: 'var(--td-accent)' }}
-                  />
-                </div>
-              </div>
-            ) : attachmentUpload.status === 'scan_pending' ? (
-              <span>Attachment terupload. Malware scan sedang berjalan.</span>
-            ) : attachmentUpload.status === 'error' ? (
-              <span>{attachmentUpload.error || 'Upload attachment gagal.'}</span>
-            ) : (
-              <span>Attachment berhasil diupload.</span>
-            )}
+        {connectionState === 'ended' && (
+          <div className="mb-3 flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/10 px-5 py-3.5 shadow-theme-sm pointer-events-auto">
+            <span className="flex-shrink-0 rounded-lg p-2 bg-amber-500/10 text-amber-600 dark:text-amber-500">
+              <Icon name="Archive" size={16} />
+            </span>
+            <p className="text-xs font-medium leading-normal text-amber-800 dark:text-amber-400/90">
+              {reconnectError || 'Sesi teledentistry telah berakhir. Riwayat chat ditampilkan dari arsip lokal.'}
+            </p>
           </div>
         )}
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileUpload}
-          className="hidden"
-          accept="image/*,.pdf,.doc,.docx"
-        />
-
-        <div
-          className="flex items-end gap-2 rounded-3xl px-4 py-2"
-          style={{
-            background: 'rgba(26,21,40,0.85)',
-            backdropFilter: 'blur(15px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-            pointerEvents: 'auto',
-            transition: 'border-color 0.2s, box-shadow 0.2s',
-          }}
-        >
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={attachmentUpload.status === 'uploading'}
-            className="mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 hover:scale-105 disabled:opacity-50"
-            style={{ color: 'var(--td-text-muted)' }}
-            title="Kirim attachment"
-            aria-label="Upload attachment"
-          >
-            <Icon name="Paperclip" size={16} />
-          </button>
+        <>
+          {(attachmentError || attachmentUpload.status !== 'idle') && (
+            <div
+              className={`mb-2 rounded-lg px-3 py-1.5 text-xs pointer-events-auto border ${attachmentError || attachmentUpload.status === 'error' ? 'bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300' : 'bg-accent/10 border-accent/20 text-secondary'}`}
+            >
+              {attachmentError ? (
+                <span>{attachmentError}</span>
+              ) : attachmentUpload.status === 'uploading' ? (
+                <div className="flex items-center gap-2">
+                  <Icon name="Loader2" size={11} className="animate-spin" />
+                  <span>Mengupload... {attachmentUpload.progress || 0}%</span>
+                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-border/40">
+                    <div
+                      className="h-full rounded-full transition-all duration-300 bg-accent"
+                      style={{ width: `${attachmentUpload.progress || 0}%` }}
+                    />
+                  </div>
+                </div>
+              ) : attachmentUpload.status === 'scan_pending' ? (
+                <span>Attachment terupload. Malware scan sedang berjalan.</span>
+              ) : attachmentUpload.status === 'error' ? (
+                <span>{attachmentUpload.error || 'Upload attachment gagal.'}</span>
+              ) : (
+                <span>Attachment berhasil diupload.</span>
+              )}
+            </div>
+          )}
 
           <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ketik pesan..."
-            className="flex-1 bg-transparent py-1.5 text-sm focus:outline-none"
-            style={{ color: 'var(--td-text-main)' }}
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx"
           />
 
-          <button
-            onClick={handleSubmit}
-            disabled={!message.trim()}
-            className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
-            style={{
-              background: message.trim()
-                ? 'linear-gradient(135deg, #7C3AED, #6D28D9)'
-                : 'rgba(255,255,255,0.06)',
-              boxShadow: message.trim() ? '0 4px 12px rgba(124,58,237,0.4)' : 'none',
-              color: message.trim() ? '#fff' : 'var(--td-text-muted)',
-            }}
-            aria-label="Send message"
+          <div
+            className="flex items-center gap-2 rounded-3xl px-3 py-2 bg-surface/90 backdrop-blur-md border border-border/40 shadow-sm pointer-events-auto transition-all focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20"
           >
-            <Icon name="ArrowUp" size={16} />
-          </button>
-        </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={attachmentUpload.status === 'uploading'}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 hover:scale-105 disabled:opacity-50 text-muted hover:text-primary hover:bg-surface-elevated"
+              title="Kirim attachment"
+              aria-label="Upload attachment"
+            >
+              <Icon name="Paperclip" size={16} />
+            </button>
+
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ketik pesan..."
+              className="flex-1 bg-transparent py-2 text-sm border-0 focus:ring-0 focus:outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400"
+            />
+
+            <button
+              onClick={handleSubmit}
+              disabled={!message.trim()}
+              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-all duration-200 ${message.trim() ? 'bg-accent text-white shadow-sm hover:scale-110 active:scale-95' : 'bg-surface-elevated text-muted'}`}
+              aria-label="Send message"
+            >
+              <Icon name="ArrowUp" size={16} />
+            </button>
+          </div>
+        </>
       </div>
     </div>
   );
