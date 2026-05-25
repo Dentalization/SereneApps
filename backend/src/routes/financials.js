@@ -27,7 +27,8 @@ const getPaymentMethod = (pay) => {
 // Helper: map internal payment status to frontend status
 const getPaymentStatus = (status) => {
   const s = (status || '').toLowerCase();
-  if (['paid', 'settled'].includes(s)) return 'completed';
+  if (s === 'settled') return 'settled';
+  if (s === 'paid') return 'paid';
   if (['pending', 'requires_action'].includes(s)) return 'pending';
   if (['refunded', 'partial_refund'].includes(s)) return 'refunded';
   return 'failed';
@@ -64,23 +65,23 @@ router.get(
         return res.status(404).json({ error: 'Clinic profile not found for user' });
       }
 
-      // Calculate total clinic earnings (paid or settled)
-      const paidIntents = await prisma.paymentIntent.findMany({
+      // Calculate total clinic earnings (strictly SETTLED only)
+      const settledIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: 'clinic',
           ownerClinicId: clinicProfile.id,
-          status: { in: ['paid', 'settled'] }
+          status: 'settled'
         },
-        select: { amount: true }
+        include: { paymentSnapshot: true }
       });
-      const totalEarnings = paidIntents.reduce((sum, item) => sum + item.amount, 0);
+      const totalEarnings = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
 
-      // Calculate pending earnings
+      // Calculate pending earnings (includes pending, requires_action, AND paid which is not yet settled)
       const pendingIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: 'clinic',
           ownerClinicId: clinicProfile.id,
-          status: { in: ['pending', 'requires_action'] }
+          status: { in: ['pending', 'requires_action', 'paid'] }
         },
         select: { amount: true }
       });
@@ -93,9 +94,12 @@ router.get(
           ownerClinicId: clinicProfile.id,
           status: { in: ['refunded', 'partial_refund'] }
         },
-        select: { amount: true }
+        include: { refunds: true }
       });
-      const refundedAmount = refundedIntents.reduce((sum, item) => sum + item.amount, 0);
+      const refundedAmount = refundedIntents.reduce((sum, item) => {
+        const refundSum = item.refunds?.reduce((s, r) => s + r.refundAmount, 0) || 0;
+        return sum + (refundSum || item.amount);
+      }, 0);
 
       // Total transaction count
       const transactionCount = await prisma.paymentIntent.count({
@@ -234,6 +238,171 @@ router.get(
   }
 );
 
+router.get(
+  '/clinic/analytics',
+  authenticateToken,
+  requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff', 'clinic_admin', 'clinic_manager']),
+  async (req, res) => {
+    try {
+      const userId = toBigInt(req.user.id, 'userId');
+      
+      let clinicProfile = await prisma.clinicProfile.findFirst({
+        where: { userId }
+      });
+
+      if (!clinicProfile) {
+        const staffRecord = await prisma.clinicStaff.findFirst({
+          where: { userId },
+          include: { clinicProfile: true }
+        });
+        if (staffRecord?.clinicProfile) {
+          clinicProfile = staffRecord.clinicProfile;
+        }
+      }
+
+      if (!clinicProfile) {
+        return res.status(404).json({ error: 'Clinic profile not found' });
+      }
+
+      const clinicId = clinicProfile.id;
+
+      // 1. Settled transactions (Revenue must use SETTLED only)
+      const settledIntents = await prisma.paymentIntent.findMany({
+        where: {
+          ownerType: 'clinic',
+          ownerClinicId: clinicId,
+          status: 'settled'
+        },
+        include: {
+          paymentSnapshot: true,
+          appointment: true
+        }
+      });
+
+      const totalRevenue = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
+      const settledCount = settledIntents.length;
+      const averageTransactionValue = settledCount > 0 ? Math.round(totalRevenue / settledCount) : 0;
+
+      // 2. Trends: Group by month/day (daily and monthly revenue)
+      const dailyRevenue = {};
+      const monthlyRevenue = {};
+      
+      settledIntents.forEach(item => {
+        const dateStr = item.createdAt.toISOString().split('T')[0]; // YYYY-MM-DD
+        const monthStr = dateStr.slice(0, 7); // YYYY-MM
+        const amount = item.paymentSnapshot?.finalPaidAmount || item.amount;
+        
+        dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + amount;
+        monthlyRevenue[monthStr] = (monthlyRevenue[monthStr] || 0) + amount;
+      });
+
+      // 3. Virtual vs Onsite comparison
+      let virtualRevenue = 0;
+      let onsiteRevenue = 0;
+      let virtualCount = 0;
+      let onsiteCount = 0;
+
+      settledIntents.forEach(item => {
+        const amount = item.paymentSnapshot?.finalPaidAmount || item.amount;
+        if (item.appointment?.consultationType === 'virtual') {
+          virtualRevenue += amount;
+          virtualCount++;
+        } else {
+          onsiteRevenue += amount;
+          onsiteCount++;
+        }
+      });
+
+      // 4. Cancellation losses
+      const cancelledAppointments = await prisma.appointment.findMany({
+        where: {
+          ownerClinicId: clinicId,
+          status: 'cancelled'
+        },
+        include: {
+          dentist: {
+            include: {
+              dentistProfile: true
+            }
+          }
+        }
+      });
+      const cancellationLosses = cancelledAppointments.reduce((sum, app) => {
+        const baseFee = app.dentist?.dentistProfile?.[0]?.consultationFee || 150000;
+        return sum + (baseFee - (app.cancellationFee || 0));
+      }, 0);
+
+      // 5. Refund totals
+      const refunds = await prisma.refund.findMany({
+        where: {
+          paymentIntent: {
+            ownerType: 'clinic',
+            ownerClinicId: clinicId
+          },
+          refundStatus: 'refunded'
+        }
+      });
+      const refundTotals = refunds.reduce((sum, r) => sum + r.refundAmount, 0);
+
+      // 6. Top earning dentists
+      const dentistStats = {};
+      settledIntents.forEach(item => {
+        if (item.appointment) {
+          const dentistId = item.appointment.dentistId.toString();
+          const amount = item.paymentSnapshot?.finalPaidAmount || item.amount;
+          const dentistShare = item.paymentSnapshot?.dentistShare || Math.round(amount * 0.3); // 30% default fallback
+          
+          if (!dentistStats[dentistId]) {
+            dentistStats[dentistId] = { dentistId, totalEarned: 0, appointmentsCount: 0 };
+          }
+          dentistStats[dentistId].totalEarned += dentistShare;
+          dentistStats[dentistId].appointmentsCount++;
+        }
+      });
+
+      const dentistIds = Object.keys(dentistStats).map(id => BigInt(id));
+      const dentists = await prisma.user.findMany({
+        where: { id: { in: dentistIds } },
+        select: { id: true, name: true }
+      });
+
+      const topEarningDentists = Object.values(dentistStats).map(stat => {
+        const d = dentists.find(x => x.id.toString() === stat.dentistId);
+        return {
+          dentistName: d ? d.name : 'Unknown Dentist',
+          totalEarned: stat.totalEarned,
+          appointmentsCount: stat.appointmentsCount
+        };
+      }).sort((a, b) => b.totalEarned - a.totalEarned);
+
+      const clinicUtilization = {
+        totalAppointments: await prisma.appointment.count({ where: { ownerClinicId: clinicId } }),
+        confirmedAppointments: await prisma.appointment.count({ where: { ownerClinicId: clinicId, status: 'confirmed' } }),
+        completedAppointments: await prisma.appointment.count({ where: { ownerClinicId: clinicId, status: 'completed' } }),
+        cancelledAppointments: cancelledAppointments.length
+      };
+
+      return res.json({
+        totalRevenue,
+        averageTransactionValue,
+        dailyRevenue,
+        monthlyRevenue,
+        virtualVsOnsite: {
+          virtual: { revenue: virtualRevenue, count: virtualCount },
+          onsite: { revenue: onsiteRevenue, count: onsiteCount }
+        },
+        cancellationLosses,
+        refundTotals,
+        topEarningDentists,
+        clinicUtilization
+      });
+    } catch (error) {
+      console.error('Error fetching clinic analytics:', error);
+      return res.status(500).json({ error: 'Failed to fetch clinic analytics' });
+    }
+  }
+);
+
 // -------------------------------------------------------------
 // DENTIST FINANCIALS ENDPOINTS
 // -------------------------------------------------------------
@@ -246,17 +415,17 @@ router.get(
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
 
-      // Calculate total dentist independent earnings (paid or settled)
-      const paidIntents = await prisma.paymentIntent.findMany({
+      // Calculate total dentist independent earnings (strictly SETTLED only)
+      const settledIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: 'dentist',
           ownerDentistId: dentistId,
-          status: { in: ['paid', 'settled'] }
+          status: 'settled'
         },
-        select: { amount: true }
+        include: { paymentSnapshot: true }
       });
-      const totalEarnings = paidIntents.reduce((sum, item) => sum + item.amount, 0);
-      const independentCount = paidIntents.length;
+      const totalEarnings = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
+      const independentCount = settledIntents.length;
 
       // Count clinic-affiliated appointments handled by this dentist
       const clinicAffiliatedCount = await prisma.appointment.count({
@@ -374,6 +543,112 @@ router.get(
     } catch (error) {
       console.error('Error fetching dentist financials history:', error);
       return res.status(500).json({ error: 'Failed to fetch dentist financials history' });
+    }
+  }
+);
+
+router.get(
+  '/dentist/analytics',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+
+      // 1. Settled transactions (Independent only)
+      const settledIntents = await prisma.paymentIntent.findMany({
+        where: {
+          ownerType: 'dentist',
+          ownerDentistId: dentistId,
+          status: 'settled'
+        },
+        include: {
+          paymentSnapshot: true,
+          appointment: true
+        }
+      });
+
+      const totalRevenue = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
+      const settledCount = settledIntents.length;
+      const averageTransactionValue = settledCount > 0 ? Math.round(totalRevenue / settledCount) : 0;
+
+      // 2. Trends: Group by month/day
+      const dailyRevenue = {};
+      const monthlyRevenue = {};
+      
+      settledIntents.forEach(item => {
+        const dateStr = item.createdAt.toISOString().split('T')[0];
+        const monthStr = dateStr.slice(0, 7);
+        const amount = item.paymentSnapshot?.finalPaidAmount || item.amount;
+        
+        dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + amount;
+        monthlyRevenue[monthStr] = (monthlyRevenue[monthStr] || 0) + amount;
+      });
+
+      // 3. Virtual vs Onsite comparison
+      let virtualRevenue = 0;
+      let onsiteRevenue = 0;
+      let virtualCount = 0;
+      let onsiteCount = 0;
+
+      settledIntents.forEach(item => {
+        const amount = item.paymentSnapshot?.finalPaidAmount || item.amount;
+        if (item.appointment?.consultationType === 'virtual') {
+          virtualRevenue += amount;
+          virtualCount++;
+        } else {
+          onsiteRevenue += amount;
+          onsiteCount++;
+        }
+      });
+
+      // 4. Cancellation losses
+      const cancelledAppointments = await prisma.appointment.findMany({
+        where: {
+          dentistId,
+          ownerType: 'dentist',
+          status: 'cancelled'
+        },
+        include: {
+          dentist: {
+            include: {
+              dentistProfile: true
+            }
+          }
+        }
+      });
+      const cancellationLosses = cancelledAppointments.reduce((sum, app) => {
+        const baseFee = app.dentist?.dentistProfile?.[0]?.consultationFee || 150000;
+        return sum + (baseFee - (app.cancellationFee || 0));
+      }, 0);
+
+      // 5. Refund totals
+      const refunds = await prisma.refund.findMany({
+        where: {
+          paymentIntent: {
+            ownerType: 'dentist',
+            ownerDentistId: dentistId
+          },
+          refundStatus: 'refunded'
+        }
+      });
+      const refundTotals = refunds.reduce((sum, r) => sum + r.refundAmount, 0);
+
+      return res.json({
+        totalRevenue,
+        averageTransactionValue,
+        dailyRevenue,
+        monthlyRevenue,
+        virtualVsOnsite: {
+          virtual: { revenue: virtualRevenue, count: virtualCount },
+          onsite: { revenue: onsiteRevenue, count: onsiteCount }
+        },
+        cancellationLosses,
+        refundTotals
+      });
+    } catch (error) {
+      console.error('Error fetching dentist analytics:', error);
+      return res.status(500).json({ error: 'Failed to fetch dentist analytics' });
     }
   }
 );

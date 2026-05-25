@@ -29,6 +29,12 @@ const BillingPage = () => {
   const [invoiceDetail, setInvoiceDetail] = useState(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
 
+  // Refund Form State
+  const [refundMode, setRefundMode] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundLoading, setRefundLoading] = useState(false);
+
   const fetchBillingData = async () => {
     setLoading(true);
     try {
@@ -84,8 +90,55 @@ const BillingPage = () => {
       fetchInvoiceDetail();
     } else {
       setInvoiceDetail(null);
+      setRefundMode(false);
+      setRefundAmount('');
+      setRefundReason('');
     }
   }, [selectedInvoiceId]);
+
+  const downloadPdf = async (invoiceId, invoiceRef) => {
+    try {
+      const response = await authHttp.get(`/payments/invoices/${invoiceId}/pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Invoice-${invoiceRef || invoiceId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download PDF invoice:', error);
+      alert('Failed to download PDF invoice. Please try again.');
+    }
+  };
+
+  const handleRefundSubmit = async (e) => {
+    e.preventDefault();
+    if (!refundAmount || isNaN(refundAmount) || parseFloat(refundAmount) <= 0) {
+      alert('Please enter a valid refund amount');
+      return;
+    }
+    setRefundLoading(true);
+    try {
+      await authHttp.post('/payments/refunds', {
+        paymentIntentId: invoiceDetail.paymentIntentId,
+        refundAmount: parseInt(refundAmount, 10),
+        refundReason: refundReason || 'Clinic request'
+      });
+      alert('Refund processed successfully');
+      setSelectedInvoiceId(null);
+      fetchBillingData();
+    } catch (error) {
+      console.error('Refund failed:', error);
+      alert(error.response?.data?.error?.message || error.response?.data?.error || 'Failed to process refund');
+    } finally {
+      setRefundLoading(false);
+    }
+  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('id-ID', {
@@ -510,6 +563,79 @@ const BillingPage = () => {
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="border-t border-primary/10 pt-4 flex gap-3">
+                      <button
+                        onClick={() => downloadPdf(invoiceDetail.id, invoiceDetail.reference)}
+                        className="flex-1 py-2.5 px-4 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+                      >
+                        <Icon name="Download" size={14} />
+                        Download PDF
+                      </button>
+                      
+                      {!refundMode && ['paid', 'settled'].includes(invoiceDetail.status?.toLowerCase()) && (
+                        <button
+                          onClick={() => setRefundMode(true)}
+                          className="flex-1 py-2.5 px-4 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/20 dark:hover:bg-red-950/40 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors border border-red-200 dark:border-red-900/30"
+                        >
+                          <Icon name="RotateCcw" size={14} />
+                          Refund Payment
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Refund Form Panel */}
+                    {refundMode && (
+                      <form onSubmit={handleRefundSubmit} className="border-t border-primary/10 pt-4 space-y-3 bg-red-50/50 dark:bg-red-950/10 p-4 rounded-2xl border border-red-200/30">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-xs font-bold text-red-600 flex items-center gap-1">
+                            <Icon name="RotateCcw" size={12} />
+                            REFUND INITIATION
+                          </h5>
+                          <button
+                            type="button"
+                            onClick={() => setRefundMode(false)}
+                            className="text-xs text-secondary hover:text-primary font-medium"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <div>
+                            <label className="block text-secondary font-medium mb-1">Refund Amount (IDR)</label>
+                            <input
+                              type="number"
+                              value={refundAmount}
+                              onChange={(e) => setRefundAmount(e.target.value)}
+                              placeholder={`Max refundable: ${invoiceDetail.total}`}
+                              max={invoiceDetail.total}
+                              className="w-full px-3 py-2 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-1 focus:ring-red-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-secondary font-medium mb-1">Reason for Refund</label>
+                            <textarea
+                              value={refundReason}
+                              onChange={(e) => setRefundReason(e.target.value)}
+                              placeholder="Patient cancellation, treatment modification, etc."
+                              className="w-full px-3 py-2 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-1 focus:ring-red-500 h-16 resize-none"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={refundLoading}
+                          className="w-full py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        >
+                          {refundLoading ? 'Processing Refund...' : 'Confirm Refund'}
+                        </button>
+                      </form>
                     )}
                   </div>
                 )}

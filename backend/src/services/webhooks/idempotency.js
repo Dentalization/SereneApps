@@ -290,6 +290,10 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
   return await prisma.$transaction(async (tx) => {
     let receiptId;
 
+    const providerEventId = payload?.order_id || null;
+    const providerTransactionId = payload?.transaction_id || null;
+    const orderId = payload?.order_id || null;
+
     if (!existing) {
       const created = await tx.webhookReceipt.create({
         data: {
@@ -297,7 +301,12 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
           deliveryKey,
           payloadHash,
           rawPayload: typeof payload === 'string' ? { raw: payload } : (payload || {}),
-          status: WEBHOOK_STATUS.PROCESSING
+          status: WEBHOOK_STATUS.PROCESSING,
+          providerEventId,
+          providerTransactionId,
+          orderId,
+          processingStatus: WEBHOOK_STATUS.PROCESSING,
+          retryCount: 0
         }
       });
       receiptId = created.id;
@@ -307,8 +316,13 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
         where: { id: receiptId },
         data: {
           status: WEBHOOK_STATUS.PROCESSING,
+          processingStatus: WEBHOOK_STATUS.PROCESSING,
           lastError: null,
-          attempts: { increment: 1 }
+          attempts: { increment: 1 },
+          retryCount: { increment: 1 },
+          providerEventId,
+          providerTransactionId,
+          orderId
         }
       });
     }
@@ -320,6 +334,7 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
         where: { id: receiptId },
         data: {
           status: WEBHOOK_STATUS.PROCESSED,
+          processingStatus: WEBHOOK_STATUS.PROCESSED,
           processedAt: new Date()
         }
       });
@@ -330,6 +345,7 @@ export async function guardWebhookIdempotency(provider, deliveryKey, payload, ha
         where: { id: receiptId },
         data: {
           status: WEBHOOK_STATUS.FAILED,
+          processingStatus: WEBHOOK_STATUS.FAILED,
           lastError: error.message || 'HANDLER_EXECUTION_FAILED',
           nextAttemptAt: new Date(Date.now() + 60_000) // retry in 1m if needed
         }

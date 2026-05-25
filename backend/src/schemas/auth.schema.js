@@ -54,7 +54,7 @@ const verifyOTPSchema = z.object({
 );
 
 const otpRequestSchema = z.object({
-  channel: z.enum(['sms']).default('sms'),
+  channel: z.enum(['sms', 'email']).default('sms'),
   identifier: z.string().optional(),
   phone_number: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Format nomor HP tidak valid. Contoh: +628123456789').optional(),
   email: z.string().email('Email tidak valid').optional(),
@@ -70,7 +70,7 @@ const otpRequestSchema = z.object({
 });
 
 const otpVerifyRequestSchema = z.object({
-  channel: z.enum(['sms']).default('sms'),
+  channel: z.enum(['sms', 'email']).default('sms'),
   phone_number: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Format nomor HP tidak valid. Contoh: +628123456789').optional(),
   email: z.string().email('Email tidak valid').optional(),
   otp: z.string().min(4).max(10, 'OTP tidak valid')

@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { mapMidtransStatus } from './statusMapping.js';
-import { PAYMENT_STATUSES } from './status.js';
+import { PAYMENT_STATUSES, canTransition } from './status.js';
 import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
+import { createPaymentSnapshot } from './snapshotService.js';
 
 export async function handleMidtransCallback(body, tx) {
   const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
@@ -35,6 +36,16 @@ export async function handleMidtransCallback(body, tx) {
 
   if (!paymentIntent) {
     throw { code: 'PAYMENT_INTENT_NOT_FOUND', retryable: false };
+  }
+
+  // Enforce Monotonic status transition check
+  if (paymentIntent.status === mappedStatus) {
+    return { processed: true, mappedStatus, skipped: true, reason: 'Already in target status' };
+  }
+
+  if (!canTransition(paymentIntent.status, mappedStatus)) {
+    console.warn(`[WebhookHandler] Ignored invalid status transition: "${paymentIntent.status}" -> "${mappedStatus}" for order ${body.order_id}`);
+    return { processed: true, mappedStatus, skipped: true, reason: 'Invalid status transition' };
   }
 
   const mergedProviderResponse = {
@@ -90,11 +101,19 @@ export async function handleMidtransCallback(body, tx) {
       metadata: mergedProviderResponse
     });
 
-    await ensureInvoiceForPaymentIntent({
+    const invoice = await ensureInvoiceForPaymentIntent({
       tx,
       paymentIntent: updatedIntent,
       appointment: paymentIntent.appointment,
       patient: paymentIntent.patient
+    });
+
+    // Create immutable financial snapshot on settlement
+    await createPaymentSnapshot({
+      tx,
+      paymentIntent: updatedIntent,
+      invoice,
+      appointment: paymentIntent.appointment
     });
   }
 

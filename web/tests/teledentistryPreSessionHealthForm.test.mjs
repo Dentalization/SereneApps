@@ -16,11 +16,10 @@ test('dentist teledentistry portal fetches and renders patient pre-session healt
   assert.match(page, /fetchPreSessionHealthForm\(activeAppointmentId\)/);
   assert.match(page, /preSessionHealthForm=\{preSessionHealthForm\}/);
   assert.match(panel, /PreSessionHealthFormCard/);
-  assert.match(panel, /Pasien belum mengisi form pra-sesi/);
-  assert.match(panel, /Form ini opsional/);
-  assert.match(panel, /Keluhan utama/);
-  assert.match(panel, /Skala nyeri/);
-  assert.match(panel, /Obat yang dikonsumsi/);
+  assert.match(panel, /dentistTeledentistry\.patientInfo\.preSessionForm\.notFilled/);
+  assert.match(panel, /dentistTeledentistry\.patientInfo\.preSessionForm\.chiefComplaint/);
+  assert.match(panel, /dentistTeledentistry\.patientInfo\.preSessionForm\.painScale/);
+  assert.match(panel, /dentistTeledentistry\.patientInfo\.preSessionForm\.medications/);
 });
 
 test('dentist teledentistry dashboard surfaces today sessions and pre-session actions', () => {

@@ -14,6 +14,12 @@ process.env.OTP_IP_WINDOW_SECONDS = '3600';
 process.env.OTP_IP_MAX_REQUESTS = '20';
 process.env.OTP_IDENTIFIER_WINDOW_SECONDS = '3600';
 process.env.OTP_IDENTIFIER_MAX_REQUESTS = '5';
+process.env.TWILIO_VERIFY_SERVICE_SID = '';
+process.env.TWILIO_ACCOUNT_SID = '';
+process.env.TWILIO_API_KEY_SID = '';
+process.env.TWILIO_API_KEY_SECRET = '';
+process.env.TWILIO_SMS_FROM_NUMBER = '';
+process.env.TWILIO_PHONE_NUMBER = '';
 
 const prisma = new PrismaClient();
 const otpModule = await import('../src/services/otp.service.js');

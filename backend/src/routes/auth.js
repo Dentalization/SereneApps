@@ -1797,7 +1797,7 @@ router.post('/send-phone-otp', otpLimiter, validate(phoneOTPSchema), async (req,
 router.post('/send-email-otp', async (req, res) => {
   return res.status(410).json({
     error: {
-      code: 'ENDPOINT_DEPRECATED',
+      code: 'OTP_CHANNEL_DEPRECATED',
       message: 'Email OTP has been replaced by SMS OTP. Use POST /v1/otp/requests instead.',
       replacement: '/v1/otp/requests'
     }
