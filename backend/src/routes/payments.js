@@ -13,6 +13,9 @@ import { resolvePaymentOwner } from '../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../services/payments/financials.js';
 import snapTransactionsRouter from './payments/snapTransactions.js';
 import paymentStatusRouter from './payments/status.js';
+import { generateInvoicePDF } from '../services/payments/pdfGenerator.js';
+import { processRefund } from '../services/payments/refundService.js';
+import { recordFinancialAuditLog } from '../services/audit/auditLogger.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -437,6 +440,138 @@ router.get(
         return res.status(400).json({ error: error.message.replace('INVALID_', '').toLowerCase() });
       }
       return res.status(500).json({ error: 'Failed to fetch payment intent' });
+    }
+  }
+);
+
+router.get(
+  '/invoices/:invoiceId/pdf',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { invoiceId } = req.params;
+      const parsedInvoiceId = toBigInt(invoiceId, 'invoiceId');
+
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: parsedInvoiceId },
+        include: {
+          items: true,
+          patient: { select: { id: true, name: true, email: true, phone_number: true } },
+          paymentIntent: true,
+          paymentSnapshot: true,
+          ownerClinic: true,
+          appointment: {
+            include: {
+              dentist: { select: { name: true, email: true } }
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+
+      const userId = toBigInt(req.user.id, 'userId');
+      const userRoles = req.user.roles || [];
+      const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
+
+      const isPatient = invoice.patientId === userId;
+      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+
+      let isClinicStaff = false;
+      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+        let userClinicProfile = await prisma.clinicProfile.findFirst({
+          where: { userId }
+        });
+        if (!userClinicProfile) {
+          const staffRecord = await prisma.clinicStaff.findFirst({
+            where: { userId },
+            select: { clinicProfileId: true }
+          });
+          if (staffRecord) {
+            userClinicProfile = { id: staffRecord.clinicProfileId };
+          }
+        }
+        if (userClinicProfile && userClinicProfile.id === invoice.ownerClinicId) {
+          isClinicStaff = true;
+        }
+      }
+
+      if (!isPatient && !isDentist && !isClinicStaff && !isAdmin) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Record audit log
+      await recordFinancialAuditLog({
+        actorId: req.user.id,
+        actorRole: userRoles[0] || 'anonymous',
+        entityType: 'invoice',
+        entityId: invoiceId,
+        action: 'invoice_pdf_downloaded',
+        metadata: { reference: invoice.reference },
+        req
+      });
+
+      // Stream PDF response
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoice.reference || invoice.id}.pdf"`);
+
+      generateInvoicePDF(invoice, res);
+
+    } catch (error) {
+      console.error('Error generating PDF invoice:', error);
+      if (error.status === 400 && error.message?.startsWith('INVALID_')) {
+        return res.status(400).json({ error: error.message.replace('INVALID_', '').toLowerCase() });
+      }
+      return res.status(500).json({ error: 'Failed to generate PDF invoice' });
+    }
+  }
+);
+
+router.post(
+  '/refunds',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { paymentIntentId, refundAmount, refundReason } = req.body;
+      const actorId = req.user.id;
+      const actorRoles = req.user.roles || [];
+
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: 'paymentIntentId is required' });
+      }
+      if (!refundAmount || Number.isNaN(parseInt(refundAmount, 10)) || parseInt(refundAmount, 10) <= 0) {
+        return res.status(400).json({ error: 'refundAmount must be a positive number' });
+      }
+
+      const result = await processRefund({
+        paymentIntentId,
+        refundAmount: parseInt(refundAmount, 10),
+        refundReason: refundReason || 'No reason provided',
+        actorId,
+        actorRoles,
+        ipAddress: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null
+      });
+
+      return res.status(200).json({
+        ok: true,
+        refund: {
+          id: result.id.toString(),
+          paymentIntentId: result.paymentIntentId.toString(),
+          refundAmount: result.refundAmount,
+          refundReason: result.refundReason,
+          refundStatus: result.refundStatus,
+          refundRequestedAt: result.refundRequestedAt,
+          refundedAt: result.refundedAt
+        }
+      });
+    } catch (error) {
+      console.error('Error processing refund:', error);
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message || error });
+      }
+      return res.status(500).json({ error: 'Internal server error while processing refund' });
     }
   }
 );

@@ -46,6 +46,7 @@ import { start as startOutboxWorker } from './services/events/outboxWorker.js';
 import { startReminderWorker } from './services/appointments/reminderService.js';
 import { startCommunicationsRetentionWorker } from './services/communications/retentionService.js';
 import { validateAttachmentStorageConfiguration } from './services/communications/attachmentStorageService.js';
+import { startWebhookWorker } from './services/webhooks/webhookQueue.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
@@ -107,6 +108,7 @@ startNotificationWorker();
 startOutboxWorker();
 startReminderWorker();
 startCommunicationsRetentionWorker();
+startWebhookWorker();
 
 app.use(cors(corsOptions));
 // Increase JSON body size limit to handle AI analysis payloads safely

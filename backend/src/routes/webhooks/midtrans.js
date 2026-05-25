@@ -1,45 +1,71 @@
 import express from 'express';
-import { handleMidtransCallback } from '../../services/payments/webhookHandler.js';
-import { guardWebhookIdempotency } from '../../services/webhooks/idempotency.js';
-import { logCommunicationEvent } from '../../services/communications/logging.js';
+import { PrismaClient } from '@prisma/client';
+import { verifyMidtransSignature } from '../../services/payments/midtrans.js';
+import { hashWebhookPayload } from '../../services/webhooks/idempotency.js';
 
 const router = express.Router();
+const prisma = new PrismaClient();
 
 router.post('/', express.json(), async (req, res) => {
   const body = req.body;
-  const correlationId = body.order_id;
+  const correlationId = body.order_id || '';
   
-  console.log('[Midtrans Webhook Received]', { correlationId, status: body.transaction_status });
+  console.log('[Midtrans Webhook Ingestion]', { correlationId, status: body.transaction_status });
 
   try {
-    const deliveryKey = `${body.order_id}_${body.transaction_id}`;
+    // 1. Verify Midtrans signature key
+    const isVerified = verifyMidtransSignature({
+      orderId: body.order_id,
+      statusCode: body.status_code,
+      grossAmount: body.gross_amount,
+      signatureKey: body.signature_key
+    });
 
-    const result = await guardWebhookIdempotency(
-      'midtrans',
-      deliveryKey,
-      body,
-      async (tx) => await handleMidtransCallback(body, tx)
-    );
+    if (!isVerified) {
+      console.warn('[Midtrans Webhook Ingestion] ⚠️ Signature verification failed for order:', body.order_id);
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
 
-    if (result?.skipped) {
-      logCommunicationEvent('webhook_replay_skipped', {
+    // Include the transaction_status in deliveryKey to support lifecycle status changes safely
+    const deliveryKey = `${body.order_id}_${body.transaction_id}_${body.transaction_status}`;
+
+    // 2. Ingest payload by inserting WebhookReceipt in 'pending' status
+    const payloadHash = hashWebhookPayload(body);
+    
+    const existing = await prisma.webhookReceipt.findUnique({
+      where: {
+        provider_deliveryKey: {
+          provider: 'midtrans',
+          deliveryKey
+        }
+      }
+    });
+
+    if (existing) {
+      console.log('[Midtrans Webhook Ingestion] Duplicate delivery key ignored:', deliveryKey);
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Duplicate event' });
+    }
+
+    await prisma.webhookReceipt.create({
+      data: {
         provider: 'midtrans',
         deliveryKey,
-        correlationId
-      });
-    }
-    
-    console.log('[Midtrans Webhook Processed]', { correlationId, event: body.transaction_status });
-    return res.status(200).json({ ok: true });
-    
+        payloadHash,
+        rawPayload: body || {},
+        status: 'pending',
+        processingStatus: 'pending',
+        providerEventId: body.order_id,
+        providerTransactionId: body.transaction_id,
+        orderId: body.order_id,
+        retryCount: 0
+      }
+    });
+
+    console.log('[Midtrans Webhook Ingested successfully]', { correlationId, deliveryKey });
+    return res.status(200).json({ ok: true, status: 'pending' });
+
   } catch (error) {
-    console.error('[Midtrans Webhook Error]', { correlationId, error: error.message });
-    
-    if (error.code === 'PAYMENT_SIGNATURE_INVALID') {
-      return res.status(400).json({ error: { code: 'PAYMENT_SIGNATURE_INVALID' } });
-    }
-    
-    // Always return 200 for valid signature business errors, to avoid infinite retries
+    console.error('[Midtrans Webhook Ingestion Error]', { correlationId, error: error.message });
     return res.status(200).json({ ok: true, failed: true, reason: error.message });
   }
 });

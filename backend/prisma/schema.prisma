@@ -51,6 +51,8 @@ model User {
   createdStudyAnnotations                                        StudyAnnotation[]          @relation("StudyAnnotationCreator")
   reviewedStudyAnnotations                                       StudyAnnotation[]          @relation("StudyAnnotationReviewer")
   createdAnnotationSnapshots                                     AnnotationSnapshot[]       @relation("AnnotationSnapshotCreator")
+  actedRefunds                                                   Refund[]                   @relation("RefundActor")
+  financialAuditLogs                                             FinancialAuditLog[]        @relation("FinancialAuditActor")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -382,6 +384,8 @@ model PaymentIntent {
   ledgerEntries     PaymentLedger[]
   financialEntries  FinancialLedgerEntry[]
   invoices          Invoice[]       @relation("PaymentIntentInvoices")
+  paymentSnapshot   PaymentSnapshot?
+  refunds           Refund[]
 
   @@index([patientId, createdAt(sort: Desc)], map: "idx_payment_intents_patient")
   @@index([status], map: "idx_payment_intents_status")
@@ -460,6 +464,7 @@ model Invoice {
   ownerClinic     ClinicProfile? @relation("InvoiceOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
   ownerDentist    User?          @relation("InvoiceOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
   items           InvoiceLineItem[]
+  paymentSnapshot PaymentSnapshot?
 
   @@index([ownerType, ownerClinicId, createdAt(sort: Desc)], map: "idx_invoices_owner_clinic")
   @@index([ownerType, ownerDentistId, createdAt(sort: Desc)], map: "idx_invoices_owner_dentist")
@@ -697,6 +702,12 @@ model WebhookReceipt {
   lastError     String?   @map("last_error")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  providerEventId       String?   @map("provider_event_id") @db.VarChar(191)
+  providerTransactionId String?   @map("provider_transaction_id") @db.VarChar(191)
+  orderId               String?   @map("order_id") @db.VarChar(191)
+  processingStatus      String?   @map("processing_status") @db.VarChar(32)
+  retryCount            Int       @default(0) @map("retry_count")
 
   @@unique([provider, deliveryKey], map: "uniq_webhook_receipts_provider_delivery")
   @@index([status, nextAttemptAt], map: "idx_webhook_receipts_status_next_attempt")
@@ -1241,4 +1252,64 @@ model VideoSession {
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
 
   @@map("video_sessions")
+}
+
+model PaymentSnapshot {
+  id                  BigInt        @id @default(autoincrement())
+  paymentIntentId     BigInt        @unique @map("payment_intent_id")
+  invoiceId           BigInt?       @unique @map("invoice_id")
+  consultationFee     Int           @map("consultation_fee")
+  subtotal            Int
+  tax                 Int
+  discount            Int
+  platformFee         Int           @map("platform_fee")
+  clinicShare         Int           @map("clinic_share")
+  dentistShare        Int           @map("dentist_share")
+  finalPaidAmount     Int           @map("final_paid_amount")
+  paymentMethod       String        @map("payment_method") @db.VarChar(50)
+  settlementTimestamp DateTime      @map("settlement_timestamp") @db.Timestamptz(6)
+  currency            String        @default("IDR") @db.VarChar(8)
+  pricingVersion      String        @map("pricing_version") @db.VarChar(24)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  paymentIntent       PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  invoice             Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@map("payment_snapshots")
+}
+
+model Refund {
+  id                       BigInt        @id @default(autoincrement())
+  paymentIntentId          BigInt        @map("payment_intent_id")
+  refundAmount             Int           @map("refund_amount")
+  refundReason             String        @map("refund_reason")
+  refundStatus             String        @map("refund_status") @db.VarChar(32) // pending, approved, rejected, refunded
+  refundRequestedAt        DateTime      @default(now()) @map("refund_requested_at") @db.Timestamptz(6)
+  refundedAt               DateTime?     @map("refunded_at") @db.Timestamptz(6)
+  refundActorId            BigInt?       @map("refund_actor_id")
+  providerRefundReference  String?       @map("provider_refund_reference") @db.VarChar(191)
+  internalNotes            String?       @map("internal_notes")
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  paymentIntent            PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  refundActor              User?         @relation("RefundActor", fields: [refundActorId], references: [id], onDelete: SetNull)
+
+  @@map("refunds")
+}
+
+model FinancialAuditLog {
+  id            BigInt    @id @default(autoincrement())
+  actorId       BigInt?   @map("actor_id")
+  actorRole     String?   @map("actor_role") @db.VarChar(32)
+  entityType    String    @map("entity_type") @db.VarChar(64)
+  entityId      String    @map("entity_id") @db.VarChar(64)
+  action        String    @db.VarChar(64)
+  metadata      Json?     @default("{}")
+  ipAddress     String?   @map("ip_address") @db.VarChar(45)
+  timestamp     DateTime  @default(now()) @map("timestamp") @db.Timestamptz(6)
+
+  actor         User?     @relation("FinancialAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@map("financial_audit_logs")
 }

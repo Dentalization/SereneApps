@@ -37,7 +37,9 @@ const PaymentsView = ({ payments = [], loading = false }) => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
+      case 'settled': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
+      case 'paid': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
       case 'failed': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
@@ -59,20 +61,22 @@ const PaymentsView = ({ payments = [], loading = false }) => {
 
   const getStatusText = (status) => {
     const statusMap = {
+      settled: 'Selesai Settled',
+      paid: 'Lunas Paid',
       completed: t('clinic.billing.payments.status.completed') || 'Selesai',
       pending: t('clinic.billing.payments.status.pending') || 'Menunggu',
       failed: t('clinic.billing.payments.status.failed') || 'Gagal',
       refunded: t('clinic.billing.payments.status.refunded') || 'Dikembalikan'
     };
-    return statusMap[status] || status;
+    return statusMap[status?.toLowerCase()] || status;
   };
 
   // Calculate statistics dynamically
-  const totalPayments = payments.reduce((sum, payment) => sum + (payment.status === 'completed' ? payment.amount : 0), 0);
-  const completedPayments = payments.filter(p => p.status === 'completed').length;
+  const totalPayments = payments.reduce((sum, payment) => sum + (['completed', 'paid', 'settled'].includes(payment.status) ? payment.amount : 0), 0);
+  const completedPayments = payments.filter(p => ['completed', 'paid', 'settled'].includes(p.status)).length;
   const pendingPayments = payments.filter(p => p.status === 'pending').length;
   const todayPayments = payments.filter(p => 
-    p.status === 'completed' && new Date(p.receivedAt).toDateString() === new Date().toDateString()
+    ['completed', 'paid', 'settled'].includes(p.status) && new Date(p.receivedAt).toDateString() === new Date().toDateString()
   ).length;
 
   return (
