@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FINANCIAL_OWNER_TYPES,
+  assertFinancialOwnershipImmutable,
   assertResolvedFinancialOwner,
   normalizeFinancialOwnerType,
   resolvePaymentOwner
@@ -82,5 +83,32 @@ test('rejects clinic ownership without a clinic owner', () => {
       dentistId: 20n
     }),
     /Clinic-owned payments must have exactly one clinic owner/
+  );
+});
+
+test('allows financial updates that do not attempt to change ownership', () => {
+  assert.doesNotThrow(() => assertFinancialOwnershipImmutable(
+    { ownerType: 'clinic', ownerClinicId: 10n, ownerDentistId: null },
+    { status: 'settled' }
+  ));
+});
+
+test('rejects changing payment ownership after creation', () => {
+  assert.throws(
+    () => assertFinancialOwnershipImmutable(
+      { ownerType: 'clinic', ownerClinicId: 10n, ownerDentistId: null },
+      { ownerType: 'dentist', ownerClinicId: null, ownerDentistId: 20n }
+    ),
+    /Financial ownership is immutable/
+  );
+});
+
+test('rejects changing only the owner id after creation', () => {
+  assert.throws(
+    () => assertFinancialOwnershipImmutable(
+      { ownerType: 'dentist', ownerClinicId: null, ownerDentistId: 20n },
+      { ownerDentistId: 21n }
+    ),
+    /Financial ownership is immutable/
   );
 });

@@ -32,6 +32,26 @@ export function resolveActiveAppointmentId(status, appointmentId) {
   return ACTIVE_PAYMENT_STATUSES.has(status) ? appointmentId : null;
 }
 
+function parsePositiveAmount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+export function resolveRefundAmount(providerResponse = {}, paymentAmount = 0) {
+  const paymentTotal = parsePositiveAmount(paymentAmount) || 0;
+  const directAmount = parsePositiveAmount(providerResponse.refund_amount ?? providerResponse.refundAmount);
+  if (directAmount) return Math.min(directAmount, paymentTotal);
+
+  if (Array.isArray(providerResponse.refund_amounts)) {
+    const summed = providerResponse.refund_amounts.reduce((sum, item) => {
+      return sum + (parsePositiveAmount(item?.amount ?? item?.refund_amount ?? item?.refundAmount) || 0);
+    }, 0);
+    if (summed > 0) return Math.min(summed, paymentTotal);
+  }
+
+  return paymentTotal;
+}
+
 const appointmentSelect = {
   id: true,
   dentistId: true,
@@ -262,11 +282,13 @@ export async function applyPaymentStatus({
     }
 
     if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(newStatus)) {
+      const refundAmount = resolveRefundAmount(mergedProviderResponse, updatedIntent.amount);
+
       await recordLedgerEntryIfMissing({
         paymentIntentId: intent.id,
         entryType: 'refund',
         status: newStatus,
-        amount: updatedIntent.amount,
+        amount: refundAmount,
         metadata: mergedProviderResponse
       }, tx);
 
@@ -277,7 +299,7 @@ export async function applyPaymentStatus({
         entryType: 'refund',
         status: newStatus,
         direction: 'debit',
-        amount: updatedIntent.amount,
+        amount: refundAmount,
         source: updatedIntent.provider || 'midtrans',
         metadata: mergedProviderResponse
       });
@@ -324,3 +346,7 @@ export async function applyPaymentStatus({
     noOp: false
   };
 }
+
+export const __testables = {
+  resolveRefundAmount
+};

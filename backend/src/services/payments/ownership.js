@@ -16,6 +16,11 @@ function nullableBigIntLike(value) {
   return value === undefined || value === null || value === '' ? null : value;
 }
 
+function ownerIdComparable(value) {
+  const normalized = nullableBigIntLike(value);
+  return normalized === null ? null : String(normalized);
+}
+
 export function normalizeFinancialOwnerType(ownerType) {
   if (ownerType === undefined || ownerType === null || ownerType === '') return null;
   const normalized = FINANCIAL_OWNER_TYPE_ALIASES[String(ownerType)];
@@ -77,6 +82,36 @@ export function assertResolvedFinancialOwner(owner) {
     ownerClinicId: ownerType === FINANCIAL_OWNER_TYPES.CLINIC ? ownerClinicId : null,
     ownerDentistId: ownerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST ? ownerDentistId : null
   };
+}
+
+export function assertFinancialOwnershipImmutable(existingOwner, nextData = {}) {
+  const ownershipKeys = ['ownerType', 'owner_type', 'ownerClinicId', 'owner_clinic_id', 'ownerDentistId', 'owner_dentist_id'];
+  const attemptsOwnershipChange = ownershipKeys.some((key) => Object.prototype.hasOwnProperty.call(nextData || {}, key));
+  if (!attemptsOwnershipChange) return true;
+
+  const existing = {
+    ownerType: normalizeFinancialOwnerType(existingOwner?.ownerType ?? existingOwner?.owner_type),
+    ownerClinicId: ownerIdComparable(existingOwner?.ownerClinicId ?? existingOwner?.owner_clinic_id),
+    ownerDentistId: ownerIdComparable(existingOwner?.ownerDentistId ?? existingOwner?.owner_dentist_id)
+  };
+  const next = {
+    ownerType: normalizeFinancialOwnerType(nextData.ownerType ?? nextData.owner_type ?? existing.ownerType),
+    ownerClinicId: ownerIdComparable(nextData.ownerClinicId ?? nextData.owner_clinic_id ?? existing.ownerClinicId),
+    ownerDentistId: ownerIdComparable(nextData.ownerDentistId ?? nextData.owner_dentist_id ?? existing.ownerDentistId)
+  };
+
+  if (
+    existing.ownerType !== next.ownerType ||
+    existing.ownerClinicId !== next.ownerClinicId ||
+    existing.ownerDentistId !== next.ownerDentistId
+  ) {
+    const error = new Error('Financial ownership is immutable after payment creation');
+    error.code = 'FINANCIAL_OWNERSHIP_IMMUTABLE';
+    error.status = 409;
+    throw error;
+  }
+
+  return true;
 }
 
 export function resolvePaymentOwner(appointment = {}) {
