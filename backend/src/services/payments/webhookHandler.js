@@ -1,6 +1,6 @@
 import { verifyMidtransSignature, validateMidtransWebhookPayload } from './midtrans.js';
 import { mapMidtransStatus } from './statusMapping.js';
-import { PAYMENT_STATUSES, canTransition, resolveActiveAppointmentId } from './status.js';
+import { PAYMENT_STATUSES, canTransition, resolveActiveAppointmentId, resolveRefundAmount } from './status.js';
 import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
 import { createPaymentSnapshot } from './snapshotService.js';
 import { recordFinancialAuditLog } from '../audit/auditLogger.js';
@@ -167,10 +167,7 @@ export async function handleMidtransCallback(body, tx) {
   }
 
   if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(mappedStatus)) {
-    const rawRefundAmount = Number(body.refund_amount ?? body.refundAmount ?? body.refund_amounts?.[0]?.amount);
-    const refundAmount = Number.isFinite(rawRefundAmount) && rawRefundAmount > 0
-      ? Math.round(rawRefundAmount)
-      : paymentIntent.amount;
+    const refundAmount = resolveRefundAmount(body, paymentIntent.amount);
 
     const existingLedger = await tx.paymentLedger.findFirst({
       where: {
