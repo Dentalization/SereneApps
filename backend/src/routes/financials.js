@@ -1,6 +1,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
+import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -68,7 +69,7 @@ router.get(
       // Calculate total clinic earnings (strictly SETTLED only)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id,
           status: 'settled'
         },
@@ -79,7 +80,7 @@ router.get(
       // Calculate pending earnings (includes pending, requires_action, AND paid which is not yet settled)
       const pendingIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id,
           status: { in: ['pending', 'requires_action', 'paid'] }
         },
@@ -90,7 +91,7 @@ router.get(
       // Calculate refunded amount
       const refundedIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id,
           status: { in: ['refunded', 'partial_refund'] }
         },
@@ -104,7 +105,7 @@ router.get(
       // Total transaction count
       const transactionCount = await prisma.paymentIntent.count({
         where: {
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id
         }
       });
@@ -158,11 +159,11 @@ router.get(
       const { status, startDate, endDate, dentistId } = req.query;
 
       const invoiceWhere = {
-        ownerType: 'clinic',
+        ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
         ownerClinicId: clinicProfile.id
       };
       const paymentWhere = {
-        ownerType: 'clinic',
+        ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
         ownerClinicId: clinicProfile.id
       };
 
@@ -342,7 +343,7 @@ router.get(
       // 1. Settled transactions (Revenue must use SETTLED only)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicId,
           status: 'settled'
         },
@@ -409,7 +410,7 @@ router.get(
       const refunds = await prisma.refund.findMany({
         where: {
           paymentIntent: {
-            ownerType: 'clinic',
+            ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
             ownerClinicId: clinicId
           },
           refundStatus: 'refunded'
@@ -491,7 +492,7 @@ router.get(
       // Calculate total dentist independent earnings (strictly SETTLED only)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'dentist',
+          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
           ownerDentistId: dentistId,
           status: 'settled'
         },
@@ -504,7 +505,7 @@ router.get(
       const clinicAffiliatedCount = await prisma.appointment.count({
         where: {
           dentistId,
-          ownerType: 'clinic',
+          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           status: 'confirmed'
         }
       });
@@ -542,11 +543,11 @@ router.get(
       const { status, startDate, endDate } = req.query;
 
       const invoiceWhere = {
-        ownerType: 'dentist',
+        ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
         ownerDentistId: dentistId
       };
       const paymentWhere = {
-        ownerType: 'dentist',
+        ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
         ownerDentistId: dentistId
       };
 
@@ -698,7 +699,7 @@ router.get(
       // 1. Settled transactions (Independent only)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: 'dentist',
+          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
           ownerDentistId: dentistId,
           status: 'settled'
         },
@@ -746,7 +747,7 @@ router.get(
       const cancelledAppointments = await prisma.appointment.findMany({
         where: {
           dentistId,
-          ownerType: 'dentist',
+          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
           status: 'cancelled'
         },
         include: {
@@ -766,7 +767,7 @@ router.get(
       const refunds = await prisma.refund.findMany({
         where: {
           paymentIntent: {
-            ownerType: 'dentist',
+            ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
             ownerDentistId: dentistId
           },
           refundStatus: 'refunded'

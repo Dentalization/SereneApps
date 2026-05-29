@@ -11,7 +11,7 @@ import {
   VALID_PAYMENT_STATUSES,
   ACTIVE_PAYMENT_STATUSES
 } from '../services/payments/status.js';
-import { resolvePaymentOwner } from '../services/payments/ownership.js';
+import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType, resolvePaymentOwner } from '../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../services/payments/financials.js';
 import snapTransactionsRouter from './payments/snapTransactions.js';
 import paymentStatusRouter from './payments/status.js';
@@ -369,11 +369,12 @@ router.get(
       const isPatient = invoice.patientId === userId;
 
       // 2. Dentist check (only if dentist owns the invoice)
-      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+      const invoiceOwnerType = normalizeFinancialOwnerType(invoice.ownerType);
+      const isDentist = invoiceOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && invoice.ownerDentistId === userId;
 
       // 3. Clinic check (only if clinic owns the invoice and user belongs to clinic)
       let isClinicStaff = false;
-      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+      if (invoiceOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && invoice.ownerClinicId) {
         // Resolve clinic profile for current user
         let userClinicProfile = await prisma.clinicProfile.findFirst({
           where: { userId }
@@ -460,11 +461,12 @@ router.get(
       const userId = toBigInt(req.user.id, 'userId');
       const userRoles = req.user.roles || [];
       const isPatient = paymentIntent.patientId === userId;
-      const isDentistOwner = paymentIntent.ownerType === 'dentist' && paymentIntent.ownerDentistId === userId;
+      const paymentOwnerType = normalizeFinancialOwnerType(paymentIntent.ownerType);
+      const isDentistOwner = paymentOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && paymentIntent.ownerDentistId === userId;
       const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
 
       let isClinicStaff = false;
-      if (paymentIntent.ownerType === 'clinic' && paymentIntent.ownerClinicId) {
+      if (paymentOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && paymentIntent.ownerClinicId) {
         let userClinicProfile = await prisma.clinicProfile.findFirst({
           where: { userId }
         });
@@ -530,10 +532,11 @@ router.get(
       const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
 
       const isPatient = invoice.patientId === userId;
-      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+      const invoiceOwnerType = normalizeFinancialOwnerType(invoice.ownerType);
+      const isDentist = invoiceOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && invoice.ownerDentistId === userId;
 
       let isClinicStaff = false;
-      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+      if (invoiceOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && invoice.ownerClinicId) {
         let userClinicProfile = await prisma.clinicProfile.findFirst({
           where: { userId }
         });
