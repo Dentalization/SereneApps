@@ -33,10 +33,10 @@ export function getMidtransClientConfig() {
   };
 }
 
-export async function createMidtransTransaction({ paymentIntent, appointment, patient }) {
+export async function createMidtransTransaction({ paymentIntent, appointment, patient, orderId: overrideOrderId }) {
   if (MIDTRANS_MOCK_MODE) {
     const now = new Date();
-    const orderId = `appointment-${appointment.id.toString()}-intent-${paymentIntent.id.toString()}`;
+    const orderId = overrideOrderId || `appointment-${appointment.id.toString()}-intent-${paymentIntent.id.toString()}`;
     return {
       providerOrderId: orderId,
       providerPaymentId: `mock-${paymentIntent.id.toString()}`,
@@ -52,8 +52,8 @@ export async function createMidtransTransaction({ paymentIntent, appointment, pa
 
   const authHeader = buildAuthHeader();
 
-  const orderId = `appointment-${appointment.id.toString()}-intent-${paymentIntent.id.toString()}`;
-  const grossAmount = paymentIntent.amount;
+  const orderId = overrideOrderId || `appointment-${appointment.id.toString()}-intent-${paymentIntent.id.toString()}`;
+  const grossAmount = paymentIntent?.amount ?? appointment?.amount ?? 0;
 
   const payload = {
     transaction_details: {
@@ -170,10 +170,71 @@ export async function cancelMidtransTransaction(orderId) {
   return response.json();
 }
 
+function timingSafeEqualHex(expected, provided) {
+  if (!expected || !provided) return false;
+  const expectedHex = String(expected).toLowerCase();
+  const providedHex = String(provided).toLowerCase();
+  if (expectedHex.length !== providedHex.length) return false;
+  try {
+    const expectedBuffer = Buffer.from(expectedHex, 'hex');
+    const providedBuffer = Buffer.from(providedHex, 'hex');
+    if (expectedBuffer.length !== providedBuffer.length) return false;
+    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+  } catch (error) {
+    return false;
+  }
+}
+
 export function verifyMidtransSignature({ orderId, statusCode, grossAmount, signatureKey }) {
   if (MIDTRANS_MOCK_MODE) return true;
   if (!MIDTRANS_SERVER_KEY) return false;
-  const payload = orderId + statusCode + grossAmount + MIDTRANS_SERVER_KEY;
+  if (!orderId || !statusCode || !grossAmount || !signatureKey) return false;
+  const payload = `${orderId}${statusCode}${grossAmount}${MIDTRANS_SERVER_KEY}`;
   const computedSignature = crypto.createHash('sha512').update(payload).digest('hex');
-  return computedSignature === signatureKey;
+  return timingSafeEqualHex(computedSignature, signatureKey);
+}
+
+export function validateMidtransWebhookPayload(body) {
+  if (!body || typeof body !== 'object') {
+    const error = new Error('MIDTRANS_PAYLOAD_INVALID');
+    error.status = 400;
+    throw error;
+  }
+
+  const orderId = body.order_id;
+  const statusCode = body.status_code;
+  const grossAmount = body.gross_amount;
+  const signatureKey = body.signature_key;
+  const transactionStatus = body.transaction_status;
+  const transactionId = body.transaction_id || null;
+
+  if (!orderId || !statusCode || !grossAmount || !signatureKey || !transactionStatus) {
+    const error = new Error('MIDTRANS_PAYLOAD_MISSING_FIELDS');
+    error.status = 400;
+    throw error;
+  }
+
+  const parsedAmount = Number(grossAmount);
+  if (!Number.isFinite(parsedAmount)) {
+    const error = new Error('MIDTRANS_GROSS_AMOUNT_INVALID');
+    error.status = 400;
+    throw error;
+  }
+
+  const parsedStatusCode = parseInt(statusCode, 10);
+  if (Number.isNaN(parsedStatusCode)) {
+    const error = new Error('MIDTRANS_STATUS_CODE_INVALID');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    orderId: String(orderId),
+    statusCode: String(statusCode),
+    grossAmount: String(grossAmount),
+    grossAmountValue: Math.round(parsedAmount),
+    signatureKey: String(signatureKey),
+    transactionStatus: String(transactionStatus),
+    transactionId: transactionId ? String(transactionId) : null
+  };
 }

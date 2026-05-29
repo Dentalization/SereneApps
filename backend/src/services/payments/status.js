@@ -3,6 +3,7 @@ import { ensureCommunicationResourcesForAppointment, emitAppointmentEvent } from
 import { queueNotificationEvent } from '../notifications/index.js';
 import { recordLedgerEntryIfMissing } from './ledger.js';
 import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
+import { createPaymentSnapshot } from './snapshotService.js';
 
 const prisma = new PrismaClient();
 
@@ -19,6 +20,17 @@ export const PAYMENT_STATUSES = Object.freeze({
 });
 
 export const VALID_PAYMENT_STATUSES = Object.values(PAYMENT_STATUSES);
+
+export const ACTIVE_PAYMENT_STATUSES = new Set([
+  PAYMENT_STATUSES.PENDING,
+  PAYMENT_STATUSES.REQUIRES_ACTION,
+  PAYMENT_STATUSES.PAID
+]);
+
+export function resolveActiveAppointmentId(status, appointmentId) {
+  if (!appointmentId) return null;
+  return ACTIVE_PAYMENT_STATUSES.has(status) ? appointmentId : null;
+}
 
 const appointmentSelect = {
   id: true,
@@ -96,18 +108,20 @@ async function syncCommunications(appointment, status) {
   return null;
 }
 
-function canTransition(fromStatus, toStatus) {
+export function canTransition(fromStatus, toStatus) {
   if (fromStatus === toStatus) return true;
   const allowed = {
     [PAYMENT_STATUSES.PENDING]: [
       PAYMENT_STATUSES.REQUIRES_ACTION,
       PAYMENT_STATUSES.PAID,
+      PAYMENT_STATUSES.SETTLED,
       PAYMENT_STATUSES.FAILED,
       PAYMENT_STATUSES.EXPIRED,
       PAYMENT_STATUSES.CANCELLED
     ],
     [PAYMENT_STATUSES.REQUIRES_ACTION]: [
       PAYMENT_STATUSES.PAID,
+      PAYMENT_STATUSES.SETTLED,
       PAYMENT_STATUSES.FAILED,
       PAYMENT_STATUSES.EXPIRED,
       PAYMENT_STATUSES.CANCELLED
@@ -189,7 +203,8 @@ export async function applyPaymentStatus({
         providerResponse: mergedProviderResponse,
         metadata: failureReason
           ? { ...(intent.metadata || {}), failureReason }
-          : intent.metadata
+          : intent.metadata,
+        activeAppointmentId: resolveActiveAppointmentId(newStatus, intent.appointmentId)
       },
       include: {
         appointment: { select: appointmentSelect },
@@ -215,7 +230,7 @@ export async function applyPaymentStatus({
         status: newStatus,
         amount: updatedIntent.amount,
         metadata: mergedProviderResponse
-      });
+      }, tx);
 
       await recordFinancialEntry({
         tx,
@@ -229,12 +244,21 @@ export async function applyPaymentStatus({
         metadata: mergedProviderResponse
       });
 
-      await ensureInvoiceForPaymentIntent({
+      const invoice = await ensureInvoiceForPaymentIntent({
         tx,
         paymentIntent: updatedIntent,
         appointment: updatedIntent.appointment,
         patient: updatedIntent.patient
       });
+
+      if (newStatus === PAYMENT_STATUSES.SETTLED) {
+        await createPaymentSnapshot({
+          tx,
+          paymentIntent: updatedIntent,
+          invoice,
+          appointment: updatedIntent.appointment
+        });
+      }
     }
 
     if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(newStatus)) {
@@ -244,7 +268,7 @@ export async function applyPaymentStatus({
         status: newStatus,
         amount: updatedIntent.amount,
         metadata: mergedProviderResponse
-      });
+      }, tx);
 
       await recordFinancialEntry({
         tx,
@@ -257,6 +281,11 @@ export async function applyPaymentStatus({
         source: updatedIntent.provider || 'midtrans',
         metadata: mergedProviderResponse
       });
+
+      await tx.invoice.updateMany({
+        where: { paymentIntentId: updatedIntent.id },
+        data: { status: newStatus }
+      }).catch(() => null);
     }
 
     return {

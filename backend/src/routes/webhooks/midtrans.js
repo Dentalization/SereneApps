@@ -1,33 +1,58 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { verifyMidtransSignature } from '../../services/payments/midtrans.js';
+import { verifyMidtransSignature, validateMidtransWebhookPayload } from '../../services/payments/midtrans.js';
 import { hashWebhookPayload } from '../../services/webhooks/idempotency.js';
+import { recordFinancialAuditLog } from '../../services/audit/auditLogger.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 router.post('/', express.json(), async (req, res) => {
   const body = req.body;
-  const correlationId = body.order_id || '';
+  let payload;
+  try {
+    payload = validateMidtransWebhookPayload(body);
+  } catch (error) {
+    await recordFinancialAuditLog({
+      actorId: null,
+      actorRole: 'system',
+      entityType: 'webhook_receipt',
+      entityId: 'midtrans',
+      action: 'webhook_payload_invalid',
+      metadata: { error: error.message }
+    });
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+
+  const { orderId, statusCode, grossAmount, transactionStatus, transactionId } = payload;
+  const correlationId = orderId || '';
   
-  console.log('[Midtrans Webhook Ingestion]', { correlationId, status: body.transaction_status });
+  console.log('[Midtrans Webhook Ingestion]', { correlationId, status: transactionStatus });
 
   try {
     // 1. Verify Midtrans signature key
     const isVerified = verifyMidtransSignature({
-      orderId: body.order_id,
-      statusCode: body.status_code,
-      grossAmount: body.gross_amount,
-      signatureKey: body.signature_key
+      orderId,
+      statusCode,
+      grossAmount,
+      signatureKey: payload.signatureKey
     });
 
     if (!isVerified) {
-      console.warn('[Midtrans Webhook Ingestion] ⚠️ Signature verification failed for order:', body.order_id);
+      await recordFinancialAuditLog({
+        actorId: null,
+        actorRole: 'system',
+        entityType: 'webhook_receipt',
+        entityId: orderId,
+        action: 'webhook_signature_invalid',
+        metadata: { orderId, transactionStatus, statusCode }
+      });
+      console.warn('[Midtrans Webhook Ingestion] ⚠️ Signature verification failed for order:', orderId);
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
     // Include the transaction_status in deliveryKey to support lifecycle status changes safely
-    const deliveryKey = `${body.order_id}_${body.transaction_id}_${body.transaction_status}`;
+    const deliveryKey = `${orderId}_${transactionId || 'unknown'}_${transactionStatus}`;
 
     // 2. Ingest payload by inserting WebhookReceipt in 'pending' status
     const payloadHash = hashWebhookPayload(body);
@@ -54,19 +79,37 @@ router.post('/', express.json(), async (req, res) => {
         rawPayload: body || {},
         status: 'pending',
         processingStatus: 'pending',
-        providerEventId: body.order_id,
-        providerTransactionId: body.transaction_id,
-        orderId: body.order_id,
+        providerEventId: orderId,
+        providerTransactionId: transactionId,
+        orderId,
+        correlationId: orderId,
+        signature: payload.signatureKey,
         retryCount: 0
       }
     });
 
     console.log('[Midtrans Webhook Ingested successfully]', { correlationId, deliveryKey });
+    await recordFinancialAuditLog({
+      actorId: null,
+      actorRole: 'system',
+      entityType: 'webhook_receipt',
+      entityId: deliveryKey,
+      action: 'webhook_received',
+      metadata: { orderId, transactionStatus, statusCode }
+    });
     return res.status(200).json({ ok: true, status: 'pending' });
 
   } catch (error) {
     console.error('[Midtrans Webhook Ingestion Error]', { correlationId, error: error.message });
-    return res.status(200).json({ ok: true, failed: true, reason: error.message });
+    await recordFinancialAuditLog({
+      actorId: null,
+      actorRole: 'system',
+      entityType: 'webhook_receipt',
+      entityId: correlationId || 'midtrans',
+      action: 'webhook_ingestion_failed',
+      metadata: { error: error.message }
+    });
+    return res.status(200).json({ ok: true, failed: true, reason: 'Webhook ingestion failed' });
   }
 });
 

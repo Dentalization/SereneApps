@@ -1,112 +1,111 @@
 import { PrismaClient } from '@prisma/client';
 import midtransService from './midtransService.js';
 import { mapMidtransStatus } from './statusMapping.js';
-import { PAYMENT_STATUSES } from './status.js';
+import { PAYMENT_STATUSES, canTransition } from './status.js';
+import { applyPaymentStatus } from './status.js';
 
 const prisma = new PrismaClient();
 
 export async function reconcilePayment(paymentIntentId) {
   const intentIdBigInt = typeof paymentIntentId === 'bigint' ? paymentIntentId : BigInt(paymentIntentId);
 
-  return await prisma.$transaction(async (tx) => {
-    // 1. Load payment_intents by id
-    const paymentIntent = await tx.paymentIntent.findUnique({
-      where: { id: intentIdBigInt }
-    });
-
-    if (!paymentIntent) {
-      throw { code: 'PAYMENT_INTENT_NOT_FOUND', message: 'Payment intent not found.' };
-    }
-
-    const previousStatus = paymentIntent.status;
-
-    // 2. Already final
-    if ([PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED, PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND, PAYMENT_STATUSES.CANCELLED, PAYMENT_STATUSES.EXPIRED].includes(previousStatus)) {
-      await tx.paymentIntent.update({
-        where: { id: intentIdBigInt },
-        data: { lastReconciledAt: new Date() }
-      });
-      return { alreadyFinal: true, previousStatus, newStatus: previousStatus };
-    }
-
-    // 3. Status check from Midtrans directly
-    let midtransStatus;
-    try {
-      midtransStatus = await midtransService.getTransactionStatus(paymentIntent.providerOrderId);
-    } catch (err) {
-      if (err.statusCode === 404) {
-         // This typically happens if Snap window expired natively before rendering or user instantly aborted.
-         throw err; 
-      }
-      throw err;
-    }
-
-    // 4. Map Midtrans response identically handling identical webhooks logic
-    const { internalStatus: mappedStatus } = mapMidtransStatus({
-      transactionStatus: midtransStatus.transaction_status,
-      fraudStatus: midtransStatus.fraud_status
-    });
-
-    // 5. Native State Mutations enforcing optimistic lock tracking against webhooks
-    if (mappedStatus !== previousStatus) {
-      await tx.paymentIntent.update({
-        where: { id: intentIdBigInt },
-        data: {
-          status: mappedStatus,
-          reconciliationStatus: 'reconciled',
-          lastReconciledAt: new Date()
-        }
-      });
-
-       if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED].includes(mappedStatus)) {
-         const eventType = mappedStatus === PAYMENT_STATUSES.FAILED ? 'payment_failed' : 'payment_settled';
-         
-         const existingOutbox = await tx.domainEventOutbox.findFirst({
-            where: {
-              aggregateId: String(paymentIntent.id),
-              aggregateType: 'payment_intent',
-              eventType
-            }
-         });
-
-        if (!existingOutbox) {
-           await tx.domainEventOutbox.create({
-             data: {
-                eventType,
-                aggregateType: 'payment_intent',
-                aggregateId: String(paymentIntent.id),
-                correlationId: midtransStatus.order_id || paymentIntent.providerOrderId,
-                payload: {
-                  appointmentId: String(paymentIntent.appointmentId),
-                  provider: 'midtrans',
-                  providerOrderId: midtransStatus.order_id || paymentIntent.providerOrderId,
-                  grossAmount: Number(midtransStatus.gross_amount || paymentIntent.amount)
-                },
-                status: 'pending',
-                availableAt: new Date(),
-                attempts: 0
-             }
-           });
-        }
-      }
-    } else {
-      await tx.paymentIntent.update({
-        where: { id: intentIdBigInt },
-        data: { lastReconciledAt: new Date() }
-      });
-    }
-
-    // 6. Log structured mapping overrides specifically cleanly marking drift limits
-    console.log('[ReconcileJob]', { 
-        paymentIntentId: String(paymentIntentId), 
-        previousStatus, 
-        newStatus: mappedStatus, 
-        provider_order_id: paymentIntent.providerOrderId 
-    });
-
-    // 7. Success Boundary Return
-    return { reconciled: true, previousStatus, newStatus: mappedStatus };
+  // 1. Load payment_intents by id
+  const paymentIntent = await prisma.paymentIntent.findUnique({
+    where: { id: intentIdBigInt }
   });
+
+  if (!paymentIntent) {
+    throw { code: 'PAYMENT_INTENT_NOT_FOUND', message: 'Payment intent not found.' };
+  }
+
+  const previousStatus = paymentIntent.status;
+  await prisma.paymentIntent.update({
+    where: { id: intentIdBigInt },
+    data: {
+      reconciliationStatus: 'reconciling',
+      reconciliationAttempts: { increment: 1 },
+      reconciliationError: null,
+      lastReconciledAt: new Date()
+    }
+  });
+
+  // 2. Already final
+  if ([PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED, PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND, PAYMENT_STATUSES.CANCELLED, PAYMENT_STATUSES.EXPIRED].includes(previousStatus)) {
+    await prisma.paymentIntent.update({
+      where: { id: intentIdBigInt },
+      data: { reconciliationStatus: 'finalized', lastReconciledAt: new Date() }
+    });
+    return { alreadyFinal: true, previousStatus, newStatus: previousStatus };
+  }
+
+  // 3. Status check from Midtrans directly
+  let midtransStatus;
+  try {
+    midtransStatus = await midtransService.getTransactionStatus(paymentIntent.providerOrderId);
+  } catch (err) {
+    if (err?.statusCode === 404 && canTransition(previousStatus, PAYMENT_STATUSES.EXPIRED)) {
+      await applyPaymentStatus({
+        paymentIntentId: intentIdBigInt,
+        newStatus: PAYMENT_STATUSES.EXPIRED,
+        providerResponse: { error: err.message || 'MIDTRANS_ORDER_NOT_FOUND' },
+        failureReason: 'provider_not_found'
+      });
+      await prisma.paymentIntent.update({
+        where: { id: intentIdBigInt },
+        data: { reconciliationStatus: 'reconciled', reconciliationError: null, lastReconciledAt: new Date() }
+      });
+      return { reconciled: true, previousStatus, newStatus: PAYMENT_STATUSES.EXPIRED };
+    }
+    await prisma.paymentIntent.update({
+      where: { id: intentIdBigInt },
+      data: {
+        reconciliationStatus: 'failed',
+        reconciliationError: err?.message?.slice?.(0, 255) || 'MIDTRANS_STATUS_ERROR'
+      }
+    });
+    throw err;
+  }
+
+  // 4. Map Midtrans response identically handling identical webhooks logic
+  const { internalStatus: mappedStatus, failureReason } = mapMidtransStatus({
+    transactionStatus: midtransStatus.transaction_status,
+    fraudStatus: midtransStatus.fraud_status
+  });
+
+  if (!canTransition(previousStatus, mappedStatus) && previousStatus !== mappedStatus) {
+    await prisma.paymentIntent.update({
+      where: { id: intentIdBigInt },
+      data: {
+        reconciliationStatus: 'skipped',
+        reconciliationError: 'RECONCILE_TRANSITION_INVALID'
+      }
+    });
+    return { reconciled: false, previousStatus, newStatus: previousStatus };
+  }
+
+  if (mappedStatus !== previousStatus) {
+    await applyPaymentStatus({
+      paymentIntentId: intentIdBigInt,
+      newStatus: mappedStatus,
+      providerPaymentId: midtransStatus.transaction_id || paymentIntent.providerPaymentId,
+      providerResponse: midtransStatus,
+      failureReason
+    });
+  }
+
+  await prisma.paymentIntent.update({
+    where: { id: intentIdBigInt },
+    data: { reconciliationStatus: 'reconciled', lastReconciledAt: new Date(), reconciliationError: null }
+  });
+
+  console.log('[ReconcileJob]', {
+    paymentIntentId: String(paymentIntentId),
+    previousStatus,
+    newStatus: mappedStatus,
+    provider_order_id: paymentIntent.providerOrderId
+  });
+
+  return { reconciled: true, previousStatus, newStatus: mappedStatus };
 }
 
 export async function runReconcileBatch() {
@@ -115,12 +114,13 @@ export async function runReconcileBatch() {
 
   const intents = await prisma.paymentIntent.findMany({
     where: {
-      status: 'pending',
+      status: { in: ['pending', 'requires_action', 'paid'] },
       createdAt: { lt: fiveMinAgo },
       OR: [
         { lastReconciledAt: null },
         { lastReconciledAt: { lt: thirtyMinAgo } }
-      ]
+      ],
+      reconciliationAttempts: { lt: 8 }
     },
     take: 20
   });
@@ -143,6 +143,5 @@ export async function runReconcileBatch() {
 
 export function startReconcileScheduler() {
   console.log('[ReconcileScheduler] Synchronous loop initialized.');
-  // Polling sequentially recursively hitting 5 minutes natively exactly.
-  return setInterval(runReconcileBatch, 5 * 60 * 1000); 
+  return setInterval(runReconcileBatch, 15 * 60 * 1000);
 }

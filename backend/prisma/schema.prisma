@@ -357,6 +357,7 @@ model AppointmentStatusHistory {
 model PaymentIntent {
   id                BigInt          @id @default(autoincrement())
   appointmentId     BigInt          @map("appointment_id")
+  activeAppointmentId BigInt?       @map("active_appointment_id")
   patientId         BigInt          @map("patient_id")
   ownerType         String          @default("dentist") @map("owner_type") @db.VarChar(24)
   ownerClinicId     BigInt?         @map("owner_clinic_id")
@@ -367,7 +368,7 @@ model PaymentIntent {
   provider          String?         @db.VarChar
   idempotencyKey    String?         @unique(map: "uniq_payment_intents_idempotency_key") @map("idempotency_key") @db.VarChar(180)
   providerOrderId   String?         @unique(map: "uniq_payment_intents_provider_order_id") @map("provider_order_id") @db.VarChar(191)
-  providerPaymentId String?         @map("provider_payment_id") @db.VarChar
+  providerPaymentId String?         @unique(map: "uniq_payment_intents_provider_payment_id") @map("provider_payment_id") @db.VarChar
   metadata          Json?           @default("{}")
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -375,6 +376,8 @@ model PaymentIntent {
   expiresAt         DateTime?       @map("expires_at") @db.Timestamptz(6)
   providerResponse  Json?           @default("{}") @map("provider_response")
   reconciliationStatus String       @default("pending") @map("reconciliation_status") @db.VarChar(32)
+  reconciliationAttempts Int        @default(0) @map("reconciliation_attempts")
+  reconciliationError String?       @map("reconciliation_error") @db.VarChar(255)
   lastReconciledAt  DateTime?       @map("last_reconciled_at") @db.Timestamptz(6)
   callbackVerifiedAt DateTime?      @map("callback_verified_at") @db.Timestamptz(6)
   appointment       Appointment     @relation("AppointmentPaymentIntents", fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -387,11 +390,14 @@ model PaymentIntent {
   paymentSnapshot   PaymentSnapshot?
   refunds           Refund[]
 
+  @@unique([activeAppointmentId], map: "uniq_payment_intents_active_appointment")
+  @@index([appointmentId], map: "idx_payment_intents_appointment")
   @@index([patientId, createdAt(sort: Desc)], map: "idx_payment_intents_patient")
   @@index([status], map: "idx_payment_intents_status")
   @@index([ownerType, ownerClinicId], map: "idx_payment_intents_owner_clinic")
   @@index([ownerType, ownerDentistId], map: "idx_payment_intents_owner_dentist")
   @@index([providerOrderId], map: "idx_payment_intents_provider_order_id")
+  @@index([providerPaymentId], map: "idx_payment_intents_provider_payment_id")
   @@index([reconciliationStatus, updatedAt(sort: Desc)], map: "idx_payment_intents_reconciliation")
   @@map("payment_intents")
 }
@@ -445,7 +451,7 @@ model Invoice {
   ownerType       String        @map("owner_type") @db.VarChar(24)
   ownerClinicId   BigInt?       @map("owner_clinic_id")
   ownerDentistId  BigInt?       @map("owner_dentist_id")
-  reference       String?       @db.VarChar(64)
+  reference       String?       @unique(map: "uniq_invoices_reference") @db.VarChar(64)
   status          String        @default("issued") @db.VarChar(24)
   subtotal        Int
   tax             Int           @default(0)

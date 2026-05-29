@@ -135,7 +135,7 @@ export async function processRefund({
 
     await tx.paymentIntent.update({
       where: { id: intentIdBigInt },
-      data: { status: newStatus }
+      data: { status: newStatus, activeAppointmentId: null }
     });
 
     // Update invoice status if fully refunded

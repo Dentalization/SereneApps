@@ -149,12 +149,65 @@ router.get(
         return res.status(404).json({ error: 'Clinic profile not found for user' });
       }
 
+      const page = req.query.page ? parseInt(req.query.page, 10) : null;
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+
+      const skip = page && limit ? (page - 1) * limit : undefined;
+      const take = limit ? limit : undefined;
+
+      const { status, startDate, endDate, dentistId } = req.query;
+
+      const invoiceWhere = {
+        ownerType: 'clinic',
+        ownerClinicId: clinicProfile.id
+      };
+      const paymentWhere = {
+        ownerType: 'clinic',
+        ownerClinicId: clinicProfile.id
+      };
+
+      if (status) {
+        const statusLower = status.toLowerCase();
+        if (statusLower === 'paid') {
+          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled'] } };
+          paymentWhere.status = { in: ['paid', 'settled'] };
+        } else if (statusLower === 'pending') {
+          invoiceWhere.paymentIntent = { status: { in: ['pending', 'requires_action'] } };
+          paymentWhere.status = { in: ['pending', 'requires_action'] };
+        } else if (statusLower === 'refunded') {
+          invoiceWhere.paymentIntent = { status: { in: ['refunded', 'partial_refund'] } };
+          paymentWhere.status = { in: ['refunded', 'partial_refund'] };
+        } else {
+          invoiceWhere.paymentIntent = { status: statusLower };
+          paymentWhere.status = statusLower;
+        }
+      }
+
+      if (dentistId) {
+        const dentistIdBigInt = toBigInt(dentistId, 'dentistId');
+        invoiceWhere.appointment = { dentistId: dentistIdBigInt };
+        paymentWhere.appointment = { dentistId: dentistIdBigInt };
+      }
+
+      if (startDate || endDate) {
+        invoiceWhere.createdAt = {};
+        paymentWhere.createdAt = {};
+        if (startDate) {
+          invoiceWhere.createdAt.gte = new Date(startDate);
+          paymentWhere.createdAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          invoiceWhere.createdAt.lte = new Date(endDate);
+          paymentWhere.createdAt.lte = new Date(endDate);
+        }
+      }
+
+      const totalInvoices = await prisma.invoice.count({ where: invoiceWhere });
+      const totalPayments = await prisma.paymentIntent.count({ where: paymentWhere });
+
       // Fetch Invoices
       const invoices = await prisma.invoice.findMany({
-        where: {
-          ownerType: 'clinic',
-          ownerClinicId: clinicProfile.id
-        },
+        where: invoiceWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
           items: true,
@@ -167,15 +220,14 @@ router.get(
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
       });
 
       // Fetch Payments (PaymentIntents)
       const payments = await prisma.paymentIntent.findMany({
-        where: {
-          ownerType: 'clinic',
-          ownerClinicId: clinicProfile.id
-        },
+        where: paymentWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
           appointment: {
@@ -186,7 +238,9 @@ router.get(
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
       });
 
       // Map Invoices to frontend schema
@@ -227,10 +281,29 @@ router.get(
         };
       });
 
-      return res.json({
+      const responsePayload = {
         invoices: mappedInvoices,
         payments: mappedPayments
-      });
+      };
+
+      if (page || limit) {
+        responsePayload.pagination = {
+          invoices: {
+            page: page || 1,
+            limit: limit || totalInvoices,
+            total: totalInvoices,
+            totalPages: limit ? Math.ceil(totalInvoices / limit) : 1
+          },
+          payments: {
+            page: page || 1,
+            limit: limit || totalPayments,
+            total: totalPayments,
+            totalPages: limit ? Math.ceil(totalPayments / limit) : 1
+          }
+        };
+      }
+
+      return res.json(responsePayload);
     } catch (error) {
       console.error('Error fetching clinic financials history:', error);
       return res.status(500).json({ error: 'Failed to fetch clinic financials history' });
@@ -460,12 +533,59 @@ router.get(
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
 
+      const page = req.query.page ? parseInt(req.query.page, 10) : null;
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+
+      const skip = page && limit ? (page - 1) * limit : undefined;
+      const take = limit ? limit : undefined;
+
+      const { status, startDate, endDate } = req.query;
+
+      const invoiceWhere = {
+        ownerType: 'dentist',
+        ownerDentistId: dentistId
+      };
+      const paymentWhere = {
+        ownerType: 'dentist',
+        ownerDentistId: dentistId
+      };
+
+      if (status) {
+        const statusLower = status.toLowerCase();
+        if (statusLower === 'paid') {
+          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled'] } };
+          paymentWhere.status = { in: ['paid', 'settled'] };
+        } else if (statusLower === 'pending') {
+          invoiceWhere.paymentIntent = { status: { in: ['pending', 'requires_action'] } };
+          paymentWhere.status = { in: ['pending', 'requires_action'] };
+        } else if (statusLower === 'refunded') {
+          invoiceWhere.paymentIntent = { status: { in: ['refunded', 'partial_refund'] } };
+          paymentWhere.status = { in: ['refunded', 'partial_refund'] };
+        } else {
+          invoiceWhere.paymentIntent = { status: statusLower };
+          paymentWhere.status = statusLower;
+        }
+      }
+
+      if (startDate || endDate) {
+        invoiceWhere.createdAt = {};
+        paymentWhere.createdAt = {};
+        if (startDate) {
+          invoiceWhere.createdAt.gte = new Date(startDate);
+          paymentWhere.createdAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          invoiceWhere.createdAt.lte = new Date(endDate);
+          paymentWhere.createdAt.lte = new Date(endDate);
+        }
+      }
+
+      const totalInvoices = await prisma.invoice.count({ where: invoiceWhere });
+      const totalPayments = await prisma.paymentIntent.count({ where: paymentWhere });
+
       // Fetch dentist independent Invoices
       const invoices = await prisma.invoice.findMany({
-        where: {
-          ownerType: 'dentist',
-          ownerDentistId: dentistId
-        },
+        where: invoiceWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
           items: true,
@@ -477,15 +597,14 @@ router.get(
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
       });
 
       // Fetch dentist independent Payments (PaymentIntents)
       const payments = await prisma.paymentIntent.findMany({
-        where: {
-          ownerType: 'dentist',
-          ownerDentistId: dentistId
-        },
+        where: paymentWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
           appointment: {
@@ -495,7 +614,9 @@ router.get(
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
       });
 
       // Map Invoices to frontend schema
@@ -536,10 +657,29 @@ router.get(
         };
       });
 
-      return res.json({
+      const responsePayload = {
         invoices: mappedInvoices,
         payments: mappedPayments
-      });
+      };
+
+      if (page || limit) {
+        responsePayload.pagination = {
+          invoices: {
+            page: page || 1,
+            limit: limit || totalInvoices,
+            total: totalInvoices,
+            totalPages: limit ? Math.ceil(totalInvoices / limit) : 1
+          },
+          payments: {
+            page: page || 1,
+            limit: limit || totalPayments,
+            total: totalPayments,
+            totalPages: limit ? Math.ceil(totalPayments / limit) : 1
+          }
+        };
+      }
+
+      return res.json(responsePayload);
     } catch (error) {
       console.error('Error fetching dentist financials history:', error);
       return res.status(500).json({ error: 'Failed to fetch dentist financials history' });
