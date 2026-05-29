@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType } from './ownership.js';
 
 const prisma = new PrismaClient();
 
@@ -32,12 +33,12 @@ export async function createPaymentSnapshot({ tx, paymentIntent, invoice, appoin
   }
 
   // 4. Calculate shares based on ownership model
-  const ownerType = paymentIntent.ownerType || 'dentist';
+  const ownerType = normalizeFinancialOwnerType(paymentIntent.ownerType) || FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST;
   let platformFee = Math.round(subtotal * 0.1); // 10% platform fee
   let clinicShare = 0;
   let dentistShare = 0;
 
-  if (ownerType === 'clinic') {
+  if (ownerType === FINANCIAL_OWNER_TYPES.CLINIC) {
     dentistShare = Math.round(subtotal * 0.3); // 30% dentist share
     clinicShare = subtotal - platformFee - dentistShare; // 60% clinic share (ensuring sum matches total)
   } else {

@@ -2,8 +2,9 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function recordLedgerEntry({ paymentIntentId, entryType, status, amount, metadata = {} }) {
-  return prisma.paymentLedger.create({
+export async function recordLedgerEntry({ paymentIntentId, entryType, status, amount, metadata = {} }, tx) {
+  const client = tx || prisma;
+  return client.paymentLedger.create({
     data: {
       paymentIntentId: BigInt(paymentIntentId),
       entryType,
@@ -14,9 +15,10 @@ export async function recordLedgerEntry({ paymentIntentId, entryType, status, am
   });
 }
 
-export async function recordLedgerEntryIfMissing({ paymentIntentId, entryType, status, amount, metadata = {} }) {
+export async function recordLedgerEntryIfMissing({ paymentIntentId, entryType, status, amount, metadata = {} }, tx) {
+  const client = tx || prisma;
   const intentId = BigInt(paymentIntentId);
-  const existing = await prisma.paymentLedger.findFirst({
+  const existing = await client.paymentLedger.findFirst({
     where: {
       paymentIntentId: intentId,
       entryType,
@@ -25,7 +27,7 @@ export async function recordLedgerEntryIfMissing({ paymentIntentId, entryType, s
     }
   });
   if (existing) return existing;
-  return recordLedgerEntry({ paymentIntentId: intentId, entryType, status, amount, metadata });
+  return recordLedgerEntry({ paymentIntentId: intentId, entryType, status, amount, metadata }, client);
 }
 
 export async function listLedgerEntries(paymentIntentId) {

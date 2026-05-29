@@ -3,13 +3,15 @@ import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import {
   createMidtransTransaction,
-  getMidtransClientConfig
+  getMidtransClientConfig,
+  cancelMidtransTransaction
 } from '../services/payments/midtrans.js';
 import {
   applyPaymentStatus,
-  VALID_PAYMENT_STATUSES
+  VALID_PAYMENT_STATUSES,
+  ACTIVE_PAYMENT_STATUSES
 } from '../services/payments/status.js';
-import { resolvePaymentOwner } from '../services/payments/ownership.js';
+import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType, resolvePaymentOwner } from '../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../services/payments/financials.js';
 import snapTransactionsRouter from './payments/snapTransactions.js';
 import paymentStatusRouter from './payments/status.js';
@@ -56,8 +58,8 @@ function serializePaymentIntent(intent) {
     callbackVerifiedAt: intent.callbackVerifiedAt ?? intent.callback_verified_at ?? null,
     metadata: intent.metadata || {},
     providerResponse: intent.providerResponse ?? intent.provider_response ?? {},
-    createdAt: intent.createdAt ?? intent.created_at,
-    updatedAt: intent.updatedAt ?? intent.updated_at,
+      createdAt: intent.createdAt ?? intent.created_at,
+      updatedAt: intent.updatedAt ?? intent.updated_at,
     appointment: intent.appointment
       ? {
           id: intent.appointment.id.toString(),
@@ -79,7 +81,11 @@ function serializePaymentIntent(intent) {
           phone: intent.patient.phone_number
         }
       : null
-  };
+    };
+}
+
+function isActivePaymentStatus(status) {
+  return ACTIVE_PAYMENT_STATUSES.has(status);
 }
 
 router.post(
@@ -145,90 +151,118 @@ router.post(
       }
 
       const existingIntent = await prisma.paymentIntent.findFirst({
-        where: { appointmentId },
-        select: { id: true, status: true }
-      }).catch(() => null);
-
-      if (existingIntent && !['paid', 'settled', 'failed', 'cancelled', 'expired', 'refunded', 'partial_refund'].includes(existingIntent.status)) {
-        return res.status(409).json({ error: 'Active payment intent already exists for this appointment' });
-      }
-
-      const owner = resolvePaymentOwner(appointment);
-      const paymentIntent = await prisma.paymentIntent.create({
-        data: {
-          appointmentId,
-          patientId,
-          ownerType: owner.ownerType,
-          ownerClinicId: owner.ownerClinicId,
-          ownerDentistId: owner.ownerDentistId,
-          amount: parsedAmount,
-          currency,
-          status: 'pending',
-          provider: 'midtrans',
-          idempotencyKey: requestIdempotencyKey,
-          metadata: {}
-        },
+        where: { activeAppointmentId: appointmentId },
         include: {
-          appointment: { select: { id: true, reason: true } },
+          appointment: true,
           patient: { select: { id: true, name: true, email: true, phone_number: true } }
         }
-      });
+      }).catch(() => null);
+
+      if (existingIntent && isActivePaymentStatus(existingIntent.status)) {
+        const midtransConfig = getMidtransClientConfig();
+        return res.status(200).json({
+          paymentIntent: serializePaymentIntent(existingIntent),
+          provider: midtransConfig
+            ? {
+                name: 'midtrans',
+                redirectUrl: existingIntent.redirectUrl ?? existingIntent.redirect_url ?? null,
+                clientKey: midtransConfig.clientKey
+              }
+            : null
+        });
+      }
 
       const midtransConfig = getMidtransClientConfig();
       if (!midtransConfig) {
         return res.status(500).json({ error: 'Midtrans client configuration missing on server' });
       }
 
+      const owner = resolvePaymentOwner(appointment);
+      const orderId = `appointment-${appointmentId.toString()}-${Date.now()}`;
+
       let providerResult;
       try {
         providerResult = await createMidtransTransaction({
-          paymentIntent,
+          paymentIntent: { id: appointmentId, amount: parsedAmount },
           appointment,
-          patient: appointment.patient
+          patient: appointment.patient,
+          orderId
         });
       } catch (error) {
-        console.error('Midtrans create transaction error:', error);
-        await prisma.paymentIntent.update({
-          where: { id: paymentIntent.id },
-          data: {
-            status: 'failed',
-            providerResponse: { error: error.message, details: error.details || null }
-          }
-        });
+        console.error('Midtrans create transaction error:', error?.message || error);
         return res.status(error.status || 502).json({ error: 'Failed to initiate payment with provider' });
       }
 
-      const updatedIntent = await prisma.paymentIntent.update({
-        where: { id: paymentIntent.id },
-        data: {
-          status: 'requires_action',
-          providerOrderId: providerResult.providerOrderId,
-          providerPaymentId: providerResult.providerPaymentId,
-          redirectUrl: providerResult.redirectUrl,
-          expiresAt: providerResult.expiresAt,
-          providerResponse: providerResult.rawResponse
-        },
-        include: {
-          appointment: true,
-          patient: { select: { id: true, name: true, email: true, phone_number: true } }
-        }
-      });
-
-      await prisma.$transaction(async (tx) => {
-        await ensureInvoiceForPaymentIntent({
-          tx,
-          paymentIntent: updatedIntent,
-          appointment,
-          patient: appointment.patient,
-          items: [
-            {
-              name: appointment.reason || 'Dental Appointment',
-              quantity: 1,
-              price: parsedAmount
+      let updatedIntent;
+      try {
+        updatedIntent = await prisma.$transaction(async (tx) => {
+          const createdIntent = await tx.paymentIntent.create({
+            data: {
+              appointmentId,
+              activeAppointmentId: appointmentId,
+              patientId,
+              ownerType: owner.ownerType,
+              ownerClinicId: owner.ownerClinicId,
+              ownerDentistId: owner.ownerDentistId,
+              amount: parsedAmount,
+              currency,
+              status: 'requires_action',
+              provider: 'midtrans',
+              idempotencyKey: requestIdempotencyKey,
+              providerOrderId: providerResult.providerOrderId,
+              providerPaymentId: providerResult.providerPaymentId,
+              redirectUrl: providerResult.redirectUrl,
+              expiresAt: providerResult.expiresAt,
+              providerResponse: providerResult.rawResponse,
+              metadata: {}
+            },
+            include: {
+              appointment: true,
+              patient: { select: { id: true, name: true, email: true, phone_number: true } }
             }
-          ]
+          });
+
+          await ensureInvoiceForPaymentIntent({
+            tx,
+            paymentIntent: createdIntent,
+            appointment,
+            patient: appointment.patient,
+            items: [
+              {
+                name: appointment.reason || 'Dental Appointment',
+                quantity: 1,
+                price: parsedAmount
+              }
+            ]
+          });
+
+          return createdIntent;
         });
-      });
+      } catch (error) {
+        if (error?.code === 'P2002') {
+          if (providerResult?.providerOrderId) {
+            await cancelMidtransTransaction(providerResult.providerOrderId).catch(() => null);
+          }
+          const activeIntent = await prisma.paymentIntent.findFirst({
+            where: { activeAppointmentId: appointmentId },
+            include: {
+              appointment: true,
+              patient: { select: { id: true, name: true, email: true, phone_number: true } }
+            }
+          });
+          if (activeIntent) {
+            return res.status(200).json({
+              paymentIntent: serializePaymentIntent(activeIntent),
+              provider: {
+                name: 'midtrans',
+                redirectUrl: activeIntent.redirectUrl ?? null,
+                clientKey: midtransConfig.clientKey
+              }
+            });
+          }
+        }
+        throw error;
+      }
 
       return res.status(201).json({
         paymentIntent: serializePaymentIntent(updatedIntent),
@@ -335,11 +369,12 @@ router.get(
       const isPatient = invoice.patientId === userId;
 
       // 2. Dentist check (only if dentist owns the invoice)
-      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+      const invoiceOwnerType = normalizeFinancialOwnerType(invoice.ownerType);
+      const isDentist = invoiceOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && invoice.ownerDentistId === userId;
 
       // 3. Clinic check (only if clinic owns the invoice and user belongs to clinic)
       let isClinicStaff = false;
-      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+      if (invoiceOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && invoice.ownerClinicId) {
         // Resolve clinic profile for current user
         let userClinicProfile = await prisma.clinicProfile.findFirst({
           where: { userId }
@@ -426,10 +461,30 @@ router.get(
       const userId = toBigInt(req.user.id, 'userId');
       const userRoles = req.user.roles || [];
       const isPatient = paymentIntent.patientId === userId;
-      const isDentist = paymentIntent.appointment?.dentistId === userId;
-      const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+      const paymentOwnerType = normalizeFinancialOwnerType(paymentIntent.ownerType);
+      const isDentistOwner = paymentOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && paymentIntent.ownerDentistId === userId;
+      const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
 
-      if (!isPatient && !isDentist && !isAdmin) {
+      let isClinicStaff = false;
+      if (paymentOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && paymentIntent.ownerClinicId) {
+        let userClinicProfile = await prisma.clinicProfile.findFirst({
+          where: { userId }
+        });
+        if (!userClinicProfile) {
+          const staffRecord = await prisma.clinicStaff.findFirst({
+            where: { userId },
+            select: { clinicProfileId: true }
+          });
+          if (staffRecord) {
+            userClinicProfile = { id: staffRecord.clinicProfileId };
+          }
+        }
+        if (userClinicProfile && userClinicProfile.id === paymentIntent.ownerClinicId) {
+          isClinicStaff = true;
+        }
+      }
+
+      if (!isPatient && !isDentistOwner && !isClinicStaff && !isAdmin) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -477,10 +532,11 @@ router.get(
       const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin') || userRoles.includes('finance_manager');
 
       const isPatient = invoice.patientId === userId;
-      const isDentist = invoice.ownerType === 'dentist' && invoice.ownerDentistId === userId;
+      const invoiceOwnerType = normalizeFinancialOwnerType(invoice.ownerType);
+      const isDentist = invoiceOwnerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && invoice.ownerDentistId === userId;
 
       let isClinicStaff = false;
-      if (invoice.ownerType === 'clinic' && invoice.ownerClinicId) {
+      if (invoiceOwnerType === FINANCIAL_OWNER_TYPES.CLINIC && invoice.ownerClinicId) {
         let userClinicProfile = await prisma.clinicProfile.findFirst({
           where: { userId }
         });

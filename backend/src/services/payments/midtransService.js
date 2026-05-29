@@ -1,18 +1,22 @@
 import midtransClient from 'midtrans-client';
 
+const MIDTRANS_MOCK_MODE = (process.env.MIDTRANS_MOCK_MODE || '').toLowerCase() === 'true';
+
 class MidtransService {
   constructor() {
-    this.snap = new midtransClient.Snap({
-      isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
-      serverKey: process.env.MIDTRANS_SERVER_KEY,
-      clientKey: process.env.MIDTRANS_CLIENT_KEY
-    });
+    if (!MIDTRANS_MOCK_MODE) {
+      this.snap = new midtransClient.Snap({
+        isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+        serverKey: process.env.MIDTRANS_SERVER_KEY || 'dummy',
+        clientKey: process.env.MIDTRANS_CLIENT_KEY || 'dummy'
+      });
 
-    this.coreApi = new midtransClient.CoreApi({
-      isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
-      serverKey: process.env.MIDTRANS_SERVER_KEY,
-      clientKey: process.env.MIDTRANS_CLIENT_KEY
-    });
+      this.coreApi = new midtransClient.CoreApi({
+        isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+        serverKey: process.env.MIDTRANS_SERVER_KEY || 'dummy',
+        clientKey: process.env.MIDTRANS_CLIENT_KEY || 'dummy'
+      });
+    }
   }
 
   /**
@@ -25,6 +29,13 @@ class MidtransService {
    * @returns {Promise<{snapToken: string, redirectUrl: string}>}
    */
   async createSnapTransaction({ orderId, grossAmount, customerDetails, itemDetails }) {
+    if (MIDTRANS_MOCK_MODE) {
+      return {
+        snapToken: `mock-snap-token-${orderId}`,
+        redirectUrl: `https://example.com/mock-redirect/${orderId}`,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      };
+    }
     try {
       const parameter = {
         transaction_details: {
@@ -61,6 +72,17 @@ class MidtransService {
    * @returns {Promise<Object>}
    */
   async getTransactionStatus(orderId) {
+    if (MIDTRANS_MOCK_MODE) {
+      return {
+        transaction_status: 'settlement',
+        fraud_status: 'accept',
+        transaction_id: `mock-txn-${orderId}`,
+        order_id: orderId,
+        gross_amount: '150000.00',
+        payment_type: 'qris',
+        transaction_time: new Date().toISOString()
+      };
+    }
     try {
       const statusResponse = await this.coreApi.transaction.status(orderId);
       return statusResponse;

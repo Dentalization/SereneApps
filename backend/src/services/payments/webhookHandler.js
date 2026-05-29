@@ -1,23 +1,42 @@
-import crypto from 'crypto';
+import { verifyMidtransSignature, validateMidtransWebhookPayload } from './midtrans.js';
 import { mapMidtransStatus } from './statusMapping.js';
-import { PAYMENT_STATUSES, canTransition } from './status.js';
+import { PAYMENT_STATUSES, canTransition, resolveActiveAppointmentId } from './status.js';
 import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
 import { createPaymentSnapshot } from './snapshotService.js';
+import { recordFinancialAuditLog } from '../audit/auditLogger.js';
 
 export async function handleMidtransCallback(body, tx) {
-  const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
-  
-  // Step 1 — Signature verification
-  const hashString = `${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`;
-  const signature = crypto.createHash('sha512').update(hashString).digest('hex');
-  
-  if (signature.toLowerCase() !== (body.signature_key || '').toLowerCase()) {
+  const {
+    orderId,
+    statusCode,
+    grossAmount,
+    grossAmountValue,
+    signatureKey,
+    transactionStatus,
+    transactionId
+  } = validateMidtransWebhookPayload(body);
+
+  const signatureValid = verifyMidtransSignature({
+    orderId,
+    statusCode,
+    grossAmount,
+    signatureKey
+  });
+  if (!signatureValid) {
+    await recordFinancialAuditLog({
+      actorId: null,
+      actorRole: 'system',
+      entityType: 'webhook_receipt',
+      entityId: orderId,
+      action: 'webhook_signature_invalid',
+      metadata: { orderId, transactionStatus, statusCode }
+    });
     throw { code: 'PAYMENT_SIGNATURE_INVALID', message: 'Signature mismatch', retryable: false };
   }
 
   // Step 2 — Status mapping
   const { internalStatus: mappedStatus, failureReason } = mapMidtransStatus({
-    transactionStatus: body.transaction_status,
+    transactionStatus,
     fraudStatus: body.fraud_status
   });
 
@@ -27,7 +46,7 @@ export async function handleMidtransCallback(body, tx) {
 
   // Step 3 — Update payment_intents
   const paymentIntent = await tx.paymentIntent.findUnique({
-    where: { providerOrderId: body.order_id },
+    where: { providerOrderId: orderId },
     include: {
       appointment: true,
       patient: { select: { id: true, name: true, email: true, phone_number: true } }
@@ -44,8 +63,24 @@ export async function handleMidtransCallback(body, tx) {
   }
 
   if (!canTransition(paymentIntent.status, mappedStatus)) {
-    console.warn(`[WebhookHandler] Ignored invalid status transition: "${paymentIntent.status}" -> "${mappedStatus}" for order ${body.order_id}`);
+    console.warn(`[WebhookHandler] Ignored invalid status transition: "${paymentIntent.status}" -> "${mappedStatus}" for order ${orderId}`);
     return { processed: true, mappedStatus, skipped: true, reason: 'Invalid status transition' };
+  }
+
+  if (paymentIntent.amount !== grossAmountValue) {
+    await recordFinancialAuditLog({
+      actorId: null,
+      actorRole: 'system',
+      entityType: 'payment_intent',
+      entityId: paymentIntent.id.toString(),
+      action: 'webhook_amount_mismatch',
+      metadata: {
+        orderId,
+        expectedAmount: paymentIntent.amount,
+        grossAmount: grossAmountValue
+      }
+    });
+    throw { code: 'PAYMENT_AMOUNT_MISMATCH', message: 'Gross amount mismatch', retryable: false };
   }
 
   const mergedProviderResponse = {
@@ -58,6 +93,8 @@ export async function handleMidtransCallback(body, tx) {
     where: { id: paymentIntent.id },
     data: {
       status: mappedStatus,
+      activeAppointmentId: resolveActiveAppointmentId(mappedStatus, paymentIntent.appointmentId),
+      providerPaymentId: paymentIntent.providerPaymentId || transactionId || null,
       callbackVerifiedAt: new Date(),
       providerResponse: mergedProviderResponse,
       metadata: failureReason
@@ -108,22 +145,39 @@ export async function handleMidtransCallback(body, tx) {
       patient: paymentIntent.patient
     });
 
-    // Create immutable financial snapshot on settlement
-    await createPaymentSnapshot({
-      tx,
-      paymentIntent: updatedIntent,
-      invoice,
-      appointment: paymentIntent.appointment
-    });
+    if (invoice?.id) {
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: mappedStatus === PAYMENT_STATUSES.SETTLED ? 'settled' : 'paid',
+          paidAt: invoice.paidAt || new Date()
+        }
+      }).catch(() => null);
+    }
+
+    if (mappedStatus === PAYMENT_STATUSES.SETTLED) {
+      // Create immutable financial snapshot on settlement
+      await createPaymentSnapshot({
+        tx,
+        paymentIntent: updatedIntent,
+        invoice,
+        appointment: paymentIntent.appointment
+      });
+    }
   }
 
   if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(mappedStatus)) {
+    const rawRefundAmount = Number(body.refund_amount ?? body.refundAmount ?? body.refund_amounts?.[0]?.amount);
+    const refundAmount = Number.isFinite(rawRefundAmount) && rawRefundAmount > 0
+      ? Math.round(rawRefundAmount)
+      : paymentIntent.amount;
+
     const existingLedger = await tx.paymentLedger.findFirst({
       where: {
         paymentIntentId: paymentIntent.id,
         entryType: 'refund',
         status: mappedStatus,
-        amount: paymentIntent.amount
+        amount: refundAmount
       }
     });
 
@@ -133,7 +187,7 @@ export async function handleMidtransCallback(body, tx) {
           paymentIntentId: paymentIntent.id,
           entryType: 'refund',
           status: mappedStatus,
-          amount: paymentIntent.amount,
+          amount: refundAmount,
           metadata: mergedProviderResponse
         }
       });
@@ -146,10 +200,38 @@ export async function handleMidtransCallback(body, tx) {
       entryType: 'refund',
       status: mappedStatus,
       direction: 'debit',
-      amount: paymentIntent.amount,
+      amount: refundAmount,
       source: paymentIntent.provider || 'midtrans',
       metadata: mergedProviderResponse
     });
+
+    const providerRefundReference = body.refund_key || body.refund_id || body.refund_reference || transactionId || null;
+    if (providerRefundReference) {
+      const existingRefund = await tx.refund.findFirst({
+        where: {
+          paymentIntentId: paymentIntent.id,
+          providerRefundReference: String(providerRefundReference)
+        }
+      });
+      if (!existingRefund) {
+        await tx.refund.create({
+          data: {
+            paymentIntentId: paymentIntent.id,
+            refundAmount,
+            refundReason: failureReason || 'Midtrans refund notification',
+            refundStatus: 'refunded',
+            providerRefundReference: String(providerRefundReference),
+            refundRequestedAt: new Date(),
+            refundedAt: new Date()
+          }
+        });
+      }
+    }
+
+    await tx.invoice.updateMany({
+      where: { paymentIntentId: paymentIntent.id },
+      data: { status: mappedStatus }
+    }).catch(() => null);
   }
 
   // Step 4 — Emit outbox event
@@ -163,13 +245,13 @@ export async function handleMidtransCallback(body, tx) {
         eventType,
         aggregateType: 'payment_intent',
         aggregateId: String(paymentIntent.id),
-        correlationId: body.order_id,
-        payload: {
-          appointmentId: String(paymentIntent.appointmentId), 
-          provider: 'midtrans',
-          providerOrderId: body.order_id,
-          grossAmount: Number(body.gross_amount)
-        },
+         correlationId: orderId,
+         payload: {
+           appointmentId: String(paymentIntent.appointmentId), 
+           provider: 'midtrans',
+           providerOrderId: orderId,
+           grossAmount: grossAmountValue
+         },
         status: 'pending',
         availableAt: new Date(),
         attempts: 0

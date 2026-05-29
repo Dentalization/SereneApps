@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
+import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
 import { appointmentConfig, millisecondsFromHours } from '../services/appointments/config.js';
 import { recordStatusChange } from '../services/appointments/audit.js';
 import { emitAppointmentEvent } from '../services/communications.js';
@@ -546,8 +547,10 @@ router.post(
         return sendError(res, 400, 'cannot_book_past', 'Janji temu tidak bisa dijadwalkan pada waktu yang sudah lewat.');
       }
 
-      const ownerType = dentistType !== 'independent' ? 'clinic' : 'dentist';
-      const ownerClinicId = ownerType === 'clinic' ? resolvedClinicProfileId : null;
+      const ownerType = dentistType !== 'independent'
+        ? FINANCIAL_OWNER_TYPES.CLINIC
+        : FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST;
+      const ownerClinicId = ownerType === FINANCIAL_OWNER_TYPES.CLINIC ? resolvedClinicProfileId : null;
 
       console.log('[APPOINTMENT POST] Validation passed:', {
         dentistId: dentistId.toString(),

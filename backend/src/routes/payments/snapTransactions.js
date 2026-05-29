@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import midtransService from '../../services/payments/midtransService.js';
 import { resolvePaymentOwner } from '../../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../../services/payments/financials.js';
+import { ACTIVE_PAYMENT_STATUSES } from '../../services/payments/status.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -36,6 +37,10 @@ export function buildSnapResponse(intent) {
     paymentIntentId: intent.id.toString(),
     expiresAt: intent.expiresAt ? new Date(intent.expiresAt).toISOString() : null
   };
+}
+
+function isActivePaymentStatus(status) {
+  return ACTIVE_PAYMENT_STATUSES.has(status);
 }
 
 async function getAppointmentForPayment(appointmentId, userId) {
@@ -83,7 +88,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const idempotencyStr = `${userId}:${appointmentId}`;
     const idempotencyKey = crypto.createHash('sha256').update(idempotencyStr).digest('hex');
 
-    // 6. Idempotency Check
+    // 6. Idempotency + active intent check
     const existingIntent = await prisma.paymentIntent.findUnique({
       where: { idempotencyKey }
     });
@@ -93,18 +98,36 @@ router.post('/', authenticateToken, async (req, res) => {
          return res.status(200).json(buildSnapResponse(existingIntent));
        }
        if (['pending', 'requires_action'].includes(existingIntent.status)) {
-         await prisma.paymentIntent.update({
-           where: { id: existingIntent.id },
-           data: {
-             status: 'expired',
-             idempotencyKey: `${idempotencyKey}:expired:${existingIntent.id.toString()}`,
-             metadata: {
-               ...(existingIntent.metadata && typeof existingIntent.metadata === 'object' && !Array.isArray(existingIntent.metadata) ? existingIntent.metadata : {}),
-               expiredByClientRetry: true
-             }
+          await prisma.paymentIntent.update({
+            where: { id: existingIntent.id },
+            data: {
+              status: 'expired',
+              activeAppointmentId: null,
+              idempotencyKey: `${idempotencyKey}:expired:${existingIntent.id.toString()}`,
+              metadata: {
+                ...(existingIntent.metadata && typeof existingIntent.metadata === 'object' && !Array.isArray(existingIntent.metadata) ? existingIntent.metadata : {}),
+                expiredByClientRetry: true
+              }
            }
          });
        }
+    }
+
+    const activeIntent = await prisma.paymentIntent.findFirst({
+      where: { activeAppointmentId: appointment.id }
+    });
+
+    if (activeIntent && isActivePaymentStatus(activeIntent.status)) {
+      if (canReuseSnapIntent(activeIntent)) {
+        return res.status(200).json(buildSnapResponse(activeIntent));
+      }
+      return res.status(409).json({
+        error: {
+          code: 'ACTIVE_PAYMENT_EXISTS',
+          message: 'Active payment intent already exists for this appointment',
+          retryable: false
+        }
+      });
     }
 
     // 7. Midtrans Snap Payload Execution
@@ -139,10 +162,13 @@ router.post('/', authenticateToken, async (req, res) => {
     // 8. Insert tracking intent natively
     const owner = resolvePaymentOwner(appointment);
 
-    const paymentIntent = await prisma.$transaction(async (tx) => {
-      const intent = await tx.paymentIntent.create({
+    let paymentIntent;
+    try {
+      paymentIntent = await prisma.$transaction(async (tx) => {
+        const intent = await tx.paymentIntent.create({
         data: {
           appointmentId: appointment.id,
+          activeAppointmentId: appointment.id,
           patientId: appointment.patientId,
           ownerType: owner.ownerType,
           ownerClinicId: owner.ownerClinicId,
@@ -159,16 +185,34 @@ router.post('/', authenticateToken, async (req, res) => {
         }
       });
 
-      await ensureInvoiceForPaymentIntent({
-        tx,
-        paymentIntent: intent,
-        appointment,
-        patient: appointment.patient,
-        items: itemDetails
-      });
+        await ensureInvoiceForPaymentIntent({
+          tx,
+          paymentIntent: intent,
+          appointment,
+          patient: appointment.patient,
+          items: itemDetails
+        });
 
-      return intent;
-    });
+        return intent;
+      });
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        const existingActive = await prisma.paymentIntent.findFirst({
+          where: { activeAppointmentId: appointment.id }
+        });
+        if (existingActive && canReuseSnapIntent(existingActive)) {
+          return res.status(200).json(buildSnapResponse(existingActive));
+        }
+        return res.status(409).json({
+          error: {
+            code: 'ACTIVE_PAYMENT_EXISTS',
+            message: 'Active payment intent already exists for this appointment',
+            retryable: false
+          }
+        });
+      }
+      throw error;
+    }
 
     // 9. Return execution block correctly
     return res.status(200).json(buildSnapResponse(paymentIntent));

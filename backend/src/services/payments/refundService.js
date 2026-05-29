@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { refundMidtransTransaction } from './midtrans.js';
 import { recordFinancialAuditLog } from '../audit/auditLogger.js';
+import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType } from './ownership.js';
 
 const prisma = new PrismaClient();
 
@@ -36,7 +37,8 @@ export async function processRefund({
   let isAuthorized = actorRoles.includes('admin') || actorRoles.includes('super_admin');
 
   if (!isAuthorized) {
-    if (paymentIntent.ownerType === 'clinic' && paymentIntent.ownerClinicId) {
+    const ownerType = normalizeFinancialOwnerType(paymentIntent.ownerType);
+    if (ownerType === FINANCIAL_OWNER_TYPES.CLINIC && paymentIntent.ownerClinicId) {
       // Check if user is staff/owner of this clinic
       const staffRecord = await prisma.clinicStaff.findFirst({
         where: {
@@ -54,7 +56,7 @@ export async function processRefund({
       if (staffRecord || clinicOwner) {
         isAuthorized = true;
       }
-    } else if (paymentIntent.ownerType === 'dentist' && paymentIntent.ownerDentistId) {
+    } else if (ownerType === FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST && paymentIntent.ownerDentistId) {
       // Check if independent dentist owns this payment intent
       if (paymentIntent.ownerDentistId === userId) {
         isAuthorized = true;
@@ -135,7 +137,7 @@ export async function processRefund({
 
     await tx.paymentIntent.update({
       where: { id: intentIdBigInt },
-      data: { status: newStatus }
+      data: { status: newStatus, activeAppointmentId: null }
     });
 
     // Update invoice status if fully refunded

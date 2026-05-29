@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType } from './ownership.js';
 
 /**
  * Draw a clean, print-friendly PDF invoice to the output stream.
@@ -32,7 +33,7 @@ export function generateInvoicePDF(invoice, stream) {
 
   doc.fillColor(primaryColor).fontSize(11).font('Helvetica-Bold').text('PROVIDER INFO', 320, y);
   doc.fillColor(textColor).fontSize(10).font('Helvetica');
-  if (invoice.ownerType === 'clinic' && invoice.ownerClinic) {
+  if (normalizeFinancialOwnerType(invoice.ownerType) === FINANCIAL_OWNER_TYPES.CLINIC && invoice.ownerClinic) {
     doc.text(`Clinic: ${invoice.ownerClinic.legalName}`, 320, y + 20);
     doc.text(`Email: ${invoice.ownerClinic.email || 'N/A'}`, 320, y + 35);
     doc.text(`Phone: ${invoice.ownerClinic.phone || 'N/A'}`, 320, y + 50);
