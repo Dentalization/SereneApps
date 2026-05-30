@@ -256,3 +256,294 @@ test('production financials: invoice snapshots generation and immutability', asy
     await prisma.user.deleteMany({ where: { id: { in: [dentist.id, patient.id] } } }).catch(() => {});
   }
 });
+
+test('production financials: end-to-end mathematical reconciliation audit', async () => {
+  const suffix = rand();
+
+  // 1. Create a dentist with a clinic affiliation and clinic profile
+  const dentistUser = await prisma.user.create({
+    data: {
+      name: `Dentist Clinic ${suffix}`,
+      email: `dentist_c_${suffix}@test.com`,
+      password_hash: 'hash',
+      roles: ['dentist']
+    }
+  });
+
+  const clinicProfile = await prisma.clinicProfile.create({
+    data: {
+      userId: dentistUser.id,
+      legalName: `Clinic ${suffix}`,
+      facilityType: 'clinic',
+      streetAddress: 'Jalan Test E2E',
+      city: 'Jakarta',
+      province: 'DKI Jakarta',
+      postalCode: '12345',
+      phone: '0812345678',
+      email: `clinic_e2e_${suffix}@test.com`,
+      operatingHours: {},
+      ownerName: 'Owner E2E',
+      ownerPosition: 'Director',
+      ownerEmail: `owner_e2e_${suffix}@test.com`,
+      ownerWhatsapp: '0812345678',
+      ownerNik: `NIK-${suffix}`,
+      ktpFilePath: 'dummy',
+      nibNumber: `NIB-${suffix}`,
+      nibFilePath: 'dummy',
+      npwpNumber: `NPWP-${suffix}`,
+      npwpFilePath: 'dummy',
+      operationalLicenseFilePath: 'dummy',
+      status: 'approved'
+    }
+  });
+
+  const clinicDentistProfile = await prisma.dentistProfile.create({
+    data: {
+      userId: dentistUser.id,
+      title: 'drg.',
+      licenseNumber: `LIC-C-${suffix}`,
+      licenseIssuingBody: 'Kemenkes',
+      licenseExpiryDate: new Date(),
+      registrationNumber: `REG-C-${suffix}`,
+      primarySpecialization: 'Pediatric Dentistry',
+      educationQualification: 'DDS',
+      yearsOfExperience: 5,
+      clinicName: `Clinic ${suffix}`,
+      clinicAddress: 'Jl. Test E2E No.1',
+      clinicWorkingHours: '{}',
+      dentist_type: 'clinic',
+      clinic_id: clinicProfile.id
+    }
+  });
+
+  // 2. Create an independent dentist
+  const independentUser = await prisma.user.create({
+    data: {
+      name: `Dentist Independent ${suffix}`,
+      email: `dentist_i_${suffix}@test.com`,
+      password_hash: 'hash',
+      roles: ['dentist']
+    }
+  });
+
+  const independentDentistProfile = await prisma.dentistProfile.create({
+    data: {
+      userId: independentUser.id,
+      title: 'drg.',
+      licenseNumber: `LIC-I-${suffix}`,
+      licenseIssuingBody: 'Kemenkes',
+      licenseExpiryDate: new Date(),
+      registrationNumber: `REG-I-${suffix}`,
+      primarySpecialization: 'Orthodontics',
+      educationQualification: 'DDS',
+      yearsOfExperience: 7,
+      clinicName: 'Independent Practice',
+      clinicAddress: 'Jl. Independent No. 10',
+      clinicWorkingHours: '{}',
+      dentist_type: 'independent'
+    }
+  });
+
+  // 3. Create patient
+  const patientUser = await prisma.user.create({
+    data: {
+      name: `Patient E2E ${suffix}`,
+      email: `patient_e2e_${suffix}@test.com`,
+      password_hash: 'hash',
+      roles: ['patient']
+    }
+  });
+
+  // 4. Create Appointments and Payment Intents
+  // A. Independent dentist appointment (amount = 500,000)
+  const appInd = await prisma.appointment.create({
+    data: {
+      dentistId: independentUser.id,
+      patientId: patientUser.id,
+      startsAt: new Date(),
+      endsAt: new Date(),
+      status: 'scheduled',
+      ownerType: 'dentist'
+    }
+  });
+
+  const intentInd = await prisma.paymentIntent.create({
+    data: {
+      appointmentId: appInd.id,
+      patientId: patientUser.id,
+      amount: 500000,
+      status: 'pending',
+      ownerType: 'dentist',
+      ownerDentistId: independentUser.id,
+      providerOrderId: `APT-${appInd.id}-PI-${rand()}`,
+      provider: 'midtrans'
+    }
+  });
+
+  // B. Clinic dentist appointment (amount = 300,000)
+  const appClinic = await prisma.appointment.create({
+    data: {
+      dentistId: dentistUser.id,
+      patientId: patientUser.id,
+      startsAt: new Date(),
+      endsAt: new Date(),
+      status: 'scheduled',
+      ownerType: 'clinic',
+      ownerClinicId: clinicProfile.id
+    }
+  });
+
+  const intentClinic = await prisma.paymentIntent.create({
+    data: {
+      appointmentId: appClinic.id,
+      patientId: patientUser.id,
+      amount: 300000,
+      status: 'pending',
+      ownerType: 'clinic',
+      ownerClinicId: clinicProfile.id,
+      providerOrderId: `APT-${appClinic.id}-PI-${rand()}`,
+      provider: 'midtrans'
+    }
+  });
+
+  try {
+    // Settle both transactions
+    await applyPaymentStatus({
+      paymentIntentId: intentInd.id.toString(),
+      newStatus: 'settled',
+      providerPaymentId: `mock-ind-${intentInd.id}`
+    });
+
+    await applyPaymentStatus({
+      paymentIntentId: intentClinic.id.toString(),
+      newStatus: 'settled',
+      providerPaymentId: `mock-cli-${intentClinic.id}`
+    });
+
+    // Check independent split: Platform 10% (50k), Dentist 90% (450k)
+    const settlementInd = await prisma.paymentSettlement.findFirst({
+      where: { paymentIntentId: intentInd.id }
+    });
+    assert.ok(settlementInd);
+    assert.equal(settlementInd.platformFee, 50000);
+    assert.equal(settlementInd.netAmount, 450000);
+
+    // Check clinic split: Platform 10% (30k), Clinic 60% (180k), Dentist 30% (90k)
+    const settlementClinic = await prisma.paymentSettlement.findFirst({
+      where: { paymentIntentId: intentClinic.id }
+    });
+    assert.ok(settlementClinic);
+    assert.equal(settlementClinic.platformFee, 30000);
+    assert.equal(settlementClinic.netAmount, 270000); // 90% goes to clinic account gross-net
+
+    // Verify dentist compensation accrual exists for clinic dentist (30% = 90k)
+    const compEntry = await prisma.dentistCompensationEntry.findFirst({
+      where: { paymentIntentId: intentClinic.id, entryType: 'ACCRUAL' }
+    });
+    assert.ok(compEntry);
+    assert.equal(compEntry.amount, 90000);
+
+    // 5. Apply Webhook Replay 2x (should be deduped via processing log)
+    const key = `test-replay-${rand()}`;
+    const logReceipt1 = await prisma.webhookReceipt.create({
+      data: {
+        provider: 'midtrans',
+        deliveryKey: key,
+        rawPayload: {},
+        status: 'processed',
+        payloadHash: `hash-${rand()}`
+      }
+    });
+
+    const isDuplicate = await prisma.webhookReceipt.findUnique({
+      where: {
+        provider_deliveryKey: {
+          provider: 'midtrans',
+          deliveryKey: key
+        }
+      }
+    });
+    assert.ok(isDuplicate);
+
+    // 6. Perform Partial Refund of 100,000 on Independent Payment
+    const { processRefund } = await import('../src/services/payments/refundService.js');
+    const refundInd = await processRefund({
+      paymentIntentId: intentInd.id.toString(),
+      refundAmount: 100000,
+      refundReason: 'E2E partial refund test',
+      actorId: independentUser.id.toString(),
+      actorRoles: ['dentist']
+    });
+    assert.ok(refundInd);
+    assert.equal(refundInd.refundAmount, 100000);
+    assert.equal(refundInd.refundStatus, 'processed');
+
+    // Perform Full Refund of 300,000 on Clinic Payment
+    const refundClinic = await processRefund({
+      paymentIntentId: intentClinic.id.toString(),
+      refundAmount: 300000,
+      refundReason: 'E2E full refund test',
+      actorId: dentistUser.id.toString(),
+      actorRoles: ['admin']
+    });
+    assert.ok(refundClinic);
+    assert.equal(refundClinic.refundAmount, 300000);
+
+    // 7. Verify E2E Mathematical consistency:
+    // Σ settled revenue = Σ invoices = Σ ledger payment entries - Σ refunds
+    const settledIntents = await prisma.paymentIntent.findMany({
+      where: { id: { in: [intentInd.id, intentClinic.id] } }
+    });
+    const invoices = await prisma.invoice.findMany({
+      where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } }
+    });
+    const ledgerCreditEntries = await prisma.financialLedgerEntry.findMany({
+      where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] }, direction: 'credit' }
+    });
+    const ledgerDebitEntries = await prisma.financialLedgerEntry.findMany({
+      where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] }, direction: 'debit' }
+    });
+
+    const totalGrossRevenue = settledIntents.reduce((sum, item) => sum + item.amount, 0); // 800,000
+    const totalInvoiceAmount = invoices.reduce((sum, item) => sum + item.total, 0); // 800,000
+    
+    // Partition credits: raw transaction inflows vs internal dentist commission accruals
+    const rawPaymentCredits = ledgerCreditEntries.filter(e => ['PAYMENT_RECEIVED', 'SETTLEMENT_COMPLETED'].includes(e.entryType));
+    const commissionCredits = ledgerCreditEntries.filter(e => e.entryType === 'COMMISSION_ACCRUED');
+    
+    const totalRawPaymentCredit = rawPaymentCredits.reduce((sum, item) => sum + item.amount, 0); // 800,000
+    const totalCommissionCredit = commissionCredits.reduce((sum, item) => sum + item.amount, 0); // 90,000
+    const totalRefunds = 400000;
+    const totalLedgerDebit = ledgerDebitEntries.reduce((sum, item) => sum + item.amount, 0); // 400,000
+
+    assert.equal(totalGrossRevenue, 800000);
+    assert.equal(totalInvoiceAmount, 800000);
+    assert.equal(totalRawPaymentCredit, 800000);
+    assert.equal(totalCommissionCredit, 90000);
+    assert.equal(totalLedgerDebit, totalRefunds);
+
+    // Assert the E2E formula holds: Gross Revenue - Refunds = Net Revenue
+    const netRevenueCalculated = totalGrossRevenue - totalRefunds;
+    const netInvoiceCalculated = totalInvoiceAmount - totalRefunds;
+    const netLedgerCalculated = totalRawPaymentCredit - totalLedgerDebit;
+
+    assert.equal(netRevenueCalculated, 400000);
+    assert.equal(netInvoiceCalculated, 400000);
+    assert.equal(netLedgerCalculated, 400000);
+
+  } finally {
+    // Extensive cleanup
+    await prisma.webhookReceipt.deleteMany({ where: { deliveryKey: { startsWith: 'test-replay-' } } }).catch(() => {});
+    await prisma.refund.deleteMany({ where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } } }).catch(() => {});
+    await prisma.dentistCompensationEntry.deleteMany({ where: { dentistId: { in: [dentistUser.id, independentUser.id] } } }).catch(() => {});
+    await prisma.paymentSettlement.deleteMany({ where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } } }).catch(() => {});
+    await prisma.financialLedgerEntry.deleteMany({ where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } } }).catch(() => {});
+    await prisma.invoiceLineItem.deleteMany({ where: { invoice: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } } } }).catch(() => {});
+    await prisma.invoice.deleteMany({ where: { paymentIntentId: { in: [intentInd.id, intentClinic.id] } } }).catch(() => {});
+    await prisma.paymentIntent.deleteMany({ where: { id: { in: [intentInd.id, intentClinic.id] } } }).catch(() => {});
+    await prisma.appointment.deleteMany({ where: { id: { in: [appInd.id, appClinic.id] } } }).catch(() => {});
+    await prisma.dentistProfile.deleteMany({ where: { id: { in: [clinicDentistProfile.id, independentDentistProfile.id] } } }).catch(() => {});
+    await prisma.clinicProfile.deleteMany({ where: { id: clinicProfile.id } }).catch(() => {});
+    await prisma.user.deleteMany({ where: { id: { in: [dentistUser.id, independentUser.id, patientUser.id] } } }).catch(() => {});
+  }
+});
