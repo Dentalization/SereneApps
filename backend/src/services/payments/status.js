@@ -171,7 +171,8 @@ export async function applyPaymentStatus({
   newStatus,
   providerPaymentId,
   providerResponse,
-  failureReason
+  failureReason,
+  tx: externalTx
 }) {
   if (!VALID_PAYMENT_STATUSES.includes(newStatus)) {
     const error = new Error(`Invalid status: ${newStatus}`);
@@ -179,7 +180,7 @@ export async function applyPaymentStatus({
     throw error;
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const runUpdates = async (tx) => {
     const intent = await tx.paymentIntent.findUnique({
       where: { id: BigInt(paymentIntentId) },
       include: {
@@ -215,6 +216,24 @@ export async function applyPaymentStatus({
     };
     if (failureReason) {
       mergedProviderResponse.failureReason = failureReason;
+    }
+
+    // Check accounting period lock
+    // For webhook-driven updates, if the period is locked, we want to allow updating the intent status, 
+    // but we ensure all new financial transactions are dated today (active period).
+    const periodKey = intent.createdAt.toISOString().slice(0, 7);
+    const lockedPeriod = await tx.accountingPeriod.findUnique({
+      where: { periodKey }
+    });
+    const isLocked = !!lockedPeriod?.isLocked;
+
+    // If it's a manual transition (no externalTx) and locked, reject
+    if (isLocked && !externalTx) {
+      throw {
+        status: 400,
+        code: 'PERIOD_LOCKED',
+        message: `Operation rejected: The accounting period for ${periodKey} is locked.`
+      };
     }
 
     const updatedIntent = await tx.paymentIntent.update({
@@ -275,6 +294,16 @@ export async function applyPaymentStatus({
         patient: updatedIntent.patient
       });
 
+      if (invoice?.id) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            status: newStatus === PAYMENT_STATUSES.SETTLED ? 'settled' : 'paid',
+            paidAt: invoice.paidAt || new Date()
+          }
+        }).catch(() => null);
+      }
+
       if (newStatus === PAYMENT_STATUSES.SETTLED) {
         const snapshot = await createPaymentSnapshot({
           tx,
@@ -326,6 +355,143 @@ export async function applyPaymentStatus({
         where: { paymentIntentId: updatedIntent.id },
         data: { status: newStatus }
       }).catch(() => null);
+
+      // Create refund record in the DB if it does not exist
+      const providerRefundReference = mergedProviderResponse.refund_key || mergedProviderResponse.refund_id || mergedProviderResponse.refund_reference || providerPaymentId || `webhook-ref-${Date.now()}`;
+      const existingRefund = await tx.refund.findFirst({
+        where: {
+          paymentIntentId: updatedIntent.id,
+          providerRefundReference: String(providerRefundReference)
+        }
+      });
+      if (!existingRefund) {
+        await tx.refund.create({
+          data: {
+            paymentIntentId: updatedIntent.id,
+            refundAmount,
+            refundReason: failureReason || mergedProviderResponse.failureReason || 'Webhook/status refund transition',
+            refundStatus: 'refunded',
+            providerRefundReference: String(providerRefundReference),
+            refundRequestedAt: new Date(),
+            refundedAt: new Date()
+          }
+        });
+      }
+
+      // Update available balance record to decrement availableAmount
+      const whereBalance = updatedIntent.ownerType === 'clinic'
+        ? { ownerClinicId: updatedIntent.ownerClinicId }
+        : { ownerDentistId: updatedIntent.ownerDentistId };
+
+      // Concurrency protection: Lock balance row
+      let balance = await tx.availableBalance.findFirst({ where: whereBalance });
+      if (!balance) {
+        balance = await tx.availableBalance.create({
+          data: {
+            ownerType: updatedIntent.ownerType,
+            ownerClinicId: updatedIntent.ownerClinicId,
+            ownerDentistId: updatedIntent.ownerDentistId,
+            availableAmount: 0,
+            pendingAmount: 0,
+            currency: updatedIntent.currency || 'IDR'
+          }
+        });
+      }
+      await tx.$executeRaw`SELECT id FROM available_balances WHERE id = ${balance.id} FOR UPDATE`;
+
+      const isNegative = balance.availableAmount - refundAmount < 0;
+      await tx.availableBalance.update({
+        where: { id: balance.id },
+        data: {
+          availableAmount: { decrement: refundAmount }
+        }
+      });
+
+      // Write a DEBT ledger entry if the balance went negative
+      if (isNegative) {
+        const debtAmount = Math.abs(balance.availableAmount - refundAmount);
+        await tx.financialLedgerEntry.create({
+          data: {
+            paymentIntentId: updatedIntent.id,
+            appointmentId: updatedIntent.appointmentId,
+            ownerType: updatedIntent.ownerType,
+            ownerClinicId: updatedIntent.ownerClinicId,
+            ownerDentistId: updatedIntent.ownerDentistId,
+            entryType: 'DEBT',
+            status: 'completed',
+            direction: 'debit',
+            amount: debtAmount,
+            source: 'system',
+            metadata: { note: 'Available balance went negative after status transition refund' }
+          }
+        });
+      }
+
+      // If clinic dentist appointment, reverse compensation (30% of refundAmount)
+      if (updatedIntent.ownerType === 'clinic' && updatedIntent.appointmentId) {
+        const appRecord = await tx.appointment.findUnique({
+          where: { id: updatedIntent.appointmentId }
+        });
+        if (appRecord?.dentistId) {
+          const profile = await tx.dentistProfile.findFirst({
+            where: { userId: appRecord.dentistId }
+          });
+          if (profile?.dentist_type === 'clinic') {
+            const reversedCompensation = Math.round(refundAmount * 0.3);
+            
+            await tx.dentistCompensationEntry.create({
+              data: {
+                appointmentId: updatedIntent.appointmentId,
+                paymentIntentId: updatedIntent.id,
+                dentistId: appRecord.dentistId,
+                clinicId: updatedIntent.ownerClinicId,
+                entryType: 'REVERSAL',
+                amount: reversedCompensation,
+                status: 'paid',
+                metadata: { source: 'status_transition_refund' }
+              }
+            });
+
+            await tx.financialLedgerEntry.create({
+              data: {
+                paymentIntentId: updatedIntent.id,
+                appointmentId: updatedIntent.appointmentId,
+                ownerType: 'dentist',
+                ownerDentistId: appRecord.dentistId,
+                entryType: 'REVERSAL',
+                status: 'completed',
+                direction: 'debit',
+                amount: reversedCompensation,
+                source: 'system',
+                metadata: { source: 'status_transition_refund' }
+              }
+            });
+
+            // Decrement the dentist's available balance
+            const dentistBalance = await tx.availableBalance.findFirst({
+              where: { ownerDentistId: appRecord.dentistId }
+            });
+            if (dentistBalance) {
+              await tx.availableBalance.update({
+                where: { id: dentistBalance.id },
+                data: {
+                  availableAmount: { decrement: reversedCompensation }
+                }
+              });
+            } else {
+              await tx.availableBalance.create({
+                data: {
+                  ownerType: 'dentist',
+                  ownerDentistId: appRecord.dentistId,
+                  availableAmount: -reversedCompensation,
+                  pendingAmount: 0,
+                  currency: updatedIntent.currency || 'IDR'
+                }
+              });
+            }
+          }
+        }
+      }
     }
 
     return {
@@ -334,6 +500,14 @@ export async function applyPaymentStatus({
       appointment,
       noOp: false
     };
+  };
+
+  if (externalTx) {
+    return runUpdates(externalTx);
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    return runUpdates(tx);
   });
 
   if (result.noOp) {
@@ -368,3 +542,4 @@ export async function applyPaymentStatus({
 export const __testables = {
   resolveRefundAmount
 };
+

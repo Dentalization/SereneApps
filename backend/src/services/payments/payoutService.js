@@ -90,6 +90,29 @@ export async function createPayoutBatch({ recipientType, items }) {
 
     // 2. Validate availability for every item
     for (const item of items) {
+      const whereLock = item.recipientType === 'clinic'
+        ? { ownerClinicId: BigInt(item.recipientClinicId) }
+        : { ownerDentistId: BigInt(item.recipientDentistId) };
+
+      let balanceRecord = await tx.availableBalance.findFirst({
+        where: whereLock
+      });
+      if (!balanceRecord) {
+        balanceRecord = await tx.availableBalance.create({
+          data: {
+            ownerType: item.recipientType,
+            ownerClinicId: item.recipientClinicId ? BigInt(item.recipientClinicId) : null,
+            ownerDentistId: item.recipientDentistId ? BigInt(item.recipientDentistId) : null,
+            availableAmount: 0,
+            pendingAmount: 0,
+            currency: 'IDR'
+          }
+        });
+      }
+
+      // Concurrency protection: Acquire raw SELECT FOR UPDATE lock
+      await tx.$executeRaw`SELECT id FROM available_balances WHERE id = ${balanceRecord.id} FOR UPDATE`;
+
       const balance = await getAvailableBalance({
         client: tx,
         ownerType: item.recipientType,
