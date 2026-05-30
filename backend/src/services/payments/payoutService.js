@@ -7,77 +7,13 @@ const prisma = new PrismaClient();
  */
 export async function getAvailableBalance({ client, ownerType, ownerClinicId, ownerDentistId }) {
   const db = client || prisma;
+  
+  const where = ownerType === 'clinic'
+    ? { ownerClinicId: BigInt(ownerClinicId) }
+    : { ownerDentistId: BigInt(ownerDentistId) };
 
-  if (ownerType === 'clinic') {
-    // Clinic: Sum settlements (netAmount) - payouts
-    const settlements = await db.paymentSettlement.findMany({
-      where: { ownerClinicId: BigInt(ownerClinicId), settlementStatus: 'settled' }
-    });
-    const totalEarned = settlements.reduce((sum, s) => sum + s.netAmount, 0);
-
-    // Sum payouts (payout items processed successfully)
-    const payouts = await db.payoutItem.findMany({
-      where: { recipientClinicId: BigInt(ownerClinicId), status: 'SUCCESS' }
-    });
-    const totalPaid = payouts.reduce((sum, p) => sum + p.amount, 0);
-
-    // Sum refund debits
-    const refunds = await db.refund.findMany({
-      where: {
-        paymentIntent: { ownerClinicId: BigInt(ownerClinicId) },
-        refundStatus: { in: ['processed', 'refunded'] }
-      }
-    });
-    const totalRefunded = refunds.reduce((sum, r) => sum + r.refundAmount, 0);
-
-    return totalEarned - totalPaid - totalRefunded;
-  } else {
-    // Dentist (Independent or Clinic Dentist Compensation)
-    const dentistId = BigInt(ownerDentistId);
-    
-    // Check if dentist is clinic-affiliated or independent
-    const profile = await db.dentistProfile.findFirst({ where: { userId: dentistId } });
-    const isClinicDentist = profile?.dentist_type === 'clinic';
-
-    if (isClinicDentist) {
-      // Clinic Dentist: balance = accruals - previousPayouts - refundAdjustments
-      const entries = await db.dentistCompensationEntry.findMany({
-        where: { dentistId }
-      });
-      const accruals = entries
-        .filter(e => ['ACCRUAL', 'COMMISSION', 'ADJUSTMENT'].includes(e.entryType))
-        .reduce((sum, e) => sum + e.amount, 0);
-      const previousPayouts = entries
-        .filter(e => e.entryType === 'PAYOUT')
-        .reduce((sum, e) => sum + e.amount, 0);
-      const refundAdjustments = entries
-        .filter(e => e.entryType === 'REVERSAL')
-        .reduce((sum, e) => sum + e.amount, 0);
-
-      return accruals - previousPayouts - refundAdjustments;
-    } else {
-      // Independent Dentist: sum settlements (netAmount) - payouts - refunds
-      const settlements = await db.paymentSettlement.findMany({
-        where: { ownerDentistId: dentistId, settlementStatus: 'settled' }
-      });
-      const totalEarned = settlements.reduce((sum, s) => sum + s.netAmount, 0);
-
-      const payouts = await db.payoutItem.findMany({
-        where: { recipientDentistId: dentistId, status: 'SUCCESS' }
-      });
-      const totalPaid = payouts.reduce((sum, p) => sum + p.amount, 0);
-
-      const refunds = await db.refund.findMany({
-        where: {
-          paymentIntent: { ownerDentistId: dentistId },
-          refundStatus: { in: ['processed', 'refunded'] }
-        }
-      });
-      const totalRefunded = refunds.reduce((sum, r) => sum + r.refundAmount, 0);
-
-      return totalEarned - totalPaid - totalRefunded;
-    }
-  }
+  const balance = await db.availableBalance.findFirst({ where });
+  return balance ? balance.availableAmount : 0;
 }
 
 /**

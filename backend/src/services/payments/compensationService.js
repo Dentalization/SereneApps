@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { recordSettlementInBalance } from './balanceService.js';
 
 const prisma = new PrismaClient();
 
@@ -61,6 +62,33 @@ export async function accrueCompensation({ tx, paymentIntent, snapshot, appointm
         appointmentId: appointment.id.toString()
       }
     }
+  });
+
+  // Create a dentist-owned settlement for the dentist compensation amount so it matures after hold period
+  await client.paymentSettlement.create({
+    data: {
+      paymentIntentId: paymentIntent.id,
+      ownerType: 'dentist',
+      ownerDentistId: dentistId,
+      grossAmount: amount,
+      platformFee: 0,
+      clinicShare: 0,
+      dentistShare: amount,
+      netAmount: amount,
+      currency: paymentIntent.currency || 'IDR',
+      settlementStatus: 'settled',
+      payoutStatus: 'unpaid',
+      providerReference: paymentIntent.providerPaymentId || null,
+      settledAt: new Date()
+    }
+  });
+
+  // Record into dentist's Pending Balance
+  await recordSettlementInBalance({
+    tx: client,
+    ownerType: 'dentist',
+    ownerDentistId: dentistId,
+    netAmount: amount
   });
 
   return entry;
