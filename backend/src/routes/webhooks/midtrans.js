@@ -54,10 +54,34 @@ router.post('/', express.json(), async (req, res) => {
     // Include the transaction_status in deliveryKey to support lifecycle status changes safely
     const deliveryKey = `${orderId}_${transactionId || 'unknown'}_${transactionStatus}`;
 
-    // 2. Ingest payload by inserting WebhookReceipt in 'pending' status
     const payloadHash = hashWebhookPayload(body);
-    
-    const existing = await prisma.webhookReceipt.findUnique({
+    const eventId = transactionId || `${orderId}_${transactionStatus}`;
+
+    // Deduplicate via WebhookProcessingLog
+    const existingLog = await prisma.webhookProcessingLog.findFirst({
+      where: {
+        OR: [
+          { provider: 'midtrans', payloadHash },
+          { provider: 'midtrans', eventId }
+        ]
+      }
+    });
+
+    if (existingLog) {
+      console.log('[Midtrans Webhook Ingestion] Duplicate webhook event ignored:', eventId);
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Duplicate event' });
+    }
+
+    // Insert log to secure signature idempotency
+    await prisma.webhookProcessingLog.create({
+      data: {
+        provider: 'midtrans',
+        eventId,
+        payloadHash
+      }
+    });
+
+    const existingReceipt = await prisma.webhookReceipt.findUnique({
       where: {
         provider_deliveryKey: {
           provider: 'midtrans',
@@ -66,7 +90,7 @@ router.post('/', express.json(), async (req, res) => {
       }
     });
 
-    if (existing) {
+    if (existingReceipt) {
       console.log('[Midtrans Webhook Ingestion] Duplicate delivery key ignored:', deliveryKey);
       return res.status(200).json({ ok: true, skipped: true, reason: 'Duplicate event' });
     }

@@ -72,7 +72,7 @@ export async function processRefund({
   const previousRefunds = await prisma.refund.findMany({
     where: {
       paymentIntentId: intentIdBigInt,
-      refundStatus: 'refunded'
+      refundStatus: { in: ['processed', 'refunded'] }
     }
   });
   const totalPreviouslyRefunded = previousRefunds.reduce((sum, r) => sum + r.refundAmount, 0);
@@ -94,11 +94,11 @@ export async function processRefund({
       reason: refundReason
     });
 
-    refundStatus = 'refunded';
+    refundStatus = 'processed';
     providerRefundReference = providerRefundResult.refund_id || providerRefundResult.providerRefundReference || `mock-ref-${Date.now()}`;
   } catch (error) {
     console.error('[RefundService] Midtrans API Refund request failed:', error);
-    refundStatus = 'rejected';
+    refundStatus = 'failed';
     
     await recordFinancialAuditLog({
       actorId,
@@ -140,17 +140,15 @@ export async function processRefund({
       data: { status: newStatus, activeAppointmentId: null }
     });
 
-    // Update invoice status if fully refunded
-    if (isFullRefund) {
-      const invoice = await tx.invoice.findFirst({
-        where: { paymentIntentId: intentIdBigInt }
+    // Update invoice status
+    const invoice = await tx.invoice.findFirst({
+      where: { paymentIntentId: intentIdBigInt }
+    });
+    if (invoice) {
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { status: newStatus }
       });
-      if (invoice) {
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { status: 'refunded' }
-        });
-      }
     }
 
     // Write internal ledger debit entries
@@ -172,7 +170,7 @@ export async function processRefund({
         ownerType: paymentIntent.ownerType,
         ownerClinicId: paymentIntent.ownerClinicId,
         ownerDentistId: paymentIntent.ownerDentistId,
-        entryType: 'refund',
+        entryType: isFullRefund ? 'REFUND' : 'PARTIAL_REFUND',
         status: newStatus,
         direction: 'debit',
         amount: refundAmount,

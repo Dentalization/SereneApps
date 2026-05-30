@@ -489,10 +489,40 @@ router.get(
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
 
-      // Calculate total dentist independent earnings (strictly SETTLED only)
+      const profile = await prisma.dentistProfile.findFirst({
+        where: { userId: dentistId }
+      });
+      const type = profile?.dentist_type || 'independent';
+
+      if (type === 'clinic') {
+        // Clinic Dentist: return only compensation stats
+        const entries = await prisma.dentistCompensationEntry.findMany({
+          where: { dentistId }
+        });
+        const compensationEarned = entries
+          .filter(e => ['ACCRUAL', 'COMMISSION', 'ADJUSTMENT'].includes(e.entryType))
+          .reduce((sum, e) => sum + e.amount, 0);
+        const compensationPaid = entries
+          .filter(e => e.entryType === 'PAYOUT')
+          .reduce((sum, e) => sum + e.amount, 0);
+        const pendingCompensation = compensationEarned - compensationPaid;
+
+        return res.json({
+          dentistType: 'clinic',
+          totalEarnings: compensationEarned,
+          compensationEarned,
+          compensationPaid,
+          pendingCompensation,
+          clinicAffiliatedCount: await prisma.appointment.count({
+            where: { dentistId, ownerType: 'clinic', status: 'confirmed' }
+          })
+        });
+      }
+
+      // Independent Dentist: return independent practice revenue
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+          ownerType: 'dentist',
           ownerDentistId: dentistId,
           status: 'settled'
         },
@@ -501,19 +531,14 @@ router.get(
       const totalEarnings = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
       const independentCount = settledIntents.length;
 
-      // Count clinic-affiliated appointments handled by this dentist
       const clinicAffiliatedCount = await prisma.appointment.count({
-        where: {
-          dentistId,
-          ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
-          status: 'confirmed'
-        }
+        where: { dentistId, ownerType: 'clinic', status: 'confirmed' }
       });
 
-      // Calculate average ticket size
       const averageTicketSize = independentCount > 0 ? Math.round(totalEarnings / independentCount) : 0;
 
       return res.json({
+        dentistType: 'independent',
         totalEarnings,
         independentCount,
         clinicAffiliatedCount,
@@ -534,6 +559,51 @@ router.get(
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
 
+      const profile = await prisma.dentistProfile.findFirst({
+        where: { userId: dentistId }
+      });
+      const type = profile?.dentist_type || 'independent';
+
+      if (type === 'clinic') {
+        // Clinic Dentist: return compensation history
+        const page = req.query.page ? parseInt(req.query.page, 10) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
+        const skip = (page - 1) * limit;
+
+        const total = await prisma.dentistCompensationEntry.count({
+          where: { dentistId }
+        });
+
+        const entries = await prisma.dentistCompensationEntry.findMany({
+          where: { dentistId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        });
+
+        const mappedEntries = entries.map(entry => ({
+          id: entry.id.toString(),
+          entryType: entry.entryType,
+          amount: entry.amount,
+          status: entry.status,
+          createdAt: entry.createdAt,
+          reference: entry.paymentIntentId ? `PAY-${entry.paymentIntentId.toString()}` : `ADJ-${entry.id.toString()}`
+        }));
+
+        return res.json({
+          entries: mappedEntries,
+          invoices: [],
+          payments: [],
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+          }
+        });
+      }
+
+      // Independent Dentist: return practice billing history
       const page = req.query.page ? parseInt(req.query.page, 10) : null;
       const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
 
@@ -543,11 +613,11 @@ router.get(
       const { status, startDate, endDate } = req.query;
 
       const invoiceWhere = {
-        ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+        ownerType: 'dentist',
         ownerDentistId: dentistId
       };
       const paymentWhere = {
-        ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+        ownerType: 'dentist',
         ownerDentistId: dentistId
       };
 
@@ -584,43 +654,30 @@ router.get(
       const totalInvoices = await prisma.invoice.count({ where: invoiceWhere });
       const totalPayments = await prisma.paymentIntent.count({ where: paymentWhere });
 
-      // Fetch dentist independent Invoices
       const invoices = await prisma.invoice.findMany({
         where: invoiceWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
           items: true,
           paymentIntent: { select: { status: true } },
-          appointment: {
-            select: {
-              startsAt: true,
-              reason: true
-            }
-          }
+          appointment: { select: { startsAt: true, reason: true } }
         },
         orderBy: { createdAt: 'desc' },
         skip,
         take
       });
 
-      // Fetch dentist independent Payments (PaymentIntents)
       const payments = await prisma.paymentIntent.findMany({
         where: paymentWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
-          appointment: {
-            select: {
-              startsAt: true,
-              reason: true
-            }
-          }
+          appointment: { select: { startsAt: true, reason: true } }
         },
         orderBy: { createdAt: 'desc' },
         skip,
         take
       });
 
-      // Map Invoices to frontend schema
       const mappedInvoices = invoices.map(inv => {
         const paymentStatus = inv.paymentIntent?.status?.toLowerCase() || '';
         const status = ['paid', 'settled'].includes(paymentStatus) ? 'paid' : 'pending';
@@ -637,7 +694,6 @@ router.get(
         };
       });
 
-      // Map Payments to frontend schema
       const mappedPayments = payments.map(pay => {
         const associatedInvoice = invoices.find(inv => inv.paymentIntentId === pay.id);
         const invoiceRef = associatedInvoice 
@@ -688,6 +744,292 @@ router.get(
   }
 );
 
+// -------------------------------------------------------------
+// NEW ISOLATED REPORTING APIs (Phase 9)
+// -------------------------------------------------------------
+
+router.get(
+  '/dentist/independent/summary',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+
+      const settledIntents = await prisma.paymentIntent.findMany({
+        where: {
+          ownerType: 'dentist',
+          ownerDentistId: dentistId,
+          status: 'settled'
+        },
+        include: { paymentSnapshot: true }
+      });
+      const totalEarnings = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
+      const independentCount = settledIntents.length;
+
+      const averageTicketSize = independentCount > 0 ? Math.round(totalEarnings / independentCount) : 0;
+
+      return res.json({
+        totalEarnings,
+        independentCount,
+        averageTicketSize
+      });
+    } catch (error) {
+      console.error('Error fetching dentist independent summary:', error);
+      return res.status(500).json({ error: 'Failed to fetch dentist independent summary' });
+    }
+  }
+);
+
+router.get(
+  '/dentist/independent/history',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    // Forward directly to standard dentist/history which will execute the independent path
+    req.query.type = 'independent';
+    const originalSend = res.send;
+    res.send = function (body) {
+      originalSend.call(this, body);
+    };
+    // Re-use dentist/history handler logic
+    const userId = toBigInt(req.user.id, 'userId');
+    const invoices = await prisma.invoice.findMany({
+      where: { ownerType: 'dentist', ownerDentistId: userId },
+      include: { patient: { select: { name: true } }, items: true, paymentIntent: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    const payments = await prisma.paymentIntent.findMany({
+      where: { ownerType: 'dentist', ownerDentistId: userId },
+      include: { patient: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({
+      invoices: invoices.map(inv => ({
+        id: inv.reference || `INV-${inv.id.toString().padStart(6, '0')}`,
+        dbId: inv.id.toString(),
+        patient: inv.patient?.name || 'Patient',
+        services: inv.items.map(item => item.description),
+        amount: inv.total,
+        status: inv.paymentIntent?.status === 'settled' ? 'paid' : 'pending',
+        createdAt: inv.createdAt
+      })),
+      payments: payments.map(pay => ({
+        id: `PAY-${pay.id.toString().padStart(4, '0')}`,
+        dbId: pay.id.toString(),
+        invoice: `INV-${pay.id.toString().padStart(6, '0')}`,
+        patient: pay.patient?.name || 'Patient',
+        amount: pay.amount,
+        status: getPaymentStatus(pay.status),
+        receivedAt: pay.createdAt
+      }))
+    });
+  }
+);
+
+router.get(
+  '/dentist/compensation/summary',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+
+      const entries = await prisma.dentistCompensationEntry.findMany({
+        where: { dentistId }
+      });
+
+      const compensationEarned = entries
+        .filter(e => ['ACCRUAL', 'COMMISSION', 'ADJUSTMENT'].includes(e.entryType))
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      const compensationPaid = entries
+        .filter(e => e.entryType === 'PAYOUT')
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      const pendingCompensation = compensationEarned - compensationPaid;
+
+      return res.json({
+        compensationEarned,
+        compensationPaid,
+        pendingCompensation
+      });
+    } catch (error) {
+      console.error('Error fetching dentist compensation summary:', error);
+      return res.status(500).json({ error: 'Failed to fetch dentist compensation summary' });
+    }
+  }
+);
+
+router.get(
+  '/dentist/compensation/history',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const page = req.query.page ? parseInt(req.query.page, 10) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
+      const skip = (page - 1) * limit;
+
+      const total = await prisma.dentistCompensationEntry.count({
+        where: { dentistId }
+      });
+
+      const entries = await prisma.dentistCompensationEntry.findMany({
+        where: { dentistId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      });
+
+      const mappedEntries = entries.map(entry => ({
+        id: entry.id.toString(),
+        entryType: entry.entryType,
+        amount: entry.amount,
+        status: entry.status,
+        createdAt: entry.createdAt,
+        reference: entry.paymentIntentId ? `PAY-${entry.paymentIntentId.toString()}` : `ADJ-${entry.id.toString()}`
+      }));
+
+      return res.json({
+        entries: mappedEntries,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching dentist compensation history:', error);
+      return res.status(500).json({ error: 'Failed to fetch dentist compensation history' });
+    }
+  }
+);
+
+router.get(
+  '/settlements',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const userId = toBigInt(req.user.id, 'userId');
+      const isDentist = req.user.roles.includes('dentist');
+      const isClinicRole = req.user.roles.some(r => ['owner', 'clinic_owner', 'manager', 'clinic_staff', 'clinic_admin', 'clinic_manager'].includes(r));
+
+      let whereClause = {};
+
+      if (isClinicRole) {
+        let clinicProfile = await prisma.clinicProfile.findFirst({ where: { userId } });
+        if (!clinicProfile) {
+          const staffRecord = await prisma.clinicStaff.findFirst({ where: { userId }, include: { clinicProfile: true } });
+          if (staffRecord?.clinicProfile) {
+            clinicProfile = staffRecord.clinicProfile;
+          }
+        }
+        if (clinicProfile) {
+          whereClause = { ownerType: 'clinic', ownerClinicId: clinicProfile.id };
+        } else {
+          return res.status(404).json({ error: 'Clinic profile not found' });
+        }
+      } else if (isDentist) {
+        whereClause = { ownerType: 'dentist', ownerDentistId: userId };
+      } else if (!req.user.roles.includes('admin')) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const settlements = await prisma.paymentSettlement.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return res.json({
+        settlements: settlements.map(s => ({
+          id: s.id.toString(),
+          paymentIntentId: s.paymentIntentId.toString(),
+          ownerType: s.ownerType,
+          grossAmount: s.grossAmount,
+          platformFee: s.platformFee,
+          netAmount: s.netAmount,
+          settlementStatus: s.settlementStatus,
+          providerReference: s.providerReference,
+          settledAt: s.settledAt,
+          createdAt: s.createdAt
+        }))
+      });
+    } catch (error) {
+      console.error('Error fetching settlements:', error);
+      return res.status(500).json({ error: 'Failed to fetch settlements' });
+    }
+  }
+);
+
+router.get(
+  '/invoices',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const userId = toBigInt(req.user.id, 'userId');
+      const isDentist = req.user.roles.includes('dentist');
+      const isClinicRole = req.user.roles.some(r => ['owner', 'clinic_owner', 'manager', 'clinic_staff', 'clinic_admin', 'clinic_manager'].includes(r));
+
+      let whereClause = {};
+
+      if (isClinicRole) {
+        let clinicProfile = await prisma.clinicProfile.findFirst({ where: { userId } });
+        if (!clinicProfile) {
+          const staffRecord = await prisma.clinicStaff.findFirst({ where: { userId }, include: { clinicProfile: true } });
+          if (staffRecord?.clinicProfile) {
+            clinicProfile = staffRecord.clinicProfile;
+          }
+        }
+        if (clinicProfile) {
+          whereClause = { ownerType: 'clinic', ownerClinicId: clinicProfile.id };
+        } else {
+          return res.status(404).json({ error: 'Clinic profile not found' });
+        }
+      } else if (isDentist) {
+        whereClause = { ownerType: 'dentist', ownerDentistId: userId };
+      } else if (req.user.roles.includes('patient')) {
+        whereClause = { patientId: userId };
+      } else if (!req.user.roles.includes('admin')) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const invoices = await prisma.invoice.findMany({
+        where: whereClause,
+        include: {
+          patient: { select: { name: true, email: true } },
+          items: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return res.json({
+        invoices: invoices.map(inv => ({
+          id: inv.id.toString(),
+          reference: inv.reference,
+          patientName: inv.patient?.name || 'Patient',
+          total: inv.total,
+          status: inv.status,
+          issuerType: inv.issuerType,
+          issuerName: inv.issuerName,
+          issuerEmail: inv.issuerEmail,
+          issuerPhone: inv.issuerPhone,
+          issuerAddress: inv.issuerAddress,
+          issuerTaxId: inv.issuerTaxId,
+          issuerSnapshot: inv.issuerSnapshot,
+          createdAt: inv.createdAt
+        }))
+      });
+    } catch (error) {
+      console.error('Error fetching invoices list:', error);
+      return res.status(500).json({ error: 'Failed to fetch invoices list' });
+    }
+  }
+);
+
 router.get(
   '/dentist/analytics',
   authenticateToken,
@@ -699,7 +1041,7 @@ router.get(
       // 1. Settled transactions (Independent only)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
-          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+          ownerType: 'dentist',
           ownerDentistId: dentistId,
           status: 'settled'
         },
@@ -747,7 +1089,7 @@ router.get(
       const cancelledAppointments = await prisma.appointment.findMany({
         where: {
           dentistId,
-          ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+          ownerType: 'dentist',
           status: 'cancelled'
         },
         include: {
@@ -767,7 +1109,7 @@ router.get(
       const refunds = await prisma.refund.findMany({
         where: {
           paymentIntent: {
-            ownerType: FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+            ownerType: 'dentist',
             ownerDentistId: dentistId
           },
           refundStatus: 'refunded'
