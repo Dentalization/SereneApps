@@ -44,6 +44,63 @@ export async function ensureInvoiceForPaymentIntent({
   const reference = `INV-${String(paymentIntent.id).padStart(6, '0')}`;
   const issuedAt = new Date();
 
+  let issuerType = owner.ownerType;
+  let issuerName = 'Serene Clinic';
+  let issuerEmail = 'billing@serene.test';
+  let issuerPhone = '0812345678';
+  let issuerAddress = 'Jakarta, Indonesia';
+  let issuerTaxId = 'TAX-000';
+  let issuerSnapshot = {};
+
+  if (owner.ownerType === 'clinic' && owner.ownerClinicId) {
+    const clinic = await tx.clinicProfile.findUnique({
+      where: { id: owner.ownerClinicId }
+    });
+    if (clinic) {
+      issuerName = clinic.legalName || clinic.name || issuerName;
+      issuerEmail = clinic.email || issuerEmail;
+      issuerPhone = clinic.phone || issuerPhone;
+      issuerAddress = clinic.streetAddress || issuerAddress;
+      issuerTaxId = clinic.npwpNumber || issuerTaxId;
+      issuerSnapshot = {
+        id: clinic.id.toString(),
+        legalName: clinic.legalName,
+        brandName: clinic.brandName,
+        facilityType: clinic.facilityType,
+        streetAddress: clinic.streetAddress,
+        city: clinic.city,
+        province: clinic.province,
+        postalCode: clinic.postalCode,
+        phone: clinic.phone,
+        email: clinic.email,
+        npwpNumber: clinic.npwpNumber
+      };
+    }
+  } else if (owner.ownerDentistId) {
+    const dentist = await tx.user.findUnique({
+      where: { id: owner.ownerDentistId },
+      include: { dentistProfile: true }
+    });
+    if (dentist) {
+      const profile = dentist.dentistProfile?.[0];
+      issuerName = dentist.name || issuerName;
+      issuerEmail = dentist.email || issuerEmail;
+      issuerPhone = dentist.phone_number || issuerPhone;
+      issuerAddress = profile?.clinicAddress || issuerAddress;
+      issuerTaxId = profile?.registrationNumber || issuerTaxId;
+      issuerSnapshot = {
+        userId: dentist.id.toString(),
+        name: dentist.name,
+        email: dentist.email,
+        phone: dentist.phone_number,
+        licenseNumber: profile?.licenseNumber,
+        registrationNumber: profile?.registrationNumber,
+        clinicName: profile?.clinicName,
+        clinicAddress: profile?.clinicAddress
+      };
+    }
+  }
+
   const invoice = await tx.invoice.create({
     data: {
       appointmentId: appointment?.id ?? null,
@@ -60,6 +117,13 @@ export async function ensureInvoiceForPaymentIntent({
       total,
       currency: paymentIntent.currency || 'IDR',
       issuedAt,
+      issuerType,
+      issuerName,
+      issuerEmail,
+      issuerPhone,
+      issuerAddress,
+      issuerTaxId,
+      issuerSnapshot,
       metadata: {
         appointmentId: appointment?.id?.toString?.() ?? null
       }

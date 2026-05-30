@@ -53,6 +53,10 @@ model User {
   createdAnnotationSnapshots                                     AnnotationSnapshot[]       @relation("AnnotationSnapshotCreator")
   actedRefunds                                                   Refund[]                   @relation("RefundActor")
   financialAuditLogs                                             FinancialAuditLog[]        @relation("FinancialAuditActor")
+  ownershipRequestsRequested                                     OwnershipCorrectionRequest[] @relation("CorrectionRequester")
+  ownershipLogsActed                                             OwnershipCorrectionLog[]     @relation("CorrectionActor")
+  compensationEntries                                            DentistCompensationEntry[]  @relation("DentistCompensation")
+  ownedSettlements                                               PaymentSettlement[]          @relation("SettlementOwnerDentist")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -171,6 +175,8 @@ model ClinicProfile {
   financialLedgerEntries     FinancialLedgerEntry[] @relation("FinancialLedgerClinic")
   invoices                   Invoice[]          @relation("InvoiceOwnerClinic")
   ownedAppointments          Appointment[]
+  ownedSettlements           PaymentSettlement[]          @relation("SettlementOwnerClinic")
+  compensationEntries        DentistCompensationEntry[]  @relation("ClinicCompensation")
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
   @@index([nibNumber], map: "idx_clinic_profiles_nib")
@@ -306,6 +312,7 @@ model Appointment {
   financialEntries   FinancialLedgerEntry[]
   videoSessions      VideoSession[]
   communicationEvents CommunicationEvent[]
+  compensationEntries DentistCompensationEntry[]
   clinicalSummary    AppointmentClinicalSummary?
   communicationParticipants AppointmentCommunicationParticipant[]
   followUpTasks      AppointmentFollowUpTask[]
@@ -391,6 +398,10 @@ model PaymentIntent {
   invoices          Invoice[]       @relation("PaymentIntentInvoices")
   paymentSnapshot   PaymentSnapshot?
   refunds           Refund[]
+  ownershipRequests OwnershipCorrectionRequest[]
+  ownershipLogs     OwnershipCorrectionLog[]
+  settlements       PaymentSettlement[]
+  compensationEntries DentistCompensationEntry[]
 
   @@unique([activeAppointmentId], map: "uniq_payment_intents_active_appointment")
   @@index([appointmentId], map: "idx_payment_intents_appointment")
@@ -465,6 +476,13 @@ model Invoice {
   issuedAt        DateTime?     @map("issued_at") @db.Timestamptz(6)
   dueAt           DateTime?     @map("due_at") @db.Timestamptz(6)
   paidAt          DateTime?     @map("paid_at") @db.Timestamptz(6)
+  issuerType      String?       @map("issuer_type") @db.VarChar(24)
+  issuerName      String?       @map("issuer_name") @db.VarChar(120)
+  issuerEmail     String?       @map("issuer_email") @db.VarChar(120)
+  issuerPhone     String?       @map("issuer_phone") @db.VarChar(32)
+  issuerAddress   String?       @map("issuer_address") @db.VarChar(255)
+  issuerTaxId     String?       @map("issuer_tax_id") @db.VarChar(64)
+  issuerSnapshot  Json?         @default("{}") @map("issuer_snapshot")
   metadata        Json?         @default("{}")
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1322,4 +1340,106 @@ model FinancialAuditLog {
   actor         User?     @relation("FinancialAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@map("financial_audit_logs")
+}
+
+model OwnershipCorrectionRequest {
+  id                    BigInt                 @id @default(autoincrement())
+  paymentIntentId       BigInt                 @map("payment_intent_id")
+  requestedBy           BigInt                 @map("requested_by")
+  status                String                 @default("pending") @db.VarChar(24) // pending, approved, rejected
+  oldOwnerType          String                 @map("old_owner_type") @db.VarChar(24)
+  oldOwnerClinicId      BigInt?                @map("old_owner_clinic_id")
+  oldOwnerDentistId     BigInt?                @map("old_owner_dentist_id")
+  newOwnerType          String                 @map("new_owner_type") @db.VarChar(24)
+  newOwnerClinicId      BigInt?                @map("new_owner_clinic_id")
+  newOwnerDentistId     BigInt?                @map("new_owner_dentist_id")
+  reason                String                 @db.VarChar(255)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
+  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  requester             User                   @relation("CorrectionRequester", fields: [requestedBy], references: [id])
+  logs                  OwnershipCorrectionLog[]
+
+  @@map("ownership_correction_requests")
+}
+
+model OwnershipCorrectionLog {
+  id                    BigInt                 @id @default(autoincrement())
+  paymentIntentId       BigInt                 @map("payment_intent_id")
+  requestId             BigInt?                @map("request_id")
+  correctedBy           BigInt                 @map("corrected_by")
+  oldOwnerType          String                 @map("old_owner_type") @db.VarChar(24)
+  oldOwnerClinicId      BigInt?                @map("old_owner_clinic_id")
+  oldOwnerDentistId     BigInt?                @map("old_owner_dentist_id")
+  newOwnerType          String                 @map("new_owner_type") @db.VarChar(24)
+  newOwnerClinicId      BigInt?                @map("new_owner_clinic_id")
+  newOwnerDentistId     BigInt?                @map("new_owner_dentist_id")
+  reason                String                 @db.VarChar(255)
+  timestamp             DateTime               @default(now()) @db.Timestamptz(6)
+
+  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  request               OwnershipCorrectionRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  actor                 User                   @relation("CorrectionActor", fields: [correctedBy], references: [id])
+
+  @@map("ownership_correction_logs")
+}
+
+model PaymentSettlement {
+  id                    BigInt                 @id @default(autoincrement())
+  paymentIntentId       BigInt                 @map("payment_intent_id")
+  ownerType             String                 @map("owner_type") @db.VarChar(24)
+  ownerClinicId         BigInt?                @map("owner_clinic_id")
+  ownerDentistId        BigInt?                @map("owner_dentist_id")
+  grossAmount           Int                    @map("gross_amount")
+  platformFee           Int                    @map("platform_fee")
+  netAmount             Int                    @map("net_amount")
+  currency              String                 @default("IDR") @db.VarChar(8)
+  settlementStatus      String                 @map("settlement_status") @db.VarChar(32) // pending, processing, settled, failed, refunded, partially_refunded, chargeback
+  providerReference     String?                @map("provider_reference") @db.VarChar(191)
+  settledAt             DateTime?              @map("settled_at") @db.Timestamptz(6)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  ownerClinic           ClinicProfile?         @relation("SettlementOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist          User?                  @relation("SettlementOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+
+  @@index([ownerType, ownerClinicId], map: "idx_settlements_clinic")
+  @@index([ownerType, ownerDentistId], map: "idx_settlements_dentist")
+  @@map("payment_settlements")
+}
+
+model DentistCompensationEntry {
+  id                    BigInt                 @id @default(autoincrement())
+  appointmentId         BigInt?                @map("appointment_id")
+  paymentIntentId       BigInt?                @map("payment_intent_id")
+  dentistId             BigInt                 @map("dentist_id")
+  clinicId              BigInt                 @map("clinic_id")
+  entryType             String                 @map("entry_type") @db.VarChar(32) // ACCRUAL, COMMISSION, ADJUSTMENT, PAYOUT
+  amount                Int
+  status                String                 @default("accrued") @db.VarChar(32) // accrued, approved, paid, cancelled
+  metadata              Json?                  @default("{}")
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  appointment           Appointment?           @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  paymentIntent         PaymentIntent?         @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull)
+  dentist               User                   @relation("DentistCompensation", fields: [dentistId], references: [id], onDelete: Cascade)
+  clinic                ClinicProfile          @relation("ClinicCompensation", fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([dentistId, status], map: "idx_compensation_dentist_status")
+  @@index([clinicId, status], map: "idx_compensation_clinic_status")
+  @@map("dentist_compensation_entries")
+}
+
+model WebhookProcessingLog {
+  id                    BigInt                 @id @default(autoincrement())
+  provider              String                 @db.VarChar(32)
+  eventId               String                 @map("event_id") @db.VarChar(191)
+  payloadHash           String                 @unique @map("payload_hash") @db.VarChar(128)
+  receivedAt            DateTime               @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  @@unique([provider, eventId], map: "uniq_webhook_provider_event")
+  @@map("webhook_processing_logs")
 }

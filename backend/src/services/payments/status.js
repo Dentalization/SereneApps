@@ -4,6 +4,8 @@ import { queueNotificationEvent } from '../notifications/index.js';
 import { recordLedgerEntryIfMissing } from './ledger.js';
 import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
 import { createPaymentSnapshot } from './snapshotService.js';
+import { createSettlement } from './settlementService.js';
+import { accrueCompensation } from './compensationService.js';
 
 const prisma = new PrismaClient();
 
@@ -244,6 +246,8 @@ export async function applyPaymentStatus({
     }
 
     if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED].includes(newStatus)) {
+      const entryType = newStatus === PAYMENT_STATUSES.SETTLED ? 'SETTLEMENT_COMPLETED' : 'PAYMENT_RECEIVED';
+
       await recordLedgerEntryIfMissing({
         paymentIntentId: intent.id,
         entryType: newStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge',
@@ -256,7 +260,7 @@ export async function applyPaymentStatus({
         tx,
         paymentIntent: updatedIntent,
         appointment: updatedIntent.appointment,
-        entryType: newStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge',
+        entryType,
         status: newStatus,
         direction: 'credit',
         amount: updatedIntent.amount,
@@ -272,10 +276,23 @@ export async function applyPaymentStatus({
       });
 
       if (newStatus === PAYMENT_STATUSES.SETTLED) {
-        await createPaymentSnapshot({
+        const snapshot = await createPaymentSnapshot({
           tx,
           paymentIntent: updatedIntent,
           invoice,
+          appointment: updatedIntent.appointment
+        });
+
+        await createSettlement({
+          tx,
+          paymentIntent: updatedIntent,
+          providerReference: updatedIntent.providerPaymentId
+        });
+
+        await accrueCompensation({
+          tx,
+          paymentIntent: updatedIntent,
+          snapshot,
           appointment: updatedIntent.appointment
         });
       }
@@ -283,6 +300,7 @@ export async function applyPaymentStatus({
 
     if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(newStatus)) {
       const refundAmount = resolveRefundAmount(mergedProviderResponse, updatedIntent.amount);
+      const entryType = newStatus === PAYMENT_STATUSES.PARTIAL_REFUND ? 'PARTIAL_REFUND' : 'REFUND';
 
       await recordLedgerEntryIfMissing({
         paymentIntentId: intent.id,
@@ -296,7 +314,7 @@ export async function applyPaymentStatus({
         tx,
         paymentIntent: updatedIntent,
         appointment: updatedIntent.appointment,
-        entryType: 'refund',
+        entryType,
         status: newStatus,
         direction: 'debit',
         amount: refundAmount,

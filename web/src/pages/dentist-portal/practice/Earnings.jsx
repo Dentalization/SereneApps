@@ -162,29 +162,55 @@ const Earnings = () => {
     }
   };
 
-  const insights = [
-    {
-      label: 'Independent Revenue',
-      value: formatCurrency(summary.totalEarnings),
-      chip: 'Direct practice earnings',
-      icon: 'TrendingUp',
-      accent: 'text-brand-primary',
-    },
-    {
-      label: 'Average Ticket Size',
-      value: formatCurrency(summary.averageTicketSize),
-      chip: 'Per independent invoice',
-      icon: 'CreditCard',
-      accent: 'text-brand-secondary',
-    },
-    {
-      label: 'Consultation Share',
-      value: `${summary.independentCount} Private / ${summary.clinicAffiliatedCount} Clinic`,
-      chip: 'Hybrid business model',
-      icon: 'Camera',
-      accent: 'text-accent',
-    },
-  ];
+  const isClinicDentist = summary.dentistType === 'clinic';
+
+  const insights = isClinicDentist
+    ? [
+        {
+          label: 'Compensation Earned',
+          value: formatCurrency(summary.compensationEarned),
+          chip: 'Total accrued earnings',
+          icon: 'TrendingUp',
+          accent: 'text-brand-primary',
+        },
+        {
+          label: 'Compensation Paid',
+          value: formatCurrency(summary.compensationPaid),
+          chip: 'Transferred compensation',
+          icon: 'CreditCard',
+          accent: 'text-brand-secondary',
+        },
+        {
+          label: 'Pending Compensation',
+          value: formatCurrency(summary.pendingCompensation),
+          chip: 'Unpaid accruals',
+          icon: 'Clock',
+          accent: 'text-accent',
+        },
+      ]
+    : [
+        {
+          label: 'Independent Revenue',
+          value: formatCurrency(summary.totalEarnings),
+          chip: 'Direct practice earnings',
+          icon: 'TrendingUp',
+          accent: 'text-brand-primary',
+        },
+        {
+          label: 'Average Ticket Size',
+          value: formatCurrency(summary.averageTicketSize),
+          chip: 'Per independent invoice',
+          icon: 'CreditCard',
+          accent: 'text-brand-secondary',
+        },
+        {
+          label: 'Consultation Share',
+          value: `${summary.independentCount} Private / ${summary.clinicAffiliatedCount} Clinic`,
+          chip: 'Hybrid business model',
+          icon: 'Camera',
+          accent: 'text-accent',
+        },
+      ];
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -192,10 +218,16 @@ const Earnings = () => {
       <div className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-5xl mx-auto space-y-8">
           <header className="space-y-3">
-            <p className="text-xs uppercase tracking-wider text-muted">My Practice</p>
-            <h1 className="text-3xl font-bold text-foreground">Earnings</h1>
+            <p className="text-xs uppercase tracking-wider text-muted">
+              {isClinicDentist ? 'Clinic Compensation' : 'My Practice'}
+            </p>
+            <h1 className="text-3xl font-bold text-foreground">
+              {isClinicDentist ? 'Compensation' : 'Earnings'}
+            </h1>
             <p className="text-muted-foreground">
-              Monitor settlement status, patient billing invoices, and general financial history from your independent practice.
+              {isClinicDentist
+                ? 'Monitor your accrued consultation compensation, payout statuses, and earnings history.'
+                : 'Monitor settlement status, patient billing invoices, and general financial history from your independent practice.'}
             </p>
           </header>
 
@@ -224,12 +256,18 @@ const Earnings = () => {
             </div>
           )}
 
-          {/* Detailed Invoices list */}
+          {/* Detailed Invoices or Compensation Entries list */}
           <div className="bg-surface-elevated border border-primary/10 rounded-2xl shadow-theme-md overflow-hidden">
             <div className="px-6 py-4 border-b border-primary/10 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-foreground">Invoices & Billing History</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Real-time ledger statements of patient consultations.</p>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {isClinicDentist ? 'Compensation & Payout History' : 'Invoices & Billing History'}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {isClinicDentist 
+                    ? 'Real-time ledger of your earnings share and payouts from clinic consultations.' 
+                    : 'Real-time ledger statements of patient consultations.'}
+                </p>
               </div>
               <button 
                 onClick={fetchEarningsData}
@@ -252,6 +290,65 @@ const Earnings = () => {
                   </div>
                 ))}
               </div>
+            ) : isClinicDentist ? (
+              (!history.entries || history.entries.length === 0) ? (
+                <div className="p-12 text-center space-y-2">
+                  <Icon name="FileText" className="mx-auto text-muted/40" size={48} />
+                  <p className="font-medium text-foreground">No compensation entries yet</p>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    Compensation accruals will appear here automatically as clinic appointments are completed and settled.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface text-xs uppercase tracking-wider text-muted">
+                      <tr>
+                        <th className="px-6 py-3 text-left font-medium">Reference</th>
+                        <th className="px-6 py-3 text-left font-medium">Entry Type</th>
+                        <th className="px-6 py-3 text-left font-medium">Amount</th>
+                        <th className="px-6 py-3 text-left font-medium">Status</th>
+                        <th className="px-6 py-3 text-left font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-primary/5">
+                      {history.entries.map((entry) => (
+                        <tr key={entry.id} className="hover:bg-surface/30 transition-colors text-sm">
+                          <td className="px-6 py-4 whitespace-nowrap font-medium text-foreground">
+                            {entry.reference}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">
+                            <span className="font-semibold uppercase tracking-wider text-xs">
+                              {entry.entryType}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap font-semibold text-foreground">
+                            {formatCurrency(entry.amount)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                              entry.status?.toLowerCase() === 'paid' || entry.status?.toLowerCase() === 'completed'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                            }`}>
+                              {entry.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">
+                            {new Date(entry.createdAt).toLocaleDateString('id-ID', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             ) : history.invoices.length === 0 ? (
               <div className="p-12 text-center space-y-2">
                 <Icon name="FileText" className="mx-auto text-muted/40" size={48} />
