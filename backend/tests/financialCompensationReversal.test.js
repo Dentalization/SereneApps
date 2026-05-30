@@ -119,6 +119,12 @@ test('financial Compensation Reversal: full payout reversal audit', async () => 
       providerPaymentId: `pay-rev-${suffix}`
     });
 
+    // Simulate maturation release for dentist compensation
+    await prisma.availableBalance.updateMany({
+      where: { ownerDentistId: dentist.id },
+      data: { availableAmount: 90000 }
+    });
+
     // Verify accrual: 30% of 300,000 = 90,000
     const dentistComp = await getAvailableBalance({
       ownerType: 'dentist',
