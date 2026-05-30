@@ -1393,11 +1393,16 @@ model PaymentSettlement {
   ownerDentistId        BigInt?                @map("owner_dentist_id")
   grossAmount           Int                    @map("gross_amount")
   platformFee           Int                    @map("platform_fee")
+  clinicShare           Int                    @default(0) @map("clinic_share")
+  dentistShare          Int                    @default(0) @map("dentist_share")
   netAmount             Int                    @map("net_amount")
   currency              String                 @default("IDR") @db.VarChar(8)
   settlementStatus      String                 @map("settlement_status") @db.VarChar(32) // pending, processing, settled, failed, refunded, partially_refunded, chargeback
   providerReference     String?                @map("provider_reference") @db.VarChar(191)
   settledAt             DateTime?              @map("settled_at") @db.Timestamptz(6)
+  payoutStatus          String                 @default("unpaid") @map("payout_status") @db.VarChar(32) // unpaid, processing, paid
+  payoutAt              DateTime?              @map("payout_at") @db.Timestamptz(6)
+  settlementReference   String?                @map("settlement_reference") @db.VarChar(191)
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1442,4 +1447,58 @@ model WebhookProcessingLog {
 
   @@unique([provider, eventId], map: "uniq_webhook_provider_event")
   @@map("webhook_processing_logs")
+}
+
+model AvailableBalance {
+  id                 BigInt   @id @default(autoincrement())
+  ownerType          String   @map("owner_type") @db.VarChar(24) // clinic, dentist
+  ownerClinicId      BigInt?  @unique @map("owner_clinic_id")
+  ownerDentistId     BigInt?  @unique @map("owner_dentist_id")
+  availableAmount    Int      @default(0) @map("available_amount")
+  pendingAmount      Int      @default(0) @map("pending_amount")
+  currency           String   @default("IDR") @db.VarChar(8)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerType, ownerClinicId], map: "idx_balances_clinic")
+  @@index([ownerType, ownerDentistId], map: "idx_balances_dentist")
+  @@map("available_balances")
+}
+
+model PayoutBatch {
+  id                BigInt       @id @default(autoincrement())
+  status            String       @db.VarChar(24) // DRAFT, INITIATED, PROCESSING, COMPLETED, FAILED, CANCELLED
+  totalAmount       Int          @map("total_amount")
+  providerReference String?      @map("provider_reference") @db.VarChar(120)
+  initiatedAt       DateTime     @default(now()) @map("initiated_at") @db.Timestamptz(6)
+  completedAt       DateTime?    @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items             PayoutItem[]
+
+  @@map("payout_batches")
+}
+
+model PayoutItem {
+  id                 BigInt      @id @default(autoincrement())
+  batchId            BigInt      @map("batch_id")
+  recipientType      String      @map("recipient_type") @db.VarChar(24) // clinic, dentist
+  recipientClinicId  BigInt?     @map("recipient_clinic_id")
+  recipientDentistId BigInt?     @map("recipient_dentist_id")
+  amount             Int
+  status             String      @db.VarChar(24) // PENDING, SUCCESS, FAILED, REVERSED
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  batch              PayoutBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("payout_items")
+}
+
+model AccountingPeriod {
+  id        BigInt    @id @default(autoincrement())
+  periodKey String    @unique @map("period_key") @db.VarChar(7) // YYYY-MM
+  isLocked  Boolean   @default(false) @map("is_locked")
+  lockedAt  DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockedBy  BigInt?   @map("locked_by")
+
+  @@map("accounting_periods")
 }
