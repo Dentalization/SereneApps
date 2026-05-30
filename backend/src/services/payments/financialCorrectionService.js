@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { assertPeriodNotLocked } from './periodLockService.js';
 
 const prisma = new PrismaClient();
 
@@ -52,6 +53,9 @@ export async function approveAndExecuteCorrection(requestId, actorId) {
     if (!request) {
       throw { status: 404, code: 'REQUEST_NOT_FOUND', message: 'Correction request not found' };
     }
+
+    // Assert period not locked before executing ownership correction
+    await assertPeriodNotLocked(request.createdAt);
 
     if (request.status !== 'pending') {
       throw { status: 400, code: 'REQUEST_NOT_PENDING', message: 'Request is already processed' };

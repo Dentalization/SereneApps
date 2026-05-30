@@ -513,19 +513,20 @@ test('production financials: end-to-end mathematical reconciliation audit', asyn
     
     const totalRawPaymentCredit = rawPaymentCredits.reduce((sum, item) => sum + item.amount, 0); // 800,000
     const totalCommissionCredit = commissionCredits.reduce((sum, item) => sum + item.amount, 0); // 90,000
+    const rawPaymentDebits = ledgerDebitEntries.filter(e => ['REFUND', 'PARTIAL_REFUND'].includes(e.entryType));
+    const totalRawPaymentDebit = rawPaymentDebits.reduce((sum, item) => sum + item.amount, 0); // 400,000
     const totalRefunds = 400000;
-    const totalLedgerDebit = ledgerDebitEntries.reduce((sum, item) => sum + item.amount, 0); // 400,000
 
     assert.equal(totalGrossRevenue, 800000);
     assert.equal(totalInvoiceAmount, 800000);
     assert.equal(totalRawPaymentCredit, 800000);
     assert.equal(totalCommissionCredit, 90000);
-    assert.equal(totalLedgerDebit, totalRefunds);
+    assert.equal(totalRawPaymentDebit, totalRefunds);
 
     // Assert the E2E formula holds: Gross Revenue - Refunds = Net Revenue
     const netRevenueCalculated = totalGrossRevenue - totalRefunds;
     const netInvoiceCalculated = totalInvoiceAmount - totalRefunds;
-    const netLedgerCalculated = totalRawPaymentCredit - totalLedgerDebit;
+    const netLedgerCalculated = totalRawPaymentCredit - totalRawPaymentDebit;
 
     assert.equal(netRevenueCalculated, 400000);
     assert.equal(netInvoiceCalculated, 400000);

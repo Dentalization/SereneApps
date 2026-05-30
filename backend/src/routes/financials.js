@@ -2,6 +2,9 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
+import { createCorrectionRequest, approveAndExecuteCorrection } from '../services/payments/financialCorrectionService.js';
+import { createPayoutBatch } from '../services/payments/payoutService.js';
+import { lockPeriod } from '../services/payments/periodLockService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -1132,6 +1135,98 @@ router.get(
     } catch (error) {
       console.error('Error fetching dentist analytics:', error);
       return res.status(500).json({ error: 'Failed to fetch dentist analytics' });
+    }
+  }
+);
+
+// -------------------------------------------------------------
+// ADMINISTRATIVE & CONTROL ENDPOINTS (Audit Hardening)
+// -------------------------------------------------------------
+
+router.post(
+  '/corrections/request',
+  authenticateToken,
+  requireRoles(['admin']),
+  async (req, res) => {
+    try {
+      const { paymentIntentId, requestedBy, newOwnerType, newOwnerClinicId, newOwnerDentistId, reason } = req.body;
+      const request = await createCorrectionRequest({
+        paymentIntentId,
+        requestedBy: requestedBy || req.user.id,
+        newOwnerType,
+        newOwnerClinicId,
+        newOwnerDentistId,
+        reason
+      });
+      return res.status(201).json({ ok: true, request: {
+        id: request.id.toString(),
+        paymentIntentId: request.paymentIntentId.toString(),
+        status: request.status
+      }});
+    } catch (error) {
+      console.error('Error creating correction request:', error);
+      return res.status(error.status || 500).json({ error: error.message || 'Failed to create correction request' });
+    }
+  }
+);
+
+router.post(
+  '/corrections/approve',
+  authenticateToken,
+  requireRoles(['admin']),
+  async (req, res) => {
+    try {
+      const { requestId } = req.body;
+      const log = await approveAndExecuteCorrection(requestId, req.user.id);
+      return res.json({ ok: true, log: {
+        id: log.id.toString(),
+        paymentIntentId: log.paymentIntentId.toString(),
+        reason: log.reason
+      }});
+    } catch (error) {
+      console.error('Error approving correction request:', error);
+      return res.status(error.status || 500).json({ error: error.message || 'Failed to approve correction request' });
+    }
+  }
+);
+
+router.post(
+  '/payouts',
+  authenticateToken,
+  requireRoles(['admin']),
+  async (req, res) => {
+    try {
+      const { items } = req.body;
+      const batch = await createPayoutBatch({ items });
+      return res.status(201).json({ ok: true, batch: {
+        id: batch.id.toString(),
+        status: batch.status,
+        totalAmount: batch.totalAmount,
+        completedAt: batch.completedAt
+      }});
+    } catch (error) {
+      console.error('Error creating payout batch:', error);
+      return res.status(error.status || 500).json({ error: error.message || 'Failed to create payout batch' });
+    }
+  }
+);
+
+router.post(
+  '/periods/lock',
+  authenticateToken,
+  requireRoles(['admin']),
+  async (req, res) => {
+    try {
+      const { periodKey } = req.body; // e.g. "2026-05"
+      const period = await lockPeriod({ periodKey, actorId: req.user.id });
+      return res.json({ ok: true, period: {
+        id: period.id.toString(),
+        periodKey: period.periodKey,
+        isLocked: period.isLocked
+      }});
+    } catch (error) {
+      console.error('Error locking period:', error);
+      return res.status(500).json({ error: 'Failed to lock period' });
     }
   }
 );

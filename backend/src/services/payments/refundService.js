@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { refundMidtransTransaction } from './midtrans.js';
 import { recordFinancialAuditLog } from '../audit/auditLogger.js';
 import { FINANCIAL_OWNER_TYPES, normalizeFinancialOwnerType } from './ownership.js';
+import { assertPeriodNotLocked } from './periodLockService.js';
 
 const prisma = new PrismaClient();
 
@@ -27,6 +28,9 @@ export async function processRefund({
   if (!paymentIntent) {
     throw { code: 'NOT_FOUND', message: 'Payment intent not found', status: 404 };
   }
+
+  // Assert period not locked before refund
+  await assertPeriodNotLocked(paymentIntent.createdAt);
 
   if (!['paid', 'settled'].includes(paymentIntent.status)) {
     throw { code: 'BAD_REQUEST', message: 'Only paid or settled payments can be refunded', status: 400 };
@@ -179,6 +183,121 @@ export async function processRefund({
         metadata: { refundId: refund.id.toString() }
       }
     });
+
+    // 1. Update available balance record to decrement availableAmount
+    const whereBalance = paymentIntent.ownerType === 'clinic'
+      ? { ownerClinicId: paymentIntent.ownerClinicId }
+      : { ownerDentistId: paymentIntent.ownerDentistId };
+
+    const balance = await tx.availableBalance.findFirst({ where: whereBalance });
+    const isNegative = balance ? (balance.availableAmount - refundAmount < 0) : true;
+
+    if (balance) {
+      await tx.availableBalance.update({
+        where: { id: balance.id },
+        data: {
+          availableAmount: { decrement: refundAmount }
+        }
+      });
+    } else {
+      await tx.availableBalance.create({
+        data: {
+          ownerType: paymentIntent.ownerType,
+          ownerClinicId: paymentIntent.ownerClinicId,
+          ownerDentistId: paymentIntent.ownerDentistId,
+          availableAmount: -refundAmount,
+          pendingAmount: 0,
+          currency: paymentIntent.currency || 'IDR'
+        }
+      });
+    }
+
+    // Write a DEBT ledger entry if the balance went negative
+    if (isNegative) {
+      const currentAvailable = balance ? balance.availableAmount : 0;
+      const debtAmount = Math.abs(currentAvailable - refundAmount);
+      await tx.financialLedgerEntry.create({
+        data: {
+          paymentIntentId: intentIdBigInt,
+          appointmentId: paymentIntent.appointmentId,
+          ownerType: paymentIntent.ownerType,
+          ownerClinicId: paymentIntent.ownerClinicId,
+          ownerDentistId: paymentIntent.ownerDentistId,
+          entryType: 'DEBT',
+          status: 'completed',
+          direction: 'debit',
+          amount: debtAmount,
+          source: 'system',
+          metadata: { refundId: refund.id.toString(), note: 'Available balance went negative after refund' }
+        }
+      });
+    }
+
+    // 2. If clinic dentist appointment, reverse compensation (30% of refundAmount)
+    if (paymentIntent.ownerType === 'clinic' && paymentIntent.appointmentId) {
+      const appRecord = await tx.appointment.findUnique({
+        where: { id: paymentIntent.appointmentId }
+      });
+      if (appRecord?.dentistId) {
+        const profile = await tx.dentistProfile.findFirst({
+          where: { userId: appRecord.dentistId }
+        });
+        if (profile?.dentist_type === 'clinic') {
+          const reversedCompensation = Math.round(refundAmount * 0.3);
+          
+          await tx.dentistCompensationEntry.create({
+            data: {
+              appointmentId: paymentIntent.appointmentId,
+              paymentIntentId: paymentIntent.id,
+              dentistId: appRecord.dentistId,
+              clinicId: paymentIntent.ownerClinicId,
+              entryType: 'REVERSAL',
+              amount: reversedCompensation,
+              status: 'paid',
+              metadata: { refundId: refund.id.toString() }
+            }
+          });
+
+          await tx.financialLedgerEntry.create({
+            data: {
+              paymentIntentId: paymentIntent.id,
+              appointmentId: paymentIntent.appointmentId,
+              ownerType: 'dentist',
+              ownerDentistId: appRecord.dentistId,
+              entryType: 'REVERSAL',
+              status: 'completed',
+              direction: 'debit',
+              amount: reversedCompensation,
+              source: 'system',
+              metadata: { refundId: refund.id.toString() }
+            }
+          });
+
+          // Decrement the dentist's available balance
+          const dentistBalance = await tx.availableBalance.findFirst({
+            where: { ownerDentistId: appRecord.dentistId }
+          });
+          if (dentistBalance) {
+            await tx.availableBalance.update({
+              where: { id: dentistBalance.id },
+              data: {
+                availableAmount: { decrement: reversedCompensation }
+              }
+            });
+          } else {
+            await tx.availableBalance.create({
+              data: {
+                ownerType: 'dentist',
+                ownerDentistId: appRecord.dentistId,
+                availableAmount: -reversedCompensation,
+                pendingAmount: 0,
+                currency: paymentIntent.currency || 'IDR'
+              }
+            });
+          }
+        }
+      }
+    }
 
     return refund;
   });
