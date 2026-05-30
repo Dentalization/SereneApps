@@ -1,8 +1,6 @@
 import { verifyMidtransSignature, validateMidtransWebhookPayload } from './midtrans.js';
 import { mapMidtransStatus } from './statusMapping.js';
-import { PAYMENT_STATUSES, canTransition, resolveActiveAppointmentId, resolveRefundAmount } from './status.js';
-import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financials.js';
-import { createPaymentSnapshot } from './snapshotService.js';
+import { applyPaymentStatus, PAYMENT_STATUSES, canTransition } from './status.js';
 import { recordFinancialAuditLog } from '../audit/auditLogger.js';
 
 export async function handleMidtransCallback(body, tx) {
@@ -46,11 +44,7 @@ export async function handleMidtransCallback(body, tx) {
 
   // Step 3 — Update payment_intents
   const paymentIntent = await tx.paymentIntent.findUnique({
-    where: { providerOrderId: orderId },
-    include: {
-      appointment: true,
-      patient: { select: { id: true, name: true, email: true, phone_number: true } }
-    }
+    where: { providerOrderId: orderId }
   });
 
   if (!paymentIntent) {
@@ -83,153 +77,16 @@ export async function handleMidtransCallback(body, tx) {
     throw { code: 'PAYMENT_AMOUNT_MISMATCH', message: 'Gross amount mismatch', retryable: false };
   }
 
-  const mergedProviderResponse = {
-    ...(paymentIntent.providerResponse || {}),
-    ...body,
-    ...(failureReason ? { failureReason } : {})
-  };
-
-  const updatedIntent = await tx.paymentIntent.update({
-    where: { id: paymentIntent.id },
-    data: {
-      status: mappedStatus,
-      activeAppointmentId: resolveActiveAppointmentId(mappedStatus, paymentIntent.appointmentId),
-      providerPaymentId: paymentIntent.providerPaymentId || transactionId || null,
-      callbackVerifiedAt: new Date(),
-      providerResponse: mergedProviderResponse,
-      metadata: failureReason
-        ? { ...(paymentIntent.metadata || {}), failureReason }
-        : paymentIntent.metadata
-    }
+  // Delegate the transition and balance/compensation calculations to applyPaymentStatus
+  await applyPaymentStatus({
+    paymentIntentId: paymentIntent.id.toString(),
+    newStatus: mappedStatus,
+    providerPaymentId: transactionId || null,
+    providerResponse: body,
+    failureReason,
+    tx
   });
 
-  if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED].includes(mappedStatus)) {
-    const entryType = mappedStatus === PAYMENT_STATUSES.SETTLED ? 'settlement' : 'charge';
-    const existingLedger = await tx.paymentLedger.findFirst({
-      where: {
-        paymentIntentId: paymentIntent.id,
-        entryType,
-        status: mappedStatus,
-        amount: paymentIntent.amount
-      }
-    });
-
-    if (!existingLedger) {
-      await tx.paymentLedger.create({
-        data: {
-          paymentIntentId: paymentIntent.id,
-          entryType,
-          status: mappedStatus,
-          amount: paymentIntent.amount,
-          metadata: mergedProviderResponse
-        }
-      });
-    }
-
-    await recordFinancialEntry({
-      tx,
-      paymentIntent: updatedIntent,
-      appointment: paymentIntent.appointment,
-      entryType,
-      status: mappedStatus,
-      direction: 'credit',
-      amount: paymentIntent.amount,
-      source: paymentIntent.provider || 'midtrans',
-      metadata: mergedProviderResponse
-    });
-
-    const invoice = await ensureInvoiceForPaymentIntent({
-      tx,
-      paymentIntent: updatedIntent,
-      appointment: paymentIntent.appointment,
-      patient: paymentIntent.patient
-    });
-
-    if (invoice?.id) {
-      await tx.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          status: mappedStatus === PAYMENT_STATUSES.SETTLED ? 'settled' : 'paid',
-          paidAt: invoice.paidAt || new Date()
-        }
-      }).catch(() => null);
-    }
-
-    if (mappedStatus === PAYMENT_STATUSES.SETTLED) {
-      // Create immutable financial snapshot on settlement
-      await createPaymentSnapshot({
-        tx,
-        paymentIntent: updatedIntent,
-        invoice,
-        appointment: paymentIntent.appointment
-      });
-    }
-  }
-
-  if ([PAYMENT_STATUSES.REFUNDED, PAYMENT_STATUSES.PARTIAL_REFUND].includes(mappedStatus)) {
-    const refundAmount = resolveRefundAmount(body, paymentIntent.amount);
-
-    const existingLedger = await tx.paymentLedger.findFirst({
-      where: {
-        paymentIntentId: paymentIntent.id,
-        entryType: 'refund',
-        status: mappedStatus,
-        amount: refundAmount
-      }
-    });
-
-    if (!existingLedger) {
-      await tx.paymentLedger.create({
-        data: {
-          paymentIntentId: paymentIntent.id,
-          entryType: 'refund',
-          status: mappedStatus,
-          amount: refundAmount,
-          metadata: mergedProviderResponse
-        }
-      });
-    }
-
-    await recordFinancialEntry({
-      tx,
-      paymentIntent: updatedIntent,
-      appointment: paymentIntent.appointment,
-      entryType: 'refund',
-      status: mappedStatus,
-      direction: 'debit',
-      amount: refundAmount,
-      source: paymentIntent.provider || 'midtrans',
-      metadata: mergedProviderResponse
-    });
-
-    const providerRefundReference = body.refund_key || body.refund_id || body.refund_reference || transactionId || null;
-    if (providerRefundReference) {
-      const existingRefund = await tx.refund.findFirst({
-        where: {
-          paymentIntentId: paymentIntent.id,
-          providerRefundReference: String(providerRefundReference)
-        }
-      });
-      if (!existingRefund) {
-        await tx.refund.create({
-          data: {
-            paymentIntentId: paymentIntent.id,
-            refundAmount,
-            refundReason: failureReason || 'Midtrans refund notification',
-            refundStatus: 'refunded',
-            providerRefundReference: String(providerRefundReference),
-            refundRequestedAt: new Date(),
-            refundedAt: new Date()
-          }
-        });
-      }
-    }
-
-    await tx.invoice.updateMany({
-      where: { paymentIntentId: paymentIntent.id },
-      data: { status: mappedStatus }
-    }).catch(() => null);
-  }
 
   // Step 4 — Emit outbox event
   if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED, PAYMENT_STATUSES.FAILED, PAYMENT_STATUSES.CANCELLED, PAYMENT_STATUSES.EXPIRED].includes(mappedStatus)) {
