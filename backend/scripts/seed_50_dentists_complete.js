@@ -135,7 +135,7 @@ function getRandomElement(array) {
 function generateDentistData(index) {
   const firstName = firstNames[index % firstNames.length];
   const lastName = lastNames[index % lastNames.length];
-  const fullName = `drg. ${firstName} ${lastName}`;
+  const fullName = `${firstName} ${lastName}`;
   
   // Distribusi merata 8 spesialisasi (50/8 = ~6 dokter per spesialisasi)
   const specialization = specializations[index % specializations.length];

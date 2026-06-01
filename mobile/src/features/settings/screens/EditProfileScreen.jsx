@@ -33,6 +33,12 @@ const EditProfileScreen = ({ navigation }) => {
     // Personal Info
     dateOfBirth: patientProfile?.dateOfBirth 
       ? (() => {
+          if (typeof patientProfile.dateOfBirth === 'string' && patientProfile.dateOfBirth.includes('-')) {
+            const parts = patientProfile.dateOfBirth.split('T')[0].split('-');
+            if (parts.length === 3) {
+              return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+          }
           const date = new Date(patientProfile.dateOfBirth);
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0');

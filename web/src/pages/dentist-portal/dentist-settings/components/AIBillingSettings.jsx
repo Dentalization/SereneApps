@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const AIBillingSettings = ({ user, onDataChange }) => {
+  const toast = useToast();
   // State data remains the same
   const [billingData, setBillingData] = useState({
     currentPlan: 'basic',
@@ -122,7 +124,7 @@ const AIBillingSettings = ({ user, onDataChange }) => {
 
   const handleAddPaymentMethod = () => {
     // TODO: Implement add payment method modal
-    alert('The feature to add a new payment method is coming soon!');
+    toast.info('The feature to add a new payment method is coming soon!');
   };
 
   return (

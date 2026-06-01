@@ -1,23 +1,33 @@
 import 'react-native-gesture-handler';
+if (typeof Promise.prototype.finally !== 'function') {
+  Promise.prototype.finally = function (callback) {
+    const Constructor = this.constructor;
+    return this.then(
+      value => Constructor.resolve(callback()).then(() => value),
+      reason => Constructor.resolve(callback()).then(() => { throw reason; })
+    );
+  };
+}
 import React, { useEffect, useRef, useState } from 'react';
+import api from './src/services/api';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { PaperProvider } from 'react-native-paper';
 import { Provider as ReduxProvider, useSelector } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ActivityIndicator, 
-  LogBox, 
-  Image, 
-  Animated, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  LogBox,
+  Image,
+  Animated,
   Easing,
   Dimensions, // Import tambahan untuk responsivitas
   Platform,
-  PixelRatio 
+  PixelRatio
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { subscribeAppointmentReminderResponses } from './src/services/pushNotificationService';
@@ -163,19 +173,19 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
         }}
       >
         {/* Pure Logo tanpa background card */}
-        <Image 
-          source={require('./assets/icon.png')} 
-          style={styles.logoImage} 
-          resizeMode="contain" 
+        <Image
+          source={require('./assets/icon.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
         />
-        
+
         <Text style={styles.loadingTitle}>Serene App</Text>
         <Text style={styles.loadingSubtitle}>{message}</Text>
       </Animated.View>
 
-      <Animated.View 
-        style={{ 
-          marginTop: normalize(40), 
+      <Animated.View
+        style={{
+          marginTop: normalize(40),
           opacity: fadeAnim,
           transform: [{ translateY: slideUpAnim }]
         }}
@@ -184,9 +194,9 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
         <ActivityIndicator size="large" color="#818CF8" />
       </Animated.View>
 
-      <Animated.View 
+      <Animated.View
         style={[
-          styles.footer, 
+          styles.footer,
           { opacity: fadeAnim }
         ]}
       >
@@ -195,6 +205,12 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
     </LinearGradient>
   );
 };
+
+// BackgroundPresenceConnector removed: @twilio/conversations depends on loglevel
+// which defines `default` as a getter-only property. Metro's _interopNamespace
+// re-applies that descriptor and then tries to assign namespace.default — which
+// throws a fatal Hermes TypeError at module-evaluation time (before any try/catch).
+// Twilio is now loaded lazily per-screen only inside TeledentistryScreen.
 
 function AppContent() {
   try {
@@ -210,6 +226,7 @@ function AppContent() {
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
+
           <NavigationContainer ref={navigationRef}>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} />
             <React.Suspense
@@ -241,7 +258,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsMinTimeElapsed(true);
-    }, 2500); 
+    }, 2500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -261,7 +278,7 @@ export default function App() {
     <ErrorBoundary>
       <ReduxProvider store={store}>
         <View style={{ flex: 1 }}>
-          <PersistGate 
+          <PersistGate
             persistor={persistor}
             onBeforeLift={() => setIsPersistDone(true)}
           >

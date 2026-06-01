@@ -4,6 +4,7 @@ import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { PY_API_BASE } from '../../../../config/api';
 import useConversionSocket from '../hooks/useConversionSocket';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
+import { useToast } from '../../../../contexts/ToastContext';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
     const results = [];
@@ -169,6 +170,7 @@ function hasIncompleteSeries(study) {
 }
 
 const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted, cachedStudies, onStudiesLoaded, onCompareSelected }) => {
+    const toast = useToast();
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
     const [studies, setStudies] = useState([]);
@@ -591,15 +593,16 @@ const Gallery = ({ onSelectStudy, onUploadClick, refreshTrigger, onStudyDeleted,
                 // Immediately remove from local state for instant UI feedback
                 setStudiesWithSeries(prev => prev.filter(s => s.id !== study.id));
                 if (onStudyDeleted) onStudyDeleted();
+                toast.success('Study deleted successfully!');
             } else {
                 const data = await response.json().catch(() => ({}));
                 const msg = data.error || `Server returned ${response.status}`;
                 console.error("[Gallery] Delete failed:", msg);
-                alert(`Failed to delete study: ${msg}`);
+                toast.error(`Failed to delete study: ${msg}`);
             }
         } catch (error) {
             console.error("Delete failed", error);
-            alert("Failed to delete study. Please check your connection.");
+            toast.error("Failed to delete study. Please check your connection.");
         }
     };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../../../../components/AppIcon';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const AUTO_DECLINE_SECONDS = 30;
 
@@ -127,7 +128,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
             >
               {conversation?.patient?.avatar ? (
                 <img
-                  src={conversation.patient.avatar}
+                  src={resolveMediaUrl(conversation.patient.avatar)}
                   alt={patientName}
                   className="w-full h-full rounded-full object-cover"
                 />

@@ -24,7 +24,7 @@ async function main() {
     console.error('❌ Prisma test failed:', err);
     process.exitCode = 2;
   } finally {
-    try { await prisma.$disconnect(); } catch(e){}
+    try { await prisma.$disconnect(); } catch (e) { }
   }
 }
 

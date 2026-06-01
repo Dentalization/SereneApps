@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { useToast } from '../../../../contexts/ToastContext';
 
 // Indonesian cities with GPS coordinates
 const INDONESIAN_CITIES = [
@@ -42,6 +43,7 @@ const AVAILABLE_FACILITIES = [
 ];
 
 const BranchEditModal = ({ open, branch, onClose, onSubmit, loading, error }) => {
+  const toast = useToast();
   const [form, setForm] = useState({
     branchName: '',
     address: '',
@@ -168,7 +170,7 @@ const BranchEditModal = ({ open, branch, onClose, onSubmit, loading, error }) =>
     if (form.latitude || form.longitude) {
       const gpsValidation = validateGPSCoordinates();
       if (!gpsValidation.valid) {
-        alert(gpsValidation.message);
+        toast.error(gpsValidation.message);
         return;
       }
     }

@@ -172,6 +172,55 @@ const extractClinicContext = (dentist) => {
   };
 };
 
+const formatDentistName = (name) => {
+  if (!name) return 'Dokter Gigi';
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('drg.') || lower.startsWith('drg ') || lower.startsWith('dr.') || lower.startsWith('dr ')) {
+    return trimmed;
+  }
+  return `drg. ${trimmed}`;
+};
+
+const normalizeSpecialty = (specialization) => {
+  if (!specialization) return 'Dokter Gigi';
+  const spec = specialization.trim().toLowerCase();
+  if (spec.includes('ortho')) {
+    return 'Spesialis Ortodonsia (Sp.Ort)';
+  }
+  if (spec.includes('pediat') || spec.includes('anak')) {
+    return 'Spesialis Kedokteran Gigi Anak (Sp.KGA)';
+  }
+  if (spec.includes('conserv') || spec.includes('endo') || spec.includes('konservasi')) {
+    return 'Spesialis Konservasi Gigi (Sp.KG)';
+  }
+  if (spec.includes('perio')) {
+    return 'Spesialis Periodonsia (Sp.Perio)';
+  }
+  if (spec.includes('prostho') || spec.includes('prostodonsia')) {
+    return 'Spesialis Prostodonsia (Sp.Pros)';
+  }
+  if (spec.includes('surgery') || spec.includes('bedah')) {
+    return 'Spesialis Bedah Mulut (Sp.BM)';
+  }
+  if (spec.includes('medicine') || spec.includes('penyakit mulut')) {
+    return 'Spesialis Penyakit Mulut (Sp.PM)';
+  }
+  if (spec.includes('digital')) {
+    return 'Kedokteran Gigi Digital';
+  }
+  if (spec.includes('implant')) {
+    return 'Implantologi';
+  }
+  if (spec.includes('cosmetic') || spec.includes('estetika')) {
+    return 'Estetika Gigi';
+  }
+  if (spec.includes('general') || spec.includes('umum') || spec.includes('dentist')) {
+    return 'Dokter Gigi Umum';
+  }
+  return 'Dokter Gigi';
+};
+
 const normalizeDentist = (dentist) => {
   const years = dentist?.yearsOfExperience || 0;
   const fallbackRating = 4 + Math.min(1, years / 15);
@@ -185,8 +234,8 @@ const normalizeDentist = (dentist) => {
   const avatarPath = pickAvatarPath(dentist);
   return {
     id: dentist?.id?.toString?.() || dentist?.userId?.toString?.() || `dentist-${dentist?.name}`,
-    name: dentist?.name || dentist?.fullname || 'Dokter Gigi',
-    specialty: dentist?.specialization || dentist?.primarySpecialization || 'Dokter Gigi',
+    name: formatDentistName(dentist?.name || dentist?.fullname),
+    specialty: normalizeSpecialty(dentist?.specialization || dentist?.primarySpecialization),
     clinic: dentist?.clinicName || dentist?.clinic || dentist?.clinicAddress || 'Klinik gigimu',
     clinicContext: extractClinicContext(dentist),
     rating: Number((dentist?.rating || fallbackRating).toFixed(1)),

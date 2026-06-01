@@ -3,6 +3,7 @@ import Icon from '../../../../components/AppIcon';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { getAvatarGradient, getInitials } from '../../../../utils/avatarGradients';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const formatDisplayName = (conversation) => conversation.patient?.name || 'Unknown Patient';
 
@@ -63,7 +64,7 @@ const ConversationRow = ({ conversation, active, online, onSelect, isDark }) => 
             style={avatarStyle}
           >
             {conversation.patient?.avatar ? (
-              <img src={conversation.patient.avatar} alt={name} className="h-full w-full object-cover rounded-2xl" />
+              <img src={resolveMediaUrl(conversation.patient.avatar)} alt={name} className="h-full w-full object-cover rounded-2xl" />
             ) : (
               getInitials(name)
             )}

@@ -80,19 +80,19 @@ function getRandomElement(array) {
 function generateDentistData(index) {
   const firstName = getRandomElement(firstNames);
   const lastName = getRandomElement(lastNames);
-  const fullName = `drg. ${firstName} ${lastName}`;
+  const fullName = `${firstName} ${lastName}`;
   const specialization = specializations[index % specializations.length];
   const city = getRandomElement(cities);
-  
+
   const yearsOfExperience = Math.floor(3 + Math.random() * 27); // 3-30 tahun
   const consultationFee = (Math.floor(Math.random() * 20) + 10) * 50000; // 500k - 1.5jt
   const rating = (4.0 + Math.random() * 1.0).toFixed(1); // 4.0 - 5.0
-  
+
   const streetName = getRandomElement(streetNames);
   const streetNumber = Math.floor(1 + Math.random() * 200);
   const clinicName = `${getRandomElement(clinicNamePrefixes)} ${firstName}`;
   const clinicAddress = `${streetName} No. ${streetNumber}, ${city}`;
-  
+
   return {
     email: generateRandomEmail(fullName),
     name: fullName,
@@ -116,20 +116,20 @@ function generateDentistData(index) {
 
 async function seedDentists() {
   const client = await pool.connect();
-  
+
   try {
     console.log('🦷 Starting to seed 50 dentists...\n');
-    
+
     await client.query('BEGIN');
-    
+
     let successCount = 0;
     let errorCount = 0;
-    
+
     for (let i = 0; i < 50; i++) {
       try {
         const dentist = generateDentistData(i);
         const hashedPassword = await bcrypt.hash(dentist.password, 10);
-        
+
         // Insert user
         const userResult = await client.query(
           `INSERT INTO users (name, email, phone_number, password_hash, roles, created_at, updated_at)
@@ -137,9 +137,9 @@ async function seedDentists() {
            RETURNING id`,
           [dentist.name, dentist.email, dentist.phoneNumber, hashedPassword, ['dentist']]
         );
-        
+
         const userId = userResult.rows[0].id;
-        
+
         // Insert dentist profile
         await client.query(
           `INSERT INTO dentist_profiles (
@@ -169,7 +169,7 @@ async function seedDentists() {
             dentist.profile.consultationFee,
           ]
         );
-        
+
         successCount++;
         console.log(`✅ [${i + 1}/50] Created: ${dentist.name} - ${dentist.profile.primarySpecialization} (${dentist.profile.city})`);
       } catch (error) {
@@ -177,14 +177,14 @@ async function seedDentists() {
         console.error(`❌ [${i + 1}/50] Error:`, error.message);
       }
     }
-    
+
     await client.query('COMMIT');
-    
+
     console.log('\n📊 Summary:');
     console.log(`   ✅ Success: ${successCount} dentists`);
     console.log(`   ❌ Failed: ${errorCount} dentists`);
     console.log(`   📧 Default password: password123`);
-    
+
     // Show specialization distribution
     console.log('\n🏥 Specialization Distribution:');
     const specializationCount = await client.query(
@@ -193,11 +193,11 @@ async function seedDentists() {
        GROUP BY primary_specialization
        ORDER BY count DESC`
     );
-    
+
     specializationCount.rows.forEach(row => {
       console.log(`   ${row.primary_specialization}: ${row.count} dentists`);
     });
-    
+
     // Show city distribution
     console.log('\n🌆 City Distribution (Top 10):');
     const cityCount = await client.query(
@@ -210,11 +210,11 @@ async function seedDentists() {
        ORDER BY count DESC
        LIMIT 10`
     );
-    
+
     cityCount.rows.forEach(row => {
       console.log(`   ${row.city?.trim() || 'Unknown'}: ${row.count} dentists`);
     });
-    
+
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Transaction error:', error);

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { parseDateValue } from '../utils/dateUtils';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000';
 const FILE_BASE_URL = (import.meta.env.VITE_FILE_BASE_URL || API_BASE).replace(/\/$/, '');
@@ -320,7 +321,7 @@ const ChatInterface = ({
             >
               {conversation.patient?.avatar ? (
                 <img
-                  src={conversation.patient.avatar}
+                  src={resolveMediaUrl(conversation.patient.avatar)}
                   alt={patientName}
                   className="h-full w-full object-cover"
                 />

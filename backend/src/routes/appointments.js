@@ -233,6 +233,7 @@ function serializeAppointment(appointment) {
     dentist: serializeDentistWithProfile(appointment.dentist, appointment.dentistProfile),
     clinicBranch: serializeBranch(appointment.clinicBranch),
     statusHistory: appointment.statusHistory ? serializeHistory(appointment.statusHistory) : undefined,
+    fee: appointment.fee ? Number(appointment.fee) : (appointment.dentistProfile?.consultationFee ? Number(appointment.dentistProfile.consultationFee) : (appointment.dentist?.dentistProfile?.[0]?.consultationFee ? Number(appointment.dentist.dentistProfile[0].consultationFee) : 0)),
     payment: latestPayment ? {
       id: latestPayment.id?.toString?.() ?? null,
       amount: latestPayment.amount,
@@ -1249,7 +1250,8 @@ router.get(
               name: true,
               email: true,
               phone_number: true,
-              avatar_url: true
+              avatar_url: true,
+              dentistProfile: true
             }
           },
           clinicBranch: {
@@ -1264,12 +1266,21 @@ router.get(
           statusHistory: {
             orderBy: { createdAt: 'desc' },
             take: 10
+          },
+          paymentIntents: {
+            orderBy: { createdAt: 'desc' },
+            take: 1
           }
         }
       });
 
       if (!appointment) {
         return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan atau sudah dihapus.');
+      }
+
+      // Map dentistProfile from nested dentist relation (it's an array, take first)
+      if (appointment.dentist) {
+        appointment.dentistProfile = appointment.dentist.dentistProfile?.[0] || null;
       }
 
       // Authorization check

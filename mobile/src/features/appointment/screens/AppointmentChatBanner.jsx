@@ -4,21 +4,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+import resolveMediaUrl from '../../../utils/media';
 
 const COLORS = THEME_COLORS;
-
-const resolveAvatarUrl = (raw) => {
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : null;
-};
 
 const CHAT_READY_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
   const dentist = appointment?.dentist || {};
   const dentistName = dentist?.name || 'Dokter Gigi';
-  const avatar = resolveAvatarUrl(dentist?.avatar || dentist?.avatar_url || dentist?.avatarUrl);
+  const avatar = resolveMediaUrl(dentist?.avatar || dentist?.avatar_url || dentist?.avatarUrl);
   const initials = (dentistName || 'DG')
     .split(' ')
     .filter((w) => w.length > 0)

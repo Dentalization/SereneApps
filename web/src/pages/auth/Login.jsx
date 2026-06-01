@@ -30,6 +30,19 @@ const Login = () => {
     }
   }, [location.state, navigate, toast]);
 
+  // Handle forced logout reason from sessionStorage
+  useEffect(() => {
+    try {
+      const reason = sessionStorage.getItem('auth.logout_reason');
+      if (reason) {
+        toast.error(reason, 6000);
+        sessionStorage.removeItem('auth.logout_reason');
+      }
+    } catch (err) {
+      // Ignore storage failures
+    }
+  }, [toast]);
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');

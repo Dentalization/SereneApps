@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useRef } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const Uploader = ({ onClose, onUploadComplete }) => {
+    const toast = useToast();
     const [dragActive, setDragActive] = useState(false);
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
@@ -85,7 +87,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
         try {
             const token = getAccessToken();
             if (!token) {
-                alert('Session expired. Please refresh the page and log in again.');
+                toast.error('Session expired. Please refresh the page and log in again.');
                 setUploading(false);
                 return;
             }
@@ -109,19 +111,19 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                         onClose(); // Close after short delay
                     }, 1500);
                 } else if (xhr.status === 401 || xhr.status === 403) {
-                    alert('Your session has expired. Please log in again.');
+                    toast.error('Your session has expired. Please log in again.');
                     setUploading(false);
                     return;
                 } else {
                     console.error('Upload failed with status:', xhr.status);
-                    alert(`Upload failed. The server encountered an error (Status: ${xhr.status}). Please try again.`);
+                    toast.error(`Upload failed. The server encountered an error (Status: ${xhr.status}). Please try again.`);
                     setUploading(false);
                 }
             };
 
             xhr.onerror = () => {
                 console.error('Network Error during upload');
-                alert('Upload failed due to a network connection error. Please check your internet and try again.');
+                toast.error('Upload failed due to a network connection error. Please check your internet and try again.');
                 setUploading(false);
             };
 

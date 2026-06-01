@@ -32,7 +32,7 @@ const RegisterScreen = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
-  
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -55,7 +55,7 @@ const RegisterScreen = ({ navigation }) => {
     if (field === 'dateOfBirth') {
       // Remove all non-digit characters
       const digits = value.replace(/\D/g, '');
-      
+
       // Auto-format as DD/MM/YYYY
       let formatted = digits;
       if (digits.length >= 2) {
@@ -69,11 +69,11 @@ const RegisterScreen = ({ navigation }) => {
           formatted += '/' + digits.slice(2);
         }
       }
-      
+
       setForm((prev) => ({ ...prev, [field]: formatted }));
       return;
     }
-    
+
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -123,9 +123,9 @@ const RegisterScreen = ({ navigation }) => {
         const day = parseInt(parts[0], 10);
         const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
         const year = parseInt(parts[2], 10);
-        
+
         const date = new Date(year, month, day);
-        
+
         // Validate the date is valid (handles invalid dates like 31/02/2020)
         if (
           isNaN(date.getTime()) ||
@@ -167,9 +167,9 @@ const RegisterScreen = ({ navigation }) => {
     setErrors(validationResult);
 
     if (Object.keys(validationResult).length > 0) {
-      setSnackbar({ 
-        visible: true, 
-        message: 'Mohon perbaiki kesalahan pada form' 
+      setSnackbar({
+        visible: true,
+        message: 'Mohon perbaiki kesalahan pada form'
       });
       return;
     }
@@ -197,7 +197,7 @@ const RegisterScreen = ({ navigation }) => {
         const year = parts[2];
         registrationData.dateOfBirth = `${year}-${month}-${day}`;
       }
-      
+
       if (form.city.trim()) {
         registrationData.city = form.city.trim();
       }
@@ -218,15 +218,15 @@ const RegisterScreen = ({ navigation }) => {
         dispatch(
           loginSuccess({
             user: result.data.user,
-            patientProfile: result.data.user.patientProfile,
+            patientProfile: result.data.patientProfile,
             accessToken: result.data.accessToken,
             refreshToken: result.data.refreshToken,
           })
         );
 
-        setSnackbar({ 
-          visible: true, 
-          message: `Selamat datang, ${result.data.user.name}! Akun berhasil dibuat.` 
+        setSnackbar({
+          visible: true,
+          message: `Selamat datang, ${result.data.user.name}! Akun berhasil dibuat.`
         });
 
         // Navigate to dashboard after 1 second
@@ -239,9 +239,9 @@ const RegisterScreen = ({ navigation }) => {
       } else {
         // Registration failed
         console.error('❌ Registration failed:', result);
-        
+
         let errorMessage = result.message || 'Pendaftaran gagal. Silakan coba lagi.';
-        
+
         // Handle specific error codes
         if (result.status === 409) {
           if (result.error === 'DUPLICATE_EMAIL') {
@@ -267,16 +267,16 @@ const RegisterScreen = ({ navigation }) => {
           errorMessage = result.details;
         }
 
-        setSnackbar({ 
-          visible: true, 
+        setSnackbar({
+          visible: true,
           message: errorMessage
         });
       }
     } catch (error) {
       console.error('❌ Unexpected error during registration:', error);
-      setSnackbar({ 
-        visible: true, 
-        message: 'Terjadi kesalahan tidak terduga. Silakan coba lagi.' 
+      setSnackbar({
+        visible: true,
+        message: 'Terjadi kesalahan tidak terduga. Silakan coba lagi.'
       });
     } finally {
       setLoading(false);

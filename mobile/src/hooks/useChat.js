@@ -2,16 +2,69 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import api from '../services/api';
 
-let conversationsClientModulePromise;
+// Use synchronous require() instead of dynamic import() to bypass Metro's
+// _interopNamespace ESM shim which crashes Hermes with:
+// "Cannot assign to property 'default' which has only a getter"
+let _cachedConversationsClient = null;
 
-const loadConversationsClient = async () => {
-  if (!conversationsClientModulePromise) {
-    conversationsClientModulePromise = import('@twilio/conversations');
+const loadConversationsClient = () => {
+  if (_cachedConversationsClient) return _cachedConversationsClient;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('@twilio/conversations');
+    const Client = mod.Client || mod.default?.Client || mod.default;
+    if (!Client) throw new Error('Client not found in @twilio/conversations');
+    _cachedConversationsClient = Client;
+    return Client;
+  } catch (err) {
+    if (__DEV__) console.warn('[useChat] Failed to load Twilio Conversations SDK:', err.message);
+    return null;
+  }
+};
+
+let globalTwilioClient = null;
+let globalTwilioClientPromise = null;
+
+export async function getOrCreateTwilioClient(token) {
+  if (globalTwilioClient) {
+    try {
+      await globalTwilioClient.updateToken(token);
+    } catch (e) {
+      console.warn('[useChat] Error updating global Twilio token:', e.message);
+    }
+    return globalTwilioClient;
+  }
+  if (globalTwilioClientPromise) {
+    return globalTwilioClientPromise;
   }
 
-  const module = await conversationsClientModulePromise;
-  return module.Client || module.default?.Client || module.default;
-};
+  const ConversationsClient = loadConversationsClient();
+  if (!ConversationsClient?.create) {
+    throw new Error('Unable to load Twilio Conversations SDK');
+  }
+
+  globalTwilioClientPromise = ConversationsClient.create(token).then((client) => {
+    globalTwilioClient = client;
+    globalTwilioClientPromise = null;
+    return client;
+  }).catch((err) => {
+    globalTwilioClientPromise = null;
+    throw err;
+  });
+
+  return globalTwilioClientPromise;
+}
+
+export function shutdownGlobalTwilioClient() {
+  if (globalTwilioClient) {
+    try {
+      globalTwilioClient.shutdown();
+    } catch (e) {
+      console.warn('[useChat] Error shutting down global Twilio client:', e.message);
+    }
+    globalTwilioClient = null;
+  }
+}
 
 /**
  * Mobile version of useChat using Twilio Conversations SDK
@@ -111,10 +164,7 @@ export function useChat({ userId } = {}) {
   // ── Clean up Twilio Client ───────────────────────────────────
   useEffect(() => {
     return () => {
-      if (twilioClientRef.current) {
-        twilioClientRef.current.shutdown();
-        twilioClientRef.current = null;
-      }
+      // Do NOT shut down the global client on hook unmount so the patient stays online
       Object.values(typingTimersRef.current).forEach(clearTimeout);
       typingTimersRef.current = {};
     };
@@ -184,27 +234,19 @@ export function useChat({ userId } = {}) {
       }));
 
       // 3-4. Init / Update Client
-      let client = twilioClientRef.current;
-      if (!client) {
-        const ConversationsClient = await loadConversationsClient();
-        if (!ConversationsClient?.create) {
-          throw new Error('Unable to load Twilio Conversations SDK');
-        }
-        client = await ConversationsClient.create(token);
-        twilioClientRef.current = client;
+      let client = await getOrCreateTwilioClient(token);
+      twilioClientRef.current = client;
 
-        client.on('connectionStateChanged', (state) => {
-          setConnectionState(state);
-          setSocketConnected(state === 'connected');
-          if (state === 'connected') setReconnectError(null);
-        });
+      client.removeAllListeners('connectionStateChanged');
+      client.on('connectionStateChanged', (state) => {
+        setConnectionState(state);
+        setSocketConnected(state === 'connected');
+        if (state === 'connected') setReconnectError(null);
+      });
 
-        if (client.connectionState === 'connected') {
-          setSocketConnected(true);
-          setConnectionState('connected');
-        }
-      } else {
-        await client.updateToken(token);
+      if (client.connectionState === 'connected') {
+        setSocketConnected(true);
+        setConnectionState('connected');
       }
 
       // 5. Subscribe to conversation

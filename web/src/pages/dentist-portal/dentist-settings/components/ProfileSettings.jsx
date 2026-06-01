@@ -5,10 +5,12 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { resolveMediaUrl } from '../../../../utils/media';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const ProfileSettings = ({ user, onDataChange }) => {
   const { refreshUserData, clearUserData } = useAuth();
   const { t } = useLanguage();
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [avatar, setAvatar] = useState(user?.avatar_url || user?.profile?.avatar_url || null);
   const [loading, setLoading] = useState(!user); // Only start loading if no user prop
@@ -22,9 +24,25 @@ const ProfileSettings = ({ user, onDataChange }) => {
   const [documentUploading, setDocumentUploading] = useState(false);
   const resolvedAvatarUrl = resolveMediaUrl(avatar);
   
+  // Helper to split full name into main name and suffix
+  const splitNameAndSuffix = (fullName) => {
+    if (!fullName) return { name: '', suffix: '' };
+    const commaIndex = fullName.indexOf(',');
+    if (commaIndex === -1) {
+      return { name: fullName.trim(), suffix: '' };
+    }
+    return {
+      name: fullName.substring(0, commaIndex).trim(),
+      suffix: fullName.substring(commaIndex + 1).trim()
+    };
+  };
+
+  const initialNameSplit = splitNameAndSuffix(user?.name || '');
+
   // Initialize editData with user prop data
   const [editData, setEditData] = useState({
-    name: user?.name || '',
+    name: initialNameSplit.name,
+    nameSuffix: initialNameSplit.suffix,
     email: user?.email || '',
     phone: user?.profile?.phone_number || user?.phoneNumber || '',
     title: user?.profile?.title || '',
@@ -51,8 +69,10 @@ const ProfileSettings = ({ user, onDataChange }) => {
       setUserProfile(userData);
       
       // Update editData with real database values
+      const fetchedNameSplit = splitNameAndSuffix(userData.name || '');
       setEditData({
-        name: userData.name || '',
+        name: fetchedNameSplit.name,
+        nameSuffix: fetchedNameSplit.suffix,
         email: userData.email || '',
         phone: userData.profile?.phone_number || userData.phoneNumber || '',
         title: userData.profile?.title || '',
@@ -97,8 +117,10 @@ const ProfileSettings = ({ user, onDataChange }) => {
       if (user) {
         console.log('Falling back to user prop:', user);
         setUserProfile(user);
+        const fallbackNameSplit = splitNameAndSuffix(user.name || '');
         setEditData({
-          name: user.name || '',
+          name: fallbackNameSplit.name,
+          nameSuffix: fallbackNameSplit.suffix,
           email: user.email || '',
           phone: user.profile?.phone_number || user.phoneNumber || '',
           title: user.profile?.title || '',
@@ -128,8 +150,10 @@ const ProfileSettings = ({ user, onDataChange }) => {
       const avatarUrl = user.avatar_url || user.profile?.avatar_url;
       setAvatar(avatarUrl);
       
+      const propNameSplit = splitNameAndSuffix(user.name || '');
       setEditData({
-        name: user.name || '',
+        name: propNameSplit.name,
+        nameSuffix: propNameSplit.suffix,
         email: user.email || '',
         phone: user.profile?.phone_number || user.phoneNumber || '',
         title: user.profile?.title || '',
@@ -179,8 +203,12 @@ const ProfileSettings = ({ user, onDataChange }) => {
       setLoading(true);
       
       // Prepare data for API
+      const finalName = editData.nameSuffix?.trim()
+        ? `${editData.name.trim()}, ${editData.nameSuffix.trim()}`
+        : editData.name.trim();
+
       const profileData = {
-        name: editData.name,
+        name: finalName,
         email: editData.email,
         phoneNumber: editData.phone,
         profile: {
@@ -214,7 +242,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
       await refreshUserData();
       
       // Show success message
-      alert('Profile saved successfully!');
+      toast.success('Profile saved successfully!');
       
       // Refresh the profile data to ensure consistency
       await fetchUserProfile();
@@ -222,7 +250,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
     } catch (error) {
       console.error('Error saving profile:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      alert(`Failed to save profile: ${errorMessage}`);
+      toast.error(`Failed to save profile: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -231,8 +259,10 @@ const ProfileSettings = ({ user, onDataChange }) => {
   const handleCancel = () => {
     // Reset to current database data
     if (userProfile) {
+      const cancelNameSplit = splitNameAndSuffix(userProfile.name || '');
       setEditData({
-        name: userProfile.name || '',
+        name: cancelNameSplit.name,
+        nameSuffix: cancelNameSplit.suffix,
         email: userProfile.email || '',
         phone: userProfile.profile?.phone_number || userProfile.phoneNumber || '',
         title: userProfile.profile?.title || '',
@@ -285,7 +315,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
       }));
       
       onDataChange?.(true);
-      alert('Document uploaded successfully!');
+      toast.success('Document uploaded successfully!');
       
       // Refresh profile data to ensure consistency
       await fetchUserProfile();
@@ -293,7 +323,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
     } catch (error) {
       console.error('Error uploading document:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      alert(`Failed to upload document: ${errorMessage}`);
+      toast.error(`Failed to upload document: ${errorMessage}`);
     } finally {
       setDocumentUploading(false);
     }
@@ -317,7 +347,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
       });
       
       onDataChange?.(true);
-      alert('Document deleted successfully!');
+      toast.success('Document deleted successfully!');
       
       // Refresh profile data
       await fetchUserProfile();
@@ -325,7 +355,7 @@ const ProfileSettings = ({ user, onDataChange }) => {
     } catch (error) {
       console.error('Error deleting document:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      alert(`Failed to delete document: ${errorMessage}`);
+      toast.error(`Failed to delete document: ${errorMessage}`);
     } finally {
       setDocumentUploading(false);
     }
@@ -360,12 +390,12 @@ const ProfileSettings = ({ user, onDataChange }) => {
       // Refresh profile data to get latest info
       await fetchUserProfile();
       
-      alert('Avatar uploaded successfully!');
+      toast.success('Avatar uploaded successfully!');
       
     } catch (error) {
       console.error('Error uploading avatar:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      alert(`Failed to upload avatar: ${errorMessage}`);
+      toast.error(`Failed to upload avatar: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -597,13 +627,27 @@ const ProfileSettings = ({ user, onDataChange }) => {
             </div>
             <div className="flex-1">
               {isEditing ? (
-                <input
-                  type="text"
-                  value={editData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-6 py-4 rounded-2xl border-2 border-primary bg-surface text-primary focus:outline-none focus:ring-4 focus:ring-accent/30 focus:border-accent backdrop-blur-sm transition-all duration-300 placeholder:text-secondary theme-transition"
-                  placeholder={t('settings.enterFullName')}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <input
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) => handleInputChange('name', e.target.value)}
+                      className="w-full px-6 py-4 rounded-2xl border-2 border-primary bg-surface text-primary focus:outline-none focus:ring-4 focus:ring-accent/30 focus:border-accent backdrop-blur-sm transition-all duration-300 placeholder:text-secondary theme-transition"
+                      placeholder={t('settings.enterFullName')}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={editData.nameSuffix || ''}
+                      onChange={(e) => handleInputChange('nameSuffix', e.target.value)}
+                      className="w-full px-6 py-4 rounded-2xl border-2 border-primary bg-surface text-primary focus:outline-none focus:ring-4 focus:ring-accent/30 focus:border-accent backdrop-blur-sm transition-all duration-300 placeholder:text-secondary theme-transition"
+                      placeholder="e.g., Sp.Ort, Sp.KG, M.Kes"
+                    />
+                    <span className="text-xs text-secondary mt-1 block">Gelar Belakang (Suffix)</span>
+                  </div>
+                </div>
               ) : (
                 <div className="text-primary theme-transition font-medium text-lg">
                   {user?.name || (

@@ -181,7 +181,7 @@ async function seedDentists() {
             VALUES ($1, $2, $3, $4, $5, now())
             RETURNING id
           `, [
-            `drg. ${name}, ${spec.code}`,
+            `${name}, ${spec.code}`,
             email,
             `+628${Math.floor(Math.random() * 900000000) + 100000000}`,
             hashedPassword,

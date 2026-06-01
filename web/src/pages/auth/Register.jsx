@@ -14,6 +14,7 @@ const Register = () => {
 
   // Personal Information
   const [name, setName] = useState('');
+  const [nameSuffix, setNameSuffix] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [about, setAbout] = useState('');
@@ -398,7 +399,8 @@ const Register = () => {
       const formData = new FormData();
       
       // Personal Information
-      formData.append('name', name);
+      const finalName = nameSuffix.trim() ? `${name.trim()}, ${nameSuffix.trim()}` : name.trim();
+      formData.append('name', finalName);
       formData.append('email', email);
       formData.append('phoneNumber', phoneNumber);
       formData.append('about', about || '');
@@ -624,6 +626,20 @@ const Register = () => {
                     />
                     <p className="text-xs text-gray-500 mt-1">Nama depan dan belakang (minimal 2 karakter untuk nama belakang)</p>
                     {nameError && <p className="text-xs text-red-500 mt-1">{nameError}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Gelar Belakang / Spesialis (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={nameSuffix}
+                      onChange={(e) => setNameSuffix(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                      placeholder="Sp.Ort, Sp.KG, M.Kes"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Gelar spesialisasi atau akademis di belakang nama</p>
                   </div>
 
                   <div>

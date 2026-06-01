@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { authHttp } from '../../../../utils/httpClient';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const SecuritySettings = ({ user, onDataChange }) => {
   const { t } = useLanguage();
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPasswords, setShowPasswords] = useState({
@@ -116,17 +118,17 @@ const SecuritySettings = ({ user, onDataChange }) => {
 
   const handleChangePassword = async () => {
     if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
-      alert('All password fields are required!');
+      toast.error('All password fields are required!');
       return;
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('New password and confirmation do not match!');
+      toast.error('New password and confirmation do not match!');
       return;
     }
 
     if (!passwordValidation.isValid) {
-      alert('The new password does not meet the security criteria!');
+      toast.error('The new password does not meet the security criteria!');
       return;
     }
 
@@ -137,7 +139,7 @@ const SecuritySettings = ({ user, onDataChange }) => {
         newPassword: passwordData.newPassword
       });
       
-      alert('Password changed successfully!');
+      toast.success('Password changed successfully!');
       setPasswordData({
         currentPassword: '',
         newPassword: '',
@@ -145,7 +147,7 @@ const SecuritySettings = ({ user, onDataChange }) => {
       });
     } catch (error) {
       console.error('Error changing password:', error);
-      alert(error.response?.data?.message || 'Failed to change password');
+      toast.error(error.response?.data?.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -157,10 +159,10 @@ const SecuritySettings = ({ user, onDataChange }) => {
       // Implement 2FA setup logic
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
       setSecuritySettings(prev => ({ ...prev, twoFactorEnabled: true }));
-      alert('Two-Factor Authentication enabled successfully!');
+      toast.success('Two-Factor Authentication enabled successfully!');
     } catch (error) {
       console.error('Error enabling 2FA:', error);
-      alert('Failed to enable 2FA');
+      toast.error('Failed to enable 2FA');
     } finally {
       setLoading(false);
     }
@@ -173,10 +175,10 @@ const SecuritySettings = ({ user, onDataChange }) => {
         // Implement 2FA disable logic
         await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
         setSecuritySettings(prev => ({ ...prev, twoFactorEnabled: false }));
-        alert('Two-Factor Authentication disabled successfully!');
+        toast.success('Two-Factor Authentication disabled successfully!');
       } catch (error) {
         console.error('Error disabling 2FA:', error);
-        alert('Failed to disable 2FA');
+        toast.error('Failed to disable 2FA');
       } finally {
         setLoading(false);
       }
@@ -188,12 +190,12 @@ const SecuritySettings = ({ user, onDataChange }) => {
       setLoading(true);
       try {
         await authHttp.post('/auth/logout-all-devices');
-        alert('Successfully logged out from all devices!');
+        toast.success('Successfully logged out from all devices!');
         // Redirect to login or refresh the page
         window.location.reload();
       } catch (error) {
         console.error('Error logging out all devices:', error);
-        alert('Failed to log out from all devices');
+        toast.error('Failed to log out from all devices');
       } finally {
         setLoading(false);
       }
@@ -208,10 +210,10 @@ const SecuritySettings = ({ user, onDataChange }) => {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
       setIsEditing(false);
       onDataChange?.(false);
-      alert('Security settings saved successfully!');
+      toast.success('Security settings saved successfully!');
     } catch (error) {
       console.error('Error saving security settings:', error);
-      alert('Failed to save security settings');
+      toast.error('Failed to save security settings');
     } finally {
       setLoading(false);
     }

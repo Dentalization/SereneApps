@@ -41,6 +41,7 @@ const TemplatesSettings = () => {
 
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [previewContent, setPreviewContent] = useState(null);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     type: 'notification',
@@ -346,7 +347,7 @@ const TemplatesSettings = () => {
                       <button
                         onClick={() => {
                           const preview = previewTemplate(template);
-                          alert(`${t('clinic.templates.preview') || 'Preview'}:\\n\\n${preview}`);
+                          setPreviewContent(preview);
                         }}
                         className="p-2 text-secondary hover:text-primary hover:bg-surface-elevated rounded-lg transition-colors"
                         title={t('clinic.templates.preview') || 'Preview'}
@@ -606,6 +607,44 @@ const TemplatesSettings = () => {
             </div>
           </div>
         </div>
+        </ModalPortal>
+      )}
+
+      {/* Preview Modal */}
+      {previewContent && (
+        <ModalPortal>
+          <div 
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setPreviewContent(null)}
+          >
+            <div 
+              className="relative w-full max-w-lg bg-surface-elevated rounded-2xl shadow-2xl p-6 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-primary">
+                  {t('clinic.templates.preview') || 'Template Preview'}
+                </h3>
+                <button
+                  onClick={() => setPreviewContent(null)}
+                  className="p-2 text-secondary hover:text-primary rounded-lg transition-colors"
+                >
+                  <Icon name="X" size={20} />
+                </button>
+              </div>
+              <div className="bg-surface p-4 rounded-xl border border-primary/10 text-primary text-sm whitespace-pre-wrap min-h-[120px] max-h-[60vh] overflow-y-auto">
+                {previewContent}
+              </div>
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setPreviewContent(null)}
+                  className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors font-medium text-sm"
+                >
+                  {t('common.close') || 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
         </ModalPortal>
       )}
     </div>

@@ -12,6 +12,7 @@ import useToast from '../../../hooks/useToast';
 import AppointmentChatBanner from './AppointmentChatBanner';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
+import resolveMediaUrl from '../../../utils/media';
 
 const COLORS = THEME_COLORS;
 
@@ -20,7 +21,7 @@ const DetailAppointmentScreen = () => {
   const route = useRoute();
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
-  
+
   const appointmentId = route.params?.appointmentId;
   const [appointment, setAppointment] = useState(route.params?.appointment || null);
   const [clinicalSummary, setClinicalSummary] = useState(null);
@@ -37,7 +38,7 @@ const DetailAppointmentScreen = () => {
       const result = await getAppointmentById(appointmentId);
       const appointmentData = result.data;
       setAppointment(appointmentData);
-      
+
       // ISSUE-016: Only fetch clinical summary for completed appointments
       if (appointmentData?.status === 'completed' || appointmentData?.status === 'finished') {
         try {
@@ -88,8 +89,8 @@ const DetailAppointmentScreen = () => {
       'Apakah Anda yakin ingin membatalkan janji temu ini? Pembatalan mungkin dikenakan biaya admin tergantung kebijakan klinik.',
       [
         { text: 'Tidak', style: 'cancel' },
-        { 
-          text: 'Ya, Batalkan', 
+        {
+          text: 'Ya, Batalkan',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -109,22 +110,38 @@ const DetailAppointmentScreen = () => {
   };
 
   const handleReschedule = () => {
+    const pId = appointment?.dentist?.profileId || appointment?.dentistId;
     navigation.navigate('BookingSlot', {
-      dentistId: appointment?.dentistId,
-      dentist: appointment?.dentist,
+      dentistId: pId,
+      dentist: {
+        ...appointment?.dentist,
+        id: pId,
+        specialty: appointment?.dentist?.specialty || appointment?.dentist?.specialization || 'Dokter Gigi Umum',
+        clinicContext: appointment?.clinicBranch ? {
+          profileId: appointment?.clinicBranch?.clinicProfileId,
+          branchId: appointment?.clinicBranch?.id,
+          name: appointment?.clinicBranch?.name,
+          address: appointment?.clinicBranch?.address,
+        } : undefined,
+      },
       isReschedule: true,
       originalAppointmentId: appointmentId,
     });
   };
 
   const handleJoinCall = () => {
+    const dentistAvatar = resolveMediaUrl(appointment?.dentist?.avatar || appointment?.dentist?.avatarUrl);
+    const dentistInitials = appointment?.dentist?.name
+      ? appointment.dentist.name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      : 'DR';
+
     navigation.navigate('PatientTeledentistry', {
       appointmentId: appointmentId,
       appointmentDate: appointment?.startsAt,
       dentistName: appointment?.dentist?.name,
-      dentistSpecialty: appointment?.dentist?.specialty,
-      dentistAvatar: appointment?.dentist?.avatarUrl,
-      dentistInitials: appointment?.dentist?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+      dentistSpecialty: appointment?.dentist?.specialty || appointment?.dentist?.specialization || 'Dokter Gigi Umum',
+      dentistAvatar: dentistAvatar,
+      dentistInitials: dentistInitials,
     });
   };
 
@@ -164,26 +181,53 @@ const DetailAppointmentScreen = () => {
     : remainingMs > 0
       ? `${Math.floor(remainingMs / 60000)}m ${Math.floor((remainingMs % 60000) / 1000)}s`
       : 'Mulai sekarang';
-  const lifecycleSteps = ['Dipesan', 'Dikonfirmasi', 'Berlangsung', 'Selesai'];
-  const currentStep = appointment?.status === 'completed' || appointment?.status === 'finished'
-    ? 3
-    : appointment?.status === 'confirmed'
-      ? 1
-      : remainingMs <= 0 && ['scheduled', 'confirmed'].includes(appointment?.status)
-        ? 2
-        : 0;
+  const isUnpaid = appointment?.fee > 0 &&
+    appointment?.payment?.status !== 'succeeded' &&
+    appointment?.payment?.status !== 'settlement' &&
+    appointment?.payment?.status !== 'capture' &&
+    appointment?.status !== 'cancelled';
+  const isUnpaidAndOverdue = isUnpaid && appointment?.status === 'overdue';
+
+  const lifecycleSteps = isUnpaid
+    ? ['Dipesan', 'Bayar', 'Dikonfirmasi', 'Selesai']
+    : ['Dipesan', 'Dikonfirmasi', 'Berlangsung', 'Selesai'];
+
+  const currentStep = isUnpaid
+    ? 1
+    : appointment?.status === 'completed' || appointment?.status === 'finished'
+      ? 3
+      : appointment?.status === 'confirmed'
+        ? 1
+        : remainingMs <= 0 && ['scheduled', 'confirmed'].includes(appointment?.status)
+          ? 2
+          : 0;
+
+  const dentistAvatar = resolveMediaUrl(appointment?.dentist?.avatar || appointment?.dentist?.avatarUrl);
+  const dentistInitials = appointment?.dentist?.name
+    ? appointment.dentist.name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'DR';
+
+  const canJoinVideo = remainingMs <= 10 * 60 * 1000;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle='light-content' />
-      
+
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryLight]}
         style={{ paddingTop: insets.top + 20, paddingBottom: 60, paddingHorizontal: 20 }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()}
+          <TouchableOpacity
+            onPress={() => {
+              const state = navigation.getState();
+              const routes = state?.routes || [];
+              if (routes.length > 1) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('AppointmentList');
+              }
+            }}
             accessibilityLabel="Kembali"
             accessibilityRole="button"
             style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: withOpacity(COLORS.white, 0.2), justifyContent: 'center', alignItems: 'center' }}
@@ -195,8 +239,35 @@ const DetailAppointmentScreen = () => {
           </View>
         </View>
 
+        <View style={{ marginTop: 24, alignItems: 'center' }}>
+          <View style={{ backgroundColor: withOpacity(statusConfig.color, 0.12), paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: withOpacity(statusConfig.color, 0.4) }}>
+            <MaterialCommunityIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
+            <Text style={{ color: statusConfig.color, ...TYPOGRAPHY.caption, fontWeight: '700', marginLeft: 6 }}>{statusConfig.label}</Text>
+          </View>
+          <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.surfaceElevated }}>Detail Janji Temu</Text>
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        style={{ flex: 1, marginTop: -32, borderTopLeftRadius: 32, borderTopRightRadius: 32, backgroundColor: COLORS.surface }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Countdown Card */}
         {['scheduled', 'confirmed'].includes(appointment?.status) && (
-          <View style={{ marginTop: 18, backgroundColor: COLORS.surfaceElevated, borderRadius: 22, padding: 16, borderWidth: 1, borderColor: withOpacity(COLORS.primary, 0.14) }}>
+          <View style={{
+            backgroundColor: COLORS.surfaceElevated,
+            borderRadius: 22,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.primary, 0.14),
+            marginBottom: 20,
+            shadowColor: COLORS.textPrimary,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+            elevation: 2
+          }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 7, borderColor: withOpacity(COLORS.primary, 0.18), alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
                 <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '900', textAlign: 'center' }}>{remainingLabel}</Text>
@@ -211,7 +282,18 @@ const DetailAppointmentScreen = () => {
           </View>
         )}
 
-        <View style={{ marginTop: 20, backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16 }}>
+        {/* Status Stepper */}
+        <View style={{
+          backgroundColor: COLORS.surfaceElevated,
+          borderRadius: 20,
+          padding: 16,
+          marginBottom: 20,
+          shadowColor: COLORS.textPrimary,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.05,
+          shadowRadius: 10,
+          elevation: 2
+        }}>
           <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 14 }}>Status Janji Temu</Text>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             {lifecycleSteps.map((step, index) => {
@@ -229,31 +311,109 @@ const DetailAppointmentScreen = () => {
           </View>
         </View>
 
-        <View style={{ marginTop: 24, alignItems: 'center' }}>
-          <View style={{ backgroundColor: withOpacity(statusConfig.color, 0.12), paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: withOpacity(statusConfig.color, 0.4) }}>
-            <MaterialCommunityIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
-            <Text style={{ color: statusConfig.color, ...TYPOGRAPHY.caption, fontWeight: '700', marginLeft: 6 }}>{statusConfig.label}</Text>
+        {/* Overdue Unpaid Alert or Payment Warning Card */}
+        {isUnpaidAndOverdue ? (
+          <View style={{
+            backgroundColor: withOpacity(COLORS.error, 0.08),
+            borderRadius: 22,
+            padding: 16,
+            marginBottom: 20,
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.error, 0.3),
+            shadowColor: COLORS.error,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+            elevation: 2
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.error, 0.15), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <MaterialCommunityIcons name="calendar-remove" size={22} color={COLORS.error} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '800', color: COLORS.error }}>Jadwal Terlewat & Belum Dibayar</Text>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>Jadwal janji temu virtual Anda telah terlewat tanpa pembayaran. Silakan buat janji temu baru.</Text>
+              </View>
+            </View>
+            <Button
+              mode="contained"
+              buttonColor={COLORS.primary}
+              textColor={COLORS.white}
+              onPress={() => {
+                navigation.navigate('ClinicSearch');
+              }}
+              style={{ borderRadius: 12 }}
+              labelStyle={{ fontWeight: '700' }}
+            >
+              Buat Janji Temu Baru
+            </Button>
           </View>
-          <Text style={{ ...TYPOGRAPHY.h2, color: COLORS.surfaceElevated }}>Detail Janji Temu</Text>
-        </View>
-      </LinearGradient>
+        ) : isUnpaid ? (
+          <View style={{
+            backgroundColor: withOpacity(COLORS.warning, 0.08),
+            borderRadius: 22,
+            padding: 16,
+            marginBottom: 20,
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.warning, 0.3),
+            shadowColor: COLORS.warning,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+            elevation: 2
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.warning, 0.15), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <MaterialCommunityIcons name="wallet-giftcard" size={22} color={COLORS.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '800', color: COLORS.warning }}>Menunggu Pembayaran</Text>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>Segera selesaikan pembayaran untuk mengamankan slot Anda.</Text>
+              </View>
+            </View>
+            <Button
+              mode="contained"
+              buttonColor={COLORS.warning}
+              textColor={COLORS.white}
+              onPress={() => {
+                navigation.navigate('Payment', {
+                  appointmentId: appointment.id,
+                  dentist: appointment.dentist,
+                  slot: { time: new Date(appointment.startsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) },
+                  date: appointment.startsAt.split('T')[0],
+                  fee: appointment.fee,
+                  paymentMethod: appointment.payment?.provider || 'card',
+                });
+              }}
+              style={{ borderRadius: 12 }}
+              labelStyle={{ fontWeight: '700' }}
+            >
+              Bayar Sekarang
+            </Button>
+          </View>
+        ) : null}
 
-      <ScrollView 
-        style={{ flex: 1, marginTop: -32, borderTopLeftRadius: 32, borderTopRightRadius: 32, backgroundColor: COLORS.surface }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
         {/* Dentist Card */}
         <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center', shadowColor: COLORS.textPrimary, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.1), overflow: 'hidden' }}>
-            <Image 
-              source={{ uri: appointment?.dentist?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${appointment?.dentist?.id}&backgroundColor=8B5CF6` }}
-              style={{ width: '100%', height: '100%' }}
-            />
+          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.1), overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
+            {!isUnpaid && dentistAvatar ? (
+              <Image
+                source={{ uri: dentistAvatar }}
+                style={{ width: '100%', height: '100%' }}
+              />
+            ) : (
+              <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.primary, fontWeight: '700' }}>
+                {isUnpaid ? 'DG' : dentistInitials}
+              </Text>
+            )}
           </View>
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary }}>{appointment?.dentist?.name}</Text>
-            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>{appointment?.dentist?.specialty}</Text>
+            <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary }}>
+              {isUnpaid ? 'Dokter akan ditugaskan' : appointment?.dentist?.name}
+            </Text>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
+              {isUnpaid ? 'Selesaikan pembayaran terlebih dahulu' : (appointment?.dentist?.specialty || appointment?.dentist?.specialization || 'Dokter Gigi Umum')}
+            </Text>
           </View>
         </View>
 
@@ -285,19 +445,19 @@ const DetailAppointmentScreen = () => {
         )}
 
         {/* Chat Banner */}
-        {(appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
+        {(appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && !isUnpaid && (
           <Animated.View style={{ borderRadius: 20, borderWidth: chatPulse.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }), borderColor: chatPulse.interpolate({ inputRange: [0, 1], outputRange: [withOpacity(COLORS.primary, 0), COLORS.primary] }) }}>
-          <AppointmentChatBanner 
-            appointment={appointment} 
-            onPress={() => navigation.navigate('PatientTeledentistry', { 
-              appointmentId: appointmentId,
-              appointmentDate: appointment?.startsAt,
-              dentistName: appointment?.dentist?.name,
-              dentistSpecialty: appointment?.dentist?.specialty,
-              dentistAvatar: appointment?.dentist?.avatarUrl,
-              dentistInitials: appointment?.dentist?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
-            })}
-          />
+            <AppointmentChatBanner
+              appointment={appointment}
+              onPress={() => navigation.navigate('PatientTeledentistry', {
+                appointmentId: appointmentId,
+                appointmentDate: appointment?.startsAt,
+                dentistName: appointment?.dentist?.name,
+                dentistSpecialty: appointment?.dentist?.specialty,
+                dentistAvatar: appointment?.dentist?.avatarUrl,
+                dentistInitials: appointment?.dentist?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+              })}
+            />
           </Animated.View>
         )}
 
@@ -335,18 +495,64 @@ const DetailAppointmentScreen = () => {
 
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
-          {isVirtualAppointment && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
+          {isVirtualAppointment && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && !isUnpaid && (
+            <View style={{ marginBottom: 12 }}>
+              <Button
+                mode="contained"
+                icon="video"
+                onPress={canJoinVideo ? handleJoinCall : undefined}
+                disabled={!canJoinVideo}
+                style={{ borderRadius: 12, marginBottom: 6 }}
+                buttonColor={canJoinVideo ? COLORS.primary : COLORS.border}
+                textColor={canJoinVideo ? COLORS.white : COLORS.textMuted}
+                contentStyle={{ height: 50 }}
+              >
+                Gabung Panggilan Video
+              </Button>
+              {!canJoinVideo && (
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: 'center', marginTop: 2 }}>
+                  Tersedia 10 menit sebelum sesi dimulai
+                </Text>
+              )}
+            </View>
+          )}
+
+          {isUnpaidAndOverdue ? (
             <Button
               mode="contained"
-              icon="video"
-              onPress={handleJoinCall}
+              icon="calendar-plus"
+              onPress={() => {
+                navigation.navigate('ClinicSearch');
+              }}
               style={{ borderRadius: 12, marginBottom: 12 }}
               buttonColor={COLORS.primary}
+              textColor={COLORS.white}
               contentStyle={{ height: 50 }}
             >
-              Gabung Panggilan Video
+              Buat Janji Temu Baru
             </Button>
-          )}
+          ) : isUnpaid ? (
+            <Button
+              mode="contained"
+              icon="credit-card"
+              onPress={() => {
+                navigation.navigate('Payment', {
+                  appointmentId: appointment.id,
+                  dentist: appointment.dentist,
+                  slot: { time: new Date(appointment.startsAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) },
+                  date: appointment.startsAt.split('T')[0],
+                  fee: appointment.fee,
+                  paymentMethod: appointment.payment?.provider || 'card',
+                });
+              }}
+              style={{ borderRadius: 12, marginBottom: 12 }}
+              buttonColor={COLORS.warning}
+              textColor={COLORS.white}
+              contentStyle={{ height: 50 }}
+            >
+              Selesaikan Pembayaran
+            </Button>
+          ) : null}
 
           {(appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -375,8 +581,8 @@ const DetailAppointmentScreen = () => {
             <Button
               mode="contained"
               icon="star"
-              onPress={() => navigation.navigate('Review', { 
-                appointmentId, 
+              onPress={() => navigation.navigate('Review', {
+                appointmentId,
                 dentistId: appointment?.dentist?.id || appointment?.dentistId,
                 dentistName: appointment?.dentist?.name,
                 dentistTitle: appointment?.dentist?.title || 'drg.',

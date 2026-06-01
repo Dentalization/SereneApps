@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import useNearbyDentists from '../../../hooks/useNearbyDentists';
+import { getDentistDirectory } from '../../../services/dentistService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import { colors as THEME_COLORS } from '../../../theme/colors';
@@ -101,21 +102,103 @@ const extractClinicContext = (dentist = {}) => {
   };
 };
 
-// Dentists from hook are already normalized, just ensure consistency
-const ensureDentistNormalized = (dentist) => {
-  // Hook returns normalized data with: id, name, specialty, clinic, rating, reviews, price, image, clinicContext, raw, distanceKm
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  if (
+    [lat1, lon1, lat2, lon2].some(
+      (coord) => coord === null || coord === undefined || !Number.isFinite(coord)
+    )
+  ) {
+    return null;
+  }
+  const R = 6371;
+  const toRad = (deg) => deg * (Math.PI / 180);
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 100) / 100;
+};
+
+const formatDentistName = (name) => {
+  if (!name) return 'Dokter Gigi';
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('drg.') || lower.startsWith('drg ') || lower.startsWith('dr.') || lower.startsWith('dr ')) {
+    return trimmed;
+  }
+  return `drg. ${trimmed}`;
+};
+
+const normalizeSpecialty = (specialization) => {
+  if (!specialization) return 'Dokter Gigi';
+  const spec = specialization.trim().toLowerCase();
+  if (spec.includes('ortho')) {
+    return 'Spesialis Ortodonsia (Sp.Ort)';
+  }
+  if (spec.includes('pediat') || spec.includes('anak')) {
+    return 'Spesialis Kedokteran Gigi Anak (Sp.KGA)';
+  }
+  if (spec.includes('conserv') || spec.includes('endo') || spec.includes('konservasi')) {
+    return 'Spesialis Konservasi Gigi (Sp.KG)';
+  }
+  if (spec.includes('perio')) {
+    return 'Spesialis Periodonsia (Sp.Perio)';
+  }
+  if (spec.includes('prostho') || spec.includes('prostodonsia')) {
+    return 'Spesialis Prostodonsia (Sp.Pros)';
+  }
+  if (spec.includes('surgery') || spec.includes('bedah')) {
+    return 'Spesialis Bedah Mulut (Sp.BM)';
+  }
+  if (spec.includes('medicine') || spec.includes('penyakit mulut')) {
+    return 'Spesialis Penyakit Mulut (Sp.PM)';
+  }
+  if (spec.includes('digital')) {
+    return 'Kedokteran Gigi Digital';
+  }
+  if (spec.includes('implant')) {
+    return 'Implantologi';
+  }
+  if (spec.includes('cosmetic') || spec.includes('estetika')) {
+    return 'Estetika Gigi';
+  }
+  if (spec.includes('general') || spec.includes('umum') || spec.includes('dentist')) {
+    return 'Dokter Gigi Umum';
+  }
+  return 'Dokter Gigi';
+};
+
+const normalizeRawDentist = (dentist, userCoords = null) => {
+  if (!dentist) return null;
+  const years = dentist?.yearsOfExperience || 0;
+  const fallbackRating = 4 + Math.min(1, years / 15);
+
+  let distance = null;
+  if (userCoords && typeof userCoords.latitude === 'number' && dentist?.latitude && dentist?.longitude) {
+    distance = haversineDistance(
+      userCoords.latitude,
+      userCoords.longitude,
+      parseFloat(dentist.latitude),
+      parseFloat(dentist.longitude)
+    );
+  }
+
+  const avatarPath = pickAvatarPath(dentist);
   return {
-    id: dentist.id,
-    name: dentist.name || 'Dokter Gigi',
-    specialty: dentist.specialty || 'Dokter Gigi Umum',
-    clinic: dentist.clinic || 'Klinik gigimu',
-    rating: Number(dentist.rating || 4),
-    reviews: dentist.reviews || 0,
-    price: dentist.price || 0,
-    image: dentist.image,
-    clinicContext: dentist.clinicContext,
-    raw: dentist.raw,
-    distance: dentist.distanceKm || 0,
+    id: dentist?.id?.toString?.() || dentist?.userId?.toString?.() || `dentist-${dentist?.name}`,
+    name: formatDentistName(dentist?.name || dentist?.fullname),
+    specialty: normalizeSpecialty(dentist?.specialization || dentist?.primarySpecialization || dentist?.primary_specialization),
+    clinic: dentist?.clinicName || dentist?.clinic || dentist?.clinicAddress || 'Klinik gigimu',
+    clinicContext: extractClinicContext(dentist),
+    rating: Number((dentist?.rating || fallbackRating).toFixed(1)),
+    reviews: dentist?.reviewCount || dentist?.reviews || 0,
+    price: dentist?.consultationFee || dentist?.price || 0,
+    image: resolveAvatar(avatarPath, dentist?.id || dentist?.userId),
+    distance: distance,
+    raw: dentist,
   };
 };
 
@@ -127,21 +210,50 @@ const DentistSearchScreen = () => {
 
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('nearby');
+  const [selectedFilter, setSelectedFilter] = useState('all'); // Default to 'all' to show all dentists from start
   const [filteredDentists, setFilteredDentists] = useState([]);
+  const [allDirectoryDentists, setAllDirectoryDentists] = useState([]);
+  const [directoryLoading, setDirectoryLoading] = useState(true);
   const shimmer = useRef(new Animated.Value(0.3)).current;
 
   const {
     dentists,
-    loading,
-    error,
-    refresh,
+    loading: nearbyLoading,
+    error: nearbyError,
+    refresh: refreshNearby,
+    location,
   } = useNearbyDentists({
-    radius: 12,
-    limit: 50,
+    radius: 50, // Larger default search radius
+    limit: 100,
     autoFetch: true,
     type: 'clinic',
   });
+
+  const loading = nearbyLoading || directoryLoading;
+  const error = nearbyError;
+  const dentistsList = dentists || [];
+
+  const fetchDirectoryDentists = useCallback(async () => {
+    try {
+      setDirectoryLoading(true);
+      const res = await getDentistDirectory({ verifiedOnly: true, limit: 300 });
+      const items = res?.data?.dentists ?? res?.dentists ?? [];
+      setAllDirectoryDentists(items);
+    } catch (err) {
+      console.log('Error fetching directory in DentistSearchScreen:', err);
+    } finally {
+      setDirectoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDirectoryDentists();
+  }, [fetchDirectoryDentists]);
+
+  const handleRefresh = useCallback(async () => {
+    refreshNearby();
+    await fetchDirectoryDentists();
+  }, [refreshNearby, fetchDirectoryDentists]);
 
   // Debounce search
   useEffect(() => {
@@ -150,14 +262,6 @@ const DentistSearchScreen = () => {
     }, 300);
     return () => clearTimeout(handler);
   }, [searchInput]);
-
-  // Log dentists data for debugging
-  useEffect(() => {
-    if (dentists && dentists.length > 0) {
-      console.log('🦷 [DentistSearchScreen] Received', dentists.length, 'dentists from hook');
-      console.log('🦷 [DentistSearchScreen] First dentist:', JSON.stringify(dentists[0], null, 2));
-    }
-  }, [dentists]);
 
   // Persist filter preference
   useEffect(() => {
@@ -185,18 +289,15 @@ const DentistSearchScreen = () => {
 
   // Apply filtering and searching
   useEffect(() => {
-    if (!Array.isArray(dentists)) {
-      console.log('🦷 [DentistSearchScreen] dentists is not an array:', typeof dentists);
-      setFilteredDentists([]);
-      return;
+    let sourceData = [];
+    if (allDirectoryDentists && allDirectoryDentists.length > 0) {
+      sourceData = allDirectoryDentists.map((d) => normalizeRawDentist(d, location)).filter(Boolean);
+    } else if (Array.isArray(dentistsList)) {
+      sourceData = dentistsList.map((d) => normalizeRawDentist(d?.raw || d, location)).filter(Boolean);
     }
 
-    console.log('🦷 [DentistSearchScreen] Starting filter with', dentists.length, 'dentists');
-    let data = dentists.map(ensureDentistNormalized);
-    console.log('🦷 [DentistSearchScreen] After normalization:', data.length, 'dentists');
-    if (data.length > 0) {
-      console.log('🦷 [DentistSearchScreen] First normalized dentist:', JSON.stringify(data[0], null, 2));
-    }
+    console.log('🦷 [DentistSearchScreen] Starting filter with', sourceData.length, 'dentists');
+    let data = [...sourceData];
 
     // Search filter
     if (searchQuery.trim()) {
@@ -213,15 +314,16 @@ const DentistSearchScreen = () => {
     // Apply sort/filter
     switch (selectedFilter) {
       case 'nearby': {
-        data = [...data].sort((a, b) => {
-          const aDist = Number(a.distance) || Infinity;
-          const bDist = Number(b.distance) || Infinity;
+        // Sort by distance (closest first), placing undefined distances at the end
+        data.sort((a, b) => {
+          const aDist = a.distance !== null ? Number(a.distance) : Infinity;
+          const bDist = b.distance !== null ? Number(b.distance) : Infinity;
           return aDist - bDist;
         });
         break;
       }
       case 'highest_rated':
-        data = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        data.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       default:
         break;
@@ -229,38 +331,37 @@ const DentistSearchScreen = () => {
 
     console.log('🦷 [DentistSearchScreen] Final filtered data:', data.length, 'dentists');
     setFilteredDentists(data);
-  }, [dentists, searchQuery, selectedFilter]);
+  }, [dentistsList, allDirectoryDentists, searchQuery, selectedFilter, location]);
 
   const stats = useMemo(() => {
-    const mapped = dentists.map(ensureDentistNormalized);
-    const total = mapped.length;
-    const nearby = mapped.filter((d) => (d.distance || 0) <= 10).length;
+    const total = filteredDentists.length;
+    const nearby = filteredDentists.filter((d) => d.distance !== null && d.distance <= 15).length;
     const avgRating = total
-      ? (mapped.reduce((sum, d) => sum + (d.rating || 0), 0) / total).toFixed(1)
+      ? (filteredDentists.reduce((sum, d) => sum + (d.rating || 0), 0) / total).toFixed(1)
       : '0.0';
     return { total, nearby, avgRating };
-  }, [dentists]);
+  }, [filteredDentists]);
 
-    const handleProfile = (dentist) => {
+  const handleProfile = (dentist) => {
     console.log('🦷 [DentistSearchScreen] handleProfile called');
     console.log('🦷 Dentist object keys:', Object.keys(dentist || {}));
     console.log('🦷 dentist.id:', dentist?.id);
     console.log('🦷 dentist.name:', dentist?.name);
     console.log('🦷 dentist.raw exists?:', !!dentist?.raw);
     console.log('🦷 dentist.clinicContext exists?:', !!dentist?.clinicContext);
-    
+
     if (!dentist?.id || !dentist?.raw) {
       console.error('🦷 [DentistSearchScreen] Missing required data:', { id: dentist?.id, rawExists: !!dentist?.raw });
       showToast('Data dokter tidak lengkap', 'error');
       return;
     }
-    
+
     console.log('🦷 [DentistSearchScreen] Navigation data:', {
       dentistId: dentist.id,
       dentistRawKeys: Object.keys(dentist.raw || {}),
       clinicContextKeys: Object.keys(dentist.clinicContext || {}),
     });
-    
+
     try {
       navigation.navigate('DentistDetail', {
         dentistId: dentist.id,
@@ -281,7 +382,7 @@ const DentistSearchScreen = () => {
       showToast('Data dokter tidak lengkap', 'error');
       return;
     }
-    
+
     try {
       navigation.navigate('BookingSlot', {
         dentistId: dentist.id,
@@ -373,14 +474,14 @@ const DentistSearchScreen = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={theme.colors.primary} />
+          <RefreshControl refreshing={nearbyLoading || directoryLoading} onRefresh={handleRefresh} tintColor={theme.colors.primary} />
         }
       >
         {/* Debug Info */}
         {__DEV__ && (
           <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, marginBottom: 12 }}>
             <Text style={{ fontSize: 10, color: '#666', fontFamily: 'monospace' }}>
-              dentists: {dentists.length} | filtered: {filteredDentists.length} | loading: {loading ? '1' : '0'} | error: {error ? '1' : '0'}
+              dentists: {dentistsList.length} | filtered: {filteredDentists.length} | loading: {loading ? '1' : '0'} | error: {error ? '1' : '0'}
             </Text>
           </View>
         )}
@@ -423,7 +524,7 @@ const DentistSearchScreen = () => {
         {/* Error State */}
         {error && !loading && (
           <TouchableOpacity
-            onPress={refresh}
+            onPress={handleRefresh}
             style={{
               backgroundColor: '#FFE4E6',
               borderColor: '#FDA4AF',
@@ -440,7 +541,7 @@ const DentistSearchScreen = () => {
         )}
 
         {/* No Dentists Found State */}
-        {!loading && !error && dentists.length === 0 && (
+        {!loading && !error && dentistsList.length === 0 && (
           <View
             style={{
               padding: 24,
@@ -462,100 +563,131 @@ const DentistSearchScreen = () => {
         )}
 
         {/* Empty State */}
-        {!loading && !error && filteredDentists.length === 0 && dentists.length > 0 && (
-          <View
-            style={{
-              padding: 24,
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: '#E2E8F0',
-              alignItems: 'center',
-              backgroundColor: 'white',
-            }}
-          >
-            <MaterialCommunityIcons name="magnify" size={48} color="#94A3B8" />
-            <Text style={{ marginTop: 12, fontWeight: '600', color: '#0F172A', fontSize: 16 }}>
-              Tidak ada dokter yang cocok
-            </Text>
-            <Text style={{ color: '#94A3B8', marginTop: 4, textAlign: 'center' }}>
-              Coba ubah pencarian atau filter untuk menemukan dokter.
-            </Text>
-          </View>
-        )}
-
-        {/* Test Card (DEV ONLY) */}
-        {__DEV__ && filteredDentists.length === 0 && !loading && (
-          <View
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 24,
-              padding: normalize(16),
-              marginBottom: 16,
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.08,
-              shadowRadius: 18,
-              elevation: 4,
-              borderWidth: 1,
-              borderColor: '#E2E8F0',
-              opacity: 0.6,
-            }}
-          >
-            <Text style={{ color: '#999', fontWeight: '600', marginBottom: 8 }}>
-              TEST CARD (No real data)
-            </Text>
-            <View style={{ flexDirection: 'row' }}>
-              <Image
-                source={{ uri: 'https://api.dicebear.com/7.x/avataaars/png?seed=test&size=256' }}
+        {!loading && !error && filteredDentists.length === 0 && dentistsList.length > 0 && (
+          <View style={{ gap: 16 }}>
+            {/* Elegant Banner explaining search has no results */}
+            <View
+              style={{
+                padding: 20,
+                borderRadius: 24,
+                borderWidth: 1.5,
+                borderColor: '#E2E8F0',
+                alignItems: 'center',
+                backgroundColor: 'white',
+                shadowColor: '#0F172A',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.05,
+                shadowRadius: 16,
+                elevation: 2,
+              }}
+            >
+              <View
                 style={{
-                  width: normalize(70),
-                  height: normalize(70),
-                  borderRadius: 20,
-                  marginRight: 16,
-                  backgroundColor: '#F1F5F9',
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: 'rgba(152, 43, 234, 0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 12,
                 }}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A' }}>
-                  Dr. Test Dentist
+              >
+                <MaterialCommunityIcons name="magnify-close" size={24} color={theme.colors.primary} />
+              </View>
+              <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: 16, textAlign: 'center' }}>
+                Tidak ada dokter yang cocok
+              </Text>
+              <Text style={{ color: '#64748B', marginTop: 6, textAlign: 'center', fontSize: 13, lineHeight: 18 }}>
+                Coba ubah kata kunci pencarian atau ganti filter kategori Anda.
+              </Text>
+            </View>
+
+            {/* Illustrative Dentist Card Preview */}
+            <View
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 24,
+                padding: normalize(16),
+                shadowColor: '#0F172A',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                elevation: 4,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                position: 'relative',
+                overflow: 'hidden',
+                marginBottom: 16,
+              }}
+            >
+              {/* Top Banner Badge */}
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  backgroundColor: 'rgba(152, 43, 234, 0.1)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  zIndex: 2,
+                }}
+              >
+                <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 9 }}>
+                  CONTOH KARTU DOKTER
                 </Text>
-                <Text style={{ color: theme.colors.primary, fontWeight: '600', marginTop: 2, fontSize: normalize(12) }}>
-                  General Dentistry
-                </Text>
-                <Text style={{ color: '#0F172A', fontWeight: '500', marginTop: 2, fontSize: normalize(11) }}>
-                  Test Clinic
-                </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                  <MaterialCommunityIcons name="star" size={14} color="#FACC15" />
-                  <Text style={{ marginLeft: 4, color: '#475569', fontWeight: '600', fontSize: normalize(11) }}>
-                    4.5 · 2.5 km
+              </View>
+
+              <View style={{ flexDirection: 'row' }}>
+                <Image
+                  source={{ uri: 'https://api.dicebear.com/7.x/avataaars/png?seed=test&size=256' }}
+                  style={{
+                    width: normalize(70),
+                    height: normalize(70),
+                    borderRadius: 20,
+                    marginRight: 16,
+                    backgroundColor: '#F1F5F9',
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', fontSize: normalize(16), color: '#0F172A', paddingRight: 110 }}>
+                    drg. Aditya Pratama, Sp.KG
                   </Text>
+                  <Text style={{ color: theme.colors.primary, fontWeight: '600', marginTop: 2, fontSize: normalize(12) }}>
+                    Spesialis Konservasi Gigi
+                  </Text>
+                  <Text style={{ color: '#64748B', fontWeight: '500', marginTop: 2, fontSize: normalize(11) }}>
+                    Dental Care Studio Utama
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                    <MaterialCommunityIcons name="star" size={14} color="#FACC15" />
+                    <Text style={{ marginLeft: 4, color: '#475569', fontWeight: '600', fontSize: normalize(11) }}>
+                      4.9 · 2.5 km
+                    </Text>
+                  </View>
                 </View>
               </View>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={{ color: '#94A3B8', fontSize: normalize(10) }}>Mulai dari</Text>
-                <Text style={{ fontWeight: '700', color: '#0F172A', marginTop: 2, fontSize: normalize(14) }}>
-                  Rp 150.000
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row' }}>
-                <TouchableOpacity
-                  onPress={() => console.log('TEST: info button clicked')}
-                  activeOpacity={0.7}
-                  style={{ borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 12, height: normalize(36), marginRight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <MaterialCommunityIcons name="information-outline" size={16} color="#475569" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => console.log('TEST: book button clicked')}
-                  activeOpacity={0.7}
-                  style={{ borderRadius: 16, paddingHorizontal: 16, height: normalize(36), flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.primary, justifyContent: 'center' }}
-                >
-                  <MaterialCommunityIcons name="calendar-check" size={16} color="white" style={{ marginRight: 6 }} />
-                  <Text style={{ color: 'white', fontWeight: '700', fontSize: normalize(12) }}>Pesan</Text>
-                </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={{ color: '#94A3B8', fontSize: normalize(10) }}>Mulai dari</Text>
+                  <Text style={{ fontWeight: '700', color: '#0F172A', marginTop: 2, fontSize: normalize(14) }}>
+                    Rp 150.000
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row' }}>
+                  <View
+                    style={{ borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 12, height: normalize(36), marginRight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', opacity: 0.6 }}
+                  >
+                    <MaterialCommunityIcons name="information-outline" size={16} color="#475569" />
+                  </View>
+                  <View
+                    style={{ borderRadius: 16, paddingHorizontal: 16, height: normalize(36), flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.primary, justifyContent: 'center', opacity: 0.6 }}
+                  >
+                    <MaterialCommunityIcons name="calendar-check" size={16} color="white" style={{ marginRight: 6 }} />
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: normalize(12) }}>Pesan</Text>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
@@ -655,7 +787,7 @@ const DentistSearchScreen = () => {
                       fontSize: normalize(11),
                     }}
                   >
-                    {dentist.rating} · {dentist.distance.toFixed(1)} km
+                    {dentist.rating} {dentist.distance !== null && dentist.distance !== undefined ? `· ${dentist.distance.toFixed(1)} km` : ''}
                   </Text>
                 </View>
               </View>

@@ -8,32 +8,32 @@ const prisma = new PrismaClient();
 
 async function setupRealClinic() {
   console.log('🏥 Setting up real clinic staff assignments...');
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   try {
     // 1. Find existing clinic
     console.log('\n1️⃣ Finding existing clinic...');
-    
+
     const clinic = await prisma.clinicProfile.findFirst({
       select: { id: true, legalName: true, brandName: true }
     });
-    
+
     if (!clinic) {
       console.log('❌ No clinic found! Please create a clinic first.');
       return;
     }
-    
+
     console.log(`✅ Using clinic: ${clinic.legalName} (ID: ${clinic.id.toString()})`);
 
     // 2. Find existing users that should be clinic staff
     console.log('\n2️⃣ Finding existing users...');
-    
+
     const existingUsers = await prisma.user.findMany({
       where: {
         email: {
           in: [
             'owner@clinictest.com',
-            'manager@clinictest.com', 
+            'manager@clinictest.com',
             'frontoffice@clinictest.com',
             'nurse@clinictest.com',
             'cashier@clinictest.com'
@@ -42,7 +42,7 @@ async function setupRealClinic() {
       },
       select: { id: true, name: true, email: true, roles: true }
     });
-    
+
     console.log(`✅ Found ${existingUsers.length} existing users`);
     existingUsers.forEach(user => {
       console.log(`   • ${user.name} (${user.email}) - Current roles: [${user.roles.join(', ')}]`);
@@ -50,7 +50,7 @@ async function setupRealClinic() {
 
     // 3. Create clinic staff assignments
     console.log('\n3️⃣ Creating clinic staff assignments...');
-    
+
     const staffAssignments = [
       {
         email: 'owner@clinictest.com',
@@ -114,7 +114,7 @@ async function setupRealClinic() {
               user: { select: { name: true, email: true } }
             }
           });
-          
+
           console.log(`✅ Assigned ${staffRecord.user.name} as ${staffRecord.role}`);
         } catch (error) {
           console.log(`⚠️ Failed to assign ${user.name}: ${error.message}`);
@@ -127,7 +127,7 @@ async function setupRealClinic() {
     // 4. Show final clinic staff
     console.log('\n4️⃣ Final clinic staff roster:');
     const clinicStaff = await prisma.clinicStaff.findMany({
-      where: { 
+      where: {
         clinicProfileId: clinic.id,
         isActive: true
       },
@@ -136,7 +136,7 @@ async function setupRealClinic() {
       },
       orderBy: { role: 'asc' }
     });
-    
+
     if (clinicStaff.length === 0) {
       console.log('   No staff assigned yet.');
     } else {

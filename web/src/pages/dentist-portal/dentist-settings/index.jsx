@@ -84,7 +84,7 @@ const DentistSettings = () => {
             {/* Personal Info Skeleton */}
             <div className="space-y-6">
               <div className="h-6 bg-accent/20 rounded-xl animate-pulse w-48"></div>
-              
+
               {/* Form Fields */}
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex items-center space-x-6">
@@ -97,7 +97,7 @@ const DentistSettings = () => {
             {/* Professional Info Skeleton */}
             <div className="space-y-6">
               <div className="h-6 bg-accent/20 rounded-xl animate-pulse w-56"></div>
-              
+
               <div className="grid gap-6 md:grid-cols-2">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="flex items-center space-x-6">
@@ -111,7 +111,7 @@ const DentistSettings = () => {
             {/* Documents Skeleton */}
             <div className="space-y-6">
               <div className="h-6 bg-accent/20 rounded-xl animate-pulse w-52"></div>
-              
+
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex items-center space-x-6">
                   <div className="w-32 h-4 bg-accent/10 rounded animate-pulse"></div>
@@ -192,7 +192,7 @@ const DentistSettings = () => {
   return (
     <div className="flex min-h-screen bg-background theme-transition">
       <SideBar />
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-4">
@@ -233,11 +233,10 @@ const DentistSettings = () => {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      activeTab === item.id
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white hover:bg-white/20 backdrop-blur-sm'
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === item.id
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white hover:bg-white/20 backdrop-blur-sm'
+                      }`}
                   >
                     <Icon name={item.icon} size={16} />
                     <span>{item.label}</span>
@@ -262,28 +261,24 @@ const DentistSettings = () => {
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
-                      className={`w-full flex items-start space-x-3 p-4 rounded-2xl transition-all duration-200 text-left group ${
-                        activeTab === item.id
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-foreground hover:bg-muted hover:text-emerald-600'
-                      }`}
+                      className={`w-full flex items-start space-x-3 p-4 rounded-2xl transition-all duration-200 text-left group ${activeTab === item.id
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-foreground hover:bg-muted hover:text-emerald-600'
+                        }`}
                     >
-                      <Icon 
-                        name={item.icon} 
-                        size={20} 
-                        className={`flex-shrink-0 mt-0.5 transition-colors ${
-                          activeTab === item.id ? 'text-white' : 'text-muted-foreground group-hover:text-emerald-600'
-                        }`} 
+                      <Icon
+                        name={item.icon}
+                        size={20}
+                        className={`flex-shrink-0 mt-0.5 transition-colors ${activeTab === item.id ? 'text-white' : 'text-muted-foreground group-hover:text-emerald-600'
+                          }`}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className={`font-medium text-sm transition-colors ${
-                          activeTab === item.id ? 'text-white' : 'text-foreground group-hover:text-emerald-600'
-                        }`}>
+                        <div className={`font-medium text-sm transition-colors ${activeTab === item.id ? 'text-white' : 'text-foreground group-hover:text-emerald-600'
+                          }`}>
                           {item.label}
                         </div>
-                        <div className={`text-xs mt-1 transition-colors ${
-                          activeTab === item.id ? 'text-white/80' : 'text-muted-foreground'
-                        }`}>
+                        <div className={`text-xs mt-1 transition-colors ${activeTab === item.id ? 'text-white/80' : 'text-muted-foreground'
+                          }`}>
                           {item.description}
                         </div>
                       </div>

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 
 const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
   const { t } = useLanguage();
+  const toast = useToast();
   const [dentists, setDentists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,13 +25,13 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
     console.log('🔍 DentistDirectory: Viewing document:', { userId, docType, title });
     
     if (!userId) {
-      alert('User ID not available');
+      toast.error('User ID not available');
       return;
     }
 
     const token = localStorage.getItem('auth.accessToken');
     if (!token) {
-      alert('Authentication required. Please log in again.');
+      toast.error('Authentication required. Please log in again.');
       return;
     }
 
@@ -49,11 +51,11 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
       } else {
         const errorData = await response.json();
         console.error('❌ Document fetch failed:', errorData);
-        alert(`Error: ${errorData.error || 'Failed to load document'}`);
+        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
       }
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      alert('Error loading document. Please try again.');
+      toast.error('Error loading document. Please try again.');
     }
   };
 
@@ -368,7 +370,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
                           } else {
                             // Fallback: inform dev/user instead of crashing on undefined function
                             console.info('Provide onGoToVerification prop to navigate to the verification queue.');
-                            alert('Navigation to verification queue not configured');
+                            toast.warning('Navigation to verification queue not configured');
                           }
                         }}
                         className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 transition-colors cursor-pointer"
