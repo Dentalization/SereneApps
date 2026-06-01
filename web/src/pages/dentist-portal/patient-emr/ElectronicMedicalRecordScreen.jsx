@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
+import { resolvePatientAvatar } from '../../../utils/mediaHelpers';
 import { getPatientEmrById, PATIENT_EMR_DATA } from './data';
 import AdvancedOdontogram from './components/AdvancedOdontogram';
 import { fetchEmrById } from '../../../services/emrService';
@@ -108,7 +109,7 @@ const ElectronicMedicalRecordScreen = () => {
     </div>
   );
 
-  const patientAvatar = patient.profilePicture || patient.avatar;
+  const patientAvatar = resolvePatientAvatar(patient);
 
   const renderSoapTab = () => (
     <div className="space-y-6">

@@ -6,6 +6,7 @@ import {
   recordCommunicationClientEvent
 } from '../../../../services/chatService';
 import NetworkQualityBadge from './NetworkQualityBadge';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const AVATAR_GRADIENTS = [
   ['#7C3AED', '#4f46e5'],
@@ -218,10 +219,18 @@ const VideoCallInterface = ({
       }`}>
         <div className="flex items-center justify-between text-primary">
           <div className="flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm" style={getAvatarGradient(remoteName)}>
-              <span className="text-sm font-medium">
-                {remoteInitials}
-              </span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm relative overflow-hidden" style={getAvatarGradient(remoteName)}>
+              {remote?.avatar ? (
+                <img
+                  src={resolveMediaUrl(remote.avatar)}
+                  alt={remoteName}
+                  className="w-full h-full object-cover rounded-full"
+                />
+              ) : (
+                <span className="text-sm font-medium">
+                  {remoteInitials}
+                </span>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -260,10 +269,18 @@ const VideoCallInterface = ({
             hidden={isJoined}
           >
             <div className="text-center text-primary">
-              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full text-2xl font-bold text-white shadow-md shadow-accent/20" style={getAvatarGradient(remoteName)}>
-                <span className="text-2xl font-medium">
-                  {remoteInitials}
-                </span>
+              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full text-2xl font-bold text-white shadow-md shadow-accent/20 relative overflow-hidden" style={getAvatarGradient(remoteName)}>
+                {remote?.avatar ? (
+                  <img
+                    src={resolveMediaUrl(remote.avatar)}
+                    alt={remoteName}
+                    className="w-full h-full object-cover rounded-full"
+                  />
+                ) : (
+                  <span className="text-2xl font-medium">
+                    {remoteInitials}
+                  </span>
+                )}
               </div>
               <p className="text-lg font-medium">{remoteName}</p>
               <p className="text-sm text-muted">Connecting video...</p>

@@ -126,9 +126,9 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
               className="relative flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white border-2 border-accent/40 shadow-[0_0_0_6px_rgba(124,58,237,0.12)]"
               style={getAvatarGradient(patientName)}
             >
-              {conversation?.patient?.avatar ? (
+              {remote?.avatar ? (
                 <img
-                  src={resolveMediaUrl(conversation.patient.avatar)}
+                  src={resolveMediaUrl(remote.avatar)}
                   alt={patientName}
                   className="w-full h-full rounded-full object-cover"
                 />

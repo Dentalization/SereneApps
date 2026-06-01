@@ -9,6 +9,7 @@ if (typeof Promise.prototype.finally !== 'function') {
   };
 }
 import React, { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import api from './src/services/api';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
@@ -206,11 +207,73 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
   );
 };
 
-// BackgroundPresenceConnector removed: @twilio/conversations depends on loglevel
-// which defines `default` as a getter-only property. Metro's _interopNamespace
-// re-applies that descriptor and then tries to assign namespace.default — which
-// throws a fatal Hermes TypeError at module-evaluation time (before any try/catch).
-// Twilio is now loaded lazily per-screen only inside TeledentistryScreen.
+import { getOrCreateTwilioClient, shutdownGlobalTwilioClient } from './src/hooks/useChat';
+import { getAppointments } from './src/services/appointmentService';
+
+function BackgroundPresenceConnector() {
+  const user = useSelector((state) => state?.auth?.user);
+  const accessToken = useSelector((state) => state?.auth?.accessToken);
+
+  useEffect(() => {
+    if (!user || !accessToken) {
+      shutdownGlobalTwilioClient();
+      return;
+    }
+
+    let active = true;
+    const connectPresence = async () => {
+      try {
+        const result = await getAppointments({ limit: 10 });
+        if (!active) return;
+        const list = result?.data || [];
+        
+        // Find any upcoming/confirmed virtual appointment
+        const upcomingVirtual = list.find(apt => {
+          const isVirtual = apt.appointmentType === 'virtual' || apt.metadata?.appointmentType === 'virtual' || Boolean(apt.videoRoomRef);
+          const isConfirmed = apt.status === 'confirmed' || apt.status === 'scheduled';
+          const isUnpaid = apt.fee > 0 &&
+            apt.payment?.status !== 'succeeded' &&
+            apt.payment?.status !== 'settlement' &&
+            apt.payment?.status !== 'capture' &&
+            apt.status !== 'cancelled';
+          // Must be paid, virtual, and active/upcoming
+          return isVirtual && isConfirmed && !isUnpaid;
+        });
+
+        if (upcomingVirtual) {
+          console.log('[BackgroundPresenceConnector] Active virtual appointment found:', upcomingVirtual.id);
+          const { data } = await api.get(`/communications/appointments/${upcomingVirtual.id}/token`);
+          const token = data.chat?.token || data.token;
+          if (token && active) {
+            await getOrCreateTwilioClient(token);
+            console.log('[BackgroundPresenceConnector] Background Twilio Client connected successfully');
+          }
+        } else {
+          console.log('[BackgroundPresenceConnector] No active virtual appointments found, shutting down Twilio client.');
+          shutdownGlobalTwilioClient();
+        }
+      } catch (err) {
+        console.warn('[BackgroundPresenceConnector] Error setting up presence:', err.message);
+      }
+    };
+
+    connectPresence();
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && active) {
+        connectPresence();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+      shutdownGlobalTwilioClient();
+    };
+  }, [user, accessToken]);
+
+  return null;
+}
 
 function AppContent() {
   try {
@@ -226,7 +289,7 @@ function AppContent() {
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
-
+          <BackgroundPresenceConnector />
           <NavigationContainer ref={navigationRef}>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} />
             <React.Suspense

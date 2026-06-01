@@ -110,6 +110,11 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
   const isVirtual = appointment.type === 'virtual';
   const isPaid = appointment.payment?.status === 'succeeded';
   const isHistory = appointment.status === 'completed' || new Date(appointment.startsAt) < new Date();
+  const isUnpaid = appointment.fee > 0 &&
+    appointment.payment?.status !== 'succeeded' &&
+    appointment.payment?.status !== 'settlement' &&
+    appointment.payment?.status !== 'capture' &&
+    appointment.originalStatus !== 'cancelled';
 
   // --- OVERDUE LOGIC ---
   // Backend sudah auto-mark status 'overdue' untuk jadwal lewat & belum bayar
@@ -208,10 +213,10 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
         {/* Right: Info */}
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text numberOfLines={1} style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 }}>
-            {appointment.dentist?.name}
+            {isUnpaid ? 'Dokter akan ditugaskan' : appointment.dentist?.name}
           </Text>
           <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginBottom: 8 }}>
-            {appointment.dentist?.specialty || 'Dokter Gigi Umum'} • {appointment.clinic.name}
+            {isUnpaid ? 'Selesaikan pembayaran terlebih dahulu' : `${appointment.dentist?.specialty || 'Dokter Gigi Umum'} • ${appointment.clinic.name}`}
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -274,7 +279,7 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
       </View>
 
       {/* Chat Nudge Row */}
-      {(appointment.status === 'upcoming' || appointment.status === 'scheduled' || appointment.status === 'confirmed') && (
+      {(appointment.status === 'upcoming' || appointment.status === 'scheduled' || appointment.status === 'confirmed') && !isUnpaid && (
         <TouchableOpacity
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -486,6 +491,8 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
             status: apt.payment.status,
             provider: apt.payment.provider,
           } : null,
+          fee: apt.fee,
+          originalStatus: apt.status,
           actions: { canJoinCall: apt.videoRoomRef && apt.status === 'scheduled' },
         }));
 
