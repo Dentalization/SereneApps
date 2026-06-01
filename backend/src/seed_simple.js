@@ -11,7 +11,7 @@ async function main() {
     where: { email: 'ahmad@sereneai.com' },
     update: {},
     create: {
-      name: 'Dr. Ahmad Dental',
+      name: 'Ahmad Dental',
       email: 'ahmad@sereneai.com',
       password_hash: await bcrypt.hash('password123', 12),
       roles: ['dentist']
@@ -69,7 +69,7 @@ async function main() {
     where: { email: 'owner@clinictest.com' },
     update: {},
     create: {
-      name: 'Dr. Sarah Clinic Owner',
+      name: 'Sarah Clinic Owner',
       email: 'owner@clinictest.com',
       password_hash: await bcrypt.hash('password123', 12),
       roles: ['patient'] // Base role, clinic role akan di ClinicStaff

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import Icon from '../../../../components/AppIcon';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const PracticeSettings = ({ user, onDataChange }) => {
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [settings, setSettings] = useState({
     // Working Hours
@@ -108,7 +110,7 @@ const PracticeSettings = ({ user, onDataChange }) => {
     console.log('Saving practice settings:', settings);
     setIsEditing(false);
     onDataChange?.(false);
-    alert('Practice settings saved successfully!');
+    toast.success('Practice settings saved successfully!');
   };
 
   const handleCancel = () => {

@@ -177,7 +177,7 @@ async function createUsers(client) {
     const ownerResult = await client.query(
       `INSERT INTO users (name, email, password_hash, roles, phone_number)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [`dr. ${clinicName} Owner`, `owner@${domain}.com`, PASSWORD_HASH, ['clinic_owner'], `+62 821-${String(i).padStart(4, '0')}-0001`]
+      [`${clinicName} Owner`, `owner@${domain}.com`, PASSWORD_HASH, ['clinic_owner'], `+62 821-${String(i).padStart(4, '0')}-0001`]
     );
     users.push({ type: 'owner', clinicNum: i, id: ownerResult.rows[0].id });
 
@@ -207,7 +207,7 @@ async function createUsers(client) {
         `INSERT INTO users (name, email, password_hash, roles, phone_number)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [
-          `dr. ${firstName} ${lastName}`,
+          `${firstName} ${lastName}`,
           `dentist${dentist}.clinic${clinic}@dentists.com`,
           PASSWORD_HASH,
           ['dentist'],
@@ -268,7 +268,7 @@ async function createClinicProfiles(client, users) {
           saturday: '09:00-17:00',
           sunday: 'Closed'
         }),
-        `dr. ${clinicName} Owner`,
+        `${clinicName} Owner`,
         'owner',
         `owner@${clinicName.toLowerCase().replace(/\s+/g, '')}.com`,
         `+62 821-${String(i).padStart(4, '0')}-0001`,
@@ -477,7 +477,7 @@ async function createDentistProfiles(client, clinics, branches, users) {
           clinic.id,
           'clinic',
           false,
-          'dr.',
+          'drg.',
           `LIC-${String(clinic.clinicNum * 10000 + d).padStart(8, '0')}`,
           'Indonesian Dental Association',
           new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000), // 2 years from now

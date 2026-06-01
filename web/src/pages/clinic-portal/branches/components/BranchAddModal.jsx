@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const INITIAL_FORM = {
   branchName: '',
@@ -60,6 +61,7 @@ const AVAILABLE_FACILITIES = [
 ];
 
 const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
+  const toast = useToast();
   const [form, setForm] = useState(INITIAL_FORM);
   const [facilityInput, setFacilityInput] = useState('');
 
@@ -154,7 +156,7 @@ const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
     if (form.latitude || form.longitude) {
       const gpsValidation = validateGPSCoordinates();
       if (!gpsValidation.valid) {
-        alert(gpsValidation.message);
+        toast.error(gpsValidation.message);
         return;
       }
     }

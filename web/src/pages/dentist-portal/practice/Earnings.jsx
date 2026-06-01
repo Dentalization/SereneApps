@@ -5,8 +5,10 @@ import SideBar from '../ui/SideBar';
 import { authHttp } from '../../../utils/httpClient';
 import ModalPortal from '../../../components/ui/ModalPortal';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useToast } from '../../../contexts/ToastContext';
 
 const Earnings = () => {
+  const toast = useToast();
   const { t } = useLanguage();
   const [summary, setSummary] = useState({
     totalEarnings: 0,
@@ -89,14 +91,14 @@ const Earnings = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to download PDF invoice:', error);
-      alert('Failed to download PDF invoice. Please try again.');
+      toast.error('Failed to download PDF invoice. Please try again.');
     }
   };
 
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     if (!refundAmount || isNaN(refundAmount) || parseFloat(refundAmount) <= 0) {
-      alert('Please enter a valid refund amount');
+      toast.error('Please enter a valid refund amount');
       return;
     }
     setRefundLoading(true);
@@ -106,12 +108,12 @@ const Earnings = () => {
         refundAmount: parseInt(refundAmount, 10),
         refundReason: refundReason || 'Dentist request'
       });
-      alert('Refund processed successfully');
+      toast.success('Refund processed successfully');
       setSelectedInvoiceId(null);
       fetchEarningsData();
     } catch (error) {
       console.error('Refund failed:', error);
-      alert(error.response?.data?.error?.message || error.response?.data?.error || 'Failed to process refund');
+      toast.error(error.response?.data?.error?.message || error.response?.data?.error || 'Failed to process refund');
     } finally {
       setRefundLoading(false);
     }

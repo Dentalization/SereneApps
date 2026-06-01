@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const MultiCalendar = ({
   selectedDate,
@@ -12,6 +13,7 @@ const MultiCalendar = ({
   viewMode = 'week', // 'week' or 'month'
   clinicWorkingHours // Clinic working hours from dentist profile
 }) => {
+  const toast = useToast();
   const [currentDate, setCurrentDate] = useState(selectedDate || new Date());
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [selectedBlockDate, setSelectedBlockDate] = useState(null);
@@ -286,7 +288,7 @@ const MultiCalendar = ({
     const dateKey = getDateKey(date);
     
     if (!canCloseDay(date)) {
-      alert('Cannot close this day because there are scheduled appointments.');
+      toast.error('Cannot close this day because there are scheduled appointments.');
       return;
     }
     

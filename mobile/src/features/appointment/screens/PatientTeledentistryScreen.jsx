@@ -1446,8 +1446,8 @@ const PatientTeledentistryScreen = () => {
         }}
         pointerEvents={callStatus === 'incoming' ? 'auto' : 'none'}
       >
-        <LinearGradient 
-          colors={[COLORS.primaryDark || '#1A0A30', COLORS.primary || '#2D1155', COLORS.primaryDark || '#1A0A30']} 
+        <LinearGradient
+          colors={[COLORS.primaryDark || '#1A0A30', COLORS.primary || '#2D1155', COLORS.primaryDark || '#1A0A30']}
           style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
         >
           {/* Decorative rings */}
@@ -1742,62 +1742,62 @@ const PatientTeledentistryScreen = () => {
       </KeyboardAvoidingView>
 
       {/* Overlays */}
-          {renderPreSessionHealthForm()}
-          {renderIncomingCallOverlay()}
-          {renderVideoCallOverlay()}
-          {showConnectionDiagnostics && (
-            <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 130, backgroundColor: withOpacity(COLORS.black, 0.45), justifyContent: 'flex-end' }}>
-              <View style={{ backgroundColor: COLORS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: Math.max(insets.bottom, 20) }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                  <MaterialCommunityIcons name="chart-line" size={22} color={COLORS.primary} />
-                  <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary, marginLeft: 10, flex: 1 }}>Diagnostik Koneksi</Text>
-                  <TouchableOpacity onPress={() => setShowConnectionDiagnostics(false)} accessibilityLabel="Tutup diagnostik koneksi">
-                    <MaterialCommunityIcons name="close" size={22} color={COLORS.textMuted} />
-                  </TouchableOpacity>
-                </View>
-                {qualityHistoryRef.current.slice(-8).map((item) => (
-                  <View key={item.timestamp} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.gray100 }}>
-                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, width: 78 }}>
-                      {new Date(item.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </Text>
-                    <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: COLORS.gray100, overflow: 'hidden' }}>
-                      <View style={{ width: `${Math.max(8, (item.quality / 5) * 100)}%`, height: '100%', backgroundColor: item.quality <= 1 ? COLORS.error : item.quality <= 2 ? COLORS.warning : COLORS.success }} />
-                    </View>
-                    <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, marginLeft: 10, fontWeight: '800' }}>{item.quality}/5</Text>
-                  </View>
-                ))}
-              </View>
+      {renderPreSessionHealthForm()}
+      {renderIncomingCallOverlay()}
+      {renderVideoCallOverlay()}
+      {showConnectionDiagnostics && (
+        <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 130, backgroundColor: withOpacity(COLORS.black, 0.45), justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: COLORS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: Math.max(insets.bottom, 20) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <MaterialCommunityIcons name="chart-line" size={22} color={COLORS.primary} />
+              <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary, marginLeft: 10, flex: 1 }}>Diagnostik Koneksi</Text>
+              <TouchableOpacity onPress={() => setShowConnectionDiagnostics(false)} accessibilityLabel="Tutup diagnostik koneksi">
+                <MaterialCommunityIcons name="close" size={22} color={COLORS.textMuted} />
+              </TouchableOpacity>
             </View>
-          )}
+            {qualityHistoryRef.current.slice(-8).map((item) => (
+              <View key={item.timestamp} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.gray100 }}>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, width: 78 }}>
+                  {new Date(item.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </Text>
+                <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: COLORS.gray100, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.max(8, (item.quality / 5) * 100)}%`, height: '100%', backgroundColor: item.quality <= 1 ? COLORS.error : item.quality <= 2 ? COLORS.warning : COLORS.success }} />
+                </View>
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textPrimary, marginLeft: 10, fontWeight: '800' }}>{item.quality}/5</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
-          <PreCallSystemCheckSheet
-            visible={preCallSystemCheck.visible}
-            checks={preCallSystemCheck.checks}
-            canJoin={preCallSystemCheck.canJoin}
-            audioOnly={preCallSystemCheck.audioOnly}
-            joining={callJoinStatus === 'connecting'}
-            labels={{
-              title: t('mobile.teledentistry.preCall.title', { fallbackText: 'Pemeriksaan Sebelum Panggilan' }),
-              close: t('common.actions.close', { fallbackText: 'Tutup' }),
-              ready: t('mobile.teledentistry.preCall.ready', { fallbackText: 'Siap bergabung' }),
-              joinAudioOnly: t('mobile.teledentistry.preCall.joinAudioOnly', { fallbackText: 'Bergabung audio saja' }),
-            }}
-            onClose={() => setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false })}
-            onJoin={async () => {
-              if (!preCallSystemCheck.session) return;
-              try {
-                await completeAcceptCall(preCallSystemCheck.session, { enableVideo: !preCallSystemCheck.audioOnly });
-                setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false });
-              } catch (error) {
-                const message = error?.message || 'Gagal memulai video call. Silakan coba lagi.';
-                setCallNotice(message);
-                Alert.alert('Gagal Bergabung', message);
-                setCallJoinStatus('idle');
-              }
-            }}
-          />
+      <PreCallSystemCheckSheet
+        visible={preCallSystemCheck.visible}
+        checks={preCallSystemCheck.checks}
+        canJoin={preCallSystemCheck.canJoin}
+        audioOnly={preCallSystemCheck.audioOnly}
+        joining={callJoinStatus === 'connecting'}
+        labels={{
+          title: t('mobile.teledentistry.preCall.title', { fallbackText: 'Pemeriksaan Sebelum Panggilan' }),
+          close: t('common.actions.close', { fallbackText: 'Tutup' }),
+          ready: t('mobile.teledentistry.preCall.ready', { fallbackText: 'Siap bergabung' }),
+          joinAudioOnly: t('mobile.teledentistry.preCall.joinAudioOnly', { fallbackText: 'Bergabung audio saja' }),
+        }}
+        onClose={() => setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false })}
+        onJoin={async () => {
+          if (!preCallSystemCheck.session) return;
+          try {
+            await completeAcceptCall(preCallSystemCheck.session, { enableVideo: !preCallSystemCheck.audioOnly });
+            setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false });
+          } catch (error) {
+            const message = error?.message || 'Gagal memulai video call. Silakan coba lagi.';
+            setCallNotice(message);
+            Alert.alert('Gagal Bergabung', message);
+            setCallJoinStatus('idle');
+          }
+        }}
+      />
 
-          {/* Global Twilio Video Engine */}
+      {/* Global Twilio Video Engine */}
       <TwilioVideo ref={twilioRef} {...handlers} />
     </View>
   );

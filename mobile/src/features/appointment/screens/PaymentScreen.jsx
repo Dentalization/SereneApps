@@ -170,9 +170,9 @@ const PaymentScreen = () => {
       // Try reconciliation first (checks with provider)
       if (__DEV__) console.log('[PaymentScreen] Syncing transaction...');
       const result = await reconcilePayment(paymentIntentId);
-      
+
       const wasFinal = handleStatusChange(result.newStatus);
-      
+
       if (!wasFinal) {
         // If still pending after sync, start/resume lower-freq polling
         if (!polling) setPolling(true);
@@ -183,7 +183,7 @@ const PaymentScreen = () => {
       try {
         const result = await getPaymentStatus(paymentIntentId);
         handleStatusChange(result.status);
-      } catch (e) {}
+      } catch (e) { }
     } finally {
       setChecking(false);
     }
@@ -224,15 +224,29 @@ const PaymentScreen = () => {
     React.useCallback(() => {
       const onBackPress = () => {
         if (status === 'pending') {
-          showToast('Selesaikan pembayaran atau batalkan melalui dashboard', 'info');
+          Alert.alert(
+            'Pembayaran Sedang Berlangsung',
+            'Anda yakin ingin kembali? Anda bisa melanjutkan pembayaran nanti melalui menu "Appointments".',
+            [
+              { text: 'Tetap di Sini', style: 'cancel' },
+              {
+                text: 'Kembali',
+                style: 'destructive',
+                onPress: () => {
+                  stopPolling();
+                  navigation.goBack();
+                },
+              },
+            ]
+          );
           return true;
         }
         return false;
       };
 
-      BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
-    }, [status])
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }, [status, navigation, stopPolling])
   );
 
   if (loading && !paymentIntentId) {
@@ -256,7 +270,27 @@ const PaymentScreen = () => {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              if (status === 'pending') {
+                Alert.alert(
+                  'Pembayaran Sedang Berlangsung',
+                  'Anda yakin ingin kembali? Anda bisa melanjutkan pembayaran nanti melalui menu "Appointments".',
+                  [
+                    { text: 'Tetap di Sini', style: 'cancel' },
+                    {
+                      text: 'Kembali',
+                      style: 'destructive',
+                      onPress: () => {
+                        stopPolling();
+                        navigation.goBack();
+                      },
+                    },
+                  ]
+                );
+              } else {
+                navigation.goBack();
+              }
+            }}
             accessibilityLabel="Kembali"
             accessibilityRole="button"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withOpacity(COLORS.white, 0.2), justifyContent: 'center', alignItems: 'center' }}
@@ -354,7 +388,7 @@ const PaymentScreen = () => {
           >
             CEK STATUS PEMBAYARAN
           </Button>
-          
+
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
             <ActivityIndicator animating={polling && !checking} size={12} color={COLORS.textMuted} style={{ marginRight: 8 }} />
             <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>

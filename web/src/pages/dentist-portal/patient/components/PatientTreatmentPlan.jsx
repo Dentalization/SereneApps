@@ -675,10 +675,10 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                             <div>
                               <span className="text-xs font-bold uppercase tracking-wider text-muted">Treatment Photo</span>
                               <img
-                                src={`${API_BASE}${treatment.imageUrl}`}
+                                src={resolveAvatar(treatment.imageUrl)}
                                 alt="Treatment result"
                                 className="mt-1.5 rounded-xl border border-primary/10 max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                onClick={() => window.open(`${API_BASE}${treatment.imageUrl}`, '_blank')}
+                                onClick={() => window.open(resolveAvatar(treatment.imageUrl), '_blank')}
                               />
                             </div>
                           )}

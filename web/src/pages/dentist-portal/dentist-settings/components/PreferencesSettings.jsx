@@ -3,6 +3,7 @@ import Icon from '../../../../components/AppIcon';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { usePreferences } from '../../../../contexts/PreferencesContext';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const DEFAULT_PREFERENCES = {
   theme: 'system',
@@ -29,6 +30,7 @@ const DEFAULT_PREFERENCES = {
 const PreferencesSettings = ({ user, onDataChange }) => {
   const { themeMode, setTheme } = useTheme();
   const { preferences: storedPreferences, setLanguage, setFontSize, setReducedMotion } = usePreferences();
+  const toast = useToast();
   const { language, changeLanguage, t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [preferences, setPreferences] = useState(() => ({
@@ -86,7 +88,7 @@ const PreferencesSettings = ({ user, onDataChange }) => {
     // Don't save language to PreferencesContext since it's handled by LanguageContext
     setFontSize(preferences.fontSize);
     setReducedMotion(preferences.reducedMotion);
-    alert(t('settings.preferencesSaved'));
+    toast.success(t('settings.preferencesSaved'));
   };
 
   const handleCancel = () => {

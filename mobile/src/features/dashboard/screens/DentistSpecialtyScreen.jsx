@@ -91,15 +91,65 @@ const extractClinicContext = (dentist = {}) => {
   };
 };
 
+const formatDentistName = (name) => {
+  if (!name) return 'Dokter Gigi';
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('drg.') || lower.startsWith('drg ') || lower.startsWith('dr.') || lower.startsWith('dr ')) {
+    return trimmed;
+  }
+  return `drg. ${trimmed}`;
+};
+
+const normalizeSpecialty = (specialization) => {
+  if (!specialization) return 'Dokter Gigi';
+  const spec = specialization.trim().toLowerCase();
+  if (spec.includes('ortho')) {
+    return 'Spesialis Ortodonsia (Sp.Ort)';
+  }
+  if (spec.includes('pediat') || spec.includes('anak')) {
+    return 'Spesialis Kedokteran Gigi Anak (Sp.KGA)';
+  }
+  if (spec.includes('conserv') || spec.includes('endo') || spec.includes('konservasi')) {
+    return 'Spesialis Konservasi Gigi (Sp.KG)';
+  }
+  if (spec.includes('perio')) {
+    return 'Spesialis Periodonsia (Sp.Perio)';
+  }
+  if (spec.includes('prostho') || spec.includes('prostodonsia')) {
+    return 'Spesialis Prostodonsia (Sp.Pros)';
+  }
+  if (spec.includes('surgery') || spec.includes('bedah')) {
+    return 'Spesialis Bedah Mulut (Sp.BM)';
+  }
+  if (spec.includes('medicine') || spec.includes('penyakit mulut')) {
+    return 'Spesialis Penyakit Mulut (Sp.PM)';
+  }
+  if (spec.includes('digital')) {
+    return 'Kedokteran Gigi Digital';
+  }
+  if (spec.includes('implant')) {
+    return 'Implantologi';
+  }
+  if (spec.includes('cosmetic') || spec.includes('estetika')) {
+    return 'Estetika Gigi';
+  }
+  if (spec.includes('general') || spec.includes('umum') || spec.includes('dentist')) {
+    return 'Dokter Gigi Umum';
+  }
+  return 'Dokter Gigi';
+};
+
 const mapDentist = (dentist) => {
+  if (!dentist) return null;
   const years = dentist.yearsOfExperience || 0;
   const baseRating = 4 + Math.min(1, years / 15);
   const clinicContext = extractClinicContext(dentist);
 
   return {
     id: dentist.id?.toString() || dentist.userId?.toString(),
-    name: dentist.name || dentist.clinicName || 'Dokter Gigi',
-    specialty: dentist.specialization || 'Dentist',
+    name: formatDentistName(dentist.name || dentist.clinicName),
+    specialty: normalizeSpecialty(dentist.specialization || dentist.primarySpecialization || dentist.primary_specialization),
     clinic: dentist.clinicName || dentist.clinicAddress,
     rating: Number(baseRating.toFixed(1)),
     reviews: dentist.reviewCount || 0,
@@ -159,7 +209,7 @@ const DentistSpecialtyScreen = () => {
       }
       const normalized = apiDentists
         .map(mapDentist)
-        .filter((dentist) => dentist.clinicContext?.profileId);
+        .filter((dentist) => dentist && dentist.clinicContext?.profileId);
       setDentists(normalized);
     } catch (err) {
       console.log('🔍 [DentistSpecialty] Failed to load:', err.message);

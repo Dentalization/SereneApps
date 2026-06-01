@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  StatusBar, 
-  Dimensions, 
-  Platform, 
-  PixelRatio 
+import {
+  View,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Image,
+  StatusBar,
+  Dimensions,
+  Platform,
+  PixelRatio
 } from 'react-native';
 import { Text, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -33,6 +33,29 @@ const normalize = (size) => {
   } else {
     return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 1;
   }
+};
+
+const getSpecialtyConfig = (label = '') => {
+  const l = label.toLowerCase();
+  if (l.includes('ortho')) {
+    return { icon: 'teeth-braces', bg: '#EEF2FF', color: '#4F46E5' };
+  }
+  if (l.includes('anak') || l.includes('pediat')) {
+    return { icon: 'baby-face-outline', bg: '#ECFDF5', color: '#10B981' };
+  }
+  if (l.includes('konservasi') || l.includes('conserv') || l.includes('endo')) {
+    return { icon: 'tooth-outline', bg: '#FDF2F8', color: '#EC4899' };
+  }
+  if (l.includes('perio')) {
+    return { icon: 'toothbrush-paste', bg: '#FFF7ED', color: '#F97316' };
+  }
+  if (l.includes('prostho') || l.includes('prostodonsia')) {
+    return { icon: 'shield-half-full', bg: '#F0FDFA', color: '#14B8A6' };
+  }
+  if (l.includes('bedah') || l.includes('surgery')) {
+    return { icon: 'stethoscope', bg: '#FFF1F2', color: '#F43F5E' };
+  }
+  return { icon: 'medical-bag', bg: '#F8FAFC', color: '#64748B' };
 };
 // -------------------------
 
@@ -207,6 +230,55 @@ const extractClinicContext = (dentist = {}) => {
   };
 };
 
+const formatDentistName = (name) => {
+  if (!name) return 'Dokter Gigi';
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('drg.') || lower.startsWith('drg ') || lower.startsWith('dr.') || lower.startsWith('dr ')) {
+    return trimmed;
+  }
+  return `drg. ${trimmed}`;
+};
+
+const normalizeSpecialty = (specialization) => {
+  if (!specialization) return 'Dokter Gigi';
+  const spec = specialization.trim().toLowerCase();
+  if (spec.includes('ortho')) {
+    return 'Spesialis Ortodonsia (Sp.Ort)';
+  }
+  if (spec.includes('pediat') || spec.includes('anak')) {
+    return 'Spesialis Kedokteran Gigi Anak (Sp.KGA)';
+  }
+  if (spec.includes('conserv') || spec.includes('endo') || spec.includes('konservasi')) {
+    return 'Spesialis Konservasi Gigi (Sp.KG)';
+  }
+  if (spec.includes('perio')) {
+    return 'Spesialis Periodonsia (Sp.Perio)';
+  }
+  if (spec.includes('prostho') || spec.includes('prostodonsia')) {
+    return 'Spesialis Prostodonsia (Sp.Pros)';
+  }
+  if (spec.includes('surgery') || spec.includes('bedah')) {
+    return 'Spesialis Bedah Mulut (Sp.BM)';
+  }
+  if (spec.includes('medicine') || spec.includes('penyakit mulut')) {
+    return 'Spesialis Penyakit Mulut (Sp.PM)';
+  }
+  if (spec.includes('digital')) {
+    return 'Kedokteran Gigi Digital';
+  }
+  if (spec.includes('implant')) {
+    return 'Implantologi';
+  }
+  if (spec.includes('cosmetic') || spec.includes('estetika')) {
+    return 'Estetika Gigi';
+  }
+  if (spec.includes('general') || spec.includes('umum') || spec.includes('dentist')) {
+    return 'Dokter Gigi Umum';
+  }
+  return 'Dokter Gigi';
+};
+
 const normalizeDentist = (dentist) => {
   const years = dentist?.yearsOfExperience ?? dentist?.years_of_experience ?? 0;
   const clinicId = dentist?.clinicId ?? dentist?.clinic_id;
@@ -218,16 +290,16 @@ const normalizeDentist = (dentist) => {
   );
   const services = parseListInput(
     dentist?.servicesOffered ??
-      dentist?.services_offered ??
-      dentist?.raw?.services_offered
+    dentist?.services_offered ??
+    dentist?.raw?.services_offered
   );
 
   const clinicContext = extractClinicContext(dentist);
 
   return {
     id: dentist?.id?.toString?.() || dentist?.userId?.toString?.() || `dentist-${dentist?.name}`,
-    name: dentist?.name || 'Dokter Gigi',
-    specialization: dentist?.specialization || dentist?.primary_specialization || 'Dokter Gigi',
+    name: formatDentistName(dentist?.name),
+    specialization: normalizeSpecialty(dentist?.specialization || dentist?.primary_specialization),
     experience: years,
     rating: Number((4.2 + Math.min(0.8, years / 20)).toFixed(1)),
     consultationFee: dentist?.consultationFee ?? dentist?.consultation_fee ?? null,
@@ -375,7 +447,7 @@ const SearchScreen = () => {
   }, []);
 
   useEffect(() => {
-    ensureDirectory().catch(() => {});
+    ensureDirectory().catch(() => { });
   }, [ensureDirectory]);
 
   const attachDentistsToClinic = useCallback((clinic, dentists) => {
@@ -426,6 +498,7 @@ const SearchScreen = () => {
         const normalizedDentists = await ensureDirectory();
         const lowered = trimmed.toLowerCase();
 
+        // 1. INSTANT LOCAL DENTIST SEARCH
         const dentistMatches = normalizedDentists
           .filter((dentist) => {
             const name = dentist.name?.toLowerCase() || '';
@@ -445,6 +518,7 @@ const SearchScreen = () => {
           })
           .slice(0, 12);
 
+        // 2. INSTANT LOCAL SPECIALIZATIONS MAP
         const specializationMap = new Map();
         dentistMatches.forEach((dentist) => {
           const spec = dentist.specialization;
@@ -464,6 +538,7 @@ const SearchScreen = () => {
           }
         });
 
+        // 3. INSTANT LOCAL SERVICES MAP
         const serviceMap = new Map();
         dentistMatches.forEach((dentist) => {
           (dentist.services || []).forEach((service) => {
@@ -487,47 +562,29 @@ const SearchScreen = () => {
           });
         });
 
-        let clinicMatchesResponse = [];
-        try {
-          const clinicResponse = await fetchWithRetry(
-            () => getClinics({ search: trimmed, limit: 10, sortBy: 'brand_name' }),
-            1,
-            300
-          );
-          clinicMatchesResponse =
-            clinicResponse?.data?.clinics ?? clinicResponse?.clinics ?? [];
-        } catch (clinicError) {
-          console.log('ℹ️ [SearchScreen] Clinic search fallback:', clinicError.message);
-        }
-
-        let clinicMatches = clinicMatchesResponse.map((clinic) =>
+        // 4. INSTANT LOCAL CLINICS FALLBACK
+        const fallbackClinicMap = new Map();
+        normalizedDentists.forEach((dentist) => {
+          const clinicName = dentist.clinic?.name;
+          if (
+            clinicName &&
+            clinicName.toLowerCase().includes(lowered) &&
+            !fallbackClinicMap.has(clinicName)
+          ) {
+            fallbackClinicMap.set(clinicName, {
+              id: dentist.clinic?.id || clinicName,
+              name: clinicName,
+              address: dentist.clinic?.address || '-',
+              city: dentist.raw?.clinic_city || '',
+              services: dentist.services || [],
+            });
+          }
+        });
+        const localClinics = Array.from(fallbackClinicMap.values()).map((clinic) =>
           normalizeClinic(clinic)
         );
 
-        if (!clinicMatches.length) {
-          const fallbackClinicMap = new Map();
-          normalizedDentists.forEach((dentist) => {
-            const clinicName = dentist.clinic?.name;
-            if (
-              clinicName &&
-              clinicName.toLowerCase().includes(lowered) &&
-              !fallbackClinicMap.has(clinicName)
-            ) {
-              fallbackClinicMap.set(clinicName, {
-                id: dentist.clinic?.id || clinicName,
-                name: clinicName,
-                address: dentist.clinic?.address || '-',
-                city: dentist.raw?.clinic_city || '',
-                services: dentist.services || [],
-              });
-            }
-          });
-          clinicMatches = Array.from(fallbackClinicMap.values()).map((clinic) =>
-            normalizeClinic(clinic)
-          );
-        }
-
-        const enrichedClinics = clinicMatches.map((clinic) =>
+        const enrichedLocalClinics = localClinics.map((clinic) =>
           attachDentistsToClinic(clinic, normalizedDentists)
         );
 
@@ -543,17 +600,41 @@ const SearchScreen = () => {
           return;
         }
 
+        // Render local results instantly
         setDentistResults(dentistMatches);
-        setClinicResults(enrichedClinics);
+        setClinicResults(enrichedLocalClinics);
         setSpecializationResults(specializationMatches);
         setServiceResults(serviceMatches);
+        setSearching(false);
+
         lastSuccessfulRef.current = {
           dentists: dentistMatches,
-          clinics: enrichedClinics,
+          clinics: enrichedLocalClinics,
           services: serviceMatches,
           specializations: specializationMatches,
         };
         setError(null);
+
+        // 5. ASYNC BACKGROUND REMOTE CLINICS SEARCH
+        fetchWithRetry(
+          () => getClinics({ search: trimmed, limit: 10, sortBy: 'brand_name' }),
+          1,
+          300
+        ).then((clinicResponse) => {
+          if (latestQueryRef.current !== trimmed) return;
+          const clinicMatchesResponse = clinicResponse?.data?.clinics ?? clinicResponse?.clinics ?? [];
+          if (clinicMatchesResponse.length > 0) {
+            const clinicMatches = clinicMatchesResponse.map((clinic) => normalizeClinic(clinic));
+            const enrichedClinics = clinicMatches.map((clinic) =>
+              attachDentistsToClinic(clinic, normalizedDentists)
+            );
+            setClinicResults(enrichedClinics);
+            lastSuccessfulRef.current.clinics = enrichedClinics;
+          }
+        }).catch((clinicError) => {
+          console.log('ℹ️ [SearchScreen] Background Clinic search fallback:', clinicError.message);
+        });
+
       } catch (err) {
         console.log('❌ [SearchScreen] Search failed:', err.message);
         if (latestQueryRef.current !== trimmed) {
@@ -580,10 +661,6 @@ const SearchScreen = () => {
           setServiceResults([]);
           setError('Gagal memuat hasil pencarian. Coba lagi nanti.');
           showToast('Tidak dapat memuat hasil pencarian', 'error');
-        }
-      } finally {
-        if (latestQueryRef.current === trimmed) {
-          setSearching(false);
         }
       }
     },
@@ -660,7 +737,7 @@ const SearchScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
-      
+
       {/* HEADER GRADIENT */}
       <LinearGradient
         colors={[theme.colors.primary, '#7C3AED']}
@@ -696,32 +773,35 @@ const SearchScreen = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: 'white',
+            backgroundColor: 'rgba(255, 255, 255, 0.16)',
             borderRadius: normalize(20),
             paddingHorizontal: normalize(16),
             paddingVertical: normalize(10),
+            borderWidth: 1.5,
+            borderColor: 'rgba(255, 255, 255, 0.25)',
           }}
         >
-          <MaterialCommunityIcons name="magnify" size={normalize(22)} color="#9CA3AF" />
+          <MaterialCommunityIcons name="magnify" size={normalize(22)} color="white" style={{ opacity: 0.9 }} />
           <TextInput
             autoFocus
             placeholder="Cari dokter, klinik, atau layanan"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor="rgba(255, 255, 255, 0.6)"
             value={query}
             onChangeText={setQuery}
-            style={{ 
-              flex: 1, 
-              marginLeft: normalize(10), 
-              fontSize: normalize(15), 
-              color: '#111827',
+            style={{
+              flex: 1,
+              marginLeft: normalize(10),
+              fontSize: normalize(15),
+              color: 'white',
               height: normalize(24), // Ensure height for text visibility
-              paddingVertical: 0
+              paddingVertical: 0,
+              fontWeight: '600'
             }}
             returnKeyType="search"
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')}>
-              <MaterialCommunityIcons name="close-circle" size={normalize(20)} color="#CBD5F5" />
+              <MaterialCommunityIcons name="close-circle" size={normalize(20)} color="rgba(255, 255, 255, 0.8)" />
             </TouchableOpacity>
           )}
         </View>
@@ -733,34 +813,13 @@ const SearchScreen = () => {
         keyboardShouldPersistTaps="handled"
       >
         {hasQuery && (
-          <View
-            style={{
-              borderRadius: normalize(14),
-              padding: normalize(8),
-              marginBottom: normalize(12),
-              backgroundColor: '#F3F4F6',
-              borderWidth: 0,
-              flexDirection: 'column',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: normalize(13),
-                fontWeight: '600',
-                color: '#6366F1',
-                marginBottom: normalize(8),
-                marginLeft: normalize(4),
-              }}
-            >
-              Filter hasil pencarian
-            </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                backgroundColor: 'transparent',
-                borderRadius: normalize(10),
-                padding: 0,
-                gap: normalize(6),
+          <View style={{ marginBottom: normalize(16) }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingVertical: normalize(4),
+                gap: normalize(8),
               }}
             >
               {tabs.map((tab) => {
@@ -770,23 +829,25 @@ const SearchScreen = () => {
                     key={tab.id}
                     onPress={() => setSelectedTab(tab.id)}
                     style={{
-                      flex: 1,
-                      paddingVertical: normalize(7),
-                      borderRadius: normalize(8),
-                      backgroundColor: active ? '#fff' : 'transparent',
-                      alignItems: 'center',
-                      borderWidth: active ? 1 : 0,
-                      borderColor: active ? theme.colors.primary : 'transparent',
-                      shadowColor: 'transparent',
+                      paddingHorizontal: normalize(16),
+                      paddingVertical: normalize(8),
+                      borderRadius: normalize(20),
+                      backgroundColor: active ? theme.colors.primary : '#F1F5F9',
+                      borderWidth: 1.5,
+                      borderColor: active ? theme.colors.primary : '#E2E8F0',
+                      shadowColor: active ? theme.colors.primary : 'transparent',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: active ? 0.3 : 0,
+                      shadowRadius: 6,
+                      elevation: active ? 3 : 0,
                     }}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text
                       style={{
-                        fontSize: normalize(13),
-                        fontWeight: active ? '700' : '600',
-                        color: active ? theme.colors.primary : '#6366F1',
-                        letterSpacing: 0.2,
+                        fontSize: normalize(12),
+                        fontWeight: '700',
+                        color: active ? 'white' : '#64748B',
                       }}
                     >
                       {tab.label}
@@ -794,7 +855,7 @@ const SearchScreen = () => {
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
         )}
 
@@ -1224,67 +1285,144 @@ const SearchScreen = () => {
           </View>
         )}
 
-        {!hasQuery && directoryReady && catalog.specializations.length > 0 && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Spesialisasi populer
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {catalog.specializations.map((item) => (
-                <TouchableOpacity
-                  key={item.label}
-                  onPress={() => setQuery(item.label)}
-                  style={{
-                    paddingHorizontal: normalize(16),
-                    paddingVertical: normalize(8),
-                    backgroundColor: '#E0E7FF',
-                    borderRadius: normalize(18),
-                    marginRight: normalize(10),
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name="medical-bag"
-                    size={normalize(16)}
-                    color={theme.colors.primary}
-                  />
-                  <Text style={{ marginLeft: normalize(6), color: theme.colors.primary, fontWeight: '600', fontSize: normalize(13) }}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {!hasQuery && (
+          <View>
+            {/* Quick Suggestions Section */}
+            <View style={{ marginBottom: normalize(28) }}>
+              <Text style={{ fontSize: normalize(15), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12), letterSpacing: 0.1 }}>
+                Pencarian Populer
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: normalize(8) }}>
+                {QUICK_SUGGESTIONS.map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion.id}
+                    onPress={() => setQuery(suggestion.label)}
+                    activeOpacity={0.8}
+                    style={{
+                      paddingHorizontal: normalize(14),
+                      paddingVertical: normalize(8),
+                      backgroundColor: 'white',
+                      borderRadius: normalize(16),
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      shadowColor: '#0F172A',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.03,
+                      shadowRadius: 4,
+                      elevation: 1,
+                    }}
+                  >
+                    <Text style={{ fontSize: normalize(12), color: '#475569', fontWeight: '600' }}>
+                      {suggestion.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
-        {!hasQuery && directoryReady && catalog.services.length > 0 && (
-          <View style={{ marginBottom: normalize(24) }}>
-            <Text style={{ fontSize: normalize(16), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12) }}>
-              Layanan favorit pasien
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {catalog.services.map((item) => (
-                <TouchableOpacity
-                  key={item.label}
-                  onPress={() => setQuery(item.label)}
-                  style={{
-                    paddingHorizontal: normalize(16),
-                    paddingVertical: normalize(8),
-                    backgroundColor: '#FDF2F8',
-                    borderRadius: normalize(18),
-                    marginRight: normalize(10),
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MaterialCommunityIcons name="tooth-outline" size={normalize(16)} color="#DB2777" />
-                  <Text style={{ marginLeft: normalize(6), color: '#DB2777', fontWeight: '600', fontSize: normalize(13) }}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {/* Popular Specializations Section */}
+            {directoryReady && catalog.specializations.length > 0 && (
+              <View style={{ marginBottom: normalize(28) }}>
+                <Text style={{ fontSize: normalize(15), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12), letterSpacing: 0.1 }}>
+                  Cari Berdasarkan Spesialisasi
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: normalize(10) }}>
+                  {catalog.specializations.slice(0, 4).map((item) => {
+                    const cfg = getSpecialtyConfig(item.label);
+                    return (
+                      <TouchableOpacity
+                        key={item.label}
+                        onPress={() => setQuery(item.label)}
+                        activeOpacity={0.9}
+                        style={{
+                          width: (SCREEN_WIDTH - normalize(40) - normalize(10)) / 2, // 2-column grid
+                          padding: normalize(16),
+                          backgroundColor: 'white',
+                          borderRadius: normalize(24),
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          shadowColor: '#0F172A',
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: 0.04,
+                          shadowRadius: 10,
+                          elevation: 2,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: normalize(40),
+                            height: normalize(40),
+                            borderRadius: normalize(14),
+                            backgroundColor: cfg.bg,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: normalize(12),
+                          }}
+                        >
+                          <MaterialCommunityIcons name={cfg.icon} size={normalize(22)} color={cfg.color} />
+                        </View>
+                        <Text style={{ fontSize: normalize(13), fontWeight: '700', color: '#0F172A' }} numberOfLines={1}>
+                          {item.label}
+                        </Text>
+                        <Text style={{ fontSize: normalize(11), color: '#94A3B8', marginTop: normalize(2), fontWeight: '600' }}>
+                          {item.count} Dokter Terdaftar
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Patient Favorite Services Section */}
+            {directoryReady && catalog.services.length > 0 && (
+              <View style={{ marginBottom: normalize(28) }}>
+                <Text style={{ fontSize: normalize(15), fontWeight: '700', color: '#0F172A', marginBottom: normalize(12), letterSpacing: 0.1 }}>
+                  Layanan Favorit
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: normalize(10) }}>
+                  {catalog.services.map((item) => (
+                    <TouchableOpacity
+                      key={item.label}
+                      onPress={() => setQuery(item.label)}
+                      activeOpacity={0.8}
+                      style={{
+                        paddingHorizontal: normalize(18),
+                        paddingVertical: normalize(12),
+                        backgroundColor: 'white',
+                        borderRadius: normalize(20),
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        shadowColor: '#0F172A',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.04,
+                        shadowRadius: 8,
+                        elevation: 1,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: normalize(24),
+                          height: normalize(24),
+                          borderRadius: normalize(8),
+                          backgroundColor: '#FDF2F8',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: normalize(8),
+                        }}
+                      >
+                        <MaterialCommunityIcons name="tooth-outline" size={normalize(14)} color="#DB2777" />
+                      </View>
+                      <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: normalize(12) }}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </View>
         )}
 

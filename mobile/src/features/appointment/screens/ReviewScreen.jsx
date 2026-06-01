@@ -38,7 +38,7 @@ const StarPicker = ({ value, onChange, size = 36 }) => {
   };
 
   return (
-    <View 
+    <View
       style={{ flexDirection: 'row', gap: 8 }}
       accessible={true}
       accessibilityRole="radiogroup"

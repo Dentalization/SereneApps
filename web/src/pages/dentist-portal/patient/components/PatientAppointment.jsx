@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import axios from 'axios';
 
 // Inject animation keyframes
@@ -22,6 +23,7 @@ if (typeof document !== 'undefined' && !document.getElementById('appointment-mod
 }
 
 const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCancelAppointment }) => {
+  const toast = useToast();
   const [filterStatus, setFilterStatus] = useState('all');
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailAppointment, setDetailAppointment] = useState(null);
@@ -117,11 +119,11 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
       );
 
       if (response.data.success) {
-        alert('✅ Reminder sent successfully!');
+        toast.success('Reminder sent successfully!');
       }
     } catch (error) {
       console.error('Error sending reminder:', error);
-      alert('❌ Failed to send reminder: ' + (error.response?.data?.message || error.message));
+      toast.error('Failed to send reminder: ' + (error.response?.data?.message || error.message));
     } finally {
       setSendingReminder(false);
     }

@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import Viewer3D from './components/Viewer3D';
 import Gallery from './components/Gallery';
 import { registerXCoreLoader, registerMetadata } from '../../../../utils/cornerstone/xcoreLoader';
+import { useToast } from '../../../../contexts/ToastContext';
 
 // Initialize the custom loader once at app startup
 registerXCoreLoader();
@@ -18,6 +19,7 @@ registerXCoreLoader();
  */
 function XCoreViewerExample() {
     const [selectedStudy, setSelectedStudy] = useState(null);
+    const toast = useToast();
 
     // Example study data structure
     const exampleStudy = {
@@ -49,7 +51,7 @@ function XCoreViewerExample() {
             console.log('[XCoreViewer] Study loaded:', studyKey, metadata);
         } catch (error) {
             console.error('[XCoreViewer] Failed to load study:', error);
-            alert(`Failed to load study: ${error.message}`);
+            toast.error(`Failed to load study: ${error.message}`);
         }
     };
 

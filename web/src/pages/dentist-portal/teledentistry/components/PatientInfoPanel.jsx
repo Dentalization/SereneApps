@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ParticipantInvitePanel from './ParticipantInvitePanel';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const AVATAR_GRADIENTS = [
   ['#7C3AED', '#4f46e5'],
@@ -234,7 +235,7 @@ const PatientInfoPanel = ({
               style={getAvatarGradient(patientName)}
             >
               {patient.avatar ? (
-                <img src={patient.avatar} alt={patientName} className="h-full w-full object-cover" />
+                <img src={resolveMediaUrl(patient.avatar)} alt={patientName} className="h-full w-full object-cover" />
               ) : (
                 getInitials(patientName)
               )}

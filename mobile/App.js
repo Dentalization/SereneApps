@@ -1,23 +1,34 @@
 import 'react-native-gesture-handler';
+if (typeof Promise.prototype.finally !== 'function') {
+  Promise.prototype.finally = function (callback) {
+    const Constructor = this.constructor;
+    return this.then(
+      value => Constructor.resolve(callback()).then(() => value),
+      reason => Constructor.resolve(callback()).then(() => { throw reason; })
+    );
+  };
+}
 import React, { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import api from './src/services/api';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { PaperProvider } from 'react-native-paper';
 import { Provider as ReduxProvider, useSelector } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ActivityIndicator, 
-  LogBox, 
-  Image, 
-  Animated, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  LogBox,
+  Image,
+  Animated,
   Easing,
   Dimensions, // Import tambahan untuk responsivitas
   Platform,
-  PixelRatio 
+  PixelRatio
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { subscribeAppointmentReminderResponses } from './src/services/pushNotificationService';
@@ -163,19 +174,19 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
         }}
       >
         {/* Pure Logo tanpa background card */}
-        <Image 
-          source={require('./assets/icon.png')} 
-          style={styles.logoImage} 
-          resizeMode="contain" 
+        <Image
+          source={require('./assets/icon.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
         />
-        
+
         <Text style={styles.loadingTitle}>Serene App</Text>
         <Text style={styles.loadingSubtitle}>{message}</Text>
       </Animated.View>
 
-      <Animated.View 
-        style={{ 
-          marginTop: normalize(40), 
+      <Animated.View
+        style={{
+          marginTop: normalize(40),
           opacity: fadeAnim,
           transform: [{ translateY: slideUpAnim }]
         }}
@@ -184,9 +195,9 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
         <ActivityIndicator size="large" color="#818CF8" />
       </Animated.View>
 
-      <Animated.View 
+      <Animated.View
         style={[
-          styles.footer, 
+          styles.footer,
           { opacity: fadeAnim }
         ]}
       >
@@ -195,6 +206,74 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
     </LinearGradient>
   );
 };
+
+import { getOrCreateTwilioClient, shutdownGlobalTwilioClient } from './src/hooks/useChat';
+import { getAppointments } from './src/services/appointmentService';
+
+function BackgroundPresenceConnector() {
+  const user = useSelector((state) => state?.auth?.user);
+  const accessToken = useSelector((state) => state?.auth?.accessToken);
+
+  useEffect(() => {
+    if (!user || !accessToken) {
+      shutdownGlobalTwilioClient();
+      return;
+    }
+
+    let active = true;
+    const connectPresence = async () => {
+      try {
+        const result = await getAppointments({ limit: 10 });
+        if (!active) return;
+        const list = result?.data || [];
+        
+        // Find any upcoming/confirmed virtual appointment
+        const upcomingVirtual = list.find(apt => {
+          const isVirtual = apt.appointmentType === 'virtual' || apt.metadata?.appointmentType === 'virtual' || Boolean(apt.videoRoomRef);
+          const isConfirmed = apt.status === 'confirmed' || apt.status === 'scheduled';
+          const isUnpaid = apt.fee > 0 &&
+            apt.payment?.status !== 'succeeded' &&
+            apt.payment?.status !== 'settlement' &&
+            apt.payment?.status !== 'capture' &&
+            apt.status !== 'cancelled';
+          // Must be paid, virtual, and active/upcoming
+          return isVirtual && isConfirmed && !isUnpaid;
+        });
+
+        if (upcomingVirtual) {
+          console.log('[BackgroundPresenceConnector] Active virtual appointment found:', upcomingVirtual.id);
+          const { data } = await api.get(`/communications/appointments/${upcomingVirtual.id}/token`);
+          const token = data.chat?.token || data.token;
+          if (token && active) {
+            await getOrCreateTwilioClient(token);
+            console.log('[BackgroundPresenceConnector] Background Twilio Client connected successfully');
+          }
+        } else {
+          console.log('[BackgroundPresenceConnector] No active virtual appointments found, shutting down Twilio client.');
+          shutdownGlobalTwilioClient();
+        }
+      } catch (err) {
+        console.warn('[BackgroundPresenceConnector] Error setting up presence:', err.message);
+      }
+    };
+
+    connectPresence();
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && active) {
+        connectPresence();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+      shutdownGlobalTwilioClient();
+    };
+  }, [user, accessToken]);
+
+  return null;
+}
 
 function AppContent() {
   try {
@@ -210,6 +289,7 @@ function AppContent() {
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
+          <BackgroundPresenceConnector />
           <NavigationContainer ref={navigationRef}>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} />
             <React.Suspense
@@ -241,7 +321,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsMinTimeElapsed(true);
-    }, 2500); 
+    }, 2500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -261,7 +341,7 @@ export default function App() {
     <ErrorBoundary>
       <ReduxProvider store={store}>
         <View style={{ flex: 1 }}>
-          <PersistGate 
+          <PersistGate
             persistor={persistor}
             onBeforeLift={() => setIsPersistDone(true)}
           >

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import Icon from '../../../../components/AppIcon';
 
 const PatientReports = ({
@@ -9,6 +10,7 @@ const PatientReports = ({
   doctors = [],
 }) => {
   const { t, language } = useLanguage();
+  const toast = useToast();
   const locale = language === 'id' ? 'id-ID' : 'en-US';
   const [selectedReportType, setSelectedReportType] = useState('patientList');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -47,7 +49,7 @@ const PatientReports = ({
     });
 
     setIsGenerating(false);
-    alert(t('patients.reports.generationSuccess'));
+    toast.success(t('patients.reports.generationSuccess'));
   };
 
   const ReportPreview = () => {

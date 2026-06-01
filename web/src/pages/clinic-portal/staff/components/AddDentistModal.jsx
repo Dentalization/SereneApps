@@ -19,6 +19,7 @@ const AddDentistModal = ({
   
   // Personal Information
   const [name, setName] = useState('');
+  const [nameSuffix, setNameSuffix] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [about, setAbout] = useState('');
@@ -259,6 +260,7 @@ const AddDentistModal = ({
   const resetForm = () => {
     setCurrentStep(1);
     setName('');
+    setNameSuffix('');
     setEmail('');
     setPhoneNumber('');
     setAbout('');
@@ -346,7 +348,8 @@ const AddDentistModal = ({
       const formData = new FormData();
       
       // Personal Information
-      formData.append('name', name);
+      const finalName = nameSuffix.trim() ? `${name.trim()}, ${nameSuffix.trim()}` : name.trim();
+      formData.append('name', finalName);
       formData.append('email', email);
       formData.append('phoneNumber', phoneNumber);
       formData.append('about', about);
@@ -685,6 +688,21 @@ const AddDentistModal = ({
                     {errors.name && (
                       <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.name}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Suffix / Specialist Title (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={nameSuffix}
+                      onChange={(e) => {
+                        setNameSuffix(e.target.value);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      placeholder="e.g., Sp.Ort, Sp.KG, M.Kes"
+                    />
                   </div>
                   
                   <div>

@@ -138,6 +138,13 @@ const TabNavigator = () => {
           ),
           tabBarStyle: getTabBarStyle(route, 'AppointmentList'),
         })}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default action
+            e.preventDefault();
+            navigation.navigate('AppointmentTab', { screen: 'AppointmentList' });
+          },
+        })}
       />
 
       <Tab.Screen

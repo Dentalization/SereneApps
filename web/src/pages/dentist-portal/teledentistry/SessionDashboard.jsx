@@ -4,6 +4,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { getAvatarGradient, getInitials } from '../../../utils/avatarGradients';
 import { parseDateValue } from './utils/dateUtils';
+import { resolveMediaUrl } from '../../../utils/media';
 
 function identityMatchesUser(rawIdentity, userId) {
   const identity = String(rawIdentity || '');
@@ -221,7 +222,7 @@ const SessionDashboard = ({
             >
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center text-xs font-bold text-white rounded-full overflow-hidden shadow-sm" style={avatarStyle}>
                 {patient.avatar ? (
-                  <img src={patient.avatar} alt={patient.name || 'Pasien'} className="h-full w-full object-cover" />
+                  <img src={resolveMediaUrl(patient.avatar)} alt={patient.name || 'Pasien'} className="h-full w-full object-cover" />
                 ) : (
                   initials
                 )}

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 
 const VerificationQueue = ({ onStatsUpdate }) => {
   const { t } = useLanguage();
+  const toast = useToast();
   const [pendingDentists, setPendingDentists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,13 +24,13 @@ const VerificationQueue = ({ onStatsUpdate }) => {
     console.log('🔍 VerificationQueue: Viewing document:', { userId, docType, title });
     
     if (!userId) {
-      alert('User ID not available');
+      toast.error('User ID not available');
       return;
     }
 
     const token = localStorage.getItem('auth.accessToken');
     if (!token) {
-      alert('Authentication required. Please log in again.');
+      toast.error('Authentication required. Please log in again.');
       return;
     }
 
@@ -48,11 +50,11 @@ const VerificationQueue = ({ onStatsUpdate }) => {
       } else {
         const errorData = await response.json();
         console.error('❌ Document fetch failed:', errorData);
-        alert(`Error: ${errorData.error || 'Failed to load document'}`);
+        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
       }
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      alert('Error loading document. Please try again.');
+      toast.error('Error loading document. Please try again.');
     }
   };
 
@@ -139,7 +141,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
     try {
       const token = localStorage.getItem('auth.accessToken');
       if (!token) {
-        alert('Authentication required');
+        toast.error('Authentication required');
         return;
       }
 
@@ -174,7 +176,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
         setVerificationAction(null);
         setRejectionReason('');
 
-        alert(`Dentist ${verificationAction === 'approve' ? 'approved' : 'rejected'} successfully`);
+        toast.success(`Dentist ${verificationAction === 'approve' ? 'approved' : 'rejected'} successfully`);
 
         // Refresh list (keeps stats in sync)
         fetchPendingDentists();
@@ -183,7 +185,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
       }
     } catch (err) {
       console.error('Error processing verification:', err);
-      alert(`Error processing verification: ${err.message}`);
+      toast.error(`Error processing verification: ${err.message}`);
     } finally {
       setProcessing(false);
     }

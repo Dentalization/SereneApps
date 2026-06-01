@@ -4,6 +4,7 @@ import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useToast } from '../../../contexts/ToastContext';
 import PaymentsView from './components/PaymentsView';
 import ClaimsView from './components/ClaimsView';
 import PromosView from './components/PromosView';
@@ -11,6 +12,7 @@ import { authHttp } from '../../../utils/httpClient';
 import ModalPortal from '../../../components/ui/ModalPortal';
 
 const BillingPage = () => {
+  const toast = useToast();
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
@@ -112,14 +114,14 @@ const BillingPage = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to download PDF invoice:', error);
-      alert('Failed to download PDF invoice. Please try again.');
+      toast.error('Failed to download PDF invoice. Please try again.');
     }
   };
 
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     if (!refundAmount || isNaN(refundAmount) || parseFloat(refundAmount) <= 0) {
-      alert('Please enter a valid refund amount');
+      toast.error('Please enter a valid refund amount');
       return;
     }
     setRefundLoading(true);
@@ -129,12 +131,12 @@ const BillingPage = () => {
         refundAmount: parseInt(refundAmount, 10),
         refundReason: refundReason || 'Clinic request'
       });
-      alert('Refund processed successfully');
+      toast.success('Refund processed successfully');
       setSelectedInvoiceId(null);
       fetchBillingData();
     } catch (error) {
       console.error('Refund failed:', error);
-      alert(error.response?.data?.error?.message || error.response?.data?.error || 'Failed to process refund');
+      toast.error(error.response?.data?.error?.message || error.response?.data?.error || 'Failed to process refund');
     } finally {
       setRefundLoading(false);
     }

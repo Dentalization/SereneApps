@@ -36,43 +36,43 @@ END $$;
 -- ============================================
 INSERT INTO users (name, email, password_hash, roles, phone_number) VALUES 
 -- Clinic 1
-('dr. Sarah Williams', 'sarah.williams@serenedental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-1001-0001'),
+('Sarah Williams', 'sarah.williams@serenedental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-1001-0001'),
 ('Michael Chen', 'manager1.serene@serenedental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-1001-0002'),
 ('Lisa Anderson', 'admin1.serene@serenedental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-1001-0003'),
 -- Clinic 2
-('dr. David Martinez', 'david.martinez@elitesmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-2001-0001'),
+('David Martinez', 'david.martinez@elitesmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-2001-0001'),
 ('Jessica Wong', 'manager1.elite@elitesmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-2001-0002'),
 ('Robert Kim', 'admin1.elite@elitesmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-2001-0003'),
 -- Clinic 3
-('dr. Jennifer Lee', 'jennifer.lee@premiumdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-3001-0001'),
+('Jennifer Lee', 'jennifer.lee@premiumdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-3001-0001'),
 ('Thomas Brown', 'manager1.premium@premiumdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-3001-0002'),
 ('Amy Johnson', 'admin1.premium@premiumdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-3001-0003'),
 -- Clinic 4
-('dr. Michael Johnson', 'michael.johnson@brightsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-4001-0001'),
+('Michael Johnson', 'michael.johnson@brightsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-4001-0001'),
 ('Sarah Park', 'manager1.bright@brightsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-4001-0002'),
 ('Kevin Lee', 'admin1.bright@brightsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-4001-0003'),
 -- Clinic 5
-('dr. Emily Rodriguez', 'emily.rodriguez@familycare.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-5001-0001'),
+('Emily Rodriguez', 'emily.rodriguez@familycare.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-5001-0001'),
 ('Daniel White', 'manager1.family@familycare.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-5001-0002'),
 ('Laura Martinez', 'admin1.family@familycare.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-5001-0003'),
 -- Clinic 6
-('dr. Robert Thompson', 'robert.thompson@advanceddental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-6001-0001'),
+('Robert Thompson', 'robert.thompson@advanceddental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-6001-0001'),
 ('Michelle Garcia', 'manager1.advanced@advanceddental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-6001-0002'),
 ('James Wilson', 'admin1.advanced@advanceddental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-6001-0003'),
 -- Clinic 7
-('dr. Patricia Davis', 'patricia.davis@modernsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-7001-0001'),
+('Patricia Davis', 'patricia.davis@modernsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-7001-0001'),
 ('Christopher Lee', 'manager1.modern@modernsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-7001-0002'),
 ('Angela Chen', 'admin1.modern@modernsmile.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-7001-0003'),
 -- Clinic 8
-('dr. Christopher Anderson', 'christopher.anderson@comfortdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-8001-0001'),
+('Christopher Anderson', 'christopher.anderson@comfortdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-8001-0001'),
 ('Elizabeth Moore', 'manager1.comfort@comfortdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-8001-0002'),
 ('Matthew Taylor', 'admin1.comfort@comfortdental.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-8001-0003'),
 -- Clinic 9
-('dr. Amanda White', 'amanda.white@dentalexcel.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-9001-0001'),
+('Amanda White', 'amanda.white@dentalexcel.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-9001-0001'),
 ('Brian Harris', 'manager1.excel@dentalexcel.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-9001-0002'),
 ('Sophia Martin', 'admin1.excel@dentalexcel.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-9001-0003'),
 -- Clinic 10
-('dr. Daniel Garcia', 'daniel.garcia@smilecraft.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-0001-0001'),
+('Daniel Garcia', 'daniel.garcia@smilecraft.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_owner'], '+62 821-0001-0001'),
 ('Rachel Thompson', 'manager1.smile@smilecraft.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-0001-0002'),
 ('Andrew Jackson', 'admin1.smile@smilecraft.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['clinic_staff'], '+62 821-0001-0003');
 
@@ -98,7 +98,7 @@ BEGIN
       global_idx := global_idx + 1;
       fn_idx := ((global_idx - 1) % array_length(first_names, 1)) + 1;
       ln_idx := ((global_idx * 7) % array_length(last_names, 1)) + 1;
-      full_name := 'dr. ' || first_names[fn_idx] || ' ' || last_names[ln_idx];
+      full_name := first_names[fn_idx] || ' ' || last_names[ln_idx];
       email_addr := 'dentist' || dentist_num || '.clinic' || clinic_num || '@dentists.com';
       
       -- Password is 'password123'
@@ -227,7 +227,7 @@ DECLARE
   idx INT;
   new_user_id BIGINT;
   profile_id BIGINT;
-  vip_names TEXT[] := ARRAY['dr. Adrian Halim', 'dr. Nadia Hutasoit', 'dr. Bintang Pratama', 'dr. Clarissa Wong', 'dr. Dewa Made', 'dr. Farhan Baswedan', 'dr. Grace Kelly', 'dr. Heru Hartanto', 'dr. Irene Susilo', 'dr. Johan Sebastian'];
+  vip_names TEXT[] := ARRAY['Adrian Halim', 'Nadia Hutasoit', 'Bintang Pratama', 'Clarissa Wong', 'Dewa Made', 'Farhan Baswedan', 'Grace Kelly', 'Heru Hartanto', 'Irene Susilo', 'Johan Sebastian'];
   specialties TEXT[] := ARRAY['Orthodontics', 'Cosmetic Dentistry', 'Implantology', 'Pediatric Dentistry', 'Oral Surgery', 'Endodontics', 'Periodontics', 'Prosthodontics', 'Digital Dentistry', 'General Dentistry'];
   districts TEXT[] := ARRAY['Menteng', 'Kemang', 'Pondok Indah', 'Kelapa Gading', 'BSD City', 'Tebet', 'Kebayoran Baru', 'Pluit', 'Bintaro', 'Cilandak'];
   base_lat DECIMAL := -6.2000;
@@ -316,13 +316,210 @@ END $$;
 UPDATE users u SET clinic_id = cp.id FROM clinic_profiles cp WHERE u.id = cp.user_id;
 UPDATE users u SET clinic_id = cs.clinic_profile_id FROM clinic_staff cs WHERE u.id = cs.user_id;
 
+-- ============================================
+-- STEP 11: Create Patient Users (20 Users)
+-- ============================================
+INSERT INTO users (name, email, password_hash, roles, phone_number) VALUES
+('Budi Santoso', 'patient.budi@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0001'),
+('Siti Aminah', 'patient.siti@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0002'),
+('Aditya Wijaya', 'patient.aditya@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0003'),
+('Dewi Lestari', 'patient.dewi@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0004'),
+('Rian Hidayat', 'patient.rian@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0005'),
+('Indah Permata', 'patient.indah@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0006'),
+('Bambang Utomo', 'patient.bambang@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0007'),
+('Rina Kusuma', 'patient.rina@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0008'),
+('Fajar Pratama', 'patient.fajar@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0009'),
+('Mega Utami', 'patient.mega@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0010'),
+('Hendra Wijaya', 'patient.hendra@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0011'),
+('Gita Savitri', 'patient.gita@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0012'),
+('Rudi Hermawan', 'patient.rudi@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0013'),
+('Sari Kartika', 'patient.sari@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0014'),
+('Taufik Hidayat', 'patient.taufik@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0015'),
+('Dina Maria', 'patient.dina@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0016'),
+('Andi Wijaya', 'patient.andi@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0017'),
+('Fitriani Yusuf', 'patient.fitri@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0018'),
+('Eko Prasetyo', 'patient.eko@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0019'),
+('Yuni Lestari', 'patient.yuni@example.com', '$2b$10$K7XqN5JZE0rFfGk.vQ3YjOXGz5wT9LwKj5pQZ8mN3xY7fR2sV1wPi', ARRAY['patient'], '+62 812-9001-0020')
+ON CONFLICT (email) DO NOTHING;
+
+-- ============================================
+-- STEP 12: Create Patient Profiles
+-- ============================================
+DO $$
+DECLARE
+  patient_record RECORD;
+  gender_val TEXT;
+  birth_val DATE;
+  counter INT := 1;
+BEGIN
+  FOR patient_record IN SELECT id, name FROM users WHERE email LIKE 'patient.%@example.com' LOOP
+    -- Alternating values
+    IF counter % 2 = 0 THEN
+      gender_val := 'female';
+      birth_val := '1995-04-12'::DATE;
+    ELSE
+      gender_val := 'male';
+      birth_val := '1990-08-25'::DATE;
+    END IF;
+
+    INSERT INTO patient_profiles (
+      user_id, date_of_birth, gender, insurance_provider, insurance_number, insurance_member_id, emergency_contact, address, medical_details, preferred_language
+    ) VALUES (
+      patient_record.id,
+      birth_val,
+      gender_val,
+      'BPJS Kesehatan',
+      '000123456789' || counter,
+      'MEMBER-' || counter,
+      ('{"name": "Emergency Contact ' || counter || '", "phone": "+62 811-9999-8888", "relationship": "Spouse"}')::jsonb,
+      ('{"street": "Jl. Mawar No. ' || counter || '", "city": "Jakarta Selatan", "province": "DKI Jakarta", "postal_code": "12340"}')::jsonb,
+      ('{"allergies": "None", "medications": "None", "notes": "Regular dental patient"}')::jsonb,
+      'id'
+    ) ON CONFLICT (user_id) DO NOTHING;
+
+    counter := counter + 1;
+  END LOOP;
+END $$;
+
+-- ============================================
+-- STEP 13: Create Available Balances
+-- ============================================
+-- Clinic balances
+INSERT INTO available_balances (owner_type, owner_clinic_id, owner_dentist_id, available_amount, pending_amount, currency)
+SELECT 'clinic', id, NULL, 5000000, 0, 'IDR'
+FROM clinic_profiles
+ON CONFLICT (owner_clinic_id) DO NOTHING;
+
+-- Dentist balances (independent dentists)
+INSERT INTO available_balances (owner_type, owner_clinic_id, owner_dentist_id, available_amount, pending_amount, currency)
+SELECT 'dentist', NULL, user_id, 3000000, 0, 'IDR'
+FROM dentist_profiles
+WHERE dentist_type = 'independent'
+ON CONFLICT (owner_dentist_id) DO NOTHING;
+
+-- ============================================
+-- STEP 14: Create Sample Appointments and Status History
+-- ============================================
+DO $$
+DECLARE
+  patient_id BIGINT;
+  dentist_record RECORD;
+  clinic_branch_id BIGINT;
+  appt_id BIGINT;
+  starts_at TIMESTAMPTZ;
+  ends_at TIMESTAMPTZ;
+  status_val TEXT;
+  owner_type_val TEXT;
+  owner_clinic_id_val BIGINT;
+  i INT := 1;
+BEGIN
+  FOR dentist_record IN 
+    SELECT dp.user_id, dp.clinic_id, dp.dentist_type, cb.id as branch_id
+    FROM dentist_profiles dp
+    LEFT JOIN clinic_branches cb ON cb.clinic_profile_id = dp.clinic_id AND cb.is_main_branch = true
+    LIMIT 30
+  LOOP
+    -- Get a patient user
+    SELECT id INTO patient_id FROM users WHERE email LIKE 'patient.%@example.com' ORDER BY id OFFSET (i % 20) LIMIT 1;
+    
+    -- Setup time: 10 in the past (completed), 10 in the past (cancelled), 10 in the future (scheduled)
+    IF i <= 10 THEN
+      starts_at := NOW() - INTERVAL '5 days' + (i * INTERVAL '2 hours');
+      status_val := 'completed';
+    ELSIF i <= 20 THEN
+      starts_at := NOW() - INTERVAL '15 days' + (i * INTERVAL '2 hours');
+      status_val := 'cancelled';
+    ELSE
+      starts_at := NOW() + INTERVAL '2 days' + (i * INTERVAL '2 hours');
+      status_val := 'scheduled';
+    END IF;
+    
+    ends_at := starts_at + INTERVAL '1 hour';
+    
+    IF dentist_record.dentist_type = 'independent' THEN
+      owner_type_val := 'dentist';
+      owner_clinic_id_val := NULL;
+      clinic_branch_id := NULL;
+    ELSE
+      owner_type_val := 'clinic';
+      owner_clinic_id_val := dentist_record.clinic_id;
+      clinic_branch_id := dentist_record.branch_id;
+    END IF;
+    
+    -- Insert appointment
+    INSERT INTO appointments (
+      dentist_id, patient_id, clinic_branch_id, owner_type, owner_clinic_id, starts_at, ends_at, status, reason, notes, consultation_type
+    ) VALUES (
+      dentist_record.user_id,
+      patient_id,
+      clinic_branch_id,
+      owner_type_val,
+      owner_clinic_id_val,
+      starts_at,
+      ends_at,
+      status_val,
+      'Routine dental checkup ' || i,
+      'Patient requested general cleaning.',
+      CASE WHEN i % 3 = 0 THEN 'teleconsultation' ELSE 'onsite' END
+    ) RETURNING id INTO appt_id;
+    
+    -- Insert initial status history
+    INSERT INTO appointment_status_history (
+      appointment_id, previous_status, new_status, changed_by, changed_by_role, reason, notes
+    ) VALUES (
+      appt_id,
+      NULL,
+      'scheduled',
+      patient_id,
+      'patient',
+      'Initial booking',
+      'System generated booking'
+    );
+    
+    -- If completed, add transitions
+    IF status_val = 'completed' THEN
+      INSERT INTO appointment_status_history (
+        appointment_id, previous_status, new_status, changed_by, changed_by_role, reason, notes
+      ) VALUES (
+        appt_id,
+        'scheduled',
+        'completed',
+        dentist_record.user_id,
+        'dentist',
+        'Treatment completed',
+        'Procedure went smoothly'
+      );
+    ELSIF status_val = 'cancelled' THEN
+      INSERT INTO appointment_status_history (
+        appointment_id, previous_status, new_status, changed_by, changed_by_role, reason, notes
+      ) VALUES (
+        appt_id,
+        'scheduled',
+        'cancelled',
+        patient_id,
+        'patient',
+        'Schedule conflict',
+        'Patient cancelled via app'
+      );
+    END IF;
+    
+    i := i + 1;
+  END LOOP;
+END $$;
+
 -- Final Summary
 DO $$
 DECLARE
   dentist_count INT;
+  patient_count INT;
+  appt_count INT;
+  balance_count INT;
 BEGIN
   SELECT COUNT(*) INTO dentist_count FROM dentist_profiles;
-  RAISE NOTICE 'SEED COMPLETE: % Dentists created.', dentist_count;
+  SELECT COUNT(*) INTO patient_count FROM patient_profiles;
+  SELECT COUNT(*) INTO appt_count FROM appointments;
+  SELECT COUNT(*) INTO balance_count FROM available_balances;
+  RAISE NOTICE 'SEED COMPLETE: % Dentists, % Patients, % Appointments, % Balances seeded.', dentist_count, patient_count, appt_count, balance_count;
 END $$;
 
 COMMIT;

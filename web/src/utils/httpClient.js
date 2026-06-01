@@ -63,12 +63,13 @@ export function forceLogout(message = 'Your session has expired. Please log in a
   hasForcedLogout = true;
   window.__forceLogoutPending = true;
 
+  try {
+    sessionStorage.setItem('auth.logout_reason', message);
+  } catch (err) {
+    // Ignore storage failures
+  }
+
   window.setTimeout(() => {
-    try {
-      window.alert(message);
-    } catch (err) {
-      // Alerts may be blocked; ignore failures.
-    }
     window.location.href = '/login';
   }, 0);
 }

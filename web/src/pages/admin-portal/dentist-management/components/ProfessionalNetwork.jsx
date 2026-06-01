@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 
 const ProfessionalNetwork = ({ onStatsUpdate }) => {
   const { t } = useLanguage();
+  const toast = useToast();
   const [verifiedDentists, setVerifiedDentists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,13 +36,13 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
     console.log('🔍 ProfessionalNetwork: Viewing document:', { userId, docType, title });
     
     if (!userId) {
-      alert('User ID not available');
+      toast.error('User ID not available');
       return;
     }
 
     const token = localStorage.getItem('auth.accessToken');
     if (!token) {
-      alert('Authentication required. Please log in again.');
+      toast.error('Authentication required. Please log in again.');
       return;
     }
 
@@ -60,11 +62,11 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
       } else {
         const errorData = await response.json();
         console.error('❌ Document fetch failed:', errorData);
-        alert(`Error: ${errorData.error || 'Failed to load document'}`);
+        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
       }
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      alert('Error loading document. Please try again.');
+      toast.error('Error loading document. Please try again.');
     }
   };
 
