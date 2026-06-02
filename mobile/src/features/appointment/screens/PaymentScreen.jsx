@@ -70,7 +70,13 @@ const PaymentScreen = () => {
       setLoading(false);
       setPolling(true);
     } catch (error) {
-      if (error.message === 'Payment already completed or processing for this appointment') {
+      const errMsg = error.message || error.error?.message || '';
+      const errCode = error.code || error.error?.code || '';
+      if (
+        errMsg.includes('Payment already completed') ||
+        errMsg.includes('Active payment intent already exists') ||
+        errCode === 'ACTIVE_PAYMENT_EXISTS'
+      ) {
         setStatus('succeeded');
         handleSuccess();
         return;
@@ -197,13 +203,24 @@ const PaymentScreen = () => {
   };
 
   const handleSuccess = () => {
+    let bookingIdSuffix = 'UNKNOWN';
+    if (appointmentId !== undefined && appointmentId !== null) {
+      const cleanId = String(appointmentId).replace(/[^a-zA-Z0-9]/g, '');
+      if (cleanId && cleanId !== 'undefined' && cleanId !== 'null') {
+        bookingIdSuffix = cleanId.slice(-6).toUpperCase();
+      }
+    }
+    if (bookingIdSuffix === 'UNKNOWN') {
+      bookingIdSuffix = String(Date.now()).slice(-6);
+    }
+
     navigation.navigate('BookingSuccess', {
       appointmentId,
       dentist,
       slot,
       date,
       fee,
-      bookingId: `SRN-${appointmentId.toString().slice(-6).toUpperCase()}`,
+      bookingId: `SRN-${bookingIdSuffix}`,
     });
   };
 

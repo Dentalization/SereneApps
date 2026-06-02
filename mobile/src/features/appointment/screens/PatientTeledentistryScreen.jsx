@@ -1206,7 +1206,26 @@ const PatientTeledentistryScreen = () => {
     if (sessionStatus === 'ended') {
       const lastMessage = chatMessages[chatMessages.length - 1];
       const isDentistLastSender = lastMessage && lastMessage.role === 'dentist';
-      if (!isDentistLastSender) return null;
+      if (!isDentistLastSender) {
+        return (
+          <View style={{
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            backgroundColor: COLORS.surfaceElevated,
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingBottom: Math.max(insets.bottom, 14),
+          }}>
+            <MaterialCommunityIcons name="chat-lock-outline" size={20} color={COLORS.textMuted} />
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 8, fontWeight: '600' }}>
+              Sesi berakhir. Chat dinonaktifkan karena Anda mengirim pesan terakhir.
+            </Text>
+          </View>
+        );
+      }
     }
 
     return (

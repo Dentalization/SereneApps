@@ -2,9 +2,23 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import api from '../services/api';
 
-import { Client } from '@twilio/conversations';
+// Avoid using ES import to bypass Metro's _interopNamespace ESM shim which crashes Hermes with:
+// "Cannot assign to property 'default' which has only a getter"
+let _cachedConversationsClient = null;
 
-const loadConversationsClient = () => Client;
+const loadConversationsClient = () => {
+  if (_cachedConversationsClient) return _cachedConversationsClient;
+  try {
+    const mod = require('@twilio/conversations');
+    const Client = mod.Client || mod.default?.Client || mod.default;
+    if (!Client) throw new Error('Client not found in @twilio/conversations');
+    _cachedConversationsClient = Client;
+    return Client;
+  } catch (err) {
+    if (__DEV__) console.warn('[useChat] Failed to load Twilio Conversations SDK:', err.message);
+    return null;
+  }
+};
 
 let globalTwilioClient = null;
 let globalTwilioClientPromise = null;

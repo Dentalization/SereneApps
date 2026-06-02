@@ -493,7 +493,7 @@ const DentistDetailScreen = () => {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleMessage}
+              onPress={handleCall}
               style={{
                 width: 52,
                 height: 52,

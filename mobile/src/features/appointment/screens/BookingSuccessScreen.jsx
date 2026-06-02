@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Animated, Share, Alert } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, Animated, Share, Alert, Platform } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
@@ -45,7 +45,8 @@ const BookingSuccessScreen = () => {
   const slotTime = slot?.time || summaryDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
   useEffect(() => {
-    const particles = Array.from({ length: 60 }, (_, index) => ({
+    const maxParticles = (Platform.OS === 'android' || FEATURES.optimizeAnimations) ? 20 : 60;
+    const particles = Array.from({ length: maxParticles }, (_, index) => ({
       id: index,
       color: [COLORS.primary, COLORS.success, COLORS.warning, '#FF6B9D', '#38BDF8'][index % 5],
       fall: new Animated.Value(0),

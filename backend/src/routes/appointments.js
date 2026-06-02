@@ -431,6 +431,27 @@ router.get('/availability', authenticateToken, async (req, res) => {
   }
 });
 
+router.get(
+  '/config',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          reminderMinutes: [15, 30, 60, 120],
+          rescheduleCutoffHours: appointmentConfig.rescheduleCutoffHours,
+          cancelCutoffHours: appointmentConfig.cancelCutoffHours,
+          cancellationFeePercent: appointmentConfig.cancellationFeePercent,
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching appointment config:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch appointment configuration' });
+    }
+  }
+);
+
 router.post(
   '/',
   authenticateToken,

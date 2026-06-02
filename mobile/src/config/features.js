@@ -8,6 +8,7 @@ export const FEATURES = Object.freeze({
   aiSymptomChecker: false,
   aiSoapAssist: false,
   reviewPhotoUpload: false,
+  optimizeAnimations: true, // Cap heavy animations like confetti particles
 });
 
 export default FEATURES;

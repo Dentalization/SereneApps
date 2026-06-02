@@ -6,7 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency } from '../../../utils/formatters';
-import { getAppointmentById, getAppointmentClinicalSummary, cancelAppointment } from '../../../services/appointmentService';
+import { getAppointmentById, getAppointmentClinicalSummary, cancelAppointment, getAppointmentConfig } from '../../../services/appointmentService';
 import ValidationToast from '../../settings/components/ValidationToast';
 import useToast from '../../../hooks/useToast';
 import AppointmentChatBanner from './AppointmentChatBanner';
@@ -30,6 +30,9 @@ const DetailAppointmentScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(new Date());
   const chatPulse = useRef(new Animated.Value(0)).current;
+  const [refreshingSummary, setRefreshingSummary] = useState(false);
+  const [appointmentConfig, setAppointmentConfig] = useState(null);
+  const [hasNudged, setHasNudged] = useState(false);
 
   const fetchDetail = useCallback(async (showLoading = true) => {
     if (!appointmentId) return;
@@ -68,15 +71,32 @@ const DetailAppointmentScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!appointment?.startsAt) return;
+    getAppointmentConfig()
+      .then((res) => {
+        setAppointmentConfig(res);
+      })
+      .catch((err) => {
+        if (__DEV__) console.warn('[DetailAppointment] Failed to fetch appointment config:', err);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!appointment?.startsAt || appointment?.status === 'completed' || appointment?.status === 'finished' || appointment?.status === 'cancelled') return;
     const remaining = new Date(appointment.startsAt).getTime() - now.getTime();
+    
+    // T-15 minutes nudge for virtual appointments
+    if (isVirtualAppointment && remaining <= 15 * 60 * 1000 && remaining > 0 && !hasNudged) {
+      setHasNudged(true);
+      showToast('Konsultasi virtual Anda akan dimulai dalam 15 menit. Silakan bersiap masuk ruang chat.', 'info');
+    }
+
     if (remaining <= 0 && remaining > -2500) {
       Animated.sequence([
         Animated.timing(chatPulse, { toValue: 1, duration: 250, useNativeDriver: false }),
         Animated.timing(chatPulse, { toValue: 0, duration: 900, useNativeDriver: false }),
       ]).start();
     }
-  }, [appointment?.startsAt, chatPulse, now]);
+  }, [appointment?.startsAt, appointment?.status, chatPulse, now, isVirtualAppointment, hasNudged]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -84,9 +104,21 @@ const DetailAppointmentScreen = () => {
   };
 
   const handleCancelRequest = () => {
+    const startsAtMs = new Date(appointment?.startsAt).getTime();
+    const nowMs = new Date().getTime();
+    const hoursLeft = (startsAtMs - nowMs) / (1000 * 60 * 60);
+
+    const cutoffHours = appointmentConfig?.cancelCutoffHours ?? 24;
+    const feePercent = appointmentConfig?.cancellationFeePercent ?? 50;
+
+    const isWithinCutoff = hoursLeft < cutoffHours;
+    const warningText = isWithinCutoff
+      ? `Pembatalan kurang dari ${cutoffHours} jam sebelum jadwal akan dikenakan biaya administrasi sebesar ${feePercent}%. Apakah Anda yakin ingin membatalkan?`
+      : 'Apakah Anda yakin ingin membatalkan janji temu ini? Pembatalan mungkin dikenakan biaya admin tergantung kebijakan klinik.';
+
     Alert.alert(
       'Batalkan Janji Temu',
-      'Apakah Anda yakin ingin membatalkan janji temu ini? Pembatalan mungkin dikenakan biaya admin tergantung kebijakan klinik.',
+      warningText,
       [
         { text: 'Tidak', style: 'cancel' },
         {
@@ -95,9 +127,11 @@ const DetailAppointmentScreen = () => {
           onPress: async () => {
             try {
               setLoading(true);
-              await cancelAppointment(appointmentId, 'Dibatalkan oleh pasien');
-              showToast('Janji temu berhasil dibatalkan', 'success');
-              fetchDetail();
+              const cancelRes = await cancelAppointment(appointmentId, 'Dibatalkan oleh pasien');
+              navigation.navigate('CancelSuccess', {
+                appointment: appointment,
+                cancellationFee: cancelRes?.data?.cancellationFee || (isWithinCutoff ? Math.round(appointment.fee * (feePercent / 100)) : 0),
+              });
             } catch (error) {
               showToast(error.message || 'Gagal membatalkan janji temu', 'error');
             } finally {
@@ -122,7 +156,11 @@ const DetailAppointmentScreen = () => {
           branchId: appointment?.clinicBranch?.id,
           name: appointment?.clinicBranch?.name,
           address: appointment?.clinicBranch?.address,
-        } : undefined,
+        } : (appointment?.ownerClinicId ? {
+          profileId: appointment?.ownerClinicId,
+          name: appointment?.dentist?.clinicName || 'Praktik Mandiri',
+          address: appointment?.dentist?.clinicAddress || appointment?.dentist?.address || 'Lokasi Mandiri',
+        } : undefined),
       },
       isReschedule: true,
       originalAppointmentId: appointmentId,
@@ -251,33 +289,53 @@ const DetailAppointmentScreen = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Countdown Card */}
-        {['scheduled', 'confirmed'].includes(appointment?.status) && (
-          <View style={{
-            backgroundColor: COLORS.surfaceElevated,
-            borderRadius: 22,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: withOpacity(COLORS.primary, 0.14),
-            marginBottom: 20,
-            shadowColor: COLORS.textPrimary,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.05,
-            shadowRadius: 10,
-            elevation: 2
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 7, borderColor: withOpacity(COLORS.primary, 0.18), alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
-                <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.primary, fontWeight: '900', textAlign: 'center' }}>{remainingLabel}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '800', textTransform: 'uppercase' }}>Sesi dimulai dalam</Text>
-                <Text style={{ ...TYPOGRAPHY.bodyLarge, color: COLORS.textPrimary, fontWeight: '800', marginTop: 4 }}>
-                  Siapkan koneksi dan dokumen pendukung sebelum masuk ruang konsultasi.
-                </Text>
+        {['scheduled', 'confirmed'].includes(appointment?.status) && (() => {
+          const isNearStart = isVirtualAppointment && remainingMs <= 15 * 60 * 1000 && remainingMs > 0;
+          return (
+            <View style={{
+              backgroundColor: isNearStart ? withOpacity(COLORS.warning, 0.08) : COLORS.surfaceElevated,
+              borderRadius: 22,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: isNearStart ? COLORS.warning : withOpacity(COLORS.primary, 0.14),
+              marginBottom: 20,
+              shadowColor: COLORS.textPrimary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.05,
+              shadowRadius: 10,
+              elevation: 2
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 7, borderColor: isNearStart ? withOpacity(COLORS.warning, 0.18) : withOpacity(COLORS.primary, 0.18), alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                  <Text style={{ ...TYPOGRAPHY.bodySmall, color: isNearStart ? COLORS.warning : COLORS.primary, fontWeight: '900', textAlign: 'center' }}>{remainingLabel}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, fontWeight: '800', textTransform: 'uppercase' }}>Sesi dimulai dalam</Text>
+                  <Text style={{ ...TYPOGRAPHY.bodyLarge, color: COLORS.textPrimary, fontWeight: '800', marginTop: 4 }}>
+                    Siapkan koneksi dan dokumen pendukung sebelum masuk ruang konsultasi.
+                  </Text>
+                  {isNearStart && (
+                    <TouchableOpacity
+                      onPress={handleJoinCall}
+                      style={{
+                        marginTop: 10,
+                        backgroundColor: COLORS.primary,
+                        borderRadius: 10,
+                        paddingVertical: 8,
+                        alignItems: 'center',
+                        flexDirection: 'row',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <MaterialCommunityIcons name="message-video" size={16} color={COLORS.white} style={{ marginRight: 6 }} />
+                      <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 12 }}>Masuk Ruang Konsultasi</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
-          </View>
-        )}
+          );
+        })()}
 
         {/* Status Stepper */}
         <View style={{
@@ -459,37 +517,62 @@ const DetailAppointmentScreen = () => {
           </Animated.View>
         )}
 
-        {(appointment?.status === 'completed' || appointment?.status === 'finished') && (
-          <View style={{ marginTop: 24 }}>
-            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 }}>Ringkasan Konsultasi</Text>
-            <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16 }}>
-              {clinicalSummaryStatus === 'finalized' || clinicalSummaryStatus === 'amended' ? (
-                <>
-                  <SummaryRow label="Keluhan utama" value={clinicalSummary?.chiefComplaint} />
-                  <Divider style={{ marginVertical: 12 }} />
-                  <SummaryRow label="Temuan objektif" value={clinicalSummary?.objectiveFindings} />
-                  <Divider style={{ marginVertical: 12 }} />
-                  <SummaryRow label="Assessment" value={clinicalSummary?.assessment} />
-                  <Divider style={{ marginVertical: 12 }} />
-                  <SummaryRow label="Rencana tindakan" value={clinicalSummary?.plan} />
-                  {clinicalSummary?.recommendations?.length > 0 && (
-                    <>
-                      <Divider style={{ marginVertical: 12 }} />
-                      <SummaryRow label="Rekomendasi" value={clinicalSummary.recommendations.join('\n')} />
-                    </>
-                  )}
-                </>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <MaterialCommunityIcons name="file-clock-outline" size={22} color={COLORS.textMuted} />
-                  <Text style={{ ...TYPOGRAPHY.bodyMedium, color: COLORS.textSecondary, marginLeft: 10 }}>
-                    Ringkasan konsultasi sedang disiapkan dokter.
-                  </Text>
-                </View>
-              )}
+        {(appointment?.status === 'completed' || appointment?.status === 'finished') && (() => {
+          const handleRefreshSummary = async () => {
+            setRefreshingSummary(true);
+            await fetchDetail(false);
+            setRefreshingSummary(false);
+          };
+          return (
+            <View style={{ marginTop: 24 }}>
+              <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 }}>Ringkasan Konsultasi</Text>
+              <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16 }}>
+                {clinicalSummaryStatus === 'finalized' || clinicalSummaryStatus === 'amended' ? (
+                  <>
+                    <SummaryRow label="Keluhan utama" value={clinicalSummary?.chiefComplaint} />
+                    <Divider style={{ marginVertical: 12 }} />
+                    <SummaryRow label="Temuan objektif" value={clinicalSummary?.objectiveFindings} />
+                    <Divider style={{ marginVertical: 12 }} />
+                    <SummaryRow label="Assessment" value={clinicalSummary?.assessment} />
+                    <Divider style={{ marginVertical: 12 }} />
+                    <SummaryRow label="Rencana tindakan" value={clinicalSummary?.plan} />
+                    {clinicalSummary?.recommendations?.length > 0 && (
+                      <>
+                        <Divider style={{ marginVertical: 12 }} />
+                        <SummaryRow label="Rekomendasi" value={clinicalSummary.recommendations.join('\n')} />
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="file-clock-outline" size={22} color={COLORS.textMuted} />
+                      <View style={{ marginLeft: 10, flex: 1 }}>
+                        <Text style={{ ...TYPOGRAPHY.bodyMedium, color: COLORS.textSecondary }}>
+                          Ringkasan konsultasi sedang disiapkan dokter.
+                        </Text>
+                        <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 4 }}>
+                          Penyusunan ringkasan biasanya memakan waktu 10-15 menit setelah sesi berakhir.
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleRefreshSummary}
+                      disabled={refreshingSummary}
+                      style={{ padding: 8, borderRadius: 8, backgroundColor: withOpacity(COLORS.primary, 0.1) }}
+                    >
+                      {refreshingSummary ? (
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                      ) : (
+                        <MaterialCommunityIcons name="refresh" size={20} color={COLORS.primary} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-        )}
+          );
+        })()}
 
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
