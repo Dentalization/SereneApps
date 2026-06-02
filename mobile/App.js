@@ -9,6 +9,7 @@ if (typeof Promise.prototype.finally !== 'function') {
   };
 }
 import React, { useEffect, useRef, useState } from 'react';
+import { NativeModules } from 'react-native';
 import { AppState } from 'react-native';
 import api from './src/services/api';
 import { StatusBar } from 'expo-status-bar';

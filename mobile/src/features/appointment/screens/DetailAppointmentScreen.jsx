@@ -181,10 +181,7 @@ const DetailAppointmentScreen = () => {
     : remainingMs > 0
       ? `${Math.floor(remainingMs / 60000)}m ${Math.floor((remainingMs % 60000) / 1000)}s`
       : 'Mulai sekarang';
-  const isUnpaid = appointment?.fee > 0 &&
-    appointment?.payment?.status !== 'succeeded' &&
-    appointment?.payment?.status !== 'settlement' &&
-    appointment?.payment?.status !== 'capture' &&
+  const isUnpaid = !['paid', 'settled', 'succeeded', 'settlement', 'capture'].includes(appointment?.payment?.status) &&
     appointment?.status !== 'cancelled';
   const isUnpaidAndOverdue = isUnpaid && appointment?.status === 'overdue';
 
@@ -207,7 +204,7 @@ const DetailAppointmentScreen = () => {
     ? appointment.dentist.name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'DR';
 
-  const canJoinVideo = remainingMs <= 10 * 60 * 1000;
+  const canJoinVideo = true; // Always allow entering the chat/teledentistry room
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
@@ -383,6 +380,7 @@ const DetailAppointmentScreen = () => {
                   date: appointment.startsAt.split('T')[0],
                   fee: appointment.fee,
                   paymentMethod: appointment.payment?.provider || 'card',
+                  type: isVirtualAppointment ? 'virtual' : 'onsite',
                 });
               }}
               style={{ borderRadius: 12 }}
@@ -396,23 +394,23 @@ const DetailAppointmentScreen = () => {
         {/* Dentist Card */}
         <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center', shadowColor: COLORS.textPrimary, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
           <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.1), overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
-            {!isUnpaid && dentistAvatar ? (
+            {appointment?.dentist && dentistAvatar ? (
               <Image
                 source={{ uri: dentistAvatar }}
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
               <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.primary, fontWeight: '700' }}>
-                {isUnpaid ? 'DG' : dentistInitials}
+                {appointment?.dentist ? dentistInitials : 'DG'}
               </Text>
             )}
           </View>
           <View style={{ flex: 1, marginLeft: 16 }}>
             <Text style={{ ...TYPOGRAPHY.h3, color: COLORS.textPrimary }}>
-              {isUnpaid ? 'Dokter akan ditugaskan' : appointment?.dentist?.name}
+              {appointment?.dentist?.name || 'Dokter akan ditugaskan'}
             </Text>
             <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
-              {isUnpaid ? 'Selesaikan pembayaran terlebih dahulu' : (appointment?.dentist?.specialty || appointment?.dentist?.specialization || 'Dokter Gigi Umum')}
+              {appointment?.dentist ? (appointment.dentist.specialty || appointment.dentist.specialization || 'Dokter Gigi Umum') : 'Selesaikan pembayaran terlebih dahulu'}
             </Text>
           </View>
         </View>
@@ -496,25 +494,17 @@ const DetailAppointmentScreen = () => {
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
           {isVirtualAppointment && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && !isUnpaid && (
-            <View style={{ marginBottom: 12 }}>
               <Button
                 mode="contained"
-                icon="video"
-                onPress={canJoinVideo ? handleJoinCall : undefined}
-                disabled={!canJoinVideo}
+                icon="message-video"
+                onPress={handleJoinCall}
                 style={{ borderRadius: 12, marginBottom: 6 }}
-                buttonColor={canJoinVideo ? COLORS.primary : COLORS.border}
-                textColor={canJoinVideo ? COLORS.white : COLORS.textMuted}
+                buttonColor={COLORS.primary}
+                textColor={COLORS.white}
                 contentStyle={{ height: 50 }}
               >
-                Gabung Panggilan Video
+                Buka Ruang Konsultasi
               </Button>
-              {!canJoinVideo && (
-                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: 'center', marginTop: 2 }}>
-                  Tersedia 10 menit sebelum sesi dimulai
-                </Text>
-              )}
-            </View>
           )}
 
           {isUnpaidAndOverdue ? (
@@ -543,6 +533,7 @@ const DetailAppointmentScreen = () => {
                   date: appointment.startsAt.split('T')[0],
                   fee: appointment.fee,
                   paymentMethod: appointment.payment?.provider || 'card',
+                  type: isVirtualAppointment ? 'virtual' : 'onsite',
                 });
               }}
               style={{ borderRadius: 12, marginBottom: 12 }}

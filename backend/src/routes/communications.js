@@ -140,7 +140,8 @@ function toBigInt(value, fieldName) {
   }
 }
 
-async function getAppointmentForUser(appointmentIdRaw, user) {
+async function getAppointmentForUser(appointmentIdRaw, user, options = {}) {
+  const { checkPayment = true, checkWrite = false } = options;
   const appointmentId = toBigInt(appointmentIdRaw, 'appointmentId');
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
@@ -168,6 +169,24 @@ async function getAppointmentForUser(appointmentIdRaw, user) {
     const error = new Error('FORBIDDEN');
     error.status = 403;
     throw error;
+  }
+
+  if (checkPayment) {
+    const paidStatuses = ['confirmed', 'completed', 'finished'];
+    if (!paidStatuses.includes(appointment.status)) {
+      const error = new Error('FORBIDDEN');
+      error.status = 403;
+      throw error;
+    }
+  }
+
+  if (checkWrite) {
+    const activeStatuses = ['confirmed'];
+    if (!activeStatuses.includes(appointment.status)) {
+      const error = new Error('FORBIDDEN');
+      error.status = 403;
+      throw error;
+    }
   }
 
   return appointment;
@@ -241,7 +260,7 @@ router.post(
         return res.status(400).json({ error: 'message is required' });
       }
 
-      await getAppointmentForUser(appointmentId, req.user);
+      await getAppointmentForUser(appointmentId, req.user, { checkPayment: true, checkWrite: true });
       const saved = await saveChatMessage({
         appointmentId,
         senderId: req.user.id,
@@ -278,7 +297,7 @@ router.post(
         return res.status(400).json({ error: 'file is required' });
       }
 
-      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const appointment = await getAppointmentForUser(appointmentId, req.user, { checkPayment: true, checkWrite: true });
       const stored = await storeChatAttachment({ appointmentId: appointment.id, file });
       const saved = await saveChatMessage({
         appointmentId,
@@ -364,7 +383,7 @@ router.patch(
   async (req, res) => {
     try {
       const { appointmentId } = req.params;
-      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const appointment = await getAppointmentForUser(appointmentId, req.user, { checkPayment: true, checkWrite: true });
       const { room } = await ensureChatRoom({ appointmentId: appointment.id });
       await updateLastRead({ appointmentId: appointment.id, userId: req.user.id });
       const timestamp = new Date().toISOString();
@@ -396,7 +415,7 @@ router.post(
         return res.status(400).json({ error: { code: 'INVALID_COMMUNICATION_EVENT_TYPE' } });
       }
 
-      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const appointment = await getAppointmentForUser(appointmentId, req.user, { checkPayment: true, checkWrite: true });
       const event = await recordCommunicationEvent({
         appointmentId: appointment.id,
         userId: req.user.id,

@@ -8,7 +8,7 @@ import resolveMediaUrl from '../../../utils/media';
 
 const COLORS = THEME_COLORS;
 
-const CHAT_READY_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CHAT_READY_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const AppointmentChatBanner = ({ appointment, unreadCount = 0, onPress }) => {
   const dentist = appointment?.dentist || {};

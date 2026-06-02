@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert, ActivityIndicator, } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Animated, Easing, Image, StyleSheet, Alert, ActivityIndicator, NativeModules } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,11 +15,31 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TwilioVideoLocalView, TwilioVideoParticipantView, TwilioVideo } from '@twilio/video-react-native-sdk';
+
+
+const isExpoGo = !NativeModules.TWVideoModule || NativeModules.TWVideoModule.connect?.toString().includes('() => {}');
+
+// Mock components for Expo Go
+let SafeTwilioVideoLocalView = View;
+let SafeTwilioVideoParticipantView = View;
+let SafeTwilioVideo = View;
+
+if (!isExpoGo) {
+  try {
+    const TwilioSdk = require('@twilio/video-react-native-sdk');
+    SafeTwilioVideoLocalView = TwilioSdk.TwilioVideoLocalView;
+    SafeTwilioVideoParticipantView = TwilioSdk.TwilioVideoParticipantView;
+    SafeTwilioVideo = TwilioSdk.TwilioVideo;
+  } catch (e) {
+    console.warn("Twilio SDK not available:", e);
+  }
+}
+
 import { useChat } from '../../../hooks/useChat';
 import { useI18n } from '../../../hooks/useI18n';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 import PreCallSystemCheckSheet from '../../../components/teledentistry/PreCallSystemCheckSheet';
+import resolveMediaUrl from '../../../utils/media';
 import {
   acknowledgeAppointmentClinicalSummary,
   getAppointmentClinicalSummary,
@@ -133,8 +153,11 @@ const PatientTeledentistryScreen = () => {
     appointmentDate = null,
   } = route.params || {};
 
+  const safeDentistName = dentistName || 'Dokter Gigi';
+  const safeDentistSpecialty = dentistSpecialty || 'Dokter Gigi Umum';
+
   // Sanitize avatar — must be a valid http(s) URL or null, never empty/relative
-  const dentistAvatar = isValidImageUrl(_rawDentistAvatar) ? _rawDentistAvatar.trim() : null;
+  const dentistAvatar = resolveMediaUrl(_rawDentistAvatar);
 
   // ─── Determine initial session status from appointment time ─────────────────
   const resolvedAppointmentDate = useMemo(
@@ -147,7 +170,7 @@ const PatientTeledentistryScreen = () => {
   );
 
   // Display specialty: use what's provided, don't default to generic
-  const displaySpecialty = dentistSpecialty || 'Dokter Gigi';
+  const displaySpecialty = safeDentistSpecialty;
 
   // ─── Real Chat Backend ─────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState(null);
@@ -309,7 +332,7 @@ const PatientTeledentistryScreen = () => {
 
   // ─── Init: Push system welcome message ─────────────────────────────────────
   useEffect(() => {
-    const shortName = dentistName.split(',')[0];
+    const shortName = safeDentistName.split(',')[0];
     let systemText;
     if (!isSessionReady && resolvedAppointmentDate) {
       const formattedDate = formatAppointmentDateTime(resolvedAppointmentDate);
@@ -318,7 +341,7 @@ const PatientTeledentistryScreen = () => {
       systemText = `Sesi telah dimulai. Silakan tunggu, ${shortName} akan segera menghubungi Anda via Video Call.`;
     }
     setSystemMessages([{ id: 'sys-init', role: 'system', text: systemText, timestamp: new Date() }]);
-  }, [dentistName, isSessionReady, resolvedAppointmentDate]);
+  }, [safeDentistName, isSessionReady, resolvedAppointmentDate]);
 
   // ─── Upcoming → Active transition timer ────────────────────────────────────
   useEffect(() => {
@@ -327,15 +350,15 @@ const PatientTeledentistryScreen = () => {
     const msUntilStart = resolvedAppointmentDate.getTime() - now.getTime();
     if (msUntilStart <= 0) {
       setSessionStatus('active');
-      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${dentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
+      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${safeDentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
       return;
     }
     const timer = setTimeout(() => {
       setSessionStatus('active');
-      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${dentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
+      addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${safeDentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
     }, msUntilStart);
     return () => clearTimeout(timer);
-  }, [sessionStatus, resolvedAppointmentDate, dentistName]);
+  }, [sessionStatus, resolvedAppointmentDate, safeDentistName]);
 
   // ─── Auto-scroll on new message ────────────────────────────────────────────
   useEffect(() => {
@@ -840,7 +863,7 @@ const PatientTeledentistryScreen = () => {
         </View>
         <View style={{ marginLeft: 10, flex: 1 }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.white }} numberOfLines={1}>
-            {dentistName}
+            {safeDentistName}
           </Text>
           <Text style={{ fontSize: 12, color: withOpacity(COLORS.white, 0.7), marginTop: 1 }} numberOfLines={1}>
             {sessionStatus === 'ended'
@@ -852,7 +875,6 @@ const PatientTeledentistryScreen = () => {
         </View>
       </View>
 
-      {/* Call icons (disabled for patient) */}
       {/* Call icons (disabled for patient) */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity
@@ -949,7 +971,7 @@ const PatientTeledentistryScreen = () => {
         )}
         <View
           accessible={true}
-          accessibilityLabel={`Pesan dari ${isUser ? 'Anda' : dentistName}: ${msg.text}, dikirim pada ${formatTimestamp(msg.timestamp)}`}
+          accessibilityLabel={`Pesan dari ${isUser ? 'Anda' : safeDentistName}: ${msg.text}, dikirim pada ${formatTimestamp(msg.timestamp)}`}
           accessibilityRole="text"
           style={{
             maxWidth: '75%',
@@ -1473,7 +1495,7 @@ const PatientTeledentistryScreen = () => {
               )}
             </View>
             <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.6), letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>Video Call Masuk</Text>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.white, textAlign: 'center', marginBottom: 4 }}>{dentistName}</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.white, textAlign: 'center', marginBottom: 4 }}>{safeDentistName}</Text>
             <Text style={{ fontSize: 14, color: withOpacity(COLORS.white, 0.5) }}>{displaySpecialty}</Text>
             {callNotice && (
               <View style={{ marginTop: 16, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: withOpacity(COLORS.warning, 0.18), maxWidth: 280 }}>
@@ -1564,7 +1586,7 @@ const PatientTeledentistryScreen = () => {
                     overflow: 'hidden',
                   }}
                 >
-                  <TwilioVideoParticipantView
+                  <SafeTwilioVideoParticipantView
                     style={{ flex: 1, backgroundColor: COLORS.black }}
                     trackIdentifier={{
                       participantSid: remoteTrack.participantSid,
@@ -1573,7 +1595,7 @@ const PatientTeledentistryScreen = () => {
                   />
                   <View style={{ position: 'absolute', left: 10, bottom: 10, backgroundColor: withOpacity(COLORS.black, 0.45), borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 }}>
                     <Text style={{ color: COLORS.white, fontSize: 11, fontWeight: '700' }} numberOfLines={1}>
-                      {remoteTrack.identity?.includes('dentist') ? 'Dokter' : dentistName}
+                      {remoteTrack.identity?.includes('dentist') ? 'Dokter' : safeDentistName}
                     </Text>
                   </View>
                 </View>
@@ -1589,7 +1611,7 @@ const PatientTeledentistryScreen = () => {
                     <Text style={{ fontSize: 36, fontWeight: '700', color: COLORS.white }}>{dentistInitials}</Text>
                   </LinearGradient>
                 )}
-                <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{dentistName}</Text>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>{safeDentistName}</Text>
                 <Text style={{ fontSize: 13, color: withOpacity(COLORS.white, 0.5), marginTop: 4, textAlign: 'center' }}>{displaySpecialty}</Text>
                 <Text style={{ fontSize: 14, color: COLORS.accent, marginTop: 12, textAlign: 'center' }}>
                   {remoteParticipants.length > 0 ? 'Audio tersambung. Kamera dokter tidak aktif.' : 'Menunggu terhubung...'}
@@ -1648,7 +1670,7 @@ const PatientTeledentistryScreen = () => {
         {/* PIP (Patient Camera) */}
         <View style={{ position: 'absolute', right: 16, width: 110, height: 150, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: withOpacity(COLORS.white, 0.3), elevation: 10, shadowColor: COLORS.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, top: insets.top + 60, backgroundColor: '#263238' }}>
           {isVideoEnabled ? (
-            <TwilioVideoLocalView enabled={true} style={{ flex: 1 }} />
+            <SafeTwilioVideoLocalView enabled={true} style={{ flex: 1 }} />
           ) : (
             <LinearGradient colors={['#37474F', '#263238']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <MaterialCommunityIcons name="camera-off" size={32} color={withOpacity(COLORS.white, 0.6)} />
@@ -1798,7 +1820,7 @@ const PatientTeledentistryScreen = () => {
       />
 
       {/* Global Twilio Video Engine */}
-      <TwilioVideo ref={twilioRef} {...handlers} />
+      <SafeTwilioVideo ref={twilioRef} {...handlers} />
     </View>
   );
 };

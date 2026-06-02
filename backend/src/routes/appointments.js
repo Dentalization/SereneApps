@@ -147,7 +147,7 @@ function serializeDentistWithProfile(user, dentistProfile) {
     name: user.name || null,
     email: user.email || null,
     phone: user.phone_number ?? user.phoneNumber ?? null,
-    avatar: user.avatar_url ?? user.avatarUrl ?? null,
+    avatar: user.avatar_url ?? user.avatarUrl ?? dentistProfile?.avatar_url ?? null,
     profileId: dentistProfile?.id?.toString?.() ?? dentistProfile?.id ?? null,
     title: dentistProfile?.title || null,
     specialization: dentistProfile?.primarySpecialization || dentistProfile?.primary_specialization || 'Dokter Gigi Umum',

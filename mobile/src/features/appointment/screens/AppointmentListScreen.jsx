@@ -108,12 +108,10 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
   const timeText = starts.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
   const isVirtual = appointment.type === 'virtual';
-  const isPaid = appointment.payment?.status === 'succeeded';
+  const isPaid = ['paid', 'settled', 'succeeded', 'settlement', 'capture'].includes(appointment.payment?.status);
   const isHistory = appointment.status === 'completed' || new Date(appointment.startsAt) < new Date();
   const isUnpaid = appointment.fee > 0 &&
-    appointment.payment?.status !== 'succeeded' &&
-    appointment.payment?.status !== 'settlement' &&
-    appointment.payment?.status !== 'capture' &&
+    !isPaid &&
     appointment.originalStatus !== 'cancelled';
 
   // --- OVERDUE LOGIC ---

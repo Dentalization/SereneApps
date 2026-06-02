@@ -1051,10 +1051,10 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
     throw error;
   }
 
-  if (role === 'observer') {
-    getConversationsServiceSid();
-    const roomEnded = waitingRoom.state === 'ended' || await appointmentVideoRoomEnded(appointment);
-    if (roomEnded) {
+  const roomEnded = waitingRoom.state === 'ended' || await appointmentVideoRoomEnded(appointment);
+  if (roomEnded) {
+    if (role === 'observer') {
+      getConversationsServiceSid();
       await recordCommunicationEvent({
         appointmentId: appointment.id,
         userId: user.id,
@@ -1066,11 +1066,11 @@ export async function issueAppointmentScopedToken({ appointmentId, user, ttl = 3
           roomName: appointment.videoRoomRef || appointmentScopedRoomName(appointment.id)
         }
       }).catch(() => null);
-      const error = new Error('ROOM_ENDED');
-      error.status = 409;
-      error.waitingRoom = waitingRoom;
-      throw error;
     }
+    const error = new Error('ROOM_ENDED');
+    error.status = 409;
+    error.waitingRoom = waitingRoom;
+    throw error;
   }
 
   const resources = appointment.commStatus === 'ready'
