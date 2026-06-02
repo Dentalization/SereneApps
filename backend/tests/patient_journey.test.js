@@ -79,7 +79,7 @@ async function main() {
       }
     });
 
-    await prisma.dentistProfile.create({
+    const dentistProfile = await prisma.dentistProfile.create({
       data: {
         userId: dentistUser.id,
         title: 'drg.',
@@ -133,7 +133,7 @@ async function main() {
         Authorization: `Bearer ${accessToken}`
       },
       body: JSON.stringify({
-        dentistId: dentistUser.id.toString(),
+        dentistId: dentistProfile.id.toString(),
         start,
         end,
         reason: 'Integration test booking'
@@ -170,7 +170,7 @@ async function main() {
         Authorization: `Bearer ${accessToken}`
       },
       body: JSON.stringify({
-        status: 'succeeded'
+        status: 'settled'
       })
     });
     assert.strictEqual(confirmRes.status, 200, `Confirm payment failed: ${JSON.stringify(confirmRes.json)}`);

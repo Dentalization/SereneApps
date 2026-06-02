@@ -23,7 +23,8 @@ const PaymentScreen = () => {
   const { t } = useI18n();
 
   // Params from BookingConfirm
-  const { appointmentId, dentist, slot, date, fee, paymentMethod } = route.params || {};
+  const { appointmentId, dentist, slot, date, fee, paymentMethod, type } = route.params || {};
+  const isVirtual = type === 'virtual';
 
   // State
   const [loading, setLoading] = useState(true);
@@ -69,6 +70,11 @@ const PaymentScreen = () => {
       setLoading(false);
       setPolling(true);
     } catch (error) {
+      if (error.message === 'Payment already completed or processing for this appointment') {
+        setStatus('succeeded');
+        handleSuccess();
+        return;
+      }
       if (__DEV__) console.error('[PaymentScreen] Init error:', error);
       setLoading(false);
       setStatus('error');
@@ -141,9 +147,9 @@ const PaymentScreen = () => {
   }, [polling, paymentIntentId]);
 
   const handleStatusChange = (newStatus) => {
-    const successStatuses = ['succeeded', 'settlement', 'capture'];
-    const expiredStatuses = ['expire', 'expired'];
-    const failureStatuses = ['failed', 'deny', 'cancel'];
+    const successStatuses = ['paid', 'settled', 'succeeded', 'settlement', 'capture'];
+    const expiredStatuses = ['expired', 'expire'];
+    const failureStatuses = ['failed', 'cancelled', 'deny', 'cancel'];
 
     if (successStatuses.includes(newStatus)) {
       stopPolling();
@@ -176,6 +182,7 @@ const PaymentScreen = () => {
       if (!wasFinal) {
         // If still pending after sync, start/resume lower-freq polling
         if (!polling) setPolling(true);
+        showToast('Pembayaran belum diterima. Silakan cek lagi nanti.', 'warning');
       }
     } catch (error) {
       if (__DEV__) console.error('[PaymentScreen] Sync error:', error);
@@ -330,7 +337,7 @@ const PaymentScreen = () => {
           </View>
 
           <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, lineHeight: 20 }}>
-            Silakan selesaikan pembayaran Anda menggunakan metode {paymentMethod === 'card' ? 'Kartu Kredit/Debit' : paymentMethod === 'va' ? 'Virtual Account' : 'yang dipilih'}.
+            Silakan selesaikan pembayaran Anda melalui gerbang pembayaran aman Midtrans menggunakan metode {paymentMethod === 'card' ? 'Kartu Kredit/Debit' : paymentMethod === 'va' ? 'Virtual Account' : 'yang dipilih'}.
           </Text>
 
           <Button
@@ -340,9 +347,9 @@ const PaymentScreen = () => {
             style={{ marginTop: 20, borderRadius: 12 }}
             buttonColor={COLORS.primary}
             contentStyle={{ height: 48 }}
-            accessibilityLabel="Buka Halaman Pembayaran di Browser"
+            accessibilityLabel="Buka Pembayaran Midtrans"
           >
-            {t('mobile.payment.openPayment', { fallbackText: 'Buka Halaman Pembayaran' })}
+            {t('mobile.payment.openPayment', { fallbackText: 'Buka Pembayaran Midtrans' })}
           </Button>
           {canRetryPayment && (
             <Button
@@ -356,24 +363,37 @@ const PaymentScreen = () => {
           )}
         </View>
 
-        {/* Order Summary */}
-        <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 16 }}>Ringkasan Pesanan</Text>
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary }}>Ringkasan Pesanan</Text>
+        </View>
 
-        <View style={{ backgroundColor: COLORS.surfaceElevated, borderRadius: 20, padding: 16, borderLeftWidth: 4, borderLeftColor: COLORS.primary }}>
-          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>{dentist?.specialty}</Text>
-          <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginTop: 2 }}>{dentist?.name}</Text>
-          <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 12 }} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <MaterialCommunityIcons name="calendar" size={16} color={COLORS.textSecondary} />
-              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 6 }}>{new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</Text>
+        <LinearGradient
+          colors={[withOpacity(COLORS.primary, 0.05), COLORS.surfaceElevated]}
+          style={{ borderRadius: 24, padding: 18, marginBottom: 22, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+            <View>
+              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>{slot?.time || '—'} WIB</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <MaterialCommunityIcons name="clock-outline" size={16} color={COLORS.textSecondary} />
-              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 6 }}>{slot?.time || '—'}</Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name={isVirtual ? 'video' : 'map-marker'} size={16} color={COLORS.primary} />
+                <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginLeft: 4 }}>{isVirtual ? 'Konsultasi Video Online' : 'Tatap muka'}</Text>
+                {isVirtual && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.success, marginLeft: 6 }} />}
+              </View>
             </View>
           </View>
-        </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ width: 52, height: 52, borderRadius: 20, backgroundColor: withOpacity(COLORS.primary, 0.1), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+              <MaterialCommunityIcons name='account-heart' size={26} color={COLORS.primary} />
+            </View>
+            <View>
+              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{isVirtual ? 'Menunggu Pembayaran' : dentist?.name}</Text>
+              <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 2 }}>{isVirtual ? 'Dokter akan ditugaskan otomatis' : dentist?.specialty}</Text>
+            </View>
+          </View>
+        </LinearGradient>
 
         {/* Action Controls */}
         <View style={{ marginTop: 32, alignItems: 'center' }}>

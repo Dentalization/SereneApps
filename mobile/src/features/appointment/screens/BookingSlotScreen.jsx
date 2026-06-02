@@ -80,9 +80,9 @@ const BookingSlotScreen = () => {
   const [dentist, setDentist] = useState(
     fallbackDentist
       ? {
-          ...fallbackDentist,
-          avatarUrl: buildAvatarUrl(fallbackDentist.avatarUrl || fallbackDentist.avatar, fallbackDentist.id),
-        }
+        ...fallbackDentist,
+        avatarUrl: buildAvatarUrl(fallbackDentist.avatarUrl || fallbackDentist.avatar, fallbackDentist.id),
+      }
       : null,
   );
   const [dentistLoading, setDentistLoading] = useState(!initialDentist);
@@ -119,7 +119,7 @@ const BookingSlotScreen = () => {
 
   const { toast, showToast, hideToast } = useToast();
   const { t } = useI18n();
-  
+
   const insets = useSafeAreaInsets();
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(300);
 
@@ -135,44 +135,44 @@ const BookingSlotScreen = () => {
         setDentistLoading(true);
         const response = await getDentistById(dentistId);
         const data = response?.data || response?.dentist || response;
-        
+
         console.log('🦷 [BookingSlot] Fetched dentist data:', JSON.stringify(data, null, 2).substring(0, 500));
-        
+
         if (!ignore && data) {
           const primaryClinic = Array.isArray(data.clinics) && data.clinics.length > 0
             ? data.clinics.find(c => c.is_active) || data.clinics[0]
             : null;
-          
+
           console.log('🏥 [BookingSlot] Primary clinic:', primaryClinic);
 
           const fallbackClinicContext = data.clinic_branch_id || data.clinic_id || data.clinic_profile_id;
           const clinicContext = primaryClinic
             ? {
-                profileId: primaryClinic.id?.toString?.(),
-                branchId:
-                  (primaryClinic.assigned_branch_id ||
-                    primaryClinic.branch_id ||
-                    primaryClinic.branchId)?.toString?.() || null,
-                name: primaryClinic.branch_name || primaryClinic.name || data.clinic_name,
-                address: primaryClinic.branch_address || primaryClinic.address || data.clinic_address,
-                distance: data.distance || data.distanceKm,
-              }
+              profileId: primaryClinic.id?.toString?.(),
+              branchId:
+                (primaryClinic.assigned_branch_id ||
+                  primaryClinic.branch_id ||
+                  primaryClinic.branchId)?.toString?.() || null,
+              name: primaryClinic.branch_name || primaryClinic.name || data.clinic_name,
+              address: primaryClinic.branch_address || primaryClinic.address || data.clinic_address,
+              distance: data.distance || data.distanceKm,
+            }
             : fallbackClinicContext
-            ? {
+              ? {
                 profileId: data.clinic_profile_id?.toString?.() || data.clinic_id?.toString?.() || null,
                 branchId: data.clinic_branch_id?.toString?.() || null,
                 name: data.clinic_name,
                 address: data.clinic_address,
                 distance: data.distance || data.distanceKm,
               }
-            : null;
+              : null;
 
           const fallbackAvatar =
             data.avatar_url || data.avatarUrl || data.profile_picture || data.photo_url || data.avatar;
-          
-          const isIndependent = data.dentist_type === 'independent' || 
-                                 (!primaryClinic && !fallbackClinicContext);
-          
+
+          const isIndependent = data.dentist_type === 'independent' ||
+            (!primaryClinic && !fallbackClinicContext);
+
           setDentist({
             id: data.id?.toString?.() || data.userId?.toString?.() || dentistId,
             name: data.name || data.fullName,
@@ -259,7 +259,7 @@ const BookingSlotScreen = () => {
       setSlotsLoading(true);
       setSlotError(null);
       setSelectedSlot(null);
-      
+
       const clinicProfileRef =
         clinicIdForInfo ||
         dentist?.clinicContext?.profileId ||
@@ -268,7 +268,7 @@ const BookingSlotScreen = () => {
       const clinicBranchRef = clinicBranchParam || dentist?.clinicContext?.branchId;
 
       const isLiveClinicRef = /^\d+$/.test((clinicProfileRef || '').toString());
-      
+
       if (__DEV__) console.log('📅 [BookingSlot] Loading slots for:', {
         dentistId,
         selectedDate,
@@ -276,17 +276,17 @@ const BookingSlotScreen = () => {
         clinicProfileRef,
         clinicBranchRef,
       });
-      
+
       // Fallback if no valid clinic ID for live dentist
       if (!clinicProfileRef || !isLiveClinicRef) {
         if (__DEV__) console.log('📍 [BookingSlot] No live clinic ID, using seed data only');
         const fallback = SLOT_AVAILABILITY.find(
           (entry) => entry.dentistId === dentistId && entry.date === selectedDate
         );
-        const fallbackSlots = fallback?.slots?.length 
-          ? fallback.slots.map(normalizeSlot) 
+        const fallbackSlots = fallback?.slots?.length
+          ? fallback.slots.map(normalizeSlot)
           : []; // ISSUE-007: No fake slots — show empty state instead
-        
+
         if (!ignore) {
           setSlots(fallbackSlots);
           if (fallbackSlots.length && !selectedSlot) {
@@ -307,7 +307,7 @@ const BookingSlotScreen = () => {
         if (__DEV__) console.log('✅ [BookingSlot] Got slots response:', response);
         const data = response?.data || response;
         const available = data?.slots || data?.availableSlots || [];
-        
+
         if (!ignore) {
           const normalizedSlots = available.map(normalizeSlot);
           setSlots(normalizedSlots);
@@ -320,8 +320,8 @@ const BookingSlotScreen = () => {
             showToast('Gagal memuat jadwal. Coba pilih tanggal lain.', 'warning');
           }
           const fallback = SLOT_AVAILABILITY.find((entry) => entry.dentistId === dentistId && entry.date === selectedDate);
-          const fallbackSlots = fallback?.slots?.length 
-            ? fallback.slots.map(normalizeSlot) 
+          const fallbackSlots = fallback?.slots?.length
+            ? fallback.slots.map(normalizeSlot)
             : [];
           setSlots(fallbackSlots);
           setSlotError(fallbackSlots.length === 0 ? 'Gagal memuat jadwal. Silakan coba lagi.' : null);
@@ -433,36 +433,36 @@ const BookingSlotScreen = () => {
     <View style={{ flex: 1, backgroundColor: COLORS.surface }}>
       <StatusBar barStyle='light-content' backgroundColor="transparent" translucent />
 
-      <View 
-        onLayout={handleHeaderLayout} 
-        style={{ 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          right: 0, 
-          zIndex: 10, 
-          elevation: 10, 
+      <View
+        onLayout={handleHeaderLayout}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          elevation: 10,
         }}
       >
         <LinearGradient
           colors={[COLORS.primary, COLORS.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ 
-            paddingTop: insets.top + 10, 
-            paddingHorizontal: 20, 
-            paddingBottom: 32, 
-            borderBottomLeftRadius: 32, 
-            borderBottomRightRadius: 32, 
-            shadowColor: COLORS.textPrimary, 
-            shadowOffset: { width: 0, height: 8 }, 
-            shadowOpacity: 0.12, 
-            shadowRadius: 16 
+          style={{
+            paddingTop: insets.top + 10,
+            paddingHorizontal: 20,
+            paddingBottom: 32,
+            borderBottomLeftRadius: 32,
+            borderBottomRightRadius: 32,
+            shadowColor: COLORS.textPrimary,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.12,
+            shadowRadius: 16
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <TouchableOpacity 
-              onPress={() => navigation.goBack()} 
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
               accessibilityLabel="Kembali"
               accessibilityRole="button"
               style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: withOpacity(COLORS.white, 0.2), alignItems: 'center', justifyContent: 'center' }}
@@ -839,10 +839,10 @@ const BookingSlotScreen = () => {
             </TouchableOpacity>
           </Animated.View>
         ) : null}
-        <Button 
-          mode='contained' 
-          icon='check' 
-          onPress={handleContinue} 
+        <Button
+          mode='contained'
+          icon='check'
+          onPress={handleContinue}
           disabled={!selectedSlot}
           buttonColor={COLORS.primary}
           labelStyle={{ fontWeight: '700' }}

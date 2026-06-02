@@ -97,17 +97,25 @@ router.post('/', authenticateToken, async (req, res) => {
        if (canReuseSnapIntent(existingIntent)) {
          return res.status(200).json(buildSnapResponse(existingIntent));
        }
-       if (['pending', 'requires_action'].includes(existingIntent.status)) {
+       if (['pending', 'requires_action', 'expired', 'failed', 'cancelled'].includes(existingIntent.status)) {
           await prisma.paymentIntent.update({
             where: { id: existingIntent.id },
             data: {
-              status: 'expired',
+              status: ['pending', 'requires_action'].includes(existingIntent.status) ? 'expired' : existingIntent.status,
               activeAppointmentId: null,
-              idempotencyKey: `${idempotencyKey}:expired:${existingIntent.id.toString()}`,
+              idempotencyKey: `${idempotencyKey}:invalidated:${existingIntent.id.toString()}`,
               metadata: {
                 ...(existingIntent.metadata && typeof existingIntent.metadata === 'object' && !Array.isArray(existingIntent.metadata) ? existingIntent.metadata : {}),
                 expiredByClientRetry: true
               }
+           }
+         });
+       } else {
+         return res.status(409).json({
+           error: {
+             code: 'ACTIVE_PAYMENT_EXISTS',
+             message: 'Payment already completed or processing for this appointment',
+             retryable: false
            }
          });
        }
@@ -121,13 +129,29 @@ router.post('/', authenticateToken, async (req, res) => {
       if (canReuseSnapIntent(activeIntent)) {
         return res.status(200).json(buildSnapResponse(activeIntent));
       }
-      return res.status(409).json({
-        error: {
-          code: 'ACTIVE_PAYMENT_EXISTS',
-          message: 'Active payment intent already exists for this appointment',
-          retryable: false
-        }
-      });
+
+      if (['pending', 'requires_action'].includes(activeIntent.status)) {
+        await prisma.paymentIntent.update({
+          where: { id: activeIntent.id },
+          data: {
+            status: 'expired',
+            activeAppointmentId: null,
+            idempotencyKey: activeIntent.idempotencyKey ? `${activeIntent.idempotencyKey}:expired:${activeIntent.id.toString()}` : null,
+            metadata: {
+              ...(activeIntent.metadata && typeof activeIntent.metadata === 'object' && !Array.isArray(activeIntent.metadata) ? activeIntent.metadata : {}),
+              expiredByClientRetry: true
+            }
+          }
+        });
+      } else {
+        return res.status(409).json({
+          error: {
+            code: 'ACTIVE_PAYMENT_EXISTS',
+            message: 'Active payment intent already exists for this appointment',
+            retryable: false
+          }
+        });
+      }
     }
 
     // 7. Midtrans Snap Payload Execution

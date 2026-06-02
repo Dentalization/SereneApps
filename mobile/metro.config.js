@@ -13,18 +13,14 @@ config.resolver.unstable_enablePackageExports = true;
 // xmlhttprequest -> url/fs/child_process and breaks Metro on iOS/Android.
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Force @twilio/conversations to dist/index.js which is free of core-js polyfills
   if (
     moduleName === '@twilio/conversations' ||
     moduleName === '@twilio/conversations/builds/lib.js' ||
-    moduleName === '@twilio/conversations/dist/index.js'
+    moduleName === '@twilio/conversations/builds/browser.js'
   ) {
-    const twilioEntry =
-      platform === 'web'
-        ? 'node_modules/@twilio/conversations/builds/browser.js'
-        : 'node_modules/@twilio/conversations/builds/browser.esm.js';
-
     return {
-      filePath: path.resolve(__dirname, twilioEntry),
+      filePath: path.resolve(__dirname, 'node_modules/@twilio/conversations/dist/index.js'),
       type: 'sourceFile',
     };
   }

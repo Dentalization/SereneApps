@@ -453,15 +453,15 @@ const SummaryCard = ({ dentist, clinic, type, dateLabel, timeLabel, durationMinu
           <MaterialCommunityIcons name='account-heart' size={26} color={COLORS.primary} />
         </View>
         <View>
-          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{dentist?.name}</Text>
-          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 2 }}>{dentist?.specialty}</Text>
+          <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{dentist?.name || 'Dokter akan ditugaskan'}</Text>
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 2 }}>{dentist ? dentist.specialty : 'Otomatis setelah pembayaran'}</Text>
         </View>
       </View>
       {type === 'virtual' ? (
         <View style={{ marginTop: 14, borderRadius: 14, backgroundColor: withOpacity(COLORS.primary, 0.08), padding: 10, flexDirection: 'row', alignItems: 'center' }}>
           <MaterialCommunityIcons name="video-wireless-outline" size={17} color={COLORS.primary} />
           <Text style={{ marginLeft: 8, flex: 1, ...TYPOGRAPHY.caption, color: COLORS.primary, fontWeight: '700' }}>
-            Anda akan mendapat link video 15 menit sebelum sesi.
+            Dokter akan ditentukan setelah pembayaran berhasil. Anda akan mendapat link video 15 menit sebelum sesi.
           </Text>
         </View>
       ) : null}
