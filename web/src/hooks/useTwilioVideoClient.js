@@ -140,6 +140,8 @@ export function useTwilioVideoClient() {
       token,
       localVideoEl,
       remoteVideoEl,
+      localVideoRef,
+      remoteVideoRef,
       remoteContainerEl,
       remoteTrackLabeler,
       observeOnly: nextObserveOnly = false
@@ -152,8 +154,11 @@ export function useTwilioVideoClient() {
         await leave();
       }
 
-      localElementRef.current = localVideoEl;
-      remoteElementRef.current = remoteVideoEl;
+      const resolvedLocalEl = localVideoEl || (localVideoRef && 'current' in localVideoRef ? localVideoRef.current : localVideoRef);
+      const resolvedRemoteEl = remoteVideoEl || (remoteVideoRef && 'current' in remoteVideoRef ? remoteVideoRef.current : remoteVideoRef);
+
+      localElementRef.current = resolvedLocalEl;
+      remoteElementRef.current = resolvedRemoteEl;
       remoteContainerRef.current = remoteContainerEl || null;
       remoteTrackLabelerRef.current = remoteTrackLabeler || null;
 
@@ -204,8 +209,8 @@ export function useTwilioVideoClient() {
         const videoPublication = Array.from(room.localParticipant.videoTracks.values())[0];
         const audioPublication = Array.from(room.localParticipant.audioTracks.values())[0];
 
-        if (videoPublication?.track && localVideoEl && !nextObserveOnly) {
-          videoPublication.track.attach(localVideoEl);
+        if (videoPublication?.track && resolvedLocalEl && !nextObserveOnly) {
+          videoPublication.track.attach(resolvedLocalEl);
           localVideoTrackRef.current = videoPublication.track;
         }
         if (audioPublication?.track && !nextObserveOnly) {

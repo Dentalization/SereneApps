@@ -38,6 +38,11 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
     .join('')
     .toUpperCase();
 
+  const onDeclineRef = useRef(onDecline);
+  useEffect(() => {
+    onDeclineRef.current = onDecline;
+  }, [onDecline]);
+
   // Auto-decline countdown
   useEffect(() => {
     setCountdown(AUTO_DECLINE_SECONDS);
@@ -45,7 +50,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(countdownRef.current);
-          onDecline?.();
+          onDeclineRef.current?.();
           return 0;
         }
         return prev - 1;
@@ -55,7 +60,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [onDecline]);
+  }, []);
 
   // Focus trap between accept and decline buttons
   const handleKeyDown = useCallback(

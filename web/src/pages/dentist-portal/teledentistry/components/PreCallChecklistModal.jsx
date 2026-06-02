@@ -40,10 +40,23 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
   const [checks, setChecks] = useState(initialChecks);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  const [modalAppointmentId, setModalAppointmentId] = useState(null);
+  const [consentChecked, setConsentChecked] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setModalAppointmentId((prev) => prev || appointmentId);
+    } else {
+      setModalAppointmentId(null);
+      setChecks(initialChecks);
+      setError('');
+      setConsentChecked(false);
+    }
+  }, [open, appointmentId]);
 
   const canJoin = useMemo(
-    () => checks.every((check) => !check.critical || check.status === 'pass'),
-    [checks]
+    () => checks.every((check) => !check.critical || check.status === 'pass') && consentChecked,
+    [checks, consentChecked]
   );
 
   const setCheck = (id, status, detail = '') => {
@@ -52,16 +65,15 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
     )));
   };
 
-  const runChecks = async () => {
+  const runChecks = async (targetId) => {
+    if (!targetId) return;
     setRunning(true);
     setError('');
     setChecks(initialChecks);
-    if (appointmentId) {
-      recordCommunicationClientEvent(appointmentId, 'device_check_started', { surface: 'dentist_web_checklist' }).catch(() => null);
-    }
+    recordCommunicationClientEvent(targetId, 'device_check_started', { surface: 'dentist_web_checklist' }).catch(() => null);
 
     try {
-      setCheck('appointment', appointmentId ? 'pass' : 'fail', appointmentId ? `#${appointmentId}` : 'No appointment selected');
+      setCheck('appointment', 'pass', `#${targetId}`);
       setCheck('network', navigator.onLine === false ? 'fail' : 'pass', navigator.onLine === false ? 'Offline' : 'Online');
 
       try {
@@ -73,21 +85,14 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
           markDeviceCheckPassed();
           setCheck('devices', 'pass', 'Siap');
         }
-        if (appointmentId) recordCommunicationClientEvent(appointmentId, 'device_check_passed', { surface: 'dentist_web_checklist' }).catch(() => null);
+        recordCommunicationClientEvent(targetId, 'device_check_passed', { surface: 'dentist_web_checklist' }).catch(() => null);
       } catch (deviceError) {
         const reason = deviceError?.name || 'Permission/device unavailable';
         setCheck('devices', 'fail', `${reason}. ${deviceFixHint(reason)}`);
-        if (appointmentId) recordCommunicationClientEvent(appointmentId, 'device_check_failed', { reason }).catch(() => null);
+        recordCommunicationClientEvent(targetId, 'device_check_failed', { reason }).catch(() => null);
       }
 
-      if (!appointmentId) {
-        setCheck('token', 'fail', 'Missing appointment');
-        setCheck('chat', 'fail', 'Missing appointment');
-        setCheck('video', 'fail', 'Missing appointment');
-        return;
-      }
-
-      const session = await fetchAppointmentCommunicationsToken(appointmentId);
+      const session = await fetchAppointmentCommunicationsToken(targetId);
       setCheck('token', session?.token ? 'pass' : 'fail', session?.token ? 'Token siap' : 'Token gagal. Hubungi admin jika berulang.');
       setCheck('chat', session?.chat?.conversationSid ? 'pass' : 'fail', session?.chat?.conversationSid ? 'Chat siap' : 'Chat belum siap. Klik Retry.');
       setCheck('video', session?.video?.roomName && session?.video?.canJoin ? 'pass' : 'fail', session?.video?.roomName || 'Room unavailable');
@@ -103,8 +108,10 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
   };
 
   useEffect(() => {
-    if (open) runChecks();
-  }, [open, appointmentId]);
+    if (open && modalAppointmentId) {
+      runChecks(modalAppointmentId);
+    }
+  }, [open, modalAppointmentId]);
 
   if (!open) return null;
 
@@ -118,7 +125,7 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
         <header className="flex items-center justify-between px-5 py-4 border-b border-border/40">
           <div>
             <h2 className="text-lg font-semibold text-primary">Checklist sebelum panggilan</h2>
-            <p className="text-sm text-muted">Appointment #{appointmentId || '-'}</p>
+            <p className="text-sm text-muted">Appointment #{modalAppointmentId || '-'}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 transition-all duration-150 hover:scale-105 text-muted hover:bg-surface-elevated hover:text-primary" aria-label="Close checklist">
             <Icon name="X" size={18} />
@@ -143,9 +150,23 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
           ))}
         </div>
 
+        <div className="px-5 pb-4">
+          <label className="flex items-start gap-3 rounded-xl p-3 bg-accent/5 border border-accent/20 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={consentChecked}
+              onChange={(e) => setConsentChecked(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent"
+            />
+            <span className="text-xs text-secondary leading-relaxed">
+              Saya mengonfirmasi bahwa pasien telah diberi tahu dan menyetujui bahwa sesi konsultasi video teledentistry ini dapat direkam untuk keperluan dokumentasi klinis/EMR (Kepatuhan HIPAA).
+            </span>
+          </label>
+        </div>
+
         <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border/40">
           <button
-            onClick={runChecks}
+            onClick={() => runChecks(modalAppointmentId)}
             disabled={running}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm disabled:opacity-50 bg-surface-elevated border border-border/40 text-secondary hover:bg-surface/80"
           >

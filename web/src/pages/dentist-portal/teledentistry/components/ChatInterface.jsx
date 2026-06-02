@@ -102,13 +102,25 @@ const ChatInterface = ({
   onUploadAttachment,
   onStartVideoCall,
   connectionState,
-  reconnectError
+  reconnectError,
+  sendTypingIndicator
 }) => {
   const { t, language } = useLanguage();
   const [message, setMessage] = useState('');
   const [attachmentError, setAttachmentError] = useState('');
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setMessage(val);
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 2500) {
+      lastTypingSentRef.current = now;
+      sendTypingIndicator?.();
+    }
+  };
 
   const getMessageDateLabel = (dateVal) => {
     const dateObj = parseDateValue(dateVal);
@@ -149,9 +161,7 @@ const ChatInterface = ({
   if (!conversation) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-surface">
-        <div
-          className="animate-pulse"
-        >
+        <div>
           <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent/10 border border-accent/20">
             <Icon name="MessageSquare" size={32} className="text-accent/50" />
           </div>
@@ -463,7 +473,7 @@ const ChatInterface = ({
             <input
               type="text"
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Ketik pesan..."
               className="flex-1 bg-transparent py-2 text-sm border-0 focus:ring-0 focus:outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400"

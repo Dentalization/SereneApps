@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { useLanguage } from '../../../../contexts/LanguageContext';
@@ -119,8 +119,16 @@ const ConversationRow = ({ conversation, active, online, onSelect, isDark }) => 
 
 const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, onConversationSelect }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const { isDark } = useTheme();
   const { t } = useLanguage();
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   const isOnline = (conversation) => {
     const ids = presenceMap[conversation.appointmentId];
@@ -129,7 +137,7 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
   };
 
   const filteredConversations = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = debouncedQuery.trim().toLowerCase();
     if (!query) return conversations;
     return conversations.filter((conversation) => {
       const patient = conversation.patient || {};
@@ -137,7 +145,7 @@ const ConversationList = ({ conversations, presenceMap, selectedAppointmentId, o
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [conversations, searchQuery]);
+  }, [conversations, debouncedQuery]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-surface/50 border-r border-border/40 rounded-l-2xl">

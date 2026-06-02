@@ -59,7 +59,7 @@ const NewConsultationModal = ({ onClose, onSubmit }) => {
     let mounted = true;
     const load = async () => {
       try {
-        const response = await fetchAppointments({ view: 'dentist', status: 'confirmed' });
+        const response = await fetchAppointments({ view: 'dentist', status: 'confirmed,scheduled' });
         if (mounted) {
           const virtualAppts = (response.appointments || []).filter(a => a.type === 'virtual' || a.isVirtual);
           setAppointments(virtualAppts);

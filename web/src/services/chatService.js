@@ -86,6 +86,22 @@ export async function acknowledgeClinicalSummary(appointmentId) {
   return data;
 }
 
+export async function amendClinicalSummary(appointmentId, payload) {
+  const { data } = await authHttp.post(`/appointments/${appointmentId}/clinical-summary/amend`, payload);
+  return data;
+}
+
+export async function uploadSummaryAttachment(appointmentId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await authHttp.post(`/appointments/${appointmentId}/clinical-summary/attachments`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return data;
+}
+
 export async function fetchPreSessionHealthForm(appointmentId) {
   const { data } = await authHttp.get(`/appointments/${appointmentId}/pre-session-health-form`);
   return data;

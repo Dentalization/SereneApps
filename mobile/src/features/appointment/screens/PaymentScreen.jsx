@@ -68,6 +68,18 @@ const PaymentScreen = () => {
       setRemainingSeconds(Math.max(0, Math.floor((expiryDate.getTime() - Date.now()) / 1000)));
 
       setLoading(false);
+
+      // Check status immediately (useful if auto-settled in backend)
+      try {
+        const statusCheck = await getPaymentStatus(result.paymentIntentId);
+        const wasFinal = handleStatusChange(statusCheck.status);
+        if (wasFinal) {
+          return;
+        }
+      } catch (checkErr) {
+        if (__DEV__) console.log('[PaymentScreen] Immediate check error:', checkErr.message);
+      }
+
       setPolling(true);
     } catch (error) {
       const errMsg = error.message || error.error?.message || '';
@@ -220,6 +232,7 @@ const PaymentScreen = () => {
       slot,
       date,
       fee,
+      type,
       bookingId: `SRN-${bookingIdSuffix}`,
     });
   };
@@ -232,6 +245,7 @@ const PaymentScreen = () => {
       slot,
       date,
       fee,
+      type,
     });
   };
 

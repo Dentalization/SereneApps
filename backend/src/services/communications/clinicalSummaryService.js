@@ -59,6 +59,7 @@ function normalizeSummaryInput(input = {}) {
     plan: normalizeText(input.plan),
     diagnosisCodes: normalizeJsonArray(input.diagnosisCodes),
     recommendations: normalizeJsonArray(input.recommendations),
+    attachments: normalizeJsonArray(input.attachments),
     followUpNeeded: Boolean(input.followUpNeeded),
     followUpAt: input.followUpAt ? new Date(input.followUpAt) : null
   };
@@ -96,6 +97,7 @@ function serializeSummary(summary, { includeDraft = false } = {}) {
       plan: summary.plan,
       diagnosisCodes: summary.diagnosisCodes || [],
       recommendations: summary.recommendations || [],
+      attachments: summary.attachments || [],
       followUpNeeded: summary.followUpNeeded,
       followUpAt: summary.followUpAt,
       patientAcknowledgedAt: summary.patientAcknowledgedAt,
@@ -341,7 +343,7 @@ export async function amendClinicalSummary({ appointmentId, user, input }) {
     error.status = 403;
     throw error;
   }
-  if (!appointment.clinicalSummary || appointment.clinicalSummary.status !== 'finalized') {
+  if (!appointment.clinicalSummary || !['finalized', 'amended'].includes(appointment.clinicalSummary.status)) {
     const error = new Error('SUMMARY_NOT_FINALIZED');
     error.status = 409;
     throw error;
