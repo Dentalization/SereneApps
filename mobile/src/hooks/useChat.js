@@ -68,9 +68,12 @@ export async function getOrCreateTwilioClient(token) {
   globalTwilioClientPromise = (async () => {
     try {
       const client = new ConversationsClient(token);
+      console.log('A');
       globalTwilioClient = client;
+      console.log('B');
       console.log('[useChat] TWILIO_INIT_SUCCESS - client created successfully');
 
+      console.log('C');
       // Prevent crashes from unhandled client-level errors/websockets
       client.on('error', (err) => {
         console.warn('[useChat] Twilio Client internal error event:', err?.message || err);
@@ -90,6 +93,7 @@ export async function getOrCreateTwilioClient(token) {
       client.on('stateChanged', (state) => {
         console.log('[useChat] Event: stateChanged ->', state);
       });
+      console.log('D');
 
       return client;
     } catch (err) {
