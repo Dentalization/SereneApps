@@ -1,4 +1,6 @@
+import 'react-native-get-random-values';
 import 'react-native-gesture-handler';
+
 if (typeof Promise.prototype.finally !== 'function') {
   Promise.prototype.finally = function (callback) {
     const Constructor = this.constructor;
@@ -208,7 +210,7 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
   );
 };
 
-import { getOrCreateTwilioClient, shutdownGlobalTwilioClient } from './src/hooks/useChat';
+import { getOrCreateTwilioClient, shutdownGlobalTwilioClient, getGlobalTwilioClient } from './src/hooks/useChat';
 import { getAppointments } from './src/services/appointmentService';
 
 function BackgroundPresenceConnector() {
@@ -243,9 +245,17 @@ function BackgroundPresenceConnector() {
 
         if (upcomingVirtual) {
           console.log('[BackgroundPresenceConnector] Active virtual appointment found:', upcomingVirtual.id);
+          if (getGlobalTwilioClient()) {
+            console.log('[BackgroundPresenceConnector] Twilio client already exists, skipping initialization.');
+            return;
+          }
           const { data } = await api.get(`/communications/appointments/${upcomingVirtual.id}/token`);
           const token = data.chat?.token || data.token;
           if (token && active) {
+            if (getGlobalTwilioClient()) {
+              console.log('[BackgroundPresenceConnector] Twilio client was initialized concurrently, skipping.');
+              return;
+            }
             await getOrCreateTwilioClient(token);
             console.log('[BackgroundPresenceConnector] Background Twilio Client connected successfully');
           }

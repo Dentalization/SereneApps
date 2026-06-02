@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import midtransService from '../../services/payments/midtransService.js';
 import { resolvePaymentOwner } from '../../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../../services/payments/financials.js';
-import { ACTIVE_PAYMENT_STATUSES } from '../../services/payments/status.js';
+import { ACTIVE_PAYMENT_STATUSES, applyPaymentStatus } from '../../services/payments/status.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -219,6 +219,25 @@ router.post('/', authenticateToken, async (req, res) => {
 
         return intent;
       });
+
+      // Auto-settle payment if MIDTRANS_MOCK_MODE is enabled
+      const MIDTRANS_MOCK_MODE = (process.env.MIDTRANS_MOCK_MODE || '').toLowerCase() === 'true';
+      if (MIDTRANS_MOCK_MODE) {
+        try {
+          await applyPaymentStatus({
+            paymentIntentId: paymentIntent.id.toString(),
+            newStatus: 'settled',
+            providerPaymentId: `mock-txn-${orderId}`,
+            providerResponse: { status: 'settled', mock: true }
+          });
+          // Reload paymentIntent to have the updated status and activeAppointmentId, etc.
+          paymentIntent = await prisma.paymentIntent.findUnique({
+            where: { id: paymentIntent.id }
+          });
+        } catch (settleError) {
+          console.error('[SnapTransactions Auto-Settle Error]', settleError);
+        }
+      }
     } catch (error) {
       if (error?.code === 'P2002') {
         const existingActive = await prisma.paymentIntent.findFirst({

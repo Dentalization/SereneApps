@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar, Image, Alert, RefreshControl, Animated } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, Image, Alert, RefreshControl, Animated, Linking } from 'react-native';
 import { Text, Button, ActivityIndicator, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -83,7 +83,7 @@ const DetailAppointmentScreen = () => {
   useEffect(() => {
     if (!appointment?.startsAt || appointment?.status === 'completed' || appointment?.status === 'finished' || appointment?.status === 'cancelled') return;
     const remaining = new Date(appointment.startsAt).getTime() - now.getTime();
-    
+
     // T-15 minutes nudge for virtual appointments
     if (isVirtualAppointment && remaining <= 15 * 60 * 1000 && remaining > 0 && !hasNudged) {
       setHasNudged(true);
@@ -542,6 +542,46 @@ const DetailAppointmentScreen = () => {
                         <SummaryRow label="Rekomendasi" value={clinicalSummary.recommendations.join('\n')} />
                       </>
                     )}
+                    {clinicalSummary?.attachments?.length > 0 && (
+                      <>
+                        <Divider style={{ marginVertical: 12 }} />
+                        <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textMuted }}>Lampiran</Text>
+                        <View style={{ marginTop: 8, gap: 8 }}>
+                          {clinicalSummary.attachments.map((file, idx) => {
+                            const handleOpenAttachment = () => {
+                              const resolvedUrl = resolveMediaUrl(file.fileUrl || file.storageObjectKey);
+                              if (resolvedUrl) {
+                                Linking.openURL(resolvedUrl).catch(() => {
+                                  Alert.alert('Gagal Membuka Lampiran', 'Tidak dapat membuka URL lampiran.');
+                                });
+                              }
+                            };
+                            return (
+                              <TouchableOpacity
+                                key={idx}
+                                onPress={handleOpenAttachment}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  backgroundColor: COLORS.surface,
+                                  borderRadius: 12,
+                                  paddingVertical: 10,
+                                  paddingHorizontal: 12,
+                                  borderWidth: 1,
+                                  borderColor: withOpacity(COLORS.primary, 0.1)
+                                }}
+                              >
+                                <MaterialCommunityIcons name="file-document-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                                <Text style={{ flex: 1, ...TYPOGRAPHY.bodySmall, color: COLORS.textPrimary }} numberOfLines={1}>
+                                  {file.fileName || file.name || 'Dokumen Lampiran'}
+                                </Text>
+                                <MaterialCommunityIcons name="download" size={16} color={COLORS.textMuted} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </>
+                    )}
                   </>
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -577,17 +617,17 @@ const DetailAppointmentScreen = () => {
         {/* Actions */}
         <View style={{ marginTop: 32 }}>
           {isVirtualAppointment && (appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && !isUnpaid && (
-              <Button
-                mode="contained"
-                icon="message-video"
-                onPress={handleJoinCall}
-                style={{ borderRadius: 12, marginBottom: 6 }}
-                buttonColor={COLORS.primary}
-                textColor={COLORS.white}
-                contentStyle={{ height: 50 }}
-              >
-                Buka Ruang Konsultasi
-              </Button>
+            <Button
+              mode="contained"
+              icon="message-video"
+              onPress={handleJoinCall}
+              style={{ borderRadius: 12, marginBottom: 6 }}
+              buttonColor={COLORS.primary}
+              textColor={COLORS.white}
+              contentStyle={{ height: 50 }}
+            >
+              Buka Ruang Konsultasi
+            </Button>
           )}
 
           {isUnpaidAndOverdue ? (

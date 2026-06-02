@@ -35,11 +35,11 @@ const formatTimeAgo = (value, t) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   const diff = Date.now() - date.getTime();
-  if (diff < 60 * 1000) return t('dentistTeledentistry.patientInfo.conversation.justNow');
+  if (diff < 60 * 1000) return t('dentistTeledentistry.patientInfo.conversation.justNow', { defaultValue: 'Just now' });
   const minutes = Math.floor(diff / (60 * 1000));
-  if (minutes < 60) return t('dentistTeledentistry.patientInfo.conversation.minutesAgo', { minutes });
+  if (minutes < 60) return t('dentistTeledentistry.patientInfo.conversation.minutesAgo', { minutes, defaultValue: `${minutes}m ago` });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t('dentistTeledentistry.patientInfo.conversation.hoursAgo', { hours });
+  if (hours < 24) return t('dentistTeledentistry.patientInfo.conversation.hoursAgo', { hours, defaultValue: `${hours}h ago` });
   return date.toLocaleDateString();
 };
 

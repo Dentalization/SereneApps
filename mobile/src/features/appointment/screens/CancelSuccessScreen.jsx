@@ -23,18 +23,18 @@ const CancelSuccessScreen = () => {
 
   const appointmentDate = appointment?.startsAt
     ? new Date(appointment.startsAt).toLocaleDateString('id-ID', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
     : '';
 
   const appointmentTime = appointment?.startsAt
     ? `${new Date(appointment.startsAt).toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })} WIB`
+      hour: '2-digit',
+      minute: '2-digit',
+    })} WIB`
     : '';
 
   const refundAmount = appointment?.fee ? Math.max(0, appointment.fee - (cancellationFee || 0)) : 0;

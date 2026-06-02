@@ -4,13 +4,9 @@ const path = require('path');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// 1. ENABLE package exports (standard in modern Expo). 
-// This automatically fixes the Axios "crypto" crash by allowing it to find its RN bundle.
-config.resolver.unstable_enablePackageExports = true;
+// 1. DISABLE package exports (to prevent CJS/ESM interop crashes on Hermers)
+config.resolver.unstable_enablePackageExports = false;
 
-// 2. Force @twilio/conversations to React Native entry.
-// The package "main" points to builds/lib.js (Node-oriented), which imports
-// xmlhttprequest -> url/fs/child_process and breaks Metro on iOS/Android.
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Force @twilio/conversations to dist/index.js which is free of core-js polyfills
@@ -20,7 +16,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     moduleName === '@twilio/conversations/builds/browser.js'
   ) {
     return {
-      filePath: path.resolve(__dirname, 'node_modules/@twilio/conversations/dist/index.js'),
+      filePath: path.resolve(__dirname, 'src/shims/twilio-conversations-shim.js'),
       type: 'sourceFile',
     };
   }
@@ -33,6 +29,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   ) {
     return {
       filePath: path.resolve(__dirname, 'src/shims/xmlhttprequest.js'),
+      type: 'sourceFile',
+    };
+  }
+
+  // Fix axios "crypto" crash without needing unstable_enablePackageExports.
+  if (moduleName === 'axios') {
+    return {
+      filePath: path.resolve(__dirname, 'node_modules/axios/dist/browser/axios.cjs'),
       type: 'sourceFile',
     };
   }

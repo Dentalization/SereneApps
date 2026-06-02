@@ -92,17 +92,52 @@ export function useChat() {
     };
   }, []);
 
+  useEffect(() => {
+    const normalizedAppointmentId = activeAppointmentId != null ? String(activeAppointmentId) : null;
+    if (!normalizedAppointmentId) return undefined;
+
+    let cancelled = false;
+    fetchMessages(normalizedAppointmentId)
+      .then((history) => {
+        if (cancelled) return;
+        setMessagesByAppointment((prev) => {
+          const current = prev[normalizedAppointmentId] || [];
+          const next = history?.messages || [];
+          if (current.length === next.length && current.every((msg, idx) => msg.id === next[idx]?.id)) {
+            return prev;
+          }
+          return { ...prev, [normalizedAppointmentId]: next };
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('[useChat] Failed to hydrate chat history:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAppointmentId]);
+
   const selectConversation = useCallback(
     async (appointmentId) => {
-      setActiveAppointmentId(appointmentId);
+      const normalizedAppointmentId = appointmentId != null ? String(appointmentId) : null;
+      if (!normalizedAppointmentId) return;
+      setActiveAppointmentId(normalizedAppointmentId);
+
+      const historyPromise = fetchMessages(normalizedAppointmentId)
+        .then((history) => history?.messages || [])
+        .catch((error) => {
+          console.warn('[useChat] Failed to load chat history:', error);
+          return [];
+        });
 
       try {
-        const data = await fetchAppointmentCommunicationsToken(appointmentId);
-
-        const history = await fetchMessages(appointmentId);
+        const data = await fetchAppointmentCommunicationsToken(normalizedAppointmentId);
+        const history = await historyPromise;
         setMessagesByAppointment((prev) => ({
           ...prev,
-          [appointmentId]: history.messages || []
+          [normalizedAppointmentId]: history
         }));
 
         const readiness = getChatTokenReadiness(data);
@@ -185,7 +220,7 @@ export function useChat() {
           const onlineUserIds = participants.filter((p) => p.isOnline).map((p) => p.identity);
           setPresenceMap((prev) => ({
             ...prev,
-            [appointmentId]: onlineUserIds
+            [normalizedAppointmentId]: onlineUserIds
           }));
         };
         updatePresence();
@@ -231,11 +266,11 @@ export function useChat() {
           }
 
           setMessagesByAppointment((prev) => {
-            const current = prev[appointmentId] || [];
+            const current = prev[normalizedAppointmentId] || [];
             if (current.some((m) => m.id === formatted.id || m.twilioMessageSid === formatted.twilioMessageSid)) return prev;
             return {
               ...prev,
-              [appointmentId]: [...current, formatted]
+              [normalizedAppointmentId]: [...current, formatted]
             };
           });
 
@@ -271,16 +306,23 @@ export function useChat() {
 
         // 10. Mark conversation read via REST
         setConversations((prev) =>
-          prev.map((c) => (c.appointmentId === appointmentId ? { ...c, unreadCount: 0 } : c))
+          prev.map((c) => (String(c.appointmentId) === normalizedAppointmentId ? { ...c, unreadCount: 0 } : c))
         );
         try {
-          await markConversationRead(appointmentId);
+          await markConversationRead(normalizedAppointmentId);
         } catch (error) {
           console.warn('Failed to mark conversation read:', error);
         }
 
       } catch (err) {
         console.error('Failed to select Twilio conversation:', err.message);
+        const history = await historyPromise;
+        if (history.length) {
+          setMessagesByAppointment((prev) => ({
+            ...prev,
+            [normalizedAppointmentId]: history
+          }));
+        }
         const readiness = err?.response?.data
           ? messageFromTokenFetchError(err)
           : null;
@@ -296,14 +338,15 @@ export function useChat() {
 
   // ── Actions ──────────────────────────────────────────────────
   const sendMessage = useCallback(async ({ appointmentId, text }) => {
-    if (!appointmentId || !text) return;
+    const normalizedAppointmentId = appointmentId != null ? String(appointmentId) : null;
+    if (!normalizedAppointmentId || !text) return;
     try {
-      const saved = await sendTextMessage(appointmentId, text);
+      const saved = await sendTextMessage(normalizedAppointmentId, text);
       if (saved) {
         setMessagesByAppointment((prev) => {
-          const current = prev[appointmentId] || [];
+          const current = prev[normalizedAppointmentId] || [];
           if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
-          return { ...prev, [appointmentId]: [...current, saved] };
+          return { ...prev, [normalizedAppointmentId]: [...current, saved] };
         });
       }
     } catch (err) {
@@ -313,10 +356,11 @@ export function useChat() {
   }, []);
 
   const sendAttachmentMessage = useCallback(async ({ appointmentId, file }) => {
-    if (!appointmentId || !file) return;
+    const normalizedAppointmentId = appointmentId != null ? String(appointmentId) : null;
+    if (!normalizedAppointmentId || !file) return;
     try {
       setAttachmentUpload({ status: 'uploading', progress: 0, error: '' });
-      const saved = await uploadAttachment(appointmentId, file, {
+      const saved = await uploadAttachment(normalizedAppointmentId, file, {
         onUploadProgress: (event) => {
           if (!event.total) return;
           setAttachmentUpload({
@@ -328,9 +372,9 @@ export function useChat() {
       });
       if (saved) {
         setMessagesByAppointment((prev) => {
-          const current = prev[appointmentId] || [];
+          const current = prev[normalizedAppointmentId] || [];
           if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
-          return { ...prev, [appointmentId]: [...current, saved] };
+          return { ...prev, [normalizedAppointmentId]: [...current, saved] };
         });
       }
       setAttachmentUpload({
@@ -388,6 +432,12 @@ export function useChat() {
     setIncomingCall(null);
   }, []);
 
+  const sendTypingIndicator = useCallback(() => {
+    if (convRef.current && typeof convRef.current.typing === 'function') {
+      convRef.current.typing().catch(() => {});
+    }
+  }, []);
+
   return {
     conversations,
     presenceMap,
@@ -407,5 +457,6 @@ export function useChat() {
     emitVideoCall,
     emitVideoCallResponse,
     emitVideoCallEnded,
+    sendTypingIndicator,
   };
 }

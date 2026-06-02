@@ -9,10 +9,11 @@ let _cachedConversationsClient = null;
 const loadConversationsClient = () => {
   if (_cachedConversationsClient) return _cachedConversationsClient;
   try {
-    const mod = require('@twilio/conversations');
+    const mod = require('../shims/twilio-conversations-shim.js');
     const Client = mod.Client || mod.default?.Client || mod.default;
     if (!Client) throw new Error('Client not found in @twilio/conversations');
     _cachedConversationsClient = Client;
+    if (__DEV__) console.log('[useChat] Twilio Conversations SDK loaded successfully');
     return Client;
   } catch (err) {
     if (__DEV__) console.warn('[useChat] Failed to load Twilio Conversations SDK:', err.message);
@@ -22,33 +23,59 @@ const loadConversationsClient = () => {
 
 let globalTwilioClient = null;
 let globalTwilioClientPromise = null;
+let isInitializingTwilio = false;
+let twilioInitAttempts = 0;
+const MAX_TWILIO_ATTEMPTS = 1;
+
+export function resetTwilioAttempts() {
+  twilioInitAttempts = 0;
+}
 
 export async function getOrCreateTwilioClient(token) {
   if (globalTwilioClient) {
     try {
+      console.log('[useChat] TWILIO_INIT_START - updating existing client token');
       await globalTwilioClient.updateToken(token);
+      console.log('[useChat] TWILIO_INIT_SUCCESS - token updated successfully');
     } catch (e) {
-      console.warn('[useChat] Error updating global Twilio token:', e.message);
+      console.warn('[useChat] TWILIO_INIT_FAILURE - error updating global Twilio token:', e.message);
     }
     return globalTwilioClient;
   }
-  if (globalTwilioClientPromise) {
+
+  if (isInitializingTwilio && globalTwilioClientPromise) {
+    console.log('[useChat] TWILIO_INIT_START - reusing existing initialization promise');
     return globalTwilioClientPromise;
   }
 
+  if (twilioInitAttempts >= MAX_TWILIO_ATTEMPTS) {
+    console.warn('[useChat] TWILIO_INIT_FAILURE - max initialization attempts reached, circuit breaker active');
+    throw new Error('Twilio Conversations SDK chat is currently unavailable.');
+  }
+
   const ConversationsClient = loadConversationsClient();
-  if (!ConversationsClient?.create) {
+  if (!ConversationsClient) {
+    console.error('[useChat] TWILIO_INIT_FAILURE - Unable to load Twilio Conversations SDK');
     throw new Error('Unable to load Twilio Conversations SDK');
   }
 
-  globalTwilioClientPromise = ConversationsClient.create(token).then((client) => {
-    globalTwilioClient = client;
-    globalTwilioClientPromise = null;
-    return client;
-  }).catch((err) => {
-    globalTwilioClientPromise = null;
-    throw err;
-  });
+  console.log('[useChat] TWILIO_INIT_START - creating new Twilio client');
+  isInitializingTwilio = true;
+  twilioInitAttempts++;
+
+  globalTwilioClientPromise = (async () => {
+    try {
+      const client = new ConversationsClient(token);
+      globalTwilioClient = client;
+      console.log('[useChat] TWILIO_INIT_SUCCESS - client created successfully');
+      return client;
+    } catch (err) {
+      console.error('[useChat] TWILIO_INIT_FAILURE - client creation failed:', err.message || err);
+      throw err;
+    } finally {
+      isInitializingTwilio = false;
+    }
+  })();
 
   return globalTwilioClientPromise;
 }
@@ -62,6 +89,10 @@ export function shutdownGlobalTwilioClient() {
     }
     globalTwilioClient = null;
   }
+}
+
+export function getGlobalTwilioClient() {
+  return globalTwilioClient;
 }
 
 /**
@@ -79,6 +110,7 @@ export function useChat({ userId } = {}) {
   const [incomingCall, setIncomingCall] = useState(null);
   const [connectionState, setConnectionState] = useState('disconnected');
   const [reconnectError, setReconnectError] = useState(null);
+  const [chatUnavailable, setChatUnavailable] = useState(false);
 
   const twilioClientRef = useRef(null);
   const activeConversationRef = useRef(null);
@@ -107,7 +139,7 @@ export function useChat({ userId } = {}) {
   // ── Derived state ────────────────────────────────────────────
   const activeConversation = useMemo(() => {
     if (!activeAppointmentId) return null;
-    return conversations.find((conv) => conv.appointmentId === activeAppointmentId) || null;
+    return conversations.find((conv) => String(conv.appointmentId) === activeAppointmentId) || null;
   }, [conversations, activeAppointmentId]);
 
   const activeMessages = useMemo(() => {
@@ -193,7 +225,17 @@ export function useChat({ userId } = {}) {
 
   // ── INIT TWILIO SDK / Select Conversation ────────────────────
   const selectConversation = useCallback(async (appointmentId) => {
-    setActiveAppointmentId(appointmentId);
+    const normalizedAppointmentId = appointmentId != null ? String(appointmentId) : null;
+    if (!normalizedAppointmentId) return;
+
+    setActiveAppointmentId(normalizedAppointmentId);
+
+    const historyPromise = api.get(`/communications/appointments/${normalizedAppointmentId}/chat/messages`)
+      .then((history) => history.data?.messages || [])
+      .catch((error) => {
+        console.warn('[useChat] Failed to load chat history:', error.message);
+        return [];
+      });
 
     try {
       // 1-2. Fetch token with retry logic for provision race condition
@@ -201,13 +243,13 @@ export function useChat({ userId } = {}) {
       let aborted = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const response = await api.get(`/communications/appointments/${appointmentId}/token`);
+          const response = await api.get(`/communications/appointments/${normalizedAppointmentId}/token`);
           data = response.data;
           break;
         } catch (err) {
           const errorCode = err.response?.data?.error?.code;
           if (['CONVERSATION_NOT_PROVISIONED', 'COMMUNICATIONS_NOT_READY'].includes(errorCode) && attempt < 2) {
-            if (__DEV__) console.log(`[useChat] Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
+            if (__DEV__) console.log(`[useChat] TWILIO_RETRY - Conversation not provisioned yet, retrying in ${2000 * Math.pow(2, attempt)}ms...`);
             await new Promise((resolve, reject) => {
               const timer = setTimeout(resolve, 2000 * Math.pow(2, attempt));
               // BUG-007: Allow abort on unmount
@@ -222,18 +264,21 @@ export function useChat({ userId } = {}) {
         }
       }
 
+      const history = await historyPromise;
+      if (history.length) {
+        setMessagesByAppointment((prev) => ({
+          ...prev,
+          [normalizedAppointmentId]: history
+        }));
+      }
+
       const token = data.chat?.token || data.token;
       const conversationSid = data.chat?.conversationSid || data.conversationSid;
-
-      const history = await api.get(`/communications/appointments/${appointmentId}/chat/messages`);
-      setMessagesByAppointment((prev) => ({
-        ...prev,
-        [appointmentId]: history.data?.messages || []
-      }));
 
       // 3-4. Init / Update Client
       let client = await getOrCreateTwilioClient(token);
       twilioClientRef.current = client;
+      setChatUnavailable(false);
 
       client.removeAllListeners('connectionStateChanged');
       client.on('connectionStateChanged', (state) => {
@@ -259,7 +304,7 @@ export function useChat({ userId } = {}) {
       const updatePresence = async () => {
         const participants = await conversation.getParticipants();
         const onlineIdentityStrings = participants.filter(p => p.isOnline).map(p => p.identity);
-        setPresenceMap(prev => ({ ...prev, [appointmentId]: onlineIdentityStrings }));
+        setPresenceMap(prev => ({ ...prev, [normalizedAppointmentId]: onlineIdentityStrings }));
       };
       updatePresence();
 
@@ -270,10 +315,10 @@ export function useChat({ userId } = {}) {
 
       const clearTypingParticipant = (participantKey) => {
         setTypingByAppointment((prev) => {
-          const current = prev[appointmentId] || [];
+          const current = prev[normalizedAppointmentId] || [];
           return {
             ...prev,
-            [appointmentId]: current.filter((identity) => identity !== participantKey)
+            [normalizedAppointmentId]: current.filter((identity) => identity !== participantKey)
           };
         });
       };
@@ -281,14 +326,14 @@ export function useChat({ userId } = {}) {
       conversation.on('typingStarted', (participant) => {
         const identity = participant?.identity || participant?.sid || '';
         if (!identity || identity === String(userId)) return;
-        const timerKey = `${appointmentId}:${identity}`;
+        const timerKey = `${normalizedAppointmentId}:${identity}`;
         if (typingTimersRef.current[timerKey]) {
           clearTimeout(typingTimersRef.current[timerKey]);
         }
         setTypingByAppointment((prev) => {
-          const current = prev[appointmentId] || [];
+          const current = prev[normalizedAppointmentId] || [];
           if (current.includes(identity)) return prev;
-          return { ...prev, [appointmentId]: [...current, identity] };
+          return { ...prev, [normalizedAppointmentId]: [...current, identity] };
         });
         typingTimersRef.current[timerKey] = setTimeout(() => {
           clearTypingParticipant(identity);
@@ -299,7 +344,7 @@ export function useChat({ userId } = {}) {
       conversation.on('typingEnded', (participant) => {
         const identity = participant?.identity || participant?.sid || '';
         if (!identity || identity === String(userId)) return;
-        const timerKey = `${appointmentId}:${identity}`;
+        const timerKey = `${normalizedAppointmentId}:${identity}`;
         if (typingTimersRef.current[timerKey]) {
           clearTimeout(typingTimersRef.current[timerKey]);
           delete typingTimersRef.current[timerKey];
@@ -318,7 +363,7 @@ export function useChat({ userId } = {}) {
         if (attrs.type === 'video_call') {
           const callerId = message.author;
           if (attrs.action === 'incoming') {
-            setIncomingCall({ appointmentId, callerId, callerName: 'Incoming Call' });
+            setIncomingCall({ appointmentId: normalizedAppointmentId, callerId, callerName: 'Incoming Call' });
           } else if (['accepted', 'declined', 'ended'].includes(attrs.action)) {
             setIncomingCall(null);
           }
@@ -345,15 +390,15 @@ export function useChat({ userId } = {}) {
         };
 
         setMessagesByAppointment((prev) => {
-          const current = prev[appointmentId] || [];
+          const current = prev[normalizedAppointmentId] || [];
           if (current.some((m) => m.id === msgObj.id || m.twilioMessageSid === msgObj.twilioMessageSid)) return prev;
-          return { ...prev, [appointmentId]: [...current, msgObj] };
+          return { ...prev, [normalizedAppointmentId]: [...current, msgObj] };
         });
 
         setConversations((prev) => {
           let found = false;
           const updated = prev.map((conv) => {
-            if (conv.appointmentId === appointmentId) {
+            if (String(conv.appointmentId) === normalizedAppointmentId) {
               found = true;
               const isOwn = msgObj.senderId === String(userId);
               return {
@@ -374,20 +419,37 @@ export function useChat({ userId } = {}) {
 
       // Reset unread count locally upon join
       setConversations((prev) =>
-        prev.map((conv) => (conv.appointmentId === appointmentId ? { ...conv, unreadCount: 0 } : conv))
+        prev.map((conv) => (String(conv.appointmentId) === normalizedAppointmentId ? { ...conv, unreadCount: 0 } : conv))
       );
 
       // 8. Mark read in backend
       try {
-        await api.patch(`/communications/appointments/${appointmentId}/chat/read`);
+        await api.patch(`/communications/appointments/${normalizedAppointmentId}/chat/read`);
       } catch (err) {
         console.warn('[useChat] Failed to mark read:', err.message);
       }
     } catch (error) {
+      const history = await historyPromise;
+      if (history.length) {
+        setMessagesByAppointment((prev) => ({
+          ...prev,
+          [normalizedAppointmentId]: history
+        }));
+      }
+
+      const isWaitlisted = error?.response?.status === 409;
+      if (isWaitlisted && history.length) {
+        setSocketConnected(false);
+        setConnectionState('ended');
+        setReconnectError(null);
+        return;
+      }
+
       setSocketConnected(false);
       setConnectionState('disconnected');
       setReconnectError(error.message || 'Failed to connect chat');
-      console.error('[useChat] Failed to init Twilio for appointmentId:', appointmentId, error);
+      setChatUnavailable(true);
+      console.error('[useChat] Failed to init Twilio for appointmentId:', normalizedAppointmentId, error);
     }
   }, [userId, fetchConversations]);
 
@@ -416,7 +478,7 @@ export function useChat({ userId } = {}) {
   }, []);
 
   const sendTypingIndicator = useCallback((appointmentId) => {
-    if (!appointmentId || activeAppointmentId !== appointmentId) return;
+    if (!appointmentId || activeAppointmentId !== String(appointmentId)) return;
     const conversation = activeConversationRef.current;
     if (!conversation?.typing) return;
     try {
@@ -507,5 +569,8 @@ export function useChat({ userId } = {}) {
     emitVideoCallResponse,
     emitVideoCallEnded,
     fetchVideoToken,
+    chatUnavailable,
+    setChatUnavailable,
+    resetTwilioAttempts,
   };
 }

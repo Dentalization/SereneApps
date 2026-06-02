@@ -46,6 +46,7 @@ const Teledentistry = () => {
     emitVideoCall,
     emitVideoCallResponse,
     emitVideoCallEnded,
+    sendTypingIndicator,
   } = useChat();
 
   const {
@@ -63,6 +64,8 @@ const Teledentistry = () => {
   const [bootstrapping, setBootstrapping] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [showPostCallSummary, setShowPostCallSummary] = useState(false);
+  const [summaryAppointmentId, setSummaryAppointmentId] = useState(null);
+  const [summaryConversation, setSummaryConversation] = useState(null);
   const [showPreCallChecklist, setShowPreCallChecklist] = useState(false);
   const [preCallAppointmentId, setPreCallAppointmentId] = useState(null);
   const [preSessionHealthForm, setPreSessionHealthForm] = useState({ status: 'idle', form: null, error: null });
@@ -106,6 +109,14 @@ const Teledentistry = () => {
     });
   }, [incomingCall]);
 
+  const handleOpenSummary = useCallback((apptId) => {
+    if (!apptId) return;
+    setSummaryAppointmentId(apptId);
+    const conv = conversations.find((c) => c.appointmentId === apptId) || activeConversation;
+    setSummaryConversation(conv);
+    setShowPostCallSummary(true);
+  }, [conversations, activeConversation]);
+
   // ── Listen for call_accepted → auto-connect (dentist initiated call) ──
   useEffect(() => {
     const onAccepted = () => {
@@ -123,7 +134,7 @@ const Teledentistry = () => {
       if (callState === 'connected') {
         toast.info('Call ended by the other participant.');
         endCall();
-        if (activeAppointmentId) setShowPostCallSummary(true);
+        if (activeAppointmentId) handleOpenSummary(activeAppointmentId);
       }
     };
     window.addEventListener('teledentistry:call_accepted', onAccepted);
@@ -134,7 +145,7 @@ const Teledentistry = () => {
       window.removeEventListener('teledentistry:call_declined', onDeclined);
       window.removeEventListener('teledentistry:call_ended', onEnded);
     };
-  }, [activeAppointmentId, callState, videoSession, acceptCall, endCall, toast]);
+  }, [activeAppointmentId, callState, videoSession, acceptCall, endCall, toast, handleOpenSummary]);
 
   // ── Ringing timeout (60s) for call initiator ──
   useEffect(() => {
@@ -231,7 +242,7 @@ const Teledentistry = () => {
     const apptId = videoSession?.appointmentId || activeAppointmentId;
     if (apptId) emitVideoCallEnded(apptId);
     endCall();
-    if (apptId) setShowPostCallSummary(true);
+    if (apptId) handleOpenSummary(apptId);
   };
 
   // Fix 3: Handle join error from VideoCallInterface
@@ -382,7 +393,7 @@ const Teledentistry = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowPostCallSummary(true)}
+              onClick={() => handleOpenSummary(activeAppointmentId)}
               disabled={!activeAppointmentId}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-150 hover:-translate-y-px disabled:opacity-40 text-secondary hover:text-primary hover:bg-surface-elevated"
             >
@@ -465,6 +476,7 @@ const Teledentistry = () => {
                 onStartVideoCall={openPreCallChecklist}
                 connectionState={connectionState}
                 reconnectError={reconnectError}
+                sendTypingIndicator={sendTypingIndicator}
               />
             )}
           </section>
@@ -513,10 +525,14 @@ const Teledentistry = () => {
         }}
       />
       <PostCallSummaryPanel
-        appointmentId={activeAppointmentId}
-        conversation={activeConversation}
-        open={showPostCallSummary && Boolean(activeAppointmentId)}
-        onClose={() => setShowPostCallSummary(false)}
+        appointmentId={summaryAppointmentId}
+        conversation={summaryConversation}
+        open={showPostCallSummary && Boolean(summaryAppointmentId)}
+        onClose={() => {
+          setShowPostCallSummary(false);
+          setSummaryAppointmentId(null);
+          setSummaryConversation(null);
+        }}
       />
     </div>
   );

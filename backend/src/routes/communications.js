@@ -215,7 +215,7 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
       const before = req.query.before;
 
-      const appointment = await getAppointmentForUser(appointmentId, req.user);
+      const appointment = await getAppointmentForUser(appointmentId, req.user, { checkPayment: false });
       const { room } = await ensureChatRoom({ appointmentId: appointment.id });
       const messages = await fetchChatMessages({
         appointmentId: appointment.id,

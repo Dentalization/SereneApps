@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -13,8 +13,22 @@ function identityMatchesUser(rawIdentity, userId) {
   return identity === target || identity.includes(`user-${target}`) || identity.includes(`user:${target}`) || identity.includes(target);
 }
 
-const sessionStatus = (conversation, presenceMap = {}) => {
+const sessionStatus = (conversation, presenceMap = {}, now = new Date()) => {
   if (conversation.status === 'completed') return 'completed';
+  const startsAt = parseDateValue(
+    conversation.startsAt
+      || conversation.starts_at
+      || conversation.appointmentStartsAt
+      || conversation.scheduledAt
+      || conversation.scheduled_time
+      || conversation.appointment?.startsAt
+      || conversation.appointment?.starts_at
+      || conversation.appointment?.scheduledAt
+      || conversation.appointment?.scheduled_time
+  );
+  if (startsAt && conversation.status !== 'cancelled' && startsAt.getTime() < now.getTime()) {
+    return 'overdue';
+  }
   const appointmentId = conversation.appointmentId?.toString?.() || String(conversation.appointmentId || '');
   const patientId = conversation.patient?.id?.toString?.() || conversation.patientId?.toString?.() || '';
   const onlineIdentities = presenceMap?.[appointmentId] || [];
@@ -29,6 +43,7 @@ const statusConfig = {
   live: { dot: '#22c55e', label: 'LIVE' },
   waiting: { dot: '#f59e0b', label: 'WAITING' },
   upcoming: { dot: '#7C3AED', label: 'UPCOMING' },
+  overdue: { dot: '#f97316', label: 'OVERDUE' },
   completed: { dot: '#6b7280', label: 'DONE' },
 };
 
@@ -36,6 +51,7 @@ const statusBadgeStyles = {
   live: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-200/50 dark:border-green-900/30',
   waiting: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200/50 dark:border-amber-900/30',
   upcoming: 'bg-accent/10 text-accent border-accent/20',
+  overdue: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200/50 dark:border-orange-900/30',
   completed: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200/50 dark:border-slate-800/30',
 };
 
@@ -86,6 +102,14 @@ const SessionDashboard = ({
 }) => {
   const { t, language } = useLanguage();
   const { isDark } = useTheme();
+  const [showAll, setShowAll] = useState(false);
+  const [nowTick, setNowTick] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   const statusLabels = useMemo(() => ({
     live: t('teledentistry.dashboard.status.live', { fallbackText: 'Live' }),
     waiting: t('teledentistry.dashboard.status.waiting', { fallbackText: 'Menunggu' }),
@@ -93,7 +117,7 @@ const SessionDashboard = ({
     completed: t('teledentistry.dashboard.status.completed', { fallbackText: 'Selesai' }),
   }), [t]);
 
-  const sessions = useMemo(() => {
+  const allSessions = useMemo(() => {
     return conversations
       .map((conversation) => {
         const startsAt = parseDateValue(
@@ -107,7 +131,7 @@ const SessionDashboard = ({
             || conversation.appointment?.scheduledAt
             || conversation.appointment?.scheduled_time
         );
-        const status = sessionStatus(conversation, presenceMap);
+        const status = sessionStatus(conversation, presenceMap, nowTick);
         return {
           conversation,
           status,
@@ -134,16 +158,24 @@ const SessionDashboard = ({
           return diffDays === 0;
         }
 
+        if (status === 'overdue') {
+          return true;
+        }
+
         // Show upcoming sessions
         return true;
       })
       .sort((a, b) => {
-        const order = { live: 0, waiting: 1, upcoming: 2, completed: 3 };
+        const order = { live: 0, waiting: 1, upcoming: 2, overdue: 3, completed: 4 };
         if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
         return (a.startsAt?.getTime?.() || 0) - (b.startsAt?.getTime?.() || 0);
-      })
-      .slice(0, 6);
-  }, [conversations, presenceMap]);
+      });
+  }, [conversations, presenceMap, nowTick]);
+
+  const sessions = useMemo(() => {
+    if (showAll) return allSessions;
+    return allSessions.slice(0, 6);
+  }, [allSessions, showAll]);
 
   if (loading) {
     return (
@@ -163,7 +195,7 @@ const SessionDashboard = ({
     );
   }
 
-  if (!sessions.length) {
+  if (!allSessions.length) {
     return (
       <div className="flex-shrink-0 px-6 pt-2 pb-4 bg-surface/90 border-b border-border/40 shadow-sm backdrop-blur-md">
         <div className="mb-2.5 flex items-center gap-2">
@@ -187,7 +219,7 @@ const SessionDashboard = ({
             {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
           </span>
           <span className="rounded-full px-2 py-0.5 text-xs font-medium text-accent bg-accent/10">
-            {sessions.length}
+            {allSessions.length}
           </span>
         </div>
         <span className="text-[11px] text-muted">
@@ -282,7 +314,22 @@ const SessionDashboard = ({
                     <Icon name="ClipboardList" size={12} />
                   </button>
                 )}
-                <button
+                {status === 'overdue' ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelectConversation?.(conversation);
+                    }}
+                    className="flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold transition-all duration-200 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200/50 dark:border-orange-900/30 hover:bg-orange-500/15"
+                    title="Lihat riwayat chat"
+                    aria-label="Lihat riwayat chat"
+                  >
+                    <Icon name="History" size={12} />
+                    <span>Riwayat</span>
+                  </button>
+                ) : (
+                  <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -294,10 +341,23 @@ const SessionDashboard = ({
                 >
                   <Icon name="Video" size={12} />
                 </button>
+                )}
               </div>
             </div>
           );
         })}
+
+        {allSessions.length > 6 && (
+          <button
+            type="button"
+            onClick={() => setShowAll((prev) => !prev)}
+            className="flex flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3 transition-all duration-300 bg-surface-elevated border border-border/50 hover:border-accent/30 hover:-translate-y-0.5 shadow-theme-sm text-sm font-semibold text-secondary hover:text-accent"
+            style={{ minWidth: '150px' }}
+          >
+            <Icon name={showAll ? 'ChevronLeft' : 'ChevronRight'} size={16} />
+            <span>{showAll ? 'Tampilkan Lebih Sedikit' : `+${allSessions.length - 6} Lainnya`}</span>
+          </button>
+        )}
       </div>
     </div>
   );

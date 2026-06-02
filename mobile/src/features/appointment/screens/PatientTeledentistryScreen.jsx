@@ -151,6 +151,8 @@ const PatientTeledentistryScreen = () => {
     dentistInitials = 'DG',
     appointmentId = null,
     appointmentDate = null,
+    appointmentStatus = null,
+    sessionMode = null,
   } = route.params || {};
 
   const safeDentistName = dentistName || 'Dokter Gigi';
@@ -167,6 +169,10 @@ const PatientTeledentistryScreen = () => {
   const isSessionReady = useMemo(
     () => !resolvedAppointmentDate || new Date() >= resolvedAppointmentDate,
     [resolvedAppointmentDate],
+  );
+  const isArchiveSession = useMemo(
+    () => sessionMode === 'archive' || ['completed', 'overdue', 'cancelled', 'no-show'].includes(String(appointmentStatus || '').toLowerCase()),
+    [appointmentStatus, sessionMode]
   );
 
   // Display specialty: use what's provided, don't default to generic
@@ -201,6 +207,9 @@ const PatientTeledentistryScreen = () => {
     emitVideoCallResponse,
     emitVideoCallEnded,
     fetchVideoToken,
+    chatUnavailable,
+    setChatUnavailable,
+    resetTwilioAttempts,
   } = useChat({ userId: currentUser?.id });
 
   const {
@@ -223,7 +232,7 @@ const PatientTeledentistryScreen = () => {
   } = useTwilioVideoClient();
 
   const [systemMessages, setSystemMessages] = useState([]);
-  const [sessionStatus, setSessionStatus] = useState(isSessionReady ? 'active' : 'upcoming');
+  const [sessionStatus, setSessionStatus] = useState(isArchiveSession ? 'ended' : (isSessionReady ? 'active' : 'upcoming'));
   const [callStatus, setCallStatus] = useState('idle');  // 'idle' | 'incoming' | 'active'
   const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [clinicalSummary, setClinicalSummary] = useState(null);
@@ -324,11 +333,24 @@ const PatientTeledentistryScreen = () => {
   }, [appointmentId, currentUser?.id]);
 
   // ─── Join chat room. The pre-session health form is optional. ─────────────
+  const selectConversationCalledRef = useRef(null);
   useEffect(() => {
-    if (appointmentId && currentUser?.id) {
+    if (appointmentId && currentUser?.id && selectConversationCalledRef.current !== appointmentId) {
+      selectConversationCalledRef.current = appointmentId;
       selectConversation(appointmentId.toString());
     }
   }, [appointmentId, currentUser?.id, selectConversation]);
+
+  const handleRetryChat = useCallback(() => {
+    if (appointmentId) {
+      resetTwilioAttempts();
+      setChatUnavailable(false);
+      selectConversationCalledRef.current = null;
+      // trigger selectConversation again
+      selectConversationCalledRef.current = appointmentId;
+      selectConversation(appointmentId.toString());
+    }
+  }, [appointmentId, selectConversation, resetTwilioAttempts, setChatUnavailable]);
 
   // ─── Init: Push system welcome message ─────────────────────────────────────
   useEffect(() => {
@@ -345,6 +367,10 @@ const PatientTeledentistryScreen = () => {
 
   // ─── Upcoming → Active transition timer ────────────────────────────────────
   useEffect(() => {
+    if (isArchiveSession) {
+      setSessionStatus('ended');
+      return;
+    }
     if (sessionStatus !== 'upcoming' || !resolvedAppointmentDate) return;
     const now = new Date();
     const msUntilStart = resolvedAppointmentDate.getTime() - now.getTime();
@@ -358,7 +384,7 @@ const PatientTeledentistryScreen = () => {
       addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${safeDentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
     }, msUntilStart);
     return () => clearTimeout(timer);
-  }, [sessionStatus, resolvedAppointmentDate, safeDentistName]);
+  }, [sessionStatus, resolvedAppointmentDate, safeDentistName, isArchiveSession]);
 
   // ─── Auto-scroll on new message ────────────────────────────────────────────
   useEffect(() => {
@@ -1018,6 +1044,44 @@ const PatientTeledentistryScreen = () => {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
+      {chatUnavailable && (
+        <View style={{ marginBottom: 16, alignItems: 'center' }}>
+          <View
+            style={{
+              backgroundColor: withOpacity(COLORS.error, 0.1),
+              borderRadius: 16,
+              padding: 20,
+              alignItems: 'center',
+              width: '100%',
+              borderWidth: 1,
+              borderColor: withOpacity(COLORS.error, 0.3),
+            }}
+          >
+            <MaterialCommunityIcons name="alert-circle-outline" size={32} color={COLORS.error} />
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.error, marginTop: 8 }}>
+              Koneksi Chat Gagal
+            </Text>
+            <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 4, textAlign: 'center' }}>
+              Tidak dapat menghubungkan ke server obrolan saat ini.
+            </Text>
+            <TouchableOpacity
+              onPress={handleRetryChat}
+              style={{
+                marginTop: 16,
+                backgroundColor: COLORS.primary,
+                borderRadius: 12,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: COLORS.white, fontWeight: '800', fontSize: 13 }}>
+                Coba Hubungkan Lagi
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Date separator — ISSUE-014: dynamic date */}
       {(() => {
         const now = new Date();
@@ -1142,7 +1206,7 @@ const PatientTeledentistryScreen = () => {
       )}
 
       {/* Ended banner */}
-      {sessionStatus === 'ended' && (
+      {(sessionStatus === 'ended' || isArchiveSession) && (
         <View style={{ marginTop: 16, marginBottom: 8, alignItems: 'center' }}>
           <View
             style={{
@@ -1202,7 +1266,27 @@ const PatientTeledentistryScreen = () => {
 
   // ──── Input Bar ────────────────────────────────────────────────────────────
   const renderInputBar = () => {
-    if (sessionStatus === 'upcoming') return null;
+    if (sessionStatus === 'upcoming' || isArchiveSession) return null;
+    if (chatUnavailable) {
+      return (
+        <View style={{
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          backgroundColor: COLORS.surfaceElevated || '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border || COLORS.gray200,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingBottom: Math.max(insets.bottom, 14),
+        }}>
+          <MaterialCommunityIcons name="chat-lock-outline" size={20} color={COLORS.textMuted || COLORS.gray500} />
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 8, fontWeight: '600' }}>
+            Obrolan tidak tersedia. Coba hubungkan kembali di atas.
+          </Text>
+        </View>
+      );
+    }
     if (sessionStatus === 'ended') {
       const lastMessage = chatMessages[chatMessages.length - 1];
       const isDentistLastSender = lastMessage && lastMessage.role === 'dentist';
@@ -1764,7 +1848,7 @@ const PatientTeledentistryScreen = () => {
 
       {renderHeader()}
 
-      {appointmentId && !socketConnected && (
+      {appointmentId && !socketConnected && !isArchiveSession && sessionStatus !== 'ended' && (
         <View style={{ backgroundColor: COLORS.warning, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
           <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.white} style={{ marginRight: 8 }} />
           <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>

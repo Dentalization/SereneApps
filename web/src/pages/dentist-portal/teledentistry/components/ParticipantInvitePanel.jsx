@@ -56,11 +56,15 @@ export default function ParticipantInvitePanel({ appointmentId }) {
   const handleRevoke = async (participantId) => {
     if (!window.confirm('Revoke participant invite?')) return;
     setStatus('saving');
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === participantId ? { ...p, status: 'revoked' } : p))
+    );
     try {
       await revokeCommunicationParticipant(appointmentId, participantId);
       loadParticipants();
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal revoke undangan.');
+      loadParticipants();
     } finally {
       setStatus('idle');
     }
@@ -78,6 +82,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
       applyInviteResult(await resendCommunicationParticipantInvite(appointmentId, participantId));
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal mengirim ulang undangan.');
+      loadParticipants();
     } finally {
       setStatus('idle');
     }
@@ -91,6 +96,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
       applyInviteResult(await regenerateCommunicationParticipantAccess(appointmentId, participantId));
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal regenerate akses.');
+      loadParticipants();
     } finally {
       setStatus('idle');
     }
@@ -100,11 +106,15 @@ export default function ParticipantInvitePanel({ appointmentId }) {
     if (!window.confirm('Kick participant from the current consultation?')) return;
     setStatus('saving');
     setError('');
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === participantId ? { ...p, status: 'kicked' } : p))
+    );
     try {
       await kickCommunicationParticipant(appointmentId, participantId);
       loadParticipants();
     } catch (err) {
       setError(err?.response?.data?.error?.code || 'Gagal mengeluarkan participant.');
+      loadParticipants();
     } finally {
       setStatus('idle');
     }

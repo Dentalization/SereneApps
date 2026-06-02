@@ -49,13 +49,19 @@ const formatTime = (isoOrTime) => {
 const normalizeSlot = (slot) => {
   const type =
     slot.appointmentType || slot.type || (slot.isVirtual || slot.mode === 'virtual' ? 'virtual' : 'onsite');
+  const startsAt = slot.startsAt || slot.starts_at || slot.start;
+  const endsAt = slot.endsAt || slot.ends_at || slot.end;
   return {
-    id: slot.id || `${slot.startsAt || slot.time}-${type}`,
-    time: slot.time || formatTime(slot.startsAt),
+    id: slot.id || `${startsAt || slot.time}-${type}`,
+    time: slot.time || formatTime(startsAt),
     duration: slot.durationMinutes || slot.duration || 30,
     type,
     isAvailable: slot.isAvailable !== false,
-    raw: slot,
+    raw: {
+      ...slot,
+      startsAt,
+      endsAt,
+    },
   };
 };
 
@@ -389,7 +395,19 @@ const BookingSlotScreen = () => {
       }
       return (endsAt.getTime() - startsAt.getTime()) / 60000 >= durationMinutes;
     };
-    return slots.filter((slot) => slot.type === slotType && slot.isAvailable && hasEnoughDuration(slot));
+    return slots.filter((slot) => {
+      if (slot.type !== slotType || !slot.isAvailable) return false;
+
+      // Filter out slots in the past
+      if (slot.raw?.startsAt) {
+        const slotDate = new Date(slot.raw.startsAt);
+        if (slotDate < new Date()) {
+          return false;
+        }
+      }
+
+      return hasEnoughDuration(slot);
+    });
   }, [durationMinutes, slots, slotType]);
 
   const groupedSlots = useMemo(() => {

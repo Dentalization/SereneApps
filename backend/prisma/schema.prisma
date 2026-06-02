@@ -780,6 +780,7 @@ model AppointmentClinicalSummary {
   recommendations   Json?       @default("[]")
   followUpNeeded    Boolean     @default(false) @map("follow_up_needed")
   followUpAt        DateTime?   @map("follow_up_at") @db.Timestamptz(6)
+  attachments       Json?       @default("[]")
   finalizedAt       DateTime?   @map("finalized_at") @db.Timestamptz(6)
   amendedAt         DateTime?   @map("amended_at") @db.Timestamptz(6)
   patientAcknowledgedAt DateTime? @map("patient_acknowledged_at") @db.Timestamptz(6)

@@ -109,7 +109,6 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
 
   const isVirtual = appointment.type === 'virtual';
   const isPaid = ['paid', 'settled', 'succeeded', 'settlement', 'capture'].includes(appointment.payment?.status);
-  const isHistory = appointment.status === 'completed' || new Date(appointment.startsAt) < new Date();
   const isUnpaid = appointment.fee > 0 &&
     !isPaid &&
     appointment.originalStatus !== 'cancelled';
@@ -117,6 +116,8 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
   // --- OVERDUE LOGIC ---
   // Backend sudah auto-mark status 'overdue' untuk jadwal lewat & belum bayar
   const isOverdue = appointment.status === 'overdue';
+  const isHistory = appointment.status === 'completed' || isOverdue || new Date(appointment.startsAt) < new Date();
+  const canOpenLiveChat = (appointment.status === 'upcoming' || appointment.status === 'scheduled' || appointment.status === 'confirmed') && !isUnpaid;
 
   // Status Color Logic using Theme Tokens
   const getStatusColor = (status) => {
@@ -277,7 +278,7 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
       </View>
 
       {/* Chat Nudge Row */}
-      {(appointment.status === 'upcoming' || appointment.status === 'scheduled' || appointment.status === 'confirmed') && !isUnpaid && (
+      {canOpenLiveChat && (
         <TouchableOpacity
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -333,6 +334,49 @@ const ModernAppointmentCard = ({ appointment, onPress, onRebook, unreadCount = 0
               </Text>
             </View>
           )}
+          <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
+      {isHistory && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={unreadCount > 0 ? `Buka riwayat chat, ada ${unreadCount} pesan baru` : "Buka riwayat chat dengan dokter"}
+          onPress={() => {
+            const dentistData = appointment.dentist || {};
+            navigation.navigate('PatientTeledentistry', {
+              appointmentId: appointment.id,
+              dentistName: dentistData.name || 'Dokter Gigi',
+              dentistSpecialty: dentistData.specialty || '',
+              dentistAvatar: dentistData.avatar || null,
+              dentistInitials: (dentistData.name || 'DG')
+                .split(' ')
+                .filter((w) => w.length > 0)
+                .map((w) => w[0])
+                .join('')
+                .substring(0, 2)
+                .toUpperCase(),
+              appointmentDate: appointment.startsAt,
+              appointmentStatus: appointment.status,
+              sessionMode: 'archive',
+              roomRef: appointment.videoRoomRef,
+              isVirtual: appointment.type === 'virtual' || !!appointment.videoRoomRef,
+            });
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+          }}
+        >
+          <MaterialCommunityIcons name="history" size={16} color={COLORS.primary} />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary, marginLeft: 8, flex: 1 }}>
+            Lihat Riwayat Chat
+          </Text>
           <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -464,7 +508,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           bookingCode: apt.bookingCode || `SRN-${String(apt.id).padStart(6, '0')}`,
           startsAt: apt.startsAt,
           endsAt: apt.endsAt,
-          status: (apt.status === 'scheduled' || apt.status === 'confirmed') ? 'upcoming' : apt.status,
+          status: ((apt.status === 'scheduled' || apt.status === 'confirmed') && new Date(apt.startsAt) < new Date()) ? 'overdue' : ((apt.status === 'scheduled' || apt.status === 'confirmed') ? 'upcoming' : apt.status),
           type: apt.metadata?.appointmentType || apt.appointmentType || (apt.videoRoomRef ? 'virtual' : 'onsite'),
           reason: apt.reason || 'Konsultasi gigi',
           videoRoomRef: apt.videoRoomRef,
@@ -475,7 +519,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
             title: apt.dentist?.title || null,
             specialty: apt.dentist?.specialization || 'Dokter Gigi Umum',
             dentistType: apt.dentist?.dentistType || 'clinic',
-            avatar: apt.dentist?.avatar || null,
+            avatar: apt.dentist?.avatar || apt.dentist?.avatarUrl || apt.dentist?.avatar_url || null,
           },
           clinic: {
             id: apt.clinicBranchId,
