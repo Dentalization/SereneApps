@@ -412,6 +412,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
   const [nowTick, setNowTick] = useState(new Date());
   const { toast, showToast, hideToast } = useToast();
   const insets = useSafeAreaInsets(); // UX-002: SafeAreaInsets
+  const [pushWarningVisible, setPushWarningVisible] = useState(false);
 
   const handleTabChange = (newTab) => {
     if (tab === newTab) return;
@@ -491,6 +492,7 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
           } : null,
           fee: apt.fee,
           originalStatus: apt.status,
+          ownerClinicId: apt.ownerClinicId,
           actions: { canJoinCall: apt.videoRoomRef && apt.status === 'scheduled' },
         }));
 
@@ -524,10 +526,34 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
   useEffect(() => {
     if (!isLoggedIn) return;
     registerAppointmentReminderPushToken()
+      .then((res) => {
+        if (res && res.registered === false && res.reason === 'permission_denied') {
+          setPushWarningVisible(true);
+        }
+      })
       .catch((err) => {
         if (__DEV__) console.warn('[AppointmentList] Push reminder registration skipped:', err?.message || err);
       });
   }, [isLoggedIn]);
+
+  const handleEnableNotifications = async () => {
+    try {
+      const res = await registerAppointmentReminderPushToken();
+      if (res && res.registered) {
+        setPushWarningVisible(false);
+        showToast('Notifikasi pengingat berhasil diaktifkan!', 'success');
+      } else if (res && res.reason === 'permission_denied') {
+        const { Alert } = require('react-native');
+        Alert.alert(
+          'Izin Notifikasi Ditolak',
+          'Silakan aktifkan izin notifikasi untuk Serene Apps melalui pengaturan sistem perangkat Anda.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err) {
+      showToast('Gagal mengaktifkan notifikasi', 'error');
+    }
+  };
 
   const onRefresh = () => { setRefreshing(true); fetchAppointments(false); };
 
@@ -547,13 +573,13 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         avatarUrl: appointment.dentist?.avatar,
         dentistType: appointment.dentist?.dentistType,
         clinicContext: {
-          profileId: appointment.clinic?.profileId,
+          profileId: appointment.clinic?.profileId || appointment.ownerClinicId,
           branchId: appointment.clinic?.branchId || appointment.clinic?.id,
           name: appointment.clinic?.name,
           address: appointment.clinic?.address,
         },
       },
-      clinicId: appointment.clinic?.profileId,
+      clinicId: appointment.clinic?.profileId || appointment.ownerClinicId,
       clinicBranchId: appointment.clinic?.branchId || appointment.clinic?.id,
       type: appointment.type || 'virtual',
       rebookingFromAppointmentId: appointment.id,
@@ -673,6 +699,39 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
             {refreshing ? 'Memperbarui...' : `Diperbarui ${formatRelativeSync(lastSyncedAt, nowTick)}`}
           </Text>
         </View>
+
+        {pushWarningVisible && (
+          <View style={{
+            backgroundColor: withOpacity(COLORS.warning, 0.08),
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.warning, 0.2),
+            borderRadius: 16,
+            padding: 14,
+            marginHorizontal: 24,
+            marginBottom: 16,
+            flexDirection: 'row',
+            alignItems: 'center'
+          }}>
+            <MaterialCommunityIcons name="bell-off-outline" size={20} color={COLORS.warning} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.warning, fontWeight: '700' }}>
+                Notifikasi pengingat janji dinonaktifkan.
+              </Text>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>
+                Anda mungkin melewatkan jadwal penting.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleEnableNotifications}
+              style={{ backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginRight: 8 }}
+            >
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.white, fontWeight: '800' }}>Aktifkan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPushWarningVisible(false)}>
+              <MaterialCommunityIcons name="close" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Scrollable List */}
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>

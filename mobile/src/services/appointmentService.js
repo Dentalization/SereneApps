@@ -254,17 +254,31 @@ export const cancelAppointment = async (id, reason = '') => {
  * Reschedule an appointment
  * @param {number|string} id - Appointment ID
  * @param {Object} data - New schedule data
- * @param {string} data.date - New date in YYYY-MM-DD format
- * @param {string} data.time - New time in HH:mm format
+ * @param {string} data.startsAt - New start time (ISO string)
+ * @param {string} data.endsAt - New end time (ISO string)
+ * @param {string} [data.reason] - Reason for rescheduling
  * @returns {Promise<Object>} Updated appointment data
  */
-export const rescheduleAppointment = async (id, { date, time }) => {
+export const rescheduleAppointment = async (id, { startsAt, endsAt, reason }) => {
   try {
-    console.log('[AppointmentService] Rescheduling appointment:', id, { date, time });
-    const response = await api.patch(`/appointments/${id}/reschedule`, { date, time });
+    console.log('[AppointmentService] Rescheduling appointment:', id, { startsAt, endsAt, reason });
+    const response = await api.patch(`/appointments/${id}/reschedule`, { startsAt, endsAt, reason });
     return response.data;
   } catch (error) {
     throw normalizeAppointmentError(error, 'Gagal mengubah jadwal janji temu');
+  }
+};
+
+/**
+ * Get appointment configuration limits and defaults from backend
+ * @returns {Promise<Object>} Configuration details
+ */
+export const getAppointmentConfig = async () => {
+  try {
+    const response = await api.get('/appointments/config');
+    return response.data?.data ?? response.data;
+  } catch (error) {
+    throw normalizeAppointmentError(error, 'Gagal memuat konfigurasi janji temu');
   }
 };
 
@@ -295,6 +309,7 @@ export default {
   getPreSessionHealthForm,
   cancelAppointment,
   rescheduleAppointment,
+  getAppointmentConfig,
   savePreSessionHealthForm,
   getAvailableSlots,
 };

@@ -25,18 +25,13 @@ import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { getAppointments } from '../../../services/appointmentService';
 
 // --- Imports Component ---
-import * as FeaturedDoctorsMod from '../components/featuredDoctors';
-import * as NearbyDentistsMod from '../components/nearbyDentists';
-import * as QuickActionsMod from '../components/quickActions';
-import * as NearbyClinicsMod from '../components/nearbyClinics';
-import * as ArticleMod from '../components/article';
+import FeaturedDoctors from '../components/featuredDoctors';
+import NearbyDentists from '../components/nearbyDentists';
+import QuickActions from '../components/quickActions';
+import NearbyClinics from '../components/nearbyClinics';
+import Article from '../components/article';
 import QuickActionsManagerModal, { ALL_QUICK_ACTIONS, useSelectedQuickActions } from '../components/QuickActionsManagerModal';
 
-const FeaturedDoctors = FeaturedDoctorsMod.default || FeaturedDoctorsMod;
-const NearbyDentists = NearbyDentistsMod.default || NearbyDentistsMod;
-const QuickActions = QuickActionsMod.default || QuickActionsMod;
-const NearbyClinics = NearbyClinicsMod.default || NearbyClinicsMod;
-const Article = ArticleMod.default || ArticleMod;
 
 const { width, height } = Dimensions.get('window');
 

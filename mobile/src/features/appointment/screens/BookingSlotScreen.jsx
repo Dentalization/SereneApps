@@ -72,6 +72,8 @@ const BookingSlotScreen = () => {
   const clinicIdForInfo = route.params?.clinicId || routeClinicContext?.profileId;
   const clinicBranchParam = route.params?.clinicBranchId || routeClinicContext?.branchId;
   const rebookingFromAppointmentId = route.params?.rebookingFromAppointmentId || null;
+  const isReschedule = route.params?.isReschedule === true;
+  const originalAppointmentId = route.params?.originalAppointmentId || null;
   const fallbackDentist =
     initialDentist ||
     DENTISTS.find((doc) => doc.id === dentistId) ||
@@ -409,6 +411,16 @@ const BookingSlotScreen = () => {
     if (!selectedSlot) return;
     if (slotType === 'onsite' && services.length > 0 && !selectedService) {
       setSelectedService(services[0]);
+    }
+    if (isReschedule) {
+      navigation.navigate('RescheduleConfirm', {
+        dentist,
+        slot: selectedSlot,
+        date: selectedDate,
+        type: slotType,
+        originalAppointmentId,
+      });
+      return;
     }
     navigation.navigate('BookingConfirm', {
       dentist,

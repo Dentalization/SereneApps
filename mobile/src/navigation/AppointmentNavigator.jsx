@@ -15,6 +15,8 @@ import BookingFailedScreen from '../features/appointment/screens/BookingFailedSc
 import DetailAppointmentScreen from '../features/appointment/screens/DetailAppointmentScreen';
 import PatientTeledentistryScreen from '../features/appointment/screens/PatientTeledentistryScreen';
 import ReviewScreen from '../features/appointment/screens/ReviewScreen';
+import RescheduleConfirmScreen from '../features/appointment/screens/RescheduleConfirmScreen';
+import CancelSuccessScreen from '../features/appointment/screens/CancelSuccessScreen';
 
 const Stack = createStackNavigator();
 
@@ -40,6 +42,8 @@ const AppointmentNavigator = () => {
       <Stack.Screen name="DetailAppointment" component={DetailAppointmentScreen} />
       <Stack.Screen name="PatientTeledentistry" component={PatientTeledentistryScreen} />
       <Stack.Screen name="Review" component={ReviewScreen} />
+      <Stack.Screen name="RescheduleConfirm" component={RescheduleConfirmScreen} />
+      <Stack.Screen name="CancelSuccess" component={CancelSuccessScreen} />
     </Stack.Navigator>
   );
 };

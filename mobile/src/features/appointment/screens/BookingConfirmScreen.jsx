@@ -6,8 +6,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency } from '../../../utils/formatters';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
-import { getAppointmentById, getDentistById, REMINDER_MINUTES } from '../data/appointments';
-import { createAppointment, savePreSessionHealthForm } from '../../../services/appointmentService';
+import { getAppointmentById, getDentistById, REMINDER_MINUTES as SEED_REMINDER_MINUTES } from '../data/appointments';
+import { createAppointment, savePreSessionHealthForm, getAppointmentConfig } from '../../../services/appointmentService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors as THEME_COLORS, withOpacity } from '../../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../../theme/dimensions';
@@ -39,6 +39,23 @@ const BookingConfirmScreen = () => {
   const [reminder, setReminder] = useState(30);
   const [payment, setPayment] = useState('card');
   const [isCreating, setIsCreating] = useState(false);
+  const [reminderOptions, setReminderOptions] = useState(SEED_REMINDER_MINUTES);
+
+  React.useEffect(() => {
+    let ignore = false;
+    const fetchConfig = async () => {
+      try {
+        const config = await getAppointmentConfig();
+        if (!ignore && config?.reminderMinutes && Array.isArray(config.reminderMinutes)) {
+          setReminderOptions(config.reminderMinutes);
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[BookingConfirm] Fallback to seed reminder intervals:', err);
+      }
+    };
+    fetchConfig();
+    return () => { ignore = true; };
+  }, []);
   const [healthFormExpanded, setHealthFormExpanded] = useState(false);
   const [healthFormSent, setHealthFormSent] = useState(false);
   const [healthForm, setHealthForm] = useState({
@@ -305,7 +322,7 @@ const BookingConfirmScreen = () => {
 
           <Section title='Pengingat'>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-              {REMINDER_MINUTES.map((value) => (
+              {reminderOptions.map((value) => (
                 <Chip
                   key={value}
                   selected={reminder === value}
