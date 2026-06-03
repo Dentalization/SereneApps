@@ -35,7 +35,7 @@ if (!isExpoGo) {
   }
 }
 
-import { useChat } from '../../../hooks/useChat';
+import { useChat, setTeledentistryScreenActive } from '../../../hooks/useChat';
 import { useI18n } from '../../../hooks/useI18n';
 import { useTwilioVideoClient } from '../../../hooks/useTwilioVideoClient';
 import PreCallSystemCheckSheet from '../../../components/teledentistry/PreCallSystemCheckSheet';
@@ -332,14 +332,27 @@ const PatientTeledentistryScreen = () => {
     return () => { ignore = true; };
   }, [appointmentId, currentUser?.id]);
 
+  // ─── Track active screen state to pause background connector ────────────────
+  useEffect(() => {
+    setTeledentistryScreenActive(true);
+    return () => {
+      setTeledentistryScreenActive(false);
+    };
+  }, []);
+
   // ─── Join chat room. The pre-session health form is optional. ─────────────
   const selectConversationCalledRef = useRef(null);
+  const selectConversationRef = useRef(selectConversation);
+  useEffect(() => {
+    selectConversationRef.current = selectConversation;
+  });
+
   useEffect(() => {
     if (appointmentId && currentUser?.id && selectConversationCalledRef.current !== appointmentId) {
       selectConversationCalledRef.current = appointmentId;
-      selectConversation(appointmentId.toString());
+      selectConversationRef.current(appointmentId.toString());
     }
-  }, [appointmentId, currentUser?.id, selectConversation]);
+  }, [appointmentId, currentUser?.id]);
 
   const handleRetryChat = useCallback(() => {
     if (appointmentId) {
