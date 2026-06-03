@@ -210,7 +210,7 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
   );
 };
 
-import { getOrCreateTwilioClient, shutdownGlobalTwilioClient, getGlobalTwilioClient } from './src/hooks/useChat';
+import { getOrCreateTwilioClient, shutdownGlobalTwilioClient, getGlobalTwilioClient, getTeledentistryScreenActive } from './src/hooks/useChat';
 import { getAppointments } from './src/services/appointmentService';
 
 function BackgroundPresenceConnector() {
@@ -225,6 +225,10 @@ function BackgroundPresenceConnector() {
 
     let active = true;
     const connectPresence = async () => {
+      if (getTeledentistryScreenActive()) {
+        console.log('[BackgroundPresenceConnector] Teledentistry screen is active, skipping background client setup.');
+        return;
+      }
       try {
         const result = await getAppointments({ limit: 10 });
         if (!active) return;

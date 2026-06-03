@@ -28,6 +28,15 @@ let globalTwilioClientPromise = null;
 let isInitializingTwilio = false;
 let twilioInitAttempts = 0;
 const MAX_TWILIO_ATTEMPTS = 1;
+let isTeledentistryScreenActive = false;
+
+export function setTeledentistryScreenActive(active) {
+  isTeledentistryScreenActive = !!active;
+}
+
+export function getTeledentistryScreenActive() {
+  return isTeledentistryScreenActive;
+}
 
 export function resetTwilioAttempts() {
   twilioInitAttempts = 0;
@@ -68,9 +77,12 @@ export async function getOrCreateTwilioClient(token) {
   globalTwilioClientPromise = (async () => {
     try {
       const client = new ConversationsClient(token);
+      console.log('A');
       globalTwilioClient = client;
+      console.log('B');
       console.log('[useChat] TWILIO_INIT_SUCCESS - client created successfully');
 
+      console.log('C');
       // Prevent crashes from unhandled client-level errors/websockets
       client.on('error', (err) => {
         console.warn('[useChat] Twilio Client internal error event:', err?.message || err);
@@ -90,6 +102,7 @@ export async function getOrCreateTwilioClient(token) {
       client.on('stateChanged', (state) => {
         console.log('[useChat] Event: stateChanged ->', state);
       });
+      console.log('D');
 
       return client;
     } catch (err) {
@@ -138,6 +151,7 @@ export function useChat({ userId } = {}) {
   const twilioClientRef = useRef(null);
   const activeConversationRef = useRef(null);
   const typingTimersRef = useRef({});
+  const isSelectingConversationRef = useRef(null);
 
   const isFetchingConversationsRef = useRef(false);
   // ── Fetch conversations from REST API ────────────────────────
@@ -265,6 +279,12 @@ export function useChat({ userId } = {}) {
     const normalizedAppointmentId = appointmentId != null ? String(appointmentId) : null;
     if (!normalizedAppointmentId) return;
 
+    if (isSelectingConversationRef.current === normalizedAppointmentId) {
+      console.log('[useChat] selectConversation already in progress for', normalizedAppointmentId, '— skipping');
+      return;
+    }
+    isSelectingConversationRef.current = normalizedAppointmentId;
+
     setActiveAppointmentId(normalizedAppointmentId);
 
     console.log('[useChat] LOAD_MESSAGES_START - loading history messages');
@@ -336,6 +356,9 @@ export function useChat({ userId } = {}) {
 
       // 5. Subscribe to conversation
       console.log('A');
+      console.log('[useChat] Promise type:', typeof Promise, Promise?.toString());
+      console.log('[useChat] global.Promise type:', typeof global.Promise, global.Promise?.toString());
+      console.log('[useChat] Promise match:', Promise === global.Promise);
       const conversation = await client.getConversationBySid(conversationSid);
       console.log('B');
 
@@ -532,6 +555,8 @@ export function useChat({ userId } = {}) {
       setReconnectError(error.message || 'Failed to connect chat');
       setChatUnavailable(true);
       console.error('[useChat] Failed to init Twilio for appointmentId:', normalizedAppointmentId, error);
+    } finally {
+      isSelectingConversationRef.current = null;
     }
   }, [userId, fetchConversations]);
 
