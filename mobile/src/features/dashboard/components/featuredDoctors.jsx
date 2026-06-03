@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Image, Dimensions, Animated } from 'react-nativ
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import resolveMediaUrl from '../../../utils/media';
 
 const { width } = Dimensions.get('window');
 // layout constants — bikin kartu center & scroll enak
@@ -22,7 +23,7 @@ function getAppointmentStatus(a) {
   const now = new Date();
   const t = new Date(a.startsAt);
   const diffM = Math.floor((t - now) / 60000);
-  
+
   if (diffM < 0) return { text: 'Selesai', canJoin: false, minutesUntil: diffM };
   if (diffM <= 30) return { text: `Mulai dalam ${diffM} menit`, canJoin: true, minutesUntil: diffM };
   if (diffM <= 60) return { text: 'Mulai dalam 1 jam', canJoin: false, minutesUntil: diffM };
@@ -49,14 +50,15 @@ const FeaturedDoctors = ({ appointments = [], onDoctorPress, onJoinCall }) => {
   // Map appointments to card data format using useMemo
   const featuredDoctors = useMemo(() => {
     if (!appointments || appointments.length === 0) return [];
-    
+
     return appointments.map(a => {
       const statusInfo = getAppointmentStatus(a);
+      const isVirtual = a.appointmentType === 'virtual' || a.metadata?.appointmentType === 'virtual' || a.type === 'virtual';
       return {
         id: a.id,
         bookingCode: a.bookingCode || `SRN-${String(a.id).padStart(6, '0')}`,
-        name: a.dentist?.title 
-          ? `${a.dentist.title} ${a.dentist.name}` 
+        name: a.dentist?.title
+          ? `${a.dentist.title} ${a.dentist.name}`
           : (a.dentist?.name || 'Dokter Gigi'),
         specialty: a.dentist?.specialty || 'Dokter Gigi Umum',
         dentistType: a.dentist?.dentistType || 'clinic',
@@ -66,15 +68,15 @@ const FeaturedDoctors = ({ appointments = [], onDoctorPress, onJoinCall }) => {
         price: a.payment?.amount || 0,
         paymentStatus: a.payment?.status || null,
         statusText: statusInfo.text,
-        canJoin: statusInfo.canJoin && (a.metadata?.appointmentType === 'virtual' || a.type === 'virtual'),
+        canJoin: statusInfo.canJoin && isVirtual,
         nextSlot: formatAppointmentTime(a.startsAt),
-        image: a.dentist?.avatar || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop',
+        image: resolveMediaUrl(a.dentist?.avatar) || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop',
         verified: true,
         appointmentId: a.id,
         startsAt: a.startsAt,
-        clinicName: a.clinic?.name || (a.dentist?.dentistType === 'independent' ? 'Praktik Mandiri' : ''),
+        clinicName: isVirtual ? 'Virtual Consultation' : (a.clinic?.name || (a.dentist?.dentistType === 'independent' ? 'Praktik Mandiri' : '')),
         reason: a.reason || 'Konsultasi gigi',
-        type: a.metadata?.appointmentType || a.type || 'onsite',
+        type: isVirtual ? 'virtual' : (a.metadata?.appointmentType || a.type || 'onsite'),
         // Pass full appointment for navigation
         fullAppointment: a,
       };
@@ -227,14 +229,16 @@ const FeaturedDoctors = ({ appointments = [], onDoctorPress, onJoinCall }) => {
                             {doctor.specialty}
                           </Text>
                         </View>
-                        {doctor.clinicName ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <MaterialCommunityIcons name="hospital-building" size={12} color="rgba(255,255,255,0.75)" />
-                            <Text numberOfLines={1} style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginLeft: 5, flex: 1 }}>
-                              {doctor.clinicName}
-                            </Text>
-                          </View>
-                        ) : null}
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <MaterialCommunityIcons
+                            name={doctor.type === 'virtual' ? 'video-outline' : 'hospital-building'}
+                            size={12}
+                            color="rgba(255,255,255,0.75)"
+                          />
+                          <Text numberOfLines={1} style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginLeft: 5, flex: 1 }}>
+                            {doctor.type === 'virtual' ? 'Konsultasi Online' : doctor.clinicName}
+                          </Text>
+                        </View>
                       </View>
                     </View>
 

@@ -143,6 +143,8 @@ const DashboardScreen = () => {
           startsAt: apt.startsAt,
           status: apt.status === 'scheduled' ? 'upcoming' : apt.status,
           videoRoomRef: apt.videoRoomRef,
+          appointmentType: apt.appointmentType || apt.metadata?.appointmentType || apt.type,
+          type: apt.appointmentType || apt.metadata?.appointmentType || apt.type,
         }));
         setUpcomingAppointments(transformed);
       }

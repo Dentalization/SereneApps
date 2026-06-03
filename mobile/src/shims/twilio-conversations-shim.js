@@ -1,22 +1,25 @@
-// Twilio Conversations Shim for React Native / Metro
-// Loads the UMD bundle and exports the correct properties to avoid Hermes CJS/ESM interop issues.
+console.log('🧪 [Shim] Loading browser.js...');
 
-console.log('🧪 [Shim] Loading twilio-conversations.js...');
+const mod = require('@twilio/conversations/builds/browser.js');
 
-global.Twilio = global.Twilio || {};
-console.log('🧪 [Shim] global.Twilio before load:', Object.keys(global.Twilio));
+console.log('🧪 typeof mod =', typeof mod);
+console.log('🧪 mod keys =', Object.keys(mod || {}));
 
-// Load pre-bundled UMD library without global saving/restoring
-// Restoring globals after UMD load creates two Promise contexts in Hermes,
-// causing infinite resolution loops (Maximum call stack size exceeded).
-const mod = require('../../node_modules/@twilio/conversations/builds/twilio-conversations.js');
+let Client = null;
 
-console.log('🧪 [Shim] mod keys:', Object.keys(mod || {}));
-console.log('🧪 [Shim] global.Twilio after load:', Object.keys(global.Twilio || {}));
-if (mod.Twilio) console.log('🧪 [Shim] mod.Twilio keys:', Object.keys(mod.Twilio));
+if (typeof mod === 'function') {
+  Client = mod;
+}
+else if (typeof mod?.Client === 'function') {
+  Client = mod.Client;
+}
+else if (typeof mod?.default === 'function') {
+  Client = mod.default;
+}
+else if (typeof mod?.default?.Client === 'function') {
+  Client = mod.default.Client;
+}
 
-const Conversations = global.Twilio.Conversations || mod.Twilio?.Conversations || mod;
-console.log('🧪 [Shim] Conversations keys:', Object.keys(Conversations || {}));
+console.log('🧪 Client type =', typeof Client);
 
-module.exports = Conversations;
-
+module.exports = Client;
