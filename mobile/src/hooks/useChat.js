@@ -9,16 +9,33 @@ import api from '../services/api';
 let _cachedConversationsClient = null;
 
 const loadConversationsClient = () => {
-  if (_cachedConversationsClient) return _cachedConversationsClient;
+  if (_cachedConversationsClient) {
+    return _cachedConversationsClient;
+  }
+
   try {
-    const mod = require('../shims/twilio-conversations-shim.js');
-    const Client = mod.Client || mod.default?.Client || mod.default;
-    if (!Client) throw new Error('Client not found in @twilio/conversations');
+    const Client = require('../shims/twilio-conversations-shim');
+
+    console.log(
+      '[useChat] Client typeof:',
+      typeof Client
+    );
+
+    if (typeof Client !== 'function') {
+      throw new Error(
+        `Invalid Twilio Client export: ${typeof Client}`
+      );
+    }
+
     _cachedConversationsClient = Client;
-    if (__DEV__) console.log('[useChat] Twilio Conversations SDK loaded successfully');
+
     return Client;
   } catch (err) {
-    if (__DEV__) console.warn('[useChat] Failed to load Twilio Conversations SDK:', err.message);
+    console.warn(
+      '[useChat] Failed to load Twilio SDK:',
+      err
+    );
+
     return null;
   }
 };
