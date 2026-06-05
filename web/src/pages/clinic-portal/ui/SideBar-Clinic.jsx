@@ -28,7 +28,7 @@ const ClinicSideBar = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeTeleSessionCount, setActiveTeleSessionCount] = useState(0);
   const userMenuRef = useRef(null);
-  
+
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
 
@@ -101,19 +101,19 @@ const ClinicSideBar = () => {
   }, [clinicRole]);
 
   const menuItems = [
-    { 
-      id: 'dashboard', 
-      label: t('clinic.sidebar.dashboard') || 'Dashboard', 
-      icon: 'Home', 
-      path: '/clinic-portal/home', 
+    {
+      id: 'dashboard',
+      label: t('clinic.sidebar.dashboard') || 'Dashboard',
+      icon: 'Home',
+      path: '/clinic-portal/home',
       description: t('clinic.sidebar.descriptions.dashboard') || 'Summary & Quick Actions',
       roles: ['front_office', 'nurse', 'cashier', 'manager', 'owner', 'staff']
     },
-    { 
-      id: 'schedule', 
-      label: t('clinic.sidebar.schedule') || 'Schedule & Queue', 
-      icon: 'Calendar', 
-      path: '/clinic-portal/schedule', 
+    {
+      id: 'schedule',
+      label: t('clinic.sidebar.schedule') || 'Schedule & Queue',
+      icon: 'Calendar',
+      path: '/clinic-portal/schedule',
       description: t('clinic.sidebar.descriptions.schedule') || 'Schedule & Queue Management',
       roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
     },
@@ -126,73 +126,73 @@ const ClinicSideBar = () => {
       roles: ['manager', 'owner'],
       badge: activeTeleSessionCount > 0 ? activeTeleSessionCount : null
     },
-    { 
-      id: 'patients', 
-      label: t('clinic.sidebar.patients') || 'Patients & Records', 
-      icon: 'Users', 
-      path: '/clinic-portal/patients', 
+    {
+      id: 'patients',
+      label: t('clinic.sidebar.patients') || 'Patients & Records',
+      icon: 'Users',
+      path: '/clinic-portal/patients',
       description: t('clinic.sidebar.descriptions.patients') || 'Registry & Medical Records',
       roles: ['front_office', 'nurse', 'manager', 'owner', 'staff']
     },
-    { 
-      id: 'billing', 
-      label: t('clinic.sidebar.billing') || 'Billing & Insurance', 
-      icon: 'Receipt', 
-      path: '/clinic-portal/billing', 
+    {
+      id: 'billing',
+      label: t('clinic.sidebar.billing') || 'Billing & Insurance',
+      icon: 'Receipt',
+      path: '/clinic-portal/billing',
       description: t('clinic.sidebar.descriptions.billing') || 'Invoice & Insurance Claims',
       roles: ['cashier', 'manager', 'owner', 'staff']
     },
-    { 
-      id: 'inventory', 
-      label: t('clinic.sidebar.inventory') || 'Inventory & Sterilization', 
-      icon: 'Boxes', 
-      path: '/clinic-portal/inventory', 
+    {
+      id: 'inventory',
+      label: t('clinic.sidebar.inventory') || 'Inventory & Sterilization',
+      icon: 'Boxes',
+      path: '/clinic-portal/inventory',
       description: t('clinic.sidebar.descriptions.inventory') || 'Stock & Equipment Management',
       roles: ['nurse', 'manager', 'owner', 'staff']
     },
-    { 
-      id: 'reports', 
-      label: t('clinic.sidebar.reports') || 'Reports & KPI', 
-      icon: 'BarChart3', 
-      path: '/clinic-portal/reports', 
+    {
+      id: 'reports',
+      label: t('clinic.sidebar.reports') || 'Reports & KPI',
+      icon: 'BarChart3',
+      path: '/clinic-portal/reports',
       description: t('clinic.sidebar.descriptions.reports') || 'Analytics & Performance',
       roles: ['manager', 'owner', 'staff']
     },
-    { 
-      id: 'staff', 
-      label: t('clinic.sidebar.staff') || 'Staff Management', 
-      icon: 'UserCog', 
-      path: '/clinic-portal/staff', 
+    {
+      id: 'staff',
+      label: t('clinic.sidebar.staff') || 'Staff Management',
+      icon: 'UserCog',
+      path: '/clinic-portal/staff',
       description: t('clinic.sidebar.descriptions.staff') || 'Staff Management & Roles',
-      roles: ['manager', 'owner'] 
+      roles: ['manager', 'owner']
     },
-    { 
-      id: 'branches', 
-      label: t('clinic.sidebar.branches') || 'Branch Management', 
-      icon: 'Building2', 
-      path: '/clinic-portal/branches', 
+    {
+      id: 'branches',
+      label: t('clinic.sidebar.branches') || 'Branch Management',
+      icon: 'Building2',
+      path: '/clinic-portal/branches',
       description: t('clinic.sidebar.descriptions.branches') || 'Multi-Branch Operations & Revenue',
-      roles: ['manager', 'owner'] 
+      roles: ['manager', 'owner']
     },
-    { 
-      id: 'public-profile', 
-      label: t('clinic.sidebar.publicProfile') || 'Public Profile', 
-      icon: 'Store', 
-      path: '/clinic-portal/public-profile', 
+    {
+      id: 'public-profile',
+      label: t('clinic.sidebar.publicProfile') || 'Public Profile',
+      icon: 'Store',
+      path: '/clinic-portal/public-profile',
       description: t('clinic.sidebar.descriptions.publicProfile') || 'Services, Gallery & Facilities',
-      roles: ['manager', 'owner', 'admin'] 
+      roles: ['manager', 'owner', 'admin']
     },
-    { 
+    {
       id: 'settings',
-      label: t('clinic.sidebar.settings') || 'Settings', 
-      icon: 'Settings', 
-      path: '/clinic-portal/settings', 
+      label: t('clinic.sidebar.settings') || 'Settings',
+      icon: 'Settings',
+      path: '/clinic-portal/settings',
       description: t('clinic.sidebar.descriptions.settings') || 'Configuration & Admin',
       roles: ['manager', 'owner', 'staff']
     },
   ];
 
-  const filteredMenuItems = menuItems.filter(item => 
+  const filteredMenuItems = menuItems.filter(item =>
     item.roles.some(role => userRoles.has(role))
   );
 
@@ -207,18 +207,18 @@ const ClinicSideBar = () => {
     () => roleBasedNotifications.filter((item) => !item.read).length,
     [roleBasedNotifications]
   );
-  const handleLogout = async () => { 
-    try { 
-      await logout(); 
+  const handleLogout = async () => {
+    try {
+      await logout();
       window.location.href = '/login';
-    } catch (e) { 
-      console.error('Logout error:', e); 
+    } catch (e) {
+      console.error('Logout error:', e);
       window.location.href = '/login';
-    } 
+    }
   };
 
   const isActive = (path) => (
-    path === '/clinic-portal' 
+    path === '/clinic-portal'
       ? location.pathname === '/clinic-portal' || location.pathname === '/clinic-portal/'
       : location.pathname.startsWith(path)
   );
@@ -232,7 +232,7 @@ const ClinicSideBar = () => {
     >
       {/* Icon Bell */}
       <Icon name="Bell" size={collapsed ? 20 : 18} />
-      
+
       {/* Badge Merah (Jika ada notif) */}
       {unreadNotifications > 0 && (
         <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
@@ -249,7 +249,7 @@ const ClinicSideBar = () => {
 
       <div className="sticky top-0 h-screen p-4">
         <div
-          className={`h-full flex flex-col overflow-hidden rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
+          className={`h-full flex flex-col ${isCollapsed ? 'overflow-visible' : 'overflow-hidden'} rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
           style={{
             transition: SIDEBAR_WIDTH_TRANSITION,
             willChange: 'width'
@@ -260,20 +260,20 @@ const ClinicSideBar = () => {
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
               <div className="flex items-center space-x-3">
                 <div className="flex flex-col items-center">
-                  <AppImage 
-                    src="/icon.png" 
-                    alt="SereneAI Logo" 
-                    className={isCollapsed ? 'w-12 h-12 object-contain' : 'w-16 h-16 object-contain'} 
+                  <AppImage
+                    src="/icon.png"
+                    alt="SereneAI Logo"
+                    className={isCollapsed ? 'w-12 h-12 object-contain' : 'w-16 h-16 object-contain'}
                   />
                   {isCollapsed && (
                     <>
-                      <button 
-                        onClick={() => setIsCollapsed(false)} 
+                      <button
+                        onClick={() => setIsCollapsed(false)}
                         className="mt-1 p-1 rounded text-muted hover:bg-accent hover:bg-opacity-15"
                       >
                         <Icon name="ChevronRight" size={16} />
                       </button>
-                      
+
                       {/* LOKASI ICONS NOTIF SAAT COLLAPSED */}
                       <div className="my-1 w-8 border-t border-primary/20"></div>
                       <NotificationButton collapsed={true} />
@@ -292,9 +292,9 @@ const ClinicSideBar = () => {
               {!isCollapsed && (
                 <div className="flex items-center">
                   <NotificationButton collapsed={false} />
-                  
-                  <button 
-                    onClick={() => setIsCollapsed(true)} 
+
+                  <button
+                    onClick={() => setIsCollapsed(true)}
                     className="p-2 rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 ml-1"
                   >
                     <Icon name="ChevronLeft" size={18} />
@@ -329,11 +329,10 @@ const ClinicSideBar = () => {
                   <div key={item.path} className="relative group">
                     <button
                       onClick={() => handleNavigation(item.path)}
-                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${
-                        active 
-                          ? 'bg-accent text-white shadow-lg' 
-                          : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
-                      } transition-all duration-200`}
+                      className={`w-full flex items-center rounded-lg ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 space-x-3'} ${active
+                        ? 'bg-accent text-white shadow-lg'
+                        : 'text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary'
+                        } transition-all duration-200`}
                       title={isCollapsed ? item.label : undefined}
                     >
                       <div className="w-5 h-5 flex items-center justify-center">
@@ -403,11 +402,10 @@ const ClinicSideBar = () => {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-600 dark:text-gray-400">
                     ID
                   </span>
-                  
+
                   <div
-                    className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${
-                      language === 'en' ? 'right-1' : 'left-1'
-                    }`}
+                    className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-lg transition-all duration-300 ease-in-out flex items-center justify-center ${language === 'en' ? 'right-1' : 'left-1'
+                      }`}
                   >
                     <img
                       src={FLAG_SRC[language === 'en' ? 'id' : 'en']}
@@ -442,9 +440,8 @@ const ClinicSideBar = () => {
             <button
               onClick={toggleTheme}
               disabled={isTransitioning}
-              className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${
-                isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-              } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''} transition-all duration-200`}
+              className={`w-full flex items-center justify-start rounded-lg text-muted hover:bg-accent hover:bg-opacity-15 hover:text-primary ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+                } ${isTransitioning ? 'opacity-50 cursor-not-allowed' : ''} transition-all duration-200`}
               title={isCollapsed ? (isDark ? 'Light Mode' : 'Dark Mode') : undefined}
             >
               <Icon name={isDark ? 'Sun' : 'Moon'} size={24} className="flex-shrink-0" />
@@ -459,24 +456,22 @@ const ClinicSideBar = () => {
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${
-                  isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
-                } ${
-                  isUserMenuOpen 
-                    ? 'bg-accent bg-opacity-20 border-accent' 
+                className={`w-full flex items-center pt-2 border-t rounded-lg transition-all duration-200 ${isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2.5 space-x-3'
+                  } ${isUserMenuOpen
+                    ? 'bg-accent bg-opacity-20 border-accent'
                     : 'hover:bg-accent hover:bg-opacity-10 border-primary'
-                }`}
-                style={{ 
-                  borderColor: isUserMenuOpen ? '#A08A48' : isDark ? 'rgba(148,163,184,.2)' : 'rgba(156,163,175,.3)' 
+                  }`}
+                style={{
+                  borderColor: isUserMenuOpen ? '#A08A48' : isDark ? 'rgba(148,163,184,.2)' : 'rgba(156,163,175,.3)'
                 }}
                 title={isCollapsed ? 'User Menu' : undefined}
               >
                 <div className="relative">
                   {avatarUrl ? (
-                    <img 
-                      src={avatarUrl} 
-                      alt="User Avatar" 
-                      className={`rounded-full object-cover border-2 border-accent/30 ${isCollapsed ? 'w-7 h-7' : 'w-6 h-6'}`} 
+                    <img
+                      src={avatarUrl}
+                      alt="User Avatar"
+                      className={`rounded-full object-cover border-2 border-accent/30 ${isCollapsed ? 'w-7 h-7' : 'w-6 h-6'}`}
                     />
                   ) : (
                     <Icon name="User" size={isCollapsed ? 28 : 24} style={{ color: '#A08A48' }} />
@@ -493,34 +488,35 @@ const ClinicSideBar = () => {
                   </div>
                 )}
                 {!isCollapsed && (
-                  <Icon 
-                    name={isUserMenuOpen ? 'ChevronUp' : 'ChevronDown'} 
-                    size={16} 
-                    style={{ 
-                      color: isUserMenuOpen ? '#A08A48' : isDark ? '#94A3B8' : '#6B7280' 
-                    }} 
+                  <Icon
+                    name={isUserMenuOpen ? 'ChevronUp' : 'ChevronDown'}
+                    size={16}
+                    style={{
+                      color: isUserMenuOpen ? '#A08A48' : isDark ? '#94A3B8' : '#6B7280'
+                    }}
                   />
                 )}
               </button>
 
               {isUserMenuOpen && (
                 <div
-                  className="absolute bottom-full left-0 mb-2 w-full min-w-[240px] bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50"
-                  style={{ 
-                    animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)', 
-                    borderRadius: 25 
+                  className={`absolute bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50 ${isCollapsed ? 'bottom-0 left-full ml-8 w-64' : 'bottom-full left-0 mb-2 w-full min-w-[240px]'
+                    }`}
+                  style={{
+                    animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)',
+                    borderRadius: 25
                   }}
                 >
-                  <div 
-                    className="p-4 border-b border-primary bg-gradient-to-r from-accent/10 to-accent/5" 
+                  <div
+                    className="p-4 border-b border-primary bg-gradient-to-r from-accent/10 to-accent/5"
                     style={{ borderTopLeftRadius: 25, borderTopRightRadius: 25 }}
                   >
                     <div className="flex items-center space-x-3">
                       {avatarUrl ? (
-                        <img 
-                          src={avatarUrl} 
-                          alt="User Avatar" 
-                          className="w-8 h-8 rounded-full object-cover border-2 border-accent/30" 
+                        <img
+                          src={avatarUrl}
+                          alt="User Avatar"
+                          className="w-8 h-8 rounded-full object-cover border-2 border-accent/30"
                         />
                       ) : (
                         <Icon name="User" size={32} style={{ color: '#A08A48' }} />
@@ -538,9 +534,9 @@ const ClinicSideBar = () => {
 
                   <div className="py-2" style={{ borderBottomLeftRadius: 25, borderBottomRightRadius: 25 }}>
                     <button
-                      onClick={() => { 
-                        handleNavigation('/clinic-portal/settings'); 
-                        setIsUserMenuOpen(false); 
+                      onClick={() => {
+                        handleNavigation('/clinic-portal/settings');
+                        setIsUserMenuOpen(false);
                       }}
                       className="flex items-center px-4 py-3 text-left hover:bg-accent hover:bg-opacity-15 transition-all duration-200"
                       style={{ borderRadius: 15, margin: '0 12px', width: 'calc(100% - 24px)' }}
@@ -557,9 +553,9 @@ const ClinicSideBar = () => {
                     <hr className="my-1 border-primary opacity-30" />
 
                     <button
-                      onClick={() => { 
-                        handleLogout(); 
-                        setIsUserMenuOpen(false); 
+                      onClick={() => {
+                        handleLogout();
+                        setIsUserMenuOpen(false);
                       }}
                       className="flex items-center px-4 py-3 text-left hover:bg-red-500 hover:bg-opacity-15 text-red-400 hover:text-red-300 transition-all duration-200"
                       style={{ borderRadius: 15, margin: '0 12px', width: 'calc(100% - 24px)' }}

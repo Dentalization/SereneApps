@@ -31,8 +31,8 @@ const getPaymentMethod = (pay) => {
 // Helper: map internal payment status to frontend status
 const getPaymentStatus = (status) => {
   const s = (status || '').toLowerCase();
-  if (s === 'settled') return 'settled';
-  if (s === 'paid') return 'paid';
+  if (s === 'settled' || s === 'completed') return 'settled';
+  if (s === 'paid' || s === 'succeeded') return 'paid';
   if (['pending', 'requires_action'].includes(s)) return 'pending';
   if (['refunded', 'partial_refund'].includes(s)) return 'refunded';
   return 'failed';
@@ -69,23 +69,23 @@ router.get(
         return res.status(404).json({ error: 'Clinic profile not found for user' });
       }
 
-      // Calculate total clinic earnings (strictly SETTLED only)
+      // Calculate total clinic earnings (settled / succeeded / paid)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id,
-          status: 'settled'
+          status: { in: ['settled', 'succeeded', 'paid', 'completed'] }
         },
         include: { paymentSnapshot: true }
       });
       const totalEarnings = settledIntents.reduce((sum, item) => sum + (item.paymentSnapshot?.finalPaidAmount || item.amount), 0);
 
-      // Calculate pending earnings (includes pending, requires_action, AND paid which is not yet settled)
+      // Calculate pending earnings (includes pending, requires_action)
       const pendingIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicProfile.id,
-          status: { in: ['pending', 'requires_action', 'paid'] }
+          status: { in: ['pending', 'requires_action'] }
         },
         select: { amount: true }
       });
@@ -173,8 +173,8 @@ router.get(
       if (status) {
         const statusLower = status.toLowerCase();
         if (statusLower === 'paid') {
-          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled'] } };
-          paymentWhere.status = { in: ['paid', 'settled'] };
+          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled', 'succeeded', 'completed'] } };
+          paymentWhere.status = { in: ['paid', 'settled', 'succeeded', 'completed'] };
         } else if (statusLower === 'pending') {
           invoiceWhere.paymentIntent = { status: { in: ['pending', 'requires_action'] } };
           paymentWhere.status = { in: ['pending', 'requires_action'] };
@@ -250,7 +250,7 @@ router.get(
       // Map Invoices to frontend schema
       const mappedInvoices = invoices.map(inv => {
         const paymentStatus = inv.paymentIntent?.status?.toLowerCase() || '';
-        const status = ['paid', 'settled'].includes(paymentStatus) ? 'paid' : 'pending';
+        const status = ['paid', 'settled', 'succeeded', 'completed'].includes(paymentStatus) ? 'paid' : 'pending';
 
         return {
           id: inv.reference || `INV-${inv.id.toString().padStart(6, '0')}`,
@@ -343,12 +343,12 @@ router.get(
 
       const clinicId = clinicProfile.id;
 
-      // 1. Settled transactions (Revenue must use SETTLED only)
+      // 1. Settled transactions (Revenue must use successful payments)
       const settledIntents = await prisma.paymentIntent.findMany({
         where: {
           ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
           ownerClinicId: clinicId,
-          status: 'settled'
+          status: { in: ['settled', 'succeeded', 'paid', 'completed'] }
         },
         include: {
           paymentSnapshot: true,
@@ -527,7 +527,7 @@ router.get(
         where: {
           ownerType: 'dentist',
           ownerDentistId: dentistId,
-          status: 'settled'
+          status: { in: ['settled', 'succeeded', 'paid', 'completed'] }
         },
         include: { paymentSnapshot: true }
       });
@@ -627,8 +627,8 @@ router.get(
       if (status) {
         const statusLower = status.toLowerCase();
         if (statusLower === 'paid') {
-          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled'] } };
-          paymentWhere.status = { in: ['paid', 'settled'] };
+          invoiceWhere.paymentIntent = { status: { in: ['paid', 'settled', 'succeeded', 'completed'] } };
+          paymentWhere.status = { in: ['paid', 'settled', 'succeeded', 'completed'] };
         } else if (statusLower === 'pending') {
           invoiceWhere.paymentIntent = { status: { in: ['pending', 'requires_action'] } };
           paymentWhere.status = { in: ['pending', 'requires_action'] };
@@ -683,7 +683,7 @@ router.get(
 
       const mappedInvoices = invoices.map(inv => {
         const paymentStatus = inv.paymentIntent?.status?.toLowerCase() || '';
-        const status = ['paid', 'settled'].includes(paymentStatus) ? 'paid' : 'pending';
+        const status = ['paid', 'settled', 'succeeded', 'completed'].includes(paymentStatus) ? 'paid' : 'pending';
 
         return {
           id: inv.reference || `INV-${inv.id.toString().padStart(6, '0')}`,
@@ -763,7 +763,7 @@ router.get(
         where: {
           ownerType: 'dentist',
           ownerDentistId: dentistId,
-          status: 'settled'
+          status: { in: ['settled', 'succeeded', 'paid', 'completed'] }
         },
         include: { paymentSnapshot: true }
       });
@@ -815,7 +815,7 @@ router.get(
         patient: inv.patient?.name || 'Patient',
         services: inv.items.map(item => item.description),
         amount: inv.total,
-        status: inv.paymentIntent?.status === 'settled' ? 'paid' : 'pending',
+        status: ['paid', 'settled', 'succeeded', 'completed'].includes(inv.paymentIntent?.status?.toLowerCase()) ? 'paid' : 'pending',
         createdAt: inv.createdAt
       })),
       payments: payments.map(pay => ({
@@ -1046,7 +1046,7 @@ router.get(
         where: {
           ownerType: 'dentist',
           ownerDentistId: dentistId,
-          status: 'settled'
+          status: { in: ['settled', 'succeeded', 'paid', 'completed'] }
         },
         include: {
           paymentSnapshot: true,

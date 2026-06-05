@@ -9,6 +9,7 @@ export default function Volume3DInteractionLayer({
   active,
   cursor = 'crosshair',
   onClick,
+  onPointerCancel,
   onPointerDown,
   onPointerLeave,
   onPointerMove,
@@ -26,6 +27,7 @@ export default function Volume3DInteractionLayer({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}
       onClick={onClick}
       onWheelCapture={(event) => {

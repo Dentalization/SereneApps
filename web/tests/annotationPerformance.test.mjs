@@ -6,6 +6,7 @@ import {
   createInteractionQualityController,
   createRafInputScheduler,
 } from '../src/pages/dentist-portal/x-core/utils/annotationPerformance.mjs';
+import { createVolume3DAnnotationCanvasController } from '../src/pages/dentist-portal/x-core/components/3D/volume3DAnnotationCanvasRenderer.mjs';
 
 test('rAF input scheduler coalesces pointer samples to the latest sample', () => {
   const frames = [];
@@ -27,6 +28,58 @@ test('rAF input scheduler coalesces pointer samples to the latest sample', () =>
 
   assert.deepEqual(processed, [{ x: 3, y: 3 }]);
   assert.equal(scheduler.isPending(), false);
+});
+
+test('3D annotation canvas controller coalesces draft updates into one draw', () => {
+  const frames = [];
+  const operations = [];
+  const context = new Proxy({}, {
+    get: (_, key) => {
+      if (key === 'canvas') return null;
+      return (...args) => operations.push([key, ...args]);
+    },
+    set: (_, key, value) => {
+      operations.push([`set:${key}`, value]);
+      return true;
+    },
+  });
+  const canvas = {
+    width: 300,
+    height: 200,
+    getContext: () => context,
+  };
+  const controller = createVolume3DAnnotationCanvasController({
+    getCanvas: () => canvas,
+    getDevicePixelRatio: () => 2,
+    requestFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+    cancelFrame: () => {},
+  });
+
+  controller.update({
+    brushPath: [{ x: 10, y: 12 }],
+    brushRadius: 4,
+    brushActive: true,
+  });
+  controller.update({
+    tracePath: [{ x: 1, y: 2 }, { x: 5, y: 8 }],
+  });
+
+  assert.equal(frames.length, 1);
+  frames.shift()(16);
+
+  assert.deepEqual(controller.getState(), {
+    brushPath: [{ x: 10, y: 12 }],
+    tracePath: [{ x: 1, y: 2 }, { x: 5, y: 8 }],
+    traceSnapToClose: false,
+    brushRadius: 4,
+    brushActive: true,
+  });
+  assert.equal(operations.filter(([name]) => name === 'clearRect').length, 1);
+  assert.ok(operations.some(([name]) => name === 'lineTo'));
+  assert.ok(operations.some(([name]) => name === 'arc'));
 });
 
 test('interaction quality controller applies temporary quality and restores base quality once', () => {

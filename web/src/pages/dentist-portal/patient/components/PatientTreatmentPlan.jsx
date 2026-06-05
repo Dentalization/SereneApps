@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
-import { createPatientTreatmentPlan, completeTreatmentItem } from '../../../../services/dentistPortalService';
+import { createPatientTreatmentPlan, completeTreatmentItem, sendPatientTreatmentPlan } from '../../../../services/dentistPortalService';
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:4000';
 
 /** Resolve avatar URL — prefix relative /uploads/... paths with the API base URL */
@@ -54,11 +54,31 @@ const CATEGORY_ICONS = {
   'Cosmetic Dentistry': '✨',
 };
 
+const mapTreatmentCategory = (category = '') => {
+  const value = category.toLowerCase();
+  if (value.includes('preventive')) return 'Preventive';
+  if (value.includes('restorative')) return 'Restoration';
+  if (value.includes('endodont')) return 'Root Canal';
+  if (value.includes('periodont') || value.includes('scaling')) return 'Scaling';
+  if (value.includes('surgery')) return 'Surgery';
+  if (value.includes('orthodont')) return 'Orthodontic';
+  if (value.includes('cosmetic')) return 'Other';
+  return 'Other';
+};
+
+const statusKey = (status = '') => String(status).toLowerCase().replace(/_/g, '-');
+
+const isDraftPlan = (status) => ['draft', 'pending'].includes(statusKey(status));
+const isInProgressPlan = (status) => ['in-progress', 'approved', 'sent', 'patient-review'].includes(statusKey(status));
+const isCompletedPlan = (status) => ['completed'].includes(statusKey(status));
+const isTreatmentDone = (status) => ['done', 'completed'].includes(statusKey(status));
+
 const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteTreatment }) => {
   const toast = useToast();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sendingPlanId, setSendingPlanId] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState(
     () => Object.keys(DENTAL_TREATMENTS).reduce((acc, cat) => ({ ...acc, [cat]: true }), {})
   );
@@ -93,7 +113,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
     return result;
   }, [treatmentSearch]);
 
-  const toggleTreatment = (name) => {
+  const toggleTreatment = (name, category) => {
     setNewPlan(prev => {
       const exists = prev.treatments.find(t => t.name === name);
       if (exists) {
@@ -103,7 +123,16 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
         ...prev,
         treatments: [
           ...prev.treatments,
-          { id: Date.now() + Math.random(), name, cost: 0, status: 'pending' },
+          {
+            id: Date.now() + Math.random(),
+            name,
+            procedureName: name,
+            category: mapTreatmentCategory(category),
+            sourceCategory: category,
+            cost: 0,
+            status: 'PLANNED',
+            phase: 'Phase 1',
+          },
         ],
       };
     });
@@ -127,20 +156,32 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
   };
 
   const handleCreatePlan = async () => {
-    if (!newPlan.title.trim() || newPlan.treatments.length === 0) return;
+    if (!newPlan.title.trim()) return;
     setIsSubmitting(true);
     try {
       const totalCost = newPlan.treatments.reduce((s, t) => s + t.cost, 0);
+      const appointment = (patient.appointments || [])[0];
       const payload = {
+        appointmentId: appointment?.id || null,
         title: newPlan.title.trim(),
         description: newPlan.description || newPlan.notes || '',
-        priority: newPlan.priority,
-        estimatedCost: Number(newPlan.estimatedCost) || totalCost,
+        diagnosisSummary: newPlan.description || newPlan.title.trim(),
+        clinicalNotes: newPlan.notes || newPlan.description || '',
+        patientFriendlySummary: newPlan.description || newPlan.title.trim(),
+        priority: String(newPlan.priority || 'medium').toUpperCase(),
+        estimatedTotal: Number(newPlan.estimatedCost) || totalCost,
+        currency: 'IDR',
         targetCompletion: newPlan.targetCompletion || null,
-        treatments: newPlan.treatments.map(t => ({
-          name: t.name,
-          cost: t.cost,
-          status: 'pending',
+        items: newPlan.treatments.map(t => ({
+          procedureName: t.procedureName || t.name,
+          category: t.category || 'Other',
+          description: t.name,
+          clinicalReason: newPlan.description || '',
+          priority: String(newPlan.priority || 'medium').toUpperCase(),
+          estimatedCost: t.cost,
+          estimatedDurationMinutes: 30,
+          phase: t.phase || 'Phase 1',
+          status: 'PLANNED',
         })),
       };
 
@@ -159,6 +200,20 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
       toast.error(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSendPlan = async (planId) => {
+    setSendingPlanId(planId);
+    try {
+      const updatedPlan = await sendPatientTreatmentPlan(planId);
+      if (onUpdatePlan) onUpdatePlan(updatedPlan);
+      toast.success('Treatment plan sent to patient.');
+    } catch (err) {
+      console.error('Failed to send treatment plan:', err);
+      toast.error(err?.response?.data?.error?.message || 'Failed to send treatment plan.');
+    } finally {
+      setSendingPlanId(null);
     }
   };
 
@@ -201,7 +256,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
       const payload = {
         resultNotes: treatmentForm.resultNotes || '',
         actualCost: Number(String(treatmentForm.actualCost).replace(/\D/g, '')) || 0,
-        status: 'completed',
+        status: 'DONE',
       };
       if (treatmentForm.image) payload.image = treatmentForm.image;
 
@@ -243,10 +298,18 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
   const treatmentPlans = patient.treatmentPlans || [];
 
   const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'completed': return 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-800/50';
-      case 'in-progress': return 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800/50';
+    switch (statusKey(status)) {
+      case 'completed':
+      case 'done':
+      case 'approved': return 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-800/50';
+      case 'in-progress':
+      case 'sent':
+      case 'patient-review':
+      case 'scheduled': return 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800/50';
+      case 'draft':
+      case 'planned':
       case 'pending': return 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50';
+      case 'rejected':
       case 'cancelled': return 'text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800/50';
       default: return 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50';
     }
@@ -261,9 +324,9 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
     }
   };
   
-  const getPlanStatusLabel = (status) => (labels.statuses?.[status?.toLowerCase()] || status);
-  const getPriorityLabel = (priority) => (labels.priorities?.[priority?.toLowerCase()] || priority);
-  const getTaskStatusLabel = (status) => (labels.taskStatuses?.[status?.toLowerCase().replace('-', '')] || status);
+  const getPlanStatusLabel = (status) => (labels.statuses?.[statusKey(status)] || String(status || '').replace(/_/g, ' '));
+  const getPriorityLabel = (priority) => (labels.priorities?.[String(priority || '').toLowerCase()] || priority);
+  const getTaskStatusLabel = (status) => (labels.taskStatuses?.[statusKey(status).replace('-', '')] || String(status || '').replace(/_/g, ' '));
 
   const formatCurrency = (amount) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   const formatDate = (dateString) => dateString ? new Date(dateString).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' }) : (labels.labels?.notScheduled || 'N/A');
@@ -302,8 +365,8 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard title={labels.stats?.total} value={treatmentPlans.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️"/>
-          <StatCard title={labels.stats?.inProgress} value={treatmentPlans.filter(p => p.status === 'in-progress').length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳"/>
-          <StatCard title={labels.stats?.completed} value={treatmentPlans.filter(p => p.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅"/>
+          <StatCard title={labels.stats?.inProgress} value={treatmentPlans.filter(p => isInProgressPlan(p.status)).length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳"/>
+          <StatCard title={labels.stats?.completed} value={treatmentPlans.filter(p => isCompletedPlan(p.status)).length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅"/>
           <div className="bg-gradient-to-br from-surface-elevated to-surface rounded-2xl p-5 border border-primary/10 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span className="text-4xl">💰</span></div>
             <div className="flex items-center space-x-2.5 mb-2">
@@ -393,7 +456,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
           <div className="mb-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
-                <h4 className="text-lg font-bold text-primary">Select Treatments *</h4>
+                <h4 className="text-lg font-bold text-primary">Select Treatments (Optional)</h4>
                 <p className="text-sm text-secondary mt-0.5">
                   {newPlan.treatments.length === 0
                     ? 'Click on treatments below to add them to this plan'
@@ -445,7 +508,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                           <button
                             key={name}
                             type="button"
-                            onClick={() => toggleTreatment(name)}
+                            onClick={() => toggleTreatment(name, category)}
                             className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all duration-150 ${
                               isSelected
                                 ? 'bg-accent/10 text-accent border-accent/30 shadow-sm shadow-accent/10 ring-1 ring-accent/20'
@@ -488,7 +551,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="text-lg flex-shrink-0">{getTreatmentIcon(treatment.name)}</span>
                       <span className="font-semibold text-primary text-sm truncate">{treatment.name}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50">pending</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50">planned</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="relative">
@@ -542,9 +605,9 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
             </Button>
             <Button
               onClick={handleCreatePlan}
-              disabled={isSubmitting || !newPlan.title.trim() || newPlan.treatments.length === 0}
+              disabled={isSubmitting || !newPlan.title.trim()}
               className={`shadow-lg shadow-accent/20 ${
-                (isSubmitting || !newPlan.title.trim() || newPlan.treatments.length === 0)
+                (isSubmitting || !newPlan.title.trim())
                   ? 'opacity-50 cursor-not-allowed'
                   : ''
               }`}
@@ -608,6 +671,16 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {isDraftPlan(plan.status) && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleSendPlan(plan.id)}
+                      disabled={sendingPlanId === plan.id}
+                      className={sendingPlanId === plan.id ? 'opacity-60 cursor-wait' : ''}
+                    >
+                      {sendingPlanId === plan.id ? 'Sending...' : 'Send to patient'}
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="bg-surface hover:bg-surface-elevated border-primary/20 text-secondary">{labels.actions?.editPlan}</Button>
                   <Button variant="ghost" size="icon" className="w-9 h-9" onClick={() => setSelectedPlan(selectedPlan === plan.id ? null : plan.id)}>
                     <span className={`transform transition-transform duration-200 ${selectedPlan === plan.id ? 'rotate-180' : ''}`}>▼</span>
@@ -639,7 +712,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                         </div>
                         <div className="flex items-center gap-3 self-end sm:self-center">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${getStatusColor(treatment.status)}`}>{getTaskStatusLabel(treatment.status)}</span>
-                          {treatment.status !== 'completed' ? (
+                          {!isTreatmentDone(treatment.status) ? (
                             <button
                               type="button"
                               onClick={() => openTreatmentModal(plan.id, treatment)}
@@ -663,7 +736,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                         </div>
                       </div>
                       {/* Show result notes & image if completed */}
-                      {treatment.status === 'completed' && (treatment.resultNotes || treatment.imageUrl) && (
+                      {isTreatmentDone(treatment.status) && (treatment.resultNotes || treatment.imageUrl) && (
                         <div className="mt-4 pt-4 border-t border-primary/5">
                           {treatment.resultNotes && (
                             <div className="mb-3">

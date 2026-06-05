@@ -56,9 +56,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
   const handleRevoke = async (participantId) => {
     if (!window.confirm('Revoke participant invite?')) return;
     setStatus('saving');
-    setParticipants((prev) =>
-      prev.map((p) => (p.id === participantId ? { ...p, status: 'revoked' } : p))
-    );
+    setParticipants((prev) => prev.filter((p) => p.id !== participantId));
     try {
       await revokeCommunicationParticipant(appointmentId, participantId);
       loadParticipants();
@@ -106,9 +104,7 @@ export default function ParticipantInvitePanel({ appointmentId }) {
     if (!window.confirm('Kick participant from the current consultation?')) return;
     setStatus('saving');
     setError('');
-    setParticipants((prev) =>
-      prev.map((p) => (p.id === participantId ? { ...p, status: 'kicked' } : p))
-    );
+    setParticipants((prev) => prev.filter((p) => p.id !== participantId));
     try {
       await kickCommunicationParticipant(appointmentId, participantId);
       loadParticipants();

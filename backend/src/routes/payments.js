@@ -172,6 +172,100 @@ router.post(
         });
       }
 
+      const isSimulated = process.env.PAYMENT_MODE === 'simulated';
+
+      if (isSimulated) {
+        const owner = resolvePaymentOwner(appointment);
+        const orderId = `simulated-${appointmentId.toString()}-${Date.now()}`;
+
+        const simulatedIntent = await prisma.$transaction(async (tx) => {
+          const createdIntent = await tx.paymentIntent.create({
+            data: {
+              appointmentId,
+              activeAppointmentId: appointmentId,
+              patientId,
+              ownerType: owner.ownerType,
+              ownerClinicId: owner.ownerClinicId,
+              ownerDentistId: owner.ownerDentistId,
+              amount: parsedAmount,
+              currency,
+              status: 'succeeded',
+              provider: 'SIMULATED',
+              idempotencyKey: requestIdempotencyKey,
+              providerOrderId: orderId,
+              providerPaymentId: `sim-pay-${Date.now()}`,
+              redirectUrl: `/payment/simulated-success?orderId=${orderId}`,
+              expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+              providerResponse: { payment_mode: 'simulated', success: true },
+              metadata: {}
+            },
+            include: {
+              appointment: true,
+              patient: { select: { id: true, name: true, email: true, phone_number: true } }
+            }
+          });
+
+          await ensureInvoiceForPaymentIntent({
+            tx,
+            paymentIntent: createdIntent,
+            appointment,
+            patient: appointment.patient,
+            items: [
+              {
+                name: appointment.reason || 'Dental Appointment',
+                quantity: 1,
+                price: parsedAmount
+              }
+            ]
+          });
+
+          // Mark Invoice as PAID
+          const invoiceRecord = await tx.invoice.findFirst({
+            where: { paymentIntentId: createdIntent.id }
+          });
+          if (invoiceRecord) {
+            await tx.invoice.update({
+              where: { id: invoiceRecord.id },
+              data: {
+                status: 'paid',
+                paymentStatus: 'paid',
+                paymentDate: new Date()
+              }
+            });
+          }
+
+          // Mark Appointment as CONFIRMED / APPROVED
+          await tx.appointment.update({
+            where: { id: appointmentId },
+            data: {
+              status: 'confirmed'
+            }
+          });
+
+          return createdIntent;
+        });
+
+        // Trigger real-time notifications via event emitters or websockets if global io/sockets is defined.
+        if (req.app && req.app.get('io')) {
+          const io = req.app.get('io');
+          io.emit('notification:new', {
+            type: 'PAYMENT_SUCCESS',
+            paymentIntentId: simulatedIntent.id.toString(),
+            appointmentId: appointmentId.toString(),
+            message: `Pembayaran simulasi untuk appointment #${appointmentId} berhasil.`
+          });
+        }
+
+        return res.status(201).json({
+          paymentIntent: serializePaymentIntent(simulatedIntent),
+          provider: {
+            name: 'SIMULATED',
+            redirectUrl: simulatedIntent.redirectUrl,
+            clientKey: 'simulated-key'
+          }
+        });
+      }
+
       const midtransConfig = getMidtransClientConfig();
       if (!midtransConfig) {
         return res.status(500).json({ error: 'Midtrans client configuration missing on server' });

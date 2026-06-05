@@ -36,6 +36,7 @@ export const en = {
         unavailable: 'Unavailable',
         ready: 'Ready to join',
         joinAudioOnly: 'Join audio only',
+        recordingConsent: 'I understand this session may be recorded for clinical documentation under the Serene Apps privacy policy.',
       },
       chat: {
         sendFailed: 'Message failed to send. The text is kept so you can retry.',

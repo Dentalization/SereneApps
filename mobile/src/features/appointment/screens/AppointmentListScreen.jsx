@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Animated, ScrollView } from 'react-native';
+import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Animated, ScrollView, Alert } from 'react-native';
 import { Text, Button, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -607,6 +607,24 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
 
   const handleRebook = useCallback((appointment) => {
     const profileId = appointment.dentist?.profileId || appointment.dentist?.id;
+    const clinicProfileId = appointment.clinic?.profileId || appointment.ownerClinicId || null;
+    const clinicBranchId = appointment.clinic?.branchId || appointment.clinic?.id || null;
+
+    if (!clinicProfileId && !clinicBranchId && appointment.dentist?.dentistType === 'independent') {
+      Alert.alert(
+        'Tidak bisa pesan ulang',
+        `${appointment.dentist?.name || 'Dokter ini'} adalah dokter mandiri. Silakan buat janji temu baru melalui halaman pencarian dokter.`,
+        [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Cari Dokter',
+            onPress: () => navigation.navigate('DentistSearch'),
+          },
+        ]
+      );
+      return;
+    }
+
     navigation.navigate('BookingSlot', {
       dentistId: profileId,
       dentist: {
@@ -617,14 +635,14 @@ const AppointmentListScreen = ({ unreadMap = {} }) => {
         avatarUrl: appointment.dentist?.avatar,
         dentistType: appointment.dentist?.dentistType,
         clinicContext: {
-          profileId: appointment.clinic?.profileId || appointment.ownerClinicId,
-          branchId: appointment.clinic?.branchId || appointment.clinic?.id,
+          profileId: clinicProfileId,
+          branchId: clinicBranchId,
           name: appointment.clinic?.name,
           address: appointment.clinic?.address,
         },
       },
-      clinicId: appointment.clinic?.profileId || appointment.ownerClinicId,
-      clinicBranchId: appointment.clinic?.branchId || appointment.clinic?.id,
+      clinicId: clinicProfileId,
+      clinicBranchId,
       type: appointment.type || 'virtual',
       rebookingFromAppointmentId: appointment.id,
     });

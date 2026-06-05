@@ -23,7 +23,7 @@ const HIDDEN_TAB_ROUTES = new Set([
   'DentistDetailScreen', 'BookingSlot', 'BookingSlotScreen', 'BookingConfirm',
   'BookingConfirmScreen', 'Payment', 'PaymentScreen', 'BookingSuccess',
   'BookingSuccessScreen', 'BookingFailed', 'BookingFailedScreen', 'DetailAppointment',
-  'DetailAppointmentScreen', 'PatientTeledentistry', 'ArticleList', 'Notifications', 'NotificationAppointmentDetail',
+  'DetailAppointmentScreen', 'TreatmentPlan', 'TreatmentPlanScreen', 'PatientTeledentistry', 'ArticleList', 'Notifications', 'NotificationAppointmentDetail',
   'NotificationPaymentDetail', 'NotificationShopDetail', 'NotificationAIDetail',
   'NotificationSystemDetail', 'NearbyDentists', 'NearbyClinics', 'DentistDirectory',
   'DentistSpecialty', 'ProductDetail', 'Cart', 'Checkout', 'HelpCenter',

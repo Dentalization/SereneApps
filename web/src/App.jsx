@@ -6,6 +6,8 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./contexts/ToastContext";
 
+import { NotificationProvider } from "./contexts/NotificationContext";
+
 const APP_FALLBACK_COPY = {
   en: {
     title: 'Error in App'
@@ -31,7 +33,9 @@ function App() {
           <LanguageProvider>
             <ToastProvider>
               <AuthProvider>
-                <Routes />
+                <NotificationProvider>
+                  <Routes />
+                </NotificationProvider>
               </AuthProvider>
             </ToastProvider>
           </LanguageProvider>

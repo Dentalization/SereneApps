@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNotifications } from '../../../contexts/NotificationContext';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { getDentistProfileApi } from '../../../services/authService';
@@ -56,6 +57,7 @@ const DentistSchedule = () => {
   const { user } = useAuth();
   const { isDark } = useTheme();
   const { t, language } = useLanguage();
+  const { socket } = useNotifications();
   const locale = useMemo(() => (language === 'id' ? 'id-ID' : 'en-US'), [language]);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -113,10 +115,24 @@ const DentistSchedule = () => {
     const channel = rawChannel === 'virtual' || rawChannel === 'tele' ? 'tele' : 'clinic';
     const startIso = appointment.startsAt || appointment.starts_at;
     const endIso = appointment.endsAt || appointment.ends_at;
+
+    // Check if the appointment start time is older than 24 hours
+    const startsAtDate = new Date(startIso);
+    const now = new Date();
+    const isPast24h = (now - startsAtDate) > (24 * 60 * 60 * 1000);
+
+    let displayStatus = mapStatusToDisplay(appointment.status);
+    let rawStatus = appointment.status;
+
+    if (isPast24h && !['cancelled', 'rejected', 'no-show', 'completed'].includes(displayStatus)) {
+      displayStatus = 'completed';
+      rawStatus = 'completed';
+    }
+
     return {
       id: appointment.id,
-      status: mapStatusToDisplay(appointment.status),
-      rawStatus: appointment.status,
+      status: displayStatus,
+      rawStatus: rawStatus,
       channel,
       type: appointment.metadata?.type || appointment.reason || 'consultation',
       start: startIso,
@@ -210,20 +226,21 @@ const mapScheduleEntry = useCallback((entry) => {
   const loadAppointments = useCallback(async () => {
     setRefreshing(true);
     try {
-      const now = new Date();
-      // Start from today
-      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // Calculate from and to based on selectedDate to fetch history
+      const from = new Date(selectedDate);
+      from.setDate(from.getDate() - 45);
       from.setHours(0, 0, 0, 0);
-      // End 30 days from now (ensures full day inclusion)
-      const to = new Date(from);
-      to.setDate(to.getDate() + 30);
+
+      const to = new Date(selectedDate);
+      to.setDate(to.getDate() + 45);
       to.setHours(23, 59, 59, 999);
+
       const [appointmentResponse, scheduleResponse] = await Promise.all([
         fetchAppointments({
           view: 'dentist',
           from: from.toISOString(),
           to: to.toISOString(),
-          includeHistory: false
+          includeHistory: true
         }),
         fetchDentistScheduleEntries({ from: from.toISOString(), to: to.toISOString() })
       ]);
@@ -239,7 +256,7 @@ const mapScheduleEntry = useCallback((entry) => {
       setRefreshing(false);
       finishInitialLoading();
     }
-  }, [finishInitialLoading, mapAppointment, mapScheduleEntry]);
+  }, [selectedDate, finishInitialLoading, mapAppointment, mapScheduleEntry]);
 
   const summaryCounts = useMemo(() => ({
     total: summary?.total || 0,
@@ -296,7 +313,7 @@ const mapScheduleEntry = useCallback((entry) => {
       loadAppointments();
     }, 60000);
     return () => clearInterval(interval);
-  }, [loadAppointments, persistDentistScheduleEntry]);
+  }, [loadAppointments]);
 
   useEffect(() => {
     return () => {
@@ -307,10 +324,20 @@ const mapScheduleEntry = useCallback((entry) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handleRealtimeUpdate = (data) => {
+      console.log('🔄 Real-time update: refreshing schedule due to notification:', data);
+      loadAppointments();
+    };
+    socket.on('notification:new', handleRealtimeUpdate);
+    return () => {
+      socket.off('notification:new', handleRealtimeUpdate);
+    };
+  }, [socket, loadAppointments]);
+
   const filtered = useMemo(() => {
     return data.filter((a) => {
-      // Explicitly exclude cancelled and rejected appointments from calendar views
-      if (a.status === 'cancelled' || a.rawStatus === 'cancelled' || a.status === 'rejected') return false;
       if (filters.provider !== 'all' && a.provider?.id !== filters.provider) return false;
       if (filters.location !== 'all' && a.location?.id !== filters.location) return false;
       if (filters.channel !== 'all' && a.channel !== filters.channel) return false;
@@ -467,7 +494,41 @@ const mapScheduleEntry = useCallback((entry) => {
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-accent">Schedule</p>
-                <h1 className="text-4xl font-bold text-primary theme-transition">{t('dentistSchedule.header.title')}</h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-4xl font-bold text-primary theme-transition">{t('dentistSchedule.header.title')}</h1>
+                  {viewMode === 'daily' && (
+                    <div className="flex items-center gap-1 bg-surface border border-border rounded-xl p-1 shadow-sm">
+                      <button
+                        onClick={() => {
+                          const d = new Date(selectedDate);
+                          d.setDate(d.getDate() - 1);
+                          setSelectedDate(d);
+                        }}
+                        className="p-1.5 hover:bg-surface-elevated rounded-lg text-secondary hover:text-primary transition-all"
+                        title="Previous Day"
+                      >
+                        <Icon name="ChevronLeft" size={16} />
+                      </button>
+                      <button
+                        onClick={() => setSelectedDate(new Date())}
+                        className="px-2 py-1 hover:bg-surface-elevated rounded-lg text-xs font-medium text-secondary hover:text-primary transition-all border border-border/40"
+                      >
+                        Today
+                      </button>
+                      <button
+                        onClick={() => {
+                          const d = new Date(selectedDate);
+                          d.setDate(d.getDate() + 1);
+                          setSelectedDate(d);
+                        }}
+                        className="p-1.5 hover:bg-surface-elevated rounded-lg text-secondary hover:text-primary transition-all"
+                        title="Next Day"
+                      >
+                        <Icon name="ChevronRight" size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <p className="text-secondary theme-transition">
                   {formatDateLong(selectedDate, locale)} •{' '}
                   {user?.name
@@ -555,6 +616,7 @@ const mapScheduleEntry = useCallback((entry) => {
                 onTimeSlotClick={(slot) => console.log('Slot clicked', slot)}
                 onAppointmentClick={handleAppointmentSelect}
                 onScheduleAction={handleScheduleAction}
+                dentistProfile={dentistProfile}
               />
             ) : (
               <MultiCalendar

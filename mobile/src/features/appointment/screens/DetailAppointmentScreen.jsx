@@ -34,6 +34,11 @@ const DetailAppointmentScreen = () => {
   const [appointmentConfig, setAppointmentConfig] = useState(null);
   const [hasNudged, setHasNudged] = useState(false);
 
+  const isVirtualAppointment = appointment?.appointmentType === 'virtual'
+    || appointment?.type === 'virtual'
+    || appointment?.metadata?.appointmentType === 'virtual'
+    || Boolean(appointment?.videoRoomRef);
+
   const fetchDetail = useCallback(async (showLoading = true) => {
     if (!appointmentId) return;
     try {
@@ -209,10 +214,6 @@ const DetailAppointmentScreen = () => {
   }
 
   const statusConfig = getStatusConfig(appointment?.status);
-  const isVirtualAppointment = appointment?.appointmentType === 'virtual'
-    || appointment?.type === 'virtual'
-    || appointment?.metadata?.appointmentType === 'virtual'
-    || Boolean(appointment?.videoRoomRef);
   const remainingMs = appointment?.startsAt ? new Date(appointment.startsAt).getTime() - now.getTime() : 0;
   const remainingLabel = remainingMs > 60 * 60 * 1000
     ? `${Math.floor(remainingMs / 3600000)}j ${Math.floor((remainingMs % 3600000) / 60000)}m`
@@ -499,6 +500,31 @@ const DetailAppointmentScreen = () => {
             </View>
           </View>
         )}
+
+        <View style={{ marginTop: 24 }}>
+          <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 }}>Rencana Perawatan</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('TreatmentPlan', { appointmentId })}
+            style={{
+              backgroundColor: COLORS.surfaceElevated,
+              borderRadius: 20,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: withOpacity(COLORS.primary, 0.14),
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <View style={{ width: 44, height: 44, borderRadius: 16, backgroundColor: withOpacity(COLORS.primary, 0.12), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+              <MaterialCommunityIcons name="clipboard-pulse-outline" size={24} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...TYPOGRAPHY.bodyLarge, color: COLORS.textPrimary, fontWeight: '800' }}>Lihat rencana dari dokter</Text>
+              <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>Tinjau tindakan, biaya, dan status persetujuan.</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
 
         {/* Chat Banner */}
         {(appointment?.status === 'scheduled' || appointment?.status === 'confirmed') && !isUnpaid && (

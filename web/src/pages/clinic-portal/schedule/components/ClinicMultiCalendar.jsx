@@ -5,15 +5,24 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 const CLINIC_TIME_ZONE = 'Asia/Jakarta';
 
 const getClinicDateKey = (value) => {
-  const date = value instanceof Date ? value : new Date(value);
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: CLINIC_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
+  try {
+    if (!value) return 'invalid-date';
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) {
+      return 'invalid-date';
+    }
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: CLINIC_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date);
+    const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${byType.year}-${byType.month}-${byType.day}`;
+  } catch (err) {
+    console.error('Error formatting clinic date key:', err);
+    return 'invalid-date';
+  }
 };
 
 const ClinicMultiCalendar = ({
@@ -41,18 +50,32 @@ const ClinicMultiCalendar = ({
   }, [selectedDate]);
 
   // Helper functions
-  const formatTime = (date) => 
-    date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  const formatTime = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
 
-  const formatDate = (date) => 
-    date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
+  const formatDate = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
-  const formatDateShort = (date) => 
-    date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  const formatDateShort = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  };
 
   // API appointments may arrive as UTC ISO strings while mock rows use Date objects.
   // Calendar bucketing is intentionally based on the clinic timezone, not the browser timezone.
-  const isSameDay = (date1, date2) => getClinicDateKey(date1) === getClinicDateKey(date2);
+  const isSameDay = (date1, date2) => {
+    const k1 = getClinicDateKey(date1);
+    const k2 = getClinicDateKey(date2);
+    if (k1 === 'invalid-date' || k2 === 'invalid-date') return false;
+    return k1 === k2;
+  };
 
   const isToday = (date) => isSameDay(date, new Date());
   const isSelected = (date) => isSameDay(date, currentDate);
@@ -589,18 +612,33 @@ const MonthView = ({
                 </div>
                 
                 <div className="space-y-1">
-                  {Object.values(dayAppointments).flat().slice(0, 2).map(apt => (
-                    <div
-                      key={apt.id}
-                      className={`text-xs p-1 rounded truncate cursor-pointer ${getDoctorColor(apt.provider?.id || 'unknown')}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAppointmentClick?.(apt);
-                      }}
-                    >
-                      {new Date(apt.start).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })} {apt.patient?.name}
-                    </div>
-                  ))}
+                  {Object.values(dayAppointments).flat().slice(0, 2).map(apt => {
+                    const isCompleted = apt.status === 'completed';
+                    const isCancelled = ['cancelled', 'no-show'].includes(apt.status);
+                    return (
+                      <div
+                        key={apt.id}
+                        className={`text-xs p-1 rounded truncate cursor-pointer ${getDoctorColor(apt.provider?.id || 'unknown')} ${
+                          isCompleted ? 'opacity-65' : ''
+                        } ${isCancelled ? 'opacity-40 line-through' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAppointmentClick?.(apt);
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {isCompleted && <span className="text-[10px] text-emerald-500 font-bold">✓</span>}
+                          {isCancelled && <span className="text-[10px] text-red-500 font-bold">✗</span>}
+                          {apt.channel === 'tele' && (
+                            <Icon name="Video" size={10} className="text-cyan-500 flex-shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {new Date(apt.start).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })} {apt.patient?.name}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
                   
                   {Object.values(dayAppointments).flat().length > 2 && (
                     <div className="text-xs text-secondary text-center">
@@ -625,16 +663,30 @@ const AppointmentBlock = ({ appointment, doctorColor, onClick, locale = 'id-ID' 
     hour12: false
   });
 
+  const isCompleted = appointment.status === 'completed';
+  const isCancelled = ['cancelled', 'no-show'].includes(appointment.status);
+
   return (
     <div
-      className={`text-xs p-2 rounded-lg cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-theme-sm border-l-2 ${doctorColor} bg-surface/90 backdrop-blur-sm`}
+      className={`text-xs p-2 rounded-lg cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-theme-sm border-l-2 ${doctorColor} bg-surface/90 backdrop-blur-sm ${
+        isCompleted ? 'opacity-65' : ''
+      } ${isCancelled ? 'opacity-40 line-through' : ''}`}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
       }}
-      title={`${time} - ${appointment.patient?.name} (${appointment.provider?.name})`}
+      title={`${time} - ${appointment.patient?.name} (${appointment.provider?.name}) [${appointment.status}]`}
     >
-      <div className="font-semibold text-primary">{time}</div>
+      <div className="flex items-center justify-between">
+        <div className="font-semibold text-primary">{time}</div>
+        <div className="flex items-center space-x-1">
+          {isCompleted && <span className="text-[10px] text-emerald-500 font-bold" title="Completed">✓</span>}
+          {isCancelled && <span className="text-[10px] text-red-500 font-bold" title="Cancelled/No-show">✗</span>}
+          {appointment.channel === 'tele' && (
+            <Icon name="Video" size={11} className="text-cyan-500 flex-shrink-0" title="Teledentistry" />
+          )}
+        </div>
+      </div>
       <div className="truncate text-secondary">{appointment.patient?.name}</div>
     </div>
   );

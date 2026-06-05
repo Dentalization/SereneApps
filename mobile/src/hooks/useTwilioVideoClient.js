@@ -44,7 +44,7 @@ export function useTwilioVideoClient() {
 
   const connect = useCallback(async ({ roomName, token, enableAudio = true, enableVideo = true }) => {
     if (!twilioRef.current) {
-      throw new Error('Video engine is not ready');
+      throw new Error('Twilio Video belum tersedia di runtime ini. Gunakan iOS development build/custom dev client, bukan Expo Go.');
     }
     if (!roomName || !token) {
       throw new Error('Video room token is incomplete');

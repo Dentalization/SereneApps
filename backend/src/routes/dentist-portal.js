@@ -11,6 +11,19 @@ import { fileURLToPath } from 'url';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import { recordStatusChange } from '../services/appointments/audit.js';
+import {
+  addTreatmentPlanItem,
+  createTreatmentPlan,
+  deleteTreatmentPlanItem,
+  emitTreatmentPlanRealtime,
+  getTreatmentPlanForDentist,
+  listTreatmentPlansForDentist,
+  normalizeItemStatus,
+  sendTreatmentPlan,
+  serializeTreatmentPlan as serializeUnifiedTreatmentPlan,
+  updateTreatmentPlan,
+  updateTreatmentPlanItem
+} from '../services/treatmentPlans.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +54,16 @@ const prisma = new PrismaClient();
 
 function sendError(res, status, code, message, extras = {}) {
   return res.status(status).json({ error: { code, message, ...extras } });
+}
+
+function sendTreatmentPlanError(res, error) {
+  if (error.status) {
+    return sendError(res, error.status, error.message || error.code || 'treatment_plan_error', error.publicMessage || 'Gagal memproses rencana perawatan.');
+  }
+  if (error.message?.startsWith?.('INVALID_')) {
+    return sendError(res, 400, error.message, 'ID atau data rencana perawatan tidak valid.');
+  }
+  return sendError(res, 500, 'TREATMENT_PLAN_FAILED', 'Gagal memproses rencana perawatan.');
 }
 
 function toBigInt(value, fieldName) {
@@ -104,6 +127,70 @@ function serializePatient(user, appointments = [], aiResults = []) {
       recommendations: result.recommendations || [],
       createdAt: result.createdAt?.toISOString() || null
     }))
+  };
+}
+
+function serializePatientBilling(invoices = []) {
+  const rows = invoices.map((invoice) => {
+    const paymentStatus = invoice.paymentIntent?.status || null;
+    const isPaid = ['paid', 'settled'].includes(paymentStatus) || ['paid', 'settled'].includes(invoice.status);
+    const total = invoice.grandTotal || invoice.total || 0;
+    return {
+      id: invoice.id.toString(),
+      invoiceId: invoice.id.toString(),
+      reference: invoice.reference || null,
+      appointmentId: invoice.appointmentId?.toString?.() || null,
+      treatmentPlanId: invoice.treatmentPlanId?.toString?.() || null,
+      paymentIntentId: invoice.paymentIntentId?.toString?.() || null,
+      subtotal: invoice.subtotal || 0,
+      platformFee: invoice.platformFee || 0,
+      clinicShare: invoice.clinicShare || 0,
+      dentistShare: invoice.dentistShare || 0,
+      discount: invoice.discount || 0,
+      tax: invoice.tax || 0,
+      total,
+      grandTotal: total,
+      currency: invoice.currency || 'IDR',
+      status: invoice.status,
+      paymentStatus,
+      paid: isPaid,
+      issuedAt: invoice.issuedAt?.toISOString?.() || null,
+      approvedAt: invoice.approvedAt?.toISOString?.() || null,
+      paidAt: invoice.paidAt?.toISOString?.() || null,
+      createdAt: invoice.createdAt?.toISOString?.() || null,
+      items: (invoice.items || []).map((item) => ({
+        id: item.id.toString(),
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.total
+      }))
+    };
+  });
+  const paidAmount = rows
+    .filter((invoice) => invoice.paid)
+    .reduce((sum, invoice) => sum + invoice.grandTotal, 0);
+  const pendingAmount = rows
+    .filter((invoice) => !invoice.paid && !['cancelled', 'refunded'].includes(invoice.status))
+    .reduce((sum, invoice) => sum + invoice.grandTotal, 0);
+
+  const paymentHistory = rows
+    .filter((invoice) => invoice.paid)
+    .map((invoice) => ({
+      id: `PAY-${invoice.id}`,
+      invoiceId: invoice.reference || invoice.id,
+      amount: invoice.grandTotal,
+      date: invoice.paidAt ? invoice.paidAt.split('T')[0] : invoice.createdAt ? invoice.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+      method: invoice.paymentStatus ? 'Midtrans' : 'Simulated',
+      status: 'success'
+    }));
+
+  return {
+    invoices: rows,
+    totalBalance: pendingAmount,
+    paidAmount,
+    pendingAmount,
+    paymentHistory
   };
 }
 
@@ -332,8 +419,20 @@ router.get(
         include: {
           items: { orderBy: { sortOrder: 'asc' } },
           dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+          patient: { select: { id: true, name: true, email: true } },
+          invoices: { include: { items: true, appointment: { select: { dentistId: true } } }, orderBy: { createdAt: 'desc' } },
         },
         orderBy: { createdAt: 'desc' },
+      });
+
+      const invoices = await prisma.invoice.findMany({
+        where: { patientId },
+        include: {
+          items: true,
+          paymentIntent: true,
+          appointment: { select: { id: true, dentistId: true, startsAt: true, reason: true } }
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
       const serializedPatient = serializePatient(patient, appointments, aiResults);
@@ -344,9 +443,9 @@ router.get(
         date: a.startsAt?.toISOString().split('T')[0], // For patient portal compatibility
         status: a.status,
         rawStatus: a.status,
-        consultation_type: a.consultation_type || 'onsite',
-        type: a.consultation_type || 'onsite',
-        channel: a.consultation_type === 'virtual' ? 'tele' : 'clinic',
+        consultation_type: a.consultationType || 'onsite',
+        type: a.consultationType || 'onsite',
+        channel: a.consultationType === 'virtual' ? 'tele' : 'clinic',
         reason: a.reason,
         notes: a.notes,
         metadata: a.metadata || {}
@@ -367,7 +466,8 @@ router.get(
       }
 
       // Attach serialized treatment plans
-      serializedPatient.treatmentPlans = treatmentPlans.map(serializeTreatmentPlan);
+      serializedPatient.treatmentPlans = treatmentPlans.map(serializeUnifiedTreatmentPlan);
+      serializedPatient.billing = serializePatientBilling(invoices);
 
       return res.json({ patient: serializedPatient });
     } catch (error) {
@@ -815,6 +915,67 @@ router.post(
 // TREATMENT PLANS
 // ====================================================================
 
+// GET /v1/dentist-portal/dashboard/continuity
+router.get(
+  '/dashboard/continuity',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const plans = await prisma.treatmentPlan.findMany({
+        where: { dentistId },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' } },
+          patient: { select: { id: true, name: true, email: true } },
+          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
+          invoices: {
+            include: {
+              items: true,
+              appointment: { select: { dentistId: true } },
+              paymentIntent: { select: { status: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+          }
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 8
+      });
+
+      const serializedPlans = plans.map(serializeUnifiedTreatmentPlan);
+      const activeStatuses = new Set(['SENT', 'PATIENT_REVIEW', 'APPROVED', 'IN_PROGRESS']);
+      const activePlans = serializedPlans.filter((plan) => activeStatuses.has(plan.status));
+      const completedPlans = serializedPlans.filter((plan) => plan.status === 'COMPLETED');
+      const totalValue = serializedPlans.reduce((sum, plan) => sum + Number(plan.estimatedTotal || 0), 0);
+      const paidValue = serializedPlans.reduce((sum, plan) => {
+        const invoice = plan.invoice;
+        if (!invoice) return sum;
+        const paid = ['paid', 'settled'].includes(invoice.paymentStatus || invoice.status);
+        return paid ? sum + Number(invoice.grandTotal || invoice.total || 0) : sum;
+      }, 0);
+      const avgProgress = serializedPlans.length
+        ? Math.round(serializedPlans.reduce((sum, plan) => sum + Number(plan.progress || 0), 0) / serializedPlans.length)
+        : 0;
+
+      return res.json({
+        treatmentPlans: serializedPlans,
+        metrics: {
+          totalPlans: serializedPlans.length,
+          activePlans: activePlans.length,
+          completedPlans: completedPlans.length,
+          totalValue,
+          paidValue,
+          averageProgress: avgProgress,
+          successRate: serializedPlans.length ? Math.round((completedPlans.length / serializedPlans.length) * 1000) / 10 : 0
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching dentist dashboard continuity:', error);
+      return sendError(res, 500, 'DASHBOARD_CONTINUITY_FAILED', 'Gagal memuat dashboard treatment plan.');
+    }
+  }
+);
+
 function serializeTreatmentPlan(plan) {
   return {
     id: plan.id.toString(),
@@ -876,22 +1037,11 @@ router.get(
         return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
       }
 
-      const plans = await prisma.treatmentPlan.findMany({
-        where: { patientId },
-        include: {
-          items: { orderBy: { sortOrder: 'asc' } },
-          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      return res.json({ treatmentPlans: plans.map(serializeTreatmentPlan) });
+      const treatmentPlans = await listTreatmentPlansForDentist({ db: prisma, dentistId, patientId });
+      return res.json({ treatmentPlans });
     } catch (error) {
       console.error('Error fetching treatment plans:', error);
-      if (error.message?.startsWith('INVALID_')) {
-        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
-      }
-      return sendError(res, 500, 'FETCH_FAILED', 'Gagal mengambil rencana perawatan.');
+      return sendTreatmentPlanError(res, error);
     }
   }
 );
@@ -915,49 +1065,23 @@ router.post(
         return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
       }
 
-      const { title, description, priority, estimatedCost, targetCompletion, treatments } = req.body;
-
-      if (!title || !title.trim()) {
-        return sendError(res, 400, 'VALIDATION_ERROR', 'Title is required.');
-      }
-      if (!treatments || !Array.isArray(treatments) || treatments.length === 0) {
-        return sendError(res, 400, 'VALIDATION_ERROR', 'At least one treatment is required.');
-      }
-
-      const plan = await prisma.treatmentPlan.create({
-        data: {
-          patientId,
-          dentistId,
-          title: title.trim(),
-          description: description || '',
-          priority: priority || 'medium',
-          estimatedCost: Number(estimatedCost) || 0,
-          targetCompletion: targetCompletion ? new Date(targetCompletion) : null,
-          items: {
-            create: treatments.map((t, index) => ({
-              name: t.name,
-              category: t.category || null,
-              cost: Number(t.cost) || 0,
-              status: t.status || 'pending',
-              sortOrder: index,
-            })),
-          },
-        },
-        include: {
-          items: { orderBy: { sortOrder: 'asc' } },
-          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
-        },
+      const treatmentPlan = await createTreatmentPlan({
+        db: prisma,
+        dentistId,
+        patientId,
+        payload: req.body || {}
       });
 
-      console.log(`[TreatmentPlan] Created plan ${plan.id} for patient ${patientId} by dentist ${dentistId} with ${treatments.length} treatments`);
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:created',
+        treatmentPlan
+      });
 
-      return res.status(201).json({ treatmentPlan: serializeTreatmentPlan(plan) });
+      return res.status(201).json({ treatmentPlan });
     } catch (error) {
       console.error('Error creating treatment plan:', error);
-      if (error.message?.startsWith('INVALID_')) {
-        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
-      }
-      return sendError(res, 500, 'CREATE_FAILED', 'Gagal membuat rencana perawatan.');
+      return sendTreatmentPlanError(res, error);
     }
   }
 );
@@ -973,40 +1097,201 @@ router.put(
       const patientId = toBigInt(req.params.patientId, 'patientId');
       const planId = toBigInt(req.params.planId, 'planId');
 
-      // Verify the plan exists and belongs to this patient
-      const existingPlan = await prisma.treatmentPlan.findFirst({
-        where: { id: planId, patientId },
+      const hasAccess = await prisma.treatmentPlan.findFirst({
+        where: { id: planId, patientId, dentistId },
+        select: { id: true }
       });
-      if (!existingPlan) {
+      if (!hasAccess) {
         return sendError(res, 404, 'NOT_FOUND', 'Treatment plan not found.');
       }
 
-      const { title, description, priority, status, estimatedCost, targetCompletion, notes } = req.body;
-
-      const updated = await prisma.treatmentPlan.update({
-        where: { id: planId },
-        data: {
-          ...(title && { title: title.trim() }),
-          ...(description !== undefined && { description }),
-          ...(priority && { priority }),
-          ...(status && { status }),
-          ...(estimatedCost !== undefined && { estimatedCost: Number(estimatedCost) || 0 }),
-          ...(targetCompletion !== undefined && { targetCompletion: targetCompletion ? new Date(targetCompletion) : null }),
-          ...(notes !== undefined && { notes }),
-        },
-        include: {
-          items: { orderBy: { sortOrder: 'asc' } },
-          dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
-        },
+      const treatmentPlan = await updateTreatmentPlan({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: planId,
+        payload: req.body || {}
       });
-
-      return res.json({ treatmentPlan: serializeTreatmentPlan(updated) });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:updated',
+        treatmentPlan
+      });
+      return res.json({ treatmentPlan });
     } catch (error) {
       console.error('Error updating treatment plan:', error);
-      if (error.message?.startsWith('INVALID_')) {
-        return sendError(res, 400, 'INVALID_ID', 'ID tidak valid.');
-      }
-      return sendError(res, 500, 'UPDATE_FAILED', 'Gagal memperbarui rencana perawatan.');
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// GET /v1/dentist-portal/treatment-plans/:id
+router.get(
+  '/treatment-plans/:id',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const treatmentPlan = await getTreatmentPlanForDentist({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id
+      });
+      return res.json({ treatmentPlan });
+    } catch (error) {
+      console.error('Error fetching treatment plan:', error);
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// PATCH /v1/dentist-portal/treatment-plans/:id
+router.patch(
+  '/treatment-plans/:id',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const treatmentPlan = await updateTreatmentPlan({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id,
+        payload: req.body || {}
+      });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:updated',
+        treatmentPlan
+      });
+      return res.json({ treatmentPlan });
+    } catch (error) {
+      console.error('Error patching treatment plan:', error);
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// POST /v1/dentist-portal/treatment-plans/:id/items
+router.post(
+  '/treatment-plans/:id/items',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const item = await addTreatmentPlanItem({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id,
+        payload: req.body || {}
+      });
+      const treatmentPlan = await getTreatmentPlanForDentist({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id
+      });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:updated',
+        treatmentPlan
+      });
+      return res.status(201).json({ item, treatmentPlan });
+    } catch (error) {
+      console.error('Error adding treatment plan item:', error);
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// PATCH /v1/dentist-portal/treatment-plans/:id/items/:itemId
+router.patch(
+  '/treatment-plans/:id/items/:itemId',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const item = await updateTreatmentPlanItem({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id,
+        itemId: req.params.itemId,
+        payload: req.body || {}
+      });
+      const treatmentPlan = await getTreatmentPlanForDentist({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id
+      });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:updated',
+        treatmentPlan
+      });
+      return res.json({ item, treatmentPlan });
+    } catch (error) {
+      console.error('Error updating treatment plan item:', error);
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// DELETE /v1/dentist-portal/treatment-plans/:id/items/:itemId
+router.delete(
+  '/treatment-plans/:id/items/:itemId',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const result = await deleteTreatmentPlanItem({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id,
+        itemId: req.params.itemId
+      });
+      const treatmentPlan = await getTreatmentPlanForDentist({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id
+      });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:updated',
+        treatmentPlan
+      });
+      return res.json(result);
+    } catch (error) {
+      console.error('Error deleting treatment plan item:', error);
+      return sendTreatmentPlanError(res, error);
+    }
+  }
+);
+
+// POST /v1/dentist-portal/treatment-plans/:id/send
+router.post(
+  '/treatment-plans/:id/send',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const treatmentPlan = await sendTreatmentPlan({
+        db: prisma,
+        dentistId,
+        treatmentPlanId: req.params.id
+      });
+      emitTreatmentPlanRealtime({
+        io: req.app.get('io'),
+        eventType: 'treatment_plan:sent',
+        treatmentPlan,
+        invoice: treatmentPlan.invoice
+      });
+      return res.json({ treatmentPlan });
+    } catch (error) {
+      console.error('Error sending treatment plan:', error);
+      return sendTreatmentPlanError(res, error);
     }
   }
 );
@@ -1043,8 +1328,9 @@ router.put(
 
       const { resultNotes, actualCost, status } = req.body;
       const imageUrl = req.file ? `/uploads/treatment-images/${req.file.filename}` : undefined;
+      const normalizedStatus = status ? normalizeItemStatus(status) : null;
 
-      const isCompleting = status === 'completed' || (!status && existingItem.status !== 'completed');
+      const isCompleting = normalizedStatus === 'DONE' || (!status && !['DONE', 'completed'].includes(existingItem.status));
 
       // Build update data
       const updateData = {};
@@ -1052,12 +1338,12 @@ router.put(
       if (actualCost !== undefined) updateData.actualCost = Number(actualCost) || 0;
       if (imageUrl) updateData.imageUrl = imageUrl;
       if (status) {
-        updateData.status = status;
-        if (status === 'completed' && !existingItem.completedDate) {
+        updateData.status = normalizedStatus;
+        if (normalizedStatus === 'DONE' && !existingItem.completedDate) {
           updateData.completedDate = new Date();
         }
       } else if (isCompleting) {
-        updateData.status = 'completed';
+        updateData.status = 'DONE';
         if (!existingItem.completedDate) {
           updateData.completedDate = new Date();
         }
@@ -1073,16 +1359,16 @@ router.put(
       const allItems = await prisma.treatmentItem.findMany({
         where: { treatmentPlanId: planId },
       });
-      const completedCount = allItems.filter(i => i.status === 'completed').length;
+      const completedCount = allItems.filter(i => ['DONE', 'completed'].includes(i.status)).length;
       const progress = allItems.length > 0 ? Math.round((completedCount / allItems.length) * 100) : 0;
       const totalActualCost = allItems.reduce((sum, i) => sum + (i.actualCost || i.cost || 0), 0);
 
       const planUpdateData = { progress, actualCost: totalActualCost };
       if (progress === 100) {
-        planUpdateData.status = 'completed';
+        planUpdateData.status = 'COMPLETED';
         planUpdateData.completedAt = new Date();
       } else if (completedCount > 0) {
-        planUpdateData.status = 'in-progress';
+        planUpdateData.status = 'IN_PROGRESS';
       }
 
       const updatedPlan = await prisma.treatmentPlan.update({
@@ -1096,7 +1382,7 @@ router.put(
 
       console.log(`[TreatmentItem] Updated item ${itemId} in plan ${planId} — status: ${updatedItem.status}, progress: ${progress}%`);
 
-      return res.json({ treatmentPlan: serializeTreatmentPlan(updatedPlan) });
+      return res.json({ treatmentPlan: serializeUnifiedTreatmentPlan(updatedPlan) });
     } catch (error) {
       console.error('Error updating treatment item:', error);
       if (error.message?.startsWith('INVALID_')) {

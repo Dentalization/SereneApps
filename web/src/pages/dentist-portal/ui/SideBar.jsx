@@ -5,6 +5,7 @@ import AppImage from '../../../components/AppImage';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNotifications } from '../../../contexts/NotificationContext';
 import { resolveMediaUrl } from '../../../utils/media';
 import { getDentistServicesContext } from '../../../services/dentistPortalService';
 
@@ -27,8 +28,7 @@ const SideBar = () => {
   const userMenuRef = useRef(null);
   const [dentistContext, setDentistContext] = useState({ loading: true, dentistType: null });
 
-  // State dummy untuk notifikasi
-  const [unreadNotifications, setUnreadNotifications] = useState(2);
+  const { unreadCount: unreadNotifications } = useNotifications();
 
   const avatarPath = user?.avatar_url || user?.profile?.avatar_url;
   const avatarUrl = resolveMediaUrl(avatarPath);
@@ -192,7 +192,7 @@ const SideBar = () => {
 
       <div className="sticky top-0 h-screen p-4">
         <div
-          className={`h-full flex flex-col overflow-hidden rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
+          className={`h-full flex flex-col ${isCollapsed ? 'overflow-visible' : 'overflow-hidden'} rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
           style={{
             transition: SIDEBAR_WIDTH_TRANSITION,
             willChange: 'width'
@@ -397,7 +397,9 @@ const SideBar = () => {
 
               {isUserMenuOpen && (
                 <div
-                  className="absolute bottom-full left-0 mb-2 w-full min-w-[240px] bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50"
+                  className={`absolute bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50 ${
+                    isCollapsed ? 'bottom-0 left-full ml-8 w-64' : 'bottom-full left-0 mb-2 w-full min-w-[240px]'
+                  }`}
                   style={{ animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)', borderRadius: 25 }}
                 >
                   <div className="p-4 border-b border-primary bg-gradient-to-r from-accent/10 to-accent/5" style={{ borderTopLeftRadius: 25, borderTopRightRadius: 25 }}>

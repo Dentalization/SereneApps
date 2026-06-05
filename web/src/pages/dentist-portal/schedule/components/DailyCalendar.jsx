@@ -2,14 +2,17 @@ import React, { useState, useMemo, useCallback } from 'react';
 import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 const DailyCalendar = ({
   selectedDate,
   appointments,
   onTimeSlotClick,
   onAppointmentClick,
-  onScheduleAction
+  onScheduleAction,
+  dentistProfile
 }) => {
+  const { user } = useAuth();
   const { t, language } = useLanguage();
   const locale = useMemo(() => (language === 'id' ? 'id-ID' : 'en-US'), [language]);
   const [viewMode, setViewMode] = useState('day'); // (not yet surfaced in the UI)
@@ -71,8 +74,8 @@ const DailyCalendar = ({
 
   // ---------- Config (stabilized with useMemo) ----------
   const cfg = useMemo(() => ({
-    doctorId: 'DENT-001',
-    locationId: 'LOC-UTAMA',
+    doctorId: user?.id?.toString() || 'DENT-001',
+    locationId: dentistProfile?.clinicId?.toString() || dentistProfile?.clinic_id?.toString() || 'LOC-UTAMA',
     granularity: 15,
     clinicHours: {
       monday: { start: '08:00', end: '20:00' },
@@ -84,7 +87,7 @@ const DailyCalendar = ({
       sunday: null
     },
     buffers: { pre: 5, post: 5 }
-  }), []);
+  }), [user?.id, dentistProfile?.clinicId, dentistProfile?.clinic_id]);
 
   const appointmentTypes = useMemo(() => ({
     consultation: { duration: 30, label: t('dentistSchedule.daily.appointmentTypes.consultation'), icon: 'MessageSquare', color: 'blue' },
@@ -154,24 +157,41 @@ const DailyCalendar = ({
   const getSlotStatus = useCallback((slotTime) => {
     const slotEnd = addMinutes(slotTime, cfg.granularity);
 
-    // Find overlapping items within this slot (exclude cancelled/rejected)
+    // Find overlapping items within this slot
     const overlapping = (appointments || []).filter(apt => {
-      // Skip cancelled, rejected, or no-show appointments
-      if (apt.status === 'cancelled' || apt.rawStatus === 'cancelled' || 
-          apt.status === 'rejected' || apt.status === 'no-show') {
-        return false;
-      }
       const aptStart = new Date(apt.start);
       const aptEnd = new Date(apt.end);
       return aptStart < slotEnd && aptEnd > slotTime;
     });
 
     if (overlapping.length > 0) {
-      const item = overlapping[0];
+      // Prioritize active appointments over completed and cancelled ones
+      const sorted = [...overlapping].sort((a, b) => {
+        const getPriority = (status) => {
+          if (['cancelled', 'rejected', 'no-show'].includes(status)) return 3;
+          if (status === 'completed') return 2;
+          return 1; // active/pending/confirmed/blocked
+        };
+        return getPriority(a.status) - getPriority(b.status);
+      });
+
+      const item = sorted[0];
       if (item.status === 'hold') {
         return {
           status: 'hold',
-          color: 'bg-orange-100 border-orange-300 text-orange-800',
+          color: 'bg-orange-100 border-orange-300 text-orange-800 dark:bg-orange-950/20 dark:border-orange-900/30 dark:text-orange-300',
+          item
+        };
+      } else if (item.status === 'cancelled' || item.status === 'rejected' || item.status === 'no-show') {
+        return {
+          status: 'cancelled',
+          color: 'bg-red-50/40 border-red-200 text-red-700/60 dark:bg-red-950/10 dark:border-red-900/20 dark:text-red-400/50',
+          item
+        };
+      } else if (item.status === 'completed') {
+        return {
+          status: 'completed',
+          color: 'bg-slate-100/75 border-slate-300 text-slate-500 dark:bg-slate-800/30 dark:border-slate-700/30 dark:text-slate-400/70',
           item
         };
       } else if (item.type && blockTypes[item.type]) {
@@ -729,15 +749,34 @@ const DailyCalendar = ({
                       }}
                     >
                       <div
-                        className={`p-3 rounded-xl border-l-4 transition-all hover:shadow-md cursor-pointer relative ${slotStatus.color}`}
+                        className={`p-3 rounded-xl border-l-4 transition-all hover:shadow-md cursor-pointer relative ${slotStatus.color} ${
+                          ['cancelled', 'rejected', 'no-show'].includes(slotStatus.item?.status) ? 'line-through opacity-60' : ''
+                        } ${
+                          slotStatus.item?.status === 'completed' ? 'opacity-80' : ''
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2 min-w-0">
                             <Icon name={getPriorityIcon(slotStatus.item?.priority)} size={14} className="flex-shrink-0" />
                             <Icon name={getChannelIcon(slotStatus.item?.channel)} size={14} className="flex-shrink-0" />
                             <div className="min-w-0 flex-1">
-                              <div className="font-semibold text-sm truncate">
-                                {slotStatus.item?.patient?.name || 'Patient'}
+                              <div className="font-semibold text-sm truncate flex items-center gap-1.5 flex-wrap">
+                                <span>{slotStatus.item?.patient?.name || 'Patient'}</span>
+                                {slotStatus.item?.status === 'completed' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold uppercase tracking-wider">
+                                    Done
+                                  </span>
+                                )}
+                                {['cancelled', 'rejected'].includes(slotStatus.item?.status) && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold uppercase tracking-wider">
+                                    Cancelled
+                                  </span>
+                                )}
+                                {slotStatus.item?.status === 'no-show' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider">
+                                    No Show
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs opacity-75 truncate">
                                 {appointmentTypes[slotStatus.item?.type]?.label || slotStatus.item?.type}

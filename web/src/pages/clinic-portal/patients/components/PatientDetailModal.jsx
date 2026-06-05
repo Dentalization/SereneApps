@@ -4,6 +4,30 @@ import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { fetchClinicTeledentistrySummary } from '../../../../services/clinicTeledentistryService';
 import { canViewSummaries, getClinicRole } from '../../../../utils/clinicRoles';
+import { resolveMediaUrl } from '../../../../utils/media';
+
+if (typeof document !== 'undefined' && !document.getElementById('modal-animations')) {
+  const style = document.createElement('style');
+  style.id = 'modal-animations';
+  style.textContent = `
+    @keyframes modalSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes backdropFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 const fmt = (d, locale = 'id-ID') => {
@@ -92,12 +116,16 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
 
   // Patient-specific appointments sorted newest first
   const patientAppointments = (patient.appointments || [])
-    .slice()
-    .sort((a, b) => new Date(b.startsAt || b.date) - new Date(a.startsAt || a.date));
+    .filter(Boolean)
+    .sort((a, b) => {
+      const dateB = new Date(b.startsAt || b.date);
+      const dateA = new Date(a.startsAt || a.date);
+      return (isNaN(dateB.getTime()) ? 0 : dateB) - (isNaN(dateA.getTime()) ? 0 : dateA);
+    });
 
-  const upcomingApts = patientAppointments.filter(a => a.status === 'scheduled' || a.status === 'confirmed');
-  const completedApts = patientAppointments.filter(a => a.status === 'completed');
-  const totalRevenue = patientAppointments.filter(a => a.isPaid).reduce((s, a) => s + (a.fee || 0), 0);
+  const upcomingApts = patientAppointments.filter(a => a && (a.status === 'scheduled' || a.status === 'confirmed'));
+  const completedApts = patientAppointments.filter(a => a && a.status === 'completed');
+  const totalRevenue = patientAppointments.filter(a => a && a.isPaid).reduce((s, a) => s + (a.fee || 0), 0);
 
   const handleViewTeleSummary = async (appointmentId) => {
     setSummaryState({ open: true, loading: true, error: '', data: null });
@@ -116,12 +144,17 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4"
+        onClick={onClose}
+        style={{ animation: 'backdropFadeIn 0.2s ease-out' }}
+      >
         <div
           className="relative w-full max-w-5xl max-h-[92vh] rounded-2xl overflow-hidden flex flex-col"
           style={{
             background: 'linear-gradient(135deg, var(--surface-elevated) 0%, var(--surface) 100%)',
             boxShadow: '0 25px 60px -12px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.05)',
+            animation: 'modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -144,7 +177,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
                 {/* Avatar */}
                 {patient.avatar ? (
                   <img
-                    src={patient.avatar}
+                    src={resolveMediaUrl(patient.avatar)}
                     alt={patient.name}
                     className="w-16 h-16 rounded-2xl object-cover flex-shrink-0"
                     style={{ boxShadow: '0 8px 24px -4px rgba(99,102,241,.4)' }}
@@ -160,7 +193,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
                   }}
                 >
                   <span className="text-xl font-bold text-white">
-                    {patient.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    {(patient.name || '').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </span>
                 </div>
 
@@ -216,7 +249,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
                 onViewTeleSummary={handleViewTeleSummary}
               />
             )}
-            {tab === 'schedule' && <ScheduleTab upcoming={upcomingApts} />}
+            {tab === 'schedule' && <ScheduleTab upcoming={upcomingApts} onViewHistory={() => setTab('history')} />}
           </div>
         </div>
         <ClinicTeleSummaryModal
@@ -258,11 +291,15 @@ const OverviewTab = ({ patient }) => (
         Riwayat Medis
       </h3>
       <div className="space-y-0.5">
-        <InfoRow icon="AlertTriangle" label="Alergi" value={
-          patient.medicalRecord?.allergies?.length > 0 ? patient.medicalRecord.allergies.join(', ') : null
+         <InfoRow icon="AlertTriangle" label="Alergi" value={
+          Array.isArray(patient.medicalRecord?.allergies) && patient.medicalRecord.allergies.length > 0
+            ? patient.medicalRecord.allergies.join(', ')
+            : null
         } />
         <InfoRow icon="FileText" label="Kondisi" value={
-          patient.medicalRecord?.conditions?.length > 0 ? patient.medicalRecord.conditions.join(', ') : null
+          Array.isArray(patient.medicalRecord?.conditions) && patient.medicalRecord.conditions.length > 0
+            ? patient.medicalRecord.conditions.join(', ')
+            : null
         } />
         <InfoRow icon="Droplet" label="Golongan Darah" value={patient.medicalRecord?.bloodType} />
         <InfoRow icon="Stethoscope" label="Perawatan Terakhir" value={patient.medicalRecord?.lastTreatment} />
@@ -299,12 +336,13 @@ const OverviewTab = ({ patient }) => (
 /* ═══ HISTORY TAB ═══════════════════════════════════════════════════ */
 const isVirtualAppointment = (appointment) => ['virtual', 'tele', 'teledentistry'].includes(String(appointment.consultationType || '').toLowerCase());
 
-const HistoryTab = ({ appointments, canViewTeleSummaries = false, onViewTeleSummary }) => {
+const HistoryTab = ({ appointments = [], canViewTeleSummaries = false, onViewTeleSummary }) => {
   const [filter, setFilter] = useState('all');
 
-  const filtered = filter === 'all' ? appointments : appointments.filter(a => a.status === filter);
+  const validAppointments = (appointments || []).filter(Boolean);
+  const filtered = filter === 'all' ? validAppointments : validAppointments.filter(a => a.status === filter);
 
-  const uniqueStatuses = [...new Set(appointments.map(a => a.status))];
+  const uniqueStatuses = [...new Set(validAppointments.map(a => a.status).filter(Boolean))];
 
   return (
     <div>
@@ -451,7 +489,7 @@ const SummaryLine = ({ label, value }) => (
 );
 
 /* ═══ SCHEDULE TAB ══════════════════════════════════════════════════ */
-const ScheduleTab = ({ upcoming }) => (
+const ScheduleTab = ({ upcoming, onViewHistory }) => (
   <div>
     <h3 className="text-sm font-semibold text-primary mb-4 flex items-center gap-2">
       <Icon name="CalendarClock" size={16} className="text-accent" />
@@ -464,9 +502,18 @@ const ScheduleTab = ({ upcoming }) => (
           <Icon name="CalendarPlus" size={28} className="text-accent" />
         </div>
         <p className="text-primary font-medium mb-1">Belum Ada Jadwal</p>
-        <p className="text-secondary text-sm mx-auto max-w-xs">
+        <p className="text-secondary text-sm mx-auto max-w-xs mb-4">
           Pasien ini belum memiliki appointment yang dijadwalkan.
         </p>
+        {onViewHistory && (
+          <button
+            onClick={onViewHistory}
+            className="px-4 py-2 bg-accent/10 text-accent hover:bg-accent/20 rounded-xl transition-all duration-200 font-semibold text-xs flex items-center justify-center mx-auto space-x-1.5"
+          >
+            <Icon name="Clock" size={13} />
+            <span>Lihat Riwayat Kunjungan</span>
+          </button>
+        )}
       </div>
     ) : (
       <div className="space-y-3">

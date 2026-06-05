@@ -25,11 +25,17 @@ const ClinicDailyCalendar = ({
     t(`clinic.schedule.appointment.status.${statusKeyMap[status] || status}`);
 
   // Helper functions
-  const formatTime = (date) =>
-    date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  const formatTime = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
 
-  const formatDateHeader = (date) =>
-    date.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formatDateHeader = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
   const parseHHMM = (str) => {
     const [h, m] = (str || '00:00').split(':').map(Number);

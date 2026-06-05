@@ -1,5 +1,34 @@
 import { resolvePaymentOwner } from './ownership.js';
 
+function calculateFinancialSplit(amount, ownerType = 'dentist') {
+  const grossAmount = Number.isFinite(Number(amount)) ? Math.max(0, Math.round(Number(amount))) : 0;
+  const platformFee = Math.round(grossAmount * 0.1);
+  if (ownerType === 'clinic') {
+    const dentistShare = Math.round(grossAmount * 0.3);
+    const clinicShare = grossAmount - platformFee - dentistShare;
+    return { platformFee, dentistShare, clinicShare, grandTotal: grossAmount };
+  }
+  return {
+    platformFee,
+    dentistShare: grossAmount - platformFee,
+    clinicShare: 0,
+    grandTotal: grossAmount
+  };
+}
+
+function getTreatmentPlanIdFromIntent(paymentIntent = {}) {
+  const metadata = paymentIntent.metadata && typeof paymentIntent.metadata === 'object' && !Array.isArray(paymentIntent.metadata)
+    ? paymentIntent.metadata
+    : {};
+  const raw = metadata.treatmentPlanId || metadata.treatment_plan_id;
+  if (!raw) return null;
+  try {
+    return BigInt(raw);
+  } catch (_error) {
+    return null;
+  }
+}
+
 function normalizeLineItems(items = []) {
   return items
     .map((item) => ({
@@ -25,7 +54,23 @@ export async function ensureInvoiceForPaymentIntent({
   const existing = await tx.invoice.findFirst({
     where: { paymentIntentId: paymentIntent.id }
   });
-  if (existing) return existing;
+  const treatmentPlanId = getTreatmentPlanIdFromIntent(paymentIntent);
+  if (existing) {
+    if (treatmentPlanId && !existing.treatmentPlanId) {
+      return tx.invoice.update({
+        where: { id: existing.id },
+        data: {
+          treatmentPlanId,
+          metadata: {
+            ...(existing.metadata || {}),
+            treatmentPlanId: treatmentPlanId.toString(),
+            source: existing.metadata?.source || 'payment_intent'
+          }
+        }
+      });
+    }
+    return existing;
+  }
 
   const lineItems = items && items.length > 0
     ? normalizeLineItems(items)
@@ -41,6 +86,7 @@ export async function ensureInvoiceForPaymentIntent({
   const total = subtotal;
 
   const owner = resolvePaymentOwner(appointment || {});
+  const split = calculateFinancialSplit(total, owner.ownerType);
   const reference = `INV-${String(paymentIntent.id).padStart(6, '0')}`;
   const issuedAt = new Date();
 
@@ -105,6 +151,7 @@ export async function ensureInvoiceForPaymentIntent({
     data: {
       appointmentId: appointment?.id ?? null,
       paymentIntentId: paymentIntent.id,
+      treatmentPlanId,
       patientId: patient?.id ?? paymentIntent.patientId,
       ownerType: owner.ownerType,
       ownerClinicId: owner.ownerClinicId,
@@ -115,6 +162,10 @@ export async function ensureInvoiceForPaymentIntent({
       tax: 0,
       discount: 0,
       total,
+      platformFee: split.platformFee,
+      clinicShare: split.clinicShare,
+      dentistShare: split.dentistShare,
+      grandTotal: split.grandTotal,
       currency: paymentIntent.currency || 'IDR',
       issuedAt,
       issuerType,
@@ -125,7 +176,9 @@ export async function ensureInvoiceForPaymentIntent({
       issuerTaxId,
       issuerSnapshot,
       metadata: {
-        appointmentId: appointment?.id?.toString?.() ?? null
+        appointmentId: appointment?.id?.toString?.() ?? null,
+        treatmentPlanId: treatmentPlanId?.toString?.() ?? null,
+        source: treatmentPlanId ? 'treatment_plan_payment' : 'payment_intent'
       }
     }
   });

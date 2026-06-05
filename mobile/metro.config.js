@@ -12,8 +12,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Force @twilio/conversations to dist/index.js which is free of core-js polyfills
   if (
     moduleName === '@twilio/conversations' ||
-    moduleName === '@twilio/conversations/builds/lib.js' ||
-    moduleName === '@twilio/conversations/builds/browser.js'
+    moduleName === '@twilio/conversations/builds/lib.js'
   ) {
     return {
       filePath: path.resolve(__dirname, 'src/shims/twilio-conversations-shim.js'),
@@ -40,11 +39,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       type: 'sourceFile',
     };
   }
-  
+
   if (defaultResolveRequest) {
     return defaultResolveRequest(context, moduleName, platform);
   }
-  
+
   return context.resolveRequest(context, moduleName, platform);
 };
 

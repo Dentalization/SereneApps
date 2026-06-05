@@ -13,13 +13,16 @@ import ClinicDailyCalendar from './components/ClinicDailyCalendar';
 import ClinicScheduleStats from './components/ClinicScheduleStats';
 import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
 import { fetchAppointments } from '../../../services/appointmentService';
+import { useNotifications } from '../../../contexts/NotificationContext';
+import ClinicService from '../../../services/clinicService';
 
 const SchedulePage = () => {
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
-  
+  const { socket } = useNotifications();
+
   const [activeTab, setActiveTab] = useState('overview');
   const [viewMode, setViewMode] = useState('week'); // 'daily', 'week', 'month'
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -37,6 +40,7 @@ const SchedulePage = () => {
   const MIN_LOADING_MS = 900;
   const loadStartRef = useRef(Date.now());
   const loadingTimerRef = useRef(null);
+  const hasInitializedDoctorsRef = useRef(false);
 
   const finishLoading = useCallback(() => {
     const finalize = () => {
@@ -65,146 +69,7 @@ const SchedulePage = () => {
     };
   }, []);
 
-  // Mock data - This should come from API
-  const mockDoctors = useMemo(() => ([
-    {
-      id: 'drg_1',
-      name: t('clinic.schedule.doctors.drSarahLestari') || 'Dr. Sarah Lestari',
-      specialization: t('clinic.schedule.specializations.generalDentist') || 'Dokter Gigi Umum',
-      email: 'sarah@klinik.com',
-      phone: '+62812-3456-7890'
-    },
-    {
-      id: 'drg_2',
-      name: t('clinic.schedule.doctors.drAhmadFauzi') || 'Dr. Ahmad Fauzi',
-      specialization: t('clinic.schedule.specializations.orthodontist') || 'Orthodontist',
-      email: 'ahmad@klinik.com',
-      phone: '+62813-4567-8901'
-    },
-    {
-      id: 'drg_3',
-      name: t('clinic.schedule.doctors.drMayaSari') || 'Dr. Maya Sari',
-      specialization: t('clinic.schedule.specializations.endodontist') || 'Endodontist',
-      email: 'maya@klinik.com',
-      phone: '+62814-5678-9012'
-    },
-    {
-      id: 'drg_4',
-      name: t('clinic.schedule.doctors.drRinoPratama') || 'Dr. Rino Pratama',
-      specialization: t('clinic.schedule.specializations.oralSurgeon') || 'Oral Surgeon',
-      email: 'rino@klinik.com',
-      phone: '+62815-6789-0123'
-    }
-  ]), [t]);
 
-  const mockAppointments = useMemo(() => ([
-    {
-      id: 'apt_1001',
-      status: 'confirmed',
-      channel: 'clinic',
-      type: t('clinic.schedule.appointmentTypes.generalConsultation') || 'Konsultasi Umum',
-      start: (() => { const d = new Date(); d.setHours(9, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(9, 30, 0, 0); return d; })(),
-      patient: { id: 'p_1', name: t('clinic.schedule.patients.ahmadSutrisno') || 'Ahmad Sutrisno', contact: { wa: '+62812-1111-1111' } },
-      provider: { id: 'drg_1', name: t('clinic.schedule.doctors.drSarahLestari') || 'Dr. Sarah Lestari' },
-      location: { id: 'room1', name: t('clinic.schedule.locations.room1') || 'Ruang 1' },
-      reason: t('clinic.schedule.reasons.toothacheUpperRight') || 'Sakit gigi bagian kanan atas',
-      risk: 0.25
-    },
-    {
-      id: 'apt_1002',
-      status: 'pending',
-      channel: 'clinic',
-      type: t('clinic.schedule.appointmentTypes.scalingPolishing') || 'Scaling & Polishing',
-      start: (() => { const d = new Date(); d.setHours(9, 30, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(10, 15, 0, 0); return d; })(),
-      patient: { id: 'p_2', name: t('clinic.schedule.patients.budiSantoso') || 'Budi Santoso', contact: { wa: '+62812-2222-2222' } },
-      provider: { id: 'drg_2', name: t('clinic.schedule.doctors.drAhmadFauzi') || 'Dr. Ahmad Fauzi' },
-      location: { id: 'room2', name: t('clinic.schedule.locations.room2') || 'Ruang 2' },
-      reason: t('clinic.schedule.reasons.routineScaling') || 'Scaling rutin 6 bulan',
-      risk: 0.15
-    },
-    {
-      id: 'apt_1003',
-      status: 'check-in',
-      channel: 'clinic',
-      type: 'Tambal Gigi',
-      start: (() => { const d = new Date(); d.setHours(10, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(11, 0, 0, 0); return d; })(),
-      patient: { id: 'p_3', name: 'Siti Nurhaliza', contact: { wa: '+62812-3333-3333' } },
-      provider: { id: 'drg_1', name: 'Dr. Sarah Lestari' },
-      location: { id: 'room1', name: 'Ruang 1' },
-      reason: 'Tambal gigi berlubang',
-      risk: 0.35
-    },
-    {
-      id: 'apt_1004',
-      status: 'in-chair',
-      channel: 'clinic',
-      type: 'Root Canal Treatment',
-      start: (() => { const d = new Date(); d.setHours(11, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(12, 30, 0, 0); return d; })(),
-      patient: { id: 'p_4', name: 'Maya Dewi', contact: { wa: '+62812-4444-4444' } },
-      provider: { id: 'drg_3', name: 'Dr. Maya Sari' },
-      location: { id: 'room3', name: 'Ruang 3' },
-      reason: 'Perawatan saluran akar',
-      risk: 0.65
-    },
-    {
-      id: 'apt_1005',
-      status: 'completed',
-      channel: 'clinic',
-      type: 'Konsultasi Orthodonti',
-      start: (() => { const d = new Date(); d.setHours(13, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(13, 45, 0, 0); return d; })(),
-      patient: { id: 'p_5', name: 'Rini Kartika', contact: { wa: '+62812-5555-5555' } },
-      provider: { id: 'drg_2', name: 'Dr. Ahmad Fauzi' },
-      location: { id: 'room2', name: 'Ruang 2' },
-      reason: 'Konsultasi pemasangan behel',
-      risk: 0.20
-    },
-    {
-      id: 'apt_1006',
-      status: 'confirmed',
-      channel: 'tele',
-      type: 'Teledentistry Consultation',
-      start: (() => { const d = new Date(); d.setHours(14, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(14, 30, 0, 0); return d; })(),
-      patient: { id: 'p_6', name: 'Andi Prasetyo', contact: { wa: '+62812-6666-6666' } },
-      provider: { id: 'drg_1', name: 'Dr. Sarah Lestari' },
-      location: { id: 'online', name: 'Online' },
-      reason: 'Follow-up hasil rontgen',
-      risk: 0.30,
-      tele: { videoRoomUrl: '/clinic-portal/teledentistry?appointmentId=apt_1006' }
-    },
-    {
-      id: 'apt_1007',
-      status: 'cancelled',
-      channel: 'clinic',
-      type: 'Cabut Gigi',
-      start: (() => { const d = new Date(); d.setHours(15, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setHours(15, 45, 0, 0); return d; })(),
-      patient: { id: 'p_7', name: 'Dedi Kurniawan', contact: { wa: '+62812-7777-7777' } },
-      provider: { id: 'drg_4', name: 'Dr. Rino Pratama' },
-      location: { id: 'room4', name: 'Ruang 4' },
-      reason: 'Pasien berhalangan hadir',
-      risk: 0.45
-    },
-    // Tomorrow's appointments
-    {
-      id: 'apt_2001',
-      status: 'confirmed',
-      channel: 'clinic',
-      type: 'Konsultasi Umum',
-      start: (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; })(),
-      end: (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 30, 0, 0); return d; })(),
-      patient: { id: 'p_8', name: 'Lina Sari', contact: { wa: '+62812-8888-8888' } },
-      provider: { id: 'drg_1', name: 'Dr. Sarah Lestari' },
-      location: { id: 'room1', name: 'Ruang 1' },
-      reason: 'Checkup rutin',
-      risk: 0.18
-    }
-  ]), [t]);
 
   const normalizeStatus = useCallback((status) => {
     switch (status) {
@@ -230,6 +95,7 @@ const SchedulePage = () => {
       patient: {
         id: appointment.patientId,
         name: appointment.patient?.name || t('clinic.schedule.labels.unknownPatient', { defaultValue: 'Unknown patient' }),
+        avatar: appointment.patient?.avatar || null,
         contact: {
           wa: appointment.patient?.phone || appointment.patient?.phone_number || appointment.patient?.email || null
         }
@@ -240,9 +106,9 @@ const SchedulePage = () => {
       },
       location: appointment.clinicBranch
         ? {
-            id: appointment.clinicBranch.id,
-            name: appointment.clinicBranch.name || t('clinic.schedule.locations.default', { defaultValue: 'Clinic' })
-          }
+          id: appointment.clinicBranch.id,
+          name: appointment.clinicBranch.name || t('clinic.schedule.locations.default', { defaultValue: 'Clinic' })
+        }
         : null,
       reason: appointment.reason,
       risk: appointment.metadata?.risk ?? 0,
@@ -257,35 +123,80 @@ const SchedulePage = () => {
     loadStartRef.current = Date.now();
     setLoading(true);
     try {
-      const response = await fetchAppointments({ view: 'clinic', includeHistory: false });
+      const from = new Date(selectedDate);
+      from.setDate(from.getDate() - 45);
+      from.setHours(0, 0, 0, 0);
+
+      const to = new Date(selectedDate);
+      to.setDate(to.getDate() + 45);
+      to.setHours(23, 59, 59, 999);
+
+      const [response, staffResponse] = await Promise.all([
+        fetchAppointments({
+          view: 'clinic',
+          from: from.toISOString(),
+          to: to.toISOString(),
+          includeHistory: true
+        }),
+        ClinicService.getClinicStaffList().catch((err) => {
+          console.error('Failed to fetch clinic staff:', err);
+          return { staff: [] };
+        })
+      ]);
+
       const mapped = (response?.appointments || []).map(mapApiAppointment).filter(Boolean);
-      if (mapped.length) {
-        setAppointments(mapped);
-        const providerMap = new Map();
-        mapped.forEach((apt) => {
-          if (apt.provider?.id) {
-            providerMap.set(apt.provider.id, apt.provider);
-          }
-        });
-        const providerList = providerMap.size ? Array.from(providerMap.values()) : mockDoctors;
-        setDoctors(providerList);
-        setSelectedDoctors(providerList.map((doc) => doc.id));
+
+      const staffList = staffResponse?.staff || [];
+      const clinicDentists = staffList
+        .filter((s) => s.role === 'dentist')
+        .map((s) => ({
+          id: s.userId,
+          name: s.name,
+          specialization: s.position || t('clinic.schedule.specializations.generalDentist'),
+          email: s.email,
+          phone: s.phone
+        }));
+
+      // Fallback: if we have appointments with dentists not in the staff list, collect from appointments
+      const dentistMap = new Map();
+      clinicDentists.forEach((d) => dentistMap.set(d.id, d));
+      mapped.forEach((apt) => {
+        if (apt.provider?.id && !dentistMap.has(apt.provider.id)) {
+          dentistMap.set(apt.provider.id, {
+            id: apt.provider.id,
+            name: apt.provider.name,
+            specialization: t('clinic.schedule.specializations.generalDentist'),
+            email: '',
+            phone: ''
+          });
+        }
+      });
+
+      const finalDentists = Array.from(dentistMap.values());
+
+      setAppointments(mapped);
+      setDoctors(finalDentists);
+
+      // Manage doctor selection state
+      if (!hasInitializedDoctorsRef.current && finalDentists.length > 0) {
+        setSelectedDoctors(finalDentists.map((d) => d.id));
+        hasInitializedDoctorsRef.current = true;
       } else {
-        setAppointments(mockAppointments);
-        setDoctors(mockDoctors);
-        setSelectedDoctors(mockDoctors.map((doc) => doc.id));
+        setSelectedDoctors((prev) => {
+          const finalIds = finalDentists.map((d) => d.id);
+          return prev.filter((id) => finalIds.includes(id));
+        });
       }
+
       setLastSyncedAt(new Date());
     } catch (error) {
       console.error('Error fetching clinic schedule:', error);
-      setAppointments(mockAppointments);
-      setDoctors(mockDoctors);
-      setSelectedDoctors(mockDoctors.map((doc) => doc.id));
+      // Keep existing states on error rather than falling back to mock data
     } finally {
       setRefreshing(false);
       finishLoading();
     }
-  }, [finishLoading, mapApiAppointment, mockAppointments, mockDoctors]);
+  }, [selectedDate, finishLoading, mapApiAppointment, t]);
 
   useEffect(() => {
     loadSchedule();
@@ -295,51 +206,68 @@ const SchedulePage = () => {
     return () => clearInterval(interval);
   }, [loadSchedule]);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handleRealtimeUpdate = (data) => {
+      console.log('🔄 Real-time update: refreshing clinic schedule due to notification:', data);
+      loadSchedule();
+    };
+    socket.on('notification:new', handleRealtimeUpdate);
+    return () => {
+      socket.off('notification:new', handleRealtimeUpdate);
+    };
+  }, [socket, loadSchedule]);
+
   // Handle appointment actions
   const handleAppointmentAction = (action, appointment) => {
     console.log('Appointment action:', action, appointment);
-    
+
     switch (action) {
       case 'confirm':
         // Handle confirmation
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'confirmed' } : apt
         ));
         break;
       case 'cancel':
         // Handle cancellation
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'cancelled' } : apt
         ));
         break;
       case 'checkin':
         // Handle check-in
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'check-in' } : apt
         ));
         break;
       case 'start':
         // Handle start treatment
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'in-chair' } : apt
         ));
         break;
       case 'complete':
         // Handle completion
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'completed' } : apt
         ));
         break;
       case 'noshow':
         // Handle no-show
-        setAppointments(prev => prev.map(apt => 
+        setAppointments(prev => prev.map(apt =>
           apt.id === appointment.id ? { ...apt, status: 'no-show' } : apt
         ));
+        break;
+      case 'viewPatient':
+        if (appointment.patient?.id) {
+          navigate(`/clinic-portal/patients?patientId=${appointment.patient.id.toString()}&tab=history`);
+        }
         break;
       default:
         console.log('Unknown action:', action);
     }
-    
+
     setShowAppointmentDrawer(false);
   };
 
@@ -457,7 +385,7 @@ const SchedulePage = () => {
   return (
     <div className="flex min-h-screen bg-background theme-transition">
       <ClinicSideBar />
-      
+
       {/* Header */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 pb-0">
@@ -483,19 +411,18 @@ const SchedulePage = () => {
                   <span className="text-xs text-secondary">
                     {lastSyncedAt
                       ? t('clinic.schedule.lastUpdated', {
-                          defaultValue: 'Terakhir sinkron {{time}}',
-                          time: new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)
-                        })
+                        defaultValue: 'Terakhir sinkron {{time}}',
+                        time: new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)
+                      })
                       : t('clinic.schedule.syncing', { defaultValue: 'Sinkronisasi data…' })}
                   </span>
                   <button
                     onClick={loadSchedule}
                     disabled={refreshing}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                      refreshing
-                        ? 'border-border text-muted cursor-not-allowed'
-                        : 'border-accent/40 text-accent hover:bg-accent/10'
-                    }`}
+                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${refreshing
+                      ? 'border-border text-muted cursor-not-allowed'
+                      : 'border-accent/40 text-accent hover:bg-accent/10'
+                      }`}
                   >
                     <Icon name="RefreshCw" size={14} className={refreshing ? 'animate-spin' : ''} />
                     {refreshing
@@ -518,11 +445,10 @@ const SchedulePage = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-accent text-white shadow-sm'
-                        : 'text-secondary hover:text-primary hover:bg-surface'
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                      }`}
                   >
                     <Icon name={tab.icon} size={16} />
                     <span>{tab.label}</span>
@@ -536,51 +462,48 @@ const SchedulePage = () => {
         <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-background theme-transition">
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {/* Calendar Section Header */}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-bold text-primary theme-transition flex items-center gap-2">
+                  <Icon name="Calendar" size={18} className="text-accent" />
+                  <span>{t('clinic.schedule.calendarThisWeek') || 'Kalender Minggu Ini'}</span>
+                </h3>
+                <button
+                  onClick={() => setActiveTab('calendar')}
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-accent hover:text-accent/80 transition-all duration-200"
+                >
+                  <span>{t('clinic.schedule.viewDetails') || 'Lihat Detail'}</span>
+                  <Icon name="ArrowRight" size={14} />
+                </button>
+              </div>
+
+              {/* Calendar Overview */}
+              <ClinicMultiCalendar
+                selectedDate={selectedDate}
+                appointments={appointments}
+                onDateChange={handleDateChange}
+                onAppointmentClick={handleAppointmentClick}
+                onViewModeChange={(mode) => {
+                  console.log('Overview calendar view mode change:', mode);
+                  if (mode === 'daily') {
+                    setActiveTab('calendar');
+                    setViewMode('daily');
+                  } else {
+                    handleViewModeChange(mode);
+                  }
+                }}
+                viewMode={viewMode === 'daily' ? 'week' : viewMode}
+                doctors={doctors}
+                selectedDoctors={selectedDoctors}
+                onDoctorSelectionChange={handleDoctorSelectionChange}
+              />
+
               {/* Quick Stats */}
-              <ClinicScheduleStats 
+              <ClinicScheduleStats
                 appointments={appointments}
                 doctors={doctors}
                 selectedDate={selectedDate}
               />
-
-              {/* Calendar Overview */}
-              <div className="bg-surface-elevated rounded-3xl border border-primary/20 shadow-theme-lg theme-transition">
-                <div className="p-6 border-b border-primary/20">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-primary theme-transition">
-                      {t('clinic.schedule.calendarThisWeek') || 'Kalender Minggu Ini'}
-                    </h3>
-                    <button
-                      onClick={() => setActiveTab('calendar')}
-                      className="text-sm text-accent hover:text-accent/80 font-medium theme-transition"
-                    >
-                      {t('clinic.schedule.viewDetails') || 'Lihat Detail'} →
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="p-4 relative z-0">
-                  <ClinicMultiCalendar
-                    selectedDate={selectedDate}
-                    appointments={appointments}
-                    onDateChange={handleDateChange}
-                    onAppointmentClick={handleAppointmentClick}
-                    onViewModeChange={(mode) => {
-                      console.log('Overview calendar view mode change:', mode);
-                      if (mode === 'daily') {
-                        setActiveTab('calendar');
-                        setViewMode('daily');
-                      } else {
-                        handleViewModeChange(mode);
-                      }
-                    }}
-                    viewMode={viewMode === 'daily' ? 'week' : viewMode}
-                    doctors={doctors}
-                    selectedDoctors={selectedDoctors}
-                    onDoctorSelectionChange={handleDoctorSelectionChange}
-                  />
-                </div>
-              </div>
             </div>
           )}
 
@@ -613,12 +536,12 @@ const SchedulePage = () => {
 
           {activeTab === 'stats' && (
             <div className="space-y-6">
-              <ClinicScheduleStats 
+              <ClinicScheduleStats
                 appointments={appointments}
                 doctors={doctors}
                 selectedDate={selectedDate}
               />
-              
+
               {/* Advanced Analytics Section */}
               <div className="bg-surface rounded-3xl border border-primary/30 shadow-theme-lg theme-transition p-6">
                 <div className="flex items-center space-x-3 mb-6">
@@ -634,7 +557,7 @@ const SchedulePage = () => {
                     </p>
                   </div>
                 </div>
-                
+
                 {/* Advanced Analytics Grid */}
                 <div className="grid gap-6 lg:grid-cols-3 mb-6">
                   <div className="rounded-2xl border border-primary/15 dark:border-primary/25 bg-surface dark:bg-slate-950/60 shadow-theme-md p-6 theme-transition bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent">

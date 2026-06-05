@@ -21,7 +21,8 @@
           "locationWhenInUsePermission": "Izinkan Serene Dental Patient mengakses lokasi Anda untuk menemukan klinik dan dokter terdekat.",
           "locationAlwaysAndWhenInUsePermission": "Izinkan Serene Dental Patient mengakses lokasi Anda untuk menemukan klinik dan dokter terdekat."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": true,

@@ -1,6 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import Icon from '../../../../components/AppIcon';
+import { resolveMediaUrl } from '../../../../utils/media';
+
+if (typeof document !== 'undefined' && !document.getElementById('dropdown-animations')) {
+  const style = document.createElement('style');
+  style.id = 'dropdown-animations';
+  style.textContent = `
+    @keyframes dropdownFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
+const formatDateSafe = (dateString, locale, options) => {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  try {
+    return d.toLocaleDateString(locale, options);
+  } catch (e) {
+    return '-';
+  }
+};
+
 
 const StatusBadge = ({ status }) => {
   const { t } = useLanguage();
@@ -62,13 +94,16 @@ const ActionDropdown = ({ patient, onAction }) => {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-        className="p-2 hover:bg-surface rounded-lg transition-colors duration-200"
+        className="p-2 hover:bg-surface rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95"
       >
         <Icon name="MoreVertical" size={16} className="text-secondary" />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-surface-elevated rounded-lg shadow-lg border border-primary/15 z-20 py-1">
+        <div
+          className="absolute right-0 top-full mt-1 w-48 bg-surface-elevated rounded-lg shadow-lg border border-primary/15 z-20 py-1"
+          style={{ animation: 'dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1)', transformOrigin: 'top right' }}
+        >
           {actions.map((action) => (
             <button
               key={action.key}
@@ -77,7 +112,7 @@ const ActionDropdown = ({ patient, onAction }) => {
                 onAction(action.key, patient);
                 setIsOpen(false);
               }}
-              className="w-full flex items-center px-4 py-2.5 text-left text-sm text-secondary hover:text-primary hover:bg-surface transition-colors duration-200"
+              className="w-full flex items-center px-4 py-2.5 text-left text-sm text-secondary hover:text-primary hover:bg-surface transition-all duration-150 hover:pl-5"
             >
               <Icon name={action.icon} size={15} className="mr-3" />
               {action.label}
@@ -140,11 +175,11 @@ const PatientTable = ({ patients, onPatientAction, loading, locale = 'id-ID' }) 
                 <td className="py-3.5 px-5">
                   <div className="flex items-center">
                     {patient.avatar ? (
-                      <img src={patient.avatar} alt={patient.name} className="w-9 h-9 rounded-full object-cover mr-3 ring-2 ring-accent/20" />
+                      <img src={resolveMediaUrl(patient.avatar)} alt={patient.name} className="w-9 h-9 rounded-full object-cover mr-3 ring-2 ring-accent/20" />
                     ) : (
                       <div className="w-9 h-9 bg-accent/10 rounded-full flex items-center justify-center mr-3">
                         <span className="text-xs font-bold text-accent">
-                          {patient.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                          {(patient.name || '').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </span>
                       </div>
                     )}
@@ -162,7 +197,7 @@ const PatientTable = ({ patients, onPatientAction, loading, locale = 'id-ID' }) 
                 </td>
                 <td className="py-3.5 px-5 text-sm text-secondary">{patient.phone || '-'}</td>
                 <td className="py-3.5 px-5 text-sm text-secondary">
-                  {patient.lastVisit ? new Date(patient.lastVisit).toLocaleDateString(locale) : '-'}
+                  {formatDateSafe(patient.lastVisit, locale)}
                 </td>
                 <td className="py-3.5 px-5">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">

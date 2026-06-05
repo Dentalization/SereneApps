@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, TouchableOpacity } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -24,7 +24,15 @@ export default function PreCallSystemCheckSheet({
   onClose,
   onJoin,
 }) {
+  const [consentAccepted, setConsentAccepted] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setConsentAccepted(false);
+  }, [visible]);
+
   if (!visible) return null;
+
+  const effectiveCanJoin = canJoin && consentAccepted;
 
   return (
     <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 140, backgroundColor: withOpacity(COLORS.black || '#000', 0.52), justifyContent: 'flex-end' }}>
@@ -57,9 +65,36 @@ export default function PreCallSystemCheckSheet({
           );
         })}
 
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setConsentAccepted((current) => !current)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: consentAccepted }}
+          accessibilityLabel={labels.recordingConsent || 'Persetujuan rekaman sesi'}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 14,
+            backgroundColor: withOpacity(COLORS.primary, 0.06),
+            borderWidth: 1,
+            borderColor: withOpacity(COLORS.primary, 0.16),
+          }}
+        >
+          <MaterialCommunityIcons
+            name={consentAccepted ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+            size={22}
+            color={consentAccepted ? COLORS.primary : COLORS.textMuted}
+          />
+          <Text style={{ ...TYPOGRAPHY.caption, flex: 1, color: COLORS.textSecondary, marginLeft: 10, lineHeight: 18 }}>
+            {labels.recordingConsent || 'Saya memahami sesi ini mungkin direkam untuk keperluan dokumentasi klinis sesuai kebijakan privasi Serene Apps.'}
+          </Text>
+        </TouchableOpacity>
+
         <Button
           mode="contained"
-          disabled={!canJoin || joining}
+          disabled={!effectiveCanJoin || joining}
           loading={joining}
           onPress={onJoin}
           style={{ borderRadius: 14, marginTop: 18 }}

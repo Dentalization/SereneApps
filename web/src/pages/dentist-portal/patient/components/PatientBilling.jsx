@@ -8,8 +8,12 @@ const getStatusColor = (status) => {
   switch ((status || '').toLowerCase()) {
     case 'paid':
     case 'completed':
+    case 'settled':
       return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50';
     case 'pending':
+    case 'issued':
+    case 'approved':
+    case 'draft':
       return 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50';
     case 'overdue':
       return 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/50';
@@ -30,6 +34,19 @@ const formatCurrency = (amount) => {
 const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendStatement }) => {
   const { t } = useLanguage();
   const [selectedTab, setSelectedTab] = useState('overview');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceFilterStatus, setInvoiceFilterStatus] = useState('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // New Invoice Form State
+  const [newInvoiceDesc, setNewInvoiceDesc] = useState('');
+  const [newInvoiceAmount, setNewInvoiceAmount] = useState('');
+  const [newInvoiceDueDate, setNewInvoiceDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14); // 2 weeks out by default
+    return d.toISOString().split('T')[0];
+  });
+  const [newInvoiceTreatments, setNewInvoiceTreatments] = useState('');
 
   // Hooks must be called unconditionally (OK)
   if (!t || typeof t !== 'function') {
@@ -77,6 +94,52 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
     };
   }, [patient]);
 
+  // Handle invoice submission
+  const handleSubmitInvoice = (e) => {
+    e.preventDefault();
+    if (!newInvoiceDesc || !newInvoiceAmount) return;
+
+    const invoiceId = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const freshInvoice = {
+      id: invoiceId,
+      invoiceId,
+      description: newInvoiceDesc,
+      amount: parseFloat(newInvoiceAmount),
+      grandTotal: parseFloat(newInvoiceAmount),
+      total: parseFloat(newInvoiceAmount),
+      status: 'pending',
+      paymentStatus: 'pending',
+      date: new Date().toISOString().split('T')[0],
+      dueDate: newInvoiceDueDate,
+      treatments: newInvoiceTreatments
+        ? newInvoiceTreatments.split(',').map((t) => t.trim()).filter(Boolean)
+        : [],
+    };
+
+    if (onCreateInvoice) {
+      onCreateInvoice(freshInvoice);
+    }
+
+    // Reset Form
+    setNewInvoiceDesc('');
+    setNewInvoiceAmount('');
+    setNewInvoiceTreatments('');
+    setShowCreateModal(false);
+  };
+
+  // Filtered Invoices
+  const filteredInvoices = useMemo(() => {
+    return (billingData.invoices || []).filter((invoice) => {
+      const matchesSearch =
+        (invoice.id || '').toLowerCase().includes(invoiceSearch.toLowerCase()) ||
+        (invoice.description || '').toLowerCase().includes(invoiceSearch.toLowerCase());
+      const matchesStatus =
+        invoiceFilterStatus === 'all' ||
+        (invoice.status || '').toLowerCase() === invoiceFilterStatus.toLowerCase();
+      return matchesSearch && matchesStatus;
+    });
+  }, [billingData.invoices, invoiceSearch, invoiceFilterStatus]);
+
   // Helpers that use t (OK to define inside component)
   const getInvoiceStatusLabel = (status) => {
     const key = (status || 'unknown').toLowerCase() || 'unknown';
@@ -97,6 +160,17 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+      {/* Simulation Banner Notice */}
+      <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3">
+        <span className="text-amber-500 text-lg shrink-0">🛡️</span>
+        <div>
+          <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-0.5">Simulasi Pembayaran</h4>
+          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+            Transaksi ini digunakan untuk pengujian sistem (Payment Simulation Mode) dan tidak melibatkan dana riil.
+          </p>
+        </div>
+      </div>
+
       {/* Billing Overview */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] p-8 transition-colors">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
@@ -104,7 +178,7 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dentistPatient.billing.title')}</h2>
             <p className="text-slate-500 dark:text-slate-400 mt-1">Financial overview and history</p>
           </div>
-          <Button onClick={() => onCreateInvoice?.()} className="shadow-lg shadow-blue-500/20">
+          <Button onClick={() => setShowCreateModal(true)} className="shadow-lg shadow-blue-500/20">
             {t('dentistPatient.billing.actions.createInvoice')}
           </Button>
         </div>
@@ -294,20 +368,48 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
 
           {selectedTab === 'invoices' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('dentistPatient.billing.invoices.title')}</h3>
                 </div>
-                <Button onClick={() => onCreateInvoice?.()} className="bg-blue-600 hover:bg-blue-700 shadow-blue-500/20">
-                  <span className="mr-2">+</span> {t('dentistPatient.billing.actions.createNewInvoice')}
-                </Button>
+
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  {/* Search Input */}
+                  <div className="relative flex-1 md:w-60">
+                    <input
+                      type="text"
+                      placeholder="Search description/ID..."
+                      value={invoiceSearch}
+                      onChange={(e) => setInvoiceSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                    <svg className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  </div>
+
+                  {/* Status Dropdown */}
+                  <select
+                    value={invoiceFilterStatus}
+                    onChange={(e) => setInvoiceFilterStatus(e.target.value)}
+                    className="pl-3 pr-8 py-2 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+
+                  <Button onClick={() => setShowCreateModal(true)} className="bg-blue-600 hover:bg-blue-700 shadow-blue-500/20">
+                    <span className="mr-2">+</span> {t('dentistPatient.billing.actions.createNewInvoice')}
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4">
-                {(billingData.invoices || []).map((invoice) => (
+                {filteredInvoices.map((invoice) => (
                   <div key={invoice.id} className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-200">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       <div className="flex-1">
@@ -368,10 +470,10 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
                     </div>
                   </div>
                 ))}
-                {(!billingData.invoices || billingData.invoices.length === 0) && (
+                {filteredInvoices.length === 0 && (
                   <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
                     <div className="w-16 h-16 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl opacity-50">📄</div>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">{t('dentistPatient.billing.invoices.empty')}</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">No matching invoices found.</p>
                   </div>
                 )}
               </div>
@@ -457,6 +559,86 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
           )}
         </div>
       </div>
+
+      {/* Create Invoice Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Create New Invoice</h3>
+
+            <form onSubmit={handleSubmitInvoice} className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Description *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Scaling and deep root canal treatment"
+                  value={newInvoiceDesc}
+                  onChange={(e) => setNewInvoiceDesc(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Amount (IDR) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="e.g. 750000"
+                    value={newInvoiceAmount}
+                    onChange={(e) => setNewInvoiceAmount(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Due Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newInvoiceDueDate}
+                    onChange={(e) => setNewInvoiceDueDate(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Treatments (Comma-separated)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Consultation, Tooth Cleaning, Root Canal"
+                  value={newInvoiceTreatments}
+                  onChange={(e) => setNewInvoiceTreatments(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreateModal(false)}
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-850"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 text-white">
+                  Create Invoice
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

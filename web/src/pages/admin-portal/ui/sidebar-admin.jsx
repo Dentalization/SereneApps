@@ -268,7 +268,7 @@ const AdminSideBar = () => {
   return (
     <div className="sticky top-0 h-screen p-4" style={{ animation: 'slideUp 0.3s ease-out' }}>
       <div
-        className={`h-full flex flex-col overflow-hidden rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
+        className={`h-full flex flex-col ${isCollapsed ? 'overflow-visible' : 'overflow-hidden'} rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg theme-transition ${isCollapsed ? 'w-20' : 'w-72'}`}
         style={{
           transition: SIDEBAR_WIDTH_TRANSITION,
           willChange: 'width'
@@ -498,7 +498,12 @@ const AdminSideBar = () => {
             </button>
 
             {isUserMenuOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-full min-w-[240px] bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50" style={{ animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)', borderRadius: 25 }}>
+              <div
+                className={`absolute bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50 ${
+                  isCollapsed ? 'bottom-0 left-full ml-8 w-64' : 'bottom-full left-0 mb-2 w-full min-w-[240px]'
+                }`}
+                style={{ animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)', borderRadius: 25 }}
+              >
                 <div className="p-4 border-b border-primary bg-gradient-to-r from-accent/10 to-accent/5" style={{ borderColor: isDark ? 'rgba(148,163,184,.2)' : 'rgba(156,163,175,.3)' }}>
                   <div className="flex items-center space-x-3">
                     <div className="relative">

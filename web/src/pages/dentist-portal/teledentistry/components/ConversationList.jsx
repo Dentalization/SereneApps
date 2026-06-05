@@ -27,9 +27,6 @@ const EmptyContactState = () => (
       name="Inbox"
       size={32}
       className="text-accent/30 mb-4"
-      style={{
-        animation: 'pulseGlow 3s infinite alternate',
-      }}
     />
     <p className="text-sm font-medium text-secondary">
       No active sessions

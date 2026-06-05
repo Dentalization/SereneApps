@@ -20,8 +20,7 @@ const PatientCommunication = ({ patient }) => {
     );
   }
 
-  const handleStartChat = () => navigate('/dentist/teledentistry', { state: { patientId: patient.id, patientName: patient.name, openChat: true } });
-  const handleStartVideoCall = () => navigate('/dentist/teledentistry', { state: { patientId: patient.id, patientName: patient.name, startVideoCall: true } });
+  const handleStartChat = () => navigate('/dentist-portal/teledentistry', { state: { patientId: patient.id, patientName: patient.name, openChat: true } });
 
   const InfoCard = ({ title, value, icon, colorClass, shadowColor }) => (
     <div className="bg-gradient-to-br from-surface-elevated to-surface rounded-2xl p-5 border border-primary/10 shadow-sm relative overflow-hidden group">
@@ -55,26 +54,15 @@ const PatientCommunication = ({ patient }) => {
         <div className="relative z-10">
           <h3 className="text-xl font-bold text-primary mb-2">{t('dentistPatient.communication.quickActions')}</h3>
           <p className="text-secondary mb-8 max-w-2xl">Use our secure Teledentistry platform for comprehensive communication with {patient.name}.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <button onClick={handleStartChat} className="group relative bg-surface hover:bg-accent/90 border border-primary/10 hover:border-accent/90 rounded-2xl p-6 text-left transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-accent/20 hover:-translate-y-1">
+          <div className="max-w-md mx-auto">
+            <button onClick={handleStartChat} className="w-full group relative bg-surface hover:bg-accent/90 border border-primary/10 hover:border-accent/90 rounded-2xl p-6 text-left transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-accent/20 hover:-translate-y-1">
               <div className="flex items-start space-x-5">
                 <div className="flex-shrink-0 w-14 h-14 bg-surface-elevated group-hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors border border-primary/10 group-hover:border-transparent">
                   <svg className="w-7 h-7 text-accent group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                 </div>
                 <div>
                   <h4 className="font-bold text-primary text-lg mb-1 group-hover:text-white transition-colors">Start Chat</h4>
-                  <p className="text-sm text-secondary group-hover:text-blue-100 leading-relaxed">Instant messaging & file sharing</p>
-                </div>
-              </div>
-            </button>
-            <button onClick={handleStartVideoCall} className="group relative bg-surface hover:bg-emerald-600 border border-primary/10 hover:border-emerald-600 rounded-2xl p-6 text-left transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1">
-              <div className="flex items-start space-x-5">
-                <div className="flex-shrink-0 w-14 h-14 bg-surface-elevated group-hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors border border-primary/10 group-hover:border-transparent">
-                  <svg className="w-7 h-7 text-emerald-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                </div>
-                <div>
-                  <h4 className="font-bold text-primary text-lg mb-1 group-hover:text-white transition-colors">Video Consultation</h4>
-                  <p className="text-sm text-secondary group-hover:text-emerald-100 leading-relaxed">HD face-to-face virtual visit</p>
+                  <p className="text-sm text-secondary group-hover:text-blue-100 leading-relaxed">Instant messaging & secure patient teledentistry portal</p>
                 </div>
               </div>
             </button>
