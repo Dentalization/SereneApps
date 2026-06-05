@@ -9,12 +9,17 @@ import {
   StyleSheet,
   RefreshControl,
   Dimensions,
+  Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import api from '../../services/api';
+import {
+  approveTreatmentPlan,
+  getPatientTreatmentPlans,
+  rejectTreatmentPlan,
+} from '../../services/treatmentPlanService';
 import { colors as COLORS, withOpacity } from '../../theme/colors';
 import { typography as TYPOGRAPHY } from '../../theme/dimensions';
 
@@ -22,17 +27,17 @@ const { width } = Dimensions.get('window');
 
 const TreatmentPlanScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
   const insets = useSafeAreaInsets();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [submittingPlanId, setSubmittingPlanId] = useState(null);
 
   const fetchPlans = async () => {
     try {
-      const response = await api.get('/profile/treatment-plans');
-      if (response.data && response.data.success) {
-        setPlans(response.data.data);
-      }
+      const data = await getPatientTreatmentPlans();
+      setPlans(data);
     } catch (error) {
       console.error('[TreatmentPlan] Fetch error:', error);
     } finally {
@@ -43,11 +48,88 @@ const TreatmentPlanScreen = () => {
 
   useEffect(() => {
     fetchPlans();
-  }, []);
+  }, [route.params?.refreshedAt]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchPlans();
+  };
+
+  const normalizeStatus = (status) => String(status || '').toUpperCase().replace(/[\s-]+/g, '_');
+  const isApproved = (plan) => normalizeStatus(plan.status) === 'APPROVED';
+  const isSent = (plan) => ['SENT', 'PATIENT_REVIEW'].includes(normalizeStatus(plan.status));
+  const isCompleted = (status) => ['DONE', 'COMPLETED'].includes(normalizeStatus(status));
+  const formatCurrency = (amount) => `Rp ${Number(amount || 0).toLocaleString('id-ID')}`;
+
+  const getStatusLabel = (status) => {
+    switch (normalizeStatus(status)) {
+      case 'DRAFT': return 'Draft';
+      case 'SENT':
+      case 'PATIENT_REVIEW': return 'Perlu ditinjau';
+      case 'APPROVED': return 'Disetujui';
+      case 'REJECTED': return 'Ditolak';
+      case 'IN_PROGRESS': return 'Berjalan';
+      case 'COMPLETED': return 'Selesai';
+      case 'CANCELLED': return 'Dibatalkan';
+      default: return status || 'Rencana';
+    }
+  };
+
+  const upsertPlan = (updatedPlan) => {
+    setPlans((prev) => prev.map((plan) => (plan.id === updatedPlan.id ? updatedPlan : plan)));
+  };
+
+  const handleApprove = async (plan) => {
+    try {
+      setSubmittingPlanId(plan.id);
+      const updated = await approveTreatmentPlan(plan.id);
+      upsertPlan(updated);
+    } catch (error) {
+      Alert.alert('Gagal menyetujui', error.response?.data?.error?.message || 'Silakan coba lagi.');
+    } finally {
+      setSubmittingPlanId(null);
+    }
+  };
+
+  const handleReject = async (plan) => {
+    Alert.alert('Tolak rencana?', 'Dokter akan melihat status penolakan ini.', [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Tolak',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setSubmittingPlanId(plan.id);
+            const updated = await rejectTreatmentPlan(plan.id);
+            upsertPlan(updated);
+          } catch (error) {
+            Alert.alert('Gagal menolak', error.response?.data?.error?.message || 'Silakan coba lagi.');
+          } finally {
+            setSubmittingPlanId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handlePay = (plan) => {
+    const invoice = plan.invoice || (Array.isArray(plan.invoices) ? plan.invoices[0] : null);
+    if (!invoice) {
+      Alert.alert('Invoice belum tersedia', 'Minta dokter mengirim ulang rencana perawatan.');
+      return;
+    }
+    navigation.navigate('Payment', {
+      appointmentId: plan.appointmentId || invoice.appointmentId,
+      treatmentPlanId: plan.id,
+      invoiceId: invoice.id || invoice.invoiceId,
+      source: 'treatment_plan',
+      planTitle: plan.title,
+      fee: invoice.grandTotal || invoice.total || plan.estimatedTotal || plan.estimated_cost || 0,
+      date: plan.createdAt || new Date().toISOString(),
+      slot: { time: '—' },
+      type: 'treatment_plan',
+      paymentMethod: 'midtrans',
+    });
   };
 
   const renderHeader = () => (
@@ -73,25 +155,35 @@ const TreatmentPlanScreen = () => {
   );
 
   const renderPlanCard = (plan) => {
-    const isCompleted = plan.status === 'completed';
-    const progressColor = isCompleted ? COLORS.success : COLORS.primary;
+    const completed = normalizeStatus(plan.status) === 'COMPLETED';
+    const progressColor = completed ? COLORS.success : COLORS.primary;
+    const dentistName = plan.dentist?.name || plan.dentist_name || 'Dokter gigi';
+    const estimatedTotal = plan.estimatedTotal ?? plan.estimated_cost ?? plan.estimatedCost ?? 0;
+    const actualCost = plan.actualCost ?? plan.actual_cost ?? 0;
+    const invoice = plan.invoice || (Array.isArray(plan.invoices) ? plan.invoices[0] : null);
+    const items = Array.isArray(plan.items) ? plan.items : (plan.treatments || []);
+    const canReview = isSent(plan);
+    const canPay = isApproved(plan) && invoice && (invoice.grandTotal > 0 || invoice.total > 0) && !['paid', 'settled'].includes(invoice.paymentStatus || invoice.status);
 
     return (
       <View 
         key={plan.id} 
         style={styles.planCard}
-        accessibilityLabel={`Rencana ${plan.title}, Oleh drg. ${plan.dentist_name}, Progres ${plan.progress}%`}
+        accessibilityLabel={`Rencana ${plan.title}, Oleh drg. ${dentistName}, Progres ${plan.progress}%`}
       >
         <View style={styles.planHeader}>
           <View style={styles.planTitleContainer}>
             <Text style={styles.planTitleText}>{plan.title}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: isCompleted ? withOpacity(COLORS.success, 0.2) : withOpacity(COLORS.warning, 0.2) }]}>
-              <Text style={[styles.statusText, { color: isCompleted ? COLORS.success : COLORS.warning }]}>
-                {isCompleted ? 'Selesai' : 'Berjalan'}
+            <View style={[styles.statusBadge, { backgroundColor: completed || isApproved(plan) ? withOpacity(COLORS.success, 0.2) : withOpacity(COLORS.warning, 0.2) }]}>
+              <Text style={[styles.statusText, { color: completed || isApproved(plan) ? COLORS.success : COLORS.warning }]}>
+                {getStatusLabel(plan.status)}
               </Text>
             </View>
           </View>
-          <Text style={styles.dentistText}>Oleh drg. {plan.dentist_name}</Text>
+          <Text style={styles.dentistText}>Oleh drg. {dentistName}</Text>
+          {!!plan.patientFriendlySummary && (
+            <Text style={styles.summaryText}>{plan.patientFriendlySummary}</Text>
+          )}
         </View>
 
         <View style={styles.progressContainer}>
@@ -112,41 +204,70 @@ const TreatmentPlanScreen = () => {
         <View style={styles.costContainer}>
           <View style={styles.costItem}>
             <Text style={styles.costLabel}>Estimasi</Text>
-            <Text style={styles.costValue}>Rp {(plan.estimated_cost || 0).toLocaleString('id-ID')}</Text>
+            <Text style={styles.costValue}>{formatCurrency(estimatedTotal)}</Text>
           </View>
           <View style={[styles.costItem, { alignItems: 'flex-end' }]}>
             <Text style={styles.costLabel}>Terpakai</Text>
             <Text style={[styles.costValue, { color: COLORS.textPrimary }]}>
-              Rp {(plan.actual_cost || 0).toLocaleString('id-ID')}
+              {formatCurrency(actualCost)}
             </Text>
           </View>
         </View>
 
-        {plan.items && plan.items.length > 0 && (
+        {items.length > 0 && (
           <View style={styles.itemsList}>
             <Text style={styles.itemsTitle}>Tindakan</Text>
-            {plan.items.map((item, index) => (
+            {items.map((item, index) => (
               <View key={item.id} style={styles.itemRow}>
                 <View style={styles.itemBulletContainer}>
-                  <View style={[styles.itemBullet, { backgroundColor: item.status === 'completed' ? COLORS.success : COLORS.border }]} />
-                  {index !== plan.items.length - 1 && <View style={styles.itemLine} />}
+                  <View style={[styles.itemBullet, { backgroundColor: isCompleted(item.status) ? COLORS.success : COLORS.border }]} />
+                  {index !== items.length - 1 && <View style={styles.itemLine} />}
                 </View>
                 <View style={styles.itemContent}>
-                  <Text style={[styles.itemName, item.status === 'completed' && styles.itemCompletedText]}>
-                    {item.name}
+                  <Text style={[styles.itemName, isCompleted(item.status) && styles.itemCompletedText]}>
+                    {item.procedureName || item.name}
                   </Text>
-                  {item.completed_date && (
-                    <Text style={styles.itemDate}>
-                      Selesai: {new Date(item.completed_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                    </Text>
+                  {!!item.toothNumber && (
+                    <Text style={styles.itemDate}>Gigi {item.toothNumber}</Text>
                   )}
+                  {item.completedDate || item.completed_date ? (
+                    <Text style={styles.itemDate}>
+                      Selesai: {new Date(item.completedDate || item.completed_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                    </Text>
+                  ) : null}
                 </View>
-                {item.status === 'completed' && (
+                {isCompleted(item.status) && (
                   <MaterialCommunityIcons name="check-circle" size={18} color={COLORS.success} />
                 )}
               </View>
             ))}
           </View>
+        )}
+
+        {canReview && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.secondaryAction, submittingPlanId === plan.id && styles.disabledAction]}
+              disabled={submittingPlanId === plan.id}
+              onPress={() => handleReject(plan)}
+            >
+              <Text style={styles.secondaryActionText}>Tolak</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryAction, submittingPlanId === plan.id && styles.disabledAction]}
+              disabled={submittingPlanId === plan.id}
+              onPress={() => handleApprove(plan)}
+            >
+              <Text style={styles.primaryActionText}>{submittingPlanId === plan.id ? 'Memproses...' : 'Setujui'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {canPay && (
+          <TouchableOpacity style={styles.payButton} onPress={() => handlePay(plan)}>
+            <MaterialCommunityIcons name="credit-card-check" size={18} color={COLORS.surfaceElevated} />
+            <Text style={styles.payButtonText}>Bayar {formatCurrency(invoice.grandTotal || invoice.total)}</Text>
+          </TouchableOpacity>
         )}
       </View>
     );
@@ -255,6 +376,12 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 4,
   },
+  summaryText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textPrimary,
+    marginTop: 10,
+    lineHeight: 20,
+  },
   progressContainer: {
     marginBottom: 20,
   },
@@ -352,6 +479,56 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.caption,
     color: COLORS.textMuted,
     marginTop: 2,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+  },
+  primaryAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.surfaceElevated,
+    fontWeight: '800',
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.error,
+    fontWeight: '800',
+  },
+  payButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: COLORS.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+  },
+  payButtonText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.surfaceElevated,
+    fontWeight: '800',
+  },
+  disabledAction: {
+    opacity: 0.55,
   },
   emptyState: {
     alignItems: 'center',

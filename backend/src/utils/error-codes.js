@@ -615,16 +615,34 @@ export const errorHandler = async (err, req, res, next) => {
           const decoded = verify(token);
           const userId = decoded?.sub?.toString?.() ?? decoded?.sub;
           if (userId) {
-            await prisma.notification.create({
+            const createdNotif = await prisma.notification.create({
               data: {
-                userId: BigInt(userId),
+                user_id: BigInt(userId),
                 type: 'ai_analysis',
                 title: 'Gagal menyimpan analisis',
                 message: 'Ukuran gambar terlalu besar. Silakan coba unggah gambar yang lebih kecil atau gunakan Wi‑Fi.',
                 data: { reason: 'payload_too_large' },
-                isRead: false
+                is_read: false
               }
             });
+
+            // Emit realtime socket event to user room
+            try {
+              const { emitToUserRooms } = await import('../sockets/chat.js');
+              emitToUserRooms({
+                userIds: [userId],
+                eventName: 'notification:new',
+                payload: {
+                  ...createdNotif,
+                  id: createdNotif.id.toString(),
+                  user_id: createdNotif.user_id.toString(),
+                  created_at: createdNotif.created_at.toISOString(),
+                  read_at: createdNotif.read_at ? createdNotif.read_at.toISOString() : null
+                }
+              });
+            } catch (socketErr) {
+              console.error('Failed to emit payload too large realtime notification:', socketErr);
+            }
           }
         }
       }

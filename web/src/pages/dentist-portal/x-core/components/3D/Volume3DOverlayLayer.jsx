@@ -181,11 +181,7 @@ export default function Volume3DOverlayLayer({
   annotateMode,
   annotationTool,
   brushOperation,
-  brushPointerScreen,
   brushRadiusMm,
-  brushScreenRadiusPx,
-  brushScreenPath,
-  brushTraceActive,
   commitTextDraft3D,
   hiddenAnnotationCount,
   isWorldBrushAnnotation,
@@ -199,7 +195,6 @@ export default function Volume3DOverlayLayer({
   projectedSnapshotWorldOverlayAnnotations,
   projectedWorldOverlayAnnotations,
   selectedWorldAnnotation,
-  surfaceTraceScreenPath,
   textDraft3D,
   textDraftScreenPoint,
   setTextDraft3D,
@@ -207,11 +202,6 @@ export default function Volume3DOverlayLayer({
 }) {
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null);
   const [hoverPosition, setHoverPosition] = useState(null);
-  const firstTracePoint = surfaceTraceScreenPath[0];
-  const lastTracePoint = surfaceTraceScreenPath[surfaceTraceScreenPath.length - 1];
-  const snapToClose = firstTracePoint && lastTracePoint
-    && surfaceTraceScreenPath.length >= 6
-    && Math.hypot(lastTracePoint.x - firstTracePoint.x, lastTracePoint.y - firstTracePoint.y) < 20;
   const hoverHandlers = useMemo(() => ({
     onEnter: (annotation, event) => {
       setHoveredAnnotation(annotation);
@@ -350,113 +340,6 @@ export default function Volume3DOverlayLayer({
             {measurementPreview.distance.toFixed(2)} mm
           </div>
         </>
-      )}
-
-      {surfaceTraceScreenPath.length >= 2 && (
-        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-          <polyline
-            points={(surfaceTraceScreenPath || []).map((point) => `${point.x},${point.y}`).join(' ')}
-            fill="none"
-            stroke="rgba(226, 75, 74, 0.96)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {(surfaceTraceScreenPath || []).map((point, index) => (
-            <circle
-              key={`${point.x}-${point.y}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r={index === 0 ? 4.2 : 3}
-              fill="rgba(226, 75, 74, 0.92)"
-              stroke="rgba(255,255,255,0.9)"
-              strokeWidth="1.25"
-            />
-          ))}
-          {snapToClose && (
-            <circle
-              cx={firstTracePoint.x}
-              cy={firstTracePoint.y}
-              r="9"
-              fill="rgba(34,197,94,0.25)"
-              stroke="rgba(34,197,94,0.9)"
-              strokeWidth="2"
-            />
-          )}
-        </svg>
-      )}
-
-      {brushScreenPath.length >= 2 && (
-        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-          <polyline
-            points={(brushScreenPath || []).map((point) => `${point.x},${point.y}`).join(' ')}
-            fill="none"
-            stroke="rgba(245, 158, 11, 0.92)"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="8 6"
-          />
-        </svg>
-      )}
-
-      {annotateMode && annotationTool === 'brush' && brushScreenPath.length > 0 && (
-        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-          <circle
-            cx={brushScreenPath[brushScreenPath.length - 1].x}
-            cy={brushScreenPath[brushScreenPath.length - 1].y}
-            r={Math.max(6, brushScreenRadiusPx || brushRadiusMm * 3.5)}
-            fill="none"
-            stroke="rgba(245, 158, 11, 0.75)"
-            strokeWidth="1.5"
-            strokeDasharray="4 3"
-          />
-        </svg>
-      )}
-
-      {annotateMode && annotationTool === 'brush' && brushPointerScreen && (
-        <div className="pointer-events-none absolute inset-0 z-[25]">
-          {brushTraceActive && (
-            <div
-              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-300/70 bg-amber-400/10 animate-pulse"
-              style={{
-                left: brushPointerScreen.x,
-                top: brushPointerScreen.y,
-                width: Math.max(16, (brushScreenRadiusPx || brushRadiusMm * 3.5) * 2),
-                height: Math.max(16, (brushScreenRadiusPx || brushRadiusMm * 3.5) * 2),
-                boxShadow: '0 0 0 2px rgba(245, 158, 11, 0.08)',
-              }}
-            />
-          )}
-          <svg className="absolute inset-0 h-full w-full">
-            <circle
-              cx={brushPointerScreen.x}
-              cy={brushPointerScreen.y}
-              r={Math.max(8, brushScreenRadiusPx || brushRadiusMm * 3.5)}
-              fill="rgba(245,158,11,0.12)"
-              stroke="rgba(245,158,11,0.85)"
-              strokeWidth="1.5"
-              strokeDasharray="5 4"
-            />
-            <circle
-              cx={brushPointerScreen.x}
-              cy={brushPointerScreen.y}
-              r="3"
-              fill="rgba(245,158,11,0.9)"
-            />
-          </svg>
-          {brushTraceActive && (
-            <div
-              className="absolute -translate-x-1/2 rounded-full border border-amber-400/35 bg-slate-950/85 px-2 py-1 text-[10px] font-semibold text-amber-100 shadow-xl backdrop-blur"
-              style={{
-                left: brushPointerScreen.x,
-                top: Math.max(18, brushPointerScreen.y - Math.max(24, (brushScreenRadiusPx || brushRadiusMm * 3.5) + 14)),
-              }}
-            >
-              {brushRadiusMm.toFixed(1)} mm
-            </div>
-          )}
-        </div>
       )}
 
       {measureMode3D && measurePoints.length === 1 && (

@@ -43,9 +43,30 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     );
   }
 
-  const appointments = patient.appointments || [];
+  const rawAppointments = patient.appointments || [];
 
-  const filteredAppointments = appointments.filter(appointment => {
+  const mappedAppointments = React.useMemo(() => {
+    return rawAppointments.map(apt => {
+      const startIso = apt.startsAt || apt.starts_at || apt.date;
+      if (!startIso) return apt;
+
+      const startsAtDate = new Date(startIso);
+      const now = new Date();
+      const isPast24h = (now - startsAtDate) > (24 * 60 * 60 * 1000);
+
+      let status = apt.status;
+      if (isPast24h && !['cancelled', 'rejected', 'no-show', 'completed'].includes(status)) {
+        status = 'completed';
+      }
+
+      return {
+        ...apt,
+        status
+      };
+    });
+  }, [rawAppointments]);
+
+  const filteredAppointments = mappedAppointments.filter(appointment => {
     if (filterStatus === 'all') return true;
     return appointment.status === filterStatus;
   });
@@ -134,15 +155,15 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     setShowDetailModal(true);
   };
 
-  const upcomingAppointments = appointments.filter(apt =>
-    apt.status === 'scheduled' && apt.status !== 'overdue' && new Date(apt.startsAt || apt.date) >= new Date()
+  const upcomingAppointments = mappedAppointments.filter(apt =>
+    apt.status === 'scheduled' && new Date(apt.startsAt || apt.date) >= new Date()
   );
 
-  const pastAppointments = appointments.filter(apt =>
+  const pastAppointments = mappedAppointments.filter(apt =>
     apt.status === 'completed' || apt.status === 'overdue' || (apt.status !== 'scheduled' && new Date(apt.startsAt || apt.date) < new Date())
   );
 
-  const overdueCount = appointments.filter(apt => apt.status === 'overdue').length;
+  const overdueCount = mappedAppointments.filter(apt => apt.status === 'overdue').length;
 
   const mapStatusKey = (status) => {
     const key = (status || '').toLowerCase();
@@ -197,11 +218,11 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <StatCard title={t('dentistPatient.appointments.summary.total')} value={appointments.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️" />
+          <StatCard title={t('dentistPatient.appointments.summary.total')} value={mappedAppointments.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️" />
           <StatCard title={t('dentistPatient.appointments.summary.upcoming')} value={upcomingAppointments.length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳" />
-          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={appointments.filter(apt => apt.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅" />
+          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={mappedAppointments.filter(apt => apt.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅" />
           <StatCard title="Overdue" value={overdueCount} colorClass="bg-orange-500" shadowColor="rgba(249,115,22,0.5)" icon="⚠️" />
-          <StatCard title={t('dentistPatient.appointments.summary.cancelled')} value={appointments.filter(apt => apt.status === 'cancelled').length} colorClass="bg-red-500" shadowColor="rgba(239,68,68,0.5)" icon="❌" />
+          <StatCard title={t('dentistPatient.appointments.summary.cancelled')} value={mappedAppointments.filter(apt => apt.status === 'cancelled').length} colorClass="bg-red-500" shadowColor="rgba(239,68,68,0.5)" icon="❌" />
         </div>
       </div>
 

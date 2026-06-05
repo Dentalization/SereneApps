@@ -3,6 +3,20 @@ import Icon from '../../../../components/AppIcon';
 
 const ScheduleWidget = ({ schedules = [], onQuickAction }) => {
   const statusConfig = {
+    scheduled: {
+      color: 'blue',
+      label: 'Scheduled',
+      bg: 'bg-blue-100 dark:bg-blue-900/30',
+      text: 'text-blue-700 dark:text-blue-300',
+      dot: 'bg-blue-500'
+    },
+    pending: {
+      color: 'amber',
+      label: 'Pending',
+      bg: 'bg-amber-100 dark:bg-amber-900/30',
+      text: 'text-amber-700 dark:text-amber-300',
+      dot: 'bg-amber-500'
+    },
     confirmed: {
       color: 'blue',
       label: 'Confirmed',
@@ -37,6 +51,20 @@ const ScheduleWidget = ({ schedules = [], onQuickAction }) => {
       bg: 'bg-red-100 dark:bg-red-900/30',
       text: 'text-red-700 dark:text-red-300',
       dot: 'bg-red-500'
+    },
+    'no-show': {
+      color: 'red',
+      label: 'No Show',
+      bg: 'bg-red-100 dark:bg-red-900/30',
+      text: 'text-red-700 dark:text-red-300',
+      dot: 'bg-red-500'
+    },
+    overdue: {
+      color: 'red',
+      label: 'Overdue',
+      bg: 'bg-red-100 dark:bg-red-900/30',
+      text: 'text-red-700 dark:text-red-300',
+      dot: 'bg-red-500'
     }
   };
 
@@ -60,40 +88,43 @@ const ScheduleWidget = ({ schedules = [], onQuickAction }) => {
 
       {/* Schedule list */}
       <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
-        {schedules.length > 0 ? schedules.map((schedule, index) => (
-          <div 
-            key={index} 
-            className="group/item relative bg-surface-elevated rounded-2xl border border-primary/10 p-4 hover:bg-surface hover:shadow-theme-sm transition-all duration-300 theme-transition"
-          >
-            <div className="flex items-center justify-between">
-              {/* Patient info */}
-              <div className="flex items-center space-x-3">
-                <div className={`w-3 h-3 rounded-full ${statusConfig[schedule.status]?.dot} shadow-sm`}></div>
-                <div>
-                  <p className="font-semibold text-primary group-hover/item:text-accent transition-colors theme-transition">
-                    {schedule.patient}
-                  </p>
-                  <p className="text-sm text-secondary theme-transition">
-                    {schedule.time} • {schedule.treatment}
-                  </p>
+        {schedules.length > 0 ? schedules.map((schedule, index) => {
+          const cfg = statusConfig[schedule.status] || statusConfig.confirmed;
+          return (
+            <div 
+              key={index} 
+              className="group/item relative bg-surface-elevated rounded-2xl border border-primary/10 p-4 hover:bg-surface hover:shadow-theme-sm transition-all duration-300 theme-transition"
+            >
+              <div className="flex items-center justify-between">
+                {/* Patient info */}
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${cfg.dot} shadow-sm`}></div>
+                  <div>
+                    <p className="font-semibold text-primary group-hover/item:text-accent transition-colors theme-transition">
+                      {schedule.patient}
+                    </p>
+                    <p className="text-sm text-secondary theme-transition">
+                      {schedule.time} • {schedule.treatment}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Status and action */}
+                <div className="flex items-center space-x-3">
+                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${cfg.bg} ${cfg.text}`}>
+                    {cfg.label}
+                  </span>
+                  <button 
+                    onClick={() => onQuickAction?.(schedule)}
+                    className="p-2 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent opacity-0 group-hover/item:opacity-100 transition-all duration-300"
+                  >
+                    <Icon name="ChevronRight" size={16} />
+                  </button>
                 </div>
               </div>
-
-              {/* Status and action */}
-              <div className="flex items-center space-x-3">
-                <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${statusConfig[schedule.status]?.bg} ${statusConfig[schedule.status]?.text}`}>
-                  {statusConfig[schedule.status]?.label}
-                </span>
-                <button 
-                  onClick={() => onQuickAction?.(schedule)}
-                  className="p-2 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent opacity-0 group-hover/item:opacity-100 transition-all duration-300"
-                >
-                  <Icon name="ChevronRight" size={16} />
-                </button>
-              </div>
             </div>
-          </div>
-        )) : (
+          );
+        }) : (
           <div className="text-center py-8">
             <Icon name="Calendar" size={48} className="mx-auto text-muted/50 mb-3" />
             <p className="text-secondary theme-transition">Tidak ada jadwal hari ini</p>

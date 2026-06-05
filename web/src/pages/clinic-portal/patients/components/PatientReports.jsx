@@ -3,6 +3,18 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import Icon from '../../../../components/AppIcon';
 
+const formatDateSafe = (dateString, locale, options) => {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  try {
+    return d.toLocaleDateString(locale, options);
+  } catch (e) {
+    return '-';
+  }
+};
+
+
 const PatientReports = ({
   patients = [],
   allAppointments = [],
@@ -72,7 +84,7 @@ const PatientReports = ({
                   <div>{patient.age}</div>
                   <div className="text-text-secondary">{patient.doctorName}</div>
                   <div>{t(`patients.registry.status.${patient.status}`)}</div>
-                  <div>{new Date(patient.lastVisit).toLocaleDateString(locale)}</div>
+                  <div>{formatDateSafe(patient.lastVisit, locale)}</div>
                 </div>
               ))}
               {patients.length > 5 && (
@@ -374,7 +386,7 @@ const PatientReports = ({
                 <div>
                   <div className="font-medium text-text-primary">{report.name}</div>
                   <div className="text-sm text-text-secondary">
-                    {report.type} • {report.size} • {new Date(report.date).toLocaleDateString(locale)}
+                    {report.type} • {report.size} • {formatDateSafe(report.date, locale)}
                   </div>
                 </div>
               </div>

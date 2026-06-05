@@ -23,6 +23,7 @@ import { resolveMediaUrl } from '../../../utils/media';
 import { SAMPLE_ARTICLES } from '../data/articles';
 import { SAMPLE_NOTIFICATIONS } from '../data/notifications';
 import { getAppointments } from '../../../services/appointmentService';
+import { useNotifications } from '../../../contexts/NotificationContext';
 
 // --- Imports Component ---
 import FeaturedDoctors from '../components/featuredDoctors';
@@ -56,6 +57,7 @@ const DashboardScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user } = useSelector((s) => s.auth);
+  const { unreadCount } = useNotifications();
 
   const avatarUrl = resolveMediaUrl(user?.avatar_url || null);
   const [refreshing, setRefreshing] = useState(false);
@@ -176,7 +178,7 @@ const DashboardScreen = () => {
   };
 
   const handleOpenSearch = () => navigation.navigate('Search');
-  const handleNotificationPress = () => navigation.navigate('Notifications', { notifications: SAMPLE_NOTIFICATIONS });
+  const handleNotificationPress = () => navigation.navigate('Notifications');
   const handleAppointmentPress = (apt) => navigation.navigate('AppointmentTab', { screen: 'DetailAppointment', params: { appointmentId: apt.id } });
   const handleAppointmentAction = (apt) => {
     if (apt.videoRoomRef) navigation.navigate('VideoCall', { roomId: apt.videoRoomRef, appointmentId: apt.id });
@@ -241,7 +243,7 @@ const DashboardScreen = () => {
 
           <TouchableOpacity activeOpacity={0.7} onPress={handleNotificationPress} style={styles.iconButton}>
             <MaterialCommunityIcons name="bell-badge-outline" size={24} color="white" />
-            <View style={styles.notifDot} />
+            {unreadCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
       </View>

@@ -6,6 +6,7 @@ import { recordFinancialEntry, ensureInvoiceForPaymentIntent } from './financial
 import { createPaymentSnapshot } from './snapshotService.js';
 import { createSettlement } from './settlementService.js';
 import { accrueCompensation } from './compensationService.js';
+import { emitToUserRooms } from '../../sockets/chat.js';
 
 const prisma = new PrismaClient();
 
@@ -532,6 +533,35 @@ export async function applyPaymentStatus({
     }
   });
 
+  const realtimePayload = {
+    paymentIntentId: result.paymentIntent.id.toString(),
+    appointmentId: result.appointment?.id?.toString?.() ?? result.paymentIntent.appointmentId?.toString?.() ?? null,
+    status: newStatus,
+    appointmentStatus: resolvedStatus,
+    ownerType: result.paymentIntent.ownerType,
+    ownerClinicId: result.paymentIntent.ownerClinicId?.toString?.() || null,
+    ownerDentistId: result.paymentIntent.ownerDentistId?.toString?.() || null,
+    amount: result.paymentIntent.amount,
+    currency: result.paymentIntent.currency || 'IDR',
+    metadata: result.paymentIntent.metadata || {},
+    emittedAt: new Date().toISOString()
+  };
+  emitToUserRooms({
+    userIds: [result.appointment?.patientId, result.appointment?.dentistId, result.paymentIntent.ownerDentistId],
+    eventName: 'payment:status_updated',
+    payload: realtimePayload
+  });
+  emitToUserRooms({
+    userIds: [result.appointment?.patientId, result.appointment?.dentistId, result.paymentIntent.ownerDentistId],
+    eventName: 'billing:invoice_updated',
+    payload: realtimePayload
+  });
+  emitToUserRooms({
+    userIds: [result.appointment?.patientId, result.appointment?.dentistId, result.paymentIntent.ownerDentistId],
+    eventName: 'dashboard:metrics_updated',
+    payload: realtimePayload
+  });
+
   return {
     paymentIntent: result.paymentIntent,
     appointmentStatus: resolvedStatus,
@@ -542,4 +572,3 @@ export async function applyPaymentStatus({
 export const __testables = {
   resolveRefundAmount
 };
-

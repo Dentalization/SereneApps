@@ -45,6 +45,7 @@ import AnnotationCanvas from './AnnotationCanvas';
 import AnnotationHistoryPanel from './AnnotationHistoryPanel';
 import AnnotationSessionModal from './AnnotationSessionModal';
 import Volume3DInteractionLayer from './3D/Volume3DInteractionLayer';
+import Volume3DAnnotationCanvas from './3D/Volume3DAnnotationCanvas';
 import Volume3DModeToolbar from './3D/Volume3DModeToolbar';
 import Volume3DOverlayLayer from './3D/Volume3DOverlayLayer';
 import { createMeasurementLabelPositionStore } from './3D/measurementLabelStore.mjs';
@@ -988,6 +989,7 @@ const VolumeViewer3D = ({
     const surfacePickWorkerFailedRef = useRef(false);
     const lastSurfacePickAnchorRef = useRef(null);
     const measurementLabelStoreRef = useRef(createMeasurementLabelPositionStore());
+    const annotationCanvasRef = useRef(null);
     if (!brushInputSchedulerRef.current) {
         brushInputSchedulerRef.current = createRafInputScheduler();
     }
@@ -1090,16 +1092,8 @@ const VolumeViewer3D = ({
         }
     });
     const qualityScoreTimerRef = useRef(null);
-    const [surfaceTraceDraft, setSurfaceTraceDraft] = useState([]);
-    const [surfaceTracePreview, setSurfaceTracePreview] = useState(null);
-    const [surfaceTraceActive, setSurfaceTraceActive] = useState(false);
     const [brushRadiusMm, setBrushRadiusMm] = useState(BRUSH_RADIUS_DEFAULT_MM);
     const [brushOperation, setBrushOperation] = useState('add');
-    const [brushDraftCenters, setBrushDraftCenters] = useState([]);
-    const [brushPreviewPoint, setBrushPreviewPoint] = useState(null);
-    const [brushPointerScreen, setBrushPointerScreen] = useState(null);
-    const [brushScreenRadiusPx, setBrushScreenRadiusPx] = useState(null);
-    const [brushTraceActive, setBrushTraceActive] = useState(false);
     const [selectedWorldAnnotationId, setSelectedWorldAnnotationId] = useState(null);
 
     const selectedWorldAnnotation = useMemo(
@@ -1541,22 +1535,6 @@ const VolumeViewer3D = ({
     useEffect(() => {
         onVolumeLoadedRef.current = onVolumeLoaded;
     }, [onVolumeLoaded]);
-
-    useEffect(() => {
-        surfaceTraceDraftRef.current = surfaceTraceDraft;
-    }, [surfaceTraceDraft]);
-
-    useEffect(() => {
-        surfaceTraceActiveRef.current = surfaceTraceActive;
-    }, [surfaceTraceActive]);
-
-    useEffect(() => {
-        brushDraftCentersRef.current = brushDraftCenters;
-    }, [brushDraftCenters]);
-
-    useEffect(() => {
-        brushTraceActiveRef.current = brushTraceActive;
-    }, [brushTraceActive]);
 
     useEffect(() => {
         presetRef.current = preset;
@@ -2026,14 +2004,13 @@ const VolumeViewer3D = ({
             setSessionError('');
             setReviewError('');
             setQualityGateOpen(false);
-            setSurfaceTraceDraft([]);
-            setSurfaceTracePreview(null);
-            setSurfaceTraceActive(false);
-            setBrushDraftCenters([]);
-            setBrushPreviewPoint(null);
-            setBrushPointerScreen(null);
-            setBrushScreenRadiusPx(null);
-            setBrushTraceActive(false);
+            surfaceTraceActiveRef.current = false;
+            surfaceTraceDraftRef.current = [];
+            surfacePointerRef.current = null;
+            brushTraceActiveRef.current = false;
+            brushDraftCentersRef.current = [];
+            brushPointerRef.current = null;
+            annotationCanvasRef.current?.clear();
             setSelectedWorldAnnotationId(null);
             setManualSegmentationError(null);
             setBrushOperation('add');
@@ -2903,8 +2880,15 @@ const VolumeViewer3D = ({
         setWindowCenter(defaults.center);
         setWindowWidth(defaults.width);
         setInverted(false);
-        setBrushPreviewPoint(null);
-        setBrushPointerScreen(null);
+        brushTraceActiveRef.current = false;
+        brushDraftCentersRef.current = [];
+        brushPointerRef.current = null;
+        brushInputSchedulerRef.current?.cancel?.();
+        annotationCanvasRef.current?.update({
+            brushPath: [],
+            brushRadius: 0,
+            brushActive: false,
+        });
 
         applyPreset(ctfun, ofun, presetName, dataRange, {
             wCenter: defaults.center,
@@ -3439,24 +3423,59 @@ const VolumeViewer3D = ({
         });
     }, [projectWorldToViewportCached]);
 
-    const updateBrushScreenRadius = useCallback((worldPoint) => {
-        if (!isWorldPoint3D(worldPoint)) {
-            setBrushScreenRadiusPx(null);
-            return;
-        }
+    const getBrushScreenRadiusPx = useCallback((worldPoint) => {
+        if (!isWorldPoint3D(worldPoint)) return 0;
         const centerScreen = projectWorldToViewportCached(worldPoint);
         const offsetScreen = projectWorldToViewportCached([
             worldPoint[0] + brushRadiusMm,
             worldPoint[1],
             worldPoint[2],
         ]);
-        if (!centerScreen || !offsetScreen) {
-            setBrushScreenRadiusPx(null);
-            return;
-        }
+        if (!centerScreen || !offsetScreen) return 0;
         const radius = Math.hypot(offsetScreen.x - centerScreen.x, offsetScreen.y - centerScreen.y);
-        setBrushScreenRadiusPx(Number.isFinite(radius) && radius > 0 ? radius : null);
+        return Number.isFinite(radius) && radius > 0 ? radius : 0;
     }, [brushRadiusMm, projectWorldToViewportCached]);
+
+    const projectWorldPathToViewport = useCallback((points = []) => (
+        points
+            .map((point) => projectWorldToViewportCached(point))
+            .filter(Boolean)
+    ), [projectWorldToViewportCached]);
+
+    const updateBrushAnnotationCanvas = useCallback((previewPoint = null) => {
+        const points = [...brushDraftCentersRef.current];
+        if (isWorldPoint3D(previewPoint)) {
+            const lastPoint = points[points.length - 1];
+            if (!lastPoint || !arraysNearlyEqual(lastPoint, previewPoint, 1e-3)) {
+                points.push(previewPoint);
+            }
+        }
+        annotationCanvasRef.current?.update({
+            brushPath: projectWorldPathToViewport(points),
+            brushRadius: getBrushScreenRadiusPx(previewPoint || points[points.length - 1]),
+            brushActive: brushTraceActiveRef.current,
+        });
+    }, [getBrushScreenRadiusPx, projectWorldPathToViewport]);
+
+    const updateSurfaceAnnotationCanvas = useCallback((previewPoint = null) => {
+        const points = [...surfaceTraceDraftRef.current];
+        if (isWorldPoint3D(previewPoint)) {
+            const lastPoint = points[points.length - 1];
+            if (!lastPoint || !arraysNearlyEqual(lastPoint, previewPoint, 1e-3)) {
+                points.push(previewPoint);
+            }
+        }
+        const screenPath = projectWorldPathToViewport(points);
+        const firstTracePoint = screenPath[0];
+        const lastTracePoint = screenPath[screenPath.length - 1];
+        const traceSnapToClose = Boolean(firstTracePoint && lastTracePoint
+            && screenPath.length >= 6
+            && Math.hypot(lastTracePoint.x - firstTracePoint.x, lastTracePoint.y - firstTracePoint.y) < 20);
+        annotationCanvasRef.current?.update({
+            tracePath: screenPath,
+            traceSnapToClose,
+        });
+    }, [projectWorldPathToViewport]);
 
     const projectWorldOverlayAnnotation = useCallback((annotation) => {
         if (!annotation) return null;
@@ -4384,15 +4403,11 @@ const VolumeViewer3D = ({
         setTextDraft3D(null);
         surfaceTraceActiveRef.current = false;
         surfaceTraceDraftRef.current = [];
+        surfacePointerRef.current = null;
         brushTraceActiveRef.current = false;
         brushDraftCentersRef.current = [];
-        setSurfaceTraceActive(false);
-        setSurfaceTraceDraft([]);
-        setSurfaceTracePreview(null);
-        setBrushTraceActive(false);
-        setBrushDraftCenters([]);
-        setBrushPreviewPoint(null);
-        setBrushPointerScreen(null);
+        brushPointerRef.current = null;
+        annotationCanvasRef.current?.clear();
         setManualSegmentationError(null);
     }, [pushAnnotationChange]);
 
@@ -4707,15 +4722,11 @@ const VolumeViewer3D = ({
             setTextDraft3D(null);
             surfaceTraceActiveRef.current = false;
             surfaceTraceDraftRef.current = [];
+            surfacePointerRef.current = null;
             brushTraceActiveRef.current = false;
             brushDraftCentersRef.current = [];
-            setSurfaceTraceActive(false);
-            setSurfaceTraceDraft([]);
-            setSurfaceTracePreview(null);
-            setBrushTraceActive(false);
-            setBrushDraftCenters([]);
-            setBrushPreviewPoint(null);
-            setBrushPointerScreen(null);
+            brushPointerRef.current = null;
+            annotationCanvasRef.current?.clear();
             setSessionModalMode(null);
             setHistoryOpen(true);
             await refreshSnapshots();
@@ -5342,9 +5353,10 @@ const VolumeViewer3D = ({
                 surfaceMoveRafRef.current = 0;
             }
             surfaceInputSchedulerRef.current?.cancel?.();
-            setSurfaceTraceActive(false);
-            setSurfaceTraceDraft([]);
-            setSurfaceTracePreview(null);
+            annotationCanvasRef.current?.update({
+                tracePath: [],
+                traceSnapToClose: false,
+            });
         }
 
         if (!(annotateMode && annotationTool === 'brush')) {
@@ -5356,10 +5368,11 @@ const VolumeViewer3D = ({
                 brushMoveRafRef.current = 0;
             }
             brushInputSchedulerRef.current?.cancel?.();
-            setBrushTraceActive(false);
-            setBrushDraftCenters([]);
-            setBrushPreviewPoint(null);
-            setBrushPointerScreen(null);
+            annotationCanvasRef.current?.update({
+                brushPath: [],
+                brushRadius: 0,
+                brushActive: false,
+            });
         }
 
         if (!(annotateMode && (annotationTool === 'arrow' || annotationTool === 'circle'))) {
@@ -5670,40 +5683,13 @@ const VolumeViewer3D = ({
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
-        if (!ctx || loading || error) return;
-
-        if (ctx.brushPreviewActors?.length) {
-            disposeOverlayActors(ctx.renderer, ctx.brushPreviewActors);
-            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.brushPreviewActors.includes(actor));
-            ctx.brushPreviewActors = [];
-        }
-
-        if (!annotateMode || annotationTool !== 'brush' || !brushPreviewPoint) {
-            ctx.renderWindow.render();
-            return;
-        }
-
-        const source = vtkSphereSource.newInstance({
-            center: brushPreviewPoint,
-            radius: brushRadiusMm,
-            thetaResolution: 18,
-            phiResolution: 18,
-        });
-        const mapper = vtkMapper.newInstance();
-        mapper.setInputConnection(source.getOutputPort());
-        const actor = vtkActor.newInstance();
-        actor.setMapper(mapper);
-        setOverlayResources(actor, { source });
-        actor.getProperty().setColor(0.961, 0.62, 0.043);
-        actor.getProperty().setOpacity(0.16);
-        actor.getProperty().setAmbient(0.3);
-        actor.getProperty().setDiffuse(0.7);
-        actor.getProperty().setSpecular(0.2);
-        ctx.renderer.addActor(actor);
-        ctx.brushPreviewActors = [actor];
-        ctx.overlayActors = [...(ctx.overlayActors || []), actor];
+        if (!ctx || loading || error || (annotateMode && annotationTool === 'brush')) return;
+        if (!ctx.brushPreviewActors?.length) return;
+        disposeOverlayActors(ctx.renderer, ctx.brushPreviewActors);
+        ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.brushPreviewActors.includes(actor));
+        ctx.brushPreviewActors = [];
         ctx.renderWindow.render();
-    }, [annotateMode, annotationTool, brushPreviewPoint, brushRadiusMm, error, loading]);
+    }, [annotateMode, annotationTool, error, loading]);
 
     const clearImplants = useCallback(() => {
         setImplantPlacements([]);
@@ -6032,18 +6018,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (annotateMode && annotationTool === 'brush') {
             event.preventDefault();
             event.stopPropagation();
-            const screenPoint = getViewportPointerPoint(event);
-            setBrushPointerScreen(screenPoint);
             const point = pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event);
             if (!point) return;
             beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
+            brushPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
             brushDraftCentersRef.current = [point];
             brushTraceActiveRef.current = true;
-            setBrushDraftCenters([point]);
-            setBrushPreviewPoint(point);
-            updateBrushScreenRadius(point);
-            setBrushTraceActive(true);
+            updateBrushAnnotationCanvas(point);
             setManualSegmentationError(null);
             return;
         }
@@ -6074,11 +6056,10 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             if (!point) return;
             beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
+            surfacePointerRef.current = { clientX: event.clientX, clientY: event.clientY };
             surfaceTraceDraftRef.current = [point];
             surfaceTraceActiveRef.current = true;
-            setSurfaceTraceDraft([point]);
-            setSurfaceTracePreview(point);
-            setSurfaceTraceActive(true);
+            updateSurfaceAnnotationCanvas(point);
             return;
         }
 
@@ -6140,7 +6121,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         annotateMode,
         annotationTool,
         beginAnnotationInteractionQuality,
-        brushRadiusMm,
         implantBrand,
         implantDiameter,
         implantLength,
@@ -6153,7 +6133,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         pickWorldAnnotationIdFromPointer,
         pickSurfaceWorldPointFromPointer,
         pickWorldPointFromPointer,
-        updateBrushScreenRadius,
+        updateBrushAnnotationCanvas,
+        updateSurfaceAnnotationCanvas,
     ]);
 
     const processBrushPointerMove = useCallback((pointerSample = null) => {
@@ -6172,26 +6153,16 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         const pickStart = performance.now();
         const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
         lastPickDurationRef.current = performance.now() - pickStart;
-        if (!point) {
-            setBrushPreviewPoint(null);
-            setBrushScreenRadiusPx(null);
-            return;
-        }
+        if (!point) return;
 
-        setBrushPreviewPoint(point);
-        updateBrushScreenRadius(point);
-        setBrushDraftCenters((current) => {
-            const activeDraft = brushDraftCentersRef.current.length ? brushDraftCentersRef.current : current;
-            const lastPoint = activeDraft[activeDraft.length - 1];
-            const minStepMm = Math.max((brushRadiusMm || BRUSH_RADIUS_DEFAULT_MM) * 0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 0.8);
-            if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
-                return activeDraft;
-            }
-            const nextDraft = [...activeDraft, point];
-            brushDraftCentersRef.current = nextDraft;
-            return nextDraft;
-        });
-    }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, updateBrushScreenRadius]);
+        const activeDraft = brushDraftCentersRef.current;
+        const lastPoint = activeDraft[activeDraft.length - 1];
+        const minStepMm = Math.max((brushRadiusMm || BRUSH_RADIUS_DEFAULT_MM) * 0.45, getAverageSpacing(vtkContextRef.current?.imageData) * 0.8);
+        if (!lastPoint || distanceMm(lastPoint, point) >= minStepMm) {
+            brushDraftCentersRef.current = [...activeDraft, point];
+        }
+        updateBrushAnnotationCanvas(point);
+    }, [annotateMode, annotationTool, brushRadiusMm, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, updateBrushAnnotationCanvas]);
 
     const processSurfacePointerMove = useCallback((pointerSample = null) => {
         surfaceMoveRafRef.current = 0;
@@ -6199,24 +6170,16 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (!pointer || !surfaceTraceActiveRef.current || !(annotateMode && annotationTool === 'freehand')) return;
 
         const point = pickSurfaceWorldPointFromPointer(pointer) || pickWorldPointFromPointer(pointer);
-        if (!point) {
-            setSurfaceTracePreview(null);
-            return;
-        }
+        if (!point) return;
 
-        setSurfaceTracePreview(point);
-        setSurfaceTraceDraft((current) => {
-            const activeDraft = current.length ? current : surfaceTraceDraftRef.current;
-            const lastPoint = activeDraft[activeDraft.length - 1];
-            const minStepMm = Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData));
-            if (lastPoint && distanceMm(lastPoint, point) < minStepMm) {
-                return activeDraft;
-            }
-            const nextDraft = [...activeDraft, point];
-            surfaceTraceDraftRef.current = nextDraft;
-            return nextDraft;
-        });
-    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
+        const activeDraft = surfaceTraceDraftRef.current;
+        const lastPoint = activeDraft[activeDraft.length - 1];
+        const minStepMm = Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData));
+        if (!lastPoint || distanceMm(lastPoint, point) >= minStepMm) {
+            surfaceTraceDraftRef.current = [...activeDraft, point];
+        }
+        updateSurfaceAnnotationCanvas(point);
+    }, [annotateMode, annotationTool, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, updateSurfaceAnnotationCanvas]);
 
     const processMeasurementPointerMove = useCallback((pointerSample = null) => {
         const pointer = pointerSample || measurementPointerRef.current;
@@ -6234,7 +6197,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (brushTraceActiveRef.current && annotateMode && annotationTool === 'brush') {
             event.preventDefault();
             event.stopPropagation();
-            setBrushPointerScreen(getViewportPointerPoint(event));
             brushPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
             brushInputSchedulerRef.current?.push(brushPointerRef.current, processBrushPointerMove);
             return;
@@ -6257,7 +6219,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 if (!screenPoint) {
                     return current.hoverScreen ? { ...current, hoverScreen: null } : current;
                 }
-                if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 0.5) {
+                if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 1.5) {
                     return current;
                 }
                 return { ...current, hoverScreen: screenPoint };
@@ -6295,7 +6257,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.stopPropagation();
             event.currentTarget?.releasePointerCapture?.(event.pointerId);
             brushTraceActiveRef.current = false;
-            setBrushTraceActive(false);
+            brushPointerRef.current = null;
             brushInputSchedulerRef.current?.cancel?.();
             endAnnotationInteractionQuality();
 
@@ -6308,10 +6270,11 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
 
             const simplifiedCenters = simplifyWorldPoints(rawCenters, minStepMm);
             brushDraftCentersRef.current = [];
-            setBrushDraftCenters([]);
-            setBrushPreviewPoint(null);
-            setBrushPointerScreen(null);
-            setBrushScreenRadiusPx(null);
+            annotationCanvasRef.current?.update({
+                brushPath: [],
+                brushRadius: 0,
+                brushActive: false,
+            });
 
             if (simplifiedCenters.length < 1) return;
 
@@ -6360,7 +6323,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         event.stopPropagation();
         event.currentTarget?.releasePointerCapture?.(event.pointerId);
         surfaceTraceActiveRef.current = false;
-        setSurfaceTraceActive(false);
+        surfacePointerRef.current = null;
         surfaceInputSchedulerRef.current?.cancel?.();
         endAnnotationInteractionQuality();
 
@@ -6386,9 +6349,11 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         }
 
         const simplifiedPath = simplifyWorldPath(rawPath, Math.max(SURFACE_TRACE_MIN_STEP_MM, getAverageSpacing(vtkContextRef.current?.imageData)));
-        setSurfaceTraceDraft([]);
         surfaceTraceDraftRef.current = [];
-        setSurfaceTracePreview(null);
+        annotationCanvasRef.current?.update({
+            tracePath: [],
+            traceSnapToClose: false,
+        });
 
         if (simplifiedPath.length < 3) return;
 
@@ -6430,19 +6395,52 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         pushAnnotationChange((current) => [...current, nextAnnotation]);
     }, [activeAnnotationColor, annotateMode, annotationTool, applyBrushStrokeToAnnotations, brushRadiusMm, buildAnnotationSurfaceAnchor, buildWorldOverlayAnnotation, endAnnotationInteractionQuality, getViewportPointerPoint, isViewportUiEvent, pickAnnotationWorldPointFromPointer, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer, projectWorldToViewportCached, pushAnnotationChange, worldOverlayDraft]);
 
+    const handleViewportPointerCancel = useCallback((event) => {
+        const hadActiveDraft = brushTraceActiveRef.current
+            || surfaceTraceActiveRef.current
+            || Boolean(worldOverlayDraft?.startWorld);
+        if (!hadActiveDraft) return;
+
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        try { event?.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) { }
+
+        brushTraceActiveRef.current = false;
+        brushDraftCentersRef.current = [];
+        brushPointerRef.current = null;
+        brushInputSchedulerRef.current?.cancel?.();
+
+        surfaceTraceActiveRef.current = false;
+        surfaceTraceDraftRef.current = [];
+        surfacePointerRef.current = null;
+        surfaceInputSchedulerRef.current?.cancel?.();
+
+        if (worldOverlayDraft?.startWorld) {
+            setWorldOverlayDraft(null);
+        }
+
+        annotationCanvasRef.current?.clear();
+        endAnnotationInteractionQuality();
+    }, [endAnnotationInteractionQuality, worldOverlayDraft]);
+
     const handleViewportPointerLeave = useCallback(() => {
         setMeasureHoverPoint(null);
         measurementPointerRef.current = null;
         measurementInputSchedulerRef.current?.cancel?.();
         if (!brushTraceActiveRef.current) {
-            setBrushPreviewPoint(null);
-            setBrushPointerScreen(null);
-            setBrushScreenRadiusPx(null);
             brushInputSchedulerRef.current?.cancel?.();
+            annotationCanvasRef.current?.update({
+                brushPath: [],
+                brushRadius: 0,
+                brushActive: false,
+            });
         }
         if (!surfaceTraceActiveRef.current) {
-            setSurfaceTracePreview(null);
             surfaceInputSchedulerRef.current?.cancel?.();
+            annotationCanvasRef.current?.update({
+                tracePath: [],
+                traceSnapToClose: false,
+            });
         }
     }, []);
 
@@ -6732,20 +6730,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         }));
     }, [applyMeasurementChange]);
 
-    const surfaceTraceScreenPath = useMemo(() => {
-        if (!annotateMode || annotationTool !== 'freehand') return [];
-        const points = [...surfaceTraceDraft, ...(surfaceTracePreview ? [surfaceTracePreview] : [])];
-        return points
-            .map((point) => projectWorldToViewportCached(point))
-            .filter(Boolean);
-    }, [annotateMode, annotationTool, projectWorldToViewportCached, projectionTick, surfaceTraceDraft, surfaceTracePreview]);
-    const brushScreenPath = useMemo(() => {
-        if (!annotateMode || annotationTool !== 'brush') return [];
-        const points = [...brushDraftCenters, ...(brushPreviewPoint ? [brushPreviewPoint] : [])];
-        return points
-            .map((point) => projectWorldToViewportCached(point))
-            .filter(Boolean);
-    }, [annotateMode, annotationTool, brushDraftCenters, brushPreviewPoint, projectWorldToViewportCached, projectionTick]);
     const projectedWorldOverlayAnnotations = useMemo(() => worldOverlayAnnotations
         .map((annotation) => projectWorldOverlayAnnotation(annotation))
         .filter(Boolean), [projectWorldOverlayAnnotation, projectionTick, worldOverlayAnnotations]);
@@ -7374,6 +7358,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     onPointerDown={handleViewportPointerDown}
                     onPointerMove={handleViewportPointerMove}
                     onPointerUp={handleViewportPointerUp}
+                    onPointerCancel={handleViewportPointerCancel}
                     onPointerLeave={handleViewportPointerLeave}
                     onClick={handleViewportClick}
                     className="absolute inset-0"
@@ -7389,9 +7374,18 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         onPointerDown={handleViewportPointerDown}
                         onPointerMove={handleViewportPointerMove}
                         onPointerUp={handleViewportPointerUp}
+                        onPointerCancel={handleViewportPointerCancel}
                         onPointerLeave={handleViewportPointerLeave}
                         onClick={handleViewportClick}
                     />
+
+                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && annotateMode && ['brush', 'freehand'].includes(annotationTool) && (
+                        <Volume3DAnnotationCanvas
+                            ref={annotationCanvasRef}
+                            width={viewerSize.width}
+                            height={viewerSize.height}
+                        />
+                    )}
 
                     {/* Loading Overlay */}
                     {loading && (
@@ -7921,11 +7915,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             annotateMode={annotateMode}
                             annotationTool={annotationTool}
                             brushOperation={brushOperation}
-                            brushPointerScreen={brushPointerScreen}
                             brushRadiusMm={brushRadiusMm}
-                            brushScreenRadiusPx={brushScreenRadiusPx}
-                            brushScreenPath={brushScreenPath}
-                            brushTraceActive={brushTraceActive}
                             commitTextDraft3D={commitTextDraft3D}
                             hiddenAnnotationCount={hiddenAnnotationCount}
                             isWorldBrushAnnotation={isWorldBrushAnnotation}
@@ -7940,7 +7930,6 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             projectedWorldOverlayAnnotations={projectedWorldOverlayAnnotations}
                             selectedWorldAnnotation={selectedWorldAnnotation}
                             setTextDraft3D={setTextDraft3D}
-                            surfaceTraceScreenPath={surfaceTraceScreenPath}
                             textDraft3D={textDraft3D}
                             textDraftScreenPoint={textDraftScreenPoint}
                             worldOverlayPreview={worldOverlayPreview}

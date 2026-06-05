@@ -145,12 +145,31 @@ router.post('/send-appointment-reminder', authenticateToken, async (req, res) =>
       false
     ]);
 
+    const createdNotif = result.rows[0];
     console.log('✅ Appointment reminder sent to patient:', patientId);
+
+    // Emit realtime socket event to user room
+    try {
+      const { emitToUserRooms } = await import('../sockets/chat.js');
+      emitToUserRooms({
+        userIds: [patientId],
+        eventName: 'notification:new',
+        payload: {
+          ...createdNotif,
+          id: createdNotif.id.toString(),
+          user_id: createdNotif.user_id.toString(),
+          created_at: createdNotif.created_at ? new Date(createdNotif.created_at).toISOString() : new Date().toISOString(),
+          read_at: createdNotif.read_at ? new Date(createdNotif.read_at).toISOString() : null
+        }
+      });
+    } catch (socketErr) {
+      console.error('Failed to emit reminder realtime notification:', socketErr);
+    }
 
     res.json({
       success: true,
       message: 'Reminder sent successfully',
-      data: result.rows[0]
+      data: createdNotif
     });
   } catch (error) {
     console.error('Error sending appointment reminder:', error);

@@ -41,6 +41,11 @@ export async function getPatientAIResults(patientId) {
   return data;
 }
 
+export async function getDentistDashboardContinuity() {
+  const { data } = await authHttp.get('/dentist-portal/dashboard/continuity');
+  return data;
+}
+
 // ==========================================
 // SERVICES MANAGEMENT
 // ==========================================
@@ -113,6 +118,36 @@ export async function updatePatientTreatmentPlan(patientId, planId, payload) {
   return data.treatmentPlan;
 }
 
+export async function getDentistTreatmentPlan(planId) {
+  const { data } = await authHttp.get(`/dentist-portal/treatment-plans/${planId}`);
+  return data.treatmentPlan;
+}
+
+export async function patchDentistTreatmentPlan(planId, payload) {
+  const { data } = await authHttp.patch(`/dentist-portal/treatment-plans/${planId}`, payload);
+  return data.treatmentPlan;
+}
+
+export async function sendPatientTreatmentPlan(planId) {
+  const { data } = await authHttp.post(`/dentist-portal/treatment-plans/${planId}/send`);
+  return data.treatmentPlan;
+}
+
+export async function addTreatmentPlanItem(planId, payload) {
+  const { data } = await authHttp.post(`/dentist-portal/treatment-plans/${planId}/items`, payload);
+  return data;
+}
+
+export async function patchTreatmentPlanItem(planId, itemId, payload) {
+  const { data } = await authHttp.patch(`/dentist-portal/treatment-plans/${planId}/items/${itemId}`, payload);
+  return data;
+}
+
+export async function deleteTreatmentPlanItem(planId, itemId) {
+  const { data } = await authHttp.delete(`/dentist-portal/treatment-plans/${planId}/items/${itemId}`);
+  return data;
+}
+
 /**
  * Complete / update a single treatment item (supports image upload)
  * @param {string} patientId
@@ -133,4 +168,23 @@ export async function completeTreatmentItem(patientId, planId, itemId, payload) 
     { headers: { 'Content-Type': 'multipart/form-data' } }
   );
   return data.treatmentPlan;
+}
+
+// ==========================================
+// NOTIFICATIONS
+// ==========================================
+
+export async function getNotifications(params = {}) {
+  const { data } = await authHttp.get('/notifications', { params });
+  return data;
+}
+
+export async function markNotificationAsRead(id) {
+  const { data } = await authHttp.patch(`/notifications/${id}/read`);
+  return data;
+}
+
+export async function markAllNotificationsAsRead() {
+  const { data } = await authHttp.patch('/notifications/read-all');
+  return data;
 }

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNotifications } from '../../../contexts/NotificationContext';
 import { getDentistPatients, getPatientDetails, getPatientAIResults } from '../../../services/dentistPortalService';
 import { parseIndonesianAnalysis } from '../../../utils/indonesianAnalysisParser';
 import { cleanMarkdownFormatting, normalizeAIExplanation } from '../../../utils/textFormatting';
@@ -37,6 +38,7 @@ const PatientManagement = () => {
     withAiResults: 0
   });
   const { t } = useLanguage();
+  const { socket } = useNotifications();
 
   // Normalize backend AI results
   const transformAIResults = useCallback((results = []) => {
@@ -413,31 +415,97 @@ const PatientManagement = () => {
     });
   }, [patients, selectedPatient, handlePatientSelect]);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handleRealtimeUpdate = (data) => {
+      console.log('🔄 Patient portal socket notification: reloading patients & selected detail...');
+      fetchPatients();
+      if (selectedPatient?.id) {
+        handlePatientSelect(selectedPatient);
+      }
+    };
+    socket.on('notification:new', handleRealtimeUpdate);
+    return () => {
+      socket.off('notification:new', handleRealtimeUpdate);
+    };
+  }, [socket, fetchPatients, selectedPatient, handlePatientSelect]);
+
   // Handler stubs
   const handleScheduleNew = () => {};
   const handleUpdateAppointment = (appointmentId, newStatus) => {};
   const handleCancelAppointment = (appointmentId) => {};
-  const handleCreateInvoice = () => {};
-  const handlePaymentReceived = (invoiceId) => {};
+  const handleCreateInvoice = (invoice) => {
+    if (selectedPatient && invoice) {
+      setSelectedPatient(prev => ({
+        ...prev,
+        billing: mergeInvoiceIntoBilling(prev.billing, invoice)
+      }));
+    }
+  };
+  const handlePaymentReceived = (invoiceId) => {
+    if (selectedPatient) {
+      const invoices = Array.isArray(selectedPatient.billing?.invoices) ? selectedPatient.billing.invoices : [];
+      const updatedInvoices = invoices.map(inv => {
+        if (inv.id === invoiceId) {
+          return {
+            ...inv,
+            status: 'paid',
+            paymentStatus: 'paid',
+            paymentDate: new Date().toISOString().split('T')[0]
+          };
+        }
+        return inv;
+      });
+      const updatedBilling = mergeInvoiceIntoBilling({ ...selectedPatient.billing, invoices: updatedInvoices }, null);
+      setSelectedPatient(prev => ({
+        ...prev,
+        billing: updatedBilling
+      }));
+    }
+  };
   const handleSendStatement = () => {};
   const handleSendMessage = (message) => {};
   const handleScheduleCall = () => {};
   const handleUpdateHistory = (updatedHistory) => {};
+  const mergeInvoiceIntoBilling = (billing = {}, invoice) => {
+    if (!invoice) return billing;
+    const invoices = Array.isArray(billing.invoices) ? billing.invoices : [];
+    const existing = invoices.some((item) => item.id === invoice.id || item.invoiceId === invoice.invoiceId);
+    const nextInvoices = existing
+      ? invoices.map((item) => (item.id === invoice.id || item.invoiceId === invoice.invoiceId ? { ...item, ...invoice } : item))
+      : [invoice, ...invoices];
+    const paidAmount = nextInvoices
+      .filter((item) => ['paid', 'settled'].includes(item.paymentStatus || item.status))
+      .reduce((sum, item) => sum + Number(item.grandTotal || item.total || 0), 0);
+    const pendingAmount = nextInvoices
+      .filter((item) => !['paid', 'settled', 'cancelled', 'refunded'].includes(item.paymentStatus || item.status))
+      .reduce((sum, item) => sum + Number(item.grandTotal || item.total || 0), 0);
+    return {
+      ...billing,
+      invoices: nextInvoices,
+      paidAmount,
+      pendingAmount,
+      totalBalance: pendingAmount
+    };
+  };
+
   const handleCreatePlan = (savedPlan) => {
     // Optimistically append the new plan to the selected patient's treatmentPlans
     if (selectedPatient && savedPlan) {
       setSelectedPatient(prev => ({
         ...prev,
         treatmentPlans: [...(prev.treatmentPlans || []), savedPlan],
+        billing: mergeInvoiceIntoBilling(prev.billing, savedPlan.invoice),
       }));
     }
   };
   const handleUpdatePlan = (updatedPlan) => {
     setSelectedPatient(prev => ({
       ...prev,
-      treatmentPlans: (prev.treatmentPlans || []).map(p =>
-        p.id === updatedPlan.id ? updatedPlan : p
-      ),
+      treatmentPlans: (prev.treatmentPlans || []).some(p => p.id === updatedPlan.id)
+        ? (prev.treatmentPlans || []).map(p => (p.id === updatedPlan.id ? updatedPlan : p))
+        : [updatedPlan, ...(prev.treatmentPlans || [])],
+      billing: mergeInvoiceIntoBilling(prev.billing, updatedPlan.invoice),
     }));
   };
   const handleCompleteTreatment = (treatmentId) => {};

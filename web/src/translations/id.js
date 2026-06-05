@@ -1694,6 +1694,7 @@ export default {
         live: 'Live',
         waiting: 'Menunggu',
         upcoming: 'Akan Datang',
+        overdue: 'Terlewat',
         completed: 'Selesai'
       }
     },

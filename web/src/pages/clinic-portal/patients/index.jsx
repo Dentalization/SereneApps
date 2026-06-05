@@ -5,11 +5,14 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import clinicService from '../../../services/clinicService';
+import { useLocation } from 'react-router-dom';
 
 // Import components
 import PatientDetailModal from './components/PatientDetailModal';
 import PatientAnalytics from './components/PatientAnalytics';
 import PatientReports from './components/PatientReports';
+import { useNotifications } from '../../../contexts/NotificationContext';
+import { resolveMediaUrl } from '../../../utils/media';
 
 // ─── APPOINTMENT STATUS BADGE ───────────────────────────────────────────────
 const getStatusColor = (status) => {
@@ -34,6 +37,18 @@ const getPatientStatusColor = (status) => {
   }
 };
 
+const formatDateSafe = (dateString, locale, options) => {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  try {
+    return d.toLocaleDateString(locale, options);
+  } catch (e) {
+    return '-';
+  }
+};
+
+
 // ─── STAT CARD ──────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, icon, iconColor = 'text-accent' }) => (
   <div className="bg-surface-elevated rounded-xl p-5 border border-primary/15">
@@ -54,6 +69,8 @@ const PatientsPage = () => {
   const { t, language } = useLanguage();
   const { isDark } = useTheme();
   const { user, logout } = useAuth();
+  const { socket } = useNotifications();
+  const location = useLocation();
 
   // This is the CLINIC PORTAL — always clinic context.
   // The logged-in user is the clinic admin/owner.
@@ -106,7 +123,41 @@ const PatientsPage = () => {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(() => {
+      fetchData();
+    }, 60000);
+    return () => clearInterval(interval);
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleRealtimeUpdate = (data) => {
+      console.log('🔄 Real-time update: refreshing clinic patients due to notification:', data);
+      fetchData();
+    };
+    socket.on('notification:new', handleRealtimeUpdate);
+    return () => {
+      socket.off('notification:new', handleRealtimeUpdate);
+    };
+  }, [socket, fetchData]);
+
+  // Deep-link to patient history/details based on query parameters
+  useEffect(() => {
+    if (patients.length === 0) return;
+    const params = new URLSearchParams(location.search);
+    const patientId = params.get('patientId');
+    const tab = params.get('tab');
+    if (patientId) {
+      const patient = patients.find(p => p.id === patientId);
+      if (patient) {
+        setModalInitialTab(tab || 'overview');
+        setSelectedPatient(patient);
+        setShowDetailModal(true);
+        // Clear query parameters to prevent modal reopening on navigate/refresh
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }, [patients, location.search]);
 
   // ── FILTERED PATIENTS (Registry) ─────────────────────────────────────────
   const filteredPatients = useMemo(() => {
@@ -421,7 +472,7 @@ const PatientsPage = () => {
                               <div className="flex items-center">
                                 {patient.avatar ? (
                                   <img
-                                    src={patient.avatar}
+                                    src={resolveMediaUrl(patient.avatar)}
                                     alt={patient.name}
                                     className="w-9 h-9 rounded-full object-cover ring-2 ring-accent/20"
                                     onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
@@ -431,7 +482,7 @@ const PatientsPage = () => {
                                   className="w-9 h-9 bg-accent/10 rounded-full items-center justify-center text-xs font-bold text-accent"
                                   style={{ display: patient.avatar ? 'none' : 'flex' }}
                                 >
-                                  {patient.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                  {(patient.name || '').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2)}
                                 </div>
                                 <div className="ml-3">
                                   <div className="text-sm font-medium text-primary">{patient.name}</div>
@@ -449,7 +500,7 @@ const PatientsPage = () => {
                               <div className="text-sm text-primary">{patient.doctorName || '-'}</div>
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap text-sm text-secondary">
-                              {patient.lastVisit ? new Date(patient.lastVisit).toLocaleDateString(locale) : '-'}
+                              {formatDateSafe(patient.lastVisit, locale)}
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap">
                               <span className={`px-2 py-0.5 text-xs font-medium rounded-full uppercase ${getPatientStatusColor(patient.status)}`}>
@@ -458,13 +509,13 @@ const PatientsPage = () => {
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap text-sm">
                               <div className="flex items-center gap-1">
-                                <button onClick={() => handlePatientAction('view', patient)} className="p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-colors" title="Lihat">
+                                <button onClick={() => handlePatientAction('view', patient)} className="p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Lihat">
                                   <Icon name="Eye" size={15} />
                                 </button>
-                                <button onClick={() => handlePatientAction('edit', patient)} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit">
+                                <button onClick={() => handlePatientAction('edit', patient)} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Edit">
                                   <Icon name="Edit" size={15} />
                                 </button>
-                                <button onClick={() => handlePatientAction('schedule', patient)} className="p-1.5 text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="Jadwalkan">
+                                <button onClick={() => handlePatientAction('schedule', patient)} className="p-1.5 text-green-500 hover:bg-green-500/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Jadwalkan">
                                   <Icon name="CalendarPlus" size={15} />
                                 </button>
                               </div>
@@ -589,7 +640,7 @@ const PatientsPage = () => {
                         <div className="flex items-center gap-4 flex-shrink-0">
                           <span className="text-xs text-secondary hidden lg:block px-2 py-0.5 bg-surface rounded-md">{apt.dentistName}</span>
                           <span className="text-xs text-secondary whitespace-nowrap">
-                            {new Date(apt.date).toLocaleDateString(locale)} • {apt.time}
+                            {formatDateSafe(apt.date, locale)} • {apt.time}
                           </span>
                           <span className={`px-2 py-0.5 text-xs font-medium rounded-full border capitalize ${getStatusColor(apt.status)}`}>
                             {apt.status}

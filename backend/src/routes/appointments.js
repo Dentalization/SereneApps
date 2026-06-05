@@ -1544,7 +1544,10 @@ router.get(
       } else if (view === 'dentist') {
         where.dentistId = userId;
       } else if (view === 'clinic') {
-        if (clinicContext.assignedBranchId) {
+        const isManageRole = roles.some(r =>
+          ['owner', 'clinic_owner', 'manager', 'clinic_manager', 'admin', 'clinic_admin'].includes(r)
+        );
+        if (clinicContext.assignedBranchId && !isManageRole) {
           where.clinicBranchId = clinicContext.assignedBranchId;
         } else {
           where.clinicBranch = {

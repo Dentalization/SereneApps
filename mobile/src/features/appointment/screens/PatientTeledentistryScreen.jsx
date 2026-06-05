@@ -171,7 +171,10 @@ const PatientTeledentistryScreen = () => {
     [resolvedAppointmentDate],
   );
   const isArchiveSession = useMemo(
-    () => sessionMode === 'archive' || ['completed', 'overdue', 'cancelled', 'no-show'].includes(String(appointmentStatus || '').toLowerCase()),
+    // Overdue only means the scheduled time has passed. The session can still be
+    // chat-accessible within the waiting room / grace window, so do not force
+    // archive mode from overdue alone.
+    () => sessionMode === 'archive' || ['completed', 'cancelled', 'no-show'].includes(String(appointmentStatus || '').toLowerCase()),
     [appointmentStatus, sessionMode]
   );
 
@@ -603,6 +606,15 @@ const PatientTeledentistryScreen = () => {
       if (!appointmentId || callJoinStatus !== 'idle') return;
       setCallNotice(null);
       setCallJoinStatus('checking');
+
+      if (isExpoGo) {
+        const message = 'Video call membutuhkan iOS development build/custom dev client. Expo Go hanya bisa dipakai untuk chat dan UI preview.';
+        setCallNotice(message);
+        addSystemMessage(message);
+        Alert.alert('Video Tidak Tersedia di Expo Go', message);
+        setCallJoinStatus('idle');
+        return;
+      }
 
       const session = await fetchVideoToken(appointmentId.toString());
       if (session.canJoinVideo === false || session.waitingRoom?.canJoinVideo === false) {
@@ -1919,6 +1931,7 @@ const PatientTeledentistryScreen = () => {
           close: t('common.actions.close', { fallbackText: 'Tutup' }),
           ready: t('mobile.teledentistry.preCall.ready', { fallbackText: 'Siap bergabung' }),
           joinAudioOnly: t('mobile.teledentistry.preCall.joinAudioOnly', { fallbackText: 'Bergabung audio saja' }),
+          recordingConsent: t('mobile.teledentistry.preCall.recordingConsent', { fallbackText: 'Saya memahami sesi ini mungkin direkam untuk keperluan dokumentasi klinis sesuai kebijakan privasi Serene Apps.' }),
         }}
         onClose={() => setPreCallSystemCheck({ visible: false, session: null, checks: [], canJoin: false, audioOnly: false })}
         onJoin={async () => {

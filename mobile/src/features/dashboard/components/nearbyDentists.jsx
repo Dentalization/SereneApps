@@ -156,7 +156,7 @@ export default function NearbyDentists({
                   resizeMode="cover"
                 />
               </View>
-              
+
               <View style={{ flex: 1, marginLeft: normalize(14) }}>
                 <Text
                   style={{ fontSize: normalize(16), fontWeight: 'bold', color: '#1F2937', marginBottom: 2 }}
@@ -170,7 +170,7 @@ export default function NearbyDentists({
                 >
                   {d.specialty}
                 </Text>
-                
+
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <MaterialCommunityIcons name="star" size={14} color="#F59E0B" />
@@ -188,11 +188,11 @@ export default function NearbyDentists({
 
             {/* Bottom Section: Price & Actions */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
-              <View style={{flex: 1, marginRight: 8}}>
+              <View style={{ flex: 1, marginRight: 8 }}>
                 {d.clinic ? <Text style={{ fontSize: normalize(11), color: '#9CA3AF', marginBottom: 2 }} numberOfLines={1}>{d.clinic}</Text> : null}
                 <Text style={{ fontSize: normalize(18), fontWeight: 'bold', color: '#1F2937' }}>{formatRupiah(d.price)}</Text>
               </View>
-              
+
               <View style={{ flexDirection: 'row' }}>
                 <TouchableOpacity
                   onPress={() => onMessage?.(d)}
@@ -208,7 +208,7 @@ export default function NearbyDentists({
                 >
                   <MaterialCommunityIcons name="message-text" size={normalize(20)} color={theme.colors.primary} />
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   onPress={() => onBook?.(d)}
                   style={{

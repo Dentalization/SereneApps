@@ -1,5 +1,11 @@
 import 'react-native-get-random-values';
 import 'react-native-gesture-handler';
+import 'react-native-url-polyfill/auto';
+
+// Inject TextEncoder and TextDecoder into global scope to prevent Twilio Sync binary decoding crash
+const TextEncodingPolyfill = require('text-encoding');
+global.TextEncoder = TextEncodingPolyfill.TextEncoder;
+global.TextDecoder = TextEncodingPolyfill.TextDecoder;
 
 if (typeof Promise.prototype.finally !== 'function') {
   Promise.prototype.finally = function (callback) {
@@ -35,6 +41,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { subscribeAppointmentReminderResponses } from './src/services/pushNotificationService';
+import { NotificationProvider } from './src/contexts/NotificationContext';
 
 // --- UTILS RESPONSIVE (Agar konsisten dengan screen lain) ---
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -64,6 +71,16 @@ if (hasErrorUtils) {
   });
 } else {
   console.warn('⚠️ Global Error Utils not available, using console fallback');
+}
+
+if (__DEV__) {
+  const oldConsoleError = console.error;
+  console.error = (...args) => {
+    oldConsoleError(...args);
+    if (String(args?.[0] || '').includes('Unhandled promise rejection')) {
+      console.log('🔥 UNHANDLED REJECTION FULL:', args);
+    }
+  };
 }
 
 // Suppress specific warnings
@@ -233,7 +250,7 @@ function BackgroundPresenceConnector() {
         const result = await getAppointments({ limit: 10 });
         if (!active) return;
         const list = result?.data || [];
-        
+
         // Find any upcoming/confirmed virtual appointment
         const upcomingVirtual = list.find(apt => {
           const isVirtual = apt.appointmentType === 'virtual' || apt.metadata?.appointmentType === 'virtual' || Boolean(apt.videoRoomRef);
@@ -304,15 +321,17 @@ function AppContent() {
     return (
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
-          <BackgroundPresenceConnector />
-          <NavigationContainer ref={navigationRef}>
-            <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-            <React.Suspense
-              fallback={null} // Fallback null karena Splash ditangani di App level
-            >
-              <TabNavigator />
-            </React.Suspense>
-          </NavigationContainer>
+          <NotificationProvider>
+            <BackgroundPresenceConnector />
+            <NavigationContainer ref={navigationRef}>
+              <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+              <React.Suspense
+                fallback={null} // Fallback null karena Splash ditangani di App level
+              >
+                <TabNavigator />
+              </React.Suspense>
+            </NavigationContainer>
+          </NotificationProvider>
         </SafeAreaProvider>
       </PaperProvider>
     );

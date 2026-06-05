@@ -71,6 +71,7 @@ const Teledentistry = () => {
   const [preSessionHealthForm, setPreSessionHealthForm] = useState({ status: 'idle', form: null, error: null });
   const loadStartRef = useRef(Date.now());
   const bootTimerRef = useRef(null);
+  const endedCallAppointmentIdRef = useRef(null);
 
   useEffect(() => {
     loadStartRef.current = Date.now();
@@ -133,6 +134,7 @@ const Teledentistry = () => {
     const onEnded = () => {
       if (callState === 'connected') {
         toast.info('Call ended by the other participant.');
+        endedCallAppointmentIdRef.current = activeAppointmentId;
         endCall();
         if (activeAppointmentId) handleOpenSummary(activeAppointmentId);
       }
@@ -240,6 +242,7 @@ const Teledentistry = () => {
 
   const handleEndVideoCall = () => {
     const apptId = videoSession?.appointmentId || activeAppointmentId;
+    endedCallAppointmentIdRef.current = apptId || null;
     if (apptId) emitVideoCallEnded(apptId);
     endCall();
     if (apptId) handleOpenSummary(apptId);
@@ -525,11 +528,12 @@ const Teledentistry = () => {
         }}
       />
       <PostCallSummaryPanel
-        appointmentId={summaryAppointmentId}
+        appointmentId={endedCallAppointmentIdRef.current || summaryAppointmentId}
         conversation={summaryConversation}
-        open={showPostCallSummary && Boolean(summaryAppointmentId)}
+        open={showPostCallSummary && Boolean(endedCallAppointmentIdRef.current || summaryAppointmentId)}
         onClose={() => {
           setShowPostCallSummary(false);
+          endedCallAppointmentIdRef.current = null;
           setSummaryAppointmentId(null);
           setSummaryConversation(null);
         }}

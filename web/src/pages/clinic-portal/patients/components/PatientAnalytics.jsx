@@ -40,6 +40,18 @@ const ChartCard = ({ title, children }) => (
   </div>
 );
 
+const formatDateSafe = (dateString, locale, options) => {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  try {
+    return d.toLocaleDateString(locale, options);
+  } catch (e) {
+    return '-';
+  }
+};
+
+
 const PatientAnalytics = ({
   patients = [],
   allAppointments = [],
@@ -133,9 +145,12 @@ const PatientAnalytics = ({
   const monthlyRevenue = React.useMemo(() => {
     const revenue = new Array(12).fill(0);
     allAppointments.forEach(apt => {
-      if (apt.isPaid) {
-        const m = new Date(apt.date).getMonth();
-        revenue[m] += apt.fee;
+      if (apt.isPaid && apt.date) {
+        const d = new Date(apt.date);
+        const m = d.getMonth();
+        if (!isNaN(m) && m >= 0 && m < 12) {
+          revenue[m] += (apt.fee || 0);
+        }
       }
     });
     return revenue;
@@ -308,29 +323,42 @@ const PatientAnalytics = ({
             switch (selectedPeriod) {
               case 'today':
                 filtered = patients.filter(p => {
+                  if (!p.lastVisit) return false;
                   const visitDate = new Date(p.lastVisit);
+                  if (isNaN(visitDate.getTime())) return false;
                   return visitDate.toDateString() === now.toDateString();
                 });
                 break;
               case 'week':
                 const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                filtered = patients.filter(p => new Date(p.lastVisit) >= weekAgo);
+                filtered = patients.filter(p => {
+                  if (!p.lastVisit) return false;
+                  const visitDate = new Date(p.lastVisit);
+                  if (isNaN(visitDate.getTime())) return false;
+                  return visitDate >= weekAgo;
+                });
                 break;
               case 'month':
                 filtered = patients.filter(p => {
+                  if (!p.lastVisit) return false;
                   const visitDate = new Date(p.lastVisit);
+                  if (isNaN(visitDate.getTime())) return false;
                   return visitDate.getMonth() === now.getMonth() && visitDate.getFullYear() === now.getFullYear();
                 });
                 break;
               case 'year':
                 filtered = patients.filter(p => {
+                  if (!p.lastVisit) return false;
                   const visitDate = new Date(p.lastVisit);
+                  if (isNaN(visitDate.getTime())) return false;
                   return visitDate.getFullYear() === now.getFullYear();
                 });
                 break;
               case 'custom':
                 filtered = patients.filter(p => {
+                  if (!p.lastVisit) return false;
                   const visitDate = new Date(p.lastVisit);
+                  if (isNaN(visitDate.getTime())) return false;
                   return visitDate.getFullYear() === selectedYear && visitDate.getMonth() === selectedMonth;
                 });
                 break;
@@ -389,7 +417,7 @@ const PatientAnalytics = ({
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium text-primary">{new Date(patient.lastVisit).toLocaleDateString(locale)}</div>
+                      <div className="text-sm font-medium text-primary">{formatDateSafe(patient.lastVisit, locale)}</div>
                       <div className={`text-xs px-2 py-1 rounded-full ${patient.status === 'active' ? 'bg-green-100 text-green-800' :
                         patient.status === 'vip' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-gray-100 text-gray-800'

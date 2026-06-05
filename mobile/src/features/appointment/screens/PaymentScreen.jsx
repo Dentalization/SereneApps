@@ -23,8 +23,9 @@ const PaymentScreen = () => {
   const { t } = useI18n();
 
   // Params from BookingConfirm
-  const { appointmentId, dentist, slot, date, fee, paymentMethod, type } = route.params || {};
+  const { appointmentId, dentist, slot, date, fee, paymentMethod, type, treatmentPlanId, invoiceId, source, planTitle } = route.params || {};
   const isVirtual = type === 'virtual';
+  const isTreatmentPlanPayment = source === 'treatment_plan' || Boolean(treatmentPlanId || invoiceId);
 
   // State
   const [loading, setLoading] = useState(true);
@@ -54,11 +55,11 @@ const PaymentScreen = () => {
   }, []);
 
   const initPayment = useCallback(async () => {
-    if (!appointmentId) return;
+    if (!appointmentId && !treatmentPlanId && !invoiceId) return;
     try {
       setLoading(true);
       setStatus('pending');
-      const result = await createSnapTransaction(appointmentId);
+      const result = await createSnapTransaction({ appointmentId, treatmentPlanId, invoiceId });
 
       setPaymentIntentId(result.paymentIntentId);
       setRedirectUrl(result.redirectUrl);
@@ -98,7 +99,7 @@ const PaymentScreen = () => {
       setStatus('error');
       showToast(error.message || 'Gagal menyiapkan pembayaran', 'error');
     }
-  }, [appointmentId, showToast]);
+  }, [appointmentId, invoiceId, showToast, treatmentPlanId]);
 
   // 1. Initialize Transaction
   useEffect(() => {
@@ -215,9 +216,10 @@ const PaymentScreen = () => {
   };
 
   const handleSuccess = () => {
+    const safeAppointmentId = route.params?.appointmentId;
     let bookingIdSuffix = 'UNKNOWN';
-    if (appointmentId !== undefined && appointmentId !== null) {
-      const cleanId = String(appointmentId).replace(/[^a-zA-Z0-9]/g, '');
+    if (safeAppointmentId !== undefined && safeAppointmentId !== null) {
+      const cleanId = String(safeAppointmentId).replace(/[^a-zA-Z0-9]/g, '');
       if (cleanId && cleanId !== 'undefined' && cleanId !== 'null') {
         bookingIdSuffix = cleanId.slice(-6).toUpperCase();
       }
@@ -226,8 +228,13 @@ const PaymentScreen = () => {
       bookingIdSuffix = String(Date.now()).slice(-6);
     }
 
+    if (isTreatmentPlanPayment) {
+      navigation.navigate('TreatmentPlan', { refreshedAt: Date.now(), paidTreatmentPlanId: treatmentPlanId });
+      return;
+    }
+
     navigation.navigate('BookingSuccess', {
-      appointmentId,
+      appointmentId: safeAppointmentId,
       dentist,
       slot,
       date,
@@ -341,7 +348,7 @@ const PaymentScreen = () => {
         </View>
 
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.white, 0.8), textTransform: 'uppercase', letterSpacing: 1 }}>TOTAL PEMBAYARAN</Text>
+          <Text style={{ ...TYPOGRAPHY.caption, color: withOpacity(COLORS.white, 0.8), textTransform: 'uppercase', letterSpacing: 1 }}>{isTreatmentPlanPayment ? 'TOTAL RENCANA PERAWATAN' : 'TOTAL PEMBAYARAN'}</Text>
           <Text style={{ ...TYPOGRAPHY.h1, color: COLORS.surfaceElevated, fontSize: 32, marginTop: 4 }}>{formatCurrency(fee)}</Text>
           <View style={{ marginTop: 12, borderRadius: 999, backgroundColor: remainingSeconds <= 5 * 60 ? COLORS.error : COLORS.warning, paddingHorizontal: 14, paddingVertical: 7, flexDirection: 'row', alignItems: 'center' }}>
             <MaterialCommunityIcons name="timer-sand" size={16} color={COLORS.white} />
@@ -404,7 +411,11 @@ const PaymentScreen = () => {
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
             <View>
-              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>{new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
+              <Text style={{ ...TYPOGRAPHY.h5, color: COLORS.textPrimary }}>
+                {isTreatmentPlanPayment
+                  ? (planTitle || 'Rencana Perawatan')
+                  : new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </Text>
               <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 2 }}>{slot?.time || '—'} WIB</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>

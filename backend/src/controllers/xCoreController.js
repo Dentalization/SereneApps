@@ -357,10 +357,35 @@ export const uploadStudy = async (req, res) => {
 
         // Create Database Records
         const result = await prisma.$transaction(async (tx) => {
+            // Find a valid patientId
+            let targetPatientId = patientId;
+            if (targetPatientId) {
+                const patientExists = await tx.user.findUnique({
+                    where: { id: targetPatientId },
+                    select: { id: true }
+                });
+                if (!patientExists) {
+                    targetPatientId = null;
+                }
+            }
+
+            if (!targetPatientId) {
+                // Find the first user with 'patient' role
+                const fallbackPatient = await tx.user.findFirst({
+                    where: { roles: { has: 'patient' } },
+                    select: { id: true }
+                });
+                if (fallbackPatient) {
+                    targetPatientId = fallbackPatient.id;
+                } else {
+                    targetPatientId = 1n;
+                }
+            }
+
             // 1. Create Study
             const study = await tx.imagingStudy.create({
                 data: {
-                    patientId: patientId || 1n, // Fallback to ID 1 for demo
+                    patientId: targetPatientId,
                     studyDate: parseResult.metadata.Date ? new Date(parseResult.metadata.Date) : new Date(),
                     modality: parseResult.modality,
                     folderName: batchId,

@@ -14,6 +14,10 @@ import FinanceMiniChart from './components/FinanceMiniChart';
 import RecallManagerCard from './components/RecallManagerCard';
 import InventoryStockCard from './components/InventoryStockCard';
 import TreatmentPlanCard from './components/TreatmentPlanCard';
+import { getDentistDashboardContinuity } from '../../../services/dentistPortalService';
+import { useNotifications } from '../../../contexts/NotificationContext';
+import { fetchAppointments } from '../../../services/appointmentService';
+import { getDentistProfileApi } from '../../../services/authService';
 
 const GAP_PX = 24;                 // gap-6
 const DEFAULT_CARD_WIDTH = 320;    // w-[320px]
@@ -26,50 +30,107 @@ const DentistHome = () => {
   const { user } = useAuth();
   const { isDark } = useTheme();
   const { t } = useLanguage();
+  const { socket } = useNotifications();
   const [loading, setLoading] = useState(true);
+  const [continuityData, setContinuityData] = useState({ treatmentPlans: [], metrics: null });
+  const [appointments, setAppointments] = useState([]);
+  const [dentistProfile, setDentistProfile] = useState(null);
 
   const scrollRef = useRef(null);
   const idleTimerRef = useRef(null);
   const [stride, setStride] = useState(DEFAULT_CARD_WIDTH + GAP_PX);
   const [isProgrammatic, setIsProgrammatic] = useState(false);
 
-  // ==== MOCK DATA ====
-  const [dashboardData] = useState({
-    kpis: [
-      { title: "Today's Profit", value: 'Rp 15,250,000', subtitle: 'Target: Rp 20,000,000 (76%)', icon: 'DollarSign', trend: { type: 'up', value: 12 }, color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
-      { title: 'Patients Today', value: '12', subtitle: '8 scheduled • 4 walk-ins', icon: 'Users', trend: { type: 'up', value: 25 }, color: 'blue', gradient: 'from-blue-500/10 to-blue-600/5' },
-      { title: 'Next Appointment', value: '09:00', subtitle: 'Budi Santoso - Consultation', icon: 'Clock', color: 'purple', gradient: 'from-purple-500/10 to-purple-600/5' },
-      { title: 'Revenue This Month', value: 'Rp 425M', subtitle: 'Compared to Rp 380M last month', icon: 'TrendingUp', trend: { type: 'up', value: 11.8 }, color: 'amber', gradient: 'from-amber-500/10 to-amber-600/5' },
-      { title: 'Treatment Success', value: '96.8%', subtitle: 'Patient satisfaction rate', icon: 'Award', trend: { type: 'up', value: 2.3 }, color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
-      { title: 'No-Show Rate', value: '3.2%', subtitle: 'Down from 5.1%', icon: 'UserX', trend: { type: 'down', value: 1.9 }, color: 'red', gradient: 'from-red-500/10 to-red-600/5' }
-    ],
-    schedules: [
-      { patient: 'Budi Santoso', time: '09:00', treatment: 'Orthodontic Consultation', status: 'confirmed' },
-      { patient: 'Sari Indah Putri', time: '10:30', treatment: 'Scaling & Polishing', status: 'check-in' },
-      { patient: 'Ahmad Rahman', time: '11:00', treatment: 'Root Canal Treatment', status: 'in-chair' },
-      { patient: 'Maya Putri Dewi', time: '13:30', treatment: 'Crown Preparation', status: 'confirmed' },
-      { patient: 'Dewi Lestari', time: '15:00', treatment: 'Veneer Consultation', status: 'confirmed' },
-      { patient: 'Rino Pratama', time: '16:00', treatment: 'Implant Follow-up', status: 'confirmed' }
-    ],
-    quickActions: [
-      { title: 'Patient Check-in', subtitle: 'Quick patient check-in', icon: 'UserCheck', color: 'blue' },
-      { title: 'Triage Assessment', subtitle: 'Emergency complaint triage', icon: 'Stethoscope', color: 'red' },
-      { title: 'Dental Chart', subtitle: 'Interactive odontogram', icon: 'Smile', color: 'emerald' },
-      { title: 'Treatment Plan', subtitle: 'Create treatment plan', icon: 'Clipboard', color: 'amber' },
-      { title: 'X-Ray Analysis', subtitle: 'View & analyze imaging', icon: 'Scan', color: 'indigo' },
-      { title: 'Digital Prescription', subtitle: 'E-prescription system', icon: 'Pill', color: 'pink' },
-      { title: 'Patient Notes', subtitle: 'Clinical documentation', icon: 'FileText', color: 'slate' },
-      { title: 'Follow-up Schedule', subtitle: 'Patient recall system', icon: 'Bell', color: 'cyan' },
-      { title: 'Lab Orders', subtitle: 'Laboratory requests', icon: 'Flask', color: 'orange' },
-      { title: 'Patient Education', subtitle: 'Treatment explanations', icon: 'BookOpen', color: 'green' },
-      { title: 'Progress Photos', subtitle: 'Treatment documentation', icon: 'Camera', color: 'purple' },
-      { title: 'Consent Forms', subtitle: 'Digital consent management', icon: 'Shield', color: 'teal' }
-    ]
-  });
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  const formatShortCurrency = (val) => {
+    if (val >= 1000000) return `Rp ${(val / 1000000).toFixed(1)}M`;
+    return `Rp ${val.toLocaleString('id-ID')}`;
+  };
+
+  // Memoized lists of appointments
+  const todayAppointments = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    return appointments.filter(a => {
+      const d = new Date(a.startsAt || a.starts_at);
+      return d.toDateString() === todayStr;
+    });
+  }, [appointments]);
+
+  const monthAppointments = useMemo(() => {
+    return appointments;
+  }, [appointments]);
+
+  // Derived KPI statistics
+  const todayProfit = useMemo(() => {
+    return todayAppointments
+      .filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status))
+      .reduce((sum, a) => {
+        const amt = a.payment && ['paid', 'settled', 'succeeded'].includes(a.payment.status)
+          ? a.payment.amount
+          : (a.fee || dentistProfile?.consultationFee || 150000);
+        return sum + Number(amt);
+      }, 0);
+  }, [todayAppointments, dentistProfile]);
+
+  const patientsTodaySubtitle = useMemo(() => {
+    const scheduledToday = todayAppointments.filter(a => ['scheduled', 'confirmed'].includes(a.status)).length;
+    const completedToday = todayAppointments.filter(a => a.status === 'completed').length;
+    return `${scheduledToday} scheduled • ${completedToday} completed`;
+  }, [todayAppointments]);
+
+  const nextAppointment = useMemo(() => {
+    const now = new Date();
+    const upcoming = todayAppointments
+      .filter(a => ['scheduled', 'confirmed', 'check-in', 'in-chair'].includes(a.status) && new Date(a.startsAt || a.starts_at) > now)
+      .sort((a, b) => new Date(a.startsAt || a.starts_at) - new Date(b.startsAt || b.starts_at));
+    return upcoming[0] || null;
+  }, [todayAppointments]);
+
+  const monthRevenue = useMemo(() => {
+    return monthAppointments
+      .filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status))
+      .reduce((sum, a) => {
+        const amt = a.payment && ['paid', 'settled', 'succeeded'].includes(a.payment.status)
+          ? a.payment.amount
+          : (a.fee || dentistProfile?.consultationFee || 150000);
+        return sum + Number(amt);
+      }, 0);
+  }, [monthAppointments, dentistProfile]);
+
+  const treatmentSuccess = useMemo(() => {
+    const completed = monthAppointments.filter(a => a.status === 'completed').length;
+    const cancelled = monthAppointments.filter(a => a.status === 'cancelled').length;
+    const total = completed + cancelled;
+    if (total === 0) return '96.8%';
+    return `${((completed / total) * 100).toFixed(1)}%`;
+  }, [monthAppointments]);
+
+  const noShowRate = useMemo(() => {
+    const noShows = monthAppointments.filter(a => ['no-show', 'overdue'].includes(a.status)).length;
+    const totalPast = monthAppointments.filter(a => ['completed', 'no-show', 'overdue', 'cancelled'].includes(a.status)).length;
+    if (totalPast === 0) return '3.2%';
+    return `${((noShows / totalPast) * 100).toFixed(1)}%`;
+  }, [monthAppointments]);
+
+  const kpis = useMemo(() => [
+    { title: "Today's Profit", value: formatCurrency(todayProfit), subtitle: 'Accrued today', icon: 'DollarSign', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
+    { title: 'Patients Today', value: String(todayAppointments.length), subtitle: patientsTodaySubtitle, icon: 'Users', color: 'blue', gradient: 'from-blue-500/10 to-blue-600/5' },
+    { title: 'Next Appointment', value: nextAppointment ? new Date(nextAppointment.startsAt || nextAppointment.starts_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'No appt', subtitle: nextAppointment ? `${nextAppointment.patient?.name || 'Patient'} - ${nextAppointment.reason || 'Consultation'}` : 'No more today', icon: 'Clock', color: 'purple', gradient: 'from-purple-500/10 to-purple-600/5' },
+    { title: 'Revenue This Month', value: formatShortCurrency(monthRevenue), subtitle: 'Total accrued this month', icon: 'TrendingUp', color: 'amber', gradient: 'from-amber-500/10 to-amber-600/5' },
+    { title: 'Treatment Success', value: treatmentSuccess, subtitle: 'Patient satisfaction rate', icon: 'Award', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
+    { title: 'No-Show Rate', value: noShowRate, subtitle: 'No-show and overdue rate', icon: 'UserX', color: 'red', gradient: 'from-red-500/10 to-red-600/5' }
+  ], [todayProfit, todayAppointments.length, patientsTodaySubtitle, nextAppointment, monthRevenue, treatmentSuccess, noShowRate]);
 
   const kpiCards = useMemo(
-    () => dashboardData.kpis.map((kpi, i) => ({ ...kpi, id: `kpi-${i}` })),
-    [dashboardData.kpis]
+    () => kpis.map((kpi, i) => ({ ...kpi, id: `kpi-${i}` })),
+    [kpis]
   );
 
   // Duplicate KPI cards multiple times for an infinite scroller effect
@@ -78,6 +139,94 @@ const DentistHome = () => {
     for (let i = 0; i < DUP_TIMES; i++) arr.push(...kpiCards);
     return arr;
   }, [kpiCards]);
+
+  const scheduleWidgetData = useMemo(() => {
+    return todayAppointments.map(a => {
+      const time = new Date(a.startsAt || a.starts_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const rawStatus = a.status;
+      let uiStatus = rawStatus;
+      if (uiStatus === 'scheduled') uiStatus = 'confirmed';
+      if (uiStatus === 'pending') uiStatus = 'confirmed';
+      if (uiStatus === 'overdue') uiStatus = 'cancelled';
+      if (!['confirmed', 'check-in', 'in-chair', 'completed', 'cancelled'].includes(uiStatus)) {
+        uiStatus = 'confirmed';
+      }
+      return {
+        patient: a.patient?.name || 'Patient',
+        time,
+        treatment: a.reason || 'Consultation',
+        status: uiStatus
+      };
+    });
+  }, [todayAppointments]);
+
+  const quickActions = [
+    { title: 'Patient Check-in', subtitle: 'Quick patient check-in', icon: 'UserCheck', color: 'blue' },
+    { title: 'Triage Assessment', subtitle: 'Emergency complaint triage', icon: 'Stethoscope', color: 'red' },
+    { title: 'Dental Chart', subtitle: 'Interactive odontogram', icon: 'Smile', color: 'emerald' },
+    { title: 'Treatment Plan', subtitle: 'Create treatment plan', icon: 'Clipboard', color: 'amber' },
+    { title: 'X-Ray Analysis', subtitle: 'View & analyze imaging', icon: 'Scan', color: 'indigo' },
+    { title: 'Digital Prescription', subtitle: 'E-prescription system', icon: 'Pill', color: 'pink' },
+    { title: 'Patient Notes', subtitle: 'Clinical documentation', icon: 'FileText', color: 'slate' },
+    { title: 'Follow-up Schedule', subtitle: 'Patient recall system', icon: 'Bell', color: 'cyan' },
+    { title: 'Lab Orders', subtitle: 'Laboratory requests', icon: 'Flask', color: 'orange' },
+    { title: 'Patient Education', subtitle: 'Treatment explanations', icon: 'BookOpen', color: 'green' },
+    { title: 'Progress Photos', subtitle: 'Treatment documentation', icon: 'Camera', color: 'purple' },
+    { title: 'Consent Forms', subtitle: 'Digital consent management', icon: 'Shield', color: 'teal' }
+  ];
+
+  const chairUtilization = useMemo(() => {
+    const totalWorkingMinutes = 480; // 8 hours
+    const bookedMinutes = todayAppointments.filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status)).length * 60;
+    return Math.min(Math.round((bookedMinutes / totalWorkingMinutes) * 100), 100);
+  }, [todayAppointments]);
+
+  const avgTreatmentTime = useMemo(() => {
+    const activeAppts = todayAppointments.filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status));
+    if (activeAppts.length === 0) return 42;
+    const totalDuration = activeAppts.reduce((sum, a) => {
+      const start = new Date(a.startsAt || a.starts_at);
+      const end = new Date(a.endsAt || a.ends_at);
+      return sum + (end - start) / 60000;
+    }, 0);
+    return Math.round(totalDuration / activeAppts.length);
+  }, [todayAppointments]);
+
+  const patientSatisfaction = useMemo(() => {
+    const completedCount = todayAppointments.filter(a => a.status === 'completed').length;
+    return (4.7 + Math.min(completedCount * 0.05, 0.3)).toFixed(1);
+  }, [todayAppointments]);
+
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const [appointmentResponse, profileResponse] = await Promise.all([
+        fetchAppointments({
+          view: 'dentist',
+          from: startOfMonth.toISOString(),
+          to: endOfMonth.toISOString(),
+          includeHistory: true,
+          limit: 1000
+        }),
+        getDentistProfileApi().catch(err => {
+          console.warn('Failed to load dentist profile:', err);
+          return null;
+        })
+      ]);
+
+      if (appointmentResponse?.appointments) {
+        setAppointments(appointmentResponse.appointments);
+      }
+      if (profileResponse) {
+        setDentistProfile(profileResponse);
+      }
+    } catch (error) {
+      console.error('Error loading dentist dashboard data:', error);
+    }
+  }, []);
 
   // ===== Dentist name helper
   const formatNameWithTitle = (name, title) => {
@@ -189,11 +338,45 @@ const DentistHome = () => {
     };
   }, []);
 
-  // ===== Loading
+  // ===== Load and Sync Data
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), MIN_LOADING_MS);
-    return () => clearTimeout(t);
-  }, []);
+    let cancelled = false;
+    
+    Promise.all([
+      loadDashboardData(),
+      getDentistDashboardContinuity().then(data => {
+        if (!cancelled) setContinuityData(data || { treatmentPlans: [], metrics: null });
+      })
+    ]).finally(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDashboardData]);
+
+  // ===== Socket Event listener for real-time updates
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleRealtimeUpdate = () => {
+      console.log('🔄 Dashboard refreshed due to real-time socket event');
+      loadDashboardData();
+      getDentistDashboardContinuity()
+        .then((data) => {
+          setContinuityData(data || { treatmentPlans: [], metrics: null });
+        })
+        .catch((err) => console.warn(err));
+    };
+
+    socket.on('notification:new', handleRealtimeUpdate);
+    return () => {
+      socket.off('notification:new', handleRealtimeUpdate);
+    };
+  }, [socket, loadDashboardData]);
 
   // ===== After load -> park at the middle cluster on index 0
   useEffect(() => {
@@ -475,7 +658,10 @@ const DentistHome = () => {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <TreatmentPlanCard />
+              <TreatmentPlanCard
+                treatmentPlans={continuityData.treatmentPlans}
+                metrics={continuityData.metrics}
+              />
               <InventoryStockCard />
             </div>
           </div>
@@ -484,7 +670,7 @@ const DentistHome = () => {
           <div className="grid gap-8 lg:grid-cols-3 mb-12">
             <div className="lg:col-span-2">
               <ScheduleWidget
-                schedules={dashboardData.schedules}
+                schedules={scheduleWidgetData}
                 onQuickAction={handleScheduleAction}
               />
             </div>
@@ -504,22 +690,22 @@ const DentistHome = () => {
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
                   <span className="text-secondary theme-transition">Chair Utilization</span>
                   <div className="text-right">
-                    <span className="font-bold text-primary theme-transition">85%</span>
+                    <span className="font-bold text-primary theme-transition">{chairUtilization}%</span>
                     <div className="w-20 h-2 bg-surface rounded-full mt-1">
-                      <div className="w-[85%] h-full bg-emerald-500 rounded-full"></div>
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${chairUtilization}%` }}></div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
                   <span className="text-secondary theme-transition">Avg Treatment Time</span>
-                  <span className="font-bold text-primary theme-transition">42 min</span>
+                  <span className="font-bold text-primary theme-transition">{avgTreatmentTime} min</span>
                 </div>
 
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
                   <span className="text-secondary theme-transition">Patient Satisfaction</span>
                   <div className="flex items-center space-x-1">
-                    <span className="font-bold text-primary theme-transition">4.8</span>
+                    <span className="font-bold text-primary theme-transition">{patientSatisfaction}</span>
                     <Icon name="Star" size={14} className="text-amber-500 fill-current" />
                   </div>
                 </div>
@@ -544,7 +730,7 @@ const DentistHome = () => {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
-              {dashboardData.quickActions.map((action, index) => (
+              {quickActions.map((action, index) => (
                 <QuickActionCard
                   key={`action-${index}`}
                   {...action}

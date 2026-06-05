@@ -101,6 +101,13 @@ export function emitChatRead({ channelName, appointmentId, userId, lastReadAt })
   });
 }
 
+export function emitToUserRooms({ userIds = [], eventName, payload }) {
+  if (!ioRef || !eventName) return;
+  for (const userId of userIds.filter(Boolean)) {
+    ioRef.to(`user:${userId.toString()}`).emit(eventName, payload);
+  }
+}
+
 export function registerChatGateway(io) {
   ioRef = io;
 

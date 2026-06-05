@@ -49,8 +49,11 @@ const ClinicScheduleStats = ({ appointments, doctors, selectedDate }) => {
   
   // Safe date comparison function
   const isSameDay = (date1, date2) => {
+    if (!date1 || !date2) return false;
     const d1 = date1 instanceof Date ? date1 : new Date(date1);
     const d2 = date2 instanceof Date ? date2 : new Date(date2);
+    
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return false;
     
     const d1Start = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
     const d2Start = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());

@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 // Inject animation keyframes (only once)
 if (typeof document !== 'undefined' && !document.getElementById('modal-animations')) {
@@ -45,20 +46,24 @@ const AppointmentDetailDrawer = ({
     'reschedule-requested': 'rescheduleRequested'
   };
 
-  const formatTime = (dateString) =>
-    new Date(dateString).toLocaleTimeString(locale, {
+  const formatTime = (dateString) => {
+    if (!dateString || isNaN(new Date(dateString).getTime())) return '';
+    return new Date(dateString).toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false
     });
+  };
 
-  const formatDate = (dateString) =>
-    new Date(dateString).toLocaleDateString(locale, {
+  const formatDate = (dateString) => {
+    if (!dateString || isNaN(new Date(dateString).getTime())) return '';
+    return new Date(dateString).toLocaleDateString(locale, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
+  };
 
   const getStatusColor = (status) => {
     const statusColors = {
@@ -151,7 +156,21 @@ const AppointmentDetailDrawer = ({
               </h3>
 
               <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-xl shadow-lg">
+                {appointment.patient?.avatar ? (
+                  <img
+                    src={resolveMediaUrl(appointment.patient.avatar)}
+                    alt={appointment.patient.name}
+                    className="w-14 h-14 rounded-full object-cover shadow-lg border border-primary/10 flex-shrink-0"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-xl shadow-lg flex-shrink-0"
+                  style={{ display: appointment.patient?.avatar ? 'none' : 'flex' }}
+                >
                   {appointment.patient?.name?.charAt(0) || 'P'}
                 </div>
                 <div className="flex-1">
@@ -235,16 +254,15 @@ const AppointmentDetailDrawer = ({
                   <span className="text-sm text-secondary">{t('clinic.schedule.appointment.riskLevel')}</span>
                   <div className="flex items-center space-x-2">
                     <div
-                      className={`w-3 h-3 rounded-full ${
-                        appointment.risk >= 0.75 ? 'bg-red-500' : appointment.risk >= 0.45 ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
+                      className={`w-3 h-3 rounded-full ${appointment.risk >= 0.75 ? 'bg-red-500' : appointment.risk >= 0.45 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
                     />
                     <span className="text-sm font-medium text-primary">
                       {appointment.risk >= 0.75
                         ? t('clinic.schedule.appointment.high')
                         : appointment.risk >= 0.45
-                        ? t('clinic.schedule.appointment.medium')
-                        : t('clinic.schedule.appointment.low')}
+                          ? t('clinic.schedule.appointment.medium')
+                          : t('clinic.schedule.appointment.low')}
                     </span>
                     <span className="text-xs text-secondary/80">({Math.round(appointment.risk * 100)}%)</span>
                   </div>

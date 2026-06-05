@@ -114,6 +114,7 @@ const SessionDashboard = ({
     live: t('teledentistry.dashboard.status.live', { fallbackText: 'Live' }),
     waiting: t('teledentistry.dashboard.status.waiting', { fallbackText: 'Menunggu' }),
     upcoming: t('teledentistry.dashboard.status.upcoming', { fallbackText: 'Akan Datang' }),
+    overdue: t('teledentistry.dashboard.status.overdue', { fallbackText: 'Terlewat' }),
     completed: t('teledentistry.dashboard.status.completed', { fallbackText: 'Selesai' }),
   }), [t]);
 
@@ -218,7 +219,7 @@ const SessionDashboard = ({
           <span className="text-sm font-semibold text-primary">
             {t('teledentistry.dashboard.title', { fallbackText: 'Dashboard Sesi Hari Ini' })}
           </span>
-          <span className="rounded-full px-2 py-0.5 text-xs font-medium text-accent bg-accent/10">
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white bg-accent">
             {allSessions.length}
           </span>
         </div>
@@ -281,7 +282,7 @@ const SessionDashboard = ({
                   </span>
                   <span className="text-muted text-[9px]">·</span>
                   <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold border leading-none ${statusBadgeStyles[status]}`}>
-                    {cfg.label}
+                    {statusLabels[status] || cfg.label}
                   </span>
                   <span className="text-muted text-[9px]">·</span>
                   <span className="font-mono text-[9px] text-muted">

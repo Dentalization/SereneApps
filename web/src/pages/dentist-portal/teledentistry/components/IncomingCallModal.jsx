@@ -67,7 +67,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
     (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onDecline?.();
+        onDeclineRef.current?.();
         return;
       }
 
@@ -87,7 +87,7 @@ const IncomingCallModal = ({ conversation, onAccept, onDecline, callState, remot
         }
       }
     },
-    [onDecline]
+    []
   );
 
   // Auto-focus accept button on mount & save previous focus

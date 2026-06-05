@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -177,6 +178,7 @@ model ClinicProfile {
   ownedAppointments          Appointment[]
   ownedSettlements           PaymentSettlement[]          @relation("SettlementOwnerClinic")
   compensationEntries        DentistCompensationEntry[]  @relation("ClinicCompensation")
+  treatmentPlans             TreatmentPlan[]             @relation("ClinicTreatmentPlans")
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
   @@index([nibNumber], map: "idx_clinic_profiles_nib")
@@ -309,6 +311,7 @@ model Appointment {
   chatRoom           ChatRoom?
   paymentIntents     PaymentIntent[]            @relation("AppointmentPaymentIntents")
   invoices           Invoice[]                  @relation("AppointmentInvoices")
+  treatmentPlans     TreatmentPlan[]            @relation("AppointmentTreatmentPlans")
   financialEntries   FinancialLedgerEntry[]
   videoSessions      VideoSession[]
   communicationEvents CommunicationEvent[]
@@ -461,6 +464,7 @@ model Invoice {
   id              BigInt        @id @default(autoincrement())
   appointmentId   BigInt?       @map("appointment_id")
   paymentIntentId BigInt?       @map("payment_intent_id")
+  treatmentPlanId BigInt?       @map("treatment_plan_id")
   patientId       BigInt        @map("patient_id")
   /// Financial transaction owner: "clinic" or "dentist" (independent dentist).
   ownerType       String        @map("owner_type") @db.VarChar(24)
@@ -472,9 +476,14 @@ model Invoice {
   tax             Int           @default(0)
   discount        Int           @default(0)
   total           Int
+  platformFee     Int           @default(0) @map("platform_fee")
+  clinicShare     Int           @default(0) @map("clinic_share")
+  dentistShare    Int           @default(0) @map("dentist_share")
+  grandTotal      Int           @default(0) @map("grand_total")
   currency        String        @default("IDR") @db.VarChar(8)
   issuedAt        DateTime?     @map("issued_at") @db.Timestamptz(6)
   dueAt           DateTime?     @map("due_at") @db.Timestamptz(6)
+  approvedAt      DateTime?     @map("approved_at") @db.Timestamptz(6)
   paidAt          DateTime?     @map("paid_at") @db.Timestamptz(6)
   issuerType      String?       @map("issuer_type") @db.VarChar(24)
   issuerName      String?       @map("issuer_name") @db.VarChar(120)
@@ -488,6 +497,7 @@ model Invoice {
   updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   appointment     Appointment?  @relation("AppointmentInvoices", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   paymentIntent   PaymentIntent? @relation("PaymentIntentInvoices", fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  treatmentPlan   TreatmentPlan? @relation("TreatmentPlanInvoices", fields: [treatmentPlanId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   patient         User          @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   ownerClinic     ClinicProfile? @relation("InvoiceOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
   ownerDentist    User?          @relation("InvoiceOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
@@ -497,6 +507,7 @@ model Invoice {
   @@index([ownerType, ownerClinicId, createdAt(sort: Desc)], map: "idx_invoices_owner_clinic")
   @@index([ownerType, ownerDentistId, createdAt(sort: Desc)], map: "idx_invoices_owner_dentist")
   @@index([patientId, createdAt(sort: Desc)], map: "idx_invoices_patient")
+  @@index([treatmentPlanId], map: "idx_invoices_treatment_plan")
   @@map("invoices")
 }
 
@@ -928,6 +939,7 @@ model AIAnalysisResult {
   updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   chatMessages      AIChatMessage[]
+  treatmentPlans    TreatmentPlan[] @relation("TreatmentPlanAIAnalysisResult")
 
   @@index([sessionId], map: "idx_ai_analysis_session")
   @@index([userId, createdAt(sort: Desc)], map: "idx_ai_analysis_user_created")
@@ -1016,6 +1028,7 @@ model dentist_emr_records {
   updated_at                                       DateTime @default(now()) @db.Timestamptz(6)
   users_dentist_emr_records_dentist_idTousers      User     @relation("dentist_emr_records_dentist_idTousers", fields: [dentist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users_dentist_emr_records_patient_user_idTousers User?    @relation("dentist_emr_records_patient_user_idTousers", fields: [patient_user_id], references: [id], onUpdate: NoAction)
+  treatmentPlans                                   TreatmentPlan[] @relation("TreatmentPlanMedicalRecord")
 
   @@index([dentist_id, updated_at(sort: Desc)], map: "idx_dentist_emr_records_dentist")
   @@index([patient_user_id], map: "idx_dentist_emr_records_patient")
@@ -1209,25 +1222,45 @@ model TreatmentPlan {
   id                  BigInt          @id @default(autoincrement())
   patientId           BigInt          @map("patient_id")
   dentistId           BigInt          @map("dentist_id")
+  clinicId            BigInt?         @map("clinic_id")
+  appointmentId       BigInt?         @map("appointment_id")
+  consultationSessionId BigInt?       @map("consultation_session_id")
+  medicalRecordId     String?         @map("medical_record_id") @db.VarChar(64)
+  aiAnalysisResultId  BigInt?         @map("ai_analysis_result_id")
   title               String          @db.VarChar(255)
   description         String?
+  diagnosisSummary    String?         @map("diagnosis_summary")
+  clinicalNotes       String?         @map("clinical_notes")
+  patientFriendlySummary String?      @map("patient_friendly_summary")
   priority            String          @default("medium") @db.VarChar(20)
   status              String          @default("pending") @db.VarChar(30)
   progress            Int             @default(0)
   estimatedCost       Int             @default(0) @map("estimated_cost")
   actualCost          Int             @default(0) @map("actual_cost")
+  currency            String          @default("IDR") @db.VarChar(8)
   targetCompletion    DateTime?       @map("target_completion") @db.Date
+  validUntil          DateTime?       @map("valid_until") @db.Timestamptz(6)
+  sentAt              DateTime?       @map("sent_at") @db.Timestamptz(6)
+  approvedAt          DateTime?       @map("approved_at") @db.Timestamptz(6)
   completedAt         DateTime?       @map("completed_at") @db.Timestamptz(6)
   notes               String?
   createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   patient             User             @relation("PatientTreatmentPlans", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   dentist             User             @relation("DentistTreatmentPlans", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clinic              ClinicProfile?   @relation("ClinicTreatmentPlans", fields: [clinicId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  appointment         Appointment?      @relation("AppointmentTreatmentPlans", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  consultationSession VideoSession?     @relation("TreatmentPlanConsultationSession", fields: [consultationSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  medicalRecord       dentist_emr_records? @relation("TreatmentPlanMedicalRecord", fields: [medicalRecordId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  aiAnalysisResult    AIAnalysisResult? @relation("TreatmentPlanAIAnalysisResult", fields: [aiAnalysisResultId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   patientProfile      PatientProfile?  @relation("PatientProfileTreatmentPlans", fields: [patientId], references: [userId], map: "treatment_plans_patient_profile_fkey")
   items               TreatmentItem[]
+  invoices            Invoice[]        @relation("TreatmentPlanInvoices")
 
   @@index([patientId, createdAt(sort: Desc)], map: "idx_treatment_plans_patient")
   @@index([dentistId], map: "idx_treatment_plans_dentist")
+  @@index([clinicId, createdAt(sort: Desc)], map: "idx_treatment_plans_clinic")
+  @@index([appointmentId], map: "idx_treatment_plans_appointment")
   @@index([status], map: "idx_treatment_plans_status")
   @@map("treatment_plans")
 }
@@ -1236,9 +1269,19 @@ model TreatmentItem {
   id              BigInt        @id @default(autoincrement())
   treatmentPlanId BigInt        @map("treatment_plan_id")
   name            String        @db.VarChar(255)
+  toothNumber     String?       @map("tooth_number") @db.VarChar(16)
+  areaLabel       String?       @map("area_label") @db.VarChar(80)
+  procedureCode   String?       @map("procedure_code") @db.VarChar(64)
+  procedureName   String?       @map("procedure_name") @db.VarChar(255)
   category        String?       @db.VarChar(100)
+  description     String?
+  clinicalReason  String?       @map("clinical_reason")
+  priority        String?       @db.VarChar(20)
   cost            Int           @default(0)
+  estimatedCost   Int?          @map("estimated_cost")
   actualCost      Int           @default(0) @map("actual_cost")
+  estimatedDurationMinutes Int? @map("estimated_duration_minutes")
+  phase           String?       @db.VarChar(80)
   status          String        @default("pending") @db.VarChar(30)
   scheduledDate   DateTime?     @map("scheduled_date") @db.Date
   completedDate   DateTime?     @map("completed_date") @db.Date
@@ -1279,6 +1322,7 @@ model VideoSession {
   leftAt        DateTime?
   durationSeconds Int?
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  treatmentPlans TreatmentPlan[] @relation("TreatmentPlanConsultationSession")
 
   @@map("video_sessions")
 }

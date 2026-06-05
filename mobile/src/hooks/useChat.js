@@ -14,12 +14,8 @@ const loadConversationsClient = () => {
   }
 
   try {
-    const Client = require('../shims/twilio-conversations-shim');
-
-    console.log(
-      '[useChat] Client typeof:',
-      typeof Client
-    );
+    const mod = require('../shims/twilio-conversations-shim');
+    const Client = mod.Client || mod.default?.Client || mod.default || mod;
 
     if (typeof Client !== 'function') {
       throw new Error(

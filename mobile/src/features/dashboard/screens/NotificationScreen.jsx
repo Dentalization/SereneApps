@@ -1,18 +1,92 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-// 1. IMPORT DITAMBAHKAN
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SAMPLE_NOTIFICATIONS, NOTIFICATION_TYPE_META } from '../data/notifications';
+import { NOTIFICATION_TYPE_META } from '../data/notifications';
 import { formatNotificationTime, withOpacity } from '../utils/notificationUtils';
+import { useNotifications } from '../../../contexts/NotificationContext';
 
 const typeFilters = [{ key: 'all', label: 'Semua' }].concat(
   Object.entries(NOTIFICATION_TYPE_META).map(([key, meta]) => ({ key, label: meta.label }))
 );
+
+function getMobileNotificationType(type) {
+  if (!type) return 'system';
+  const t = type.toLowerCase();
+  if (t.startsWith('appointment_')) return 'appointment';
+  if (t === 'chat_invite') return 'appointment';
+  if (t.startsWith('treatment_plan_')) return 'appointment';
+  if (t.startsWith('payment_') || t.includes('payment')) return 'payment';
+  if (t.startsWith('ai_')) return 'ai';
+  if (t.startsWith('shop_')) return 'shop';
+  return 'system';
+}
+
+function getMobileNotificationCTA(type, data) {
+  const apptId = data?.appointmentId || '';
+  const planId = data?.treatmentPlanId || '';
+  const invoiceId = data?.invoiceId || '';
+
+  switch (type) {
+    case 'appointment_confirmed':
+    case 'appointment_rescheduled':
+    case 'appointment_reminder':
+      return {
+        label: 'Lihat detail',
+        route: {
+          name: 'AppointmentTab',
+          params: { screen: 'BookingConfirm', params: { appointmentId: apptId } },
+        }
+      };
+    case 'chat_invite':
+      return {
+        label: 'Mulai Chat',
+        route: {
+          name: 'PatientTeledentistry',
+          params: { appointmentId: apptId }
+        }
+      };
+    case 'treatment_plan_sent':
+      return {
+        label: 'Tinjau Rencana',
+        route: {
+          name: 'TreatmentPlan',
+          params: { treatmentPlanId: planId, invoiceId }
+        }
+      };
+    case 'treatment_plan_approved':
+    case 'treatment_plan_rejected':
+      return {
+        label: 'Lihat Rencana',
+        route: {
+          name: 'TreatmentPlan',
+          params: { treatmentPlanId: planId }
+        }
+      };
+    default:
+      return null;
+  }
+}
+
+function mapDatabaseNotification(dbNotif) {
+  const type = getMobileNotificationType(dbNotif.type);
+  const cta = getMobileNotificationCTA(dbNotif.type, dbNotif.data);
+
+  return {
+    id: dbNotif.id.toString(),
+    type,
+    title: dbNotif.title,
+    message: dbNotif.message,
+    timestamp: dbNotif.created_at,
+    read: dbNotif.is_read,
+    meta: dbNotif.data || {},
+    cta
+  };
+}
 
 const getMetaLabel = (item) => {
   if (item.meta?.clinicName) return item.meta.clinicName;
@@ -32,23 +106,16 @@ const NotificationScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
-  
-  // 2. DEFINISI INSETS DITAMBAHKAN
   const insets = useSafeAreaInsets();
 
-  const initialData = useMemo(
-    () =>
-      route.params?.notifications?.length
-        ? route.params.notifications
-        : SAMPLE_NOTIFICATIONS,
-    [route.params?.notifications]
-  );
-  const [notifications, setNotifications] = useState(initialData);
   const [filter, setFilter] = useState('all');
-
-  useEffect(() => {
-    setNotifications(initialData);
-  }, [initialData]);
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    markAsRead: apiMarkRead,
+    markAllAsRead: handleMarkAllRead
+  } = useNotifications();
 
   const filtered = useMemo(
     () =>
@@ -63,12 +130,6 @@ const NotificationScreen = () => {
     [filtered]
   );
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  const handleMarkAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
-
   const detailRoutes = {
     appointment: 'NotificationAppointmentDetail',
     payment: 'NotificationPaymentDetail',
@@ -78,14 +139,12 @@ const NotificationScreen = () => {
   };
 
   const handlePress = useCallback(
-    (item) => {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === item.id ? { ...n, read: true } : n))
-      );
+    async (item) => {
+      apiMarkRead(item.id);
       const routeName = detailRoutes[item.type] || detailRoutes.system;
       navigation.navigate(routeName, { notification: item });
     },
-    [navigation]
+    [navigation, apiMarkRead]
   );
 
   const renderFilter = (option) => {

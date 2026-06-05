@@ -1,8 +1,11 @@
 import api from './api';
 
-export async function createSnapTransaction(appointmentId) {
+export async function createSnapTransaction(params) {
   try {
-    const response = await api.post('/payments/snap-transactions', { appointmentId });
+    const payload = typeof params === 'object' && params !== null
+      ? params
+      : { appointmentId: params };
+    const response = await api.post('/payments/snap-transactions', payload);
     return response.data; // { snapToken, redirectUrl, paymentIntentId }
   } catch (error) {
     const errObj = error.response?.data?.error || {

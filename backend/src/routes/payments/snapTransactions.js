@@ -6,6 +6,7 @@ import midtransService from '../../services/payments/midtransService.js';
 import { resolvePaymentOwner } from '../../services/payments/ownership.js';
 import { ensureInvoiceForPaymentIntent } from '../../services/payments/financials.js';
 import { ACTIVE_PAYMENT_STATUSES, applyPaymentStatus } from '../../services/payments/status.js';
+import { ensureInvoiceForTreatmentPlan, normalizePlanStatus } from '../../services/treatmentPlans.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -47,7 +48,7 @@ async function getAppointmentForPayment(appointmentId, userId) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: BigInt(appointmentId) },
     include: {
-      dentist: true,
+      dentist: { include: { dentistProfile: true } },
       patient: {
         include: {
           patientProfile: true
@@ -68,24 +69,120 @@ async function getAppointmentForPayment(appointmentId, userId) {
      throw { code: 'BAD_REQUEST', message: 'Appointment is not in a payable state', status: 400 };
   }
 
-  const fee = appointment.dentist.consultationFee || 150000;
+  const dentistProfile = appointment.dentist?.dentistProfile?.[0];
+  const fee = dentistProfile?.consultationFee || 150000;
   return { appointment, fee };
+}
+
+async function getTreatmentPlanPaymentContext({ treatmentPlanId, invoiceId, userId }) {
+  if (!treatmentPlanId && !invoiceId) return null;
+
+  const invoiceWhere = invoiceId ? { id: BigInt(invoiceId) } : null;
+  let invoice = invoiceWhere
+    ? await prisma.invoice.findUnique({
+        where: invoiceWhere,
+        include: {
+          items: true,
+          treatmentPlan: {
+            include: {
+              appointment: {
+                include: {
+                  dentist: { include: { dentistProfile: true } },
+                  patient: { include: { patientProfile: true } },
+                  clinicBranch: true
+                }
+              }
+            }
+          }
+        }
+      })
+    : null;
+
+  let plan = invoice?.treatmentPlan || null;
+  if (!plan && treatmentPlanId) {
+    plan = await prisma.treatmentPlan.findUnique({
+      where: { id: BigInt(treatmentPlanId) },
+      include: {
+        appointment: {
+          include: {
+            dentist: { include: { dentistProfile: true } },
+            patient: { include: { patientProfile: true } },
+            clinicBranch: true
+          }
+        }
+      }
+    });
+  }
+
+  if (!plan) {
+    throw { code: 'NOT_FOUND', message: 'Treatment plan not found', status: 404 };
+  }
+  if (plan.patientId !== BigInt(userId)) {
+    throw { code: 'FORBIDDEN', message: 'You are not authorized to pay for this treatment plan', status: 403 };
+  }
+  if (!['SENT', 'PATIENT_REVIEW', 'APPROVED'].includes(normalizePlanStatus(plan.status))) {
+    throw { code: 'BAD_REQUEST', message: 'Treatment plan is not payable yet', status: 400 };
+  }
+  if (!plan.appointment) {
+    throw { code: 'BAD_REQUEST', message: 'Treatment plan is missing an appointment link', status: 400 };
+  }
+
+  if (!invoice) {
+    invoice = await ensureInvoiceForTreatmentPlan({
+      db: prisma,
+      treatmentPlanId: plan.id,
+      status: normalizePlanStatus(plan.status) === 'APPROVED' ? 'approved' : 'issued'
+    });
+  }
+
+  if (invoice.status && ['paid', 'settled', 'refunded', 'partial_refund'].includes(invoice.status)) {
+    throw { code: 'BAD_REQUEST', message: 'Treatment plan invoice is not payable', status: 400 };
+  }
+
+  const fullInvoice = invoice.items
+    ? invoice
+    : await prisma.invoice.findUnique({
+        where: { id: invoice.id },
+        include: { items: true }
+      });
+  const grossAmount = fullInvoice?.grandTotal || fullInvoice?.total || 0;
+  if (!grossAmount || grossAmount <= 0) {
+    throw { code: 'BAD_REQUEST', message: 'Treatment plan invoice amount is invalid', status: 400 };
+  }
+
+  return {
+    plan,
+    invoice: fullInvoice,
+    appointment: plan.appointment,
+    fee: grossAmount,
+    itemDetails: (fullInvoice.items || []).map((item) => ({
+      id: `INVITEM-${item.id.toString()}`,
+      price: item.unitPrice,
+      quantity: item.quantity || 1,
+      name: item.description
+    }))
+  };
 }
 
 // POST /
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { appointmentId } = req.body;
+    const { appointmentId, treatmentPlanId, invoiceId } = req.body;
     const userId = req.user.id;
 
-    if (!appointmentId) {
-      return res.status(400).json({ error: { code: 'MISSING_PARAMETERS', message: 'appointmentId is required', retryable: false } });
+    if (!appointmentId && !treatmentPlanId && !invoiceId) {
+      return res.status(400).json({ error: { code: 'MISSING_PARAMETERS', message: 'appointmentId, treatmentPlanId, or invoiceId is required', retryable: false } });
     }
 
-    const { appointment, fee: grossAmount } = await getAppointmentForPayment(appointmentId, userId);
+    const treatmentContext = await getTreatmentPlanPaymentContext({ treatmentPlanId, invoiceId, userId });
+    const { appointment, fee: grossAmount } = treatmentContext
+      ? treatmentContext
+      : await getAppointmentForPayment(appointmentId, userId);
 
     // 5. Generate Idempotency Key
-    const idempotencyStr = `${userId}:${appointmentId}`;
+    const idempotencyStr = treatmentContext
+      ? `${userId}:${appointment.id.toString()}:tp:${treatmentContext.plan.id.toString()}:invoice:${treatmentContext.invoice.id.toString()}`
+      : `${userId}:${appointmentId}`;
     const idempotencyKey = crypto.createHash('sha256').update(idempotencyStr).digest('hex');
 
     // 6. Idempotency + active intent check
@@ -155,11 +252,13 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // 7. Midtrans Snap Payload Execution
-    const orderId = `APT-${appointmentId}-PI-${Date.now()}`;
+    const orderId = treatmentContext
+      ? `TP-${treatmentContext.plan.id.toString()}-PI-${Date.now()}`
+      : `APT-${appointment.id.toString()}-PI-${Date.now()}`;
     const patientProfile = appointment.patient.patientProfile || {};
     
     // Fallbacks since midtrans requires valid string structures 
-    const phoneFallback = patientProfile.phoneNumber || appointment.patient.phone;
+    const phoneFallback = patientProfile.phoneNumber || appointment.patient.phone_number;
     
     const customerDetails = {
       firstName: appointment.patient.name,
@@ -168,12 +267,14 @@ router.post('/', authenticateToken, async (req, res) => {
       phone: phoneFallback ? String(phoneFallback) : '0000000000'
     };
 
-    const itemDetails = [{
-      id: `APT-${appointmentId}`,
-      price: grossAmount,
-      quantity: 1,
-      name: `Konsultasi Teledentistry - drg. ${appointment.dentist.name.split(',')[0]}`,
-    }];
+    const itemDetails = treatmentContext?.itemDetails?.length
+      ? treatmentContext.itemDetails
+      : [{
+          id: `APT-${appointment.id.toString()}`,
+          price: grossAmount,
+          quantity: 1,
+          name: `Konsultasi Teledentistry - drg. ${appointment.dentist.name.split(',')[0]}`,
+        }];
 
     const { snapToken, redirectUrl, expiresAt: providerExpiresAt, expiryTime } = await midtransService.createSnapTransaction({
       orderId,
@@ -203,19 +304,42 @@ router.post('/', authenticateToken, async (req, res) => {
           provider: 'midtrans',
           idempotencyKey,
           providerOrderId: orderId,
-          metadata: { snapToken },
+          metadata: {
+            snapToken,
+            ...(treatmentContext ? {
+              treatmentPlanId: treatmentContext.plan.id.toString(),
+              invoiceId: treatmentContext.invoice.id.toString(),
+              source: 'treatment_plan'
+            } : {})
+          },
           redirectUrl,
           expiresAt
         }
       });
 
-        await ensureInvoiceForPaymentIntent({
-          tx,
-          paymentIntent: intent,
-          appointment,
-          patient: appointment.patient,
-          items: itemDetails
-        });
+        if (treatmentContext) {
+          await tx.invoice.update({
+            where: { id: treatmentContext.invoice.id },
+            data: {
+              paymentIntentId: intent.id,
+              status: treatmentContext.invoice.status === 'approved' ? 'approved' : 'issued',
+              metadata: {
+                ...(treatmentContext.invoice.metadata || {}),
+                treatmentPlanId: treatmentContext.plan.id.toString(),
+                paymentIntentId: intent.id.toString(),
+                source: 'treatment_plan'
+              }
+            }
+          });
+        } else {
+          await ensureInvoiceForPaymentIntent({
+            tx,
+            paymentIntent: intent,
+            appointment,
+            patient: appointment.patient,
+            items: itemDetails
+          });
+        }
 
         return intent;
       });

@@ -1,61 +1,50 @@
 import React from 'react';
 import Icon from '../../../../components/AppIcon';
 
-const TreatmentPlanCard = () => {
-  const treatmentPlans = [
-    { 
-      patient: 'Maya Putri Dewi', 
-      plan: 'Orthodontic Treatment', 
-      phase: 'Phase 2 of 3',
-      progress: 65,
-      nextAppointment: '2025-09-18',
-      totalCost: 'Rp 15,500,000',
-      paidAmount: 'Rp 8,000,000',
-      status: 'active'
-    },
-    { 
-      patient: 'Ahmad Rahman', 
-      plan: 'Full Mouth Rehabilitation', 
-      phase: 'Crown Preparation',
-      progress: 40,
-      nextAppointment: '2025-09-20',
-      totalCost: 'Rp 28,000,000',
-      paidAmount: 'Rp 12,000,000',
-      status: 'active'
-    },
-    { 
-      patient: 'Sari Indah Putri', 
-      plan: 'Implant + Crown', 
-      phase: 'Osseointegration',
-      progress: 80,
-      nextAppointment: '2025-09-25',
-      totalCost: 'Rp 18,500,000',
-      paidAmount: 'Rp 15,000,000',
-      status: 'waiting'
-    },
-  ];
+const TreatmentPlanCard = ({ treatmentPlans = [], metrics = null }) => {
+  const rows = treatmentPlans.map((plan) => {
+    const invoice = plan.invoice || plan.invoices?.[0];
+    const invoicePaid = invoice && ['paid', 'settled'].includes(invoice.paymentStatus || invoice.status);
+    return {
+      id: plan.id,
+      patient: plan.patient?.name || 'Patient',
+      plan: plan.title || 'Treatment plan',
+      phase: plan.items?.[0]?.phase || plan.status,
+      progress: plan.progress || 0,
+      nextAppointment: plan.appointmentId ? `Appointment #${String(plan.appointmentId).slice(-6)}` : 'Not scheduled',
+      totalCost: Number(plan.estimatedTotal || plan.estimatedCost || 0),
+      paidAmount: invoicePaid ? Number(invoice.grandTotal || invoice.total || 0) : 0,
+      status: plan.status
+    };
+  });
 
   const getStatusInfo = (status) => {
-    switch (status) {
-      case 'active':
+    switch (String(status || '').toUpperCase()) {
+      case 'APPROVED':
+      case 'IN_PROGRESS':
         return { color: 'bg-blue-500', textColor: 'text-blue-500', bgColor: 'bg-blue-500/10', label: 'Active' };
-      case 'waiting':
+      case 'SENT':
+      case 'PATIENT_REVIEW':
         return { color: 'bg-amber-500', textColor: 'text-amber-500', bgColor: 'bg-amber-500/10', label: 'Waiting' };
-      case 'completed':
+      case 'COMPLETED':
         return { color: 'bg-emerald-500', textColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', label: 'Completed' };
+      case 'REJECTED':
+      case 'CANCELLED':
+        return { color: 'bg-red-500', textColor: 'text-red-500', bgColor: 'bg-red-500/10', label: 'Closed' };
       default:
         return { color: 'bg-gray-500', textColor: 'text-gray-500', bgColor: 'bg-gray-500/10', label: 'Draft' };
     }
   };
 
   const getPaymentPercentage = (paid, total) => {
-    const paidNum = parseInt(paid.replace(/[^\d]/g, ''));
-    const totalNum = parseInt(total.replace(/[^\d]/g, ''));
+    const paidNum = Number(paid || 0);
+    const totalNum = Number(total || 0);
+    if (!totalNum) return 0;
     return Math.round((paidNum / totalNum) * 100);
   };
 
   const formatCurrency = (amount) => {
-    return amount.replace('Rp ', 'Rp ').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(Number(amount || 0));
   };
 
   return (
@@ -72,17 +61,23 @@ const TreatmentPlanCard = () => {
         </div>
         <div className="text-right">
           <p className="text-sm text-muted theme-transition">Success Rate</p>
-          <p className="text-2xl font-bold text-emerald-500">94.2%</p>
+          <p className="text-2xl font-bold text-emerald-500">{metrics?.successRate || 0}%</p>
         </div>
       </div>
 
       <div className="space-y-4 mb-6">
-        {treatmentPlans.map((plan, index) => {
+        {rows.length === 0 && (
+          <div className="p-5 bg-surface-elevated rounded-xl border border-primary/5 text-center theme-transition">
+            <p className="font-semibold text-primary theme-transition">No treatment plans yet</p>
+            <p className="text-sm text-secondary theme-transition mt-1">Plans created in the patient portal will appear here.</p>
+          </div>
+        )}
+        {rows.map((plan) => {
           const statusInfo = getStatusInfo(plan.status);
           const paymentProgress = getPaymentPercentage(plan.paidAmount, plan.totalCost);
           
           return (
-            <div key={index} className="p-4 bg-surface-elevated rounded-xl border border-primary/5 hover:border-accent/20 transition-all duration-200 theme-transition">
+            <div key={plan.id} className="p-4 bg-surface-elevated rounded-xl border border-primary/5 hover:border-accent/20 transition-all duration-200 theme-transition">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="font-semibold text-primary theme-transition">{plan.patient}</p>
@@ -134,15 +129,15 @@ const TreatmentPlanCard = () => {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-teal-500">8</p>
+          <p className="text-2xl font-bold text-teal-500">{metrics?.activePlans || 0}</p>
           <p className="text-xs text-muted theme-transition">Active Plans</p>
         </div>
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-blue-500">Rp 180M</p>
+          <p className="text-2xl font-bold text-blue-500">{formatCurrency(metrics?.totalValue || 0)}</p>
           <p className="text-xs text-muted theme-transition">Total Value</p>
         </div>
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-emerald-500">76%</p>
+          <p className="text-2xl font-bold text-emerald-500">{metrics?.averageProgress || 0}%</p>
           <p className="text-xs text-muted theme-transition">Avg Progress</p>
         </div>
       </div>

@@ -152,16 +152,27 @@ const ScheduleStats = ({ appointments, selectedDate }) => {
       </div>
 
       {/* Channel & Priority Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title={t('dentistSchedule.stats.teledentistry')}
           value={stats.tele}
-          subtitle={`${stats.clinic} ${t('dentistSchedule.stats.inClinic')}`}
+          subtitle="Virtual care"
           icon="Video"
           color="text-cyan-600"
           bgColor="bg-cyan-50 dark:bg-cyan-900/10"
           isSelected={selectedMetric === 'tele'}
           onClick={() => setSelectedMetric('tele')}
+        />
+
+        <StatCard
+          title={t('dentistSchedule.stats.inClinic')}
+          value={stats.clinic}
+          subtitle="In clinic"
+          icon="Building2"
+          color="text-slate-600"
+          bgColor="bg-slate-50 dark:bg-slate-900/10"
+          isSelected={selectedMetric === 'clinic'}
+          onClick={() => setSelectedMetric('clinic')}
         />
         
         <StatCard
@@ -194,7 +205,7 @@ const ScheduleStats = ({ appointments, selectedDate }) => {
         <div className="space-y-4">
           {progressBars.map((bar, index) => (
             <div key={index}>
-            <div className="flex justify-between items-center mb-2">
+              <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium text-secondary">{bar.label}</span>
                 <span className="text-sm font-semibold text-primary">{bar.value}%</span>
               </div>
@@ -206,45 +217,6 @@ const ScheduleStats = ({ appointments, selectedDate }) => {
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-surface-elevated border border-primary/10 rounded-2xl p-6 theme-transition">
-        <h3 className="text-lg font-semibold text-primary mb-4">{t('dentistSchedule.stats.quickActions')}</h3>
-        
-        <div className="grid grid-cols-2 gap-3">
-          <button className="p-3 text-left rounded-xl bg-accent/10 hover:bg-accent/20 text-accent transition-all duration-200">
-            <div className="flex items-center space-x-2 mb-1">
-              <Icon name="Plus" size={16} />
-              <span className="font-medium text-sm">{t('dentistSchedule.stats.newAppointment')}</span>
-            </div>
-            <div className="text-xs opacity-75">{t('dentistSchedule.stats.scheduleNewConsultation')}</div>
-          </button>
-          
-          <button className="p-3 text-left rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 transition-all duration-200">
-            <div className="flex items-center space-x-2 mb-1">
-              <Icon name="UserCheck" size={16} />
-              <span className="font-medium text-sm">{t('dentistSchedule.stats.bulkCheckIn')}</span>
-            </div>
-            <div className="text-xs opacity-75">{t('dentistSchedule.stats.checkInMultiplePatients')}</div>
-          </button>
-          
-          <button className="p-3 text-left rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 transition-all duration-200">
-            <div className="flex items-center space-x-2 mb-1">
-              <Icon name="Send" size={16} />
-              <span className="font-medium text-sm">{t('dentistSchedule.stats.sendReminders')}</span>
-            </div>
-            <div className="text-xs opacity-75">{t('dentistSchedule.stats.notifyPendingPatients')}</div>
-          </button>
-          
-          <button className="p-3 text-left rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 transition-all duration-200">
-            <div className="flex items-center space-x-2 mb-1">
-              <Icon name="Download" size={16} />
-              <span className="font-medium text-sm">{t('dentistSchedule.stats.exportSchedule')}</span>
-            </div>
-            <div className="text-xs opacity-75">{t('dentistSchedule.stats.downloadDailyReport')}</div>
-          </button>
         </div>
       </div>
     </div>

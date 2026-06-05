@@ -1729,6 +1729,7 @@ export default {
         live: 'Live',
         waiting: 'Waiting',
         upcoming: 'Upcoming',
+        overdue: 'Overdue',
         completed: 'Completed'
       }
     },

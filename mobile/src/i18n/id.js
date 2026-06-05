@@ -36,6 +36,7 @@ export const id = {
         unavailable: 'Tidak tersedia',
         ready: 'Siap bergabung',
         joinAudioOnly: 'Bergabung audio saja',
+        recordingConsent: 'Saya memahami sesi ini mungkin direkam untuk keperluan dokumentasi klinis sesuai kebijakan privasi Serene Apps.',
       },
       chat: {
         sendFailed: 'Pesan gagal dikirim. Teks tetap disimpan agar dapat dicoba lagi.',

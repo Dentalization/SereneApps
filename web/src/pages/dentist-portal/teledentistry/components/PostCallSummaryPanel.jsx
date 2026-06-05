@@ -128,7 +128,8 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   const autosaveRef = useRef(null);
   const loadedRef = useRef(false);
 
-  const isFinalized = summaryStatus === 'finalized' || summaryStatus === 'amended';
+  const isFinalized = summaryStatus === 'finalized';
+  const isAmended = summaryStatus === 'amended';
   const isEditable = !isFinalized || isAmending;
 
   const missing = useMemo(
@@ -335,6 +336,13 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
                 ? `Pasien sudah mengakui ringkasan pada ${new Date(summaryMeta.patientAcknowledgedAt).toLocaleString('id-ID')}.`
                 : 'Pasien belum mengakui ringkasan klinis ini.'}
             </div>
+          </div>
+        )}
+
+        {isAmended && (
+          <div className="mx-5 mt-4 rounded-lg px-3 py-2 text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50">
+            <div className="font-medium">Ringkasan dalam status amended — dapat diedit kembali.</div>
+            <div className="mt-1 text-xs">Simpan draft atau finalize ulang setelah membuat perubahan.</div>
           </div>
         )}
 

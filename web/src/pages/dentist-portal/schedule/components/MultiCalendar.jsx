@@ -212,14 +212,9 @@ const MultiCalendar = ({
     }
   }, [currentDate, viewMode]);
 
-  // Get appointments for a specific date (exclude cancelled/rejected)
+  // Get appointments for a specific date
   const getAppointmentsForDate = useCallback((date) => {
     return appointments.filter(apt => {
-      // Skip cancelled, rejected, or no-show appointments
-      if (apt.status === 'cancelled' || apt.rawStatus === 'cancelled' || 
-          apt.status === 'rejected' || apt.status === 'no-show') {
-        return false;
-      }
       const aptDate = new Date(apt.start);
       return isSameDay(aptDate, date);
     });
@@ -228,12 +223,14 @@ const MultiCalendar = ({
   // Get day statistics
   const getDayStats = useCallback((date) => {
     const dayAppointments = getAppointmentsForDate(date);
-    const total = dayAppointments.length;
+    const total = dayAppointments.filter(apt => apt.status !== 'cancelled' && apt.status !== 'rejected').length;
     const blocked = dayAppointments.filter(apt => apt.status === 'blocked').length;
     const confirmed = dayAppointments.filter(apt => apt.status === 'confirmed').length;
     const pending = dayAppointments.filter(apt => apt.status === 'pending').length;
+    const completed = dayAppointments.filter(apt => apt.status === 'completed').length;
+    const cancelled = dayAppointments.filter(apt => apt.status === 'cancelled' || apt.status === 'rejected').length;
 
-    return { total, blocked, confirmed, pending };
+    return { total, blocked, confirmed, pending, completed, cancelled };
   }, [getAppointmentsForDate]);
 
   // Navigation handlers
@@ -245,6 +242,7 @@ const MultiCalendar = ({
       newDate.setMonth(currentDate.getMonth() - 1);
     }
     setCurrentDate(newDate);
+    onDateChange?.(newDate);
   };
 
   const navigateNext = () => {
@@ -255,10 +253,13 @@ const MultiCalendar = ({
       newDate.setMonth(currentDate.getMonth() + 1);
     }
     setCurrentDate(newDate);
+    onDateChange?.(newDate);
   };
 
   const navigateToday = () => {
-    setCurrentDate(new Date());
+    const newDate = new Date();
+    setCurrentDate(newDate);
+    onDateChange?.(newDate);
   };
 
   // Day management handlers
@@ -514,6 +515,11 @@ const MultiCalendar = ({
                       isSelectedDay ? 'shadow-md bg-amber-500 h-2.5' : ''
                     }`}></div>
                   )}
+                  {dayStats.completed > 0 && (
+                    <div className={`w-full h-2 bg-emerald-400 rounded-full shadow-sm transition-all duration-200 ${
+                      isSelectedDay ? 'shadow-md bg-emerald-500 h-2.5' : ''
+                    }`}></div>
+                  )}
                   {dayStats.blocked > 0 && (
                     <div className={`w-full h-2 bg-purple-400 rounded-full shadow-sm transition-all duration-200 ${
                       isSelectedDay ? 'shadow-md bg-purple-500 h-2.5' : ''
@@ -662,6 +668,10 @@ const MultiCalendar = ({
         <div className="flex items-center space-x-1">
           <div className="w-3 h-1 bg-amber-400 rounded-full"></div>
           <span>Pending</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-1 bg-emerald-400 rounded-full"></div>
+          <span>Completed</span>
         </div>
         <div className="flex items-center space-x-1">
           <div className="w-3 h-1 bg-purple-400 rounded-full"></div>

@@ -1,25 +1,6 @@
-console.log('🧪 [Shim] Loading browser.js...');
+// Twilio Conversations Shim for React Native / Metro
+// Loads the browser bundle directly to avoid ESM/CJS interop issues and prevent core-js global pollution.
 
-const mod = require('@twilio/conversations/builds/browser.js');
+const Conversations = require('@twilio/conversations/builds/browser.js');
 
-console.log('🧪 typeof mod =', typeof mod);
-console.log('🧪 mod keys =', Object.keys(mod || {}));
-
-let Client = null;
-
-if (typeof mod === 'function') {
-  Client = mod;
-}
-else if (typeof mod?.Client === 'function') {
-  Client = mod.Client;
-}
-else if (typeof mod?.default === 'function') {
-  Client = mod.default;
-}
-else if (typeof mod?.default?.Client === 'function') {
-  Client = mod.default.Client;
-}
-
-console.log('🧪 Client type =', typeof Client);
-
-module.exports = Client;
+module.exports = Conversations;

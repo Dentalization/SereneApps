@@ -6,6 +6,8 @@ import { sendExpoPushNotification, sendPushNotification } from './providers/push
 import { sendEmailNotification } from './providers/email.js';
 import { sendSmsNotification } from './providers/sms.js';
 
+import { emitToUserRooms } from '../../sockets/chat.js';
+
 const prisma = new PrismaClient();
 
 const CHANNEL_AVAILABILITY = {
@@ -91,7 +93,8 @@ export async function queueNotificationEvent({ eventType, appointmentId, payload
           id: true,
           name: true,
           email: true,
-          phone_number: true
+          phone_number: true,
+          avatar_url: true
         }
       },
       dentist: {
@@ -99,7 +102,23 @@ export async function queueNotificationEvent({ eventType, appointmentId, payload
           id: true,
           name: true,
           email: true,
-          phone_number: true
+          phone_number: true,
+          avatar_url: true,
+          dentistProfile: {
+            select: {
+              avatar_url: true,
+              clinicName: true,
+              clinicAddress: true
+            }
+          }
+        }
+      },
+      clinicBranch: {
+        select: {
+          id: true,
+          branchName: true,
+          streetAddress: true,
+          phone: true
         }
       }
     }
@@ -123,6 +142,61 @@ export async function queueNotificationEvent({ eventType, appointmentId, payload
       recipientRole: recipient.role,
       payload
     });
+
+    // Create DB in-app notification first
+    try {
+      const pushPayload = payloads['push'];
+      const dbData = {
+        ...(pushPayload?.data || {}),
+        appointmentId: appointment.id.toString(),
+        startsAt: (appointment.startsAt || appointment.starts_at)?.toISOString?.() || null,
+        clinicName: appointment.clinicBranch?.branchName || appointment.dentist?.dentistProfile?.[0]?.clinicName || null,
+        clinicAddress: appointment.clinicBranch?.streetAddress || appointment.dentist?.dentistProfile?.[0]?.clinicAddress || null,
+        clinicPhone: appointment.clinicBranch?.phone || null,
+        dentist: appointment.dentist ? {
+          id: appointment.dentist.id.toString(),
+          name: appointment.dentist.name,
+          avatar_url: appointment.dentist.avatar_url || appointment.dentist.dentistProfile?.[0]?.avatar_url || null
+        } : null,
+        dentistAvatar: appointment.dentist?.avatar_url || appointment.dentist?.dentistProfile?.[0]?.avatar_url || null,
+        patient: appointment.patient ? {
+          id: appointment.patient.id.toString(),
+          name: appointment.patient.name,
+          avatar_url: appointment.patient.avatar_url || null
+        } : null,
+        status: appointment.status
+      };
+
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: BigInt(userId),
+          type: eventType,
+          title: pushPayload?.title || 'Notification',
+          message: pushPayload?.body || '',
+          data: dbData,
+          is_read: false
+        }
+      });
+
+      // Emit realtime socket event to user room
+      try {
+        emitToUserRooms({
+          userIds: [userId],
+          eventName: 'notification:new',
+          payload: {
+            ...notification,
+            id: notification.id.toString(),
+            user_id: notification.user_id.toString(),
+            created_at: notification.created_at.toISOString(),
+            read_at: notification.read_at ? notification.read_at.toISOString() : null
+          }
+        });
+      } catch (socketErr) {
+        console.error('Failed to emit realtime notification:', socketErr);
+      }
+    } catch (dbErr) {
+      console.error('Failed to create DB notification:', dbErr);
+    }
 
     for (const channel of template.channels) {
       const channelPayload = payloads[channel];
