@@ -1,0 +1,7 @@
+No,Fitur,Avg. Response Time (ms),p95 (ms),Throughput (req/s),Error Rate (%),Status Target < 2 Detik
+1,"Login pengguna",113.36,210.99,0.90,0.00,Memenuhi
+2,"Ambil daftar appointment",36.75,94.94,0.95,0.00,Memenuhi
+3,"Buat appointment",34.28,45.22,0.95,0.00,Memenuhi
+4,"Ambil detail konsultasi",13.58,16.08,0.34,0.00,Memenuhi
+5,"Kirim pesan konsultasi",852.82,1114.15,0.37,0.00,Memenuhi
+6,"Unggah citra gigi",678.04,918.83,0.37,0.00,Memenuhi
