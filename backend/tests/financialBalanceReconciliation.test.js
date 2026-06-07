@@ -7,6 +7,10 @@ import { processRefund } from '../src/services/payments/refundService.js';
 
 const prisma = new PrismaClient();
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('financial Balance Reconciliation: test verification and drift detection', async () => {
   const suffix = rand();
@@ -52,8 +56,7 @@ test('financial Balance Reconciliation: test verification and drift detection', 
     data: {
       dentistId: dentist.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }

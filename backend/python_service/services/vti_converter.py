@@ -126,13 +126,20 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
     # Also scan for extensionless files (many CBCT scanners like Morita, Planmeca, Vatech)
     for root, dirs, files in os.walk(study_path):
         for f in files:
+            if f.startswith('.'):
+                continue
             fp = os.path.join(root, f)
-            # Skip known non-DICOM files
             _, ext = os.path.splitext(f)
-            if ext.lower() in ('.vti', '.json', '.txt', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.zip', '.tar', '.gz', '.py', '.js', '.html', '.css', '.log', '.sql', '.md'):
+            # Skip known non-DICOM files and binaries
+            if ext.lower() in (
+                '.vti', '.json', '.txt', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp', 
+                '.zip', '.tar', '.gz', '.py', '.js', '.html', '.css', '.log', '.sql', '.md',
+                '.dll', '.exe', '.pdb', '.db', '.dat', '.pak', '.bin', '.sys', '.ini', '.lnk',
+                '.bat', '.cmd', '.cfg', '.config', '.manifest'
+            ):
                 continue
             # Include files with no extension or numeric-only names
-            if not ext or f.isdigit() or ext.lower() not in ('.dcm', '.dcom', '.dicom', '.ima'):
+            if not ext or f.isdigit():
                 all_files.append(fp)
     
     all_files = sorted(set(all_files))
@@ -201,6 +208,37 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
             'series_description': data['description'] or 'Structured Report',
         }
         print(f"[VTI] SR series {series_uid[:30]}... → {len(data['files'])} report files")
+
+    # ── Non-DICOM Panoramic/Ceph scanner ──
+    pan_files = []
+    for root, dirs, files in os.walk(study_path):
+        for file in files:
+            lower_file = file.lower()
+            if any(lower_file.endswith(ext) for ext in ('.jpg', '.jpeg', '.tif', '.tiff', '.png')):
+                if any(kw in lower_file for kw in ('panorama', 'panoramic', 'opg', 'ceph', 'cephalometric')):
+                    if not file.startswith(('thumb_', 'image_', 'labels_')):
+                        pan_files.append(os.path.join(root, file))
+
+    added_names = set()
+    for pan_file in pan_files:
+        filename = os.path.basename(pan_file)
+        name_without_ext = os.path.splitext(filename)[0]
+        if name_without_ext.lower() in added_names:
+            continue
+        added_names.add(name_without_ext.lower())
+
+        import hashlib
+        series_uid = "pan_opg_" + hashlib.md5(name_without_ext.encode('utf-8')).hexdigest()
+        modality = "OPG" if any(kw in filename.lower() for kw in ('panorama', 'panoramic', 'opg')) else "Ceph"
+
+        series_groups[series_uid] = {
+            'files': [(1, 0.0, pan_file)],
+            'modality': modality,
+            'classification': '2D',
+            'num_files': 1,
+            'series_description': f"Panoramic Image ({name_without_ext})" if modality == "OPG" else f"Cephalometric Image ({name_without_ext})"
+        }
+        print(f"[VTI] Detected plain 2D series: {filename} → UID={series_uid}, Modality={modality}")
 
     if include_sr:
         return series_groups, sr_series
@@ -1136,7 +1174,7 @@ def detect_mandibular_canal(volume: np.ndarray, spacing: tuple, origin: tuple = 
 
 def generate_2d_image(file_list: list, output_path: str) -> dict:
     """
-    Convert a 2D DICOM series (1-10 slices) to a high-quality JPEG.
+    Convert a 2D DICOM series (1-10 slices) or plain image (JPEG/TIFF/PNG) to a high-quality JPEG.
     Used for Panoramic, Cephalometric, and other 2D imaging.
     
     Returns: dict with image info
@@ -1144,7 +1182,30 @@ def generate_2d_image(file_list: list, output_path: str) -> dict:
     import cv2
     
     try:
-        ds = pydicom.dcmread(file_list[0], force=True)
+        input_path = file_list[0]
+        ext = os.path.splitext(input_path.lower())[1]
+        
+        # Plain image support
+        if ext in ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'):
+            pixel_array = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+            if pixel_array is None:
+                raise ValueError(f"Could not load image: {input_path}")
+            cv2.imwrite(output_path, pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            
+            rows, cols = pixel_array.shape[:2]
+            file_size = os.path.getsize(output_path)
+            print(f"[2D] Generated from plain image: {output_path} ({cols}x{rows}, {file_size/1024:.1f}KB)")
+            
+            return {
+                "status": "success",
+                "path": output_path,
+                "dimensions": [cols, rows],
+                "file_size_bytes": file_size
+            }
+            
+        import pydicom
+        from pydicom.uid import ExplicitVRLittleEndian
+        ds = pydicom.dcmread(input_path, force=True)
         if not hasattr(ds, 'file_meta') or ds.file_meta is None:
             ds.file_meta = pydicom.dataset.FileMetaDataset()
         if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
@@ -1189,7 +1250,7 @@ def generate_2d_image(file_list: list, output_path: str) -> dict:
 
 def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1) -> bool:
     """
-    Generate a 256x256 JPEG thumbnail from the middle slice of a series.
+    Generate a 256x256 JPEG thumbnail from the middle slice of a series or a plain image.
     Returns True on success.
     """
     import cv2
@@ -1199,7 +1260,22 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
             target_index = len(file_list) // 2  # Middle slice = best thumbnail
         target_index = min(target_index, len(file_list) - 1)
         
-        ds = pydicom.dcmread(file_list[target_index], force=True)
+        input_path = file_list[target_index]
+        ext = os.path.splitext(input_path.lower())[1]
+        
+        # Plain image support
+        if ext in ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'):
+            pixel_array = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+            if pixel_array is None:
+                raise ValueError(f"Could not load image: {input_path}")
+            thumb = cv2.resize(pixel_array, (256, 256), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(output_path, thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            print(f"[THUMB] Generated from plain image: {output_path}")
+            return True
+            
+        import pydicom
+        from pydicom.uid import ExplicitVRLittleEndian
+        ds = pydicom.dcmread(input_path, force=True)
         if not hasattr(ds, 'file_meta') or ds.file_meta is None:
             ds.file_meta = pydicom.dataset.FileMetaDataset()
         if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:

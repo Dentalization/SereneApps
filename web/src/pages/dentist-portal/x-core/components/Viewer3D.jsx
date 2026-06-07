@@ -202,27 +202,14 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
             modality: 'OPG',
         };
         return renderWithStructuredReport(
-            <div className="relative h-full">
-                <ImageViewer2D
-                    study={activeStudy}
-                    seriesInfo={seriesInfo}
-                    onBack={onBack}
-                    onSwitchSeries={() => setShowSeriesSelector(prev => !prev)}
-                    comparisonPaneId={comparisonPaneId}
-                    comparisonSyncEnabled={comparisonSyncEnabled}
-                />
-                <SeriesSidebar
-                    study={activeStudy}
-                    currentSeriesUid={activeStudy?.selectedSeriesUid}
-                    onSelectSeries={(series) => {
-                        setShowSeriesSelector(false);
-                        handleSwitchSeries(series);
-                    }}
-                    visible={showSeriesSelector}
-                    onClose={() => setShowSeriesSelector(false)}
-                    position="right"
-                />
-            </div>
+            <ImageViewer2D
+                study={activeStudy}
+                seriesInfo={seriesInfo}
+                onBack={onBack}
+                onSwitchSeries={handleSwitchSeries}
+                comparisonPaneId={comparisonPaneId}
+                comparisonSyncEnabled={comparisonSyncEnabled}
+            />
         );
     }
 

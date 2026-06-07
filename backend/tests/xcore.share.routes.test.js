@@ -2,15 +2,9 @@ import 'dotenv/config';
 import test, { after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
-process.env.SHARE_SECRET = process.env.SHARE_SECRET || 'xcore-share-test-secret';
-process.env.XCORE_SHARE_BASE_URL = 'https://viewer.test';
-process.env.XCORE_PY_API_BASE_URL = 'http://python.test';
-
 const prisma = new PrismaClient();
-const nativeFetch = globalThis.fetch;
 const {
   createStudyShare,
   getSharedStudy,
@@ -50,7 +44,7 @@ async function withServer(run) {
 }
 
 async function httpJson(baseUrl, path, options = {}) {
-  const response = await nativeFetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -126,44 +120,15 @@ async function createFixtureStudy() {
 }
 
 beforeEach(async () => {
-  globalThis.fetch = async (url) => {
-    if (String(url).startsWith('http://python.test/gallery/')) {
-      return new Response(JSON.stringify({
-        series: [
-          {
-            series_uid: '1.2.840.10008',
-            title: 'CBCT Volume',
-            type: '3D Volume',
-            classification: '3D',
-            modality: 'CT',
-            num_slices: 240,
-            status: 'ready',
-            has_vti: true,
-            has_image: false,
-            has_thumb: true,
-            has_labels: true,
-            num_labels: 12,
-            segmentation_method: 'heuristic_v2',
-            segmentation_status: 'ready'
-          }
-        ]
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    return nativeFetch(url);
-  };
   await cleanupFixtures();
 });
 
 after(async () => {
-  globalThis.fetch = nativeFetch;
   await cleanupFixtures();
   await prisma.$disconnect();
 });
 
-test('POST /v1/x-core/studies/:id/share creates a signed share link', async () => {
+test('POST /v1/x-core/studies/:id/share rejects public link creation without a recipient dentist', async () => {
   const { study } = await createFixtureStudy();
 
   await withServer(async (baseUrl) => {
@@ -172,94 +137,22 @@ test('POST /v1/x-core/studies/:id/share creates a signed share link', async () =
       body: JSON.stringify({ expiresInHours: 48 })
     });
 
-    assert.equal(response.status, 200);
-    assert.ok(response.json.token);
-    assert.match(response.json.shareUrl, /^https:\/\/viewer\.test\/shared\//);
-    assert.ok(response.json.expiresAt);
+    assert.equal(response.status, 400);
+    assert.match(response.json.error, /recipientDentistId/);
 
-    const stored = await prisma.studyShare.findUnique({ where: { token: response.json.token } });
-    assert.ok(stored);
-    assert.equal(stored.studyId, study.id);
+    const stored = await prisma.studyShare.findFirst({ where: { studyId: study.id } });
+    assert.equal(stored, null);
   });
 });
 
-test('GET /v1/x-core/share/:token returns sanitized shared study with segmentation fields', async () => {
-  const { study } = await createFixtureStudy();
-  const token = jwt.sign(
-    { studyId: study.id.toString(), folderId: study.folderName },
-    process.env.SHARE_SECRET,
-    { expiresIn: '24h' }
-  );
-  await prisma.studyShare.create({
-    data: {
-      studyId: study.id,
-      token,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
-    }
-  });
-
+test('public X-Core share token endpoints are disabled', async () => {
   await withServer(async (baseUrl) => {
-    const response = await httpJson(baseUrl, `/v1/x-core/share/${encodeURIComponent(token)}`);
+    const view = await httpJson(baseUrl, '/v1/x-core/share/legacy-token');
+    const validate = await httpJson(baseUrl, '/v1/x-core/share/legacy-token/validate');
 
-    assert.equal(response.status, 200);
-    assert.equal(response.json.folderName, study.folderName);
-    assert.equal(response.json.patientName, 'Sanitized Patient');
-    assert.equal(response.json.series[0].has_labels, true);
-    assert.equal(response.json.series[0].num_labels, 12);
-    assert.equal(response.json.series[0].segmentation_method, 'heuristic_v2');
-    assert.equal(response.json.series[0].segmentation_status, 'ready');
-    assert.equal(response.json.patientId, undefined);
-    assert.equal(response.json.id, undefined);
-    assert.equal(response.json.series[0].id, undefined);
-  });
-});
-
-test('GET /v1/x-core/share/:token/validate validates an active token', async () => {
-  const { study } = await createFixtureStudy();
-  const token = jwt.sign(
-    { studyId: study.id.toString(), folderId: study.folderName },
-    process.env.SHARE_SECRET,
-    { expiresIn: '72h' }
-  );
-  await prisma.studyShare.create({
-    data: {
-      studyId: study.id,
-      token,
-      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000)
-    }
-  });
-
-  await withServer(async (baseUrl) => {
-    const response = await httpJson(baseUrl, `/v1/x-core/share/${encodeURIComponent(token)}/validate`);
-
-    assert.equal(response.status, 200);
-    assert.equal(response.json.valid, true);
-    assert.equal(response.json.studyId, study.id.toString());
-    assert.equal(response.json.folderName, study.folderName);
-    assert.ok(response.json.expiresAt);
-  });
-});
-
-test('share endpoints reject invalid and expired tokens', async () => {
-  const { study } = await createFixtureStudy();
-  const expiredToken = jwt.sign(
-    { studyId: study.id.toString(), folderId: study.folderName },
-    process.env.SHARE_SECRET,
-    { expiresIn: '-1s' }
-  );
-  await prisma.studyShare.create({
-    data: {
-      studyId: study.id,
-      token: expiredToken,
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    }
-  });
-
-  await withServer(async (baseUrl) => {
-    const invalid = await httpJson(baseUrl, '/v1/x-core/share/not-a-token/validate');
-    const expired = await httpJson(baseUrl, `/v1/x-core/share/${encodeURIComponent(expiredToken)}`);
-
-    assert.equal(invalid.status, 404);
-    assert.equal(expired.status, 410);
+    assert.equal(view.status, 410);
+    assert.equal(validate.status, 410);
+    assert.match(view.json.error, /disabled/);
+    assert.match(validate.json.error, /disabled/);
   });
 });

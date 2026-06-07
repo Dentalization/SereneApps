@@ -4,9 +4,21 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { validateAnnotationPayload } from '../utils/xCoreAnnotationValidation.js';
+import {
+    activeDentistClinicIds,
+    clinicStudyScopeWhere,
+    clinicStudyScopeWhereForClinicIds,
+    eligibleShareDentists,
+    getClinicXCoreContext,
+    handleAccessError,
+    requireEligibleShareRecipient,
+    requireXCoreStudyOwner,
+    requireXCoreStudyReadAccess,
+    serializeEligibleDentist,
+    shareableClinicIdsForOwnedStudy,
+} from '../services/xCoreAccessPolicyService.js';
 
 const prisma = new PrismaClient();
 const execAsync = promisify(exec);
@@ -15,7 +27,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
 const PY_SERVICE_BASE_URL = process.env.XCORE_PY_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-const ALLOWED_SHARE_EXPIRY_HOURS = new Set([24, 48, 72, 168]);
 const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'approved', 'rejected']);
 
@@ -28,31 +39,6 @@ function serializeJson(payload) {
     return JSON.parse(JSON.stringify(payload, (key, value) =>
         typeof value === 'bigint' ? value.toString() : value
     ));
-}
-
-function buildPublicAppBaseUrl(req) {
-    const configured =
-        process.env.XCORE_SHARE_BASE_URL ||
-        process.env.APP_BASE_URL ||
-        process.env.FRONTEND_BASE_URL;
-
-    if (configured) {
-        return configured.replace(/\/$/, '');
-    }
-
-    const forwardedProto = req.headers['x-forwarded-proto'];
-    const forwardedHost = req.headers['x-forwarded-host'];
-    const protocol = (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(',')[0]
-        || req.protocol
-        || 'http';
-    const host = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) || req.get('host');
-    return `${protocol}://${host}`;
-}
-
-function cleanPatientName(name, fallback = 'Patient') {
-    if (!name || typeof name !== 'string') return fallback;
-    const normalized = name.replace(/\^/g, ' ').trim();
-    return normalized || fallback;
 }
 
 function parseBigIntId(value) {
@@ -162,99 +148,32 @@ function serializeSnapshotRow(row) {
 }
 
 async function requireOwnedStudy(studyId, userId) {
-    const study = await prisma.imagingStudy.findUnique({
-        where: { id: studyId },
-        select: { id: true, dentistId: true },
-    });
-
-    if (!study) {
-        return { error: { status: 404, message: 'Study not found' } };
-    }
-
-    if (study.dentistId !== userId) {
-        return { error: { status: 403, message: 'You do not have permission to access this study' } };
-    }
-
-    return { study };
-}
-
-function sanitizeSeriesPayload(series) {
-    return {
-        series_uid: series.series_uid,
-        title: series.title || 'Unknown Series',
-        type: series.type || '3D Volume',
-        classification: series.classification || (series.type === '2D Image' ? '2D' : '3D'),
-        modality: series.modality || 'CT',
-        num_slices: Number(series.num_slices || 0),
-        status: series.status || 'ready',
-        has_vti: Boolean(series.has_vti),
-        has_image: Boolean(series.has_image),
-        has_thumb: Boolean(series.has_thumb),
-        has_labels: Boolean(series.has_labels),
-        num_labels: Number(series.num_labels || 0),
-        segmentation_method: series.segmentation_method || null,
-        segmentation_status: series.segmentation_status || (series.has_labels ? 'ready' : 'missing'),
-    };
-}
-
-async function fetchStudySeriesForShare(folderName) {
-    const response = await fetch(`${PY_SERVICE_BASE_URL}/gallery/${encodeURIComponent(folderName)}`);
-    if (!response.ok) {
-        throw new Error(`Imaging service returned ${response.status} while loading shared series`);
-    }
-
-    const payload = await response.json();
-    return (payload.series || []).map(sanitizeSeriesPayload);
-}
-
-function getShareSecret() {
-    if (!process.env.SHARE_SECRET) {
-        throw new Error('SHARE_SECRET is not configured');
-    }
-    return process.env.SHARE_SECRET;
-}
-
-async function resolveStudyShareRecord(token, options = {}) {
-    const { includeStudy = false } = options;
-    let decoded;
-
     try {
-        decoded = jwt.verify(token, getShareSecret());
+        const ownerAccess = await requireXCoreStudyOwner({
+            studyId,
+            user: { id: userId },
+            prismaClient: prisma,
+        });
+        return { study: ownerAccess.study };
     } catch (error) {
-        if (error?.name === 'TokenExpiredError') {
-            return { error: 'expired', detail: 'Share link expired' };
-        }
-        return { error: 'invalid', detail: 'Invalid share token' };
+        return { error: { status: error.status || 500, message: error.message } };
     }
+}
 
-    const shareRecord = await prisma.studyShare.findUnique({
-        where: { token },
-        include: includeStudy ? {
-            study: {
-                include: {
-                    patient: { select: { name: true } },
-                },
-            },
-        } : undefined,
-    });
-
-    if (!shareRecord) {
-        return { error: 'missing', detail: 'Share link not found' };
-    }
-
-    if (shareRecord.expiresAt <= new Date()) {
-        return { error: 'expired', detail: 'Share link expired', shareRecord };
-    }
-
-    if (String(decoded.studyId) !== String(shareRecord.studyId)) {
-        return { error: 'invalid', detail: 'Share token study mismatch' };
-    }
-
-    if (!decoded.folderId || (shareRecord.study?.folderName && String(decoded.folderId) !== String(shareRecord.study.folderName))) {
-        return { error: 'invalid', detail: 'Share token folder mismatch' };
-    }
-
-    return { decoded, shareRecord };
+function decorateStudyForResponse(study, accessScope = 'owner') {
+    const { dentistShares, dentist, ...rest } = study;
+    return {
+        ...rest,
+        ownerDentist: dentist
+            ? {
+                id: dentist.id,
+                name: dentist.name,
+                email: dentist.email,
+            }
+            : null,
+        xcoreAccessScope: accessScope,
+        sharedWithMe: accessScope === 'shared_with_me',
+    };
 }
 
 /**
@@ -292,6 +211,7 @@ export const uploadStudy = async (req, res) => {
         // 1. Check Storage Quota (if user is authenticated)
         let dentistProfile = null;
         let userId = null;
+        let uploadClinicId = null;
 
         if (req.user) {
             userId = BigInt(req.user.id);
@@ -305,6 +225,14 @@ export const uploadStudy = async (req, res) => {
             console.log(`[X-Core] Dentist Profile found: ${!!dentistProfile}`);
             if (dentistProfile) {
                 console.log(`[X-Core] Current Usage: ${dentistProfile.storage_usage}, Limit: ${dentistProfile.storage_limit}`);
+                uploadClinicId = dentistProfile.clinic_id || null;
+            }
+
+            if (!uploadClinicId) {
+                const clinicStaff = req.user.clinicStaff;
+                if (clinicStaff?.isActive && clinicStaff.role === 'dentist' && clinicStaff.clinicProfileId) {
+                    uploadClinicId = BigInt(clinicStaff.clinicProfileId);
+                }
             }
 
             if (dentistProfile) {
@@ -393,7 +321,8 @@ export const uploadStudy = async (req, res) => {
                     status: 'processed',
                     metadata: parseResult.metadata,
                     sizeInBytes: uploadSize,
-                    dentistId: req.user ? BigInt(req.user.id) : undefined
+                    dentistId: req.user ? BigInt(req.user.id) : undefined,
+                    clinicId: uploadClinicId || undefined
                 }
             });
 
@@ -452,22 +381,74 @@ export const getStudies = async (req, res) => {
     try {
         const userId = BigInt(req.user.id);
         console.log(`[X-Core] Fetching studies for user: ${userId}`);
+        const activeClinicIds = await activeDentistClinicIds(userId, { prismaClient: prisma });
+        const sharedStudyWhere = activeClinicIds.length > 0
+            ? {
+                AND: [
+                    {
+                        dentistShares: {
+                            some: {
+                                recipientDentistId: userId,
+                                revokedAt: null,
+                            },
+                        },
+                    },
+                    clinicStudyScopeWhereForClinicIds(activeClinicIds),
+                ],
+            }
+            : null;
 
         const studies = await prisma.imagingStudy.findMany({
-            where: {
-                dentistId: userId
-            },
+            where: sharedStudyWhere
+                ? { OR: [{ dentistId: userId }, sharedStudyWhere] }
+                : { dentistId: userId },
             include: {
                 patient: { select: { name: true, phone_number: true } },
-                series: true
+                series: true,
+                dentist: { select: { id: true, name: true, email: true } },
+                dentistShares: {
+                    where: {
+                        recipientDentistId: userId,
+                        revokedAt: null,
+                    },
+                    select: { id: true },
+                },
             },
             orderBy: { createdAt: 'desc' }
         });
         console.log(`[X-Core] Found ${studies.length} studies for user ${userId}`);
 
-        res.json(serializeJson(studies));
+        res.json(serializeJson(studies.map((study) => decorateStudyForResponse(
+            study,
+            study.dentistId === userId ? 'owner' : 'shared_with_me'
+        ))));
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+};
+
+export const getClinicStudies = async (req, res) => {
+    try {
+        const context = await getClinicXCoreContext(req.user, { prismaClient: prisma });
+        console.log(`[X-Core] Fetching clinic-scoped studies for clinic: ${context.clinicProfileId}`);
+
+        const studies = await prisma.imagingStudy.findMany({
+            where: clinicStudyScopeWhere(context.clinicProfileId),
+            include: {
+                patient: { select: { name: true, phone_number: true } },
+                series: true,
+                dentist: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        res.json(serializeJson(studies.map((study) => decorateStudyForResponse(study, 'clinic'))));
+    } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
+        console.error('Get Clinic Studies Error:', error);
+        res.status(500).json({ error: 'Failed to load clinic X-Core studies' });
     }
 };
 
@@ -479,10 +460,7 @@ export const getStudyAnnotations = async (req, res) => {
             return res.status(400).json({ error: 'Invalid study id' });
         }
 
-        const ownership = await requireOwnedStudy(studyId, userId);
-        if (ownership.error) {
-            return res.status(ownership.error.status).json({ error: ownership.error.message });
-        }
+        await requireXCoreStudyReadAccess({ studyId, user: req.user, prismaClient: prisma });
 
         const filters = [Prisma.sql`study_id = ${studyId}`];
         if (req.query.series_uid) {
@@ -528,6 +506,9 @@ export const getStudyAnnotations = async (req, res) => {
 
         res.json({ annotations: rows.map(serializeAnnotationRow) });
     } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
         console.error('Get Study Annotations Error:', error);
         res.status(500).json({ error: 'Failed to load annotations' });
     }
@@ -835,10 +816,7 @@ export const getAnnotationSnapshots = async (req, res) => {
             return res.status(400).json({ error: 'Invalid study id' });
         }
 
-        const ownership = await requireOwnedStudy(studyId, userId);
-        if (ownership.error) {
-            return res.status(ownership.error.status).json({ error: ownership.error.message });
-        }
+        await requireXCoreStudyReadAccess({ studyId, user: req.user, prismaClient: prisma });
 
         const filters = [Prisma.sql`study_id = ${studyId}`];
         if (req.query.series_uid) {
@@ -854,6 +832,9 @@ export const getAnnotationSnapshots = async (req, res) => {
 
         res.json({ snapshots: rows.map(serializeSnapshotRow) });
     } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
         console.error('Get Annotation Snapshots Error:', error);
         res.status(500).json({ error: 'Failed to load annotation snapshots' });
     }
@@ -1175,126 +1156,104 @@ export const deleteStudy = async (req, res) => {
 export const createStudyShare = async (req, res) => {
     try {
         const { id } = req.params;
-        const studyId = BigInt(id);
-        const expiresInHours = Number(req.body?.expiresInHours);
+        const recipientDentistId = req.body?.recipientDentistId || req.body?.recipient_dentist_id;
 
-        if (!ALLOWED_SHARE_EXPIRY_HOURS.has(expiresInHours)) {
-            return res.status(400).json({ error: 'expiresInHours must be one of 24, 48, 72, or 168' });
+        if (!recipientDentistId) {
+            return res.status(400).json({ error: 'recipientDentistId is required for same-clinic dentist sharing' });
         }
 
-        const study = await prisma.imagingStudy.findUnique({
-            where: { id: studyId },
-            include: {
-                patient: { select: { name: true } },
-            },
+        const shareScope = await shareableClinicIdsForOwnedStudy({
+            studyId: id,
+            user: req.user,
+            prismaClient: prisma,
+        });
+        const recipient = await requireEligibleShareRecipient({
+            recipientDentistId,
+            clinicIds: shareScope.clinicIds,
+            ownerDentistId: shareScope.userId,
+            prismaClient: prisma,
         });
 
-        if (!study) {
-            return res.status(404).json({ error: 'Study not found' });
-        }
-
-        if (study.dentistId !== BigInt(req.user.id)) {
-            return res.status(403).json({ error: 'You do not have permission to share this study' });
-        }
-
-        const expiresAt = new Date(Date.now() + (expiresInHours * 60 * 60 * 1000));
-        const token = jwt.sign(
-            {
-                studyId: study.id.toString(),
-                folderId: study.folderName,
+        const existingShare = await prisma.studyDentistShare.findFirst({
+            where: {
+                studyId: shareScope.study.id,
+                recipientDentistId: recipient.id,
             },
-            getShareSecret(),
-            { expiresIn: `${expiresInHours}h` }
-        );
-
-        await prisma.studyShare.create({
-            data: {
-                studyId: study.id,
-                token,
-                expiresAt,
-            },
+            select: { id: true },
         });
 
-        const baseUrl = buildPublicAppBaseUrl(req);
-        const shareUrl = `${baseUrl}/shared/${token}`;
+        const share = existingShare
+            ? await prisma.studyDentistShare.update({
+                where: { id: existingShare.id },
+                data: {
+                    ownerDentistId: shareScope.userId,
+                    createdById: shareScope.userId,
+                    revokedAt: null,
+                },
+            })
+            : await prisma.studyDentistShare.create({
+                data: {
+                    studyId: shareScope.study.id,
+                    ownerDentistId: shareScope.userId,
+                    recipientDentistId: recipient.id,
+                    createdById: shareScope.userId,
+                },
+            });
 
-        res.json({
-            shareUrl,
-            token,
-            expiresAt: expiresAt.toISOString(),
-            patientName: cleanPatientName(study.metadata?.PatientName, study.patient?.name || study.originalName || 'Patient'),
-        });
+        res.json(serializeJson({
+            share: {
+                id: share.id,
+                studyId: share.studyId,
+                ownerDentistId: share.ownerDentistId,
+                recipientDentistId: share.recipientDentistId,
+                createdAt: share.createdAt,
+                revokedAt: share.revokedAt,
+                recipient: serializeEligibleDentist(recipient),
+            },
+        }));
     } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
         console.error('Create Study Share Error:', error);
         res.status(500).json({ error: error.message || 'Failed to create study share' });
     }
 };
 
-export const validateStudyShareToken = async (req, res) => {
+export const getEligibleStudyShareDentists = async (req, res) => {
     try {
-        const { token } = req.params;
-        const { error, detail, shareRecord } = await resolveStudyShareRecord(token, { includeStudy: true });
+        const shareScope = await shareableClinicIdsForOwnedStudy({
+            studyId: req.params.id,
+            user: req.user,
+            prismaClient: prisma,
+        });
 
-        if (error === 'expired') {
-            return res.status(410).json({ error: detail });
-        }
-        if (error) {
-            return res.status(404).json({ error: detail });
-        }
+        const dentists = await eligibleShareDentists({
+            clinicIds: shareScope.clinicIds,
+            ownerDentistId: shareScope.userId,
+            prismaClient: prisma,
+        });
 
         res.json({
-            valid: true,
-            studyId: shareRecord.studyId.toString(),
-            folderId: shareRecord.study.folderName,
-            folderName: shareRecord.study.folderName,
-            expiresAt: shareRecord.expiresAt.toISOString(),
+            dentists: dentists.map(serializeEligibleDentist),
         });
     } catch (error) {
-        console.error('Validate Study Share Error:', error);
-        res.status(500).json({ error: 'Failed to validate share token' });
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
+        console.error('Get Eligible Study Share Dentists Error:', error);
+        res.status(500).json({ error: 'Failed to load eligible dentists' });
     }
 };
 
+export const validateStudyShareToken = async (req, res) => {
+    return res.status(410).json({
+        error: 'Public X-Core share links are disabled. Ask the owning dentist to share with an active dentist in the same clinic.',
+    });
+};
+
 export const getSharedStudy = async (req, res) => {
-    try {
-        const { token } = req.params;
-        const resolved = await resolveStudyShareRecord(token, { includeStudy: true });
-
-        if (resolved.error === 'expired') {
-            return res.status(410).json({ error: resolved.detail });
-        }
-        if (resolved.error) {
-            return res.status(404).json({ error: resolved.detail });
-        }
-
-        const { shareRecord } = resolved;
-        const study = shareRecord.study;
-
-        let series = [];
-        try {
-            series = await fetchStudySeriesForShare(study.folderName);
-        } catch (seriesError) {
-            console.warn('[X-Core] Shared study series fetch failed:', seriesError.message);
-        }
-
-        const patientName = cleanPatientName(
-            study.metadata?.PatientName,
-            study.patient?.name || study.originalName || 'Patient'
-        );
-
-        res.json({
-            folderName: study.folderName,
-            patientName,
-            studyDate: study.studyDate,
-            description: study.description || study.metadata?.StudyDescription || null,
-            modality: study.modality,
-            expiresAt: shareRecord.expiresAt.toISOString(),
-            token,
-            shareToken: token,
-            series,
-        });
-    } catch (error) {
-        console.error('Get Shared Study Error:', error);
-        res.status(500).json({ error: 'Failed to load shared study' });
-    }
+    return res.status(410).json({
+        error: 'Public X-Core share links are disabled. Ask the owning dentist to share with an active dentist in the same clinic.',
+    });
 };

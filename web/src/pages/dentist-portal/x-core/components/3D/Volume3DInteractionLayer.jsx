@@ -22,7 +22,7 @@ export default function Volume3DInteractionLayer({
       data-xcore-ui="true"
       data-xcore-interaction-layer="true"
       className="absolute inset-0 z-[12]"
-      style={{ cursor }}
+      style={{ cursor, touchAction: 'none' }}
       onContextMenu={stopUiEvent}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

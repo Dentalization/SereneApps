@@ -42,13 +42,14 @@ export const validateAnnotationForReview = (annotation) => {
     const path = annotation.coordinates?.path;
     const worldPath = annotation.coordinates?.world_path;
     const worldBrush = annotation.coordinates?.world_brush;
-    const hasNormalizedPath = Array.isArray(path) && path.length >= 3 && path.every(isPoint);
-    const hasWorldPath = annotation.viewer_type === '3d' && Array.isArray(worldPath) && worldPath.length >= 3 && worldPath.every(isWorldPoint3D);
+    const minPathPoints = type === 'freehand' ? 2 : 3;
+    const hasNormalizedPath = Array.isArray(path) && path.length >= minPathPoints && path.every(isPoint);
+    const hasWorldPath = annotation.viewer_type === '3d' && Array.isArray(worldPath) && worldPath.length >= minPathPoints && worldPath.every(isWorldPoint3D);
     const hasWorldBrush = annotation.viewer_type === '3d' && isWorldBrush3D(worldBrush);
     if (!hasNormalizedPath && !hasWorldPath && !hasWorldBrush) {
-      errors.push('invalid region path');
+      errors.push(type === 'freehand' ? 'invalid freehand path' : 'invalid region path');
     }
-    if (!(Number(metadata.lesion_area_px) > 0) && !(Number(metadata.lesion_area_mm2) > 0) && !(Number(metadata.lesion_volume_mm3) > 0)) {
+    if (type === 'region' && !(Number(metadata.lesion_area_px) > 0) && !(Number(metadata.lesion_area_mm2) > 0) && !(Number(metadata.lesion_volume_mm3) > 0)) {
       errors.push('missing lesion area');
     }
   }

@@ -1,4 +1,7 @@
-export function redirectByRole(roles = []) {
+import { collectUserRoles } from '../clinicRoles';
+
+export function redirectByRole(userOrRoles = []) {
+  const roles = collectUserRoles(userOrRoles);
   console.log('redirectByRole called with roles:', roles);
   const has = (r) => roles?.includes(r);
   console.log('Checking roles:', { 
@@ -25,9 +28,26 @@ export function redirectByRole(roles = []) {
     console.log('Redirecting to dentist home: /dentist-portal/home');
     return '/dentist-portal/home';
   }
+
+  if (has('clinical_director') || has('authorized_clinic_doctor') || has('clinic_admin_xcore')) {
+    console.log('Redirecting to restricted clinic X-Core: /clinic-portal/x-core');
+    return '/clinic-portal/x-core';
+  }
   
   // Clinic roles - redirect to clinic portal
-  const clinicRoles = ['clinic_owner', 'owner', 'clinic_staff', 'manager', 'front_office', 'nurse', 'cashier', 'staff'];
+  const clinicRoles = [
+    'clinic_owner',
+    'owner',
+    'clinic_staff',
+    'manager',
+    'front_office',
+    'nurse',
+    'cashier',
+    'staff',
+    'clinical_director',
+    'authorized_clinic_doctor',
+    'clinic_admin_xcore'
+  ];
   if (clinicRoles.some(role => has(role))) {
     console.log('Redirecting to clinic portal: /clinic-portal/home');
     return '/clinic-portal/home';

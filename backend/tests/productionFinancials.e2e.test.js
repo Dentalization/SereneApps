@@ -10,6 +10,10 @@ import { releaseMaturedBalances } from '../src/services/payments/balanceService.
 
 const prisma = new PrismaClient();
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('productionFinancials.e2e: Complete E2E Financial LifeCycle & Reconciliation Audit', async () => {
   const suffix = rand();
@@ -120,8 +124,7 @@ test('productionFinancials.e2e: Complete E2E Financial LifeCycle & Reconciliatio
     data: {
       dentistId: clinicDentistUser.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'clinic',
       ownerClinicId: clinicProfile.id
@@ -145,8 +148,7 @@ test('productionFinancials.e2e: Complete E2E Financial LifeCycle & Reconciliatio
     data: {
       dentistId: independentUser.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -383,7 +385,7 @@ test('productionFinancials.e2e: Complete E2E Financial LifeCycle & Reconciliatio
     // Check that mathematically:
     // Σ settled revenue (400k + 500k = 900k) = Σ platform fee + net amounts
     const settlements = await prisma.paymentSettlement.findMany({
-      where: { paymentIntentId: { in: [intentClinic.id, intentInd.id] } }
+      where: { id: { in: [settlementClinic.id, settlementInd.id] } }
     });
     const totalGrossSettled = settlements.reduce((sum, s) => sum + s.grossAmount, 0); // 900,000
     const totalPlatformFee = settlements.reduce((sum, s) => sum + s.platformFee, 0); // 90,000

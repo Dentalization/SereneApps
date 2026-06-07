@@ -10,6 +10,7 @@ const ORIGINAL_ENV = { ...process.env };
 function resetEnv(overrides = {}) {
   process.env = { ...ORIGINAL_ENV, ...overrides };
   for (const key of [
+    'APP_ENV',
     'COMM_ATTACHMENT_SIGNING_SECRET',
     'JWT_SECRET',
     'NODE_ENV',
@@ -27,6 +28,7 @@ test.afterEach(() => {
 
 test('attachment signing secret is mandatory outside local development', () => {
   resetEnv({
+    APP_ENV: 'production',
     NODE_ENV: 'production',
     COMM_ATTACHMENT_SIGNING_SECRET: '',
     JWT_SECRET: '',
@@ -41,6 +43,7 @@ test('attachment signing secret is mandatory outside local development', () => {
 
 test('attachment signing secret validation accepts a dedicated production secret', () => {
   resetEnv({
+    APP_ENV: 'production',
     NODE_ENV: 'production',
     COMM_ATTACHMENT_SIGNING_SECRET: 'attachment-signing-secret-for-tests-32-bytes',
     JWT_SECRET: '',

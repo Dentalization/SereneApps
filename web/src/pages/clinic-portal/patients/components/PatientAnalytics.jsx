@@ -66,6 +66,9 @@ const PatientAnalytics = ({
   const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth());
   const [showPatientList, setShowPatientList] = React.useState(false);
   const [filteredPatients, setFilteredPatients] = React.useState([]);
+  const [perfMetric, setPerfMetric] = React.useState('all');
+  const [perfViewMode, setPerfViewMode] = React.useState('chart');
+  const [onlyActiveDocs, setOnlyActiveDocs] = React.useState(true);
 
   const monthLabels = React.useMemo(
     () => Array.from({ length: 12 }, (_, i) => new Date(2024, i).toLocaleDateString(locale, { month: 'short' })),
@@ -193,38 +196,160 @@ const PatientAnalytics = ({
     }]
   };
 
-  // ── CLINIC-ONLY: Dentist Performance Comparison ──────────────────────────
-  const dentistPerformanceData = React.useMemo(() => {
-    if (!doctors.length) return null;
+  // ── CLINIC-ONLY: Dentist Performance Data Calculation ────────────────────
+  const sortedDoctorPerformance = React.useMemo(() => {
+    if (!doctors.length) return [];
+
     const perfMap = {};
-    doctors.forEach(d => { perfMap[d.id] = { name: d.name, patients: 0, revenue: 0, appointments: 0 }; });
+    doctors.forEach(d => {
+      perfMap[d.id] = {
+        id: d.id,
+        name: d.name,
+        role: d.role,
+        patients: 0,
+        appointments: 0,
+        revenue: 0
+      };
+    });
+
     patients.forEach(p => {
       if (perfMap[p.doctorId]) perfMap[p.doctorId].patients++;
     });
+
     allAppointments.forEach(a => {
-      if (perfMap[a.doctorId]) {
-        perfMap[a.doctorId].appointments++;
-        if (a.isPaid) perfMap[a.doctorId].revenue += a.fee;
+      const docId = a.dentistId || a.doctorId;
+      if (perfMap[docId]) {
+        perfMap[docId].appointments++;
+        if (a.isPaid) perfMap[docId].revenue += (a.fee || 0);
       }
     });
 
-    const labels = doctors.map(d => d.name.replace('Dr. ', ''));
+    let list = Object.values(perfMap);
+
+    if (onlyActiveDocs) {
+      list = list.filter(d => d.patients > 0 || d.appointments > 0 || d.revenue > 0);
+    }
+
+    // Sort descending by selected metric
+    list.sort((a, b) => {
+      if (perfMetric === 'revenue') return b.revenue - a.revenue;
+      if (perfMetric === 'patients') return b.patients - a.patients;
+      if (perfMetric === 'appointments') return b.appointments - a.appointments;
+
+      // 'all': sort by appointments desc, then patients desc
+      if (b.appointments !== a.appointments) {
+        return b.appointments - a.appointments;
+      }
+      return b.patients - a.patients;
+    });
+
+    return list;
+  }, [doctors, patients, allAppointments, onlyActiveDocs, perfMetric]);
+
+  const dentistPerformanceData = React.useMemo(() => {
+    if (!sortedDoctorPerformance.length) return null;
+
+    const labels = sortedDoctorPerformance.map(d => d.name.replace('Dr. ', ''));
+
+    const datasets = [];
+    if (perfMetric === 'all' || perfMetric === 'patients') {
+      datasets.push({
+        label: 'Pasien',
+        data: sortedDoctorPerformance.map(d => d.patients),
+        backgroundColor: 'rgba(124, 58, 237, 0.85)',
+        hoverBackgroundColor: 'rgba(124, 58, 237, 1)',
+        borderRadius: 6,
+        borderSkipped: false,
+      });
+    }
+    if (perfMetric === 'all' || perfMetric === 'appointments') {
+      datasets.push({
+        label: 'Appointment',
+        data: sortedDoctorPerformance.map(d => d.appointments),
+        backgroundColor: 'rgba(59, 130, 246, 0.85)',
+        hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
+        borderRadius: 6,
+        borderSkipped: false,
+      });
+    }
+    if (perfMetric === 'revenue') {
+      datasets.push({
+        label: 'Revenue (Rp)',
+        data: sortedDoctorPerformance.map(d => d.revenue),
+        backgroundColor: 'rgba(16, 185, 129, 0.85)',
+        hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
+        borderRadius: 6,
+        borderSkipped: false,
+      });
+    }
+
+    return { labels, datasets };
+  }, [sortedDoctorPerformance, perfMetric]);
+
+  const horizontalChartOptions = React.useMemo(() => {
     return {
-      labels,
-      datasets: [
-        {
-          label: 'Pasien',
-          data: doctors.map(d => perfMap[d.id]?.patients || 0),
-          backgroundColor: 'rgba(99, 102, 241, 0.8)',
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            padding: 15,
+            usePointStyle: true,
+            boxWidth: 8,
+            font: { family: 'inherit', size: 12 }
+          }
         },
-        {
-          label: 'Appointment',
-          data: doctors.map(d => perfMap[d.id]?.appointments || 0),
-          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleFont: { size: 13, weight: 'bold' },
+          bodyFont: { size: 12 },
+          padding: 12,
+          cornerRadius: 8,
+          callbacks: {
+            label: (context) => {
+              let label = context.dataset.label || '';
+              if (label) label += ': ';
+              if (context.dataset.label.includes('Revenue') || perfMetric === 'revenue') {
+                label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.raw);
+              } else {
+                label += context.raw;
+              }
+              return label;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            color: 'rgba(148, 163, 184, 0.1)',
+            drawBorder: false,
+            borderDash: [5, 5]
+          },
+          ticks: {
+            font: { family: 'inherit', size: 11 },
+            callback: (value) => {
+              if (perfMetric === 'revenue') {
+                if (value >= 1000000) return `Rp ${(value / 1000000).toFixed(1)}jt`;
+                return `Rp ${value.toLocaleString('id-ID')}`;
+              }
+              return value;
+            }
+          },
+          beginAtZero: true
         },
-      ]
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'inherit', size: 11, weight: '500' }
+          }
+        }
+      }
     };
-  }, [doctors, patients, allAppointments]);
+  }, [perfMetric]);
+
 
   const chartOptions = {
     responsive: true,
@@ -479,18 +604,359 @@ const PatientAnalytics = ({
       </div>
 
       {/* Dentist Performance Comparison */}
-      {dentistPerformanceData && (
-        <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
-          <h3 className="text-lg font-semibold text-primary mb-4">Perbandingan Performa Dokter</h3>
-          <div className="h-72">
-            <Bar data={dentistPerformanceData} options={{
-              ...chartOptions,
-              plugins: {
-                ...chartOptions.plugins,
-                legend: { ...chartOptions.plugins.legend, position: 'top' },
-              }
-            }} />
+      {doctors.length > 0 && (
+        <div className="bg-surface-elevated rounded-2xl p-6 border border-primary/20 space-y-6">
+          {/* Panel Header with Controls */}
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-primary/10 pb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
+                <Icon name="TrendingUp" className="text-accent w-5 h-5" />
+                Perbandingan Performa Dokter
+              </h3>
+              <p className="text-xs text-secondary mt-1">
+                Analisis kinerja dokter berdasarkan pasien, appointment, dan pendapatan secara real-time
+              </p>
+            </div>
+            
+            {/* Interactive Controls */}
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Metric Selector Tabs */}
+              <div className="flex bg-surface p-1 rounded-lg border border-primary/15 text-xs">
+                {[
+                  { id: 'all', label: 'Semua (Pasien & Appointment)' },
+                  { id: 'patients', label: 'Pasien' },
+                  { id: 'appointments', label: 'Appointment' },
+                  { id: 'revenue', label: 'Revenue' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setPerfMetric(tab.id)}
+                    className={`px-2.5 py-1.5 rounded-md font-medium transition-all ${
+                      perfMetric === tab.id
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-secondary hover:text-primary'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-4">
+                {/* View Mode Toggle */}
+                <div className="flex bg-surface p-1 rounded-lg border border-primary/15">
+                  <button
+                    onClick={() => setPerfViewMode('chart')}
+                    className={`p-1.5 rounded-md transition-all ${
+                      perfViewMode === 'chart'
+                        ? 'bg-accent/15 text-accent'
+                        : 'text-secondary hover:text-primary'
+                    }`}
+                    title="Tampilan Grafik"
+                  >
+                    <Icon name="BarChart3" size={16} />
+                  </button>
+                  <button
+                    onClick={() => setPerfViewMode('leaderboard')}
+                    className={`p-1.5 rounded-md transition-all ${
+                      perfViewMode === 'leaderboard'
+                        ? 'bg-accent/15 text-accent'
+                        : 'text-secondary hover:text-primary'
+                    }`}
+                    title="Tampilan Papan Peringkat"
+                  >
+                    <Icon name="Trophy" size={16} />
+                  </button>
+                </div>
+
+                {/* Only Active Filter Checkbox */}
+                <label className="flex items-center gap-2 text-xs font-medium text-secondary cursor-pointer select-none border-l border-primary/20 pl-4 py-1">
+                  <input
+                    type="checkbox"
+                    checked={onlyActiveDocs}
+                    onChange={(e) => setOnlyActiveDocs(e.target.checked)}
+                    className="rounded border-primary/30 text-accent focus:ring-accent w-4 h-4 cursor-pointer"
+                  />
+                  <span>Dokter Aktif Saja</span>
+                </label>
+              </div>
+            </div>
           </div>
+
+          {/* Render Area */}
+          {perfViewMode === 'chart' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-8 h-80 min-h-[320px]">
+                {dentistPerformanceData && sortedDoctorPerformance.length > 0 ? (
+                  <Bar data={dentistPerformanceData} options={horizontalChartOptions} />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-surface rounded-xl border border-primary/5">
+                    <Icon name="BarChart3" size={40} className="text-secondary/40 mb-3" />
+                    <p className="text-sm text-secondary font-medium">Tidak ada data performa untuk ditampilkan.</p>
+                    <p className="text-xs text-muted mt-1">Coba nonaktifkan filter 'Dokter Aktif Saja' atau pilih metrik lain.</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Insight panel on the right side */}
+              <div className="lg:col-span-4 bg-surface rounded-xl p-5 border border-primary/10 flex flex-col justify-between space-y-4">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Insight Performa</h4>
+                  <p className="text-sm font-semibold text-primary">Analisis Singkat Distribusi Kinerja</p>
+                </div>
+                
+                {sortedDoctorPerformance.length > 0 ? (
+                  <div className="space-y-4 flex-1 flex flex-col justify-center">
+                    {/* Top Performer Row */}
+                    <div className="flex items-center gap-3 bg-accent/5 p-3 rounded-lg border border-accent/10">
+                      <div className="w-8 h-8 rounded-full bg-accent/15 flex items-center justify-center text-accent text-sm font-bold">
+                        🏆
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] text-muted font-semibold uppercase tracking-wider">Top Performer</div>
+                        <div className="text-xs font-bold text-primary truncate">{sortedDoctorPerformance[0].name}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-muted">Aktivitas</div>
+                        <div className="text-xs font-bold text-accent">
+                          {perfMetric === 'revenue' 
+                            ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(sortedDoctorPerformance[0].revenue)
+                            : perfMetric === 'patients'
+                              ? `${sortedDoctorPerformance[0].patients} Pasien`
+                              : `${sortedDoctorPerformance[0].appointments} Appointment`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats Distribution Details */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-primary/5 p-2 rounded-lg text-center">
+                        <div className="text-[10px] text-muted font-medium">Rata-rata Pasien</div>
+                        <div className="text-sm font-bold text-primary mt-0.5">
+                          {Math.round(sortedDoctorPerformance.reduce((acc, d) => acc + d.patients, 0) / sortedDoctorPerformance.length)}
+                        </div>
+                      </div>
+                      <div className="bg-primary/5 p-2 rounded-lg text-center">
+                        <div className="text-[10px] text-muted font-medium">Rata-rata Appt</div>
+                        <div className="text-sm font-bold text-primary mt-0.5">
+                          {Math.round(sortedDoctorPerformance.reduce((acc, d) => acc + d.appointments, 0) / sortedDoctorPerformance.length)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Revenue share explanation if revenue metric */}
+                    {perfMetric === 'revenue' && (
+                      <div className="text-[11px] text-secondary bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">
+                        Total kontribusi dari dokter teratas mewakili <span className="font-semibold text-emerald-600">
+                          {Math.round((sortedDoctorPerformance[0].revenue / (sortedDoctorPerformance.reduce((acc, d) => acc + d.revenue, 0) || 1)) * 100)}%
+                        </span> dari total pendapatan klinik.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted">Belum ada data analitik terkumpul untuk dokter.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Podium spotlight grid for Top 3 */}
+              {sortedDoctorPerformance.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {sortedDoctorPerformance.slice(0, 3).map((doc, idx) => {
+                    const isFirst = idx === 0;
+                    const isSecond = idx === 1;
+                    const isThird = idx === 2;
+
+                    let cardBorder = 'border-primary/10';
+                    let cardBg = 'bg-surface-elevated';
+                    let badgeBg = 'bg-primary/10 text-secondary';
+                    let badgeText = `${idx + 1}th`;
+                    let rankIcon = 'Award';
+                    let avatarBg = 'from-primary/20 to-primary/30 text-secondary';
+
+                    if (isFirst) {
+                      cardBorder = 'border-yellow-400/40';
+                      cardBg = 'bg-gradient-to-br from-yellow-500/5 via-amber-500/5 to-surface-elevated shadow-lg shadow-yellow-500/5';
+                      badgeBg = 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20';
+                      badgeText = '1st Place';
+                      rankIcon = 'Trophy';
+                      avatarBg = 'from-yellow-400 to-amber-500 text-white shadow-md shadow-yellow-500/20';
+                    } else if (isSecond) {
+                      cardBorder = 'border-slate-300/40';
+                      cardBg = 'bg-gradient-to-br from-slate-400/5 via-slate-500/5 to-surface-elevated shadow-md shadow-slate-400/5';
+                      badgeBg = 'bg-slate-400/10 text-slate-600 border border-slate-400/20';
+                      badgeText = '2nd Place';
+                      rankIcon = 'Award';
+                      avatarBg = 'from-slate-300 to-slate-500 text-white shadow-md shadow-slate-500/20';
+                    } else if (isThird) {
+                      cardBorder = 'border-orange-400/30';
+                      cardBg = 'bg-gradient-to-br from-orange-400/5 via-orange-500/5 to-surface-elevated';
+                      badgeBg = 'bg-orange-500/10 text-orange-700 border border-orange-500/20';
+                      badgeText = '3rd Place';
+                      rankIcon = 'Medal';
+                      avatarBg = 'from-orange-400 to-amber-700 text-white shadow-md shadow-orange-500/20';
+                    }
+
+                    const initials = doc.name.replace('Dr. ', '').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2);
+
+                    let primaryMetricText = `${doc.appointments} Appt`;
+                    if (perfMetric === 'patients') {
+                      primaryMetricText = `${doc.patients} Pasien`;
+                    } else if (perfMetric === 'appointments') {
+                      primaryMetricText = `${doc.appointments} Appt`;
+                    } else if (perfMetric === 'revenue') {
+                      primaryMetricText = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(doc.revenue);
+                    } else {
+                      primaryMetricText = `${doc.appointments} Appt • ${doc.patients} Pasien`;
+                    }
+
+                    return (
+                      <div 
+                        key={doc.id} 
+                        className={`relative rounded-2xl border ${cardBorder} ${cardBg} p-5 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-theme-xl`}
+                      >
+                        {/* Top corner rank badge */}
+                        <div className="absolute top-4 right-4">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badgeBg}`}>
+                            <Icon name={rankIcon} size={10} />
+                            {badgeText}
+                          </span>
+                        </div>
+
+                        {/* Top Info */}
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-full bg-gradient-to-tr ${avatarBg} flex items-center justify-center font-bold text-base`}>
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-primary text-sm truncate pr-16">{doc.name}</h4>
+                            <p className="text-xs text-secondary capitalize">{doc.role || 'Dokter Gigi'}</p>
+                          </div>
+                        </div>
+
+                        {/* Main Stats Display */}
+                        <div className="my-6 space-y-3">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-secondary flex items-center gap-1.5"><Icon name="Users" size={13} className="text-muted" /> Pasien</span>
+                            <span className="font-semibold text-primary">{doc.patients}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-secondary flex items-center gap-1.5"><Icon name="Calendar" size={13} className="text-muted" /> Appointment</span>
+                            <span className="font-semibold text-primary">{doc.appointments}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-secondary flex items-center gap-1.5"><Icon name="DollarSign" size={13} className="text-muted" /> Pendapatan</span>
+                            <span className="font-semibold text-primary">
+                              {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(doc.revenue)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Bottom Metric Highlight */}
+                        <div className="pt-4 border-t border-primary/5 flex items-center justify-between">
+                          <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Metrik Utama</span>
+                          <span className={`text-sm font-bold ${isFirst ? 'text-accent' : 'text-primary'}`}>
+                            {primaryMetricText}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* List of Remaining Doctors (Rank 4+) */}
+              {sortedDoctorPerformance.length > 3 && (
+                <div className="space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted px-1">Dokter Lainnya</h4>
+                  <div className="space-y-2">
+                    {sortedDoctorPerformance.slice(3).map((doc, index) => {
+                      const actualRank = index + 4;
+                      const maxVal = Math.max(...sortedDoctorPerformance.map(d => {
+                        if (perfMetric === 'patients') return d.patients;
+                        if (perfMetric === 'appointments') return d.appointments;
+                        if (perfMetric === 'revenue') return d.revenue;
+                        return d.appointments;
+                      })) || 1;
+
+                      let currentVal = doc.appointments;
+                      let barColor = 'bg-blue-500';
+                      let metricText = `${doc.appointments} Appointment`;
+
+                      if (perfMetric === 'patients') {
+                        currentVal = doc.patients;
+                        barColor = 'bg-accent';
+                        metricText = `${doc.patients} Pasien`;
+                      } else if (perfMetric === 'appointments') {
+                        currentVal = doc.appointments;
+                        barColor = 'bg-blue-500';
+                        metricText = `${doc.appointments} Appointment`;
+                      } else if (perfMetric === 'revenue') {
+                        currentVal = doc.revenue;
+                        barColor = 'bg-emerald-500';
+                        metricText = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(doc.revenue);
+                      } else {
+                        currentVal = doc.appointments;
+                        barColor = 'bg-accent';
+                        metricText = `${doc.patients} Pasien • ${doc.appointments} Appointment`;
+                      }
+
+                      const percentage = Math.min(100, Math.round((currentVal / maxVal) * 100));
+                      const initials = doc.name.replace('Dr. ', '').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2);
+
+                      return (
+                        <div 
+                          key={doc.id} 
+                          className="flex items-center gap-4 p-3.5 rounded-xl bg-surface hover:bg-surface-hover/50 transition-all border border-primary/5 shadow-sm"
+                        >
+                          {/* Rank badge */}
+                          <div className="flex-shrink-0 w-8 text-center text-xs font-bold text-muted">
+                            #{actualRank}
+                          </div>
+
+                          {/* Avatar */}
+                          <div className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/5 border border-primary/10 flex items-center justify-center text-secondary text-xs font-bold">
+                            {initials}
+                          </div>
+
+                          {/* Information */}
+                          <div className="flex-grow min-w-0 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="font-semibold text-sm text-primary block truncate">{doc.name}</span>
+                              <span className="text-[10px] text-secondary capitalize">{doc.role || 'Dokter Gigi'}</span>
+                            </div>
+                            
+                            {/* Bar & Metric val */}
+                            <div className="flex items-center gap-4 md:w-2/3">
+                              <div className="flex-grow h-2 bg-primary/10 rounded-full overflow-hidden hidden sm:block">
+                                <div 
+                                  className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                                  style={{ width: `${percentage}%` }}
+                                />
+                              </div>
+                              <div className="text-right whitespace-nowrap min-w-[100px]">
+                                <span className="text-xs font-bold text-primary">{metricText}</span>
+                                <span className="text-[10px] text-secondary ml-1.5 font-medium">({percentage}%)</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {sortedDoctorPerformance.length === 0 && (
+                <div className="py-12 text-center bg-surface rounded-xl border border-primary/5">
+                  <Icon name="Users" size={40} className="mx-auto text-secondary/40 mb-3" />
+                  <p className="text-sm text-secondary font-medium">Tidak ada dokter yang aktif pada periode ini.</p>
+                  <p className="text-xs text-muted mt-1">Gunakan toggle 'Dokter Aktif Saja' untuk menampilkan seluruh dokter.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

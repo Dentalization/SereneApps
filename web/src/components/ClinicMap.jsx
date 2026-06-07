@@ -287,11 +287,10 @@ const ClinicMap = ({ clinics = [], height = 520, onClinicSelect }) => {
               return (
                 <button
                   key={filter.key}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
-                    isActive
-                      ? 'border-transparent bg-white text-primary shadow-lg shadow-blue-500/10'
-                      : 'border-border/50 bg-transparent text-muted-foreground hover:text-primary'
-                  }`}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition ${isActive
+                    ? 'border-transparent bg-white text-primary shadow-lg shadow-blue-500/10'
+                    : 'border-border/50 bg-transparent text-muted-foreground hover:text-primary'
+                    }`}
                   onClick={() => {
                     setActiveStatus(filter.key);
                     setSelectedClinic(null);
@@ -437,11 +436,10 @@ const ClinicMap = ({ clinics = [], height = 520, onClinicSelect }) => {
                   View Profile
                 </button>
                 <button
-                  className={`flex items-center justify-center gap-2 rounded-xl border border-border/50 px-4 py-2 text-sm font-semibold transition ${
-                    typeof selectedClinic.lng === 'number' && typeof selectedClinic.lat === 'number'
-                      ? 'text-primary hover:bg-muted/60'
-                      : 'cursor-not-allowed text-muted-foreground opacity-60'
-                  }`}
+                  className={`flex items-center justify-center gap-2 rounded-xl border border-border/50 px-4 py-2 text-sm font-semibold transition ${typeof selectedClinic.lng === 'number' && typeof selectedClinic.lat === 'number'
+                    ? 'text-primary hover:bg-muted/60'
+                    : 'cursor-not-allowed text-muted-foreground opacity-60'
+                    }`}
                   onClick={handleFocusOnSelected}
                   disabled={typeof selectedClinic.lng !== 'number' || typeof selectedClinic.lat !== 'number'}
                 >

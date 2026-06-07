@@ -158,7 +158,7 @@ export const simplifyPath = (points, epsilonPx, imageSize) => {
     }
   }
 
-  if (Math.sqrt(maxDistanceSq) <= epsilonPx) {
+  if (Math.sqrt(maxDistanceSq) <= epsilonPx || splitIndex === 0 || splitIndex === normalized.length - 1) {
     return [first, last];
   }
 

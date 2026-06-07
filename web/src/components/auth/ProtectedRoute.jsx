@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from 'contexts/AuthContext';
+import { collectUserRoles } from 'utils/clinicRoles';
 
 const ProtectedRoute = ({ allow = [] }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
@@ -9,7 +10,7 @@ const ProtectedRoute = ({ allow = [] }) => {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  const userRoles = user?.roles || [];
+  const userRoles = collectUserRoles(user);
   if (allow.length && !userRoles.some((r) => allow.includes(r))) {
     console.log('ProtectedRoute: Access denied. User roles:', userRoles, 'Required roles:', allow);
     return <Navigate to="/" replace />;
@@ -20,4 +21,3 @@ const ProtectedRoute = ({ allow = [] }) => {
 };
 
 export default ProtectedRoute;
-

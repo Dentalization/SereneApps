@@ -8,6 +8,10 @@ import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('financial Closed Period: lock validations and webhook adjustment routing', async () => {
   const suffix = rand();
@@ -54,8 +58,7 @@ test('financial Closed Period: lock validations and webhook adjustment routing',
     data: {
       dentistId: dentist.id,
       patientId: patient.id,
-      startsAt: pastDate,
-      endsAt: pastDate,
+      ...appointmentTimes(pastDate),
       status: 'scheduled',
       ownerType: 'dentist',
       createdAt: pastDate

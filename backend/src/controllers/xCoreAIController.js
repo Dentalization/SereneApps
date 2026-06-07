@@ -1,6 +1,12 @@
+import { requireXCoreStudyReadAccess, handleAccessError } from '../services/xCoreAccessPolicyService.js';
+
 export const analyzeStudy = async (req, res) => {
     try {
         const { studyId } = req.body;
+        if (!studyId) {
+            return res.status(400).json({ error: 'studyId is required' });
+        }
+        await requireXCoreStudyReadAccess({ studyId, user: req.user });
 
         // Mock YOLOv8 / Deep Learning Response
         // In reality, this would call a Python service or TensorFlow.js model
@@ -49,6 +55,9 @@ export const analyzeStudy = async (req, res) => {
         });
 
     } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
         console.error('AI Analysis Error:', error);
         res.status(500).json({ error: 'Failed to analyze study' });
     }

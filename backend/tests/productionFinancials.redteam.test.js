@@ -12,6 +12,10 @@ import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('Red-Team Adversarial Audit Test Suite', async (t) => {
   const suffix = rand();
@@ -122,8 +126,7 @@ test('Red-Team Adversarial Audit Test Suite', async (t) => {
     data: {
       dentistId: clinicDentist.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'clinic',
       ownerClinicId: clinicProfile.id
@@ -148,8 +151,7 @@ test('Red-Team Adversarial Audit Test Suite', async (t) => {
     data: {
       dentistId: independentDentist.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -421,38 +423,60 @@ test('Red-Team Adversarial Audit Test Suite', async (t) => {
       const pastPeriodKey = '2026-03';
       await lockPeriod({ periodKey: pastPeriodKey, actorId: clinicOwner.id });
 
-      // Create old payment intent
+      // Create old payment intent on a dedicated appointment. Payment intents
+      // are one-to-one with appointments by database constraint.
       const pastDate = new Date('2026-03-15T12:00:00Z');
-      const oldIntent = await prisma.paymentIntent.create({
-        data: {
-          appointmentId: appClinic.id,
-          patientId: patient.id,
-          amount: 100000,
-          status: 'settled',
-          ownerType: 'clinic',
-          ownerClinicId: clinicProfile.id,
-          providerOrderId: `ORD-OLD-${suffix}`,
-          provider: 'midtrans',
-          createdAt: pastDate
+      let oldAppointment = null;
+      let oldIntent = null;
+
+      try {
+        oldAppointment = await prisma.appointment.create({
+          data: {
+            dentistId: clinicDentist.id,
+            patientId: patient.id,
+            ...appointmentTimes(pastDate),
+            status: 'scheduled',
+            ownerType: 'clinic',
+            ownerClinicId: clinicProfile.id,
+            createdAt: pastDate
+          }
+        });
+
+        oldIntent = await prisma.paymentIntent.create({
+          data: {
+            appointmentId: oldAppointment.id,
+            patientId: patient.id,
+            amount: 100000,
+            status: 'settled',
+            ownerType: 'clinic',
+            ownerClinicId: clinicProfile.id,
+            providerOrderId: `ORD-OLD-${suffix}`,
+            provider: 'midtrans',
+            createdAt: pastDate
+          }
+        });
+
+        // Attempt refund must be blocked
+        await assert.rejects(
+          async () => {
+            await processRefund({
+              paymentIntentId: oldIntent.id.toString(),
+              refundAmount: 50000,
+              refundReason: 'Locked month refund attempt',
+              actorId: clinicOwner.id.toString(),
+              actorRoles: ['owner']
+            });
+          },
+          (err) => err.code === 'PERIOD_LOCKED'
+        );
+      } finally {
+        if (oldIntent) {
+          await prisma.paymentIntent.deleteMany({ where: { id: oldIntent.id } }).catch(() => {});
         }
-      });
-
-      // Attempt refund must be blocked
-      await assert.rejects(
-        async () => {
-          await processRefund({
-            paymentIntentId: oldIntent.id.toString(),
-            refundAmount: 50000,
-            refundReason: 'Locked month refund attempt',
-            actorId: clinicOwner.id.toString(),
-            actorRoles: ['owner']
-          });
-        },
-        (err) => err.code === 'PERIOD_LOCKED'
-      );
-
-      // Clean up old intent
-      await prisma.paymentIntent.deleteMany({ where: { id: oldIntent.id } }).catch(() => {});
+        if (oldAppointment) {
+          await prisma.appointment.deleteMany({ where: { id: oldAppointment.id } }).catch(() => {});
+        }
+      }
 
       // Clean up locked period
       await prisma.accountingPeriod.deleteMany({ where: { periodKey: pastPeriodKey } }).catch(() => {});

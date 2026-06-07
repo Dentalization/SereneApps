@@ -6,6 +6,7 @@ export const ANNOTATION_COLORS = {
   freehand: '#E24B4A',
   region: '#E24B4A',
   text: '#FFFFFF',
+  brush: '#10b981',
 };
 
 const SECTION_DEFINITIONS = [
@@ -211,6 +212,33 @@ export const drawRegionAnnotation = (ctx, path, color, width, height, opacity = 
   ctx.restore();
 };
 
+export const drawFreehandAnnotation = (ctx, path, color, width, height, opacity = 1, options = {}) => {
+  if (!Array.isArray(path) || path.length < 2) return;
+
+  const style = styleForScale(options);
+  const points = path.map((point) => ({
+    x: (point?.x || 0) * width,
+    y: (point?.y || 0) * height,
+  }));
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = style.regionStrokeWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) {
+      ctx.moveTo(point.x, point.y);
+    } else {
+      ctx.lineTo(point.x, point.y);
+    }
+  });
+  ctx.stroke();
+  ctx.restore();
+};
+
 export const drawAnnotations = (ctx, annotations, width, height, options = {}) => {
   const style = styleForScale(options);
   annotations.forEach((annotation) => {
@@ -221,22 +249,54 @@ export const drawAnnotations = (ctx, annotations, width, height, options = {}) =
     ctx.globalAlpha = opacity;
 
     if (annotation.type === 'text') {
-      drawTextAnnotation(
-        ctx,
-        {
-          x: annotation.coordinates.x * width,
-          y: annotation.coordinates.y * height,
-        },
-        annotation.label,
-        color,
-        style
-      );
+      if (annotation.coordinates?.x !== undefined && annotation.coordinates?.y !== undefined) {
+        drawTextAnnotation(
+          ctx,
+          {
+            x: annotation.coordinates.x * width,
+            y: annotation.coordinates.y * height,
+          },
+          annotation.label,
+          color,
+          style
+        );
+      }
       ctx.restore();
       return;
     }
 
-    if (annotation.type === 'region' || annotation.type === 'freehand') {
+    if (annotation.type === 'region') {
       drawRegionAnnotation(ctx, annotation.coordinates?.path, color, width, height, opacity, style);
+      ctx.restore();
+      return;
+    }
+
+    if (annotation.type === 'freehand') {
+      drawFreehandAnnotation(ctx, annotation.coordinates?.path, color, width, height, opacity, style);
+      ctx.restore();
+      return;
+    }
+
+    if (annotation.type === 'brush') {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = opacity * 0.55;
+      const path = annotation.coordinates?.path || [];
+      if (path.length > 0) {
+        ctx.beginPath();
+        path.forEach((point, index) => {
+          const pxX = point.x * width;
+          const pxY = point.y * height;
+          if (index === 0) {
+            ctx.moveTo(pxX, pxY);
+          } else {
+            ctx.lineTo(pxX, pxY);
+          }
+        });
+        ctx.stroke();
+      }
       ctx.restore();
       return;
     }

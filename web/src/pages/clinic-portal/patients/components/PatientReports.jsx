@@ -216,7 +216,7 @@ const PatientReports = ({
                   <tbody>
                     {doctors.map(doc => {
                       const docPatients = patients.filter(p => p.doctorId === doc.id);
-                      const docApts = allAppointments.filter(a => a.doctorId === doc.id);
+                      const docApts = allAppointments.filter(a => (a.dentistId || a.doctorId) === doc.id);
                       const docRevenue = docApts.filter(a => a.isPaid).reduce((s, a) => s + a.fee, 0);
                       const docOverdue = docApts.filter(a => a.status === 'overdue').length;
                       return (

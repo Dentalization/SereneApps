@@ -990,6 +990,46 @@ router.get('/me', async (req, res) => {
 
     const responsePayload = { ...publicUser(user) };
 
+    const { rows: clinicStaffRows } = await query(
+      `SELECT
+         cs.id,
+         cs.role,
+         cs.is_active,
+         cs.clinic_profile_id,
+         cs.assigned_branch_id,
+         cp.legal_name,
+         cp.brand_name,
+         cp.status AS clinic_status
+       FROM clinic_staff cs
+       LEFT JOIN clinic_profiles cp ON cp.id = cs.clinic_profile_id
+       WHERE cs.user_id = $1
+       LIMIT 1`,
+      [user.id]
+    );
+    const clinicStaff = clinicStaffRows[0] || null;
+    if (clinicStaff) {
+      responsePayload.clinicStaff = {
+        id: clinicStaff.id?.toString?.() || clinicStaff.id,
+        role: clinicStaff.role,
+        isActive: clinicStaff.is_active,
+        clinicProfileId: clinicStaff.clinic_profile_id?.toString?.() || clinicStaff.clinic_profile_id,
+        assignedBranchId: clinicStaff.assigned_branch_id?.toString?.() || clinicStaff.assigned_branch_id || null,
+        clinicProfile: clinicStaff.clinic_profile_id ? {
+          id: clinicStaff.clinic_profile_id?.toString?.() || clinicStaff.clinic_profile_id,
+          legalName: clinicStaff.legal_name,
+          brandName: clinicStaff.brand_name,
+          status: clinicStaff.clinic_status,
+        } : null,
+      };
+      if (clinicStaff.is_active && clinicStaff.role) {
+        responsePayload.effectiveRoles = [...new Set([...(responsePayload.roles || []), clinicStaff.role])];
+      }
+    }
+
+    if (!responsePayload.effectiveRoles) {
+      responsePayload.effectiveRoles = responsePayload.roles || [];
+    }
+
     if (user.roles && user.roles.includes('dentist')) {
       const profileQuery = `
         SELECT 

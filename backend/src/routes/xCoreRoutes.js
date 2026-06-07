@@ -6,9 +6,11 @@ import { fileURLToPath } from 'url';
 import {
     uploadStudy,
     getStudies,
+    getClinicStudies,
     getStorageStats,
     deleteStudy,
     createStudyShare,
+    getEligibleStudyShareDentists,
     getSharedStudy,
     validateStudyShareToken,
     createAnnotationSnapshot,
@@ -52,6 +54,8 @@ router.use(authMiddleware);
 
 router.post('/upload', upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);
+router.get('/clinic/studies', getClinicStudies);
+router.get('/studies/:id/share/eligible-dentists', getEligibleStudyShareDentists);
 router.post('/studies/:id/share', createStudyShare);
 router.get('/studies/:id/annotations', getStudyAnnotations);
 router.post('/studies/:id/annotations', express.json({ limit: '2mb' }), saveStudyAnnotations);

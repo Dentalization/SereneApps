@@ -50,7 +50,7 @@ const Login = () => {
     try {
       const user = await login({ email, password });
       toast.success(`Welcome back, ${user?.name || 'Doctor'}!`, 3000);
-      const target = redirectByRole(user?.roles || []);
+      const target = redirectByRole(user);
 
       setTimeout(() => {
         navigate(target, { replace: true });

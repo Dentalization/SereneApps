@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import Dropdown, { DropdownItem, DropdownDivider } from '../../../../components/ui/Dropdown';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -25,6 +25,7 @@ import {
 import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import ShortcutHelpButton from './ShortcutHelpButton';
+import SeriesSidebar from './SeriesSidebar';
 
 const MEASUREMENT_COLOR = '#1D9E75';
 const WL_DRAG_SENSITIVITY = 0.005;
@@ -36,6 +37,7 @@ const IMAGE_SHORTCUTS = [
     { key: '-', label: 'Zoom out' },
     { key: '0', label: 'Fit to screen' },
     { key: 'Ctrl/Cmd + Z', label: 'Undo annotation/measurement' },
+    { key: 'Ctrl/Cmd + Shift + Z / Y', label: 'Redo annotation/measurement' },
     { key: 'Right-drag', label: 'Window/Level adjust' },
     { key: 'I', label: 'Invert image' },
     { key: 'F', label: 'Fullscreen' },
@@ -142,11 +144,24 @@ const drawScaleBar = (ctx, scaleBar) => {
     ctx.restore();
 };
 
+const resolveStateUpdate = (updater, current) => (
+    typeof updater === 'function' ? updater(current) : updater
+);
+
+const listHasSameItems = (a = [], b = []) => (
+    Array.isArray(a)
+    && Array.isArray(b)
+    && a.length === b.length
+    && a.every((item, index) => item === b[index])
+);
+
 const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothContext = null }) => {
     const { user } = useAuth();
     const containerRef = useRef(null);
     const wrapperRef = useRef(null);
     const imgRef = useRef(null);
+
+    const [showSeriesPanel, setShowSeriesPanel] = useState(false);
 
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -164,6 +179,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const [annotateMode, setAnnotateMode] = useState(false);
     const [annotationTool, setAnnotationTool] = useState('arrow');
     const [annotations, setAnnotations] = useState([]);
+    const [annotationsHistory, setAnnotationsHistory] = useState([]);
+    const [annotationsRedo, setAnnotationsRedo] = useState([]);
     const [pixelSpacing, setPixelSpacing] = useState(null);
     const [calibrationFactor, setCalibrationFactor] = useState(null);
     const [calibrationMode, setCalibrationMode] = useState(false);
@@ -174,6 +191,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
     const [imageBounds, setImageBounds] = useState(null);
     const [measurements, setMeasurements] = useState([]);
+    const [measurementsHistory, setMeasurementsHistory] = useState([]);
+    const [measurementsRedo, setMeasurementsRedo] = useState([]);
     const [pendingPoint, setPendingPoint] = useState(null);
     const [selectedMeasurementId, setSelectedMeasurementId] = useState(null);
     const [measurementDragState, setMeasurementDragState] = useState(null);
@@ -188,6 +207,12 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const [sessionSaving, setSessionSaving] = useState(false);
     const [sessionError, setSessionError] = useState('');
     const [reviewError, setReviewError] = useState('');
+    const annotationsRef = useRef([]);
+    const annotationsHistoryRef = useRef([]);
+    const annotationsRedoRef = useRef([]);
+    const measurementsRef = useRef([]);
+    const measurementsHistoryRef = useRef([]);
+    const measurementsRedoRef = useRef([]);
     const reviewMode = useMemo(() => new URLSearchParams(window.location.search).get('mode') === 'review', []);
 
     const studyKey = study?.folderName || study?.id || '';
@@ -250,6 +275,174 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         scope: annotationPersistenceScope,
     });
 
+    useEffect(() => {
+        annotationsRef.current = annotations;
+    }, [annotations]);
+
+    useEffect(() => {
+        measurementsRef.current = measurements;
+    }, [measurements]);
+
+    const replaceAnnotationsState = useCallback((updater) => {
+        const next = resolveStateUpdate(updater, annotationsRef.current);
+        annotationsRef.current = Array.isArray(next) ? next : [];
+        annotationsHistoryRef.current = [];
+        annotationsRedoRef.current = [];
+        setAnnotations(annotationsRef.current);
+        setAnnotationsHistory([]);
+        setAnnotationsRedo([]);
+    }, []);
+
+    const replaceMeasurementsState = useCallback((updater) => {
+        const next = resolveStateUpdate(updater, measurementsRef.current);
+        measurementsRef.current = Array.isArray(next) ? next : [];
+        measurementsHistoryRef.current = [];
+        measurementsRedoRef.current = [];
+        setMeasurements(measurementsRef.current);
+        setMeasurementsHistory([]);
+        setMeasurementsRedo([]);
+    }, []);
+
+    const pushAnnotationsState = useCallback((updater) => {
+        const current = annotationsRef.current;
+        const next = resolveStateUpdate(updater, current);
+        if (!Array.isArray(next) || next === current || listHasSameItems(current, next)) return;
+
+        const nextHistory = [...annotationsHistoryRef.current, current];
+        annotationsRef.current = next;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = [];
+        setAnnotations(next);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo([]);
+    }, []);
+
+    const pushMeasurementsState = useCallback((updater) => {
+        const current = measurementsRef.current;
+        const next = resolveStateUpdate(updater, current);
+        if (!Array.isArray(next) || next === current || listHasSameItems(current, next)) return;
+
+        const nextHistory = [...measurementsHistoryRef.current, current];
+        measurementsRef.current = next;
+        measurementsHistoryRef.current = nextHistory;
+        measurementsRedoRef.current = [];
+        setMeasurements(next);
+        setMeasurementsHistory(nextHistory);
+        setMeasurementsRedo([]);
+    }, []);
+
+    const pushMeasurementsHistorySnapshot = useCallback((previous) => {
+        const current = measurementsRef.current;
+        if (!Array.isArray(previous) || previous === current || listHasSameItems(previous, current)) return;
+
+        const nextHistory = [...measurementsHistoryRef.current, previous];
+        measurementsHistoryRef.current = nextHistory;
+        measurementsRedoRef.current = [];
+        setMeasurementsHistory(nextHistory);
+        setMeasurementsRedo([]);
+    }, []);
+
+    const undoAnnotationsState = useCallback(() => {
+        const history = annotationsHistoryRef.current;
+        if (!history.length) return;
+
+        const current = annotationsRef.current;
+        const previous = history[history.length - 1];
+        const nextHistory = history.slice(0, -1);
+        const nextRedo = [current, ...annotationsRedoRef.current];
+
+        annotationsRef.current = previous;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = nextRedo;
+        setAnnotations(previous);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo(nextRedo);
+    }, []);
+
+    const redoAnnotationsState = useCallback(() => {
+        const redo = annotationsRedoRef.current;
+        if (!redo.length) return;
+
+        const current = annotationsRef.current;
+        const next = redo[0];
+        const nextRedo = redo.slice(1);
+        const nextHistory = [...annotationsHistoryRef.current, current];
+
+        annotationsRef.current = next;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = nextRedo;
+        setAnnotations(next);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo(nextRedo);
+    }, []);
+
+    const undoMeasurementsState = useCallback(() => {
+        const history = measurementsHistoryRef.current;
+        if (!history.length) return;
+
+        const current = measurementsRef.current;
+        const previous = history[history.length - 1];
+        const nextHistory = history.slice(0, -1);
+        const nextRedo = [current, ...measurementsRedoRef.current];
+
+        measurementsRef.current = previous;
+        measurementsHistoryRef.current = nextHistory;
+        measurementsRedoRef.current = nextRedo;
+        setMeasurements(previous);
+        setMeasurementsHistory(nextHistory);
+        setMeasurementsRedo(nextRedo);
+    }, []);
+
+    const redoMeasurementsState = useCallback(() => {
+        const redo = measurementsRedoRef.current;
+        if (!redo.length) return;
+
+        const current = measurementsRef.current;
+        const next = redo[0];
+        const nextRedo = redo.slice(1);
+        const nextHistory = [...measurementsHistoryRef.current, current];
+
+        measurementsRef.current = next;
+        measurementsHistoryRef.current = nextHistory;
+        measurementsRedoRef.current = nextRedo;
+        setMeasurements(next);
+        setMeasurementsHistory(nextHistory);
+        setMeasurementsRedo(nextRedo);
+    }, []);
+
+    const handleUndoMeasurement = useCallback(() => {
+        if (pendingPoint) {
+            setPendingPoint(null);
+            setPreviewPoint(null);
+            setMeasurementDragState(null);
+            return;
+        }
+
+        setSelectedMeasurementId(null);
+        undoMeasurementsState();
+    }, [pendingPoint, undoMeasurementsState]);
+
+    const handleRedoMeasurement = useCallback(() => {
+        setSelectedMeasurementId(null);
+        redoMeasurementsState();
+    }, [redoMeasurementsState]);
+
+    const handleUndoAnnotation = useCallback(() => {
+        undoAnnotationsState();
+    }, [undoAnnotationsState]);
+
+    const handleRedoAnnotation = useCallback(() => {
+        redoAnnotationsState();
+    }, [redoAnnotationsState]);
+
+    const handleClearMeasurements = useCallback(() => {
+        pushMeasurementsState([]);
+        setPendingPoint(null);
+        setSelectedMeasurementId(null);
+        setMeasurementDragState(null);
+        setPreviewPoint(null);
+    }, [pushMeasurementsState]);
+
     const imageFilter = useMemo(() => {
         const brightness = windowCenter / 0.5;
         const contrast = 1 / windowWidth;
@@ -263,7 +456,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const syncImageBounds = useCallback(() => {
         const viewport = containerRef.current;
         const image = imgRef.current;
-        if (!viewport || !image || !imageSize.width || !imageSize.height) {
+        if (!viewport || !image) {
             setImageBounds(null);
             return;
         }
@@ -294,7 +487,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             }
             return nextBounds;
         });
-    }, [imageSize.height, imageSize.width]);
+    }, []);
 
     useEffect(() => {
         setRetryCount(0);
@@ -306,7 +499,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setCalibrationDraft(null);
         setCalibrationDialog(null);
         setCalibrationLengthInput('10');
-        setMeasurements([]);
+        replaceMeasurementsState([]);
         setPendingPoint(null);
         setSelectedMeasurementId(null);
         setMeasurementDragState(null);
@@ -314,7 +507,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setMeasureMode(false);
         setAnnotateMode(false);
         setAnnotationTool('arrow');
-        setAnnotations([]);
+        replaceAnnotationsState([]);
         setImageBounds(null);
         setWindowCenter(0.5);
         setWindowWidth(1.0);
@@ -323,7 +516,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setHistoryOpen(false);
         setSnapshots([]);
         setSnapshotOverlay(null);
-    }, [studyKey, seriesUid]);
+    }, [replaceAnnotationsState, replaceMeasurementsState, studyKey, seriesUid]);
 
     useEffect(() => {
         if (measureMode) return;
@@ -348,13 +541,13 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             const activeTag = document.activeElement?.tagName?.toLowerCase();
             if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
             event.preventDefault();
-            setMeasurements((current) => current.filter((measurement) => measurement.id !== selectedMeasurementId));
+            pushMeasurementsState((current) => current.filter((measurement) => measurement.id !== selectedMeasurementId));
             setSelectedMeasurementId(null);
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [measureMode, selectedMeasurementId]);
+    }, [measureMode, pushMeasurementsState, selectedMeasurementId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -413,14 +606,13 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         return () => window.removeEventListener('resize', syncViewportSize);
     }, []);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!imageLoaded) {
             setImageBounds(null);
-            return undefined;
+            return;
         }
 
-        const frameId = window.requestAnimationFrame(syncImageBounds);
-        return () => window.cancelAnimationFrame(frameId);
+        syncImageBounds();
     }, [
         imageLoaded,
         imageSize.height,
@@ -435,9 +627,37 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
 
     const handleWheel = useCallback((event) => {
         event.preventDefault();
-        const delta = event.deltaY > 0 ? -0.1 : 0.1;
-        setZoom((current) => Math.max(0.1, Math.min(10, current + delta)));
-    }, []);
+        
+        // If there is significant horizontal scroll, pan horizontally
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+            setPan((current) => ({
+                ...current,
+                x: current.x - event.deltaX,
+            }));
+        } else {
+            // Otherwise zoom (standard vertical scroll zooms)
+            const delta = event.deltaY > 0 ? -0.1 : 0.1;
+            const nextZoom = Math.max(0.1, Math.min(10, zoom + delta));
+            if (nextZoom === zoom) return;
+
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) {
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const relX = mouseX - centerX;
+                const relY = mouseY - centerY;
+                const ratio = nextZoom / zoom;
+
+                setPan((current) => ({
+                    x: relX - (relX - current.x) * ratio,
+                    y: relY - (relY - current.y) * ratio,
+                }));
+            }
+            setZoom(nextZoom);
+        }
+    }, [zoom]);
 
     const zoomIn = useCallback(() => setZoom((current) => Math.min(10, current + 0.25)), []);
     const zoomOut = useCallback(() => setZoom((current) => Math.max(0.1, current - 0.25)), []);
@@ -549,16 +769,22 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
-            if ((event.ctrlKey || event.metaKey) && key === 'z') {
+            const isUndoShortcut = (event.ctrlKey || event.metaKey) && key === 'z' && !event.shiftKey;
+            const isRedoShortcut = (event.ctrlKey || event.metaKey) && ((key === 'z' && event.shiftKey) || key === 'y');
+            if (isUndoShortcut || isRedoShortcut) {
                 if (!annotateMode && !measureMode) return;
                 event.preventDefault();
                 if (annotateMode) {
-                    setAnnotations((current) => current.slice(0, -1));
-                } else {
-                    if (pendingPoint) {
-                        setPendingPoint(null);
+                    if (isRedoShortcut) {
+                        handleRedoAnnotation();
                     } else {
-                        setMeasurements((current) => current.slice(0, -1));
+                        handleUndoAnnotation();
+                    }
+                } else {
+                    if (isRedoShortcut) {
+                        handleRedoMeasurement();
+                    } else {
+                        handleUndoMeasurement();
                     }
                 }
             } else if (key === '+' || key === '=') {
@@ -576,12 +802,35 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             } else if (key === 'f') {
                 event.preventDefault();
                 toggleFullscreen();
+            } else if (key === 'arrowleft') {
+                event.preventDefault();
+                setPan((current) => ({ ...current, x: current.x + 30 }));
+            } else if (key === 'arrowright') {
+                event.preventDefault();
+                setPan((current) => ({ ...current, x: current.x - 30 }));
+            } else if (key === 'arrowup') {
+                event.preventDefault();
+                setPan((current) => ({ ...current, y: current.y + 30 }));
+            } else if (key === 'arrowdown') {
+                event.preventDefault();
+                setPan((current) => ({ ...current, y: current.y - 30 }));
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [annotateMode, fitToScreen, measureMode, pendingPoint, toggleFullscreen, zoomIn, zoomOut]);
+    }, [
+        annotateMode,
+        fitToScreen,
+        handleRedoAnnotation,
+        handleRedoMeasurement,
+        handleUndoAnnotation,
+        handleUndoMeasurement,
+        measureMode,
+        toggleFullscreen,
+        zoomIn,
+        zoomOut,
+    ]);
 
     const captureCurrentViewDataUrl = useCallback(() => {
         const viewport = containerRef.current;
@@ -647,30 +896,6 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         document.body.removeChild(link);
     }, [captureCurrentViewDataUrl]);
 
-    const handleUndoMeasurement = useCallback(() => {
-        if (pendingPoint) {
-            setPendingPoint(null);
-            setPreviewPoint(null);
-            setMeasurementDragState(null);
-            return;
-        }
-
-        setSelectedMeasurementId(null);
-        setMeasurements((current) => current.slice(0, -1));
-    }, [pendingPoint]);
-
-    const handleUndoAnnotation = useCallback(() => {
-        setAnnotations((current) => current.slice(0, -1));
-    }, []);
-
-    const handleClearMeasurements = useCallback(() => {
-        setMeasurements([]);
-        setPendingPoint(null);
-        setSelectedMeasurementId(null);
-        setMeasurementDragState(null);
-        setPreviewPoint(null);
-    }, []);
-
     const getMeasurementPoint = useCallback((event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         return {
@@ -689,9 +914,11 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     );
 
     const updateMeasurementById = useCallback((measurementId, updater) => {
-        setMeasurements((current) => current.map((measurement) => (
+        const nextMeasurements = measurementsRef.current.map((measurement) => (
             measurement.id === measurementId ? updater(measurement) : measurement
-        )));
+        ));
+        measurementsRef.current = nextMeasurements;
+        setMeasurements(nextMeasurements);
     }, []);
 
     const getMeasurementHit = useCallback((point) => {
@@ -715,7 +942,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         const dy = end.y - start.y;
         if (Math.hypot(dx, dy) < 3) return false;
 
-        setMeasurements((current) => [
+        pushMeasurementsState((current) => [
             ...current,
             {
                 id: `${Date.now()}-${current.length}`,
@@ -728,7 +955,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             },
         ]);
         return true;
-    }, [calibrationMethod, effectivePixelSpacing]);
+    }, [calibrationMethod, effectivePixelSpacing, pushMeasurementsState]);
 
     const handleMeasurementPointerDown = useCallback((event) => {
         if ((!measureMode && !calibrationMode) || !imageLoaded || !imageSize.width || !imageSize.height) return;
@@ -771,6 +998,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                     start: { ...hit.measurement.start },
                     end: { ...hit.measurement.end },
                 },
+                originalMeasurements: measurementsRef.current,
             });
             return;
         }
@@ -861,6 +1089,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
 
         if (measurementDragState?.type === 'edit') {
+            pushMeasurementsHistorySnapshot(measurementDragState.originalMeasurements);
             setMeasurementDragState(null);
             return;
         }
@@ -898,6 +1127,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         measurementDragState,
         measurementDragThreshold,
         pendingPoint,
+        pushMeasurementsHistorySnapshot,
     ]);
 
     const renderMeasurementLabel = useCallback((measurement, options = {}) => {
@@ -1073,10 +1303,10 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             if (saveBeforeClear && hasWork) {
                 await persistAnnotationSession({ note, source: 'new-session' });
             }
-            setAnnotations([]);
-            setMeasurements([]);
+            replaceAnnotationsState([]);
+            replaceMeasurementsState([]);
             setPendingPoint(null);
-            setMeasurementDragStart(null);
+            setMeasurementDragState(null);
             setPreviewPoint(null);
             setCalibrationDraft(null);
             setCalibrationDialog(null);
@@ -1093,7 +1323,14 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         } finally {
             setSessionSaving(false);
         }
-    }, [annotations.length, measurements.length, persistAnnotationSession, refreshSnapshots]);
+    }, [
+        annotations.length,
+        measurements.length,
+        persistAnnotationSession,
+        refreshSnapshots,
+        replaceAnnotationsState,
+        replaceMeasurementsState,
+    ]);
 
     const handleRestoreAnnotationSession = useCallback((snapshot) => {
         const nextAnnotations = (snapshot?.annotations || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
@@ -1103,9 +1340,9 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             sourceHeight: imageSize.height,
         }));
         const featureState = snapshot?.feature_state || snapshot?.featureState || {};
-        setAnnotations(nextAnnotations);
+        replaceAnnotationsState(nextAnnotations);
         setSnapshotOverlay(null);
-        if (Array.isArray(featureState.measurements)) setMeasurements(featureState.measurements);
+        replaceMeasurementsState(Array.isArray(featureState.measurements) ? featureState.measurements : []);
         if (Number.isFinite(Number(featureState.zoom))) setZoom(Number(featureState.zoom));
         if (featureState.pan && Number.isFinite(Number(featureState.pan.x)) && Number.isFinite(Number(featureState.pan.y))) {
             setPan({ x: Number(featureState.pan.x), y: Number(featureState.pan.y) });
@@ -1114,7 +1351,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             setCalibrationFactor(Number(featureState.calibration_factor));
         }
         setHistoryOpen(false);
-    }, [imageSize.height, imageSize.width, seriesUid]);
+    }, [imageSize.height, imageSize.width, replaceAnnotationsState, replaceMeasurementsState, seriesUid]);
 
     const handleDeleteAnnotationSession = useCallback(async (snapshot) => {
         if (!snapshot?.id) return;
@@ -1143,7 +1380,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
             confidence_score: reviewStatus === 'approved' ? 1 : reviewStatus === 'rejected' ? 0 : 0.7,
         };
 
-        setAnnotations((current) => current.map((annotation) => (
+        pushAnnotationsState((current) => current.map((annotation) => (
             annotation.id === annotationId ? { ...annotation, ...localPatch } : annotation
         )));
 
@@ -1156,7 +1393,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         } catch (error) {
             console.warn('[ImageViewer2D] Failed to update annotation review:', error);
         }
-    }, [study?.id]);
+    }, [pushAnnotationsState, study?.id]);
 
     const handleSubmitAnnotationsForReview = useCallback(async () => {
         if (!study?.id || !annotations.length) return;
@@ -1167,7 +1404,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         }
         setReviewError('');
         const ids = annotations.map((annotation) => annotation.id).filter(Boolean);
-        setAnnotations((current) => current.map((annotation) => ({
+        pushAnnotationsState((current) => current.map((annotation) => ({
             ...annotation,
             review_status: 'submitted',
             confidence_score: annotation.confidence_score ?? 0.7,
@@ -1182,7 +1419,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         } catch (error) {
             console.warn('[ImageViewer2D] Failed to submit annotations:', error);
         }
-    }, [annotations, seriesUid, study?.id]);
+    }, [annotations, pushAnnotationsState, seriesUid, study?.id]);
 
     useEffect(() => {
         if (historyOpen) {
@@ -1192,7 +1429,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
 
     return (
         <div ref={wrapperRef} tabIndex={0} className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
-            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
+            <div className="relative z-30 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-3">
                     {showBack && (
                         <button onClick={onBack} className="rounded-lg bg-slate-800 p-2 text-white transition hover:bg-slate-700">
@@ -1218,218 +1455,173 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                     </button>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                    <button
-                        onClick={() => setInverted((current) => !current)}
-                        className={`rounded-lg p-2 text-xs transition ${
-                            inverted
-                                ? 'border border-amber-500/40 bg-amber-500/20 text-amber-400'
-                                : 'bg-slate-800 text-gray-400 hover:text-white'
-                        }`}
-                        title="Invert Colors"
-                    >
-                        <AppIcon name="Contrast" size={18} />
-                    </button>
+                <div className="flex items-center gap-2 flex-nowrap">
+                    {/* View Controls Group */}
+                    <div className="flex items-center gap-1.5 bg-slate-900/60 p-0.5 rounded-lg border border-slate-800/80">
+                        <button
+                            onClick={() => setInverted((current) => !current)}
+                            className={`rounded-lg p-1.5 text-xs transition ${
+                                inverted
+                                    ? 'border border-amber-500/40 bg-amber-500/20 text-amber-400'
+                                    : 'bg-transparent text-gray-400 hover:text-white'
+                            }`}
+                            title="Invert Colors"
+                        >
+                            <AppIcon name="Contrast" size={16} />
+                        </button>
+                    </div>
 
-                    <button
-                        onClick={() => {
-                            setMeasureMode((current) => {
-                                const next = !current;
-                                if (next) {
-                                    setAnnotateMode(false);
-                                    setCalibrationMode(false);
-                                }
-                                return next;
-                            });
-                            setPendingPoint(null);
-                            setCalibrationDraft(null);
-                            setMeasurementDragStart(null);
-                            setPreviewPoint(null);
-                        }}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${
-                            measureMode
-                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                : 'bg-slate-800 text-gray-400 hover:text-white'
-                        }`}
-                        title="Measurement Mode"
-                    >
-                        <AppIcon name="Ruler" size={16} />
-                        <span>Measure</span>
-                    </button>
+                    <div className="h-4 w-px bg-slate-800" />
 
-                    {calibrationNeedsReview && (
+                    {/* Diagnostic Mode Tools Group */}
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => {
-                                setCalibrationMode((current) => !current);
-                                setMeasureMode(false);
-                                setAnnotateMode(false);
+                                setMeasureMode((current) => {
+                                    const next = !current;
+                                    if (next) {
+                                        setAnnotateMode(false);
+                                        setCalibrationMode(false);
+                                    }
+                                    return next;
+                                });
                                 setPendingPoint(null);
                                 setCalibrationDraft(null);
-                                setMeasurementDragStart(null);
+                                setMeasurementDragState(null);
                                 setPreviewPoint(null);
                             }}
-                            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${
-                                calibrationMode
-                                    ? 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
-                                    : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                                measureMode
+                                    ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white'
                             }`}
-                            title="Manual calibration"
+                            title="Measurement Mode"
                         >
-                            <AppIcon name="Gauge" size={16} />
-                            <span>Calibrate</span>
+                            <AppIcon name="Ruler" size={15} />
+                            <span className="hidden xl:inline">Measure</span>
                         </button>
-                    )}
 
-                    <button
-                        onClick={() => {
-                            setAnnotateMode((current) => {
-                                const next = !current;
-                                if (next) {
+                        {calibrationNeedsReview && (
+                            <button
+                                onClick={() => {
+                                    setCalibrationMode((current) => !current);
                                     setMeasureMode(false);
-                                    setCalibrationMode(false);
+                                    setAnnotateMode(false);
                                     setPendingPoint(null);
                                     setCalibrationDraft(null);
-                                    setMeasurementDragStart(null);
+                                    setMeasurementDragState(null);
                                     setPreviewPoint(null);
-                                }
-                                return next;
-                            });
-                        }}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${
-                            annotateMode
-                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
-                                : 'bg-slate-800 text-gray-400 hover:text-white'
-                        }`}
-                        title="Annotation Mode"
-                    >
-                        <AppIcon name="Edit3" size={16} />
-                        <span>Annotate</span>
-                    </button>
-
-                    {measureMode && (
-                        <>
-                            <button onClick={handleUndoMeasurement} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Undo Measurement">
-                                <AppIcon name="Undo2" size={18} />
-                            </button>
-                            <button onClick={handleClearMeasurements} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Clear Measurements">
-                                <AppIcon name="Trash2" size={18} />
-                            </button>
-                        </>
-                    )}
-
-                    {annotateMode && (
-                        <>
-                            <button
-                                onClick={() => setAnnotationTool('select')}
-                                className={`rounded-lg p-2 transition ${annotationTool === 'select' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
-                                title="Select/Edit Annotation"
+                                }}
+                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                                    calibrationMode
+                                        ? 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
+                                        : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                                }`}
+                                title="Manual calibration"
                             >
-                                <AppIcon name="MousePointer2" size={18} />
+                                <AppIcon name="Gauge" size={15} />
+                                <span className="hidden xl:inline">Calibrate</span>
                             </button>
-                            <button
-                                onClick={() => setAnnotationTool('arrow')}
-                                className={`rounded-lg p-2 transition ${annotationTool === 'arrow' ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
-                                title="Arrow"
-                            >
-                                <AppIcon name="ArrowRight" size={18} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('circle')}
-                                className={`rounded-lg p-2 transition ${annotationTool === 'circle' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
-                                title="Circle"
-                            >
-                                <AppIcon name="Circle" size={18} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('freehand')}
-                                className={`rounded-lg p-2 transition ${annotationTool === 'freehand' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
-                                title="Freehand Region"
-                            >
-                                <AppIcon name="PenLine" size={18} />
-                            </button>
-                            <button
-                                onClick={() => setAnnotationTool('text')}
-                                className={`rounded-lg p-2 transition ${annotationTool === 'text' ? 'bg-slate-700 text-white border border-slate-500/40' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
-                                title="Text"
-                            >
-                                <AppIcon name="Type" size={18} />
-                            </button>
-                            <button onClick={handleUndoAnnotation} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Undo Annotation">
-                                <AppIcon name="Undo2" size={18} />
-                            </button>
-                            <button onClick={() => setAnnotations([])} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Clear Annotations">
-                                <AppIcon name="Trash2" size={18} />
-                            </button>
-                            {annotationPersistence.saving && (
-                                <span className="px-1 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
-                            )}
-                            {annotationPersistence.error && (
-                                <span className="px-1 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
-                                    Local
-                                </span>
-                            )}
-                        </>
-                    )}
+                        )}
 
-                    <button onClick={captureScreenshot} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Save Screenshot">
-                        <AppIcon name="Camera" size={18} />
-                    </button>
+                        <button
+                            onClick={() => {
+                                setAnnotateMode((current) => {
+                                    const next = !current;
+                                    if (next) {
+                                        setMeasureMode(false);
+                                        setCalibrationMode(false);
+                                        setAnnotationTool((currentTool) => currentTool === 'select' ? 'arrow' : currentTool);
+                                        setPendingPoint(null);
+                                        setCalibrationDraft(null);
+                                        setMeasurementDragState(null);
+                                        setPreviewPoint(null);
+                                    }
+                                    return next;
+                                });
+                            }}
+                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                                annotateMode
+                                    ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
+                                    : 'bg-slate-800 text-gray-400 hover:text-white'
+                            }`}
+                            title="Annotation Mode"
+                        >
+                            <AppIcon name="Edit3" size={15} />
+                            <span className="hidden xl:inline">Annotate</span>
+                        </button>
+                    </div>
 
-                    <Dropdown label="Export" icon="Download">
-                        <DropdownItem
-                            label="Export Report"
-                            icon="FileText"
-                            onClick={() => setReportModalOpen(true)}
-                        />
-                        <DropdownItem
-                            label="Export JSON"
-                            icon="Braces"
-                            onClick={handleExportAnnotationsJson}
-                        />
-                    </Dropdown>
 
-                    {(annotations.length > 0 || measurements.length > 0) && !study?.readOnly && (
-                        <Dropdown label="Session" icon="Package">
+
+                    <div className="h-4 w-px bg-slate-800" />
+
+                    {/* Actions Group (Export, Session, New) */}
+                    <div className="flex items-center gap-1.5">
+                        <button onClick={captureScreenshot} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Save Screenshot">
+                            <AppIcon name="Camera" size={15} />
+                        </button>
+
+                        <Dropdown label="Export" icon="Download" labelClassName="hidden lg:inline">
                             <DropdownItem
-                                label="Save Session"
-                                icon="Save"
-                                onClick={() => { setSessionError(''); setSessionModalMode('save'); }}
+                                label="Export Report"
+                                icon="FileText"
+                                onClick={() => setReportModalOpen(true)}
                             />
                             <DropdownItem
-                                label="Submit for Review"
-                                icon="Send"
-                                onClick={handleSubmitAnnotationsForReview}
+                                label="Export JSON"
+                                icon="Braces"
+                                onClick={handleExportAnnotationsJson}
                             />
                         </Dropdown>
-                    )}
 
-                    {!study?.readOnly && (
-                        <Dropdown label="New" icon="Plus">
-                            <DropdownItem
-                                label="New Session"
-                                icon="PlusCircle"
-                                onClick={() => { setSessionError(''); setSessionModalMode('new'); }}
-                            />
-                            <DropdownItem
-                                label="History"
-                                icon="History"
-                                onClick={() => setHistoryOpen(true)}
-                            />
-                        </Dropdown>
-                    )}
+                        {(annotations.length > 0 || measurements.length > 0) && !study?.readOnly && (
+                            <Dropdown label="Session" icon="Package" labelClassName="hidden lg:inline">
+                                <DropdownItem
+                                    label="Save Session"
+                                    icon="Save"
+                                    onClick={() => { setSessionError(''); setSessionModalMode('save'); }}
+                                />
+                                <DropdownItem
+                                    label="Submit for Review"
+                                    icon="Send"
+                                    onClick={handleSubmitAnnotationsForReview}
+                                />
+                            </Dropdown>
+                        )}
 
-                    <button onClick={toggleFullscreen} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
-                        <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={18} />
-                    </button>
+                        {!study?.readOnly && (
+                            <Dropdown label="New" icon="Plus" labelClassName="hidden lg:inline">
+                                <DropdownItem
+                                    label="New Session"
+                                    icon="PlusCircle"
+                                    onClick={() => { setSessionError(''); setSessionModalMode('new'); }}
+                                />
+                                <DropdownItem
+                                    label="History"
+                                    icon="History"
+                                    onClick={() => setHistoryOpen(true)}
+                                />
+                            </Dropdown>
+                        )}
+                    </div>
 
-                    <ShortcutHelpButton shortcuts={IMAGE_SHORTCUTS} />
+                    <div className="h-4 w-px bg-slate-800" />
+
+                    {/* System Controls Group (Fullscreen, Help) */}
+                    <div className="flex items-center gap-1.5 bg-slate-900/60 p-0.5 rounded-lg border border-slate-800/80">
+                        <button onClick={toggleFullscreen} className="rounded-lg bg-transparent p-1.5 text-gray-400 transition hover:bg-slate-800 hover:text-white" title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
+                            <AppIcon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={15} />
+                        </button>
+                        <ShortcutHelpButton shortcuts={IMAGE_SHORTCUTS} />
+                    </div>
 
                     {allowSeriesSwitch && (
                         <>
-                            <div className="mx-1 h-6 w-px bg-slate-700" />
-                            <button onClick={onSwitchSeries} className="flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white transition shadow-lg shadow-purple-600/20 hover:bg-purple-500">
-                                <AppIcon name="Layers" size={16} />
-                                <span>Series</span>
+                            <div className="mx-1 h-6 w-px bg-slate-800" />
+                            <button onClick={() => setShowSeriesPanel((prev) => !prev)} className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-2.5 py-1.5 text-xs font-medium text-white transition shadow-lg shadow-purple-600/20 hover:bg-purple-500">
+                                <AppIcon name="Layers" size={15} />
+                                <span className="hidden sm:inline">Series</span>
                             </button>
                         </>
                     )}
@@ -1494,7 +1686,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                         top: '50%',
                         transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                         transformOrigin: 'center center',
-                        transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                        transition: 'none',
                         width: imageSize.width || undefined,
                         height: imageSize.height || undefined,
                         display: imageLoaded ? 'block' : 'none',
@@ -1512,6 +1704,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                                 width: event.currentTarget.naturalWidth,
                                 height: event.currentTarget.naturalHeight,
                             });
+                            window.requestAnimationFrame?.(syncImageBounds);
                         }}
                         onError={() => {
                             setImageLoaded(false);
@@ -1664,7 +1857,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                     )}
                 </div>
 
-                {imageLoaded && imageBounds && viewportSize.width > 0 && viewportSize.height > 0 && (
+                {imageLoaded && imageSize.width > 0 && imageSize.height > 0 && viewportSize.width > 0 && viewportSize.height > 0 && (
                     <>
                         {snapshotOverlay?.annotations?.length > 0 && (
                             <AnnotationCanvas
@@ -1685,6 +1878,7 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                                 }))}
                                 onChange={() => {}}
                                 className="absolute inset-0 z-[65]"
+                                hideSurface={true}
                             />
                         )}
                         <AnnotationCanvas
@@ -1699,13 +1893,133 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                             active={annotateMode}
                             tool={annotationTool}
                             annotations={annotations}
-                            onChange={setAnnotations}
+                            onChange={pushAnnotationsState}
                             activeToothContext={activeToothContext}
                             reviewMode={reviewMode}
                             onReviewAnnotation={handleReviewAnnotation}
                             className="absolute inset-0 z-[70]"
+                            hideSurface={true}
                         />
                     </>
+                )}
+
+                {imageLoaded && (measureMode || annotateMode) && (
+                    <div
+                        className="absolute bottom-16 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-1.5 p-2 bg-slate-950/90 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerMove={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseMove={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onWheel={(e) => e.stopPropagation()}
+                    >
+                        {measureMode && (
+                            <div className="flex items-center gap-1">
+                                <span className="rounded-xl border border-cyan-500/30 bg-cyan-500/15 px-3 py-1.5 text-[11px] font-bold text-cyan-200">
+                                    Distance
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleUndoMeasurement}
+                                    disabled={!pendingPoint && measurementsHistory.length === 0}
+                                    className="rounded-md bg-slate-800 p-1.5 text-gray-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800 disabled:hover:text-gray-400"
+                                    title="Undo Measurement"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleRedoMeasurement}
+                                    disabled={measurementsRedo.length === 0}
+                                    className="rounded-md bg-slate-800 p-1.5 text-gray-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800 disabled:hover:text-gray-400"
+                                    title="Redo Measurement"
+                                >
+                                    <AppIcon name="Redo2" size={15} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleClearMeasurements}
+                                    className="rounded-md bg-slate-800 p-1.5 text-gray-400 transition hover:bg-slate-700 hover:text-white"
+                                    title="Clear Measurements"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                </button>
+                            </div>
+                        )}
+
+                        {annotateMode && (
+                            <div className="flex items-center gap-1.5">
+                                {[
+                                    ['select', 'MousePointer2', 'Select'],
+                                    ['arrow', 'ArrowRight', 'Arrow'],
+                                    ['circle', 'Circle', 'Circle'],
+                                    ['freehand', 'PenLine', 'Surface'],
+                                    ['brush', 'Paintbrush', 'Brush'],
+                                    ['text', 'Type', 'Text'],
+                                ].map(([toolName, iconName, label]) => (
+                                    <button
+                                        key={toolName}
+                                        type="button"
+                                        onClick={() => setAnnotationTool(toolName)}
+                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
+                                            annotationTool === toolName
+                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                        title={`${label} annotation`}
+                                    >
+                                        <AppIcon name={iconName} size={14} />
+                                        <span>{label}</span>
+                                    </button>
+                                ))}
+
+                                <div className="mx-1 h-5 w-px bg-slate-800" />
+
+                                <button
+                                    type="button"
+                                    onClick={handleUndoAnnotation}
+                                    disabled={annotationsHistory.length === 0}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800 disabled:hover:text-slate-400"
+                                    title="Undo last annotation"
+                                >
+                                    <AppIcon name="Undo2" size={15} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleRedoAnnotation}
+                                    disabled={annotationsRedo.length === 0}
+                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800 disabled:hover:text-slate-400"
+                                    title="Redo last annotation"
+                                >
+                                    <AppIcon name="Redo2" size={15} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => pushAnnotationsState([])}
+                                    className="relative rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-rose-900/60 hover:text-rose-200"
+                                    title="Clear annotations"
+                                >
+                                    <AppIcon name="Trash2" size={15} />
+                                    {annotations.length > 0 && (
+                                        <span className="absolute -right-1 -top-1 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">
+                                            {annotations.length > 99 ? '99+' : annotations.length}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {annotationPersistence.saving && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
+                                )}
+                                {annotationPersistence.error && (
+                                    <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-amber-300" title={annotationPersistence.error.message || 'Backend save failed; local cache is active'}>
+                                        Local
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {imageLoaded && (
@@ -1838,6 +2152,18 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
                     initialValues={reportInitialValues}
                     exporting={exportingReport}
                     clinicName={clinicName}
+                />
+
+                <SeriesSidebar
+                    study={study}
+                    currentSeriesUid={seriesInfo?.series_uid}
+                    onSelectSeries={(series) => {
+                        setShowSeriesPanel(false);
+                        if (onSwitchSeries) onSwitchSeries(series);
+                    }}
+                    visible={allowSeriesSwitch && showSeriesPanel}
+                    onClose={() => setShowSeriesPanel(false)}
+                    position="right"
                 />
             </div>
         </div>
