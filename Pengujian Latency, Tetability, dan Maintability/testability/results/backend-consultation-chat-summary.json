@@ -1,0 +1,43 @@
+{
+  "componentId": "backend-consultation-chat",
+  "component": "Backend - Consultation / Chat",
+  "tool": "Node.js test runner",
+  "status": "passed",
+  "command": [
+    "env",
+    "TWILIO_MOCK_MODE=false",
+    "node",
+    "--test",
+    "--experimental-test-coverage",
+    "--test-coverage-exclude=tests/**",
+    "--test-concurrency=1",
+    "tests/communications.attachmentConfig.test.js",
+    "tests/communications.attachments.test.js",
+    "tests/communications.clinicObserver.test.js",
+    "tests/communications.clinicalSummary.test.js",
+    "tests/communications.contract.test.js",
+    "tests/communications.deprecation.test.js",
+    "tests/communications.diagnostics.test.js",
+    "tests/communications.participants.test.js",
+    "tests/communications.tokenEnvelope.test.js",
+    "tests/communications.webhookReplay.test.js"
+  ],
+  "cwd": "/Users/adrianhalim/SereneApps/backend",
+  "startedAt": "2026-06-07T19:42:15.271Z",
+  "finishedAt": "2026-06-07T19:42:17.406Z",
+  "exitCode": 0,
+  "signal": null,
+  "total": 31,
+  "passed": 31,
+  "failed": 0,
+  "skipped": 0,
+  "passRate": 100,
+  "coverage": {
+    "linesPct": 19.61,
+    "branchesPct": 69.58,
+    "functionsPct": 22.66,
+    "source": "node:test --experimental-test-coverage",
+    "evidencePath": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-consultation-chat/coverage.txt",
+    "rawV8CoverageDir": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-consultation-chat/v8"
+  }
+}

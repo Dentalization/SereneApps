@@ -1,0 +1,40 @@
+{
+  "componentId": "backend-cdss",
+  "component": "Backend - CDSS Integration",
+  "tool": "Node.js test runner",
+  "status": "passed",
+  "command": [
+    "node",
+    "--test",
+    "--experimental-test-coverage",
+    "--test-coverage-exclude=tests/**",
+    "--test-concurrency=1",
+    "tests/deepDentalProxy.test.js",
+    "tests/verifiedCaseWorkspace.export.test.js",
+    "tests/verifiedCaseWorkspace.hardening.test.js",
+    "tests/verifiedCaseWorkspace.migration.test.js",
+    "tests/verifiedCaseWorkspace.postgres.test.js",
+    "tests/verifiedCaseWorkspace.productionGuard.test.js",
+    "tests/verifiedCaseWorkspace.routes.test.js",
+    "tests/verifiedCaseWorkspace.service.test.js",
+    "tests/xcore.annotation.validation.test.js"
+  ],
+  "cwd": "/Users/adrianhalim/SereneApps/backend",
+  "startedAt": "2026-06-07T19:42:17.447Z",
+  "finishedAt": "2026-06-07T19:42:18.900Z",
+  "exitCode": 0,
+  "signal": null,
+  "total": 34,
+  "passed": 33,
+  "failed": 0,
+  "skipped": 1,
+  "passRate": 97.05882352941177,
+  "coverage": {
+    "linesPct": 68.52,
+    "branchesPct": 66.15,
+    "functionsPct": 76.95,
+    "source": "node:test --experimental-test-coverage",
+    "evidencePath": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-cdss/coverage.txt",
+    "rawV8CoverageDir": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-cdss/v8"
+  }
+}

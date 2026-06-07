@@ -1,0 +1,7 @@
+No,Pengujian,Initial Response Time (ms),Queue Time (ms),Inference Time (ms),Persistence Time (ms),End-to-End Processing Time (ms)
+1,Citra 1,51.25,86.35,657.59,41.97,837.16
+2,Citra 2,13.70,92.31,343.68,21.94,471.63
+3,Citra 3,12.29,112.48,346.54,22.12,493.42
+4,Citra 4,13.11,106.71,325.47,20.77,466.07
+5,Citra 5,14.50,97.63,367.08,23.43,502.65
+,Rata-rata,20.97,99.09,408.07,26.05,554.19

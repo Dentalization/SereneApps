@@ -1,0 +1,31 @@
+{
+  "componentId": "mobile",
+  "component": "Aplikasi mobile",
+  "tool": "Jest",
+  "status": "passed",
+  "command": [
+    "npm",
+    "test",
+    "--",
+    "--coverage"
+  ],
+  "cwd": "/Users/adrianhalim/SereneApps/mobile",
+  "startedAt": "2026-06-07T19:42:19.443Z",
+  "finishedAt": "2026-06-07T19:42:23.528Z",
+  "exitCode": 0,
+  "signal": null,
+  "total": 18,
+  "passed": 18,
+  "failed": 0,
+  "skipped": 0,
+  "passRate": 100,
+  "coverage": {
+    "statementsPct": 1.11,
+    "branchesPct": 0.65,
+    "functionsPct": 0.92,
+    "linesPct": 1.15,
+    "source": "Jest coverage",
+    "evidencePath": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/mobile/coverage.txt",
+    "rawV8CoverageDir": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/mobile/v8"
+  }
+}
