@@ -7,7 +7,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { resolveMediaUrl } from '../../../utils/media';
 import { fetchClinicTeledentistrySessionCount } from '../../../services/clinicTeledentistryService';
-import { canViewSummaries, getClinicRole } from '../../../utils/clinicRoles';
+import { canViewSummaries, collectUserRoles, getClinicRole } from '../../../utils/clinicRoles';
 import { getClinicNotificationsForRoles } from './clinicNotificationsData';
 
 const FLAG_SRC = {
@@ -55,7 +55,7 @@ const ClinicSideBar = () => {
 
   // Role-based menu filtering
   const userRoles = useMemo(() => {
-    const roles = new Set(user?.roles || []);
+    const roles = new Set(collectUserRoles(user));
     if (roles.has('clinic_owner')) roles.add('owner');
     if (roles.has('clinic_admin')) roles.add('manager');
     if (roles.has('clinic_manager')) roles.add('manager');
@@ -63,10 +63,22 @@ const ClinicSideBar = () => {
     if (!roles.size && user?.role) roles.add(user.role);
     if (!roles.size) roles.add('staff');
     return roles;
-  }, [user?.roles, user?.role]);
+  }, [user]);
 
   const primaryRole = useMemo(() => {
-    const priorities = ['owner', 'clinic_owner', 'manager', 'clinic_admin', 'front_office', 'nurse', 'cashier', 'staff'];
+    const priorities = [
+      'owner',
+      'clinic_owner',
+      'clinical_director',
+      'authorized_clinic_doctor',
+      'clinic_admin_xcore',
+      'manager',
+      'clinic_admin',
+      'front_office',
+      'nurse',
+      'cashier',
+      'staff'
+    ];
     for (const role of priorities) {
       if (userRoles.has(role)) return role;
     }
@@ -157,6 +169,14 @@ const ClinicSideBar = () => {
       path: '/clinic-portal/reports',
       description: t('clinic.sidebar.descriptions.reports') || 'Analytics & Performance',
       roles: ['manager', 'owner', 'staff']
+    },
+    {
+      id: 'x-core',
+      label: 'X-Core Series',
+      icon: 'Cpu',
+      path: '/clinic-portal/x-core',
+      description: 'Restricted clinical imaging',
+      roles: ['owner', 'clinic_owner', 'clinical_director', 'authorized_clinic_doctor', 'clinic_admin_xcore']
     },
     {
       id: 'staff',

@@ -8,11 +8,18 @@ import ComparisonViewer from './components/ComparisonViewer';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 
-const XCore = () => {
+const XCore = ({
+    portal = 'dentist',
+    SidebarComponent = SideBar,
+    readOnly = false,
+    studiesEndpoint = portal === 'clinic' ? '/api/v1/x-core/clinic/studies' : '/api/v1/x-core/studies',
+    allowUpload = !readOnly,
+}) => {
     const [showUploader, setShowUploader] = useState(false);
     const [activeStudy, setActiveStudy] = useState(null);
     const [comparisonStudies, setComparisonStudies] = useState(null);
     const [studiesCache, setStudiesCache] = useState(null);
+    const showStorageStats = !readOnly;
 
     const handleStudySelect = (study) => {
         setComparisonStudies(null);
@@ -24,6 +31,7 @@ const XCore = () => {
     const [storageStats, setStorageStats] = useState({ usage: 0, limit: 10 * 1024 * 1024 * 1024, percent: 0 });
 
     const fetchStorage = React.useCallback(async () => {
+        if (!showStorageStats) return;
         try {
             const token = getAccessToken();
             const response = await fetch('/api/v1/x-core/storage', {
@@ -42,7 +50,7 @@ const XCore = () => {
         } catch (error) {
             console.error("Failed to fetch storage stats", error);
         }
-    }, []);
+    }, [showStorageStats]);
 
     React.useEffect(() => {
         fetchStorage();
@@ -60,7 +68,7 @@ const XCore = () => {
         <div className="flex h-screen bg-background theme-transition overflow-hidden">
             {/* Sidebar */}
             <div className="flex-shrink-0 z-50 transition-all duration-300 relative" style={{ width: 'var(--sidebar-width, 20rem)' }}>
-                <SideBar />
+                <SidebarComponent />
             </div>
 
             {/* Main Content */}
@@ -83,13 +91,15 @@ const XCore = () => {
                             </div>
 
                             <div className="flex gap-6 pt-4">
-                                <div className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg border transition-colors ${storageStats.percent > 90 ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
-                                    <AppIcon name="HardDrive" size={16} className={storageStats.percent > 90 ? "text-red-400" : "text-emerald-400"} />
-                                    <span>Storage: {formatBytes(storageStats.usage)} / {formatBytes(storageStats.limit)} ({storageStats.percent}%)</span>
-                                </div>
+                                {showStorageStats && (
+                                    <div className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg border transition-colors ${storageStats.percent > 90 ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
+                                        <AppIcon name="HardDrive" size={16} className={storageStats.percent > 90 ? "text-red-400" : "text-emerald-400"} />
+                                        <span>Storage: {formatBytes(storageStats.usage)} / {formatBytes(storageStats.limit)} ({storageStats.percent}%)</span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2 text-sm text-slate-300 bg-white/5 px-4 py-2 rounded-lg border border-white/10">
                                     <AppIcon name="Activity" size={16} className="text-accent" />
-                                    <span>AI Engine: Online</span>
+                                    <span>{readOnly ? 'Clinic Scope: Restricted' : 'AI Engine: Online'}</span>
                                 </div>
                             </div>
                         </div>
@@ -106,7 +116,9 @@ const XCore = () => {
                         <ErrorBoundary>
                             <Gallery
                                 onSelectStudy={handleStudySelect}
-                                onUploadClick={() => setShowUploader(true)}
+                                onUploadClick={() => {
+                                    if (allowUpload) setShowUploader(true);
+                                }}
                                 refreshTrigger={refreshTrigger}
                                 onStudyDeleted={() => {
                                     setStudiesCache(null);
@@ -115,6 +127,11 @@ const XCore = () => {
                                 }}
                                 cachedStudies={studiesCache}
                                 onStudiesLoaded={setStudiesCache}
+                                studiesEndpoint={studiesEndpoint}
+                                readOnly={readOnly}
+                                allowUpload={allowUpload}
+                                allowDelete={!readOnly}
+                                allowShare={!readOnly}
                                 onCompareSelected={(studies) => {
                                     setActiveStudy(null);
                                     setComparisonStudies(studies);
@@ -132,7 +149,7 @@ const XCore = () => {
             </div>
 
             {/* Uploader Modal */}
-            {showUploader && (
+            {showUploader && allowUpload && (
                 <Uploader
                     onClose={() => setShowUploader(false)}
                     onUploadComplete={() => {

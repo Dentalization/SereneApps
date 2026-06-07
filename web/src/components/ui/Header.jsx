@@ -249,8 +249,9 @@ const Header = () => {
 
       {/* --- MOBILE MENU OVERLAY --- */}
       <div
-        className={`fixed inset-0 z-[90] lg:hidden bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+        className={`fixed inset-0 z-[90] lg:hidden bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl transition-all duration-300
         ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'}`}
+        style={{ transitionTimingFunction: 'cubic-bezier(0.32,0.72,0,1)' }}
       >
         <div className="flex flex-col h-full pt-24 px-6 pb-8 overflow-y-auto">
           <nav className="flex-1 space-y-2">

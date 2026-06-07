@@ -99,13 +99,13 @@ const SeriesSidebar = ({
                             <button
                                 key={series.series_uid}
                                 onClick={() => onSelectSeries(series)}
-                                className={`w-full rounded-xl border overflow-hidden transition-all text-left ${isActive
+                                className={`w-full rounded-xl border overflow-hidden transition-all text-left cursor-pointer ${isActive
                                         ? 'bg-cyan-500/10 border-cyan-500/40 ring-1 ring-cyan-500/30'
                                         : 'bg-slate-800/60 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
                                     }`}
                             >
                                 {/* Thumbnail */}
-                                <div className="relative aspect-[16/10] bg-black/50 overflow-hidden">
+                                <div className="relative aspect-[16/10] bg-black/50 overflow-hidden pointer-events-none">
                                     <img
                                         src={thumbUrl}
                                         alt={series.title}
@@ -148,7 +148,7 @@ const SeriesSidebar = ({
                                 </div>
 
                                 {/* Info */}
-                                <div className="px-3 py-2">
+                                <div className="px-3 py-2 pointer-events-none">
                                     <div className={`text-xs font-medium truncate ${isActive ? 'text-cyan-400' : 'text-white'}`}>
                                         {series.title || 'Unknown Series'}
                                     </div>

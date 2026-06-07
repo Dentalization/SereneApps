@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppIcon from '../AppIcon';
 
-export default function Dropdown({ label, icon, children, className = '' }) {
+export default function Dropdown({ label, icon, children, className = '', labelClassName = '' }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
@@ -28,7 +28,7 @@ export default function Dropdown({ label, icon, children, className = '' }) {
         title={label}
       >
         {icon && <AppIcon name={icon} size={16} />}
-        <span>{label}</span>
+        <span className={labelClassName}>{label}</span>
         <AppIcon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={14} />
       </button>
 

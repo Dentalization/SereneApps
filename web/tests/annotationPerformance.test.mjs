@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -80,6 +81,30 @@ test('3D annotation canvas controller coalesces draft updates into one draw', ()
   assert.equal(operations.filter(([name]) => name === 'clearRect').length, 1);
   assert.ok(operations.some(([name]) => name === 'lineTo'));
   assert.ok(operations.some(([name]) => name === 'arc'));
+});
+
+test('3D interaction layer disables browser touch gestures during pointer capture', async () => {
+  const source = await readFile(
+    'src/pages/dentist-portal/x-core/components/3D/Volume3DInteractionLayer.jsx',
+    'utf8',
+  );
+
+  assert.match(source, /touchAction:\s*['"]none['"]/);
+});
+
+test('3D annotation canvas stays mounted during annotation mode and toggles visibility by tool', async () => {
+  const viewerSource = await readFile(
+    'src/pages/dentist-portal/x-core/components/VolumeViewer3D.jsx',
+    'utf8',
+  );
+  const canvasSource = await readFile(
+    'src/pages/dentist-portal/x-core/components/3D/Volume3DAnnotationCanvas.jsx',
+    'utf8',
+  );
+
+  assert.match(viewerSource, /annotateMode\s*&&\s*\(\s*<Volume3DAnnotationCanvas/);
+  assert.match(viewerSource, /visible=\{\['brush', 'freehand'\]\.includes\(annotationTool\)\}/);
+  assert.match(canvasSource, /visibility:\s*visible\s*\?\s*'visible'\s*:\s*'hidden'/);
 });
 
 test('interaction quality controller applies temporary quality and restores base quality once', () => {

@@ -1,79 +1,85 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route, Navigate } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
-import NotFound from "pages/NotFound";
-import ForPatientsPage from './pages/for-patients';
-import ProductPlatform from './pages/product-platform';
-import ClinicalResearch from './pages/clinical-research';
-import Homepage from './pages/homepage';
-import ForDentists from './pages/for-dentists';
-import SereneAIPage from './pages/serene-ai';
-import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
-import DentistPortal from './pages/dentist-portal';
-import DentistHome from './pages/dentist-portal/home';
-import PatientManagement from './pages/dentist-portal/patient';
-import DentistSchedule from './pages/dentist-portal/schedule';
-import Teledentistry from './pages/dentist-portal/teledentistry';
-import DentistSettings from './pages/dentist-portal/dentist-settings';
-import Reports from './pages/dentist-portal/reports';
-import AIAnalysis from './pages/dentist-portal/ai';
-import XCore from './pages/dentist-portal/x-core';
-import SharedStudyView from './pages/dentist-portal/x-core/SharedStudyView';
-import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
-import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
-import DentistPracticeEarnings from './pages/dentist-portal/practice/Earnings';
-import ClinicServicesView from './pages/dentist-portal/profile/ClinicServices';
-import PatientEMRList from './pages/dentist-portal/patient-emr';
-import ElectronicMedicalRecordScreen from './pages/dentist-portal/patient-emr/ElectronicMedicalRecordScreen';
-import NotificationScreenDentist from './pages/dentist-portal/ui/NotificationScreenDentist';
 import ProtectedRoute from 'components/auth/ProtectedRoute';
-import GetTheApp from './pages/get-the-app';
-import PatientAppointments from './pages/patient-portal/appointments';
-import PatientTeledentistry from './pages/patient-portal/teledentistry';
-import PricingPage from './pages/prices';
 
-// Clinic Portal Imports
-import {
-  ClinicDashboard,
-  ClinicSchedule,
-  ClinicPatients,
-  ClinicBilling,
-  ClinicInventory,
-  ClinicReports,
-  ClinicPublicProfile,
-  ClinicSettings
-} from './pages/clinic-portal';
-import StaffManagement from './pages/clinic-portal/staff';
-import BranchManagement from './pages/clinic-portal/branches';
-import NotificationScreenClinic from './pages/clinic-portal/ui/NotificationScreenClinic';
-import ClinicTeledentistry from './pages/clinic-portal/teledentistry';
+const NotFound = lazy(() => import('pages/NotFound'));
+const ForPatientsPage = lazy(() => import('./pages/for-patients'));
+const ProductPlatform = lazy(() => import('./pages/product-platform'));
+const ClinicalResearch = lazy(() => import('./pages/clinical-research'));
+const Homepage = lazy(() => import('./pages/homepage'));
+const ForDentists = lazy(() => import('./pages/for-dentists'));
+const SereneAIPage = lazy(() => import('./pages/serene-ai'));
+const Login = lazy(() => import('./pages/auth/Login'));
+const Register = lazy(() => import('./pages/auth/Register'));
+const DentistPortal = lazy(() => import('./pages/dentist-portal'));
+const DentistHome = lazy(() => import('./pages/dentist-portal/home'));
+const PatientManagement = lazy(() => import('./pages/dentist-portal/patient'));
+const DentistSchedule = lazy(() => import('./pages/dentist-portal/schedule'));
+const Teledentistry = lazy(() => import('./pages/dentist-portal/teledentistry'));
+const DentistSettings = lazy(() => import('./pages/dentist-portal/dentist-settings'));
+const Reports = lazy(() => import('./pages/dentist-portal/reports'));
+const AIAnalysis = lazy(() => import('./pages/dentist-portal/ai'));
+const XCore = lazy(() => import('./pages/dentist-portal/x-core'));
+const SharedStudyView = lazy(() => import('./pages/dentist-portal/x-core/SharedStudyView'));
+const DentistPracticeServices = lazy(() => import('./pages/dentist-portal/practice/MyServices'));
+const DentistPracticeAvailability = lazy(() => import('./pages/dentist-portal/practice/Availability'));
+const DentistPracticeEarnings = lazy(() => import('./pages/dentist-portal/practice/Earnings'));
+const ClinicServicesView = lazy(() => import('./pages/dentist-portal/profile/ClinicServices'));
+const PatientEMRList = lazy(() => import('./pages/dentist-portal/patient-emr'));
+const ElectronicMedicalRecordScreen = lazy(() => import('./pages/dentist-portal/patient-emr/ElectronicMedicalRecordScreen'));
+const NotificationScreenDentist = lazy(() => import('./pages/dentist-portal/ui/NotificationScreenDentist'));
+const GetTheApp = lazy(() => import('./pages/get-the-app'));
+const PatientAppointments = lazy(() => import('./pages/patient-portal/appointments'));
+const PatientTeledentistry = lazy(() => import('./pages/patient-portal/teledentistry'));
+const PricingPage = lazy(() => import('./pages/prices'));
 
-// Admin Portal Imports
-import AdminDashboard from './pages/admin-portal/home';
-import ClinicManagement from './pages/admin-portal/clinic-management';
-import CreateClinic from './pages/admin-portal/clinic-management/components/CreateClinic';
-import ClinicDetail from './pages/admin-portal/clinic-management/components/ClinicDetail';
-import DentistManagement from './pages/admin-portal/dentist-management';
-import RevenueBilling from './pages/admin-portal/revenue-billing';
-import AIPlatform from './pages/admin-portal/ai-platform';
-import SupportHelpdesk from './pages/admin-portal/support-helpdesk';
-import SystemAdministration from './pages/admin-portal/system-administration';
-import ComplianceSecurity from './pages/admin-portal/compliance-security';
-import Partnership from './pages/admin-portal/partnership';
-import ContentManagement from './pages/admin-portal/content-management';
-import AdminProfile from './pages/admin-portal/admin-profile';
-import AnalyticReport from './pages/admin-portal/analytic-report';
-import NotificationScreenAdmin from './pages/admin-portal/ui/NotificationScreenAdmin';
-import AppointmentDiagnosticsDashboard from './pages/admin-portal/communications-diagnostics';
+const ClinicDashboard = lazy(() => import('./pages/clinic-portal/home'));
+const ClinicSchedule = lazy(() => import('./pages/clinic-portal/schedule'));
+const ClinicPatients = lazy(() => import('./pages/clinic-portal/patients'));
+const ClinicBilling = lazy(() => import('./pages/clinic-portal/billing'));
+const ClinicInventory = lazy(() => import('./pages/clinic-portal/inventory'));
+const ClinicReports = lazy(() => import('./pages/clinic-portal/reports'));
+const ClinicPublicProfile = lazy(() => import('./pages/clinic-portal/public-profile'));
+const ClinicSettings = lazy(() => import('./pages/clinic-portal/settings'));
+const StaffManagement = lazy(() => import('./pages/clinic-portal/staff'));
+const BranchManagement = lazy(() => import('./pages/clinic-portal/branches'));
+const NotificationScreenClinic = lazy(() => import('./pages/clinic-portal/ui/NotificationScreenClinic'));
+const ClinicTeledentistry = lazy(() => import('./pages/clinic-portal/teledentistry'));
+const ClinicXCore = lazy(() => import('./pages/clinic-portal/x-core'));
+
+const AdminDashboard = lazy(() => import('./pages/admin-portal/home'));
+const ClinicManagement = lazy(() => import('./pages/admin-portal/clinic-management'));
+const CreateClinic = lazy(() => import('./pages/admin-portal/clinic-management/components/CreateClinic'));
+const ClinicDetail = lazy(() => import('./pages/admin-portal/clinic-management/components/ClinicDetail'));
+const DentistManagement = lazy(() => import('./pages/admin-portal/dentist-management'));
+const RevenueBilling = lazy(() => import('./pages/admin-portal/revenue-billing'));
+const AIPlatform = lazy(() => import('./pages/admin-portal/ai-platform'));
+const SupportHelpdesk = lazy(() => import('./pages/admin-portal/support-helpdesk'));
+const SystemAdministration = lazy(() => import('./pages/admin-portal/system-administration'));
+const ComplianceSecurity = lazy(() => import('./pages/admin-portal/compliance-security'));
+const Partnership = lazy(() => import('./pages/admin-portal/partnership'));
+const ContentManagement = lazy(() => import('./pages/admin-portal/content-management'));
+const AdminProfile = lazy(() => import('./pages/admin-portal/admin-profile'));
+const AnalyticReport = lazy(() => import('./pages/admin-portal/analytic-report'));
+const NotificationScreenAdmin = lazy(() => import('./pages/admin-portal/ui/NotificationScreenAdmin'));
+const AppointmentDiagnosticsDashboard = lazy(() => import('./pages/admin-portal/communications-diagnostics'));
+
+const routeFallback = (
+  <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center" role="status" aria-live="polite">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-sky-300" />
+    <span className="sr-only">Loading</span>
+  </div>
+);
 
 const Routes = () => {
   return (
     <BrowserRouter>
       <ErrorBoundary>
         <ScrollToTop />
-        <RouterRoutes>
+        <Suspense fallback={routeFallback}>
+          <RouterRoutes>
           {/* Define your route here */}
           <Route path="/" element={<Homepage />} />
           <Route path="/homepage" element={<Navigate to="/" replace />} />
@@ -137,6 +143,11 @@ const Routes = () => {
             <Route path="/clinic-portal/public-profile" element={<ClinicPublicProfile />} />
           </Route>
 
+          {/* Restricted clinic X-Core route - clinical roles only */}
+          <Route element={<ProtectedRoute allow={["clinic_owner", "owner", "clinical_director", "authorized_clinic_doctor", "clinic_admin_xcore"]} />}>
+            <Route path="/clinic-portal/x-core" element={<ClinicXCore />} />
+          </Route>
+
           {/* Admin Portal Routes - Protected for admin roles */}
           <Route element={<ProtectedRoute allow={["admin", "super_admin", "business_manager", "platform_manager", "finance_manager", "customer_success", "customer_success_manager", "technical_support", "ai_engineer", "compliance_officer"]} />}>
             <Route path="/admin" element={<AdminDashboard />} />
@@ -165,7 +176,8 @@ const Routes = () => {
           <Route path="/get-the-app" element={<GetTheApp />} />
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<NotFound />} />
-        </RouterRoutes>
+          </RouterRoutes>
+        </Suspense>
       </ErrorBoundary>
     </BrowserRouter>
   );

@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:journey": "node tests/patient_journey.test.js",
     "test:otp": "node --test --test-concurrency=1 tests/otp.service.test.js tests/otp.routes.test.js"
   },

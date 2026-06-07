@@ -2429,13 +2429,26 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                     {study?.selectedSeriesType === '3D Volume' && (
                         <button
                             onClick={onSwitchTo3D}
-                            className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow transition hover:from-cyan-500 hover:to-blue-500"
+                            className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
                             title="Switch to 3D Volume Rendering"
                         >
                             <AppIcon name="Box" size={14} />
                             3D
                         </button>
                     )}
+
+                    <button
+                        onClick={handleToggleQuadView}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                            quadView
+                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title="Toggle Quad View"
+                    >
+                        <AppIcon name="LayoutGrid" size={14} />
+                        <span>Quad View</span>
+                    </button>
 
                     <ShortcutHelpButton shortcuts={SLICE_SHORTCUTS} />
 
@@ -2490,20 +2503,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                                     </button>
                                 )}
 
-                                <button
-                                    onClick={() => {
-                                        handleToggleQuadView();
-                                        setShowMoreTools(false);
-                                    }}
-                                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                                        quadView
-                                            ? 'bg-cyan-500/20 text-cyan-300'
-                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                    }`}
-                                >
-                                    <span className="flex items-center gap-2"><AppIcon name="LayoutGrid" size={14} /> Quad view</span>
-                                    <span>{quadView ? 'On' : 'Off'}</span>
-                                </button>
+
 
                                 <button
                                     onClick={() => {

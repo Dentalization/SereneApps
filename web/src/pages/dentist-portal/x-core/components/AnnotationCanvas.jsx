@@ -61,6 +61,8 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     onReviewAnnotation,
     className = '',
     style = {},
+    hideSurface = false,
+    freehandAnnotationType = 'region',
   },
   forwardedRef
 ) {
@@ -76,22 +78,34 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const devicePixelRatio = useDevicePixelRatio();
   const annotationWidth = sourceWidth || width;
   const annotationHeight = sourceHeight || height;
+  const effectiveImageBounds = useMemo(() => {
+    if (imageBounds?.width > 0 && imageBounds?.height > 0) return imageBounds;
+    if (!width || !height || !annotationWidth || !annotationHeight) return null;
+    const safeZoom = Math.max(0.01, Number(zoom) || 1);
+    return {
+      x: (width / 2) + (pan?.x || 0) - ((annotationWidth * safeZoom) / 2),
+      y: (height / 2) + (pan?.y || 0) - ((annotationHeight * safeZoom) / 2),
+      width: annotationWidth * safeZoom,
+      height: annotationHeight * safeZoom,
+    };
+  }, [annotationHeight, annotationWidth, height, imageBounds, pan, width, zoom]);
   const geometryContext = useMemo(() => ({
     viewportSize: { width, height },
     imageSize: { width: annotationWidth, height: annotationHeight },
-    imageBounds,
+    imageBounds: effectiveImageBounds,
     zoom,
     pan,
-  }), [annotationHeight, annotationWidth, height, imageBounds, pan, width, zoom]);
+  }), [annotationHeight, annotationWidth, effectiveImageBounds, height, pan, width, zoom]);
   const imageDisplayScale = useMemo(() => {
-    if (!imageBounds || !annotationWidth || !annotationHeight) return 1;
+    if (!effectiveImageBounds || !annotationWidth || !annotationHeight) return 1;
     return Math.max(
       0.1,
-      imageBounds.width / annotationWidth,
-      imageBounds.height / annotationHeight
+      effectiveImageBounds.width / annotationWidth,
+      effectiveImageBounds.height / annotationHeight
     );
-  }, [annotationHeight, annotationWidth, imageBounds]);
+  }, [annotationHeight, annotationWidth, effectiveImageBounds]);
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) || null;
+  const resolvedFreehandAnnotationType = freehandAnnotationType === 'freehand' ? 'freehand' : 'region';
   const freehandPointDistancePx = useMemo(
     () => Math.max(0.75, Math.min(3, FREEHAND_POINT_DISTANCE_PX / imageDisplayScale)),
     [imageDisplayScale]
@@ -133,13 +147,15 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
       const toPx = (point) => normalizedToImagePoint(point, geometryContext.imageSize);
 
       if (annotation.type === 'text') {
-        const point = toPx(annotation.coordinates);
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 5 * invScale, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if ((annotation.type === 'region' || annotation.type === 'freehand') && Array.isArray(annotation.coordinates?.path)) {
+        if (annotation.coordinates?.x !== undefined && annotation.coordinates?.y !== undefined) {
+          const point = toPx(annotation.coordinates);
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 5 * invScale, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if ((annotation.type === 'region' || annotation.type === 'freehand' || annotation.type === 'brush') && Array.isArray(annotation.coordinates?.path)) {
         const path = annotation.coordinates.path.map(toPx);
-        if (path.length >= 3) {
+        if (path.length > 0) {
           ctx.beginPath();
           path.forEach((point, index) => {
             if (index === 0) {
@@ -148,12 +164,14 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
               ctx.lineTo(point.x, point.y);
             }
           });
-          ctx.closePath();
+          if (annotation.type === 'region') {
+            ctx.closePath();
+          }
           ctx.stroke();
           ctx.setLineDash([]);
           path.forEach((point, index) => {
             ctx.beginPath();
-            ctx.arc(point.x, point.y, (index === 0 ? 3.4 : 2.6) * invScale, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, (index === 0 && annotation.type === 'region' ? 3.4 : 2.6) * invScale, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#0f172a';
             ctx.stroke();
@@ -194,13 +212,13 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     const drawInImageSpace = (items) => {
       if (!items.length) return;
 
-      if (imageBounds && annotationWidth && annotationHeight) {
+      if (effectiveImageBounds && annotationWidth && annotationHeight) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(imageBounds.x, imageBounds.y, imageBounds.width, imageBounds.height);
+        ctx.rect(effectiveImageBounds.x, effectiveImageBounds.y, effectiveImageBounds.width, effectiveImageBounds.height);
         ctx.clip();
-        ctx.translate(imageBounds.x, imageBounds.y);
-        ctx.scale(imageBounds.width / annotationWidth, imageBounds.height / annotationHeight);
+        ctx.translate(effectiveImageBounds.x, effectiveImageBounds.y);
+        ctx.scale(effectiveImageBounds.width / annotationWidth, effectiveImageBounds.height / annotationHeight);
         drawAnnotations(ctx, items, annotationWidth, annotationHeight, { displayScale: imageDisplayScale });
         drawSelection(selectedAnnotation);
         ctx.restore();
@@ -220,7 +238,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
   useEffect(() => {
     drawCanvas();
-  }, [annotationHeight, annotationWidth, annotations, devicePixelRatio, draftAnnotation, geometryContext, height, imageBounds, imageDisplayScale, selectedAnnotation, width]);
+  }, [annotationHeight, annotationWidth, annotations, devicePixelRatio, draftAnnotation, effectiveImageBounds, geometryContext, height, imageDisplayScale, selectedAnnotation, width]);
 
   useEffect(() => {
     if (!active) {
@@ -354,18 +372,20 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         continue;
       }
 
-      if ((annotation.type === 'region' || annotation.type === 'freehand') && Array.isArray(annotation.coordinates?.path)) {
+      if ((annotation.type === 'region' || annotation.type === 'freehand' || annotation.type === 'brush') && Array.isArray(annotation.coordinates?.path)) {
         const path = annotation.coordinates.path;
         const vertexIndex = path.findIndex((pathPoint) => distancePx(point, pathPoint) <= (HIT_RADIUS_PX * 0.9));
         if (vertexIndex >= 0) {
           return { annotation, handle: 'vertex', vertexIndex };
         }
         const isNearEdge = path.some((pathPoint, pathIndex) => {
+          if (annotation.type === 'brush' && pathIndex === path.length - 1) return false;
           const nextPoint = path[(pathIndex + 1) % path.length];
           if (!nextPoint) return false;
-          return distanceToSegmentPx(point, pathPoint, nextPoint) <= HIT_RADIUS_PX;
+          const hitRadius = annotation.type === 'brush' ? HIT_RADIUS_PX * 1.5 : HIT_RADIUS_PX;
+          return distanceToSegmentPx(point, pathPoint, nextPoint) <= hitRadius;
         });
-        if (isNearEdge || pointInPolygon(point, path)) {
+        if (isNearEdge || (annotation.type === 'region' && pointInPolygon(point, path))) {
           return { annotation, handle: 'move' };
         }
         continue;
@@ -391,7 +411,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const getAnnotationAnchor = (annotation) => {
     if (!annotation) return null;
     if (annotation.type === 'text') return annotation.coordinates;
-    if ((annotation.type === 'region' || annotation.type === 'freehand') && annotation.coordinates?.path) {
+    if ((annotation.type === 'region' || annotation.type === 'freehand' || annotation.type === 'brush') && annotation.coordinates?.path) {
       return centroidOfPath(annotation.coordinates.path);
     }
     if (annotation.coordinates?.end) return annotation.coordinates.end;
@@ -478,12 +498,13 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
 
-    if (tool === 'freehand') {
+    if (tool === 'freehand' || tool === 'brush') {
+      const pathType = tool === 'freehand' ? resolvedFreehandAnnotationType : 'brush';
       setDraftAnnotation({
         id: 'draft',
-        type: 'region',
+        type: pathType,
         coordinates: { path: [point] },
-        color: ANNOTATION_COLORS.region,
+        color: ANNOTATION_COLORS[pathType],
         metadata: buildBaseMetadata(),
       });
       return;
@@ -517,7 +538,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
           };
         }
 
-        if ((annotation.type === 'region' || annotation.type === 'freehand') && Array.isArray(dragSelection.originalCoordinates.path)) {
+        if ((annotation.type === 'region' || annotation.type === 'freehand' || annotation.type === 'brush') && Array.isArray(dragSelection.originalCoordinates.path)) {
           if (dragSelection.handle === 'vertex' && Number.isInteger(dragSelection.vertexIndex)) {
             return {
               ...annotation,
@@ -555,7 +576,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     }
 
     if (!draftAnnotation) return;
-    if (draftAnnotation.type === 'region') {
+    if (draftAnnotation.type === 'region' || draftAnnotation.type === 'freehand' || draftAnnotation.type === 'brush') {
       setDraftAnnotation((current) => {
         if (!current) return null;
         const path = current.coordinates?.path || [];
@@ -597,7 +618,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
     if (!draftAnnotation) return;
 
-    if (draftAnnotation.type === 'region') {
+    if (draftAnnotation.type === 'region' || draftAnnotation.type === 'freehand' || draftAnnotation.type === 'brush') {
       const finalPoint = normalizePoint(event);
       const rawPath = finalPoint
         ? [...(draftAnnotation.coordinates?.path || []), finalPoint]
@@ -605,15 +626,19 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
       const simplifiedPath = simplifyPath(rawPath, freehandSimplifyEpsilonPx, geometryContext.imageSize)
         .filter((point, index, path) => index === 0 || distancePx(point, path[index - 1]) >= 1);
 
-      if (simplifiedPath.length >= 3) {
-        const lesionAreaPx = Math.round(polygonAreaPx(simplifiedPath, geometryContext.imageSize));
+      const isRegion = draftAnnotation.type === 'region';
+      const isFreehand = draftAnnotation.type === 'freehand';
+      const minPoints = isRegion ? 3 : (isFreehand ? 2 : 1);
+
+      if (simplifiedPath.length >= minPoints) {
+        const lesionAreaPx = isRegion ? Math.round(polygonAreaPx(simplifiedPath, geometryContext.imageSize)) : undefined;
         const annotation = {
           ...draftAnnotation,
           id: `annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           coordinates: { path: simplifiedPath },
           metadata: {
             ...(draftAnnotation.metadata || {}),
-            lesion_area_px: lesionAreaPx,
+            ...(lesionAreaPx !== undefined ? { lesion_area_px: lesionAreaPx } : {}),
           },
         };
         onChange([...annotations, annotation]);
@@ -890,22 +915,24 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
               {SEVERITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label>
-              <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Surface</span>
-              <select
-                value={metadataDraft.metadata.surface}
-                onChange={(event) => updateMetadataDraft({ surface: event.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-              >
-                {SURFACES.map((surface) => (
-                  <option key={surface || 'none'} value={surface}>
-                    {surface || '—'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
+          <div className={hideSurface ? "mb-2" : "grid grid-cols-2 gap-2 mb-2"}>
+            {!hideSurface && (
+              <label>
+                <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Surface</span>
+                <select
+                  value={metadataDraft.metadata.surface}
+                  onChange={(event) => updateMetadataDraft({ surface: event.target.value })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+                >
+                  {SURFACES.map((surface) => (
+                    <option key={surface || 'none'} value={surface}>
+                      {surface || '—'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="block">
               <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Tooth</span>
               <input
                 value={metadataDraft.metadata.tooth_number}

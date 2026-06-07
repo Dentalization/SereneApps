@@ -4,6 +4,7 @@ import { createVolume3DAnnotationCanvasController } from './volume3DAnnotationCa
 const Volume3DAnnotationCanvas = forwardRef(function Volume3DAnnotationCanvas({
   width,
   height,
+  visible = true,
 }, ref) {
   const canvasRef = useRef(null);
   const controller = useMemo(() => createVolume3DAnnotationCanvasController({
@@ -35,8 +36,10 @@ const Volume3DAnnotationCanvas = forwardRef(function Volume3DAnnotationCanvas({
   return (
     <canvas
       ref={canvasRef}
+      data-xcore-ui="true"
       data-xcore-annotation-canvas="true"
       className="pointer-events-none absolute inset-0 z-[21]"
+      style={{ visibility: visible ? 'visible' : 'hidden' }}
     />
   );
 });

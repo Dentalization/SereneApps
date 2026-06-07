@@ -6,6 +6,10 @@ import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('financial Webhook Replay: idempotency and replay protection', async () => {
   const suffix = rand();
@@ -50,8 +54,7 @@ test('financial Webhook Replay: idempotency and replay protection', async () => 
     data: {
       dentistId: dentist.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }

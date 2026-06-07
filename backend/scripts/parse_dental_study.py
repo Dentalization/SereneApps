@@ -152,17 +152,49 @@ def scan_folder(folder_path):
     else:
         result["modality"] = "Unknown" # If no files found
     
-    # 4. Construct Series Info
-    series_info = {
-        "modality": result["modality"],
-        "numSlices": total_slices,
-        "kv": result["metadata"].get("kv"),
-        "ma": result["metadata"].get("ma"),
-        "sliceThickness": st or "1.0",
-        "pixelSpacing": result["metadata"].get("PixelSpacing", "0.25"),
-        "exposureTime": result["metadata"].get("ExposureTime")
-    }
-    result["series"].append(series_info)
+    # 4. Construct Series Info for main slices
+    if total_slices > 0:
+        series_info = {
+            "modality": result["modality"],
+            "numSlices": total_slices,
+            "kv": result["metadata"].get("kv"),
+            "ma": result["metadata"].get("ma"),
+            "sliceThickness": st or "1.0",
+            "pixelSpacing": result["metadata"].get("PixelSpacing", "0.25"),
+            "exposureTime": result["metadata"].get("ExposureTime")
+        }
+        result["series"].append(series_info)
+
+    # 5. Scan for plain image files (panoramic / ceph)
+    pan_files = []
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            lower_file = file.lower()
+            if any(lower_file.endswith(ext) for ext in ('.jpg', '.jpeg', '.tif', '.tiff', '.png')):
+                if any(kw in lower_file for kw in ('panorama', 'panoramic', 'opg', 'ceph', 'cephalometric')):
+                    pan_files.append(os.path.join(root, file))
+
+    added_names = set()
+    for pan_file in pan_files:
+        filename = os.path.basename(pan_file)
+        name_without_ext = os.path.splitext(filename)[0]
+        if name_without_ext.lower() in added_names:
+            continue
+        added_names.add(name_without_ext.lower())
+
+        pan_modality = "OPG" if any(kw in filename.lower() for kw in ('panorama', 'panoramic', 'opg')) else "Ceph"
+        result["series"].append({
+            "modality": pan_modality,
+            "numSlices": 1,
+            "kv": result["metadata"].get("kv"),
+            "ma": result["metadata"].get("ma"),
+            "sliceThickness": "1.0",
+            "pixelSpacing": result["metadata"].get("PixelSpacing", "0.25"),
+            "exposureTime": result["metadata"].get("ExposureTime")
+        })
+
+    if result["modality"] == "Unknown" and len(result["series"]) > 0:
+        result["modality"] = "2D"
     
     return result
 

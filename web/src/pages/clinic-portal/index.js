@@ -9,6 +9,7 @@ export { default as ClinicBranches } from './branches';
 export { default as ClinicBilling } from './billing';
 export { default as ClinicInventory } from './inventory';
 export { default as ClinicReports } from './reports';
+export { default as ClinicXCore } from './x-core';
 export { default as ClinicPublicProfile } from './public-profile';
 export { default as ClinicSettings } from './settings';
 
@@ -29,6 +30,7 @@ export const clinicRoutes = [
       { path: 'billing', element: 'ClinicBilling' },
       { path: 'inventory', element: 'ClinicInventory' },
       { path: 'reports', element: 'ClinicReports' },
+      { path: 'x-core', element: 'ClinicXCore' },
       { path: 'public-profile', element: 'ClinicPublicProfile' },
       { path: 'settings', element: 'ClinicSettings' }
     ]
@@ -37,7 +39,11 @@ export const clinicRoutes = [
 
 // Role-based Access Control Configuration
 export const rolePermissions = {
-  owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'public-profile', 'settings'],
+  owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
+  clinic_owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
+  clinical_director: ['x-core'],
+  authorized_clinic_doctor: ['x-core'],
+  clinic_admin_xcore: ['x-core'],
   manager: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'public-profile', 'settings'],
   front_office: ['dashboard', 'schedule', 'patients'],
   nurse: ['dashboard', 'schedule', 'patients', 'inventory'],
@@ -95,6 +101,12 @@ export const menuConfig = {
       path: '/clinic-portal/reports',
       icon: 'BarChart3',
       roles: ['manager', 'owner', 'staff']
+    },
+    {
+      id: 'x-core',
+      path: '/clinic-portal/x-core',
+      icon: 'Cpu',
+      roles: ['owner', 'clinic_owner', 'clinical_director', 'authorized_clinic_doctor', 'clinic_admin_xcore']
     },
     { 
       id: 'public-profile', 

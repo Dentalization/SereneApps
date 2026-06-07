@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { requireXCoreStudyReadAccess, handleAccessError } from '../services/xCoreAccessPolicyService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +10,7 @@ const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
 export const streamSlice = async (req, res) => {
     try {
         const { studyId, viewType, index } = req.params;
+        await requireXCoreStudyReadAccess({ studyId, user: req.user });
 
         // In a real implementation:
         // 1. Look up study path from DB using studyId
@@ -30,6 +32,9 @@ export const streamSlice = async (req, res) => {
         res.redirect(`https://placehold.co/512x512/000000/FFFFFF/png?text=${viewType}+Slice+${index}`);
 
     } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
         console.error('Stream Error:', error);
         res.status(500).json({ error: 'Failed to stream slice' });
     }

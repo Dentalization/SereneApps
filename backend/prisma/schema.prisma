@@ -3,6 +3,10 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
+generator clientPackage {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -52,6 +56,9 @@ model User {
   createdStudyAnnotations                                        StudyAnnotation[]          @relation("StudyAnnotationCreator")
   reviewedStudyAnnotations                                       StudyAnnotation[]          @relation("StudyAnnotationReviewer")
   createdAnnotationSnapshots                                     AnnotationSnapshot[]       @relation("AnnotationSnapshotCreator")
+  ownedStudyDentistShares                                        StudyDentistShare[]        @relation("StudyDentistShareOwner")
+  receivedStudyDentistShares                                     StudyDentistShare[]        @relation("StudyDentistShareRecipient")
+  createdStudyDentistShares                                      StudyDentistShare[]        @relation("StudyDentistShareCreator")
   actedRefunds                                                   Refund[]                   @relation("RefundActor")
   financialAuditLogs                                             FinancialAuditLog[]        @relation("FinancialAuditActor")
   ownershipRequestsRequested                                     OwnershipCorrectionRequest[] @relation("CorrectionRequester")
@@ -1090,6 +1097,7 @@ model ImagingStudy {
   originalName String?         @map("original_name")
   series       ImagingSeries[]
   shares       StudyShare[]
+  dentistShares StudyDentistShare[]
   annotations  StudyAnnotation[]
   annotationSnapshots AnnotationSnapshot[]
   dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
@@ -1111,6 +1119,26 @@ model StudyShare {
   @@index([studyId], map: "idx_study_shares_study")
   @@index([expiresAt], map: "idx_study_shares_expires_at")
   @@map("study_shares")
+}
+
+model StudyDentistShare {
+  id                 BigInt       @id @default(autoincrement())
+  studyId            BigInt       @map("study_id")
+  ownerDentistId     BigInt       @map("owner_dentist_id")
+  recipientDentistId BigInt       @map("recipient_dentist_id")
+  createdById        BigInt       @map("created_by")
+  revokedAt          DateTime?    @map("revoked_at") @db.Timestamptz(6)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  study              ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ownerDentist       User         @relation("StudyDentistShareOwner", fields: [ownerDentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipientDentist   User         @relation("StudyDentistShareRecipient", fields: [recipientDentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdBy          User         @relation("StudyDentistShareCreator", fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([studyId, recipientDentistId], map: "unique_study_dentist_recipient")
+  @@index([studyId], map: "idx_study_dentist_shares_study")
+  @@index([ownerDentistId], map: "idx_study_dentist_shares_owner")
+  @@index([recipientDentistId, revokedAt], map: "idx_study_dentist_shares_recipient_active")
+  @@map("study_dentist_shares")
 }
 
 model StudyAnnotation {

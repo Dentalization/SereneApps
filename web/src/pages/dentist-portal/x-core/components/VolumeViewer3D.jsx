@@ -7379,11 +7379,12 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         onClick={handleViewportClick}
                     />
 
-                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && annotateMode && ['brush', 'freehand'].includes(annotationTool) && (
+                    {!loading && !error && viewerSize.width > 0 && viewerSize.height > 0 && annotateMode && (
                         <Volume3DAnnotationCanvas
                             ref={annotationCanvasRef}
                             width={viewerSize.width}
                             height={viewerSize.height}
+                            visible={['brush', 'freehand'].includes(annotationTool)}
                         />
                     )}
 

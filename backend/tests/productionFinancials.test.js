@@ -8,6 +8,10 @@ const prisma = new PrismaClient();
 
 // Helper to get random ID to avoid collisions
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('production financials: webhook deduplication with WebhookProcessingLog', async () => {
   const payloadHash = `hash-${rand()}`;
@@ -78,8 +82,7 @@ test('production financials: ownership correction execution & ledger auditing', 
     data: {
       dentistId: dentistA.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'completed',
       ownerType: 'dentist'
     }
@@ -200,8 +203,7 @@ test('production financials: invoice snapshots generation and immutability', asy
     data: {
       dentistId: dentist.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -360,8 +362,7 @@ test('production financials: end-to-end mathematical reconciliation audit', asyn
     data: {
       dentistId: independentUser.id,
       patientId: patientUser.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -385,8 +386,7 @@ test('production financials: end-to-end mathematical reconciliation audit', asyn
     data: {
       dentistId: dentistUser.id,
       patientId: patientUser.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'clinic',
       ownerClinicId: clinicProfile.id

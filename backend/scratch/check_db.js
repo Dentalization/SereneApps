@@ -1,37 +1,35 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { query } from '../src/db.js';
+import { PrismaClient } from '../src/generated/prisma/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const prisma = new PrismaClient();
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
-
-async function run() {
-  const tables = [
-    'users',
-    'clinic_profiles',
-    'clinic_branches',
-    'clinic_staff',
-    'dentist_profiles',
-    'patient_profiles',
-    'appointments',
-    'available_balances',
-    'clinic_services',
-    'dentist_services',
-    'service_dentist_assignments'
-  ];
-
-  console.log('Database table row counts:');
-  for (const table of tables) {
-    try {
-      const res = await query(`SELECT COUNT(*) as count FROM "${table}"`);
-      console.log(`- ${table}: ${res.rows[0].count}`);
-    } catch (err) {
-      console.log(`- ${table}: ERROR (${err.message})`);
-    }
+async function checkDb() {
+  try {
+    const staff = await prisma.clinicStaff.findMany({
+      include: {
+        user: true,
+        clinicProfile: true
+      }
+    });
+    
+    console.log('--- CLINIC STAFF ---');
+    staff.forEach(s => {
+      console.log(`User ID: ${s.userId}, Name: ${s.user.name}, Email: ${s.user.email}, Clinic: ${s.clinicProfile.legalName}, Role: ${s.role}, Active: ${s.isActive}`);
+    });
+    
+    const dentists = await prisma.dentistProfile.findMany({
+      include: {
+        user: true
+      }
+    });
+    console.log('\n--- DENTIST PROFILES ---');
+    dentists.forEach(d => {
+      console.log(`User ID: ${d.userId}, Name: ${d.user.name}, Email: ${d.user.email}, Specialization: ${d.primarySpecialization}, Verified: ${d.isVerified}`);
+    });
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
-run().catch(console.error);
+checkDb();

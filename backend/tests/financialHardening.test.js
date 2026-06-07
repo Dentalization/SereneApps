@@ -13,6 +13,10 @@ const prisma = new PrismaClient();
 
 // Helper to get random ID to avoid collisions
 const rand = () => Math.floor(Math.random() * 10000000).toString();
+const appointmentTimes = (startsAt = new Date()) => ({
+  startsAt,
+  endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000)
+});
 
 test('financial hardening: duplicate webhook replay & idempotency', async () => {
   const deliveryKey = `test-key-${rand()}`;
@@ -64,8 +68,7 @@ test('financial hardening: snapshot immutability', async () => {
     data: {
       dentistId,
       patientId,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -147,8 +150,7 @@ test('financial hardening: unauthorized refund attempt is blocked', async () => 
     data: {
       dentistId,
       patientId,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist'
     }
@@ -295,8 +297,7 @@ test('financial hardening: reconciliation recovery from requires_action', async 
   const app = await prisma.appointment.create({
     data: {
       dentistId,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'scheduled',
       ownerType: 'dentist',
       patientId
@@ -417,8 +418,7 @@ test('financial hardening: cross-clinic and cross-dentist revenue isolation', as
     data: {
       dentistId: dentistA.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'completed',
       ownerType: 'dentist'
     }
@@ -439,8 +439,7 @@ test('financial hardening: cross-clinic and cross-dentist revenue isolation', as
     data: {
       dentistId: dentistB.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'completed',
       ownerType: 'dentist'
     }
@@ -461,8 +460,7 @@ test('financial hardening: cross-clinic and cross-dentist revenue isolation', as
     data: {
       dentistId: dentistA.id,
       patientId: patient.id,
-      startsAt: new Date(),
-      endsAt: new Date(),
+      ...appointmentTimes(),
       status: 'completed',
       ownerType: 'clinic',
       ownerClinicId: clinicProfile.id
