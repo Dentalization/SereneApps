@@ -1017,6 +1017,12 @@ function buildCombinedTwilioToken({
   includeConversations = true,
   includeVideo = true
 }) {
+  if (process.env.TWILIO_MOCK_MODE === 'true') {
+    return {
+      token: `mock_combined_token_${Math.random().toString(36).substring(2, 12)}`,
+      expiresAt: new Date(Date.now() + ttl * 1000).toISOString()
+    };
+  }
   const config = getTwilioStandardKeyConfig();
   const AccessToken = twilio.jwt.AccessToken;
   const token = new AccessToken(config.accountSid, config.apiKeySid, config.apiKeySecret, {

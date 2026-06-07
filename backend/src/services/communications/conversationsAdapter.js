@@ -6,6 +6,13 @@ import {
 
 class ConversationsAdapter {
   constructor() {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      this.accountSid = 'mock_account_sid';
+      this.apiKeySid = 'mock_api_key_sid';
+      this.apiKeySecret = 'mock_api_key_secret';
+      this.serviceSid = 'mock_service_sid';
+      return;
+    }
     const config = getTwilioStandardKeyConfig();
     this.client = twilio(
       config.apiKeySid,
@@ -19,6 +26,10 @@ class ConversationsAdapter {
   }
 
   async createConversation({ uniqueName, friendlyName }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      const mockSid = `mock_conv_${Math.random().toString(36).substring(2, 12)}`;
+      return { sid: mockSid, uniqueName };
+    }
     try {
       const conversation = await this.client.conversations.v1
         .services(this.serviceSid)
@@ -42,6 +53,10 @@ class ConversationsAdapter {
   }
 
   async addParticipant({ conversationSid, identity, friendlyName }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      const mockSid = `mock_part_${Math.random().toString(36).substring(2, 12)}`;
+      return { participantSid: mockSid };
+    }
     try {
       const participant = await this.client.conversations.v1
         .services(this.serviceSid)
@@ -59,6 +74,9 @@ class ConversationsAdapter {
   }
 
   async removeParticipant({ conversationSid, identity }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      return { removed: true, participantSid: 'mock_part_removed' };
+    }
     const participants = await this.client.conversations.v1
       .services(this.serviceSid)
       .conversations(conversationSid)
@@ -78,6 +96,13 @@ class ConversationsAdapter {
   }
 
   async sendMessage({ conversationSid, author, body, attributes = {} }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      const mockSid = `mock_msg_${Math.random().toString(36).substring(2, 12)}`;
+      return {
+        messageSid: mockSid,
+        dateCreated: new Date().toISOString()
+      };
+    }
     const message = await this.client.conversations.v1
       .services(this.serviceSid)
       .conversations(conversationSid)
@@ -96,6 +121,9 @@ class ConversationsAdapter {
   }
 
   async deleteConversation(conversationSid) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      return;
+    }
     await this.client.conversations.v1
       .services(this.serviceSid)
       .conversations(conversationSid)
@@ -103,6 +131,14 @@ class ConversationsAdapter {
   }
 
   async generateAccessToken({ identity, ttl = 3600 }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      const mockToken = `mock_token_${Math.random().toString(36).substring(2, 12)}`;
+      return { 
+        token: mockToken, 
+        identity, 
+        expiresAt: new Date(Date.now() + ttl * 1000).toISOString() 
+      };
+    }
     const AccessToken = twilio.jwt.AccessToken;
     const accessToken = new AccessToken(
       this.accountSid,

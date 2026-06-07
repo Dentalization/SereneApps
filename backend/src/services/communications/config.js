@@ -9,6 +9,7 @@ function missingEnv(keys, env = process.env) {
 }
 
 export function assertTwilioStandardKeyConfig(env = process.env) {
+  if (env.TWILIO_MOCK_MODE === 'true') return;
   const missing = missingEnv(REQUIRED_STANDARD_KEY_ENV, env);
   if (missing.length > 0) {
     const error = new Error('TWILIO_STANDARD_API_KEY_CONFIG_MISSING');
@@ -19,6 +20,7 @@ export function assertTwilioStandardKeyConfig(env = process.env) {
 }
 
 export function assertConversationsConfig(env = process.env) {
+  if (env.TWILIO_MOCK_MODE === 'true') return;
   assertTwilioStandardKeyConfig(env);
   const missing = missingEnv(['TWILIO_CONVERSATIONS_SERVICE_SID'], env);
   if (missing.length > 0) {
@@ -30,6 +32,7 @@ export function assertConversationsConfig(env = process.env) {
 }
 
 export function assertVerifyConfig(env = process.env) {
+  if (env.TWILIO_MOCK_MODE === 'true') return;
   const missing = missingEnv(['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_VERIFY_SERVICE_SID'], env);
   if (missing.length > 0) {
     const error = new Error('TWILIO_VERIFY_CONFIG_MISSING');
@@ -56,6 +59,13 @@ export function getTwilioWebhookAuthToken(env = process.env) {
 }
 
 export function getTwilioStandardKeyConfig(env = process.env) {
+  if (env.TWILIO_MOCK_MODE === 'true') {
+    return {
+      accountSid: env.TWILIO_ACCOUNT_SID || 'mock_account_sid',
+      apiKeySid: env.TWILIO_API_KEY_SID || 'mock_api_key_sid',
+      apiKeySecret: env.TWILIO_API_KEY_SECRET || 'mock_api_key_secret'
+    };
+  }
   assertTwilioStandardKeyConfig(env);
   return {
     accountSid: env.TWILIO_ACCOUNT_SID,
@@ -65,6 +75,9 @@ export function getTwilioStandardKeyConfig(env = process.env) {
 }
 
 export function getConversationsServiceSid(env = process.env) {
+  if (env.TWILIO_MOCK_MODE === 'true') {
+    return env.TWILIO_CONVERSATIONS_SERVICE_SID || 'mock_conversations_service_sid';
+  }
   assertConversationsConfig(env);
   return env.TWILIO_CONVERSATIONS_SERVICE_SID;
 }

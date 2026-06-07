@@ -1,0 +1,328 @@
+{
+  "metrics": {
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 279
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0
+      }
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 1,
+        "min": 1,
+        "max": 1
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 90.7947,
+        "avg": 23.560283154121876,
+        "min": 2.468,
+        "med": 8.582,
+        "max": 98.672,
+        "p(90)": 87.08200000000001
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0.003,
+        "max": 3.233,
+        "p(90)": 0.014,
+        "p(95)": 0.017299999999999965,
+        "avg": 0.017462365591397796,
+        "min": 0.001
+      }
+    },
+    "http_req_duration": {
+      "values": {
+        "p(90)": 87.08200000000001,
+        "p(95)": 90.7947,
+        "avg": 23.560283154121876,
+        "min": 2.468,
+        "med": 8.582,
+        "max": 98.672
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "vus": {
+      "contains": "default",
+      "values": {
+        "value": 1,
+        "min": 1,
+        "max": 1
+      },
+      "type": "gauge"
+    },
+    "http_req_connecting": {
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 0.371,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0.0018064516129032257
+      },
+      "type": "trend"
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 0.112,
+        "p(95)": 0.1571,
+        "avg": 0.06316845878136203,
+        "min": 0.013,
+        "med": 0.043,
+        "max": 0.929
+      }
+    },
+    "group_duration": {
+      "contains": "time",
+      "values": {
+        "avg": 23.386855085185182,
+        "min": 2.504083,
+        "med": 8.5705205,
+        "max": 98.998083,
+        "p(90)": 87.22392940000002,
+        "p(95)": 90.94143109999999
+      },
+      "type": "trend"
+    },
+    "checks": {
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 272,
+        "fails": 0
+      },
+      "type": "rate"
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 701611,
+        "rate": 11561.493086735956
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 1086.881625,
+        "med": 1117.7655625,
+        "max": 1234.602208,
+        "p(90)": 1127.437883,
+        "p(95)": 1138.34615635,
+        "avg": 1118.0723094074076
+      }
+    },
+    "http_reqs": {
+      "contains": "default",
+      "values": {
+        "rate": 4.597499998146169,
+        "count": 279
+      },
+      "type": "counter"
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0.015,
+        "max": 0.946,
+        "p(90)": 0.05620000000000001,
+        "p(95)": 0.084,
+        "avg": 0.027720430107526853,
+        "min": 0.005
+      }
+    },
+    "iterations": {
+      "contains": "default",
+      "values": {
+        "count": 54,
+        "rate": 0.8898387093186134
+      },
+      "type": "counter"
+    },
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 23.46939426523298,
+        "min": 2.445,
+        "med": 8.502,
+        "max": 98.425,
+        "p(90)": 86.9398,
+        "p(95)": 90.65129999999999
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 68853.03333245173,
+        "count": 4178357
+      }
+    }
+  },
+  "setup_data": {
+    "appointmentId": "2993",
+    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODU1MTI4LCJleHAiOjE3ODM0NDcxMjh9.VJ3ds-K3CozdVM7ISGxK8zQfuujtlLStha61oMDxjeM"
+  },
+  "root_group": {
+    "groups": [
+      {
+        "name": "setup",
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": [],
+        "checks": [
+            {
+              "name": "setup create appointment status 201",
+              "path": "::setup::setup create appointment status 201",
+              "id": "ff63648de4966b1e7d757765e10b0a41",
+              "passes": 1,
+              "fails": 0
+            },
+            {
+              "path": "::setup::setup confirm appointment status 200",
+              "id": "00b8f929f1b539b84b6293102af0a408",
+              "passes": 1,
+              "fails": 0,
+              "name": "setup confirm appointment status 200"
+            }
+          ]
+      },
+      {
+        "name": "1. Login pengguna",
+        "path": "::1. Login pengguna",
+        "id": "32ba0ced2dd7be86b69c81642637acdc",
+        "groups": [],
+        "checks": [
+            {
+              "name": "login status 200",
+              "path": "::1. Login pengguna::login status 200",
+              "id": "a226603a9536c8d7652f1645b8daedc4",
+              "passes": 54,
+              "fails": 0
+            }
+          ]
+      },
+      {
+        "id": "217c5cfd1b7036e0f2f1ec1611e35b70",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::2. Ambil daftar appointment::list appointment status 200",
+              "id": "1e08c0552b12b4bbe351a61a3d041122",
+              "passes": 54,
+              "fails": 0,
+              "name": "list appointment status 200"
+            }
+          ],
+        "name": "2. Ambil daftar appointment",
+        "path": "::2. Ambil daftar appointment"
+      },
+      {
+        "id": "d95af564ddb9be9c7a8109833fdb6fd8",
+        "groups": [],
+        "checks": [
+            {
+              "name": "detail consultation status 200",
+              "path": "::3. Ambil detail konsultasi::detail consultation status 200",
+              "id": "635424a3b66d30855cebc9f694f39d4a",
+              "passes": 54,
+              "fails": 0
+            }
+          ],
+        "name": "3. Ambil detail konsultasi",
+        "path": "::3. Ambil detail konsultasi"
+      },
+      {
+        "name": "4. Kirim pesan konsultasi",
+        "path": "::4. Kirim pesan konsultasi",
+        "id": "87562458f853b8ea4c8fb59100abf779",
+        "groups": [],
+        "checks": [
+            {
+              "passes": 54,
+              "fails": 0,
+              "name": "send message status 201",
+              "path": "::4. Kirim pesan konsultasi::send message status 201",
+              "id": "8cba8e29e633462277babeecc0dadeb5"
+            }
+          ]
+      },
+      {
+        "name": "5. Unggah citra gigi",
+        "path": "::5. Unggah citra gigi",
+        "id": "5b8aecf9ec39cfb1d3be0591aed71345",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::5. Unggah citra gigi::upload image accepted",
+              "id": "17e90c762757ddcb3056437f64d3e53d",
+              "passes": 54,
+              "fails": 0,
+              "name": "upload image accepted"
+            }
+          ]
+      }
+    ],
+    "checks": [],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "options": {
+    "noColor": false,
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ],
+    "summaryTimeUnit": ""
+  },
+  "state": {
+    "isStdErrTTY": false,
+    "testRunDurationMs": 60685.155,
+    "isStdOutTTY": false
+  }
+}
