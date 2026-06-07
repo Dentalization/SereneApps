@@ -1,0 +1,637 @@
+{
+  "root_group": {
+    "groups": [
+      {
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": [],
+        "checks": [
+            {
+              "name": "setup create appointment status 201",
+              "path": "::setup::setup create appointment status 201",
+              "id": "ff63648de4966b1e7d757765e10b0a41",
+              "passes": 1,
+              "fails": 0
+            },
+            {
+              "id": "00b8f929f1b539b84b6293102af0a408",
+              "passes": 1,
+              "fails": 0,
+              "name": "setup confirm appointment status 200",
+              "path": "::setup::setup confirm appointment status 200"
+            },
+            {
+              "name": "setup warmup message status 201",
+              "path": "::setup::setup warmup message status 201",
+              "id": "96aa5b53d911e75a3b6c3387cff7e60c",
+              "passes": 1,
+              "fails": 0
+            },
+            {
+              "passes": 1,
+              "fails": 0,
+              "name": "setup warmup messages list status 200",
+              "path": "::setup::setup warmup messages list status 200",
+              "id": "4bce01378ec16715bbefa4453e67f1d2"
+            }
+          ],
+        "name": "setup"
+      },
+      {
+        "path": "::1. Login pengguna",
+        "id": "32ba0ced2dd7be86b69c81642637acdc",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::1. Login pengguna::login status 200",
+              "id": "a226603a9536c8d7652f1645b8daedc4",
+              "passes": 803,
+              "fails": 0,
+              "name": "login status 200"
+            },
+            {
+              "passes": 803,
+              "fails": 0,
+              "name": "login under 2s",
+              "path": "::1. Login pengguna::login under 2s",
+              "id": "0d6d4eed61a9f39ff5be34724548d92e"
+            }
+          ],
+        "name": "1. Login pengguna"
+      },
+      {
+        "name": "2. Ambil daftar appointment",
+        "path": "::2. Ambil daftar appointment",
+        "id": "217c5cfd1b7036e0f2f1ec1611e35b70",
+        "groups": [],
+        "checks": [
+            {
+              "name": "list appointment status 200",
+              "path": "::2. Ambil daftar appointment::list appointment status 200",
+              "id": "1e08c0552b12b4bbe351a61a3d041122",
+              "passes": 803,
+              "fails": 0
+            },
+            {
+              "id": "73a7a61f3d474de2709422093aa15daa",
+              "passes": 803,
+              "fails": 0,
+              "name": "list appointment under 2s",
+              "path": "::2. Ambil daftar appointment::list appointment under 2s"
+            }
+          ]
+      },
+      {
+        "name": "3. Buat appointment",
+        "path": "::3. Buat appointment",
+        "id": "cd170659434dc92b3218522c2e4bbbc0",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::3. Buat appointment::create appointment valid response",
+              "id": "3b48e1644a9cfbc19ff67c4ea9d4305d",
+              "passes": 803,
+              "fails": 0,
+              "name": "create appointment valid response"
+            },
+            {
+              "fails": 0,
+              "name": "create appointment under 2s",
+              "path": "::3. Buat appointment::create appointment under 2s",
+              "id": "341597639cba4d73776e5c3c604fade6",
+              "passes": 803
+            }
+          ]
+      },
+      {
+        "id": "b6f7ed62f341c13da24a0cd4f15bfa3a",
+        "groups": [],
+        "checks": [
+            {
+              "name": "detail consultation status 200",
+              "path": "::4. Ambil detail konsultasi::detail consultation status 200",
+              "id": "1d63a2db24ff10b6e6457aaf82642f00",
+              "passes": 803,
+              "fails": 0
+            },
+            {
+              "name": "detail consultation under 2s",
+              "path": "::4. Ambil detail konsultasi::detail consultation under 2s",
+              "id": "36c4126c85ed4afbe5d1e7ac059e6bb5",
+              "passes": 803,
+              "fails": 0
+            }
+          ],
+        "name": "4. Ambil detail konsultasi",
+        "path": "::4. Ambil detail konsultasi"
+      },
+      {
+        "checks": [
+          {
+            "name": "send message status 201",
+            "path": "::5. Kirim pesan konsultasi::send message status 201",
+            "id": "a35b152aa2ace3ac7b37464bd3995fa7",
+            "passes": 803,
+            "fails": 0
+          },
+          {
+            "passes": 791,
+            "fails": 12,
+            "name": "send message under 2s",
+            "path": "::5. Kirim pesan konsultasi::send message under 2s",
+            "id": "e70de1a1370671742e1e145980524962"
+          }
+        ],
+        "name": "5. Kirim pesan konsultasi",
+        "path": "::5. Kirim pesan konsultasi",
+        "id": "2bed5520b942862add15454043352b78",
+        "groups": []
+      },
+      {
+        "name": "6. Unggah citra gigi",
+        "path": "::6. Unggah citra gigi",
+        "id": "a55d319ee80d044f0652a3bb065b64d8",
+        "groups": [],
+        "checks": [
+            {
+              "name": "upload image accepted",
+              "path": "::6. Unggah citra gigi::upload image accepted",
+              "id": "11ae59b65f296ec579d4f1ca6f80a534",
+              "passes": 803,
+              "fails": 0
+            },
+            {
+              "name": "upload initial response under 2s",
+              "path": "::6. Unggah citra gigi::upload initial response under 2s",
+              "id": "61bb440be00269b27fe99d6e2dbfb568",
+              "passes": 803,
+              "fails": 0
+            }
+          ]
+      }
+    ],
+    "checks": [],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": true
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 184810.353
+  },
+  "metrics": {
+    "detail_consultation_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 2.689838107098381,
+        "min": 1.776,
+        "med": 2.409,
+        "max": 27.973,
+        "p(90)": 3.3888000000000003,
+        "p(95)": 4.1617
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "detail_consultation_requests": {
+      "values": {
+        "rate": 4.344994676786317,
+        "count": 803
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "login_requests": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 209.18407524875622,
+        "min": 1.776,
+        "med": 56.316,
+        "max": 7862.287,
+        "p(90)": 474.31770000000006,
+        "p(95)": 623.9880499999998
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 2005.921458,
+        "max": 10101.601041,
+        "p(90)": 2696.737375,
+        "p(95)": 2900.0047499999996,
+        "avg": 2255.4677374483203,
+        "min": 1910.571584
+      }
+    },
+    "list_appointment_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 803
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "send_message_requests": {
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "list_appointment_requests": {
+      "contains": "default",
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      },
+      "type": "counter"
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0.001,
+        "med": 0.005,
+        "max": 2.948,
+        "p(90)": 0.009,
+        "p(95)": 0.011,
+        "avg": 0.010724087893864252
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 0.191,
+        "avg": 0.09434514925373158,
+        "min": 0.01,
+        "med": 0.08,
+        "max": 2.179,
+        "p(90)": 0.153
+      }
+    },
+    "group_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 209.076828499378,
+        "min": 1.885625,
+        "med": 56.568875,
+        "max": 7862.484542,
+        "p(90)": 474.55691240000004,
+        "p(95)": 623.8213438499998
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 6,
+        "min": 0,
+        "max": 10
+      }
+    },
+    "http_req_failed": {
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 4824
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      },
+      "type": "rate",
+      "contains": "default"
+    },
+    "send_message_failed": {
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      },
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "fails": 803,
+        "rate": 0,
+        "passes": 0
+      }
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0,
+        "min": 0
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 58096.24204332319,
+        "count": 10736787
+      }
+    },
+    "upload_image_requests": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 209.18407524875622,
+        "min": 1.776,
+        "med": 56.316,
+        "max": 7862.287,
+        "p(90)": 474.31770000000006,
+        "p(95)": 623.9880499999998
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 61449675,
+        "rate": 332501.25873630034
+      }
+    },
+    "vus_max": {
+      "values": {
+        "value": 10,
+        "min": 10,
+        "max": 10
+      },
+      "type": "gauge",
+      "contains": "default"
+    },
+    "create_appointment_response_time": {
+      "values": {
+        "p(90)": 11.058000000000002,
+        "p(95)": 16.033999999999995,
+        "avg": 8.876739726027404,
+        "min": 4.921,
+        "med": 6.827,
+        "max": 93.266
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      },
+      "type": "trend",
+      "contains": "default"
+    },
+    "upload_image_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "fails": 803,
+        "rate": 0,
+        "passes": 0
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "create_appointment_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 803
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0.003,
+        "med": 0.024,
+        "max": 2.661,
+        "p(90)": 0.073,
+        "p(95)": 0.096,
+        "avg": 0.03579975124378123
+      }
+    },
+    "send_message_response_time": {
+      "values": {
+        "p(90)": 965.6486000000001,
+        "p(95)": 1150.1634999999999,
+        "avg": 619.4585080946451,
+        "min": 399.373,
+        "med": 451.561,
+        "max": 7862.287
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      },
+      "type": "trend",
+      "contains": "default"
+    },
+    "upload_image_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 542.6230249066002,
+        "min": 406.652,
+        "med": 454.754,
+        "max": 1510.709,
+        "p(90)": 940.8050000000001,
+        "p(95)": 1142.2879
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      }
+    },
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 1.723,
+        "med": 56.2055,
+        "max": 7862.177,
+        "p(90)": 474.1703,
+        "p(95)": 623.8332999999998,
+        "avg": 209.05393034825846
+      }
+    },
+    "detail_consultation_failed": {
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 803
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      },
+      "type": "rate",
+      "contains": "default"
+    },
+    "login_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "min": 55.327,
+        "med": 65.862,
+        "max": 426.123,
+        "p(90)": 90.1224,
+        "p(95)": 95.06979999999999,
+        "avg": 73.29085803237862
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "create_appointment_requests": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 803,
+        "rate": 4.344994676786317
+      }
+    },
+    "login_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 803
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.9987551867219917,
+        "passes": 9628,
+        "fails": 12
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.0025310945273631837,
+        "min": 0,
+        "med": 0,
+        "max": 2.029,
+        "p(90)": 0,
+        "p(95)": 0
+      }
+    },
+    "http_reqs": {
+      "contains": "default",
+      "values": {
+        "count": 4824,
+        "rate": 26.102433774367608
+      },
+      "type": "counter"
+    },
+    "list_appointment_response_time": {
+      "contains": "default",
+      "values": {
+        "p(90)": 6.4164,
+        "p(95)": 8.165,
+        "avg": 5.956428393524278,
+        "min": 3.537,
+        "med": 4.899,
+        "max": 88.626
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      },
+      "type": "trend"
+    }
+  },
+  "setup_data": {
+    "clinicBranchId": "",
+    "dentistProfileId": "365",
+    "dentistToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3ODIiLCJyb2xlcyI6WyJkZW50aXN0Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODQ5NzU4LCJleHAiOjE3ODM0NDE3NTh9.K2pP4r2_tp2mbPC9bSy_a-BvuAWXGd_wTorfKSsZ8GM",
+    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODQ5NzU4LCJleHAiOjE3ODM0NDE3NTh9.YUItyhRO2OEmbnlIKYn5j3RMq0gBbEdAAzkfnC9xdF8",
+    "runSeed": 49758,
+    "appointmentId": "408"
+  }
+}
