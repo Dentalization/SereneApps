@@ -1,0 +1,34 @@
+{
+  "componentId": "backend-appointment",
+  "component": "Backend - Appointment",
+  "tool": "Node.js test runner",
+  "status": "passed",
+  "command": [
+    "node",
+    "--test",
+    "--experimental-test-coverage",
+    "--test-coverage-exclude=tests/**",
+    "--test-concurrency=1",
+    "tests/appointments.week2.test.js",
+    "tests/patient_journey.test.js",
+    "tests/treatmentPlans.continuity.test.js"
+  ],
+  "cwd": "/Users/adrianhalim/SereneApps/backend",
+  "startedAt": "2026-06-07T19:42:14.052Z",
+  "finishedAt": "2026-06-07T19:42:15.231Z",
+  "exitCode": 0,
+  "signal": null,
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "passRate": 100,
+  "coverage": {
+    "linesPct": 78.9,
+    "branchesPct": 49.86,
+    "functionsPct": 32.91,
+    "source": "node:test --experimental-test-coverage",
+    "evidencePath": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-appointment/coverage.txt",
+    "rawV8CoverageDir": "/Users/adrianhalim/SereneApps/Pengujian Latency, Tetability, dan Maintability/testability/coverage/backend-appointment/v8"
+  }
+}

@@ -1,0 +1,7 @@
+"Komponen","Tool","Jumlah Test Case","Passed","Failed","Pass Rate","Code Coverage"
+"Backend - Authentication","Node.js test runner",13,13,0,100.00%,45.51%
+"Backend - Appointment","Node.js test runner",5,5,0,100.00%,78.90%
+"Backend - Consultation / Chat","Node.js test runner",31,31,0,100.00%,19.61%
+"Backend - CDSS Integration","Node.js test runner",34,33,0,97.06%,68.52%
+"Aplikasi web","Node.js test runner",78,78,0,100.00%,54.58%
+"Aplikasi mobile","Jest",18,18,0,100.00%,1.15%

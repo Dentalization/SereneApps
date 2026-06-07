@@ -124,7 +124,7 @@ const upload = multer({
 // Helper: find user by email
 async function findUserByEmail(email) {
   const { rows } = await query(
-    `select id, email, password_hash, roles, name, phone_number, about, avatar_url, last_login_at
+    `select id, email, password_hash, roles, name, phone_number, about, avatar_url, last_login_at, clinic_id
      from users where email = $1`,
     [email]
   );
