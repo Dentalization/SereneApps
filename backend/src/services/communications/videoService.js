@@ -8,6 +8,13 @@ const prisma = new PrismaClient();
 
 export default class VideoService {
   constructor() {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      this.accountSid = 'mock_account_sid';
+      this.apiKeySid = 'mock_api_key_sid';
+      this.apiKeySecret = 'mock_api_key_secret';
+      this.webhookBaseUrl = 'mock_webhook_base_url';
+      return;
+    }
     const config = getTwilioStandardKeyConfig();
     this.client = twilio(config.apiKeySid, config.apiKeySecret, { accountSid: config.accountSid });
     this.accountSid = config.accountSid;
@@ -38,26 +45,30 @@ export default class VideoService {
     }
 
     let roomSid;
-    const apiPrefix = `/${process.env.API_VERSION || 'v1'}`;
-    const callbackBase = this.webhookBaseUrl.endsWith(apiPrefix)
-      ? this.webhookBaseUrl
-      : `${this.webhookBaseUrl}${apiPrefix}`;
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      roomSid = `mock_room_${Math.random().toString(36).substring(2, 12)}`;
+    } else {
+      const apiPrefix = `/${process.env.API_VERSION || 'v1'}`;
+      const callbackBase = this.webhookBaseUrl.endsWith(apiPrefix)
+        ? this.webhookBaseUrl
+        : `${this.webhookBaseUrl}${apiPrefix}`;
 
-    try {
-      const room = await this.client.video.v1.rooms.create({
-        uniqueName: roomName,
-        type: 'group',
-        statusCallback: this.webhookBaseUrl
-          ? `${callbackBase}/webhooks/twilio/video`
-          : undefined
-      });
-      roomSid = room.sid;
-    } catch (err) {
-      if (err.code === 53113) {
-        const room = await this.client.video.v1.rooms(roomName).fetch();
+      try {
+        const room = await this.client.video.v1.rooms.create({
+          uniqueName: roomName,
+          type: 'group',
+          statusCallback: this.webhookBaseUrl
+            ? `${callbackBase}/webhooks/twilio/video`
+            : undefined
+        });
         roomSid = room.sid;
-      } else {
-        throw err;
+      } catch (err) {
+        if (err.code === 53113) {
+          const room = await this.client.video.v1.rooms(roomName).fetch();
+          roomSid = room.sid;
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -79,6 +90,15 @@ export default class VideoService {
   }
 
   async generateVideoToken({ identity, roomName, ttl = 14400 }) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      const mockToken = `mock_video_token_${Math.random().toString(36).substring(2, 12)}`;
+      return {
+        token: mockToken,
+        roomName,
+        identity,
+        expiresAt: new Date(Date.now() + ttl * 1000).toISOString()
+      };
+    }
     const AccessToken = twilio.jwt.AccessToken;
     const VideoGrant = AccessToken.VideoGrant;
 
@@ -101,6 +121,14 @@ export default class VideoService {
   }
 
   async getRoom(roomSid) {
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      return {
+        sid: roomSid,
+        status: 'in-progress',
+        duration: 0,
+        participants: []
+      };
+    }
     const room = await this.client.video.v1.rooms(roomSid).fetch();
     return {
       sid: room.sid,
@@ -112,6 +140,9 @@ export default class VideoService {
 
   async disconnectParticipant({ roomSid, identity }) {
     if (!roomSid || !identity) return { disconnected: false };
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      return { disconnected: true };
+    }
     try {
       await this.client.video.v1
         .rooms(roomSid)
@@ -128,6 +159,9 @@ export default class VideoService {
 
   async completeRoom(roomSid) {
     if (!roomSid) return { ended: false };
+    if (process.env.TWILIO_MOCK_MODE === 'true') {
+      return { ended: true, roomSid, status: 'completed' };
+    }
     try {
       const room = await this.client.video.v1.rooms(roomSid).update({ status: 'completed' });
       return { ended: true, roomSid: room.sid, status: room.status };

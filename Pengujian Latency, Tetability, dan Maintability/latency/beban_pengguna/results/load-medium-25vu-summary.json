@@ -1,0 +1,328 @@
+{
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 301703.314
+  },
+  "metrics": {
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 2162.745625,
+        "p(90)": 1664.0127668,
+        "p(95)": 1785.7617665999999,
+        "avg": 1568.8548695846298,
+        "min": 1126.507334,
+        "med": 1542.853959
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 10.204,
+        "p(90)": 0.114,
+        "p(95)": 0.154,
+        "avg": 0.07097806360306283,
+        "min": 0.005,
+        "med": 0.045
+      }
+    },
+    "http_req_connecting": {
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 0.722,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0.00023855311355311354
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 925.553,
+        "p(90)": 330.7517000000001,
+        "p(95)": 407.49654999999996,
+        "avg": 113.30753850316438,
+        "min": 1.508,
+        "med": 49.45
+      }
+    },
+    "http_req_tls_handshaking": {
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0
+      },
+      "type": "trend"
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 364520864,
+        "rate": 1208209.6784657792
+      }
+    },
+    "group_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 407.6153294,
+        "avg": 113.47807280095822,
+        "min": 1.5435,
+        "med": 49.578625,
+        "max": 925.829375,
+        "p(90)": 330.8579164
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 24024
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "max": 25,
+        "value": 25,
+        "min": 25
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 1.508,
+        "med": 49.45,
+        "max": 925.553,
+        "p(90)": 330.7517000000001,
+        "p(95)": 407.49654999999996,
+        "avg": 113.30753850316438
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 330.71650000000005,
+        "p(95)": 407.448,
+        "avg": 113.21113174325635,
+        "min": 1.485,
+        "med": 49.345,
+        "max": 925.453
+      }
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 24024,
+        "rate": 79.62789563524649
+      }
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0.001,
+        "med": 0.013,
+        "max": 13.026,
+        "p(90)": 0.041,
+        "p(95)": 0.058,
+        "avg": 0.025428696303694997
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 25,
+        "min": 25,
+        "max": 25
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.005518106893106897,
+        "min": 0,
+        "med": 0.003,
+        "max": 10.634,
+        "p(90)": 0.006,
+        "p(95)": 0.009
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 24017,
+        "fails": 0
+      }
+    },
+    "iterations": {
+      "values": {
+        "count": 4803,
+        "rate": 15.919613001002702
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "data_sent": {
+      "contains": "data",
+      "values": {
+        "count": 61171402,
+        "rate": 202753.49709947172
+      },
+      "type": "counter"
+    }
+  },
+  "setup_data": {
+    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODU1MzcwLCJleHAiOjE3ODM0NDczNzB9.t2EnQ6PaMwPv0pieGi742Dql5-E6OQBtLN-nvub0U6Y",
+    "appointmentId": "2995"
+  },
+  "root_group": {
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [
+      {
+        "checks": [
+          {
+            "name": "setup create appointment status 201",
+            "path": "::setup::setup create appointment status 201",
+            "id": "ff63648de4966b1e7d757765e10b0a41",
+            "passes": 1,
+            "fails": 0
+          },
+          {
+            "name": "setup confirm appointment status 200",
+            "path": "::setup::setup confirm appointment status 200",
+            "id": "00b8f929f1b539b84b6293102af0a408",
+            "passes": 1,
+            "fails": 0
+          }
+        ],
+        "name": "setup",
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": []
+      },
+      {
+        "groups": [],
+        "checks": [
+            {
+              "passes": 4803,
+              "fails": 0,
+              "name": "login status 200",
+              "path": "::1. Login pengguna::login status 200",
+              "id": "a226603a9536c8d7652f1645b8daedc4"
+            }
+          ],
+        "name": "1. Login pengguna",
+        "path": "::1. Login pengguna",
+        "id": "32ba0ced2dd7be86b69c81642637acdc"
+      },
+      {
+        "checks": [
+          {
+            "name": "list appointment status 200",
+            "path": "::2. Ambil daftar appointment::list appointment status 200",
+            "id": "1e08c0552b12b4bbe351a61a3d041122",
+            "passes": 4803,
+            "fails": 0
+          }
+        ],
+        "name": "2. Ambil daftar appointment",
+        "path": "::2. Ambil daftar appointment",
+        "id": "217c5cfd1b7036e0f2f1ec1611e35b70",
+        "groups": []
+      },
+      {
+        "groups": [],
+        "checks": [
+            {
+              "name": "detail consultation status 200",
+              "path": "::3. Ambil detail konsultasi::detail consultation status 200",
+              "id": "635424a3b66d30855cebc9f694f39d4a",
+              "passes": 4803,
+              "fails": 0
+            }
+          ],
+        "name": "3. Ambil detail konsultasi",
+        "path": "::3. Ambil detail konsultasi",
+        "id": "d95af564ddb9be9c7a8109833fdb6fd8"
+      },
+      {
+        "id": "87562458f853b8ea4c8fb59100abf779",
+        "groups": [],
+        "checks": [
+            {
+              "name": "send message status 201",
+              "path": "::4. Kirim pesan konsultasi::send message status 201",
+              "id": "8cba8e29e633462277babeecc0dadeb5",
+              "passes": 4803,
+              "fails": 0
+            }
+          ],
+        "name": "4. Kirim pesan konsultasi",
+        "path": "::4. Kirim pesan konsultasi"
+      },
+      {
+        "name": "5. Unggah citra gigi",
+        "path": "::5. Unggah citra gigi",
+        "id": "5b8aecf9ec39cfb1d3be0591aed71345",
+        "groups": [],
+        "checks": [
+            {
+              "name": "upload image accepted",
+              "path": "::5. Unggah citra gigi::upload image accepted",
+              "id": "17e90c762757ddcb3056437f64d3e53d",
+              "passes": 4803,
+              "fails": 0
+            }
+          ]
+      }
+    ],
+    "checks": [],
+    "name": ""
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  }
+}

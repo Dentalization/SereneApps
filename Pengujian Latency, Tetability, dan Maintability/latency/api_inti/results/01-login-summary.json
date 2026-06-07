@@ -1,0 +1,23 @@
+{
+  "state": {
+    "testRunDurationMs": 5376
+  },
+  "metrics": {
+    "login_response_time": {
+      "values": {
+        "avg": 74.26,
+        "p(95)": 81.82
+      }
+    },
+    "login_requests": {
+      "values": {
+        "count": 5
+      }
+    },
+    "login_failed": {
+      "values": {
+        "rate": 0
+      }
+    }
+  }
+}
