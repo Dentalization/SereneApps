@@ -54,6 +54,7 @@ web/build/
 # Testing
 coverage/
 .nyc_output/
+.maintainability-venv/
 
 # Misc
 *.pem
