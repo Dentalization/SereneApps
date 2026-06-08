@@ -10,7 +10,10 @@
     "seed": "node src/seed.js",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:journey": "node tests/patient_journey.test.js",
-    "test:otp": "node --test --test-concurrency=1 tests/otp.service.test.js tests/otp.routes.test.js"
+    "test:otp": "node --test --test-concurrency=1 tests/otp.service.test.js tests/otp.routes.test.js",
+    "lint:report": "mkdir -p ../maintainability-results && npx --yes eslint@9.39.4 \"src/**/*.js\" --config eslint.config.cjs --format json --output-file ../maintainability-results/eslint-backend.json || true",
+    "maintainability:eslint": "npm run lint:report",
+    "maintainability:radon": "cd .. && bash scripts/maintainability/run-radon-reports.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.16.1",

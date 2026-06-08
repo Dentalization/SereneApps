@@ -84,7 +84,9 @@
     "test:ai": "node --test tests/deepDentalAiContract.test.mjs tests/deepDentalRenderingSafety.test.mjs tests/clinicalArtifactStore.test.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "i18n:audit:keys": "node scripts/i18n-audit.mjs --fail-on-missing-keys",
-    "i18n:coverage": "node scripts/i18n-audit.mjs --fail-on-missing-keys --fail-on-parity"
+    "i18n:coverage": "node scripts/i18n-audit.mjs --fail-on-missing-keys --fail-on-parity",
+    "lint:report": "mkdir -p ../maintainability-results && npx --yes eslint@9.39.4 \"src/**/*.{js,jsx,mjs}\" --config eslint.config.cjs --format json --output-file ../maintainability-results/eslint-web.json || true",
+    "maintainability:eslint": "npm run lint:report"
   },
   "eslintConfig": {
     "extends": [

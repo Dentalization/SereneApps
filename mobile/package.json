@@ -7,7 +7,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "jest"
+    "test": "jest",
+    "lint:report": "mkdir -p ../maintainability-results && npx --yes eslint@9.39.4 \"src/**/*.{js,jsx}\" --config eslint.config.cjs --format json --output-file ../maintainability-results/eslint-mobile.json || true",
+    "maintainability:eslint": "npm run lint:report"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
