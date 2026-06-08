@@ -1,0 +1,58 @@
+{
+  "projectKey": "Dentalization_SereneApps",
+  "dashboardUrl": "https://sonarcloud.io/dashboard?id=Dentalization_SereneApps",
+  "projectName": "SereneApps Teledentistry",
+  "qualityGateStatus": "NONE",
+  "lastAnalysisDate": "2026-06-08T06:20:09+0000",
+  "lastAnalysisKey": "79aa94c5-ddcd-4cc7-8493-645e128b84ad",
+  "measures": {
+    "coverage": "0.4",
+    "complexity": "8627",
+    "bugs": "34",
+    "code_smells": "1390",
+    "duplicated_lines_density": "7.9",
+    "duplicated_lines": "3634",
+    "cognitive_complexity": "5542",
+    "ncloc": "39998",
+    "vulnerabilities": "129",
+    "security_hotspots": "25",
+    "sqale_index": "9592",
+    "sqale_rating": "1.0"
+  },
+  "componentTreeCount": 273,
+  "fileLevelGroupSums": {
+    "mobile": {
+      "componentCount": 61,
+      "fileCount": 42,
+      "ncloc": 11036.0,
+      "code_smells": 397.0,
+      "complexity": 2439.0,
+      "cognitive_complexity": 1548.0,
+      "bugs": 0.0,
+      "vulnerabilities": 0.0,
+      "security_hotspots": 4.0
+    },
+    "web": {
+      "componentCount": 105,
+      "fileCount": 65,
+      "ncloc": 15548.0,
+      "code_smells": 715.0,
+      "complexity": 3508.0,
+      "cognitive_complexity": 1633.0,
+      "bugs": 21.0,
+      "vulnerabilities": 0.0,
+      "security_hotspots": 13.0
+    },
+    "backend": {
+      "componentCount": 107,
+      "fileCount": 40,
+      "ncloc": 13414.0,
+      "code_smells": 276.0,
+      "complexity": 2680.0,
+      "cognitive_complexity": 2361.0,
+      "bugs": 13.0,
+      "vulnerabilities": 129.0,
+      "security_hotspots": 8.0
+    }
+  }
+}

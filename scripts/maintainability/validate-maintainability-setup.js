@@ -15,12 +15,14 @@ const requiredFiles = [
   'mobile/eslint.config.cjs',
 ];
 
-const forbiddenSecretFragments = [
-  '9b89af6cf0581117f29dc70caf0fa50702046a3e',
-];
-
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), 'utf8'));
+}
+
+function containsCommittedSonarToken(content) {
+  const directPropertyToken = /sonar\.(?:token|login)\s*=\s*["']?[A-Za-z0-9_-]{20,}["']?/i;
+  const directEnvironmentToken = /SONAR_TOKEN\s*[:=]\s*["']?(?!\$\{\{\s*secrets\.SONAR_TOKEN\s*\}\})(?!<)[A-Za-z0-9_-]{20,}["']?/;
+  return directPropertyToken.test(content) || directEnvironmentToken.test(content);
 }
 
 function assert(condition, message) {
@@ -35,13 +37,19 @@ for (const file of requiredFiles) {
 
 const sonarProperties = fs.readFileSync(path.join(root, 'sonar-project.properties'), 'utf8');
 assert(sonarProperties.includes('sonar.projectKey='), 'sonar-project.properties must define sonar.projectKey');
+assert(sonarProperties.includes('sonar.organization='), 'sonar-project.properties must define sonar.organization');
+assert(sonarProperties.includes('sonar.host.url=https://sonarcloud.io'), 'sonar-project.properties must define the SonarCloud host URL');
 assert(sonarProperties.includes('sonar.sources='), 'sonar-project.properties must define sonar.sources');
+assert(sonarProperties.includes('sonar.inclusions='), 'sonar-project.properties must define the thesis core Sonar scope');
 assert(sonarProperties.includes('sonar.exclusions='), 'sonar-project.properties must define sonar.exclusions');
-assert(sonarProperties.includes('SERENEAPPS_PROJECT_KEY_REPLACE_ME'), 'sonar.projectKey must use a clear placeholder');
+assert(!sonarProperties.includes('SERENEAPPS_PROJECT_KEY_REPLACE_ME'), 'sonar.projectKey placeholder must be replaced before final analysis');
+assert(!sonarProperties.includes('SERENEAPPS_ORGANIZATION_REPLACE_ME'), 'sonar.organization placeholder must be replaced before final analysis');
 
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/sonarqube-maintainability.yml'), 'utf8');
 assert(workflow.includes('SonarSource/sonarqube-scan-action@v7'), 'workflow must use the official SonarSource scan action');
 assert(workflow.includes('secrets.SONAR_TOKEN'), 'workflow must read SONAR_TOKEN from GitHub Actions secrets');
+assert(workflow.includes('SONAR_HOST_URL: https://sonarcloud.io'), 'workflow must target SonarCloud explicitly');
+assert(workflow.includes('SONAR_SCANNER_JAVA_OPTS: -Xmx4096m'), 'workflow must provide enough heap for the Sonar scanner');
 assert(workflow.includes('maintainability-results'), 'workflow must upload maintainability-results artifacts');
 
 const rootPackage = readJson('package.json');
@@ -64,9 +72,7 @@ const searchableFiles = [
 
 for (const file of searchableFiles) {
   const content = fs.readFileSync(path.join(root, file), 'utf8');
-  for (const secret of forbiddenSecretFragments) {
-    assert(!content.includes(secret), `Secret-like token value must not be committed in ${file}`);
-  }
+  assert(!containsCommittedSonarToken(content), `Secret-like Sonar token value must not be committed in ${file}`);
 }
 
 console.log('Maintainability setup validation passed.');

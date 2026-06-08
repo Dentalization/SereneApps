@@ -55,6 +55,7 @@ web/build/
 coverage/
 .nyc_output/
 .maintainability-venv/
+.scannerwork/
 
 # Misc
 *.pem

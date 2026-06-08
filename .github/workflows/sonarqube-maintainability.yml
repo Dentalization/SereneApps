@@ -58,4 +58,5 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_SCANNER_JAVA_OPTS: -Xmx4096m
