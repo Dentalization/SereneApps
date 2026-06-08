@@ -17,18 +17,23 @@ No production credentials are required for ESLint or Radon. Do not commit Sonar 
 | Mobile application | `mobile/src/**/*.{js,jsx}` | `maintainability-results/eslint-mobile.json` |
 | CDSS Python service | `backend/python_service/**/*.py` excluding tests/cache | `maintainability-results/radon-cdss-*.json` |
 
-The Sonar scan is configured in `sonar-project.properties` and covers `backend/src`, `web/src`, `mobile/src`, and `backend/python_service`.
+The Sonar scan is configured in `sonar-project.properties`. The base source roots are `backend/src`, `web/src`, `mobile/src`, and `backend/python_service`, with `sonar.inclusions` narrowing the final SonarCloud scan to the thesis core modules: authentication, appointment, consultation/chat, CDSS integration, doctor/clinic/admin dashboard data flows, and patient-facing mobile appointment/CDSS flows. This keeps the private SonarCloud Free project under the organization LOC limit while preserving the evaluated thesis scope.
 
-## Required Sonar Configuration
+## Sonar Configuration
 
-Before running the GitHub Action, replace these placeholders in `sonar-project.properties`:
+The current SonarCloud-style values in `sonar-project.properties` are:
 
 ```properties
-sonar.projectKey=SERENEAPPS_PROJECT_KEY_REPLACE_ME
-sonar.organization=SERENEAPPS_ORGANIZATION_REPLACE_ME
+sonar.projectKey=Dentalization_SereneApps
+sonar.organization=dentalization
+sonar.host.url=https://sonarcloud.io
 ```
 
-For SonarQube Server, also configure `SONAR_HOST_URL` as a GitHub Actions repository variable. For SonarCloud, keep the organization and project key from SonarCloud and use `SONAR_TOKEN` as a repository secret.
+Confirm these values against the Sonar project Information page before final thesis analysis. If SonarQube Cloud created different keys, copy the exact project key and organization key into `sonar-project.properties`. For SonarCloud, keep the organization and project key from SonarCloud and use `SONAR_TOKEN` as a repository secret.
+
+The project must use one analysis method. For CI-based scans through GitHub Actions or `sonar-scanner`, disable SonarCloud Automatic Analysis from the project Administration > Analysis Method page.
+
+The final SonarCloud scan intentionally uses `sonar.inclusions` because a full repository scan is above the private Free-plan LOC limit. If the SonarCloud organization is upgraded or the project is made eligible for a larger LOC allowance, remove or expand `sonar.inclusions` and rerun the scan to report full-repository Sonar metrics.
 
 ## Local Commands
 
@@ -54,7 +59,16 @@ Run Sonar locally if `sonar-scanner` is installed:
 
 ```bash
 export SONAR_TOKEN="<use a local token, do not commit it>"
+export SONAR_SCANNER_JAVA_OPTS="-Xmx4096m"
 sonar-scanner -Dsonar.token="$SONAR_TOKEN"
+```
+
+Or run the pinned npm scanner without installing a global binary:
+
+```bash
+export SONAR_TOKEN="<use a local token, do not commit it>"
+export SONAR_SCANNER_JAVA_OPTS="-Xmx4096m"
+npx --yes @sonar/scan@4.3.6
 ```
 
 For SonarQube Server local runs, add:
@@ -68,8 +82,8 @@ sonar-scanner -Dsonar.token="$SONAR_TOKEN" -Dsonar.host.url="https://your-sonarq
 The workflow is `.github/workflows/sonarqube-maintainability.yml`.
 
 1. Add repository secret `SONAR_TOKEN`.
-2. For SonarQube Server only, add repository variable `SONAR_HOST_URL`.
-3. Run the workflow manually from GitHub Actions, or trigger it on `push` / `pull_request` to `main` or `master`.
+2. Ensure Automatic Analysis is disabled for the SonarCloud project.
+3. Run the workflow manually from GitHub Actions, or trigger it on `push` / `pull_request` to `main` or `master`. The workflow sets `SONAR_SCANNER_JAVA_OPTS=-Xmx4096m` so the Java scanner has enough heap for the combined backend/web/mobile/CDSS scan.
 4. Download the `maintainability-results` artifact for ESLint and Radon JSON evidence.
 5. Read Sonar maintainability metrics from the SonarQube/SonarCloud project dashboard.
 
@@ -85,6 +99,8 @@ The workflow is `.github/workflows/sonarqube-maintainability.yml`.
 | `maintainability-results/radon-cdss-mi.json` | Raw Radon maintainability index results |
 | `maintainability-results/radon-cdss-raw.json` | Raw Radon LOC/comment metrics |
 | `maintainability-results/radon-cdss-summary.json` | CDSS complexity and maintainability index summary |
+| `maintainability-results/sonar-measures.json` | Raw Sonar Web API response after final scan |
+| `maintainability-results/sonar-summary.json` | Extracted Sonar measures for thesis copying |
 
 ## Thesis Table Template
 
@@ -108,6 +124,6 @@ Sonar metric keys useful for Chapter IV:
 Optional Sonar Web API query after a scan:
 
 ```bash
-curl -u "$SONAR_TOKEN:" \
-  "$SONAR_HOST_URL/api/measures/component?component=<project-key>&metricKeys=code_smells,sqale_index,complexity,duplicated_lines_density,sqale_rating"
+curl -H "Authorization: Bearer $SONAR_TOKEN" \
+  "https://sonarcloud.io/api/measures/component?component=<project-key>&metricKeys=code_smells,sqale_index,complexity,duplicated_lines_density,sqale_rating"
 ```
