@@ -1,0 +1,16 @@
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"upload_request_received","timestamp":"2026-06-17T06:22:55.325Z","details":{"caseId":"synthetic-opg-c5","iteration":"3","fileSize":"114470","fileCount":1}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"upload_saved","timestamp":"2026-06-17T06:22:55.328Z","details":{"folderName":"1781677375328"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"metadata_parse_requested","timestamp":"2026-06-17T06:22:55.328Z","details":{"folderName":"1781677375328"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"metadata_parse_completed","timestamp":"2026-06-17T06:22:55.361Z","details":{"folderName":"1781677375328","modality":"2D"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"conversion_requested","timestamp":"2026-06-17T06:22:55.370Z","details":{"studyId":"278","folderName":"1781677375328"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"dicom_scan_start","timestamp":"2026-06-17T06:22:55.379Z","details":{"studyId":"1781677375328"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"dicom_scan_end","timestamp":"2026-06-17T06:22:55.380Z","details":{"studyId":"1781677375328","series_count":1}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"series_grouping_start","timestamp":"2026-06-17T06:22:55.380Z","details":{"studyId":"1781677375328"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"series_grouping_end","timestamp":"2026-06-17T06:22:55.382Z","details":{"studyId":"1781677375328","series":{"pan_opg_c360ecd1e62cb2560c9b28cf4f93914d":{"modality":"Panoramic","classification":"2D","num_files":1}}}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"classification_result","timestamp":"2026-06-17T06:22:55.382Z","details":{"studyId":"1781677375328","seriesUid":"pan_opg_c360ecd1e62cb2560c9b28cf4f93914d","modality":"Panoramic","classification":"2D","numFiles":1}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"image_generation_start","timestamp":"2026-06-17T06:22:55.383Z","details":{"studyId":"1781677375328","seriesUid":"pan_opg_c360ecd1e62cb2560c9b28cf4f93914d","classification":"2D","numFiles":1}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"image_generation_end","timestamp":"2026-06-17T06:22:55.389Z","details":{"studyId":"1781677375328","seriesUid":"pan_opg_c360ecd1e62cb2560c9b28cf4f93914d","status":"success","output_size_bytes":189886}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"manifest_persisted","timestamp":"2026-06-17T06:22:55.390Z","details":{"studyId":"1781677375328","series_count":1,"manifest_size_bytes":458}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"conversion_completed","timestamp":"2026-06-17T06:22:55.391Z","details":{"studyId":"1781677375328","generated_files":["thumb_pan_opg_c360ecd1e62cb2560c9b28cf4f93914d.jpg","series_manifest.json","image_pan_opg_c360ecd1e62cb2560c9b28cf4f93914d.jpg","synthetic_opg_003.png"]}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"deletion_start","timestamp":"2026-06-17T06:22:55.878Z","details":{"studyId":"278"}}
+{"runId":"paper_cdss_concurrent_5_1781677375307_03","eventType":"deletion_completed","timestamp":"2026-06-17T06:22:55.883Z","details":{"studyId":"278"}}

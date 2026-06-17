@@ -219,11 +219,23 @@ function computeEventTimings(runId) {
   };
 }
 
-async function pollConversionReady(config, folderName) {
+function hasCompletionEvent(runId) {
+  const backendEvents = readJsonl(path.join(rawEventDir, `backend-events-${runId}.jsonl`));
+  const pythonEvents = readJsonl(path.join(rawEventDir, `python-events-${runId}.jsonl`));
+  return [...backendEvents, ...pythonEvents].some((event) => (
+    event.runId === runId
+    && ['manifest_persisted', 'conversion_completed'].includes(event.eventType)
+  ));
+}
+
+async function pollConversionReady(config, folderName, runId) {
   const startedAt = performance.now();
   let status = 'pending';
   let lastPayload = null;
   while (performance.now() - startedAt < config.timeoutMs) {
+    if (hasCompletionEvent(runId)) {
+      return { status: 'ready', durationMs: performance.now() - startedAt, payload: { source: 'benchmark_event_log' } };
+    }
     try {
       lastPayload = await fetchJson(`${config.pythonServiceUrl}/status/${folderName}`);
       status = lastPayload.status;
@@ -277,7 +289,7 @@ async function runSingleUpload({ config, authHeader, imageFile, runId, caseId, i
     const folderName = upload.body.folderName;
     if (!folderName) throw new Error(`Upload response did not include folderName: ${JSON.stringify(upload.body)}`);
 
-    const ready = await pollConversionReady(config, folderName);
+    const ready = await pollConversionReady(config, folderName, runId);
     const endToEndMs = performance.now() - uploadStartedAt;
     const eventTimings = computeEventTimings(runId);
 
@@ -499,6 +511,8 @@ async function runConcurrent(config) {
     const success = rows.filter((row) => row.status === 'success');
     const endStats = summarize(success.map((row) => row.end_to_end_processing_time_ms));
     const initStats = summarize(success.map((row) => row.initial_response_time_ms));
+    const queueStats = summarize(success.map((row) => row.queue_time_ms));
+    const inferenceStats = summarize(success.map((row) => row.inference_time_ms));
     const errorRate = rows.length ? ((rows.length - success.length) / rows.length) * 100 : 0;
     return [
       concurrency,
@@ -506,6 +520,8 @@ async function runConcurrent(config) {
       success.length,
       `${errorRate.toFixed(2)}%`,
       formatMs(initStats.mean),
+      formatMs(queueStats.mean),
+      formatMs(inferenceStats.mean),
       formatMs(endStats.mean),
       formatMs(endStats.p95),
     ];
@@ -519,7 +535,7 @@ async function runConcurrent(config) {
 - Synthetic fixture directory: \`${path.relative(root, config.fixtureDir)}\`
 
 ## Results
-${markdownTable(['Concurrent uploads', 'Total', 'Success', 'Error rate', 'Avg initial ms', 'Avg end-to-end ms', 'p95 end-to-end ms'], scenarioRows)}
+${markdownTable(['Concurrent uploads', 'Total', 'Success', 'Error rate', 'Avg initial ms', 'Avg queue ms', 'Avg inference ms', 'Avg end-to-end ms', 'p95 end-to-end ms'], scenarioRows)}
 
 ## Queue Saturation Notes
 Queue saturation should be inferred from increasing queue/end-to-end times and failed uploads. Blank queue fields indicate missing benchmark timestamp events, not zero queueing.

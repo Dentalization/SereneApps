@@ -1,33 +1,33 @@
 # Paper-Ready Evidence Tables
 
-Generated at: 2026-06-17T05:55:34.079Z
+Generated at: 2026-06-17T07:03:28.095Z
 
 ## 1. CDSS Latency n>=30 Result Table
 | Status | Requested n | Successful n | Failed n | Evidence |
 | --- | --- | --- | --- | --- |
-| not_run | 30 | 0 | 0 | paper-evidence/cdss_latency/cdss_latency_results.csv |
+| completed | 30 | 30 | 0 | paper-evidence/cdss_latency/cdss_latency_results.csv |
 
 ## 2. CDSS Latency Summary Statistics
 | Metric | n | Mean ms | Median ms | Min ms | Max ms | SD ms | p90 ms | p95 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| End-to-end processing | 0 | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| End-to-end processing | 30 | 562.85 | 554.82 | 535.61 | 682.67 | 30.95 | 565.34 | 653.54 |
 
-Interpretation: No successful CDSS latency rows were generated because the backend and Python CDSS services were unavailable during this run.
+Interpretation: Successful synthetic CDSS uploads were measured through the asynchronous upload/conversion flow.
 
 ## 3. Load Testing 100/200 VU
 | Scenario | Status | Avg ms | p90 ms | p95 ms | p99 ms | Throughput req/s | Total requests | Failed requests | Error rate / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 100 VU | not_run | N/A | N/A | N/A | N/A | N/A | N/A | N/A | Backend unavailable at http://localhost:4000/health: {"ok":false,"error":"fetch failed"} |
-| 200 VU | not_run | N/A | N/A | N/A | N/A | N/A | N/A | N/A | Backend unavailable at http://localhost:4000/health: {"ok":false,"error":"fetch failed"} |
+| 100 VU | failed_threshold | 140.12 | 538.23 | 573.17 | 776.32 | 255.38 | 77034 | 19262 | 25.00% |
+| 200 VU | failed_threshold | 545.47 | 2133.14 | 2175.91 | 2559.29 | 249.99 | 75782 | 18945 | 25.00% |
 
-Interpretation: 100/200 VU results should be inserted only when status is `completed`. A `not_run` row documents missing local services and is not performance evidence.
+Interpretation: `completed` means the scenario met k6 thresholds. `failed_threshold` rows still contain valid k6 measurements, but the configured error-rate or latency threshold was crossed and should be discussed as a load-limit finding.
 
 ## 4. Concurrent CDSS Upload
 | Concurrent uploads | Total | Success | Error rate | Avg initial ms | Avg queue ms | Avg inference ms | Avg end-to-end ms | p95 end-to-end ms | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2 | 0 | 0 | N/A | N/A | N/A | N/A | N/A | N/A | not_run |
-| 5 | 0 | 0 | N/A | N/A | N/A | N/A | N/A | N/A | not_run |
-| 10 | 0 | 0 | N/A | N/A | N/A | N/A | N/A | N/A | not_run |
+| 2 | 2 | 2 | 0.00% | 62.95 | 4.50 | 5.50 | 567.16 | 570.27 | completed |
+| 5 | 5 | 5 | 0.00% | 58.98 | 8.00 | 7.00 | 562.85 | 568.52 | completed |
+| 10 | 10 | 9 | 10.00% | 77.99 | 9.44 | 8.56 | 580.92 | 595.87 | completed_with_errors |
 
 Interpretation: concurrent CDSS upload behavior should be inferred from queue and end-to-end latency growth once service runs are available.
 

@@ -3,6 +3,7 @@ import { check, group, sleep } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 
 export const options = {
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
     core_api_high_vu: {
       executor: 'constant-vus',
