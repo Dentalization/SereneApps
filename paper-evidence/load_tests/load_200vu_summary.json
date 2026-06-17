@@ -1,14 +1,419 @@
 {
-  "status": "not_run",
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 303137.617
+  },
+  "metrics": {
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 18945,
+        "rate": 62.496367780050214
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 27136533,
+        "rate": 89518.85704109102
+      }
+    },
+    "paper_send_message_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "max": 119.647,
+        "p(90)": 5.9996,
+        "p(95)": 7.264199999999996,
+        "p(99)": 10.743239999999995,
+        "avg": 3.7374803906043708,
+        "min": 0.732,
+        "med": 3.26
+      }
+    },
+    "paper_send_message_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "passes": 18945,
+        "fails": 0,
+        "rate": 1
+      }
+    },
+    "http_reqs": {
+      "values": {
+        "count": 75782,
+        "rate": 249.99206878373002
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "paper_login_response_time": {
+      "contains": "default",
+      "values": {
+        "avg": 2160.930178675101,
+        "min": 66.324,
+        "med": 2122.836,
+        "max": 16245.136,
+        "p(90)": 2228.4772,
+        "p(95)": 2499.1643999999997,
+        "p(99)": 3100.3762399999996
+      },
+      "type": "trend"
+    },
+    "paper_login_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 18945
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 8.058,
+        "max": 16245.136,
+        "p(90)": 2133.1399,
+        "p(95)": 2175.905,
+        "p(99)": 2559.29285,
+        "avg": 545.4683245097775,
+        "min": 0.732
+      },
+      "thresholds": {
+        "p(95)<3000": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 84.989,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0.006806299648993166
+      }
+    },
+    "checks": {
+      "values": {
+        "rate": 0.7500032989799554,
+        "passes": 56836,
+        "fails": 18945
+      },
+      "type": "rate",
+      "contains": "default"
+    },
+    "group_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 16245.508458,
+        "p(90)": 2133.3743375,
+        "p(95)": 2176.16079345,
+        "p(99)": 2559.71552893,
+        "avg": 545.6835518597386,
+        "min": 0.76725,
+        "med": 8.247271000000001
+      }
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0.019,
+        "max": 39.96,
+        "p(90)": 0.032,
+        "p(95)": 0.039949999999996634,
+        "p(99)": 0.093,
+        "avg": 0.023310522287612268,
+        "min": 0.001
+      }
+    },
+    "paper_detail_consultation_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "med": 6.438,
+        "max": 174.78,
+        "p(90)": 10.815800000000003,
+        "p(95)": 12.893599999999998,
+        "p(99)": 20.64228,
+        "avg": 7.218881287938792,
+        "min": 1.715
+      }
+    },
+    "paper_detail_consultation_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 18945
+      }
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 200,
+        "min": 200,
+        "max": 200
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 16245.136,
+        "p(90)": 2149.0164,
+        "p(95)": 2194.23,
+        "p(99)": 2641.2508399999997,
+        "avg": 726.0389183454455,
+        "min": 1.715,
+        "med": 10.165
+      }
+    },
+    "paper_list_appointment_response_time": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 10.040980469780914,
+        "min": 2.968,
+        "med": 9.268,
+        "max": 210.914,
+        "p(90)": 14.115800000000002,
+        "p(95)": 16.3568,
+        "p(99)": 24.076439999999973
+      }
+    },
+    "http_req_waiting": {
+      "contains": "time",
+      "values": {
+        "min": 0.719,
+        "med": 7.942,
+        "max": 16244.99,
+        "p(90)": 2133.034,
+        "p(95)": 2175.8223,
+        "p(99)": 2559.19351,
+        "avg": 545.3640569396504
+      },
+      "type": "trend"
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.2499934021271542,
+        "passes": 18945,
+        "fails": 56837
+      },
+      "thresholds": {
+        "rate<0.05": {
+          "ok": false
+        }
+      }
+    },
+    "http_req_blocked": {
+      "values": {
+        "p(90)": 0.008,
+        "p(95)": 0.01,
+        "p(99)": 0.029,
+        "avg": 0.013382676625053004,
+        "min": 0,
+        "med": 0.005,
+        "max": 85.009
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.08095704784777376,
+        "min": 0.005,
+        "med": 0.069,
+        "max": 7.007,
+        "p(90)": 0.133,
+        "p(95)": 0.16,
+        "p(99)": 0.278
+      }
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 12,
+        "min": 12,
+        "max": 200
+      }
+    },
+    "paper_list_appointment_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 18945
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 3523.3190336,
+        "p(99)": 4125.214295519999,
+        "avg": 3183.3049218704646,
+        "min": 1088.718167,
+        "med": 3145.503333,
+        "max": 17282.905417,
+        "p(90)": 3249.0885832
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 594155809,
+        "rate": 1960020.0558415027
+      }
+    }
+  },
+  "setup_data": {
+    "appointmentId": "2971",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgxNjc5MDc5LCJleHAiOjE3ODQyNzEwNzl9.BUgFDDKmSeNdlvPEnC91Lg9UUWIm-5EM4anz-ZCBlPg"
+  },
+  "root_group": {
+    "groups": [
+      {
+        "name": "setup",
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": [],
+        "checks": [
+          {
+            "name": "setup patient login status 200",
+            "path": "::setup::setup patient login status 200",
+            "id": "15153f55dabce7898059cf7c094751bf",
+            "passes": 1,
+            "fails": 0
+          }
+        ]
+      },
+      {
+        "name": "1. Login pengguna",
+        "path": "::1. Login pengguna",
+        "id": "32ba0ced2dd7be86b69c81642637acdc",
+        "groups": [],
+        "checks": [
+          {
+            "fails": 0,
+            "name": "login status 200",
+            "path": "::1. Login pengguna::login status 200",
+            "id": "a226603a9536c8d7652f1645b8daedc4",
+            "passes": 18945
+          }
+        ]
+      },
+      {
+        "name": "2. Ambil daftar appointment",
+        "path": "::2. Ambil daftar appointment",
+        "id": "217c5cfd1b7036e0f2f1ec1611e35b70",
+        "groups": [],
+        "checks": [
+          {
+            "passes": 18945,
+            "fails": 0,
+            "name": "list appointment status 200",
+            "path": "::2. Ambil daftar appointment::list appointment status 200",
+            "id": "1e08c0552b12b4bbe351a61a3d041122"
+          }
+        ]
+      },
+      {
+        "path": "::3. Ambil detail konsultasi",
+        "id": "d95af564ddb9be9c7a8109833fdb6fd8",
+        "groups": [],
+        "checks": [
+          {
+            "name": "detail consultation status 200",
+            "path": "::3. Ambil detail konsultasi::detail consultation status 200",
+            "id": "635424a3b66d30855cebc9f694f39d4a",
+            "passes": 18945,
+            "fails": 0
+          }
+        ],
+        "name": "3. Ambil detail konsultasi"
+      },
+      {
+        "path": "::4. Kirim pesan konsultasi",
+        "id": "87562458f853b8ea4c8fb59100abf779",
+        "groups": [],
+        "checks": [
+          {
+            "passes": 0,
+            "fails": 18945,
+            "name": "send message status 200/201",
+            "path": "::4. Kirim pesan konsultasi::send message status 200/201",
+            "id": "b1a602242926dc14857610d05cf8fde4"
+          }
+        ],
+        "name": "4. Kirim pesan konsultasi"
+      }
+    ],
+    "checks": [],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)",
+      "p(99)"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": true
+  },
+  "status": "failed_threshold",
   "scenario": "200 VU for 5m",
-  "reason": "Backend unavailable at http://localhost:4000/health: {\"ok\":false,\"error\":\"fetch failed\"}",
+  "exitCode": 99,
+  "reason": "time=\"2026-06-17T13:56:23+07:00\" level=error msg=\"thresholds on metrics 'http_req_failed' have been crossed\"\n",
   "metadata": {
-    "generated_at": "2026-06-17T05:46:50.025Z",
+    "generated_at": "2026-06-17T06:56:23.448Z",
     "hostname": "Adrian-Halim.local",
     "platform": "darwin/arm64",
     "node": "v22.12.0",
     "cwd": "/Users/adrianhalim/SereneApps",
     "apiUrl": "http://localhost:4000/v1",
-    "script": "paper-evidence/load_tests/core_api_high_vu.k6.js"
+    "script": "paper-evidence/load_tests/core_api_high_vu.k6.js",
+    "threshold_failed": true
   }
 }

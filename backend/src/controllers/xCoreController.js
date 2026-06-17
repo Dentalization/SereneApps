@@ -52,7 +52,7 @@ function parseBigIntId(value) {
 export function logBackendEvent(runId, eventType, details = {}) {
     if (!runId) return;
     try {
-        const resultsDir = path.join(__dirname, '../../../../scripts/xcore-benchmark/results/raw');
+        const resultsDir = path.join(__dirname, '../../../scripts/xcore-benchmark/results/raw');
         if (!fs.existsSync(resultsDir)) {
             fs.mkdirSync(resultsDir, { recursive: true });
         }
@@ -1460,4 +1460,3 @@ export const benchmarkCallback = async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
-

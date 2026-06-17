@@ -28,7 +28,7 @@ function statMs(stats, key) {
 function loadStatus(filePath) {
   const summary = readJson(filePath, {});
   if (summary.status === 'not_run' || summary.status === 'failed') return summary.status;
-  if (summary.metrics) return 'completed';
+  if (summary.metrics) return summary.status || 'completed';
   return summary.status || 'missing';
 }
 
@@ -96,14 +96,14 @@ function writeTables() {
       formatMs(inference.mean),
       formatMs(end.mean),
       formatMs(end.p95),
-      rows.length ? 'completed' : 'not_run',
+      rows.length ? (success.length === rows.length ? 'completed' : 'completed_with_errors') : 'not_run',
     ];
   });
 
   const loadRows = [100, 200].map((vu) => {
     const summary = readJson(path.join(evidenceRoot, 'load_tests', `load_${vu}vu_summary.json`), {});
     const status = loadStatus(path.join(evidenceRoot, 'load_tests', `load_${vu}vu_summary.json`));
-    if (status !== 'completed') {
+    if (!summary.metrics) {
       return [`${vu} VU`, status, 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', summary.reason || 'No result'];
     }
     const total = k6Metric(summary, 'http_reqs', 'count') || 0;
@@ -164,7 +164,7 @@ Interpretation: ${successfulLatency.length ? 'Successful synthetic CDSS uploads 
 ## 3. Load Testing 100/200 VU
 ${markdownTable(['Scenario', 'Status', 'Avg ms', 'p90 ms', 'p95 ms', 'p99 ms', 'Throughput req/s', 'Total requests', 'Failed requests', 'Error rate / notes'], loadRows)}
 
-Interpretation: 100/200 VU results should be inserted only when status is \`completed\`. A \`not_run\` row documents missing local services and is not performance evidence.
+Interpretation: \`completed\` means the scenario met k6 thresholds. \`failed_threshold\` rows still contain valid k6 measurements, but the configured error-rate or latency threshold was crossed and should be discussed as a load-limit finding.
 
 ## 4. Concurrent CDSS Upload
 ${markdownTable(['Concurrent uploads', 'Total', 'Success', 'Error rate', 'Avg initial ms', 'Avg queue ms', 'Avg inference ms', 'Avg end-to-end ms', 'p95 end-to-end ms', 'Status'], concurrentTableRows)}

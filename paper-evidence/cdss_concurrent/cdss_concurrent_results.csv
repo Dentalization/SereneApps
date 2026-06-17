@@ -1,1 +1,18 @@
 scenario_concurrency,upload_index,run_id,image_file,image_size_kb,initial_response_time_ms,queue_time_ms,inference_time_ms,persistence_time_ms,end_to_end_processing_time_ms,status,error_message,timestamp
+2,1,paper_cdss_concurrent_2_1781677374699_01,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_001.png,113.99,58.64,6,6,0,564.05,success,,2026-06-17T06:22:54.699Z
+2,2,paper_cdss_concurrent_2_1781677374699_02,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_002.png,112.25,67.26,3,5,0,570.27,success,,2026-06-17T06:22:54.701Z
+5,1,paper_cdss_concurrent_5_1781677375307_01,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_001.png,113.99,52.29,8,9,1,557.15,success,,2026-06-17T06:22:55.307Z
+5,2,paper_cdss_concurrent_5_1781677375307_02,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_002.png,112.25,61.82,9,7,1,564.08,success,,2026-06-17T06:22:55.307Z
+5,3,paper_cdss_concurrent_5_1781677375307_03,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_003.png,111.79,62.61,8,6,1,564.70,success,,2026-06-17T06:22:55.308Z
+5,4,paper_cdss_concurrent_5_1781677375307_04,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_004.png,114.26,52.44,8,7,2,559.78,success,,2026-06-17T06:22:55.308Z
+5,5,paper_cdss_concurrent_5_1781677375307_05,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_005.png,111.90,65.72,7,6,0,568.52,success,,2026-06-17T06:22:55.308Z
+10,1,paper_cdss_concurrent_10_1781677375898_01,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_001.png,113.99,14.65,,,,14.88,failed,"Upload failed with HTTP 500: {""error"":""Internal Server Error""}",2026-06-17T06:22:55.898Z
+10,2,paper_cdss_concurrent_10_1781677375898_02,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_002.png,112.25,83.15,12,7,2,585.71,success,,2026-06-17T06:22:55.899Z
+10,3,paper_cdss_concurrent_10_1781677375898_03,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_003.png,111.79,68.92,6,6,2,571.56,success,,2026-06-17T06:22:55.899Z
+10,4,paper_cdss_concurrent_10_1781677375898_04,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_004.png,114.26,60.83,7,6,2,564.77,success,,2026-06-17T06:22:55.899Z
+10,5,paper_cdss_concurrent_10_1781677375898_05,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_005.png,111.90,93.11,10,11,1,595.87,success,,2026-06-17T06:22:55.899Z
+10,6,paper_cdss_concurrent_10_1781677375898_06,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_006.png,109.51,89.99,13,12,1,592.28,success,,2026-06-17T06:22:55.899Z
+10,7,paper_cdss_concurrent_10_1781677375898_07,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_007.png,112.40,74.43,10,8,2,577.22,success,,2026-06-17T06:22:55.899Z
+10,8,paper_cdss_concurrent_10_1781677375898_08,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_008.png,112.04,70.52,8,7,3,573.28,success,,2026-06-17T06:22:55.899Z
+10,9,paper_cdss_concurrent_10_1781677375898_09,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_009.png,111.02,74.94,11,12,1,578.86,success,,2026-06-17T06:22:55.899Z
+10,10,paper_cdss_concurrent_10_1781677375898_10,paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_010.png,113.39,86.06,8,8,1,588.74,success,,2026-06-17T06:22:55.900Z

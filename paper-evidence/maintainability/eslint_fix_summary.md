@@ -26,7 +26,7 @@ npm run maintainability:eslint
 | Web ESLint errors | 69 | 62 |
 | Web ESLint warnings | 1915 | 1921 |
 | Fixable web errors | 0 | 0 |
-| Fixable web warnings | N/A | 8 |
+| Fixable web warnings | Not captured in baseline | 8 |
 
 ## Files Changed
 

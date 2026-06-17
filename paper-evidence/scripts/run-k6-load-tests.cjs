@@ -64,6 +64,29 @@ function parseSummary(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function hasK6Metrics(summary) {
+  return Boolean(summary?.metrics?.http_req_duration?.values);
+}
+
+function annotateK6Summary(summary, vu, config, status, result) {
+  return {
+    ...summary,
+    status,
+    scenario: `${vu} VU for ${config.duration}`,
+    exitCode: result.status,
+    reason: result.status === 0
+      ? undefined
+      : result.stderr.slice(-4000) || result.stdout.slice(-4000) || `k6 exit code ${result.status}`,
+    metadata: {
+      ...environmentMetadata({
+        apiUrl: config.apiUrl,
+        script: path.relative(root, scriptPath),
+      }),
+      threshold_failed: result.status !== 0,
+    },
+  };
+}
+
 function writeNotRunSummary(vu, config, reason) {
   writeJson(path.join(outputDir, `load_${vu}vu_summary.json`), {
     status: 'not_run',
@@ -99,7 +122,7 @@ function writeMarkdown(config) {
         summary?.reason || 'Summary file not found',
       ];
     }
-    if (summary.status === 'failed') {
+    if (summary.status === 'failed' && !hasK6Metrics(summary)) {
       return [
         `${vu} VU`,
         'failed',
@@ -125,7 +148,7 @@ function writeMarkdown(config) {
 
     return [
       `${vu} VU`,
-      'completed',
+      summary.status || 'completed',
       formatMs(avg),
       formatMs(p90),
       formatMs(p95),
@@ -195,7 +218,19 @@ async function main() {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    if (result.status !== 0) {
+    const k6Summary = parseSummary(summaryFile);
+    if (hasK6Metrics(k6Summary)) {
+      writeJson(
+        summaryFile,
+        annotateK6Summary(
+          k6Summary,
+          vu,
+          config,
+          result.status === 0 ? 'completed' : 'failed_threshold',
+          result,
+        ),
+      );
+    } else if (result.status !== 0) {
       writeJson(summaryFile, {
         status: 'failed',
         scenario: `${vu} VU for ${config.duration}`,
