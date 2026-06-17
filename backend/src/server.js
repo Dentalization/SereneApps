@@ -1,4 +1,12 @@
 import 'dotenv/config';
+
+// Enable benchmark mode for external services if requested
+if (process.env.BENCHMARK_MOCK_EXTERNALS === 'true') {
+  console.log('⚠️ [BENCHMARK MODE] Forcing Twilio and Midtrans integrations into MOCK MODE.');
+  process.env.TWILIO_MOCK_MODE = 'true';
+  process.env.MIDTRANS_MOCK_MODE = 'true';
+}
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

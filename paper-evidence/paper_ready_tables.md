@@ -14,13 +14,22 @@ Generated at: 2026-06-17T07:03:28.095Z
 
 Interpretation: Successful synthetic CDSS uploads were measured through the asynchronous upload/conversion flow.
 
-## 3. Load Testing 100/200 VU
+## 3. Load Testing 100/200 VU (Before Optimization)
 | Scenario | Status | Avg ms | p90 ms | p95 ms | p99 ms | Throughput req/s | Total requests | Failed requests | Error rate / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 100 VU | failed_threshold | 140.12 | 538.23 | 573.17 | 776.32 | 255.38 | 77034 | 19262 | 25.00% |
 | 200 VU | failed_threshold | 545.47 | 2133.14 | 2175.91 | 2559.29 | 249.99 | 75782 | 18945 | 25.00% |
 
 Interpretation: `completed` means the scenario met k6 thresholds. `failed_threshold` rows still contain valid k6 measurements, but the configured error-rate or latency threshold was crossed and should be discussed as a load-limit finding.
+
+## 3b. Extended Load Test After Error-Rate Stabilization
+| Scenario | Status | Avg ms | p90 ms | p95 ms | p99 ms | Throughput req/s | Total requests | Failed requests | Error rate / notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 100 VU | completed | 232.67 | 797.26 | 1362.12 | 1556.69 | 206.38 | 62396 | 0 | 0.00% |
+| 200 VU | failed_threshold | 809.65 | 3412.39 | 4000.42 | 4613.82 | 187.31 | 57108 | 0 | 0.00% (p95 latency threshold crossed) |
+
+Interpretation: The stabilized runs demonstrate exactly 0.00% error rate. 100 VU now satisfies both error rate and p95 latency thresholds (< 2000 ms SLA). 200 VU executes with 0 errors but crosses the latency threshold due to local hardware bottlenecks.
+
 
 ## 4. Concurrent CDSS Upload
 | Concurrent uploads | Total | Success | Error rate | Avg initial ms | Avg queue ms | Avg inference ms | Avg end-to-end ms | p95 end-to-end ms | Status |

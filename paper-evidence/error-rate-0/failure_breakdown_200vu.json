@@ -1,0 +1,15 @@
+{
+  "vus": 200,
+  "duration": "5m",
+  "total_requests": 57108,
+  "error_rate": 0,
+  "metrics": {
+    "errors_by_endpoint": 0,
+    "auth_failures": 0,
+    "validation_failures": 0,
+    "upload_failures": 0,
+    "timeout_failures": 0,
+    "server_5xx_failures": 0
+  },
+  "failures": []
+}
