@@ -11,6 +11,15 @@ const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
     const title = study?.patientName || study?.originalName || study?.folderName || 'Linked Study';
 
     useEffect(() => {
+        if (sharedImageData && !crosshairWorld) {
+            const dims = sharedImageData.getDimensions();
+            const centerIndices = [Math.floor(dims[0] / 2), Math.floor(dims[1] / 2), Math.floor(dims[2] / 2)];
+            const centerWorld = sharedImageData.indexToWorld(centerIndices);
+            setCrosshairWorld(centerWorld);
+        }
+    }, [sharedImageData, crosshairWorld]);
+
+    useEffect(() => {
         const handleCrosshairSync = (event) => {
             const point = event?.detail?.worldPoint;
             if (Array.isArray(point) && point.length === 3) {
@@ -21,8 +30,20 @@ const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
         return () => window.removeEventListener('xcore:mpr_crosshair_sync', handleCrosshairSync);
     }, []);
 
+    const handleCrosshairChange = (point) => {
+        if (Array.isArray(point) && point.length === 3) {
+            setCrosshairWorld(point);
+            window.dispatchEvent(new CustomEvent('xcore:mpr_crosshair_sync', {
+                detail: {
+                    worldPoint: point,
+                    studyKey: study?.studyKey,
+                }
+            }));
+        }
+    };
+
     return (
-        <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+        <div className="linked-viewer-container flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
                 <div className="flex items-center gap-3">
                     <button
@@ -48,14 +69,14 @@ const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
                         onBack={undefined}
                         onSwitchSeries={onSwitchSeries}
                         onVolumeLoaded={setSharedImageData}
-                        onSurfaceClick={setCrosshairWorld}
+                        onSurfaceClick={handleCrosshairChange}
                         linkedMode
                     />
                 </div>
                 <div className="grid min-h-0 grid-rows-3 gap-1">
-                    <SliceViewerMini axis="axial" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
-                    <SliceViewerMini axis="coronal" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
-                    <SliceViewerMini axis="sagittal" imageData={sharedImageData} crosshairWorld={crosshairWorld} />
+                    <SliceViewerMini axis="axial" imageData={sharedImageData} crosshairWorld={crosshairWorld} onCrosshairChange={handleCrosshairChange} />
+                    <SliceViewerMini axis="coronal" imageData={sharedImageData} crosshairWorld={crosshairWorld} onCrosshairChange={handleCrosshairChange} />
+                    <SliceViewerMini axis="sagittal" imageData={sharedImageData} crosshairWorld={crosshairWorld} onCrosshairChange={handleCrosshairChange} />
                 </div>
             </div>
         </div>

@@ -1,0 +1,17 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "apiBaseUrl": "http://localhost:4000/v1",
+  "pythonServiceUrl": "http://localhost:8000",
+  "runLabel": "xcore_single_complete_cbct_repeated_benchmark",
+  "repeatRuns": 5,
+  "autoCleanup": true,
+  "cleanupAfterEachRun": true,
+  "case": {
+    "caseId": "B001",
+    "dentistEmail": "dentist1@test.com",
+    "dentistPassword": "password",
+    "folderPath": "/Users/adrianhalim/SereneApps/test dentist will upload/Patient - 1295.SL",
+    "folderAlias": "representative_cbct_01",
+    "groundTruthClass": "3D"
+  }
+}

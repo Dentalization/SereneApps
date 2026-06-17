@@ -52,12 +52,15 @@ const buildOpacityFunction = () => {
     return ofun;
 };
 
-const SliceViewerMini = ({ axis, imageData, crosshairWorld }) => {
+const SliceViewerMini = ({ axis, imageData, crosshairWorld, onCrosshairChange }) => {
     const containerRef = useRef(null);
     const ctxRef = useRef(null);
     const axisDef = AXES[axis] || AXES.axial;
     const [sliceIndex, setSliceIndex] = useState(0);
     const [dims, setDims] = useState([0, 0, 0]);
+    const [cameraModifiedTick, setCameraModifiedTick] = useState(0);
+    const [crosshairScreen, setCrosshairScreen] = useState(null);
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
     const maxSlice = useMemo(() => Math.max((dims[axisDef.dimIndex] || 1) - 1, 0), [axisDef.dimIndex, dims]);
 
@@ -110,9 +113,30 @@ const SliceViewerMini = ({ axis, imageData, crosshairWorld }) => {
         camera.zoom(1.05);
         renderWindow.render();
 
+        const subscription = camera.onModified(() => {
+            setCameraModifiedTick((t) => t + 1);
+        });
+
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+            const width = Math.round(entry.contentRect.width);
+            const height = Math.round(entry.contentRect.height);
+            if (width > 0 && height > 0) {
+                grw.resize();
+                renderer.resetCamera();
+                camera.zoom(1.05);
+                setContainerSize({ width, height });
+                renderWindow.render();
+            }
+        });
+        observer.observe(containerRef.current);
+
         ctxRef.current = { grw, renderer, renderWindow, mapper, actor, imageData };
 
         return () => {
+            subscription.unsubscribe();
+            observer.disconnect();
             ctxRef.current = null;
             try { mapper.delete(); } catch (_) {}
             try { actor.delete(); } catch (_) {}
@@ -131,36 +155,147 @@ const SliceViewerMini = ({ axis, imageData, crosshairWorld }) => {
         ctx.mapper.setSlice(nextSlice);
         ctx.renderWindow.render();
         setSliceIndex(nextSlice);
-    }, [axisDef.dimIndex, crosshairWorld, imageData, maxSlice]);
+
+        try {
+            const view = ctx.grw.getRenderWindow().getViews?.()?.[0] || ctx.grw.getInteractor?.()?.getView?.();
+            if (view?.worldToDisplay) {
+                const display = view.worldToDisplay(crosshairWorld[0], crosshairWorld[1], crosshairWorld[2], ctx.renderer);
+                const rect = containerRef.current.getBoundingClientRect();
+                const viewSize = view.getSize?.() || [rect.width, rect.height];
+                if (rect.width > 0 && rect.height > 0) {
+                    setCrosshairScreen({
+                        x: (display[0] / Math.max(viewSize[0], 1)) * rect.width,
+                        y: rect.height - ((display[1] / Math.max(viewSize[1], 1)) * rect.height),
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('Failed to calculate crosshair screen position:', err);
+        }
+    }, [axisDef.dimIndex, crosshairWorld, imageData, maxSlice, cameraModifiedTick, containerSize]);
+
+    const displayToWorld = (displayX, displayY) => {
+        const ctx = ctxRef.current;
+        if (!ctx) return null;
+        try {
+            const view = ctx.grw.getRenderWindow().getViews?.()?.[0] || ctx.grw.getInteractor?.()?.getView?.();
+            if (!view?.displayToWorld) return null;
+            const camera = ctx.renderer.getActiveCamera();
+            const focalPoint = camera.getFocalPoint();
+            const displayFocal = view.worldToDisplay(focalPoint[0], focalPoint[1], focalPoint[2], ctx.renderer);
+            const displayZ = displayFocal[2];
+            const world = view.displayToWorld(displayX, displayY, displayZ, ctx.renderer);
+            return Array.isArray(world) ? world.slice(0, 3) : null;
+        } catch (_) {
+            return null;
+        }
+    };
+
+    const getDisplayPoint = (event) => {
+        if (!containerRef.current) return null;
+        const rect = containerRef.current.getBoundingClientRect();
+        const ctx = ctxRef.current;
+        if (!ctx || !rect) return null;
+        const view = ctx.grw.getRenderWindow().getViews?.()?.[0] || ctx.grw.getInteractor?.()?.getView?.();
+        const viewSize = view.getSize?.() || [rect.width, rect.height];
+        const x = ((event.clientX - rect.left) / rect.width) * viewSize[0];
+        const y = (1 - (event.clientY - rect.top) / rect.height) * viewSize[1];
+        return { x, y };
+    };
+
+    const handlePointerAction = (event) => {
+        const displayPoint = getDisplayPoint(event);
+        if (!displayPoint) return;
+        const world = displayToWorld(displayPoint.x, displayPoint.y);
+        if (world && imageData && onCrosshairChange) {
+            const indexPoint = imageData.worldToIndex(world);
+            if (Array.isArray(indexPoint)) {
+                indexPoint[axisDef.dimIndex] = sliceIndex;
+                const correctedWorld = imageData.indexToWorld(indexPoint);
+                if (correctedWorld) {
+                    onCrosshairChange(correctedWorld);
+                }
+            }
+        }
+    };
+
+    const [isPointerDown, setIsPointerDown] = useState(false);
+
+    const handlePointerDown = (event) => {
+        if (event.button !== 0) return;
+        setIsPointerDown(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
+        handlePointerAction(event);
+    };
+
+    const handlePointerMove = (event) => {
+        if (!isPointerDown) return;
+        handlePointerAction(event);
+    };
+
+    const handlePointerUp = (event) => {
+        if (!isPointerDown) return;
+        setIsPointerDown(false);
+        try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) {}
+    };
 
     const handleWheel = (event) => {
         const ctx = ctxRef.current;
-        if (!ctx) return;
+        if (!ctx || !imageData) return;
         event.preventDefault();
         const delta = event.deltaY > 0 ? 1 : -1;
-        setSliceIndex((current) => {
-            const next = clamp(current + delta, 0, maxSlice);
-            ctx.mapper.setSlice(next);
-            ctx.renderWindow.render();
-            return next;
-        });
+        const nextSlice = clamp(sliceIndex + delta, 0, maxSlice);
+
+        const indexPoint = crosshairWorld ? imageData.worldToIndex(crosshairWorld) : imageData.getDimensions().map(d => Math.floor(d / 2));
+        indexPoint[axisDef.dimIndex] = nextSlice;
+
+        const nextWorld = imageData.indexToWorld(indexPoint);
+        if (nextWorld && onCrosshairChange) {
+            onCrosshairChange(nextWorld);
+        }
     };
 
     return (
         <div
             className="relative min-h-0 overflow-hidden rounded-2xl border bg-slate-950"
-            style={{ borderColor: axisDef.color }}
+            style={{ borderColor: axisDef.color, touchAction: 'none' }}
             onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
         >
             <div ref={containerRef} className="h-full w-full" />
             <div className="pointer-events-none absolute left-2 top-2 rounded-lg bg-slate-950/80 px-2 py-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: axisDef.color }}>
                 {axisDef.label}
             </div>
             <div className="pointer-events-none absolute right-2 top-2 rounded-lg bg-black/60 px-2 py-1 font-mono text-[10px] text-slate-300">
-                {sliceIndex}/{maxSlice}
+                {sliceIndex + 1}/{maxSlice + 1}
             </div>
-            <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
-            <div className="pointer-events-none absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/30" />
+            {crosshairScreen ? (
+                <>
+                    <div
+                        className="pointer-events-none absolute top-0 h-full w-px"
+                        style={{
+                            left: `${crosshairScreen.x}px`,
+                            backgroundColor: axisDef.color,
+                            boxShadow: `0 0 4px ${axisDef.color}`,
+                        }}
+                    />
+                    <div
+                        className="pointer-events-none absolute left-0 w-full h-px"
+                        style={{
+                            top: `${crosshairScreen.y}px`,
+                            backgroundColor: axisDef.color,
+                            boxShadow: `0 0 4px ${axisDef.color}`,
+                        }}
+                    />
+                </>
+            ) : (
+                <>
+                    <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
+                    <div className="pointer-events-none absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/20" />
+                </>
+            )}
         </div>
     );
 };

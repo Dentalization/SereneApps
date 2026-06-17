@@ -38,6 +38,10 @@ import {
     mergeAnnotationSessions,
     saveLocalAnnotationSession,
 } from '../utils/annotationSessions.mjs';
+import {
+    buildSliceMeasurementRecords,
+    sliceMeasurementSpecFromRecord,
+} from '../utils/clinicalPersistenceRecords.mjs';
 import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { computeSyncedSliceIndices, quantizeDisplayCoordinate } from '../utils/sliceSyncMath';
 import { buildProjectedImageBounds, isProjectionFrameCurrent } from '../utils/annotationProjection.mjs';
@@ -109,7 +113,7 @@ const WL_DRAG_SENSITIVITY = 0.005;
 const DEFAULT_WINDOW_LEVEL = { center: 0.38, width: 0.70 };
 const LUT_OPTION_KEYS = Object.keys(WL_LUTS);
 const COMPARISON_RATIO_EPSILON = 1e-4;
-const SLICE_TOLERANCE = 2;
+const SLICE_TOLERANCE = 10;
 const SLICE_WL_SHORTCUT_PRESETS = {
     '1': { label: 'Dental W/L', lut: 'dental' },
     '2': { label: 'Bone W/L', center: 0.40, width: 0.60 },
@@ -184,6 +188,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const resizeObserverFrameRef = useRef(null);
     const comparisonSyncGuardRef = useRef(false);
     const comparisonSyncGuardFrameRef = useRef(null);
+    const hydrateClinicalRecordsRef = useRef(() => {});
+    const pendingMeasurementRecordsRef = useRef([]);
     const comparisonLastBroadcastRef = useRef({
         axial: { slice: null, ratio: null },
         coronal: { slice: null, ratio: null },
@@ -215,6 +221,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [measurementMode, setMeasurementMode] = useState(false);
     const [measurementTool, setMeasurementTool] = useState('distance');
     const [measurementLabels, setMeasurementLabels] = useState(emptyMeasurementLabels);
+    const [measurementRevision, setMeasurementRevision] = useState(0);
     const [quadCrosshairPositions, setQuadCrosshairPositions] = useState({});
     const [annotateMode, setAnnotateMode] = useState(false);
     const [annotationTool, setAnnotationTool] = useState('arrow');
@@ -305,12 +312,26 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         sourceWidth: viewerSize.width,
         sourceHeight: viewerSize.height,
     }), [viewerSize.height, viewerSize.width]);
+    const measurementClinicalRecords = useMemo(() => buildSliceMeasurementRecords(measurementStoreRef.current, {
+        seriesUid,
+        sourceWidth: viewerSize.width,
+        sourceHeight: viewerSize.height,
+        sliceIndex,
+        sliceIndices,
+        spacing,
+        dimensions,
+    }), [dimensions, measurementLabels, measurementRevision, seriesUid, sliceIndex, sliceIndices, spacing, viewerSize.height, viewerSize.width]);
+    const handleHydrateClinicalRecords = useCallback((records) => {
+        hydrateClinicalRecordsRef.current?.(records);
+    }, []);
     const annotationPersistence = usePersistentAnnotations({
         study,
         seriesUid,
         viewerType: 'slice',
         annotations,
         setAnnotations,
+        clinicalRecords: measurementClinicalRecords,
+        onHydrateClinicalRecords: handleHydrateClinicalRecords,
         enabled: !loading && !error && !!imageData && !!seriesUid,
         scope: annotationPersistenceScope,
     });
@@ -838,20 +859,113 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         const item = {
             id: `${axisName}-${measurementTool}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type: measurementTool,
+            sliceIndex: sliceIndices[axisName] ?? sliceIndex,
             factory,
             viewWidget,
         };
 
         item.subscription = factory.onWidgetChangeEvent(() => {
             syncMeasurementLabelForAxis(axisName);
+            setMeasurementRevision((value) => value + 1);
         });
 
         measurementStoreRef.current[axisName] = [
             ...(measurementStoreRef.current[axisName] || []),
             item,
         ];
+        setMeasurementRevision((value) => value + 1);
         ctx.renderWindow.render();
-    }, [configureWidgetColor, getPaneContext, measurementMode, measurementTool, syncMeasurementLabelForAxis]);
+    }, [configureWidgetColor, getPaneContext, measurementMode, measurementTool, sliceIndex, sliceIndices, syncMeasurementLabelForAxis]);
+
+    const addPersistedMeasurementWidget = useCallback((spec) => {
+        const ctx = getPaneContext(spec.axis);
+        if (!ctx?.widgetManager || !ctx?.imageData) return false;
+
+        const factory = spec.type === 'angle'
+            ? vtkAngleWidget.newInstance()
+            : vtkLineWidget.newInstance();
+        const viewWidget = ctx.widgetManager.addWidget(factory);
+        configureWidgetColor(factory);
+        factory.placeWidget?.(ctx.imageData.getBounds());
+
+        try {
+            if (spec.type === 'angle') {
+                const handles = factory.getWidgetState?.()?.getHandleList?.();
+                if (Array.isArray(handles)) {
+                    spec.worldPoints?.slice(0, 3).forEach((point, index) => {
+                        handles[index]?.setOrigin?.(point);
+                    });
+                }
+            } else {
+                const state = factory.getWidgetState?.();
+                state?.getHandle1?.()?.setOrigin?.(spec.worldStart);
+                state?.getHandle2?.()?.setOrigin?.(spec.worldEnd);
+                state?.getMoveHandle?.()?.setOrigin?.([
+                    (spec.worldStart[0] + spec.worldEnd[0]) / 2,
+                    (spec.worldStart[1] + spec.worldEnd[1]) / 2,
+                    (spec.worldStart[2] + spec.worldEnd[2]) / 2,
+                ]);
+            }
+        } catch (error) {
+            console.warn('[SliceViewer] Failed to restore persisted measurement widget:', error);
+            try { ctx.widgetManager.removeWidget?.(viewWidget || factory); } catch (_) {}
+            try { factory.delete?.(); } catch (_) {}
+            return false;
+        }
+
+        const item = {
+            id: spec.id,
+            type: spec.type,
+            sliceIndex: spec.sliceIndex,
+            factory,
+            viewWidget,
+            label: spec.label,
+            metadata: spec.metadata,
+        };
+        item.subscription = factory.onWidgetChangeEvent(() => {
+            syncMeasurementLabelForAxis(spec.axis);
+            setMeasurementRevision((value) => value + 1);
+        });
+
+        measurementStoreRef.current[spec.axis] = [
+            ...(measurementStoreRef.current[spec.axis] || []),
+            item,
+        ];
+        syncMeasurementLabelForAxis(spec.axis);
+        ctx.renderWindow.render();
+        return true;
+    }, [configureWidgetColor, getPaneContext, syncMeasurementLabelForAxis]);
+
+    const restoreSliceMeasurementRecords = useCallback((records) => {
+        const specs = (records || []).map(sliceMeasurementSpecFromRecord).filter(Boolean);
+        pendingMeasurementRecordsRef.current = [];
+        AXIS_ORDER.forEach((axisName) => removeMeasurementsForAxis(axisName));
+
+        if (!specs.length) {
+            setMeasurementRevision((value) => value + 1);
+            return;
+        }
+
+        const deferred = specs.filter((spec) => !addPersistedMeasurementWidget(spec));
+        pendingMeasurementRecordsRef.current = deferred;
+        setMeasurementRevision((value) => value + 1);
+    }, [addPersistedMeasurementWidget, removeMeasurementsForAxis]);
+
+    hydrateClinicalRecordsRef.current = restoreSliceMeasurementRecords;
+
+    useEffect(() => {
+        if (!pendingMeasurementRecordsRef.current.length || !imageData) return;
+        const frameId = window.requestAnimationFrame(() => {
+            const pending = pendingMeasurementRecordsRef.current;
+            pendingMeasurementRecordsRef.current = [];
+            const deferred = pending.filter((spec) => !addPersistedMeasurementWidget(spec));
+            pendingMeasurementRecordsRef.current = deferred;
+            if (pending.length !== deferred.length) {
+                setMeasurementRevision((value) => value + 1);
+            }
+        });
+        return () => window.cancelAnimationFrame(frameId);
+    }, [addPersistedMeasurementWidget, axis, imageData, quadView]);
 
     useEffect(() => {
         if (!measurementMode || !imageData) return undefined;
@@ -2261,7 +2375,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         className="absolute inset-0 z-[65]"
                     />
                 )}
-                {annotateMode && paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && getNeighborAnnotationsForAxis(axisName, paneSlice).length > 0 && (
+                {paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && getNeighborAnnotationsForAxis(axisName, paneSlice).length > 0 && (
                     <AnnotationCanvas
                         width={paneSize.width}
                         height={paneSize.height}
@@ -2276,7 +2390,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         className="absolute inset-0 z-[66]"
                     />
                 )}
-                {annotateMode && paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && (
+                {paneSize.width > 0 && paneSize.height > 0 && hasAnnotationProjection && (
                     <AnnotationCanvas
                         width={paneSize.width}
                         height={paneSize.height}

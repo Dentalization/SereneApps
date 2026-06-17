@@ -122,3 +122,20 @@ test('panoramic measurement and annotation toolbars expose redo actions', async 
   assert.match(viewerSource, /title="Redo last annotation"/);
   assert.equal((viewerSource.match(/name="Redo2"/g) || []).length >= 2, true);
 });
+
+test('clinical tags stay usable near canvas edges and support text annotations', async () => {
+  const canvasSource = await readFile(
+    'src/pages/dentist-portal/x-core/components/AnnotationCanvas.jsx',
+    'utf8',
+  );
+  const metadataDraftStart = canvasSource.indexOf('const withMetadataDraft = (annotation) => {');
+  const metadataDraftEnd = canvasSource.indexOf('const updateMetadataDraft = (patch) => {', metadataDraftStart);
+  const metadataDraftSource = canvasSource.slice(metadataDraftStart, metadataDraftEnd);
+
+  assert.doesNotMatch(metadataDraftSource, /annotation\.type === ['"]text['"]\) return/);
+  assert.match(canvasSource, /coordinate_system:\s*['"]normalized_image['"]/);
+  assert.match(canvasSource, /Dentist Notes \/ AI Training/);
+  assert.match(canvasSource, /overflow-y-auto/);
+  assert.match(canvasSource, /sticky bottom-0/);
+  assert.doesNotMatch(canvasSource, /selectedAnnotation\.type !== ['"]text['"]/);
+});

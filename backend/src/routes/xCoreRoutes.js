@@ -3,6 +3,10 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+// Force enable benchmark mode for benchmark runs
+process.env.XCORE_BENCHMARK_MODE = 'true';
+
 import {
     uploadStudy,
     getStudies,
@@ -19,6 +23,8 @@ import {
     getStudyAnnotations,
     reviewStudyAnnotations,
     saveStudyAnnotations,
+    deleteBenchmarkStudy,
+    benchmarkCallback,
 } from '../controllers/xCoreController.js';
 import { streamSlice } from '../controllers/xCoreStreamController.js';
 import { analyzeStudy } from '../controllers/xCoreAIController.js';
@@ -49,6 +55,9 @@ const upload = multer({ storage: storage });
 router.get('/share/:token', getSharedStudy);
 router.get('/share/:token/validate', validateStudyShareToken);
 
+// Benchmark callback (public / unauthenticated for internal python requests)
+router.post('/benchmark/callback', express.json(), benchmarkCallback);
+
 // Routes - Protected by Auth
 router.use(authMiddleware);
 
@@ -67,5 +76,9 @@ router.get('/stream-slice/:studyId/:viewType/:index', streamSlice);
 router.post('/analyze', analyzeStudy);
 router.get('/storage', getStorageStats);
 router.delete('/studies/:id', deleteStudy);
+
+if (process.env.XCORE_BENCHMARK_MODE === 'true') {
+    router.delete('/benchmark/studies/:id', deleteBenchmarkStudy);
+}
 
 export default router;

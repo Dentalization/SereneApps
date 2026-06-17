@@ -27,7 +27,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
 const PY_SERVICE_BASE_URL = process.env.XCORE_PY_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region']);
+const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region', 'brush', 'measurement']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'approved', 'rejected']);
 
 // Ensure upload directory exists
@@ -48,6 +48,36 @@ function parseBigIntId(value) {
         return null;
     }
 }
+
+export function logBackendEvent(runId, eventType, details = {}) {
+    if (!runId) return;
+    try {
+        const resultsDir = path.join(__dirname, '../../../../scripts/xcore-benchmark/results/raw');
+        if (!fs.existsSync(resultsDir)) {
+            fs.mkdirSync(resultsDir, { recursive: true });
+        }
+        const logFile = path.join(resultsDir, `backend-events-${runId}.jsonl`);
+        // Remove patient identity from details if present (double safety)
+        const safeDetails = { ...details };
+        delete safeDetails.patientName;
+        delete safeDetails.PatientName;
+        delete safeDetails.patientId;
+        delete safeDetails.PatientID;
+        delete safeDetails.DOB;
+        delete safeDetails.dob;
+        
+        const entry = JSON.stringify({
+            runId,
+            eventType,
+            timestamp: new Date().toISOString(),
+            details: safeDetails
+        });
+        fs.appendFileSync(logFile, entry + '\n');
+    } catch (e) {
+        console.error('[X-Core Benchmark] Error writing backend event log:', e);
+    }
+}
+
 
 function normalizeReviewStatus(value, fallback = 'draft') {
     const normalized = String(value || fallback).toLowerCase();
@@ -83,7 +113,7 @@ function normalizeAnnotationInput(annotation, defaults = {}) {
         : null;
     const metadata = annotation.metadata && typeof annotation.metadata === 'object' ? { ...annotation.metadata } : {};
     if (type !== 'text') {
-        metadata.finding_type = metadata.finding_type || 'other';
+        metadata.finding_type = metadata.finding_type || (type === 'measurement' ? 'measurement' : 'other');
         metadata.severity = metadata.severity || 'S1';
     }
 
@@ -203,10 +233,23 @@ export const uploadStudy = async (req, res) => {
             return res.status(400).json({ error: 'No files uploaded' });
         }
 
+        const runId = req.headers['x-benchmark-run-id'];
+        const caseId = req.headers['x-benchmark-case-id'];
+        const iteration = req.headers['x-benchmark-iteration'];
+
         const patientId = req.body.patientId ? BigInt(req.body.patientId) : null;
 
         // 0. Calculate Upload Size
         const uploadSize = req.files.reduce((acc, file) => acc + BigInt(file.size), 0n);
+
+        if (runId) {
+            logBackendEvent(runId, 'upload_request_received', {
+                caseId,
+                iteration,
+                fileSize: uploadSize.toString(),
+                fileCount: req.files.length
+            });
+        }
 
         // 1. Check Storage Quota (if user is authenticated)
         let dentistProfile = null;
@@ -260,7 +303,16 @@ export const uploadStudy = async (req, res) => {
         // Move files to study folder
         for (const file of req.files) {
             const targetPath = path.join(studyDir, file.originalname);
+            const parentDir = path.dirname(targetPath);
+            if (!fs.existsSync(parentDir)) {
+                fs.mkdirSync(parentDir, { recursive: true });
+            }
             fs.renameSync(file.path, targetPath);
+        }
+
+        if (runId) {
+            logBackendEvent(runId, 'upload_saved', { folderName: batchId });
+            logBackendEvent(runId, 'metadata_parse_requested', { folderName: batchId });
         }
 
         // Run Python Parser
@@ -281,6 +333,10 @@ export const uploadStudy = async (req, res) => {
 
         if (parseResult.error) {
             return res.status(400).json({ error: parseResult.error });
+        }
+
+        if (runId) {
+            logBackendEvent(runId, 'metadata_parse_completed', { folderName: batchId, modality: parseResult.modality });
         }
 
         // Create Database Records
@@ -310,6 +366,17 @@ export const uploadStudy = async (req, res) => {
                 }
             }
 
+            let studyMetadata = parseResult.metadata || {};
+            if (runId) {
+                studyMetadata = {
+                    ...studyMetadata,
+                    is_benchmark: true,
+                    benchmark_run_id: runId,
+                    benchmark_case_id: caseId || null,
+                    benchmark_iteration: iteration ? parseInt(iteration) : null
+                };
+            }
+
             // 1. Create Study
             const study = await tx.imagingStudy.create({
                 data: {
@@ -319,7 +386,7 @@ export const uploadStudy = async (req, res) => {
                     folderName: batchId,
                     originalName: req.body.originalFolderName || batchId,
                     status: 'processed',
-                    metadata: parseResult.metadata,
+                    metadata: studyMetadata,
                     sizeInBytes: uploadSize,
                     dentistId: req.user ? BigInt(req.user.id) : undefined,
                     clinicId: uploadClinicId || undefined
@@ -355,13 +422,26 @@ export const uploadStudy = async (req, res) => {
             return study;
         });
 
+        if (runId) {
+            logBackendEvent(runId, 'conversion_requested', { studyId: result.id.toString(), folderName: batchId });
+        }
+
         // Handle BigInt serialization
         const response = serializeJson(result);
 
         // Trigger background VTI conversion (fire-and-forget)
         // This pre-computes the 3D .vti file so it's ready when user opens the viewer
         try {
-            fetch(`${PY_SERVICE_BASE_URL}/convert/${batchId}`, { method: 'POST' })
+            const headersToSend = {};
+            if (runId) {
+                headersToSend['x-benchmark-run-id'] = runId;
+                if (caseId) headersToSend['x-benchmark-case-id'] = caseId;
+                if (iteration) headersToSend['x-benchmark-iteration'] = iteration;
+            }
+            fetch(`${PY_SERVICE_BASE_URL}/convert/${batchId}`, {
+                method: 'POST',
+                headers: headersToSend
+            })
                 .then(r => r.json())
                 .then(data => console.log(`[X-Core] VTI conversion triggered: ${JSON.stringify(data)}`))
                 .catch(err => console.warn(`[X-Core] VTI conversion trigger failed (non-critical): ${err.message}`));
@@ -1257,3 +1337,127 @@ export const getSharedStudy = async (req, res) => {
         error: 'Public X-Core share links are disabled. Ask the owning dentist to share with an active dentist in the same clinic.',
     });
 };
+
+export const deleteBenchmarkStudy = async (req, res) => {
+    try {
+        if (process.env.XCORE_BENCHMARK_MODE !== 'true') {
+            return res.status(403).json({ error: 'Benchmark mode is not enabled' });
+        }
+
+        const { id } = req.params;
+        const studyId = BigInt(id);
+
+        const study = await prisma.imagingStudy.findUnique({
+            where: { id: studyId },
+            include: { dentist: { include: { dentistProfile: true } } }
+        });
+
+        if (!study) {
+            return res.status(404).json({ error: 'Study not found' });
+        }
+
+        // Security Check: Ensure the user owns this study
+        if (study.dentistId !== BigInt(req.user.id)) {
+            return res.status(403).json({ error: 'You do not have permission to delete this study' });
+        }
+
+        // Safety: Ensure it is a benchmark study
+        const metadata = study.metadata || {};
+        if (metadata.is_benchmark !== true) {
+            return res.status(400).json({ error: 'Not a benchmark study' });
+        }
+
+        const runId = metadata.benchmark_run_id;
+        logBackendEvent(runId, 'deletion_start', { studyId: id });
+
+        // Calculate ACTUAL disk usage (includes VTI, thumbnails, generated images)
+        let actualDiskSize = study.sizeInBytes || 0n;
+        if (study.folderName) {
+            const studyDir = path.join(UPLOAD_DIR, study.folderName);
+            const diskSize = getDirSizeBytes(studyDir);
+            if (diskSize > 0n) {
+                actualDiskSize = diskSize;
+            }
+        }
+
+        // Transaction: Delete DB record & Update Storage Usage
+        await prisma.$transaction(async (tx) => {
+            // Delete AI results for series
+            const seriesIds = await tx.imagingSeries.findMany({
+                where: { studyId },
+                select: { id: true }
+            });
+            if (seriesIds.length > 0) {
+                await tx.aIResult.deleteMany({
+                    where: { seriesId: { in: seriesIds.map(s => s.id) } }
+                });
+            }
+
+            // Delete series
+            await tx.imagingSeries.deleteMany({
+                where: { studyId }
+            });
+
+            // Delete Study
+            await tx.imagingStudy.delete({
+                where: { id: studyId }
+            });
+
+            // Decrement Storage Usage
+            if (study.dentistId) {
+                const dentistProfile = await tx.dentistProfile.findFirst({
+                    where: { userId: study.dentistId }
+                });
+
+                if (dentistProfile) {
+                    const newUsage = (dentistProfile.storage_usage || 0n) - actualDiskSize;
+                    await tx.dentistProfile.update({
+                        where: { id: dentistProfile.id },
+                        data: {
+                            storage_usage: newUsage < 0n ? 0n : newUsage
+                        }
+                    });
+                }
+            }
+        });
+
+        // Delete Files from Disk (after DB success)
+        if (study.folderName) {
+            const studyDir = path.join(UPLOAD_DIR, study.folderName);
+            // Safety Check: Ensure the path is strictly inside UPLOAD_DIR
+            const resolvedPath = path.resolve(studyDir);
+            const resolvedUploadDir = path.resolve(UPLOAD_DIR);
+            if (resolvedPath.startsWith(resolvedUploadDir) && resolvedPath !== resolvedUploadDir) {
+                if (fs.existsSync(studyDir)) {
+                    fs.rmSync(studyDir, { recursive: true, force: true });
+                    console.log(`[X-Core Benchmark] Deleted folder: ${studyDir}`);
+                }
+            } else {
+                console.error(`[X-Core Benchmark] Safety violation: Attempted to delete directory outside uploads/x-core: ${studyDir}`);
+                return res.status(400).json({ error: 'Invalid file path safety check failed' });
+            }
+        }
+
+        logBackendEvent(runId, 'deletion_completed', { studyId: id });
+
+        res.json({ success: true, message: 'Benchmark study and all associated files deleted successfully' });
+    } catch (error) {
+        console.error('[X-Core Benchmark] Delete Benchmark Study Error:', error);
+        res.status(500).json({ error: 'Failed to delete benchmark study' });
+    }
+};
+
+export const benchmarkCallback = async (req, res) => {
+    try {
+        const { runId, eventType, details } = req.body;
+        if (!runId || !eventType) {
+            return res.status(400).json({ error: 'runId and eventType are required' });
+        }
+        logBackendEvent(runId, eventType, details || {});
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[X-Core Benchmark] Callback Error:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+

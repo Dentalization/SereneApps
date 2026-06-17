@@ -21,7 +21,7 @@ export const normalizeAnnotationForPersistence = (annotation, scope = {}) => {
     metadata.source_height = scope.sourceHeight;
   }
   if (type && type !== 'text') {
-    metadata.finding_type = metadata.finding_type || 'other';
+    metadata.finding_type = metadata.finding_type || (type === 'measurement' ? 'measurement' : 'other');
     metadata.severity = metadata.severity || 'S1';
   }
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T06:28:24.631Z",
+  "generatedAt": "2026-06-17T05:55:23.004Z",
   "summaries": [
     {
       "component": "Backend",
@@ -7,7 +7,7 @@
       "missing": false,
       "fileCount": 148,
       "errorCount": 0,
-      "warningCount": 161,
+      "warningCount": 162,
       "fixableErrorCount": 0,
       "fixableWarningCount": 0
     },
@@ -15,11 +15,11 @@
       "component": "Web application",
       "reportPath": "/Users/adrianhalim/SereneApps/maintainability-results/eslint-web.json",
       "missing": false,
-      "fileCount": 406,
-      "errorCount": 69,
-      "warningCount": 1904,
+      "fileCount": 407,
+      "errorCount": 62,
+      "warningCount": 1921,
       "fixableErrorCount": 0,
-      "fixableWarningCount": 2
+      "fixableWarningCount": 8
     },
     {
       "component": "Mobile application",

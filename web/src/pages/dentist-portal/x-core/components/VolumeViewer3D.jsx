@@ -97,6 +97,10 @@ import {
     mergeAnnotationSessions,
     saveLocalAnnotationSession,
 } from '../utils/annotationSessions.mjs';
+import {
+    build3DMeasurementRecords,
+    measurements3DFromRecords,
+} from '../utils/clinicalPersistenceRecords.mjs';
 import { calculateAnnotationQualityScore, getAnnotationReviewIssues } from '../utils/annotationQuality';
 import {
     buildSurfaceAnchor,
@@ -206,6 +210,13 @@ function bumpVtkCleanupCounter(kind, count = 1) {
 
 function clamp01(value) {
     return Math.max(0, Math.min(1, value));
+}
+
+function normalizeScreenOffsetPx(offset) {
+    return {
+        x: Number.isFinite(Number(offset?.x)) ? Number(Number(offset.x).toFixed(2)) : 0,
+        y: Number.isFinite(Number(offset?.y)) ? Number(Number(offset.y).toFixed(2)) : 0,
+    };
 }
 
 function detectGPUTier() {
@@ -989,6 +1000,8 @@ const VolumeViewer3D = ({
     const surfacePickWorkerFailedRef = useRef(false);
     const lastSurfacePickAnchorRef = useRef(null);
     const measurementLabelStoreRef = useRef(createMeasurementLabelPositionStore());
+    const measurementLabelsRef = useRef([]);
+    const updateMeasurementLabelPositionsRef = useRef(null);
     const annotationCanvasRef = useRef(null);
     if (!brushInputSchedulerRef.current) {
         brushInputSchedulerRef.current = createRafInputScheduler();
@@ -1026,6 +1039,10 @@ const VolumeViewer3D = ({
     const [clipError, setClipError] = useState(null);
     const [measureMode3D, setMeasureMode3D] = useState(false);
     const [measurePoints, setMeasurePoints] = useState([]);
+    const measurePointsRef = useRef([]);
+    useEffect(() => {
+        measurePointsRef.current = measurePoints;
+    }, [measurePoints]);
     const [measureHoverPoint, setMeasureHoverPoint] = useState(null);
     const [measurements3D, setMeasurements3D] = useState([]);
     const [polylineMeasureMode, setPolylineMeasureMode] = useState(false);
@@ -1050,6 +1067,11 @@ const VolumeViewer3D = ({
     const [implantSafetyZonesVisible, setImplantSafetyZonesVisible] = useState(true);
     const [implantError, setImplantError] = useState(null);
     const [mprSyncEnabled, setMprSyncEnabled] = useState(false);
+    useEffect(() => {
+        if (linkedMode) {
+            setMprSyncEnabled(true);
+        }
+    }, [linkedMode]);
     const [aiReportOpen, setAiReportOpen] = useState(false);
     const [aiReport, setAiReport] = useState('');
     const [aiReportLoading, setAiReportLoading] = useState(false);
@@ -1223,7 +1245,7 @@ const VolumeViewer3D = ({
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search).get('mode') === 'review';
     }, []);
-    const measurementCount = measurements3D.length;
+    const measurementCount = measurements3D.length + polylineMeasurements.length;
     const canUseBackendSessions = useMemo(
         () => /^\d+$/.test(String(study?.id || '')),
         [study?.id]
@@ -1300,16 +1322,19 @@ const VolumeViewer3D = ({
             if (renderRaf) return;
             renderRaf = requestAnimationFrame(() => {
                 renderRaf = 0;
-                projectionCacheRef.current.cache.clear();
                 setProjectionTick((value) => value + 1);
+                updateMeasurementLabelPositionsRef.current?.();
             });
         };
 
+        const interactSub = ctx.interactor.onInteraction?.(bumpProjection);
         const endSub = ctx.interactor.onEndInteraction?.(bumpProjection);
         return () => {
             if (renderRaf) cancelAnimationFrame(renderRaf);
-            try { endSub?.unsubscribe?.(); } catch (_) { }
-            try { endSub?.remove?.(); } catch (_) { }
+            [interactSub, endSub].forEach((sub) => {
+                try { sub?.unsubscribe?.(); } catch (_) { }
+                try { sub?.remove?.(); } catch (_) { }
+            });
         };
     }, [cacheKey, error, loading]);
 
@@ -1445,12 +1470,38 @@ const VolumeViewer3D = ({
         pushAnnotationChange(decorate3DAnnotations(nextAnnotations));
     }, [decorate3DAnnotations, pushAnnotationChange]);
 
+    const measurementClinicalRecords = useMemo(() => build3DMeasurementRecords({
+        measurements3D,
+        polylineMeasurements,
+    }, {
+        seriesUid,
+        viewerType: '3d',
+        sourceWidth: viewerSize.width,
+        sourceHeight: viewerSize.height,
+    }), [measurements3D, polylineMeasurements, seriesUid, viewerSize.height, viewerSize.width]);
+
+    const handleHydrateClinicalRecords = useCallback((records) => {
+        const next = measurements3DFromRecords(records);
+        measurementSkipPersistRef.current = true;
+        measurementHistoryRef.current = [];
+        measurementRedoRef.current = [];
+        measurements3DRef.current = next.measurements3D;
+        polylineMeasurementsRef.current = next.polylineMeasurements;
+        setMeasurements3D(next.measurements3D);
+        setPolylineMeasurements(next.polylineMeasurements);
+        setMeasurePoints([]);
+        setPolylineDraft([]);
+        setMeasurementRevision((value) => value + 1);
+    }, []);
+
     const annotationPersistence = usePersistentAnnotations({
         study,
         seriesUid,
         viewerType: '3d',
         annotations,
         setAnnotations,
+        clinicalRecords: measurementClinicalRecords,
+        onHydrateClinicalRecords: handleHydrateClinicalRecords,
         enabled: Boolean(!loading && !error && seriesUid && viewerSize.width > 0 && viewerSize.height > 0),
         scope: {
             sourceWidth: viewerSize.width,
@@ -2854,9 +2905,16 @@ const VolumeViewer3D = ({
     const toggleFullscreen = useCallback(() => {
         if (!wrapperRef.current) return;
         if (!(document.fullscreenElement || document.webkitFullscreenElement)) {
-            const requestFullscreen = wrapperRef.current.requestFullscreen || wrapperRef.current.webkitRequestFullscreen;
+            let target = wrapperRef.current;
+            if (linkedMode) {
+                const linkedContainer = wrapperRef.current?.closest('.linked-viewer-container');
+                if (linkedContainer) {
+                    target = linkedContainer;
+                }
+            }
+            const requestFullscreen = target.requestFullscreen || target.webkitRequestFullscreen;
             if (requestFullscreen) {
-                Promise.resolve(requestFullscreen.call(wrapperRef.current)).catch(console.error);
+                Promise.resolve(requestFullscreen.call(target)).catch(console.error);
             }
         } else {
             const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
@@ -2864,7 +2922,7 @@ const VolumeViewer3D = ({
                 Promise.resolve(exitFullscreen.call(document)).catch(console.error);
             }
         }
-    }, []);
+    }, [linkedMode]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Preset / Render-Mode Change Handler
@@ -3356,11 +3414,20 @@ const VolumeViewer3D = ({
             const view = ctx.renderWindow.getViews?.()?.[0] || ctx.interactor?.getView?.();
             if (!view?.worldToDisplay) return null;
             const display = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], ctx.renderer);
+            if (!display || display.length < 3) return null;
+            const displayX = Number(display[0]);
+            const displayY = Number(display[1]);
+            const displayZ = Number(display[2]);
+            if (!Number.isFinite(displayX) || !Number.isFinite(displayY) || !Number.isFinite(displayZ)) return null;
+            if (displayZ < 0 || displayZ > 1) return null;
             const viewSize = view.getSize?.() || [container.clientWidth, container.clientHeight];
             const rect = container.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0 || viewSize[0] === 0 || viewSize[1] === 0) {
+                return null;
+            }
             return {
-                x: (display[0] / Math.max(viewSize[0], 1)) * rect.width,
-                y: rect.height - ((display[1] / Math.max(viewSize[1], 1)) * rect.height),
+                x: (displayX / Math.max(viewSize[0], 1)) * rect.width,
+                y: rect.height - ((displayY / Math.max(viewSize[1], 1)) * rect.height),
             };
         } catch (_) {
             return null;
@@ -3406,7 +3473,9 @@ const VolumeViewer3D = ({
             return cacheEntry.cache.get(pointKey);
         }
         const result = projectWorldToViewport(worldPoint);
-        cacheEntry.cache.set(pointKey, result);
+        if (result) {
+            cacheEntry.cache.set(pointKey, result);
+        }
         return result;
     }, [getCameraProjectionKey, projectWorldToViewport]);
 
@@ -3501,19 +3570,8 @@ const VolumeViewer3D = ({
             if (!anchorScreen) return null;
             let startScreen = anchorScreen;
             let endScreen = projectWorldToViewportCached(endWorld);
-            const offsetNorm = annotation.metadata?.screen_tail_offset_norm;
-            const radiusNorm = annotation.metadata?.screen_radius_norm;
-            if (annotation.type === 'arrow' && offsetNorm && Number.isFinite(offsetNorm.x) && Number.isFinite(offsetNorm.y)) {
-                startScreen = projectWorldToViewportCached(startWorld) || anchorScreen;
-                endScreen = projectWorldToViewportCached(endWorld) || endScreen || anchorScreen;
-            }
-            if (annotation.type === 'circle' && Number.isFinite(radiusNorm)) {
-                const radiusPx = radiusNorm * Math.max(1, Math.min(viewerSize.width || 0, viewerSize.height || 0) || Math.max(viewerSize.width || 0, viewerSize.height || 0));
+            if (annotation.type === 'circle') {
                 startScreen = anchorScreen;
-                endScreen = {
-                    x: anchorScreen.x + radiusPx,
-                    y: anchorScreen.y,
-                };
                 const worldRadius = Number(annotation.metadata?.world_radius_mm || 0);
                 if (worldRadius > 0 && isWorldPoint3D(startWorld)) {
                     const offsetScreen = projectWorldToViewportCached([
@@ -3523,13 +3581,7 @@ const VolumeViewer3D = ({
                     ]);
                     if (offsetScreen) {
                         const computedRadius = Math.hypot(offsetScreen.x - anchorScreen.x, offsetScreen.y - anchorScreen.y);
-                        const radiusRatio = radiusPx > 0 ? computedRadius / radiusPx : 1;
-                        if (
-                            Number.isFinite(computedRadius)
-                            && computedRadius > 0
-                            && radiusRatio > 0.2
-                            && radiusRatio < 5
-                        ) {
+                        if (Number.isFinite(computedRadius) && computedRadius > 0) {
                             endScreen = {
                                 x: anchorScreen.x + computedRadius,
                                 y: anchorScreen.y,
@@ -3537,6 +3589,7 @@ const VolumeViewer3D = ({
                         }
                     }
                 }
+                if (!endScreen) endScreen = anchorScreen;
             }
             if (!startScreen || !endScreen) return null;
             return {
@@ -3551,7 +3604,7 @@ const VolumeViewer3D = ({
         }
 
         return null;
-    }, [projectWorldToViewportCached, viewerSize.height, viewerSize.width]);
+    }, [projectWorldToViewportCached]);
 
     const pickSurfaceWorldPointFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
@@ -3559,9 +3612,10 @@ const VolumeViewer3D = ({
         if (!ctx || !container || !ctx.surfacePickActor || !ctx.sharedPicker) return null;
         lastSurfacePickAnchorRef.current = null;
 
+        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
         const rect = container.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = rect.height - (event.clientY - rect.top);
+        const x = (event.clientX - rect.left) * dpr;
+        const y = (rect.height - (event.clientY - rect.top)) * dpr;
 
         try {
             const picker = ctx.sharedPicker;
@@ -3592,9 +3646,10 @@ const VolumeViewer3D = ({
         const actors = ctx?.surfaceAnnotationActors || [];
         if (!ctx || !container || actors.length === 0 || !ctx.sharedPicker) return null;
 
+        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
         const rect = container.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = rect.height - (event.clientY - rect.top);
+        const x = (event.clientX - rect.left) * dpr;
+        const y = (rect.height - (event.clientY - rect.top)) * dpr;
 
         try {
             const picker = ctx.sharedPicker;
@@ -3623,9 +3678,10 @@ const VolumeViewer3D = ({
         const container = containerRef.current;
         if (!ctx || !container) return null;
 
+        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
         const rect = container.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = rect.height - (event.clientY - rect.top);
+        const x = (event.clientX - rect.left) * dpr;
+        const y = (rect.height - (event.clientY - rect.top)) * dpr;
 
         try {
             const picker = ctx.sharedPicker || vtkCellPicker.newInstance();
@@ -4342,6 +4398,29 @@ const VolumeViewer3D = ({
         showUndoToast('Undid measurement');
     }, [showUndoToast]);
 
+    const redoMeasurement3D = useCallback(() => {
+        const redo = measurementRedoRef.current;
+        if (redo.length === 0) return;
+        const next = redo[redo.length - 1];
+        measurementRedoRef.current = redo.slice(0, -1);
+        measurementHistoryRef.current = [
+            ...measurementHistoryRef.current.slice(-(MAX_UNDO_STEPS - 1)),
+            {
+                measurements3D: measurements3DRef.current,
+                polylineMeasurements: polylineMeasurementsRef.current,
+            },
+        ];
+        measurements3DRef.current = next.measurements3D || [];
+        polylineMeasurementsRef.current = next.polylineMeasurements || [];
+        setMeasurements3D(measurements3DRef.current);
+        setPolylineMeasurements(polylineMeasurementsRef.current);
+        setMeasurePoints([]);
+        setMeasureHoverPoint(null);
+        setPolylineDraft([]);
+        setMeasurementRevision((value) => value + 1);
+        showUndoToast('Redid measurement');
+    }, [showUndoToast]);
+
     const handleUndo = useCallback(() => {
         const annotationHistory = annotationHistoryRef.current;
         if (annotationHistory.length > 0) {
@@ -4620,12 +4699,14 @@ const VolumeViewer3D = ({
         inverted,
         slab_enabled: slabEnabled,
         slab_thickness: slabThickness,
-        measurements3d,
+        measurements3d: measurements3D,
+        polyline_measurements: polylineMeasurements,
         camera: captureCurrentCameraState(),
     }), [
         captureCurrentCameraState,
         inverted,
         measurements3D,
+        polylineMeasurements,
         preset,
         quality,
         brushRadiusMm,
@@ -4756,7 +4837,19 @@ const VolumeViewer3D = ({
         setTextDraft3D(null);
         setSnapshotOverlay(null);
         if (Array.isArray(featureState.measurements3d)) {
+            measurements3DRef.current = featureState.measurements3d;
             setMeasurements3D(featureState.measurements3d);
+        } else {
+            measurements3DRef.current = [];
+            setMeasurements3D([]);
+        }
+        if (Array.isArray(featureState.polyline_measurements || featureState.polylineMeasurements)) {
+            const nextPoly = featureState.polyline_measurements || featureState.polylineMeasurements;
+            polylineMeasurementsRef.current = nextPoly;
+            setPolylineMeasurements(nextPoly);
+        } else {
+            polylineMeasurementsRef.current = [];
+            setPolylineMeasurements([]);
         }
         if (nextPreset && (BG_COLORS[nextPreset] || VOLUME_MODE_LUTS[nextPreset])) {
             changePreset(nextPreset);
@@ -5126,14 +5219,26 @@ const VolumeViewer3D = ({
     }, [annotateMode, emitMprCrosshairSync, implantPlaceMode, measureMode3D, mprSyncEnabled, pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
     useEffect(() => {
-        if (mprSyncEnabled) return;
+        if (mprSyncEnabled || linkedMode) return undefined;
         const ctx = vtkContextRef.current;
-        if (!ctx?.mprCrosshairActor) return;
+        if (!ctx?.mprCrosshairActor) return undefined;
         disposeOverlayActors(ctx.renderer, [ctx.mprCrosshairActor]);
         ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => actor !== ctx.mprCrosshairActor);
         ctx.mprCrosshairActor = null;
         ctx.renderWindow?.render?.();
-    }, [mprSyncEnabled]);
+        return undefined;
+    }, [mprSyncEnabled, linkedMode]);
+
+    useEffect(() => {
+        const handleCrosshairSync = (event) => {
+            const point = event?.detail?.worldPoint;
+            if (Array.isArray(point) && point.length === 3) {
+                updateMprCrosshairActor(point);
+            }
+        };
+        window.addEventListener('xcore:mpr_crosshair_sync', handleCrosshairSync);
+        return () => window.removeEventListener('xcore:mpr_crosshair_sync', handleCrosshairSync);
+    }, [updateMprCrosshairActor]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -5279,7 +5384,7 @@ const VolumeViewer3D = ({
     }, [cacheKey, createImplantActor, createImplantSafetyActor, error, implantPlacements, implantCollisions, implantBoundaryWarnings, loading]);
 
     useEffect(() => {
-        if (!measurementStorageKey) return;
+        if (!measurementStorageKey || canUseBackendSessions) return;
         measurementSkipPersistRef.current = true;
         try {
             const stored = localStorage.getItem(measurementStorageKey);
@@ -5300,10 +5405,10 @@ const VolumeViewer3D = ({
         setMeasurePoints([]);
         setPolylineDraft([]);
         setMeasurementRevision((value) => value + 1);
-    }, [measurementStorageKey]);
+    }, [canUseBackendSessions, measurementStorageKey]);
 
     useEffect(() => {
-        if (!measurementStorageKey) return;
+        if (!measurementStorageKey || canUseBackendSessions) return;
         if (measurementSkipPersistRef.current) {
             measurementSkipPersistRef.current = false;
             return;
@@ -5335,7 +5440,7 @@ const VolumeViewer3D = ({
         return () => {
             if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
         };
-    }, [measurementStorageKey, measurements3D, polylineMeasurements]);
+    }, [canUseBackendSessions, measurementStorageKey, measurements3D, polylineMeasurements]);
 
     useEffect(() => {
         if (measureMode3D) return;
@@ -6099,24 +6204,29 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             return;
         }
 
-        setMeasurePoints((current) => {
-            if (current.length === 0) return [point];
-            const pointA = current[0];
-            const pointB = point;
-            const measurement = {
-                id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                pointA,
-                pointB,
-                midpoint: midpoint(pointA, pointB),
-                distance: distanceMm(pointA, pointB),
-            };
-            applyMeasurementChange((items) => ({
-                measurements3D: [...items.measurements3D, measurement],
-                polylineMeasurements: items.polylineMeasurements,
-            }));
-            setMeasureHoverPoint(null);
-            return [];
-        });
+        if (measureMode3D) {
+            const currentPoints = measurePointsRef.current;
+            if (currentPoints.length === 0) {
+                setMeasurePoints([point]);
+            } else {
+                const pointA = currentPoints[0];
+                const pointB = point;
+                const measurement = {
+                    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    pointA,
+                    pointB,
+                    midpoint: midpoint(pointA, pointB),
+                    distance: distanceMm(pointA, pointB),
+                };
+                applyMeasurementChange((items) => ({
+                    measurements3D: [...items.measurements3D, measurement],
+                    polylineMeasurements: items.polylineMeasurements,
+                }));
+                setMeasureHoverPoint(null);
+                setMeasurePoints([]);
+            }
+            return;
+        }
     }, [
         annotateMode,
         annotationTool,
@@ -6638,60 +6748,129 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     const canSaveSessions = Boolean((annotations.length > 0 || measurementCount > 0) && !study?.readOnly);
     const canUndoChanges = annotationHistoryRef.current.length > 0 || measurementHistoryRef.current.length > 0;
     const canRedoChanges = annotationRedoRef.current.length > 0 || measurementRedoRef.current.length > 0;
+    const canUndoMeasurement = measurementHistoryRef.current.length > 0;
+    const canRedoMeasurement = measurementRedoRef.current.length > 0;
     const measurementLabels = useMemo(() => {
         const p2pLabels = measurements3D.map((measurement) => ({
             id: measurement.id,
+            sourceId: measurement.id,
+            sourceType: 'distance_3d',
             distance: measurement.distance,
             label: measurement.label || '',
             worldPoint: measurement.midpoint,
+            labelOffset: normalizeScreenOffsetPx(measurement.labelOffset),
+            draggable: true,
         }));
 
         const polylineLabels = polylineMeasurements.flatMap((poly) => {
             if (!poly.points || poly.points.length < 2) return [];
             const labels = [];
             for (let i = 0; i < poly.points.length - 1; i++) {
+                const segmentValue = poly.segments?.[i];
+                const segmentDistance = typeof segmentValue === 'number'
+                    ? segmentValue
+                    : Number(segmentValue?.distance);
+                const safeDistance = Number.isFinite(segmentDistance)
+                    ? segmentDistance
+                    : distanceMm(poly.points[i], poly.points[i + 1]);
                 labels.push({
                     id: `${poly.id}-seg-${i}`,
-                    distance: poly.segments[i].distance,
+                    sourceId: null,
+                    sourceType: 'polyline_3d_segment',
+                    distance: safeDistance,
+                    label: `${safeDistance.toFixed(2)} mm`,
                     worldPoint: midpoint(poly.points[i], poly.points[i + 1]),
+                    labelOffset: { x: 0, y: 0 },
+                    draggable: false,
                 });
             }
             labels.push({
                 id: `${poly.id}-total`,
+                sourceId: poly.id,
+                sourceType: 'polyline_3d',
                 distance: poly.totalDistance,
                 label: poly.label || '',
                 isTotal: true,
                 worldPoint: poly.points[poly.points.length - 1],
+                labelOffset: normalizeScreenOffsetPx(poly.labelOffset),
+                draggable: true,
             });
             return labels;
         });
 
         return [...p2pLabels, ...polylineLabels];
     }, [measurements3D, polylineMeasurements]);
+
+    useEffect(() => {
+        measurementLabelsRef.current = measurementLabels;
+    }, [measurementLabels]);
+
     const measurementProjectionKey = useMemo(
         () => getStableCameraProjectionKey(),
         [getStableCameraProjectionKey, projectionTick]
     );
-    useEffect(() => {
-        const signature = measurementLabels.map((measurement) => `${measurement.id}:${measurement.label || ''}:${measurement.distance.toFixed(2)}`).join('|');
+
+    const updateMeasurementLabelPositions = useCallback(({ force = false, useCache = true } = {}) => {
+        const labels = measurementLabelsRef.current || [];
+        const projectionKey = getStableCameraProjectionKey();
+        const signature = labels.map((measurement) => `${measurement.id}:${measurement.label || ''}:${Number(measurement.distance || 0).toFixed(2)}`).join('|');
         if (
-            measurementLabelProjectionKeyRef.current === measurementProjectionKey
+            !force
+            && measurementLabelProjectionKeyRef.current === projectionKey
             && measurementLabelSignatureRef.current === signature
         ) {
             return;
         }
 
         const nextPositions = new Map();
-        measurementLabels.forEach((measurement) => {
-            const screen = projectWorldToViewportCached(measurement.worldPoint);
+        const projector = useCache ? projectWorldToViewportCached : projectWorldToViewport;
+        labels.forEach((measurement) => {
+            const screen = projector(measurement.worldPoint);
             if (screen) {
                 nextPositions.set(measurement.id, screen);
             }
         });
         measurementLabelStoreRef.current.setPositions(nextPositions);
-        measurementLabelProjectionKeyRef.current = measurementProjectionKey;
+        measurementLabelProjectionKeyRef.current = projectionKey;
         measurementLabelSignatureRef.current = signature;
-    }, [measurementLabels, measurementProjectionKey, projectWorldToViewportCached]);
+    }, [getStableCameraProjectionKey, projectWorldToViewport, projectWorldToViewportCached]);
+
+    useEffect(() => {
+        updateMeasurementLabelPositionsRef.current = () => updateMeasurementLabelPositions({ force: true, useCache: false });
+    }, [updateMeasurementLabelPositions]);
+
+    useEffect(() => {
+        updateMeasurementLabelPositions();
+    }, [measurementLabels, measurementProjectionKey, updateMeasurementLabelPositions]);
+
+    const measurementScreenOverlays = useMemo(() => {
+        const pointOverlays = measurements3D.map((measurement) => {
+            const startScreen = projectWorldToViewportCached(measurement.pointA);
+            const endScreen = projectWorldToViewportCached(measurement.pointB);
+            if (!startScreen || !endScreen) return null;
+            return {
+                id: measurement.id,
+                type: 'line',
+                startScreen,
+                endScreen,
+                color: measurement.color || 'rgba(29, 158, 117, 0.92)',
+            };
+        }).filter(Boolean);
+
+        const polylineOverlays = polylineMeasurements.map((measurement) => {
+            const screenPoints = (measurement.points || []).map((point) => projectWorldToViewportCached(point));
+            if (screenPoints.length < 2 || screenPoints.some((point) => !point)) return null;
+            return {
+                id: measurement.id,
+                type: 'polyline',
+                points: screenPoints,
+                color: measurement.color || 'rgba(29, 158, 117, 0.92)',
+            };
+        }).filter(Boolean);
+
+        return [...pointOverlays, ...polylineOverlays];
+    }, [measurements3D, polylineMeasurements, projectWorldToViewportCached, projectionTick, measurementRevision]);
+
     const measurementPreview = useMemo(() => {
         if (measureMode3D && measurePoints.length === 1 && measureHoverPoint) {
             const startPoint = measurePoints[0];
@@ -6727,6 +6906,19 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         applyMeasurementChange((current) => ({
             measurements3D: current.measurements3D.map((m) => m.id === id ? { ...m, label: newLabel } : m),
             polylineMeasurements: current.polylineMeasurements.map((p) => p.id === id ? { ...p, label: newLabel } : p),
+        }));
+    }, [applyMeasurementChange]);
+
+    const onMoveMeasurementLabel = useCallback((id, nextOffset) => {
+        if (!id) return;
+        const labelOffset = normalizeScreenOffsetPx(nextOffset);
+        applyMeasurementChange((current) => ({
+            measurements3D: current.measurements3D.map((measurement) => (
+                measurement.id === id ? { ...measurement, labelOffset } : measurement
+            )),
+            polylineMeasurements: current.polylineMeasurements.map((measurement) => (
+                measurement.id === id ? { ...measurement, labelOffset } : measurement
+            )),
         }));
     }, [applyMeasurementChange]);
 
@@ -7587,14 +7779,14 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                                     <div className="flex gap-1">
                                         <button
                                             onClick={undoMeasurement3D}
-                                            disabled={measurementHistoryRef.current.length === 0}
+                                            disabled={!canUndoMeasurement}
                                             className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
                                         >
                                             Undo
                                         </button>
                                         <button
-                                            onClick={handleRedo}
-                                            disabled={measurementRedoRef.current.length === 0}
+                                            onClick={redoMeasurement3D}
+                                            disabled={!canRedoMeasurement}
                                             className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
                                         >
                                             Redo
@@ -7926,6 +8118,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             measurementLabelStore={measurementLabelStoreRef.current}
                             measurementLabelsVisible={measurementLabelsVisible}
                             measurementPreview={measurementPreview}
+                            measurementScreenOverlays={measurementScreenOverlays}
+                            onMoveMeasurementLabel={onMoveMeasurementLabel}
                             onRenameMeasurement={onRenameMeasurement}
                             projectedSnapshotWorldOverlayAnnotations={projectedSnapshotWorldOverlayAnnotations}
                             projectedWorldOverlayAnnotations={projectedWorldOverlayAnnotations}

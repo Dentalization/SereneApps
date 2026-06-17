@@ -1,33 +1,42 @@
 {
-  "generatedAt": "2026-06-08T06:28:33.451298+00:00",
+  "generatedAt": "2026-06-17T05:49:17.223235+00:00",
   "component": "CDSS Python service",
   "cyclomaticComplexity": {
-    "blockCount": 105,
-    "averageComplexity": 7.39,
-    "maxComplexity": 36,
+    "blockCount": 110,
+    "averageComplexity": 7.75,
+    "maxComplexity": 48,
     "rankCounts": {
-      "A": 52,
-      "B": 29,
-      "C": 17,
-      "D": 5,
-      "E": 2
+      "A": 54,
+      "B": 31,
+      "C": 18,
+      "D": 4,
+      "E": 1,
+      "F": 2
     },
     "highestComplexityBlocks": [
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
-        "name": "scan_dicom_series",
+        "name": "convert_study_to_vti",
         "type": "function",
-        "complexity": 36,
-        "rank": "E",
-        "lineno": 103
+        "complexity": 48,
+        "rank": "F",
+        "lineno": 1472
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
-        "name": "convert_study_to_vti",
+        "name": "scan_dicom_series",
         "type": "function",
-        "complexity": 35,
+        "complexity": 43,
+        "rank": "F",
+        "lineno": 164
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "detect_dental_modality",
+        "type": "function",
+        "complexity": 39,
         "rank": "E",
-        "lineno": 1397
+        "lineno": 25
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
@@ -35,7 +44,15 @@
         "type": "function",
         "complexity": 28,
         "rank": "D",
-        "lineno": 512
+        "lineno": 543
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
+        "name": "_ensure_vti_conversion_singleflight",
+        "type": "function",
+        "complexity": 26,
+        "rank": "D",
+        "lineno": 388
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
@@ -43,15 +60,7 @@
         "type": "function",
         "complexity": 25,
         "rank": "D",
-        "lineno": 248
-      },
-      {
-        "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
-        "name": "_ensure_vti_conversion_singleflight",
-        "type": "function",
-        "complexity": 23,
-        "rank": "D",
-        "lineno": 386
+        "lineno": 324
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
@@ -59,15 +68,7 @@
         "type": "method",
         "complexity": 21,
         "rank": "D",
-        "lineno": 102
-      },
-      {
-        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
-        "name": "get_metadata",
-        "type": "method",
-        "complexity": 21,
-        "rank": "D",
-        "lineno": 457
+        "lineno": 148
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
@@ -75,7 +76,15 @@
         "type": "method",
         "complexity": 20,
         "rank": "C",
-        "lineno": 370
+        "lineno": 416
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "get_metadata",
+        "type": "method",
+        "complexity": 20,
+        "rank": "C",
+        "lineno": 503
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
@@ -83,21 +92,13 @@
         "type": "function",
         "complexity": 18,
         "rank": "C",
-        "lineno": 365
-      },
-      {
-        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
-        "name": "_normalize_metadata_value",
-        "type": "method",
-        "complexity": 14,
-        "rank": "C",
-        "lineno": 265
+        "lineno": 441
       }
     ]
   },
   "maintainabilityIndex": {
     "fileCount": 4,
-    "averageMaintainabilityIndex": 19.53,
+    "averageMaintainabilityIndex": 17.78,
     "minMaintainabilityIndex": 0.0,
     "files": [
       {
@@ -112,8 +113,8 @@
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
-        "maintainabilityIndex": 23.459306375797215,
-        "rank": "A"
+        "maintainabilityIndex": 16.47477876932241,
+        "rank": "B"
       },
       {
         "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/morita_handler.py",

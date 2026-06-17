@@ -2278,11 +2278,10 @@ const registerOdontogram = ($) => {
                             case geom1 instanceof BRIDGE:
                                 geometry.push(geom1);
                                 break;
-                        }
-                        break;
-                        break;
-                    case geom2 instanceof NON:
-                        switch (true) {
+                            }
+                            break;
+                        case geom2 instanceof NON:
+                            switch (true) {
                             case geom1 instanceof NON:
                                 geometry.push(geom1);
                                 break;

@@ -17,10 +17,16 @@ const stopUiEvent = (event) => {
   event.stopPropagation();
 };
 
+const normalizeLabelOffset = (offset) => ({
+  x: Number.isFinite(Number(offset?.x)) ? Number(offset.x) : 0,
+  y: Number.isFinite(Number(offset?.y)) ? Number(offset.y) : 0,
+});
+
 const MeasurementLabel = memo(function MeasurementLabel({
   measurement,
   visible,
   positionStore,
+  onMove,
   onRename,
 }) {
   const elementRef = useRef(null);
@@ -32,40 +38,105 @@ const MeasurementLabel = memo(function MeasurementLabel({
     useCallback(() => positionStore?.getPosition?.(measurement.id) || null, [measurement.id, positionStore]),
   );
   const hasPosition = Boolean(position);
+  const storedOffset = useMemo(
+    () => normalizeLabelOffset(measurement.labelOffset),
+    [measurement.labelOffset?.x, measurement.labelOffset?.y],
+  );
+  const canDrag = measurement.draggable !== false && Boolean(measurement.sourceId || measurement.id);
+
+  const [dragOffset, setDragOffset] = useState(storedOffset);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef(null);
+  const dragMovedRef = useRef(false);
 
   useEffect(() => {
     setDraftLabel(measurement.label || '');
   }, [measurement.label]);
 
   useEffect(() => {
+    if (!isDragging) {
+      setDragOffset(storedOffset);
+    }
+  }, [isDragging, storedOffset]);
+
+  useEffect(() => {
     if (!elementRef.current || !position) return;
-    elementRef.current.style.left = `${position.x}px`;
-    elementRef.current.style.top = `${position.y}px`;
-  }, [position]);
+    elementRef.current.style.left = `${position.x + dragOffset.x}px`;
+    elementRef.current.style.top = `${position.y + dragOffset.y}px`;
+  }, [position, dragOffset]);
+
+  const handlePointerDown = (event) => {
+    event.stopPropagation();
+    if (editing || !canDrag) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragMovedRef.current = false;
+    dragStartRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: dragOffset.x,
+      offsetY: dragOffset.y,
+      currentOffset: dragOffset,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (event) => {
+    if (!isDragging || !dragStartRef.current) return;
+    event.stopPropagation();
+    const dx = event.clientX - dragStartRef.current.startX;
+    const dy = event.clientY - dragStartRef.current.startY;
+    if (Math.hypot(dx, dy) > 2) {
+      dragMovedRef.current = true;
+    }
+    const nextOffset = {
+      x: dragStartRef.current.offsetX + dx,
+      y: dragStartRef.current.offsetY + dy,
+    };
+    dragStartRef.current.currentOffset = nextOffset;
+    setDragOffset(nextOffset);
+  };
+
+  const handlePointerUp = (event) => {
+    if (!isDragging) return;
+    event.stopPropagation();
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) {}
+    const finalOffset = dragStartRef.current?.currentOffset || dragOffset;
+    setIsDragging(false);
+    dragStartRef.current = null;
+    onMove?.(measurement.sourceId || measurement.id, finalOffset);
+  };
 
   const commitLabel = useCallback(() => {
     setEditing(false);
-    onRename?.(measurement.id, draftLabel);
-  }, [draftLabel, measurement.id, onRename]);
+    onRename?.(measurement.sourceId || measurement.id, draftLabel);
+  }, [draftLabel, measurement.id, measurement.sourceId, onRename]);
 
   return (
     <div
       ref={elementRef}
-      className={`pointer-events-auto absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-xl transition duration-200 ${measurement.isTotal
+      className={`pointer-events-auto absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-xl cursor-grab active:cursor-grabbing select-none transition-[opacity,background-color,border-color] duration-200 ${measurement.isTotal
         ? 'bg-emerald-950/95 text-emerald-200 ring-2 ring-emerald-400/60 text-xs px-3 py-1.5'
         : 'bg-slate-950/85 text-white ring-1 ring-emerald-400/40'
         }`}
       style={{
         opacity: visible && hasPosition ? 1 : 0,
         pointerEvents: visible && hasPosition ? 'auto' : 'none',
+        touchAction: 'none',
       }}
-      title={editing ? '' : 'Click to copy · Double-click to rename'}
+      title={editing ? '' : 'Drag to move · Double-click to rename · Click to copy'}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       onDoubleClick={(event) => {
         event.stopPropagation();
         setEditing(true);
       }}
       onClick={(event) => {
-        if (editing) return;
+        if (editing || isDragging || dragMovedRef.current) {
+          dragMovedRef.current = false;
+          return;
+        }
         event.stopPropagation();
         navigator.clipboard?.writeText(`${measurement.distance.toFixed(2)} mm`).catch(() => { });
       }}
@@ -191,6 +262,8 @@ export default function Volume3DOverlayLayer({
   measurementLabelStore,
   measurementLabelsVisible,
   measurementPreview,
+  measurementScreenOverlays,
+  onMoveMeasurementLabel,
   onRenameMeasurement,
   projectedSnapshotWorldOverlayAnnotations,
   projectedWorldOverlayAnnotations,
@@ -293,12 +366,59 @@ export default function Volume3DOverlayLayer({
         </div>
       )}
 
+      {measurementScreenOverlays?.length > 0 && (
+        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+          {measurementScreenOverlays.map((overlay) => {
+            if (overlay.type === 'polyline') {
+              return (
+                <polyline
+                  key={overlay.id}
+                  points={(overlay.points || []).map((point) => `${point.x},${point.y}`).join(' ')}
+                  fill="none"
+                  stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="7 5"
+                />
+              );
+            }
+            return (
+              <g key={overlay.id}>
+                <line
+                  x1={overlay.startScreen.x}
+                  y1={overlay.startScreen.y}
+                  x2={overlay.endScreen.x}
+                  y2={overlay.endScreen.y}
+                  stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeDasharray="7 5"
+                />
+                {[overlay.startScreen, overlay.endScreen].map((point, index) => (
+                  <circle
+                    key={`${overlay.id}-${index}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r="4"
+                    fill="rgba(29, 158, 117, 0.95)"
+                    stroke="rgba(255,255,255,0.9)"
+                    strokeWidth="1.5"
+                  />
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+      )}
+
       {(measurements3D || []).map((measurement) => (
         <MeasurementLabel
           key={measurement.id}
           measurement={measurement}
           visible={measurementLabelsVisible}
           positionStore={measurementLabelStore}
+          onMove={onMoveMeasurementLabel}
           onRename={onRenameMeasurement}
         />
       ))}

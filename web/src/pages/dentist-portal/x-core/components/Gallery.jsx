@@ -544,14 +544,67 @@ const Gallery = ({
         const seriesList = study.series || [];
         const modalities = new Set();
         seriesList.forEach(s => {
-            if (s.type === '3D Volume' || s.classification === '3D') {
+            const mod = s.modality;
+            if (mod === 'CBCT') {
                 modalities.add('3D CBCT');
-            } else if (s.type === '2D Image' || s.classification === '2D') {
-                modalities.add('2D Panoramic');
+            } else if (mod === 'Panoramic') {
+                modalities.add('2D Panoramik');
+            } else if (mod === 'Cephalometric') {
+                modalities.add('2D Sefalometri');
+            } else if (mod === 'Intraoral Periapical') {
+                modalities.add('Periapikal');
+            } else if (mod === 'Intraoral Bitewing') {
+                modalities.add('Bitewing');
+            } else if (mod === 'Intraoral Occlusal') {
+                modalities.add('Oklusal');
+            } else if (mod === 'Intraoral') {
+                modalities.add('Intraoral');
+            } else {
+                if (s.type === '3D Volume' || s.classification === '3D') {
+                    modalities.add('3D CBCT');
+                } else {
+                    modalities.add(s.modality || '2D Panoramik');
+                }
             }
         });
         return Array.from(modalities);
     };
+
+    const getModalityBadgeClass = (mod) => {
+        if (mod.includes('3D') || mod === 'CBCT') return 'bg-indigo-600/85 border border-indigo-500/30';
+        if (mod.includes('Panoramik') || mod === 'Panoramic') return 'bg-emerald-600/85 border border-emerald-500/30';
+        if (mod.includes('Sefalometri') || mod === 'Cephalometric') return 'bg-cyan-600/85 border border-cyan-500/30';
+        if (['Periapikal', 'Bitewing', 'Oklusal', 'Intraoral'].some(k => mod.includes(k))) return 'bg-amber-600/85 border border-amber-500/30';
+        return 'bg-slate-600/85 border border-slate-500/30';
+    };
+
+
+    const renderAccessBadge = (scope) => {
+        switch (scope) {
+            case 'clinic':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-md backdrop-blur-sm">
+                        <AppIcon name="Hospital" size={10} className="stroke-[2.5]" />
+                        <span>Klinik</span>
+                    </span>
+                );
+            case 'shared_with_me':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 rounded-md backdrop-blur-sm">
+                        <AppIcon name="Share2" size={10} className="stroke-[2.5]" />
+                        <span>Dibagikan</span>
+                    </span>
+                );
+            default:
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-md backdrop-blur-sm">
+                        <AppIcon name="Lock" size={10} className="stroke-[2.5]" />
+                        <span>Pribadi</span>
+                    </span>
+                );
+        }
+    };
+
 
     const readyVtiPrefetchKey = useMemo(() => (
         seriesCards
@@ -750,6 +803,7 @@ const Gallery = ({
                                     <span className="px-2.5 py-1 text-xs font-mono font-medium rounded-lg bg-primary/5 border border-primary/10 text-secondary">
                                         ID: {selectedStudy.patientIdDisplay}
                                     </span>
+                                    {renderAccessBadge(selectedStudy.xcoreAccessScope)}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-xs text-secondary font-medium">
                                     <div className="flex items-center gap-1">
@@ -771,7 +825,58 @@ const Gallery = ({
                                         </>
                                     )}
                                 </div>
+
+                                {/* Extended DICOM & Acquisition Metadata Panel */}
+                                {selectedStudy.metadata && (
+                                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-primary/5 rounded-2xl border border-primary/10 p-4 animate-fade-in max-w-4xl">
+                                        {/* Patient Clinical Info */}
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Informasi Pasien</span>
+                                            <div className="text-xs text-secondary space-y-1">
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Tgl Lahir:</span> 
+                                                    <span>{selectedStudy.metadata.PatientBirthDate ? selectedStudy.metadata.PatientBirthDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '—'}</span>
+                                                </p>
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Jenis Kelamin:</span> 
+                                                    <span>{selectedStudy.metadata.PatientSex === 'M' ? 'Laki-laki (M)' : selectedStudy.metadata.PatientSex === 'F' ? 'Perempuan (F)' : selectedStudy.metadata.PatientSex || '—'}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Study details */}
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Detail Pemindaian</span>
+                                            <div className="text-xs text-secondary space-y-1">
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Deskripsi:</span> 
+                                                    <span className="truncate" title={selectedStudy.metadata.StudyDescription}>{selectedStudy.metadata.StudyDescription || '—'}</span>
+                                                </p>
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Total Seri:</span> 
+                                                    <span>{selectedStudy.series?.length || 0} scans</span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Acquisition Device Details */}
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Informasi Perangkat</span>
+                                            <div className="text-xs text-secondary space-y-1">
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Produsen:</span> 
+                                                    <span className="truncate text-accent font-medium" title={selectedStudy.metadata.Manufacturer}>{selectedStudy.metadata.Manufacturer || '—'}</span>
+                                                </p>
+                                                <p className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-primary">Model Alat:</span> 
+                                                    <span className="truncate" title={selectedStudy.metadata.ManufacturerModelName}>{selectedStudy.metadata.ManufacturerModelName || '—'}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
+
                         </div>
 
                         <div className="flex gap-2.5 shrink-0 self-end sm:self-center">
@@ -839,17 +944,20 @@ const Gallery = ({
                                                 )}
 
                                                 {/* Modality Tag */}
-                                                <span className={`absolute top-3 left-3 px-2.5 py-1 text-white text-[10px] font-bold uppercase rounded-md backdrop-blur-md flex items-center gap-1 ${
-                                                    is3D ? 'bg-indigo-600/90 shadow-[0_2px_10px_rgba(79,70,229,0.3)]' : 'bg-emerald-600/90 shadow-[0_2px_10px_rgba(5,150,105,0.3)]'
-                                                }`}>
+                                                <span className={`absolute top-3 left-3 px-2.5 py-1 text-white text-[10px] font-bold uppercase rounded-md backdrop-blur-md flex items-center gap-1 ${getModalityBadgeClass(series.modality)}`}>
                                                     <AppIcon name={is3D ? 'Box' : 'Image'} size={12} />
-                                                    {is3D ? '3D CBCT' : '2D Panoramic'}
+                                                    {series.modality === 'CBCT' ? '3D CBCT' : series.modality === 'Panoramic' ? 'Panoramik' : series.modality === 'Cephalometric' ? 'Sefalometri' : series.modality}
                                                 </span>
 
                                                 {/* Modality raw description */}
                                                 <span className="absolute top-3 right-3 px-2 py-0.5 bg-black/55 text-white text-[10px] rounded-md backdrop-blur-md font-medium">
                                                     {series.modality}
                                                 </span>
+
+                                                {/* Inherited Series-level Access Badge */}
+                                                <div className="absolute bottom-3 left-3 z-10">
+                                                    {renderAccessBadge(selectedStudy.xcoreAccessScope)}
+                                                </div>
 
                                                 {series.num_slices > 1 && (
                                                     <span className="absolute bottom-3 right-3 px-2 py-1 bg-black/55 text-white text-[10px] rounded-md backdrop-blur-md font-semibold text-cyan-400">
@@ -859,13 +967,32 @@ const Gallery = ({
                                             </div>
 
                                             {/* Series description */}
-                                            <div className="px-5 pb-3 space-y-1">
+                                            <div className="px-5 pb-3 space-y-1.5">
                                                 <h4 className="font-bold text-primary text-sm line-clamp-1 group-hover:text-accent transition-colors">
-                                                    {series.title || (is3D ? 'Volume 3D CBCT' : 'Gambar Panoramik 2D')}
+                                                    {series.title || (is3D ? 'Volume 3D CBCT' : `Scan 2D ${series.modality}`)}
                                                 </h4>
                                                 <p className="text-xs text-secondary leading-relaxed">
-                                                    {is3D ? '3D CBCT Volumetric Scan' : '2D Plain Scan / Panoramic'}
+                                                    {is3D ? '3D CBCT Volumetric Scan' : `2D ${series.modality} Scan`}
                                                 </p>
+
+
+                                                {/* Series Metadata row */}
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-secondary font-medium pt-1 border-t border-primary/5">
+                                                    <span className="flex items-center gap-1">
+                                                        <AppIcon name="Fingerprint" size={10} className="text-muted" />
+                                                        <span>UID: {series.series_uid.substring(0, 8)}...</span>
+                                                    </span>
+                                                    {series.num_slices > 0 && (
+                                                        <>
+                                                            <span className="text-muted">•</span>
+                                                            <span className="flex items-center gap-1">
+                                                                <AppIcon name="Layers" size={10} className="text-muted" />
+                                                                <span>{series.num_slices} slices</span>
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+
 
                                                 {isConverting && (
                                                     <div className="pt-3 space-y-1.5">
@@ -1225,7 +1352,7 @@ const Gallery = ({
                                                     <img
                                                         src={thumbnailUrl}
                                                         alt={study.patientName}
-                                                        className="w-full h-full object-cover"
+                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
                                                     />
                                                 ) : (
                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -1234,16 +1361,27 @@ const Gallery = ({
                                                 )}
 
                                                 {/* Modalities badges list */}
-                                                <div className="absolute top-2 left-2 flex flex-wrap gap-1.5">
+                                                <div className="absolute top-2 left-2 flex flex-wrap gap-1.5 z-10">
                                                     {studyModalities.map(mod => (
                                                         <span 
                                                             key={mod} 
-                                                            className={`px-2 py-0.5 text-[10px] font-semibold rounded backdrop-blur-sm text-white ${mod === '3D CBCT' ? 'bg-indigo-600/80' : 'bg-emerald-600/80'}`}
+                                                            className={`px-2 py-0.5 text-[10px] font-semibold rounded backdrop-blur-sm text-white ${getModalityBadgeClass(mod)}`}
                                                         >
                                                             {mod}
                                                         </span>
                                                     ))}
                                                 </div>
+
+                                                {/* Access Badge */}
+                                                <div className="absolute top-2 right-2 z-10">
+                                                    {renderAccessBadge(study.xcoreAccessScope)}
+                                                </div>
+
+                                                {/* Series / Scan Count Badge */}
+                                                <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
+                                                    <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
+                                                    <span>{study.series?.length || 0} Scan</span>
+                                                </span>
 
                                                 {/* Folder Size Badge */}
                                                 <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white text-[10px] rounded backdrop-blur-sm font-medium">
@@ -1254,12 +1392,19 @@ const Gallery = ({
                                             <div className="p-4 space-y-2">
                                                 <div className="flex justify-between items-start">
                                                     <div className="min-w-0 flex-1">
-                                                        <h3 className="font-semibold text-primary truncate">{study.patientName}</h3>
-                                                        <p className="text-xs text-secondary">{study.patientIdDisplay}</p>
+                                                        <h3 className="font-semibold text-primary truncate group-hover:text-accent transition-colors">{study.patientName}</h3>
+                                                        <p className="text-xs text-secondary mt-0.5">{study.patientIdDisplay}</p>
                                                         <p className="text-[11px] text-muted truncate mt-1">Folder: {study.originalName}</p>
+                                                        {study.metadata?.InstitutionName && (
+                                                            <p className="text-[10px] text-secondary flex items-center gap-1 mt-1 font-medium truncate">
+                                                                <AppIcon name="Hospital" size={10} className="text-muted shrink-0" />
+                                                                <span className="truncate">{study.metadata.InstitutionName}</span>
+                                                            </p>
+                                                        )}
                                                     </div>
                                                     <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1 mt-0.5" />
                                                 </div>
+
                                                 
                                                 <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
                                                     <span>{study.dateDisplay}</span>
@@ -1315,6 +1460,7 @@ const Gallery = ({
                                             <th className="px-6 py-4 font-medium text-secondary">Type</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Modality</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Slices</th>
+                                            <th className="px-6 py-4 font-medium text-secondary">Access</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Date</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Action</th>
                                         </tr>
@@ -1343,6 +1489,9 @@ const Gallery = ({
                                                     <span className="px-2 py-1 rounded bg-secondary/10 text-secondary text-xs">{card.modality}</span>
                                                 </td>
                                                 <td className="px-6 py-4 text-secondary">{card.num_slices}</td>
+                                                <td className="px-6 py-4">
+                                                    {renderAccessBadge(card.study?.xcoreAccessScope)}
+                                                </td>
                                                 <td className="px-6 py-4 text-secondary">{card.dateDisplay}</td>
                                                 <td className="px-6 py-4">
                                                     <button
@@ -1357,6 +1506,7 @@ const Gallery = ({
                                             );
                                         })}
                                     </tbody>
+
                                 </table>
                             </div>
                         ) : (
@@ -1370,6 +1520,7 @@ const Gallery = ({
                                             <th className="px-6 py-4 font-medium text-secondary">Modality</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Folder Size</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Scans</th>
+                                            <th className="px-6 py-4 font-medium text-secondary">Access</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Date</th>
                                             <th className="px-6 py-4 font-medium text-secondary">Action</th>
                                         </tr>
@@ -1401,12 +1552,25 @@ const Gallery = ({
                                                 <td className="px-6 py-4">
                                                     <div className="flex gap-1">
                                                         {studyModalities.map(mod => (
-                                                            <span key={mod} className={`px-2 py-0.5 rounded text-[10px] font-semibold text-white ${mod === '3D CBCT' ? 'bg-indigo-600/80' : 'bg-emerald-600/80'}`}>{mod}</span>
+                                                            <span key={mod} className={`px-2 py-0.5 rounded text-[10px] font-semibold text-white ${getModalityBadgeClass(mod)}`}>{mod}</span>
                                                         ))}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-secondary">{folderSize}</td>
-                                                <td className="px-6 py-4 text-secondary">{study.series?.length || 0} scans</td>
+                                                <td className="px-6 py-4 text-secondary">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{study.series?.length || 0} scans</span>
+                                                        {study.metadata?.InstitutionName && (
+                                                            <span className="text-[10px] text-muted flex items-center gap-0.5 mt-0.5 max-w-[150px] truncate" title={study.metadata.InstitutionName}>
+                                                                <AppIcon name="Hospital" size={8} />
+                                                                <span className="truncate">{study.metadata.InstitutionName}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {renderAccessBadge(study.xcoreAccessScope)}
+                                                </td>
                                                 <td className="px-6 py-4 text-secondary">{study.dateDisplay}</td>
                                                 <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                                                     <button

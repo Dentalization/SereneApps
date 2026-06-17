@@ -13,9 +13,10 @@ import {
 const SAVE_DEBOUNCE_MS = 500;
 const DRAFT_VERSION = 1;
 const CACHE_VERSION = 1;
+const EMPTY_CLINICAL_RECORDS = [];
 
 const studyIdForApi = (study) => {
-  if (!study || study.readOnly) return '';
+  if (!study) return '';
   const candidate = study.id ?? '';
   return /^\d+$/.test(String(candidate)) ? String(candidate) : '';
 };
@@ -25,12 +26,21 @@ const studyKeyForStorage = (study) => {
   return String(study.id || study.folderName || study.studyKey || study.originalName || '').trim();
 };
 
+const defaultIsClinicalRecord = (record) => (
+  record?.type === 'measurement'
+  || record?.annotation_type === 'measurement'
+  || record?.metadata?.clinical_record_type === 'measurement'
+);
+
 export default function usePersistentAnnotations({
   study,
   seriesUid,
   viewerType,
   annotations,
   setAnnotations,
+  clinicalRecords = EMPTY_CLINICAL_RECORDS,
+  onHydrateClinicalRecords = null,
+  isClinicalRecord = defaultIsClinicalRecord,
   enabled,
   scope = {},
 }) {
@@ -47,9 +57,12 @@ export default function usePersistentAnnotations({
   const changeVersionRef = useRef(0);
   const localWriteTimerRef = useRef(null);
   const annotationsRef = useRef(annotations);
+  const clinicalRecordsRef = useRef(clinicalRecords);
   const lastAnnotationsRef = useRef(annotations);
+  const lastClinicalRecordsRef = useRef(clinicalRecords);
   const lastAnnotationHashRef = useRef('');
   const studyId = studyIdForApi(study);
+  const canSaveToApi = Boolean(studyId && !study?.readOnly);
   const storageStudyKey = studyKeyForStorage(study);
   const loadKey = `${storageStudyKey || studyId}__${seriesUid || ''}__${viewerType || ''}`;
   const draftStorageKey = storageStudyKey && seriesUid && viewerType
@@ -58,21 +71,45 @@ export default function usePersistentAnnotations({
   const cacheStorageKey = storageStudyKey && seriesUid && viewerType
     ? `xcore.annotations.${storageStudyKey}.${seriesUid}.${viewerType}`
     : '';
+  const persistedItems = useMemo(() => [
+    ...(Array.isArray(annotations) ? annotations : []),
+    ...(Array.isArray(clinicalRecords) ? clinicalRecords : []),
+  ], [annotations, clinicalRecords]);
   const annotationHash = useMemo(() => (
-    (annotations || []).map((annotation) => {
+    (persistedItems || []).map((annotation) => {
       const coordinatesLength = JSON.stringify(annotation?.coordinates || {}).length;
-      return `${annotation?.id || ''}:${annotation?.review_status || ''}:${coordinatesLength}`;
+      const metadataLength = JSON.stringify(annotation?.metadata || {}).length;
+      return `${annotation?.id || ''}:${annotation?.review_status || ''}:${annotation?.type || annotation?.annotation_type || ''}:${coordinatesLength}:${metadataLength}`;
     }).join('|')
-  ), [annotations]);
+  ), [persistedItems]);
 
-  if (lastAnnotationsRef.current !== annotations) {
+  if (lastAnnotationsRef.current !== annotations || lastClinicalRecordsRef.current !== clinicalRecords) {
     annotationsRef.current = annotations;
+    clinicalRecordsRef.current = clinicalRecords;
     lastAnnotationsRef.current = annotations;
+    lastClinicalRecordsRef.current = clinicalRecords;
     if (hydratedRef.current && lastAnnotationHashRef.current !== annotationHash) {
       changeVersionRef.current += 1;
     }
     lastAnnotationHashRef.current = annotationHash;
   }
+
+  const hydratePersistedItems = useCallback((items) => {
+    const normalizedItems = Array.isArray(items) ? items : [];
+    const nextClinicalRecords = [];
+    const nextAnnotations = [];
+
+    normalizedItems.forEach((item) => {
+      if (isClinicalRecord?.(item)) {
+        nextClinicalRecords.push(item);
+      } else {
+        nextAnnotations.push(item);
+      }
+    });
+
+    setAnnotations(nextAnnotations);
+    onHydrateClinicalRecords?.(nextClinicalRecords);
+  }, [isClinicalRecord, onHydrateClinicalRecords, setAnnotations]);
 
   const readDraftBackup = useCallback(() => {
     if (!draftStorageKey || typeof window === 'undefined') return null;
@@ -167,7 +204,11 @@ export default function usePersistentAnnotations({
 
   const buildSaveSnapshot = useCallback(() => {
     if (!seriesUid || !viewerType) return null;
-    const normalized = (annotationsRef.current || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
+    const itemsToPersist = [
+      ...(Array.isArray(annotationsRef.current) ? annotationsRef.current : []),
+      ...(Array.isArray(clinicalRecordsRef.current) ? clinicalRecordsRef.current : []),
+    ];
+    const normalized = itemsToPersist.map((annotation) => normalizeAnnotationForPersistence(annotation, {
       ...scopeRef.current,
       seriesUid,
       viewerType,
@@ -181,7 +222,7 @@ export default function usePersistentAnnotations({
   }, [seriesUid, viewerType]);
 
   const flushPendingSave = useCallback((options = {}) => {
-    if (!enabled || !studyId || !seriesUid || !viewerType || !hydratedRef.current) {
+    if (!enabled || !canSaveToApi || !seriesUid || !viewerType || !hydratedRef.current) {
       return Promise.resolve(null);
     }
 
@@ -218,7 +259,9 @@ export default function usePersistentAnnotations({
         if (isLatestSave && Array.isArray(payload?.annotations) && !options.silent) {
           skipNextSaveRef.current = true;
           setAnnotations((current) => {
-            const savedById = new Map(payload.annotations.map((annotation) => [annotation.id, annotation]));
+            const savedById = new Map(payload.annotations
+              .filter((annotation) => !isClinicalRecord?.(annotation))
+              .map((annotation) => [annotation.id, annotation]));
             return current.map((annotation) => savedById.get(annotation.id) || annotation);
           });
         }
@@ -234,7 +277,7 @@ export default function usePersistentAnnotations({
       .finally(() => {
         if (!options.silent) setSaving(false);
       });
-  }, [buildSaveSnapshot, cancelScheduledLocalWrite, clearDraftBackup, enabled, seriesUid, setAnnotations, studyId, viewerType, writeDraftBackup, writeLocalCache]);
+  }, [buildSaveSnapshot, canSaveToApi, cancelScheduledLocalWrite, clearDraftBackup, enabled, isClinicalRecord, seriesUid, setAnnotations, viewerType, writeDraftBackup, writeLocalCache]);
 
   useEffect(() => {
     scopeRef.current = scope || {};
@@ -271,7 +314,7 @@ export default function usePersistentAnnotations({
         viewerType,
       }));
       skipNextSaveRef.current = true;
-      setAnnotations(localAnnotations);
+      hydratePersistedItems(localAnnotations);
       knownIdsRef.current = new Set(localAnnotations.map((annotation) => annotation.id).filter(Boolean));
       hydratedRef.current = true;
       return true;
@@ -313,7 +356,7 @@ export default function usePersistentAnnotations({
           : null;
         const hydratedAnnotations = draftAnnotations || cacheAnnotations || serverAnnotations;
         skipNextSaveRef.current = !draftAnnotations && !cacheAnnotations;
-        setAnnotations(hydratedAnnotations);
+        hydratePersistedItems(hydratedAnnotations);
         knownIdsRef.current = new Set((serverAnnotations.length ? serverAnnotations : hydratedAnnotations).map((annotation) => annotation.id).filter(Boolean));
         hydratedRef.current = true;
       })
@@ -331,7 +374,7 @@ export default function usePersistentAnnotations({
     return () => {
       cancelled = true;
     };
-  }, [enabled, loadKey, readDraftBackup, readLocalCache, seriesUid, setAnnotations, studyId, viewerType]);
+  }, [enabled, hydratePersistedItems, loadKey, readDraftBackup, readLocalCache, seriesUid, studyId, viewerType]);
 
   useEffect(() => {
     if (!enabled || !seriesUid || !viewerType || !hydratedRef.current) return undefined;
@@ -349,7 +392,7 @@ export default function usePersistentAnnotations({
       scheduleLocalSnapshotWrite(snapshot);
     }
 
-    if (studyId) {
+    if (canSaveToApi) {
       saveTimerRef.current = window.setTimeout(() => {
         flushPendingSave().catch(() => {});
       }, SAVE_DEBOUNCE_MS);
@@ -361,7 +404,7 @@ export default function usePersistentAnnotations({
         saveTimerRef.current = null;
       }
     };
-  }, [annotationHash, buildSaveSnapshot, enabled, flushPendingSave, scheduleLocalSnapshotWrite, seriesUid, studyId, viewerType]);
+  }, [annotationHash, buildSaveSnapshot, canSaveToApi, enabled, flushPendingSave, scheduleLocalSnapshotWrite, seriesUid, viewerType]);
 
   useEffect(() => {
     if (!enabled) return undefined;

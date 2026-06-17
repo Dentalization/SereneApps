@@ -344,10 +344,12 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const buildBaseMetadata = () => ({
     source_width: annotationWidth,
     source_height: annotationHeight,
+    coordinate_system: 'normalized_image',
     finding_type: 'other',
     severity: 'S1',
     tooth_number: activeToothContext?.number || activeToothContext?.tooth_number || '',
     surface: '',
+    notes: '',
   });
 
   const updateAnnotation = (annotationId, updater) => {
@@ -420,7 +422,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   };
 
   const withMetadataDraft = (annotation) => {
-    if (!annotation || annotation.type === 'text') return;
+    if (!annotation) return;
     const anchor = getAnnotationAnchor(annotation);
     setMetadataDraft({
       annotationId: annotation.id,
@@ -431,6 +433,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         surface: annotation.metadata?.surface || '',
         tooth_number: annotation.metadata?.tooth_number || activeToothContext?.number || activeToothContext?.tooth_number || '',
         lesion_area_px: annotation.metadata?.lesion_area_px || '',
+        notes: annotation.metadata?.notes || annotation.label || '',
       },
     });
   };
@@ -440,6 +443,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     const nextMetadata = { ...metadataDraft.metadata, ...patch };
     updateAnnotation(metadataDraft.annotationId, (annotation) => ({
       ...annotation,
+      label: patch.notes !== undefined ? patch.notes : annotation.label,
       metadata: {
         ...(annotation.metadata || {}),
         ...nextMetadata,
@@ -742,15 +746,13 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
               aria-label="Change annotation color"
             />
           </label>
-          {selectedAnnotation.type !== 'text' && (
-            <button
-              type="button"
-              onClick={() => withMetadataDraft(selectedAnnotation)}
-              className="rounded-lg px-2 py-1 text-[10px] font-semibold text-cyan-200 hover:bg-slate-800"
-            >
-              Tags
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => withMetadataDraft(selectedAnnotation)}
+            className="rounded-lg px-2 py-1 text-[10px] font-semibold text-cyan-200 hover:bg-slate-800"
+          >
+            Tags
+          </button>
           {reviewMode && typeof onReviewAnnotation === 'function' && (
             <>
               <button
@@ -885,88 +887,101 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
 
       {active && metadataDraft && metadataDraftPosition && (
         <div
-          className="absolute z-[84] w-64 rounded-2xl border border-cyan-400/20 bg-slate-950/95 p-3 text-xs text-white shadow-2xl backdrop-blur"
+          className="absolute z-[84] flex w-72 max-w-[calc(100%-16px)] flex-col overflow-hidden rounded-2xl border border-cyan-400/20 bg-slate-950/95 text-xs text-white shadow-2xl backdrop-blur"
           style={{
-            left: `${Math.min(Math.max(metadataDraftPosition.x + 12, 8), Math.max(width - 270, 8))}px`,
-            top: `${Math.min(Math.max(metadataDraftPosition.y + 12, 8), Math.max(height - 360, 8))}px`,
+            left: `${Math.min(Math.max(metadataDraftPosition.x + 12, 8), Math.max(width - 296, 8))}px`,
+            top: `${Math.min(Math.max(metadataDraftPosition.y + 12, 8), Math.max(height - Math.min(540, Math.max(height - 16, 260)), 8))}px`,
+            maxHeight: `${Math.max(260, height - 16)}px`,
           }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           data-annotation-popover="true"
         >
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Clinical Tags</div>
-          <label className="mb-2 block">
-            <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Finding type</span>
-            <select
-              value={metadataDraft.metadata.finding_type}
-              onChange={(event) => updateMetadataDraft({ finding_type: event.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-            >
-              {FINDING_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="mb-2 block">
-            <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Severity</span>
-            <select
-              value={metadataDraft.metadata.severity}
-              onChange={(event) => updateMetadataDraft({ severity: event.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-            >
-              {SEVERITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <div className={hideSurface ? "mb-2" : "grid grid-cols-2 gap-2 mb-2"}>
-            {!hideSurface && (
-              <label>
-                <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Surface</span>
-                <select
-                  value={metadataDraft.metadata.surface}
-                  onChange={(event) => updateMetadataDraft({ surface: event.target.value })}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-                >
-                  {SURFACES.map((surface) => (
-                    <option key={surface || 'none'} value={surface}>
-                      {surface || '—'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="block">
-              <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Tooth</span>
-              <input
-                value={metadataDraft.metadata.tooth_number}
-                onChange={(event) => updateMetadataDraft({ tooth_number: event.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-                placeholder="36"
+          <div className="overflow-y-auto p-3 scrollbar-thin">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Clinical Tags</div>
+            <label className="mb-2 block">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Dentist Notes / AI Training</span>
+              <textarea
+                value={metadataDraft.metadata.notes || ''}
+                onChange={(event) => updateMetadataDraft({ notes: event.target.value })}
+                rows={3}
+                placeholder="Enter notes for AI training..."
+                className="w-full resize-none rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
               />
             </label>
-          </div>
-          <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Link to Tooth</div>
-            <div className="grid grid-cols-8 gap-1">
-              {FDI_TOOTH_NUMBERS.map((toothNumber) => (
-                <button
-                  key={toothNumber}
-                  type="button"
-                  onClick={() => updateMetadataDraft({ tooth_number: toothNumber })}
-                  className={`rounded px-1 py-1 text-[10px] font-mono transition ${
-                    String(metadataDraft.metadata.tooth_number) === toothNumber
-                      ? 'bg-cyan-500 text-slate-950'
-                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  {toothNumber}
-                </button>
-              ))}
+            <label className="mb-2 block">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Finding type</span>
+              <select
+                value={metadataDraft.metadata.finding_type}
+                onChange={(event) => updateMetadataDraft({ finding_type: event.target.value })}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+              >
+                {FINDING_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="mb-2 block">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Severity</span>
+              <select
+                value={metadataDraft.metadata.severity}
+                onChange={(event) => updateMetadataDraft({ severity: event.target.value })}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+              >
+                {SEVERITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <div className={hideSurface ? "mb-2" : "grid grid-cols-2 gap-2 mb-2"}>
+              {!hideSurface && (
+                <label>
+                  <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Surface</span>
+                  <select
+                    value={metadataDraft.metadata.surface}
+                    onChange={(event) => updateMetadataDraft({ surface: event.target.value })}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+                  >
+                    {SURFACES.map((surface) => (
+                      <option key={surface || 'none'} value={surface}>
+                        {surface || '—'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="block">
+                <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Tooth</span>
+                <input
+                  value={metadataDraft.metadata.tooth_number}
+                  onChange={(event) => updateMetadataDraft({ tooth_number: event.target.value })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+                  placeholder="36"
+                />
+              </label>
             </div>
-          </div>
-          {metadataDraft.metadata.lesion_area_px && (
-            <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-100">
-              Region area: <span className="font-mono text-white">{Number(metadataDraft.metadata.lesion_area_px).toLocaleString()} px²</span>
+            <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Link to Tooth</div>
+              <div className="grid grid-cols-8 gap-1">
+                {FDI_TOOTH_NUMBERS.map((toothNumber) => (
+                  <button
+                    key={toothNumber}
+                    type="button"
+                    onClick={() => updateMetadataDraft({ tooth_number: toothNumber })}
+                    className={`rounded px-1 py-1 text-[10px] font-mono transition ${
+                      String(metadataDraft.metadata.tooth_number) === toothNumber
+                        ? 'bg-cyan-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {toothNumber}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-          <div className="mt-3 flex justify-end gap-2">
+            {metadataDraft.metadata.lesion_area_px && (
+              <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-100">
+                Region area: <span className="font-mono text-white">{Number(metadataDraft.metadata.lesion_area_px).toLocaleString()} px²</span>
+              </div>
+            )}
+          </div>
+          <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-800/80 bg-slate-950/95 p-3">
             <button
               type="button"
               onClick={() => setMetadataDraft(null)}

@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-06-08T06:28:33.451298+00:00",
+  "component": "CDSS Python service",
+  "cyclomaticComplexity": {
+    "blockCount": 105,
+    "averageComplexity": 7.39,
+    "maxComplexity": 36,
+    "rankCounts": {
+      "A": 52,
+      "B": 29,
+      "C": 17,
+      "D": 5,
+      "E": 2
+    },
+    "highestComplexityBlocks": [
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
+        "name": "scan_dicom_series",
+        "type": "function",
+        "complexity": 36,
+        "rank": "E",
+        "lineno": 103
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
+        "name": "convert_study_to_vti",
+        "type": "function",
+        "complexity": 35,
+        "rank": "E",
+        "lineno": 1397
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
+        "name": "get_study_gallery",
+        "type": "function",
+        "complexity": 28,
+        "rank": "D",
+        "lineno": 512
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
+        "name": "read_dicom_volume",
+        "type": "function",
+        "complexity": 25,
+        "rank": "D",
+        "lineno": 248
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
+        "name": "_ensure_vti_conversion_singleflight",
+        "type": "function",
+        "complexity": 23,
+        "rank": "D",
+        "lineno": 386
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "_scan_and_group_series",
+        "type": "method",
+        "complexity": 21,
+        "rank": "D",
+        "lineno": 102
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "get_metadata",
+        "type": "method",
+        "complexity": 21,
+        "rank": "D",
+        "lineno": 457
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "get_slice",
+        "type": "method",
+        "complexity": 20,
+        "rank": "C",
+        "lineno": 370
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
+        "name": "suppress_fov_background",
+        "type": "function",
+        "complexity": 18,
+        "rank": "C",
+        "lineno": 365
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "name": "_normalize_metadata_value",
+        "type": "method",
+        "complexity": 14,
+        "rank": "C",
+        "lineno": 265
+      }
+    ]
+  },
+  "maintainabilityIndex": {
+    "fileCount": 4,
+    "averageMaintainabilityIndex": 19.53,
+    "minMaintainabilityIndex": 0.0,
+    "files": [
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/main.py",
+        "maintainabilityIndex": 0.0,
+        "rank": "C"
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/vti_converter.py",
+        "maintainabilityIndex": 0.0,
+        "rank": "C"
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/dicom_handler.py",
+        "maintainabilityIndex": 23.459306375797215,
+        "rank": "A"
+      },
+      {
+        "file": "/Users/adrianhalim/SereneApps/backend/python_service/services/morita_handler.py",
+        "maintainabilityIndex": 54.65344868154168,
+        "rank": "A"
+      }
+    ]
+  },
+  "rawMetricFileCount": 4,
+  "evidence": {
+    "cyclomaticComplexity": "/Users/adrianhalim/SereneApps/maintainability-results/radon-cdss-cc.json",
+    "maintainabilityIndex": "/Users/adrianhalim/SereneApps/maintainability-results/radon-cdss-mi.json",
+    "rawMetrics": "/Users/adrianhalim/SereneApps/maintainability-results/radon-cdss-raw.json"
+  }
+}

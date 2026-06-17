@@ -2,7 +2,10 @@
   "scripts": {
     "maintainability:eslint": "bash scripts/maintainability/run-eslint-reports.sh",
     "maintainability:radon": "bash scripts/maintainability/run-radon-reports.sh",
-    "maintainability:validate": "node scripts/maintainability/validate-maintainability-setup.js"
+    "maintainability:validate": "node scripts/maintainability/validate-maintainability-setup.js",
+    "benchmark:run": "node scripts/xcore-benchmark/run-single-folder-repeated-benchmark.js",
+    "benchmark:summary": "node scripts/xcore-benchmark/summarize-single-folder-benchmark.js",
+    "benchmark:cleanup": "node scripts/xcore-benchmark/cleanup-benchmark-artifacts.js"
   },
   "dependencies": {
     "express-rate-limit": "^8.3.2",
