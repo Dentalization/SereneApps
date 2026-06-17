@@ -1,0 +1,1 @@
+run_id,image_file,image_size_kb,initial_response_time_ms,queue_time_ms,inference_time_ms,persistence_time_ms,end_to_end_processing_time_ms,status,error_message,timestamp

@@ -11,8 +11,8 @@ const tests = [
   {
     no: 1,
     feature: 'Login pengguna',
-    script: 'tests/latency/scripts/01-login.k6.js',
-    summaryFile: 'tests/latency/results/01-login-summary.json',
+    script: path.join(__dirname, 'scripts/01-login.k6.js'),
+    summaryFile: path.join(__dirname, 'results/01-login-summary.json'),
     trendMetric: 'login_response_time',
     failedMetric: 'login_failed',
     requestsMetric: 'login_requests',
@@ -20,8 +20,8 @@ const tests = [
   {
     no: 2,
     feature: 'Ambil daftar appointment',
-    script: 'tests/latency/scripts/02-fetch-appointments.k6.js',
-    summaryFile: 'tests/latency/results/02-fetch-appointments-summary.json',
+    script: path.join(__dirname, 'scripts/02-fetch-appointments.k6.js'),
+    summaryFile: path.join(__dirname, 'results/02-fetch-appointments-summary.json'),
     trendMetric: 'list_appointment_response_time',
     failedMetric: 'list_appointment_failed',
     requestsMetric: 'list_appointment_requests',
@@ -29,8 +29,8 @@ const tests = [
   {
     no: 3,
     feature: 'Buat appointment',
-    script: 'tests/latency/scripts/03-create-appointment.k6.js',
-    summaryFile: 'tests/latency/results/03-create-appointment-summary.json',
+    script: path.join(__dirname, 'scripts/03-create-appointment.k6.js'),
+    summaryFile: path.join(__dirname, 'results/03-create-appointment-summary.json'),
     trendMetric: 'create_appointment_response_time',
     failedMetric: 'create_appointment_failed',
     requestsMetric: 'create_appointment_requests',
@@ -38,8 +38,8 @@ const tests = [
   {
     no: 4,
     feature: 'Ambil detail konsultasi',
-    script: 'tests/latency/scripts/04-fetch-consultation-detail.k6.js',
-    summaryFile: 'tests/latency/results/04-fetch-consultation-detail-summary.json',
+    script: path.join(__dirname, 'scripts/04-fetch-consultation-detail.k6.js'),
+    summaryFile: path.join(__dirname, 'results/04-fetch-consultation-detail-summary.json'),
     trendMetric: 'detail_consultation_response_time',
     failedMetric: 'detail_consultation_failed',
     requestsMetric: 'detail_consultation_requests',
@@ -47,8 +47,8 @@ const tests = [
   {
     no: 5,
     feature: 'Kirim pesan konsultasi',
-    script: 'tests/latency/scripts/05-send-chat-message.k6.js',
-    summaryFile: 'tests/latency/results/05-send-chat-message-summary.json',
+    script: path.join(__dirname, 'scripts/05-send-chat-message.k6.js'),
+    summaryFile: path.join(__dirname, 'results/05-send-chat-message-summary.json'),
     trendMetric: 'send_message_response_time',
     failedMetric: 'send_message_failed',
     requestsMetric: 'send_message_requests',
@@ -56,8 +56,8 @@ const tests = [
   {
     no: 6,
     feature: 'Unggah citra gigi',
-    script: 'tests/latency/scripts/06-upload-attachment.k6.js',
-    summaryFile: 'tests/latency/results/06-upload-attachment-summary.json',
+    script: path.join(__dirname, 'scripts/06-upload-attachment.k6.js'),
+    summaryFile: path.join(__dirname, 'results/06-upload-attachment-summary.json'),
     trendMetric: 'upload_image_response_time',
     failedMetric: 'upload_image_failed',
     requestsMetric: 'upload_image_requests',
@@ -106,7 +106,7 @@ async function run() {
       fs.unlinkSync(test.summaryFile);
     }
 
-    const cmd = `k6 run -e VUS=${VUS} -e DURATION=${DURATION} -e BASE_URL=${BASE_URL} -e API_PREFIX=${API_PREFIX} -e SUMMARY_FILE=${test.summaryFile} ${test.script}`;
+    const cmd = `k6 run -e VUS=${VUS} -e DURATION=${DURATION} -e BASE_URL="${BASE_URL}" -e API_PREFIX="${API_PREFIX}" -e SUMMARY_FILE="${test.summaryFile}" "${test.script}"`;
     try {
       await runCommand(cmd);
       console.log(`Completed ${test.feature}. Result saved to ${test.summaryFile}`);
@@ -180,8 +180,8 @@ function generateReports() {
     csv += `${r.no},"${r.feature}",${r.avg},${r.p95},${r.throughput},${r.errorRate},${r.status}\n`;
   }
 
-  const mdPath = 'tests/latency/reports/table-4-4-core-api-latency.md';
-  const csvPath = 'tests/latency/reports/table-4-4-core-api-latency.csv';
+  const mdPath = path.join(__dirname, 'reports/table-4-4-core-api-latency.md');
+  const csvPath = path.join(__dirname, 'reports/table-4-4-core-api-latency.csv');
   
   fs.writeFileSync(mdPath, md, 'utf8');
   fs.writeFileSync(csvPath, csv, 'utf8');

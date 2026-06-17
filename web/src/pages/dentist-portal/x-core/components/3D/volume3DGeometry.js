@@ -1,5 +1,5 @@
-import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
-import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData.js';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray.js';
 
 export const SURFACE_TRACE_MIN_STEP_MM = 0.65;
 export const BRUSH_RADIUS_MIN_MM = 0.8;
@@ -9,6 +9,25 @@ export const BRUSH_RADIUS_DEFAULT_MM = 2.6;
 export function arraysNearlyEqual(a, b, epsilon = 1e-3) {
   if (!a || !b || a.length !== b.length) return false;
   return a.every((value, index) => Math.abs(value - b[index]) <= epsilon);
+}
+
+function normalizeVector3(vector) {
+  if (!isWorldPoint3D(vector)) return null;
+  const length = Math.hypot(Number(vector[0]), Number(vector[1]), Number(vector[2]));
+  if (!Number.isFinite(length) || length <= 1e-6) return null;
+  return [Number(vector[0]) / length, Number(vector[1]) / length, Number(vector[2]) / length];
+}
+
+function angleBetweenVectorsDeg(vectorA, vectorB) {
+  const normalizedA = normalizeVector3(vectorA);
+  const normalizedB = normalizeVector3(vectorB);
+  if (!normalizedA || !normalizedB) return null;
+  const dot = Math.max(-1, Math.min(1,
+    (normalizedA[0] * normalizedB[0])
+    + (normalizedA[1] * normalizedB[1])
+    + (normalizedA[2] * normalizedB[2])
+  ));
+  return (Math.acos(dot) * 180) / Math.PI;
 }
 
 export function distanceMm(pointA, pointB) {
@@ -121,7 +140,7 @@ export function hexToRgbNormalized(hex, fallback = [0.886, 0.294, 0.290]) {
   ];
 }
 
-export function cameraStateApproximatelyMatches(expected, current, epsilon = 0.75) {
+export function cameraStateApproximatelyMatches(expected, current, angleDegEpsilon = 12) {
   if (!expected || !current) return true;
   const expectedPosition = expected.position || expected.camera_position;
   const expectedFocalPoint = expected.focal_point || expected.focalPoint;
@@ -130,9 +149,31 @@ export function cameraStateApproximatelyMatches(expected, current, epsilon = 0.7
   const currentFocalPoint = current.focal_point || current.focalPoint;
   const currentViewUp = current.view_up || current.viewUp;
 
-  return arraysNearlyEqual(expectedPosition, currentPosition, epsilon)
-    && arraysNearlyEqual(expectedFocalPoint, currentFocalPoint, epsilon)
-    && arraysNearlyEqual(expectedViewUp, currentViewUp, 0.08);
+  if (!isWorldPoint3D(expectedPosition) || !isWorldPoint3D(expectedFocalPoint)
+    || !isWorldPoint3D(currentPosition) || !isWorldPoint3D(currentFocalPoint)) {
+    return true;
+  }
+
+  const expectedDirection = [
+    expectedFocalPoint[0] - expectedPosition[0],
+    expectedFocalPoint[1] - expectedPosition[1],
+    expectedFocalPoint[2] - expectedPosition[2],
+  ];
+  const currentDirection = [
+    currentFocalPoint[0] - currentPosition[0],
+    currentFocalPoint[1] - currentPosition[1],
+    currentFocalPoint[2] - currentPosition[2],
+  ];
+  const directionAngle = angleBetweenVectorsDeg(expectedDirection, currentDirection);
+  if (directionAngle === null) return true;
+  if (directionAngle > angleDegEpsilon) return false;
+
+  if (isWorldPoint3D(expectedViewUp) && isWorldPoint3D(currentViewUp)) {
+    const viewUpAngle = angleBetweenVectorsDeg(expectedViewUp, currentViewUp);
+    if (viewUpAngle !== null && viewUpAngle > Math.max(angleDegEpsilon, 20)) return false;
+  }
+
+  return true;
 }
 
 export function hashWorldAnnotation(annotation, selectedId = null) {

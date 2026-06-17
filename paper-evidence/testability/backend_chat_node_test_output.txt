@@ -1,0 +1,234 @@
+TAP version 13
+# Subtest: mock conversations adapter supports message send workflow without Twilio credentials
+ok 1 - mock conversations adapter supports message send workflow without Twilio credentials
+  ---
+  duration_ms: 1.109208
+  ...
+# Subtest: mock conversations adapter creates bounded access token metadata
+ok 2 - mock conversations adapter creates bounded access token metadata
+  ---
+  duration_ms: 0.127042
+  ...
+# Subtest: attachment signing secret is mandatory outside local development
+ok 3 - attachment signing secret is mandatory outside local development
+  ---
+  duration_ms: 8.494167
+  ...
+# Subtest: attachment signing secret validation accepts a dedicated production secret
+ok 4 - attachment signing secret validation accepts a dedicated production secret
+  ---
+  duration_ms: 0.182916
+  ...
+# Subtest: attachment signed URLs validate without exposing storage object keys as authority
+ok 5 - attachment signed URLs validate without exposing storage object keys as authority
+  ---
+  duration_ms: 0.833666
+  ...
+# Subtest: expired or tombstoned attachments render as unavailable placeholders
+ok 6 - expired or tombstoned attachments render as unavailable placeholders
+  ---
+  duration_ms: 7.6235
+  ...
+# Subtest: attachment signed URL TTL is configurable and bounded
+ok 7 - attachment signed URL TTL is configurable and bounded
+  ---
+  duration_ms: 0.068542
+  ...
+# Subtest: clinic teledentistry capabilities keep observer and chat review owner-only
+ok 8 - clinic teledentistry capabilities keep observer and chat review owner-only
+  ---
+  duration_ms: 12.283166
+  ...
+# Subtest: assigned branch scope is enforced for non-owner clinic staff
+ok 9 - assigned branch scope is enforced for non-owner clinic staff
+  ---
+  duration_ms: 0.106334
+  ...
+# Subtest: shared clinic observer policy returns audit-safe denial reasons
+ok 10 - shared clinic observer policy returns audit-safe denial reasons
+  ---
+  duration_ms: 0.137042
+  ...
+# Subtest: shared clinic policy classifies tele appointments consistently
+ok 11 - shared clinic policy classifies tele appointments consistently
+  ---
+  duration_ms: 0.053166
+  ...
+# Subtest: session buckets distinguish waiting from live and ended
+ok 12 - session buckets distinguish waiting from live and ended
+  ---
+  duration_ms: 0.193
+  ...
+# Subtest: clinic chat projection redacts attachment download URLs while preserving tombstone state
+ok 13 - clinic chat projection redacts attachment download URLs while preserving tombstone state
+  ---
+  duration_ms: 0.1255
+  ...
+# Subtest: observer track publish webhook is classified as a violation
+ok 14 - observer track publish webhook is classified as a violation
+  ---
+  duration_ms: 0.06
+  ...
+# Subtest: observer video sessions are tagged separately from clinical participants
+ok 15 - observer video sessions are tagged separately from clinical participants
+  ---
+  duration_ms: 0.05025
+  ...
+# Subtest: communication audit storage errors are downgraded when schema is missing
+ok 16 - communication audit storage errors are downgraded when schema is missing
+  ---
+  duration_ms: 0.126291
+  ...
+# Subtest: clinical summary finalization requires core clinical fields
+ok 17 - clinical summary finalization requires core clinical fields
+  ---
+  duration_ms: 0.969458
+  ...
+# Subtest: patient-facing summary serialization hides drafts
+ok 18 - patient-facing summary serialization hides drafts
+  ---
+  duration_ms: 43.909791
+  ...
+# Subtest: uses one appointment-scoped room name for chat and video resources
+ok 19 - uses one appointment-scoped room name for chat and video resources
+  ---
+  duration_ms: 0.674292
+  ...
+# Subtest: waiting room blocks unpaid appointments and opens around appointment time
+ok 20 - waiting room blocks unpaid appointments and opens around appointment time
+  ---
+  duration_ms: 37.814375
+  ...
+# Subtest: communication audit metadata strips secrets and serializes dates
+ok 21 - communication audit metadata strips secrets and serializes dates
+  ---
+  duration_ms: 0.148916
+  ...
+# Subtest: deprecated video token route declares successor and sunset metadata
+ok 22 - deprecated video token route declares successor and sunset metadata
+  ---
+  duration_ms: 0.675833
+  ...
+# Subtest: diagnostics metadata redacts secrets recursively
+ok 23 - diagnostics metadata redacts secrets recursively
+  ---
+  duration_ms: 0.697542
+  ...
+# Subtest: diagnostics identifies room naming and projection mismatches
+ok 24 - diagnostics identifies room naming and projection mismatches
+  ---
+  duration_ms: 41.365
+  ...
+# Subtest: invite token hashing never preserves the raw token
+ok 25 - invite token hashing never preserves the raw token
+  ---
+  duration_ms: 0.820875
+  ...
+# Subtest: participant identity remains appointment-scoped for guest access
+ok 26 - participant identity remains appointment-scoped for guest access
+  ---
+  duration_ms: 43.104
+  ...
+# Subtest: linked account participant identity stays compatible with existing Twilio user identity
+ok 27 - linked account participant identity stays compatible with existing Twilio user identity
+  ---
+  duration_ms: 0.610958
+  ...
+# Subtest: clinic observer identity is appointment-scoped and does not parse as a guest participant
+ok 28 - clinic observer identity is appointment-scoped and does not parse as a guest participant
+  ---
+  duration_ms: 0.0975
+  ...
+# Subtest: communication actor role recognizes patient dentist invited participant and admin
+ok 29 - communication actor role recognizes patient dentist invited participant and admin
+  ---
+  duration_ms: 0.633
+  ...
+# Subtest: observer communication token mode clamps ttl and normal mode preserves requested ttl
+ok 30 - observer communication token mode clamps ttl and normal mode preserves requested ttl
+  ---
+  duration_ms: 36.614833
+  ...
+# Subtest: waiting room reports ended state after appointment grace window
+ok 31 - waiting room reports ended state after appointment grace window
+  ---
+  duration_ms: 0.2565
+  ...
+# Subtest: combined token includes Conversations and Video grants without auth token
+ok 32 - combined token includes Conversations and Video grants without auth token
+  ---
+  duration_ms: 38.208541
+  ...
+# Subtest: observer token can be constrained to a video-only grant
+ok 33 - observer token can be constrained to a video-only grant
+  ---
+  duration_ms: 0.628667
+  ...
+# Subtest: observer token mode accepts role or mode and clamps ttl to 15 minutes
+ok 34 - observer token mode accepts role or mode and clamps ttl to 15 minutes
+  ---
+  duration_ms: 0.09225
+  ...
+# Subtest: webhook payload hashes are stable for replay and change on mismatch
+ok 35 - webhook payload hashes are stable for replay and change on mismatch
+  ---
+  duration_ms: 0.822708
+  ...
+# Subtest: webhook header normalization preserves scalar values and joins arrays
+ok 36 - webhook header normalization preserves scalar values and joins arrays
+  ---
+  duration_ms: 8.954084
+  ...
+(node:44080) ExperimentalWarning: glob is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+1..36
+# tests 36
+# suites 0
+# pass 36
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2447.099166
+# start of coverage report
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# file                                    | line % | branch % | funcs % | uncovered lines
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# src                                     |        |          |         | 
+#  routes                                 |        |          |         | 
+#   communications.js                     |  27.10 |   100.00 |    4.00 | 53-59 80-95 97-118 121-131 133-141 143-193 199-206 213-249 256-285 293-349 355-377 384-404 411-442 449-459 466-475 482-492 499-510 517-527 534-544 550-561 568-577 584-642 660-704 711-724
+#  services                               |        |          |         | 
+#   clinicAuthorizationPolicyService.js   |  53.37 |    93.10 |   50.00 | 13-20 24-26 46-47 60-67 70-100 103-111 115-116 141-153
+#   clinicTeledentistryService.js         |  23.84 |    60.71 |   38.89 | 23-34 36-48 60-68 70-107 132-166 193-220 223-251 254-304 307-328 331-347 350-392 395-442
+#   communications.js                     |  13.91 |    81.82 |   25.00 | 23-26 28-31 33-37 39-61 63-76 107-147 153-158 176-227 229-264 267-326 329-360 363-439 442-467 470-518 521-536 539-568 571-601 604-647 650-808 811-832 835-856 859-936 939-967 984 1001-1011 1021-1025 1047-1175 1178-1253 1256-1298 1301-1314
+#   communications                        |        |          |         | 
+#    attachmentStorageService.js          |  25.54 |    58.14 |   28.57 | 17-19 21-23 25-27 29-31 33-35 37-39 55 62-63 67-69 71-74 80-108 110-119 121-126 128-133 135-176 178-213 215-239 241-258 284-306 309-349 371-422 425-452
+#    clinicalSummaryService.js            |  25.93 |    68.00 |   33.33 | 20-28 30-32 34-36 38-40 80-81 106-110 120-142 144-213 216-229 232-273 276-337 340-385 388-425
+#    config.js                            |  52.87 |    53.85 |   60.00 | 15-19 27-31 35-43 46-50 53-59 63-68 79-80 86-87
+#    conversationsAdapter.js              |  42.94 |    46.15 |   71.43 | 16-25 33-52 60-73 77-96 106-112 116-120 124-131 142-150
+#    diagnosticsService.js                |  18.41 |    71.43 |   33.33 | 23-31 33-35 49-61 63-76 89-94 117-122 128-130 133-157 160-209 212-227 230-354 357-427 430-462 465-520
+#    logging.js                           |  10.71 |   100.00 |    0.00 | 1-17 20-27
+#    naming.js                            |  86.21 |    72.73 |  100.00 | 6-9
+#    participantAccessService.js          |  16.03 |    64.29 |   15.79 | 27-35 37-40 42-45 47-50 52-60 64-65 101-123 125-132 134-149 152-220 223-243 246-284 287-339 342-404 407-464 467-544 547-573
+#    videoService.js                      |  12.00 |   100.00 |    0.00 | 11-24 27-90 93-121 124-139 142-158 161-174
+#    videoWebhookHandler.js               |  12.29 |    76.92 |   28.57 | 20-26 28-31 33-58 74-121 124-345
+#   notifications                         |        |          |         | 
+#    config.js                            |  70.77 |    27.27 |   40.00 | 8-13 18-23 55-56 59-60 63-65
+#    index.js                             |  10.57 |   100.00 |    0.00 | 31-33 35-37 39-49 51-53 55-79 82-230 232-313 315-321 323-358 360-377 380-389 392-418 421-426 429-442 445-473
+#    providers                            |        |          |         | 
+#     email.js                            |  24.14 |   100.00 |    0.00 | 6-10 13-29
+#     push.js                             |   7.69 |   100.00 |    0.00 | 6-19 21-27 29-35 38-90 93-143
+#     sms.js                              |  28.00 |   100.00 |    0.00 | 6-11 14-25
+#    templates.js                         |  24.62 |   100.00 |    0.00 | 10-16 18-27 43-63 68-88 93-110 115-142 147-168 173-193 198-199
+#    utils.js                             |  33.33 |    66.67 |   20.00 | 7-10 13-17 20-26 29-36
+#   twilioVideo.js                        |  22.73 |   100.00 |    0.00 | 7-16 19-35 38-44
+#   webhooks                              |        |          |         | 
+#    idempotency.js                       |  12.08 |    77.78 |   30.00 | 33-35 37-39 42-147 150-230 233-241 244-253 256-356
+#  sockets                                |        |          |         | 
+#   chat.js                               |   8.39 |   100.00 |    0.00 | 14-28 30-73 75-88 91-93 96-102 105-109 112-274
+#  utils                                  |        |          |         | 
+#   tokens.js                             |  21.05 |   100.00 |    0.00 | 7-13 16-17 20-21 25-54 58-76
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# all files                               |  20.47 |    69.97 |   25.09 | 
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# end of coverage report

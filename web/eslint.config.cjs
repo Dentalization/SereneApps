@@ -14,6 +14,23 @@ const sourceRules = {
   }],
 };
 
+const reactHooksCompatibilityPlugin = {
+  rules: {
+    'exhaustive-deps': {
+      meta: {
+        type: 'problem',
+        docs: {
+          description: 'Compatibility shim for existing disable comments.',
+        },
+        schema: [],
+      },
+      create() {
+        return {};
+      },
+    },
+  },
+};
+
 module.exports = [
   {
     ignores: [
@@ -37,6 +54,9 @@ module.exports = [
         },
       },
       sourceType: 'module',
+    },
+    plugins: {
+      'react-hooks': reactHooksCompatibilityPlugin,
     },
     rules: sourceRules,
   },

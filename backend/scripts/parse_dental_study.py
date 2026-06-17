@@ -1,24 +1,25 @@
 import os
 import sys
 import json
-import glob
 import re
+
 
 def parse_ver_ctrl(file_path):
     """
-    Parses ver_ctrl.txt to extract Patient Info.
+    Parses ver_ctrl.txt to extract patient info.
     Format: key=value
     """
     metadata = {}
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+            for line in file:
+                if "=" in line:
+                    key, value = line.strip().split("=", 1)
                     metadata[key.strip()] = value.strip()
-    except Exception as e:
-        print(f"Error reading ver_ctrl.txt: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Error reading ver_ctrl.txt: {exc}", file=sys.stderr)
     return metadata
+
 
 def parse_photo_proc(file_path):
     """
@@ -27,65 +28,58 @@ def parse_photo_proc(file_path):
     """
     metadata = {}
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+            content = file.read()
 
-            # Strategy 1: @Key:Value format (e.g. @kV:90.0)
-            if '@' in content:
-                # Split by @, then look for colon
-                tokens = content.split('@')
-                for token in tokens:
-                    if ':' in token:
-                        key, value = token.split(':', 1)
+            if "@" in content:
+                for token in content.split("@"):
+                    if ":" in token:
+                        key, value = token.split(":", 1)
                         metadata[key.strip()] = value.strip()
-            
-            # Strategy 2: Key=Value format (fallback or mixed)
-            # Re-using regex from previous version as backup
+
             patterns = {
-                'Voltage': r'Voltage=(.*)',
-                'Current': r'Current=(.*)',
-                'ExposureTime': r'ExposureTime=(.*)',
-                'SliceThickness': r'SliceThickness=(.*)',
-                'PixelSpacing': r'PixelSpacing=(.*)',
-                'VolumeID': r'VolumeID=(.*)',
-                'Date': r'Date=(.*)',
-                'SliceInterval': r'SliceInterval=(.*)'
+                "Voltage": r"Voltage=(.*)",
+                "Current": r"Current=(.*)",
+                "ExposureTime": r"ExposureTime=(.*)",
+                "SliceThickness": r"SliceThickness=(.*)",
+                "PixelSpacing": r"PixelSpacing=(.*)",
+                "VolumeID": r"VolumeID=(.*)",
+                "Date": r"Date=(.*)",
+                "SliceInterval": r"SliceInterval=(.*)",
             }
             for key, pattern in patterns.items():
-                if key not in metadata: # Don't overwrite if found by Strategy 1
-                    match = re.search(pattern, content)
-                    if match:
-                        metadata[key] = match.group(1).strip()
-                        
-    except Exception as e:
-        print(f"Error reading photo_proc.txt: {e}", file=sys.stderr)
+                if key in metadata:
+                    continue
+                match = re.search(pattern, content)
+                if match:
+                    metadata[key] = match.group(1).strip()
+    except Exception as exc:
+        print(f"Error reading photo_proc.txt: {exc}", file=sys.stderr)
     return metadata
+
 
 def scan_folder(folder_path):
     """
-    Scans J. Morita folder structure.
+    Scans a dental study folder and returns normalized metadata and series info.
+    Handles Morita CBCT folders, DICOM files, and 2D panoramic/ceph image files.
     """
     result = {
         "modality": "Unknown",
         "series": [],
-        "metadata": {}
+        "metadata": {},
     }
 
-    # 1. Parse Metadata Files
     photo_proc = {}
     ver_ctrl = {}
-    
-    pp_path = os.path.join(folder_path, "photo_proc.txt")
-    if os.path.exists(pp_path):
-        photo_proc = parse_photo_proc(pp_path)
-        
-    vc_path = os.path.join(folder_path, "ver_ctrl.txt")
-    if os.path.exists(vc_path):
-        ver_ctrl = parse_ver_ctrl(vc_path)
-    
-    # Merge metadata with normalization
-    # Map proprietary keys to standard ones
-    # photo_proc might have 'kV' or 'Voltage', 'mA' or 'Current'
+
+    photo_proc_path = os.path.join(folder_path, "photo_proc.txt")
+    if os.path.exists(photo_proc_path):
+        photo_proc = parse_photo_proc(photo_proc_path)
+
+    ver_ctrl_path = os.path.join(folder_path, "ver_ctrl.txt")
+    if os.path.exists(ver_ctrl_path):
+        ver_ctrl = parse_ver_ctrl(ver_ctrl_path)
+
     metadata = {
         "PatientID": ver_ctrl.get("PatientID"),
         "PatientName": ver_ctrl.get("PatientName"),
@@ -95,94 +89,84 @@ def scan_folder(folder_path):
         "SliceThickness": photo_proc.get("SliceThickness"),
         "PixelSpacing": photo_proc.get("PixelSpacing"),
         "Date": photo_proc.get("Date"),
-        "VolumeID": photo_proc.get("VOLUME_ID") or photo_proc.get("VolumeID")
+        "VolumeID": photo_proc.get("VOLUME_ID") or photo_proc.get("VolumeID"),
     }
-    
-    # Remove None values
-    result["metadata"] = {k: v for k, v in metadata.items() if v is not None}
+    result["metadata"] = {key: value for key, value in metadata.items() if value is not None}
 
-    # 2. Count Files (Recursive)
     slx_files = []
     bmp_files = []
     dcm_files = []
 
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            lower_file = file.lower()
-            if lower_file.endswith('.slx'):
-                slx_files.append(os.path.join(root, file))
-            elif lower_file.endswith('.bmp'):
-                bmp_files.append(os.path.join(root, file))
-            elif lower_file.endswith(('.dcm', '.dcom', '.dicom', '.ima')): # Expanded extensions
-                dcm_files.append(os.path.join(root, file))
-            elif '.' not in file:
-                 # Check for DICOM preamble if no extension (optional, but good for robustness)
-                 # fast check: read 128 bytes then DICM
-                 try:
-                     with open(os.path.join(root, file), 'rb') as f:
-                         f.seek(128)
-                         if f.read(4) == b'DICM':
-                             dcm_files.append(os.path.join(root, file))
-                 except:
-                     pass
+    for root, _dirs, files in os.walk(folder_path):
+        for filename in files:
+            lower_filename = filename.lower()
+            file_path = os.path.join(root, filename)
+
+            if lower_filename.endswith(".slx"):
+                slx_files.append(file_path)
+            elif lower_filename.endswith(".bmp"):
+                bmp_files.append(file_path)
+            elif lower_filename.endswith((".dcm", ".dcom", ".dicom", ".ima")):
+                dcm_files.append(file_path)
+            elif "." not in filename:
+                try:
+                    with open(file_path, "rb") as file:
+                        file.seek(128)
+                        if file.read(4) == b"DICM":
+                            dcm_files.append(file_path)
+                except Exception:
+                    pass
 
     total_slices = len(slx_files) + len(bmp_files) + len(dcm_files)
 
-    # 3. Determine Modality (Logic from User)
-    # - VOLUME_ID present
-    # - SliceThickness <= 1.0mm
-    # - Large number of SLX/BMP files
     is_cbct = False
-    
     if result["metadata"].get("VolumeID"):
         is_cbct = True
-    
-    st = result["metadata"].get("SliceThickness")
-    if st:
+
+    slice_thickness = result["metadata"].get("SliceThickness")
+    if slice_thickness:
         try:
-            if float(st) <= 1.0 and total_slices > 50:
+            if float(slice_thickness) <= 1.0 and total_slices > 50:
                 is_cbct = True
-        except:
+        except Exception:
             pass
-            
+
     if is_cbct:
         result["modality"] = "CBCT"
     elif total_slices > 0:
-        result["modality"] = "2D" # PAN/Ceph
-    else:
-        result["modality"] = "Unknown" # If no files found
-    
-    # 4. Construct Series Info for main slices
+        result["modality"] = "2D"
+
     if total_slices > 0:
-        series_info = {
+        result["series"].append({
             "modality": result["modality"],
             "numSlices": total_slices,
             "kv": result["metadata"].get("kv"),
             "ma": result["metadata"].get("ma"),
-            "sliceThickness": st or "1.0",
+            "sliceThickness": slice_thickness or "1.0",
             "pixelSpacing": result["metadata"].get("PixelSpacing", "0.25"),
-            "exposureTime": result["metadata"].get("ExposureTime")
-        }
-        result["series"].append(series_info)
+            "exposureTime": result["metadata"].get("ExposureTime"),
+        })
 
-    # 5. Scan for plain image files (panoramic / ceph)
     pan_files = []
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            lower_file = file.lower()
-            if any(lower_file.endswith(ext) for ext in ('.jpg', '.jpeg', '.tif', '.tiff', '.png')):
-                if any(kw in lower_file for kw in ('panorama', 'panoramic', 'opg', 'ceph', 'cephalometric')):
-                    pan_files.append(os.path.join(root, file))
+    for root, _dirs, files in os.walk(folder_path):
+        for filename in files:
+            lower_filename = filename.lower()
+            if not lower_filename.endswith((".jpg", ".jpeg", ".tif", ".tiff", ".png")):
+                continue
+            if any(keyword in lower_filename for keyword in ("panorama", "panoramic", "opg", "ceph", "cephalometric")):
+                pan_files.append(os.path.join(root, filename))
 
     added_names = set()
     for pan_file in pan_files:
         filename = os.path.basename(pan_file)
         name_without_ext = os.path.splitext(filename)[0]
-        if name_without_ext.lower() in added_names:
+        normalized_name = name_without_ext.lower()
+        if normalized_name in added_names:
             continue
-        added_names.add(name_without_ext.lower())
+        added_names.add(normalized_name)
 
-        pan_modality = "OPG" if any(kw in filename.lower() for kw in ('panorama', 'panoramic', 'opg')) else "Ceph"
+        lower_filename = filename.lower()
+        pan_modality = "OPG" if any(keyword in lower_filename for keyword in ("panorama", "panoramic", "opg")) else "Ceph"
         result["series"].append({
             "modality": pan_modality,
             "numSlices": 1,
@@ -190,28 +174,29 @@ def scan_folder(folder_path):
             "ma": result["metadata"].get("ma"),
             "sliceThickness": "1.0",
             "pixelSpacing": result["metadata"].get("PixelSpacing", "0.25"),
-            "exposureTime": result["metadata"].get("ExposureTime")
+            "exposureTime": result["metadata"].get("ExposureTime"),
         })
 
-    if result["modality"] == "Unknown" and len(result["series"]) > 0:
+    if result["modality"] == "Unknown" and result["series"]:
         result["modality"] = "2D"
-    
+
     return result
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No folder path provided"}))
         sys.exit(1)
-        
+
     target_folder = sys.argv[1]
-    
+
     if not os.path.isdir(target_folder):
         print(json.dumps({"error": "Path is not a directory"}))
         sys.exit(1)
-        
+
     try:
         scan_result = scan_folder(target_folder)
         print(json.dumps(scan_result))
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}))
         sys.exit(1)

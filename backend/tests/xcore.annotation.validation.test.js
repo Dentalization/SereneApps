@@ -81,6 +81,74 @@ test('accepts draft 3d region with volumetric brush geometry', () => {
   assert.equal(result.valid, true);
 });
 
+test('accepts draft 3d brush annotation type with volumetric brush geometry', () => {
+  const result = validateAnnotationPayload({
+    ...base,
+    viewerType: '3d',
+    type: 'brush',
+    coordinates: {
+      world_brush: {
+        centers: [
+          [14.1, 20.2, 31.4],
+          [14.8, 20.5, 31.9],
+        ],
+        radius_mm: 2.8,
+      },
+    },
+    metadata: {
+      ...base.metadata,
+      lesion_volume_mm3: 28.6,
+    },
+  });
+
+  assert.equal(result.valid, true);
+});
+
+test('accepts draft 2d measurement with normalized endpoints', () => {
+  const result = validateAnnotationPayload({
+    ...base,
+    type: 'measurement',
+    coordinates: {
+      start: { x: 0.12, y: 0.25 },
+      end: { x: 0.35, y: 0.43 },
+      coordinate_space: 'normalized_image',
+    },
+    metadata: {
+      source_width: 1000,
+      source_height: 500,
+      measurement_kind: 'distance_2d',
+      unit: 'mm',
+      distance_mm: 12.4,
+      ai_training_ready: true,
+    },
+  });
+
+  assert.equal(result.valid, true);
+});
+
+test('accepts draft 3d measurement with world-space endpoints', () => {
+  const result = validateAnnotationPayload({
+    ...base,
+    viewerType: '3d',
+    type: 'measurement',
+    coordinates: {
+      world_start: [14.1, 20.2, 31.4],
+      world_end: [18.8, 24.2, 33.1],
+      coordinate_space: 'world_mm',
+    },
+    metadata: {
+      source_width: 1000,
+      source_height: 500,
+      measurement_kind: 'distance_3d',
+      unit: 'mm',
+      distance_mm: 6.4,
+      ai_training_ready: true,
+    },
+  });
+
+  assert.equal(result.valid, true);
+});
+
 test('accepts draft 3d arrow with world-space line geometry', () => {
   const result = validateAnnotationPayload({
     ...base,

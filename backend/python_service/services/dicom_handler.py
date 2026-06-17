@@ -22,6 +22,52 @@ except ImportError:
             if mod in NATIVE_3D_MODALITIES: return '3D'
             return '3D' if num_files > 10 else '2D'
 
+def detect_dental_modality(modality: str, series_description: str, protocol_name: str = "", num_slices: int = 1) -> str:
+    mod = str(modality).strip().upper()
+    desc = str(series_description).lower()
+    proto = str(protocol_name).lower()
+    
+    # 1. 3D CBCT check
+    if mod in {'CT', 'MR'} or num_slices > 10:
+        return 'CBCT'
+        
+    # 2. Check for Cephalometric
+    if any(kw in desc or kw in proto for kw in ('ceph', 'cephalometric', 'sefalometri', 'cephalogram')):
+        return 'Cephalometric'
+        
+    # 3. Check for Panoramic
+    if any(kw in desc or kw in proto for kw in ('pan', 'pano', 'opg', 'ortho', 'panoramik', 'panoramic')):
+        return 'Panoramic'
+        
+    # 4. Check Intraoral Subtypes
+    if mod == 'IO' or 'intraoral' in desc or 'intraoral' in proto:
+        if any(kw in desc or kw in proto for kw in ('periapical', 'periapikal', 'pa', 'peri')):
+            return 'Intraoral Periapical'
+        if any(kw in desc or kw in proto for kw in ('bitewing', 'bw', 'bite-wing')):
+            return 'Intraoral Bitewing'
+        if any(kw in desc or kw in proto for kw in ('occlusal', 'oklusal', 'occ', 'occl')):
+            return 'Intraoral Occlusal'
+        return 'Intraoral'
+        
+    # 5. Fallback check on CR / DX (Imaging Plates / Phosphor Plates / Sensors)
+    if mod in {'CR', 'DX'}:
+        if any(kw in desc or kw in proto for kw in ('periapical', 'periapikal', 'pa', 'peri')):
+            return 'Intraoral Periapical'
+        if any(kw in desc or kw in proto for kw in ('bitewing', 'bw', 'bite-wing')):
+            return 'Intraoral Bitewing'
+        if any(kw in desc or kw in proto for kw in ('occlusal', 'oklusal', 'occ', 'occl')):
+            return 'Intraoral Occlusal'
+        if any(kw in desc or kw in proto for kw in ('ceph', 'cephalometric', 'sefalometri')):
+            return 'Cephalometric'
+        if any(kw in desc or kw in proto for kw in ('pan', 'pano', 'opg')):
+            return 'Panoramic'
+            
+    if mod == 'PX':
+        return 'Panoramic'
+        
+    return modality or '2D Image'
+
+
 class DicomHandler:
     def __init__(self, study_path, series_uid=None):
         """
@@ -533,17 +579,21 @@ class DicomHandler:
                 
                 series_description = getattr(series_ds, 'SeriesDescription', 'Unknown Series')
                 series_number = getattr(series_ds, 'SeriesNumber', 0)
-                modality = str(getattr(series_ds, 'Modality', '')).strip()
+                protocol_name = getattr(series_ds, 'ProtocolName', '')
+                raw_modality = str(getattr(series_ds, 'Modality', '')).strip()
+                
+                num_slices = len(file_list)
+                refined_modality = detect_dental_modality(raw_modality, series_description, protocol_name, num_slices)
                 
                 # ── Strict 2D/3D classification (Modality-based) ──
-                classification = classify_series(len(file_list), modality)
+                classification = classify_series(num_slices, raw_modality)
                 series_type = '3D Volume' if classification == '3D' else '2D Image'
                 
                 series_info = {
                     'series_uid': series_uid,
                     'series_number': int(series_number),
                     'series_description': str(series_description),
-                    'modality': modality if modality else 'CT',
+                    'modality': refined_modality,
                     'type': series_type,
                     'classification': classification,
                     'num_slices': len(file_list),

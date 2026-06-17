@@ -29,6 +29,8 @@ from services.vti_converter import (
     read_label_manifest,
     scan_dicom_series,
     suppress_fov_background,
+    log_python_event,
+    notify_backend_callback,
 )
 
 
@@ -389,6 +391,9 @@ def _ensure_vti_conversion_singleflight(
     wait: bool = True,
     segment: bool = False,
     quality: str = "standard",
+    run_id: str = None,
+    case_id: str = None,
+    iteration: str = None,
 ) -> bool:
     """
     Ensure at most one conversion runs per study.
@@ -425,13 +430,22 @@ def _ensure_vti_conversion_singleflight(
         failure_message = None
 
         try:
+            conversion_kwargs = {
+                "force": force,
+                "segment": segment,
+                "progress_callback": _emit_conversion_status,
+                "study_id": os.path.basename(os.path.normpath(study_path)),
+                "quality": quality,
+            }
+            if run_id:
+                conversion_kwargs["run_id"] = run_id
+            if case_id:
+                conversion_kwargs["case_id"] = case_id
+            if iteration:
+                conversion_kwargs["iteration"] = iteration
             convert_study_to_vti(
                 study_path,
-                force=force,
-                segment=segment,
-                progress_callback=_emit_conversion_status,
-                study_id=os.path.basename(os.path.normpath(study_path)),
-                quality=quality,
+                **conversion_kwargs,
             )
             return True
         except Exception as exc:
@@ -488,6 +502,23 @@ def _ensure_vti_conversion_singleflight(
 @app.get("/health")
 def health_check():
     return {"status": "online", "service": "x-core-streamer"}
+
+
+@app.get("/api/v1/health")
+def versioned_health_check():
+    return health_check()
+
+
+@app.get("/api/v1/sessions")
+def list_ai_sessions_compat(page: int = 1, per_page: int = 30):
+    return {
+        "sessions": [],
+        "total": 0,
+        "page": max(1, page),
+        "per_page": max(1, per_page),
+        "service": "x-core-streamer",
+        "warning": "AI diagnosis sessions are not served by the X-Core Python streamer.",
+    }
 
 
 @app.websocket("/ws/conversion-status")
@@ -1449,6 +1480,7 @@ def get_volume_status(study_id: str, share_token: str = None):
 def trigger_vti_conversion(
     study_id: str,
     background_tasks: BackgroundTasks,
+    request: Request,
     force: bool = False,
     segment: bool = False,
     quality: str = "standard",
@@ -1470,13 +1502,27 @@ def trigger_vti_conversion(
     if _is_conversion_in_progress(study_path):
         return {"status": "converting", "study_id": study_id, "message": "VTI conversion already in progress"}
 
+    run_id = request.headers.get("x-benchmark-run-id")
+    case_id = request.headers.get("x-benchmark-case-id")
+    iteration = request.headers.get("x-benchmark-iteration")
+
     try:
         generate_study_thumbnails(study_path, force=force)
     except Exception as thumb_error:
         print(f"[THUMB] Pre-generation failed for {study_id}: {thumb_error}")
     
     # Run conversion in background so the upload response returns immediately
-    background_tasks.add_task(_ensure_vti_conversion_singleflight, study_path, force, True, segment, quality)
+    background_tasks.add_task(
+        _ensure_vti_conversion_singleflight,
+        study_path,
+        force,
+        True,
+        segment,
+        quality,
+        run_id,
+        case_id,
+        iteration
+    )
     
     return {
         "status": "converting",
@@ -1517,7 +1563,14 @@ def list_series(study_id: str, share_token: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/stream/{study_id}/{view}/{index}")
-def stream_slice(study_id: str, view: str, index: int, series_uid: str = None, share_token: str = None):
+def stream_slice(
+    study_id: str,
+    view: str,
+    index: int,
+    request: Request,
+    series_uid: str = None,
+    share_token: str = None
+):
     """
     Stream a single slice with multi-series support
     
@@ -1541,8 +1594,41 @@ def stream_slice(study_id: str, view: str, index: int, series_uid: str = None, s
         except Exception:
             handler = MoritaHandler(study_path)
 
+        run_id = request.headers.get("x-benchmark-run-id") or request.query_params.get("x-benchmark-run-id")
+        if run_id:
+            log_python_event(run_id, 'slice_render_start', {
+                "studyId": study_id,
+                "view": view,
+                "index": index,
+                "seriesUid": series_uid
+            })
+            notify_backend_callback(run_id, 'slice_render_start', {
+                "studyId": study_id,
+                "view": view,
+                "index": index,
+                "seriesUid": series_uid
+            })
+
+        start_time = time.time()
         image_bytes, headers = handler.get_slice(view, index)
+        duration = time.time() - start_time
             
+        if run_id:
+            log_python_event(run_id, 'slice_render_end', {
+                "studyId": study_id,
+                "view": view,
+                "index": index,
+                "seriesUid": series_uid,
+                "latency_seconds": duration
+            })
+            notify_backend_callback(run_id, 'slice_render_end', {
+                "studyId": study_id,
+                "view": view,
+                "index": index,
+                "seriesUid": series_uid,
+                "latency_seconds": duration
+            })
+
         return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
         
     except Exception as e:

@@ -22,6 +22,11 @@ import {
     mergeAnnotationSessions,
     saveLocalAnnotationSession,
 } from '../utils/annotationSessions.mjs';
+import {
+    build2DMeasurementRecord,
+    isPersistedMeasurementRecord,
+    measurement2DFromRecord,
+} from '../utils/clinicalPersistenceRecords.mjs';
 import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import ShortcutHelpButton from './ShortcutHelpButton';
@@ -265,15 +270,6 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         sourceWidth: imageSize.width,
         sourceHeight: imageSize.height,
     }), [imageSize.height, imageSize.width]);
-    const annotationPersistence = usePersistentAnnotations({
-        study,
-        seriesUid,
-        viewerType: '2d',
-        annotations,
-        setAnnotations,
-        enabled: imageLoaded && imageSize.width > 0 && imageSize.height > 0,
-        scope: annotationPersistenceScope,
-    });
 
     useEffect(() => {
         annotationsRef.current = annotations;
@@ -302,6 +298,42 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         setMeasurementsHistory([]);
         setMeasurementsRedo([]);
     }, []);
+
+    const measurementClinicalRecords = useMemo(() => (
+        measurements
+            .map((measurement) => build2DMeasurementRecord(measurement, {
+                seriesUid,
+                viewerType: '2d',
+                sourceWidth: imageSize.width,
+                sourceHeight: imageSize.height,
+                pixelSpacing: effectivePixelSpacing,
+                calibrationMethod,
+            }))
+            .filter(Boolean)
+    ), [calibrationMethod, effectivePixelSpacing, imageSize.height, imageSize.width, measurements, seriesUid]);
+
+    const handleHydrateClinicalRecords = useCallback((records) => {
+        const nextMeasurements = (records || [])
+            .filter(isPersistedMeasurementRecord)
+            .map((record) => measurement2DFromRecord(record, {
+                sourceWidth: imageSize.width || record?.metadata?.source_width,
+                sourceHeight: imageSize.height || record?.metadata?.source_height,
+            }))
+            .filter(Boolean);
+        replaceMeasurementsState(nextMeasurements);
+    }, [imageSize.height, imageSize.width, replaceMeasurementsState]);
+
+    const annotationPersistence = usePersistentAnnotations({
+        study,
+        seriesUid,
+        viewerType: '2d',
+        annotations,
+        setAnnotations,
+        clinicalRecords: measurementClinicalRecords,
+        onHydrateClinicalRecords: handleHydrateClinicalRecords,
+        enabled: imageLoaded && imageSize.width > 0 && imageSize.height > 0,
+        scope: annotationPersistenceScope,
+    });
 
     const pushAnnotationsState = useCallback((updater) => {
         const current = annotationsRef.current;

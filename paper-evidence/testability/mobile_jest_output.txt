@@ -1,0 +1,109 @@
+
+> serene-dental-patient@1.0.0 test
+> jest --coverage --runInBand --json --outputFile ../paper-evidence/testability/mobile_jest_results.json
+
+watchman warning:  Recrawled this watch 15 times, most recently because:
+MustScanSubDirs UserDroppedTo resolve, please review the information on
+https://facebook.github.io/watchman/docs/troubleshooting.html#recrawl
+To clear this warning, run:
+`watchman watch-del '/Users/adrianhalim/SereneApps' ; watchman watch-project '/Users/adrianhalim/SereneApps'`
+
+PASS __tests__/mobile-component.test.js
+PASS __tests__/mobile-source-regression.test.js
+PASS __tests__/mobile-formatters.test.js
+(node:44105) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS __tests__/mobile-services.test.js
+  ● Console
+
+    console.log
+      [AppointmentService] Creating appointment: {
+        dentistId: 10,
+        clinicBranchId: 3,
+        start: '2026-07-01T02:00:00.000Z',
+        end: '2026-07-01T02:45:00.000Z',
+        appointmentType: 'virtual',
+        reason: 'Kontrol behel',
+        notes: 'Pagi hari',
+        metadata: { source: 'test' }
+      }
+
+      at log (src/services/appointmentService.js:94:13)
+
+    console.log
+      [AppointmentService] Appointment created: { appointment: { id: 42, status: 'scheduled' }, dentist: { id: 10 } }
+
+      at log (src/services/appointmentService.js:98:13)
+
+    console.log
+      [AppointmentService] Fetching appointments: { limit: 10, status: 'scheduled,confirmed' }
+
+      at log (src/services/appointmentService.js:129:13)
+
+    console.log
+      [AppointmentService] Request URL: /appointments?limit=10&view=patient&status=scheduled%2Cconfirmed&from=2026-07-01&to=2026-07-31&order=desc
+
+      at log (src/services/appointmentService.js:139:13)
+
+    console.log
+      [AppointmentService] Fetched appointments: 1
+
+      at log (src/services/appointmentService.js:147:13)
+
+    console.warn
+      Retrying AI analysis save without annotatedImageUrl due to server error
+
+      122 |           fallback.annotatedImageUrl = null;
+      123 |           fallback.metadata = { ...(fallback.metadata || {}), retriedWithoutImage: true };
+    > 124 |           console.warn('Retrying AI analysis save without annotatedImageUrl due to server error');
+          |                   ^
+      125 |           const retryResp = await api.post('/ai-analysis', fallback);
+      126 |           return retryResp.data;
+      127 |         } catch (retryErr) {
+
+      at warn (src/services/aiAnalysisSyncService.js:124:19)
+          at Generator.throw (<anonymous>)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _throw (node_modules/@babel/runtime/helpers/asyncToGenerator.js:20:9)
+
+    console.error
+      Error saving AI analysis: undefined network down
+
+      134 |     const status = error.response?.status;
+      135 |     const data = error.response?.data;
+    > 136 |     console.error('Error saving AI analysis:', status, data || error.message);
+          |             ^
+      137 |     
+      138 |     // If payload is too large (413), we might want to log it specifically
+      139 |     if (status === 413) {
+
+      at error (src/services/aiAnalysisSyncService.js:136:13)
+          at Generator.throw (<anonymous>)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _throw (node_modules/@babel/runtime/helpers/asyncToGenerator.js:20:9)
+
+    console.warn
+      Failed to sync AI analysis: fail network down
+
+      190 |       synced++;
+      191 |     } catch (error) {
+    > 192 |       console.warn('Failed to sync AI analysis:', result.id, error.message);
+          |               ^
+      193 |       failed++;
+      194 |     }
+      195 |   }
+
+      at warn (src/services/aiAnalysisSyncService.js:192:15)
+          at Generator.throw (<anonymous>)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _throw (node_modules/@babel/runtime/helpers/asyncToGenerator.js:20:9)
+
+PASS __tests__/mobile-validation.test.js
+PASS __tests__/mobile-i18n.test.js
+
+Test Suites: 6 passed, 6 total
+Tests:       23 passed, 23 total
+Snapshots:   0 total
+Time:        2.735 s, estimated 4 s
+Ran all test suites.
+Test results written to: ../paper-evidence/testability/mobile_jest_results.json
