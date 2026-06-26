@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import {
   fetchClinicalSummary,
   finalizeClinicalSummary,
@@ -302,8 +303,9 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-md">
-      <aside
+    <ModalPortal>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-md">
+        <aside
         className="flex h-full w-full max-w-2xl flex-col shadow-2xl bg-surface border-l border-border/40"
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-border/40">
@@ -504,6 +506,7 @@ export default function PostCallSummaryPanel({ appointmentId, conversation, open
         </footer>
       </aside>
     </div>
+    </ModalPortal>
   );
 }
 

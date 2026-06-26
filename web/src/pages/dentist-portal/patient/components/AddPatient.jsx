@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import ClinicalIcon from './ClinicalIcon';
 
 const AddPatient = ({ onSubmit, onClose }) => {
   const [formData, setFormData] = useState({
@@ -17,6 +18,8 @@ const AddPatient = ({ onSubmit, onClose }) => {
   });
 
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { t } = useLanguage();
 
   const handleChange = (e) => {
@@ -48,10 +51,18 @@ const AddPatient = ({ onSubmit, onClose }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (validateForm()) {
-      onSubmit(formData);
+      setSubmitError('');
+      setIsSubmitting(true);
+      try {
+        await onSubmit(formData);
+      } catch (err) {
+        setSubmitError(err.message || t('dentistPatient.addPatient.validation.submitFailed'));
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -74,9 +85,7 @@ const AddPatient = ({ onSubmit, onClose }) => {
             {/* Header */}
             <div className="bg-slate-50 border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
-                </div>
+                <ClinicalIcon name="add-patient" size="md" />
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{t('dentistPatient.addPatient.title')}</h2>
                   <p className="text-sm text-slate-500">Register new patient & book appointment</p>
@@ -93,7 +102,7 @@ const AddPatient = ({ onSubmit, onClose }) => {
               {/* Personal Information */}
               <div>
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  <ClinicalIcon name="patient-profile" size="xs" />
                   {t('dentistPatient.addPatient.sections.personalInfo')}
                 </h3>
                 
@@ -197,7 +206,7 @@ const AddPatient = ({ onSubmit, onClose }) => {
               {/* Appointment Scheduling */}
               <div>
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <ClinicalIcon name="appointment-calendar" size="xs" />
                   {t('dentistPatient.addPatient.sections.schedule')}
                 </h3>
                 
@@ -276,10 +285,17 @@ const AddPatient = ({ onSubmit, onClose }) => {
             </form>
 
             {/* Footer */}
-            <div className="bg-slate-50 px-8 py-5 border-t border-slate-100 flex justify-end items-center gap-3 shrink-0">
+            <div className="bg-slate-50 px-8 py-5 border-t border-slate-100 flex flex-col gap-3 shrink-0 sm:flex-row sm:items-center sm:justify-between">
+              {submitError ? (
+                <p className="text-sm font-medium text-red-600">{submitError}</p>
+              ) : (
+                <span className="hidden sm:block" />
+              )}
+              <div className="flex justify-end items-center gap-3">
               <Button 
                 variant="outline" 
                 onClick={onClose}
+                disabled={isSubmitting}
                 className="border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800"
               >
                 {t('dentistPatient.addPatient.actions.cancel')}
@@ -287,10 +303,12 @@ const AddPatient = ({ onSubmit, onClose }) => {
               <Button 
                 type="submit" 
                 onClick={handleSubmit}
+                disabled={isSubmitting}
                 className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 px-6"
               >
-                {t('dentistPatient.addPatient.actions.submit')}
+                {isSubmitting ? t('dentistPatient.addPatient.actions.submitting') : t('dentistPatient.addPatient.actions.submit')}
               </Button>
+              </div>
             </div>
 
           </div>

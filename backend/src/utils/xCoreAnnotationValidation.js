@@ -1,6 +1,7 @@
 const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region', 'brush', 'measurement']);
 const VIEWER_TYPES = new Set(['2d', 'slice', '3d']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'approved', 'rejected']);
+const SLICE_AXES = new Set(['axial', 'coronal', 'sagittal']);
 const FINDING_TYPES = new Set(['caries', 'bone_resorption', 'implant_site', 'fracture', 'periapical_lesion', 'measurement', 'other']);
 const SEVERITIES = new Set(['S1', 'S2', 'S3']);
 const SURFACES = new Set(['mesial', 'distal', 'occlusal', 'buccal', 'lingual', 'cervical', 'root']);
@@ -72,6 +73,25 @@ export const validateAnnotationPayload = (annotation) => {
   }
   if (!VIEWER_TYPES.has(annotation?.viewerType)) {
     errors.push('viewer_type must be 2d, slice, or 3d');
+  }
+  if (annotation?.viewerType === 'slice') {
+    if (!SLICE_AXES.has(annotation?.sliceAxis)) {
+      errors.push('slice_axis must be axial, coronal, or sagittal for slice annotations');
+    }
+    if (!Number.isInteger(annotation?.sliceIndex) || annotation.sliceIndex < 0) {
+      errors.push('slice_index must be a non-negative integer for slice annotations');
+    }
+
+    const metadataPlane = annotation?.metadata?.anatomical_plane || annotation?.metadata?.slice_axis;
+    if (metadataPlane && metadataPlane !== annotation?.sliceAxis) {
+      errors.push('metadata anatomical plane must match slice_axis');
+    }
+    if (
+      annotation?.metadata?.slice_index !== undefined
+      && Number(annotation.metadata.slice_index) !== annotation?.sliceIndex
+    ) {
+      errors.push('metadata.slice_index must match slice_index');
+    }
   }
   if (!ANNOTATION_TYPES.has(annotation?.type)) {
     errors.push('type must be arrow, circle, text, freehand, region, brush, or measurement');

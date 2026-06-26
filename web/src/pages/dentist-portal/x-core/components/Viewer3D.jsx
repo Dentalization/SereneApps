@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import useSeriesList from '../hooks/useSeriesList';
 import VolumeViewer3D from './VolumeViewer3D';
@@ -13,6 +13,37 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
     const { allSeries } = useSeriesList(activeStudy);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
     const [viewMode, setViewMode] = useState('auto'); // 'auto', '3d', 'slice', '2d'
+    const parentWrapperRef = useRef(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    const toggleFullscreen = useCallback(() => {
+        const target = parentWrapperRef.current;
+        if (!target) return;
+
+        if (!(document.fullscreenElement || document.webkitFullscreenElement)) {
+            const requestFS = target.requestFullscreen || target.webkitRequestFullscreen;
+            if (requestFS) {
+                Promise.resolve(requestFS.call(target)).catch(console.error);
+            }
+        } else {
+            const exitFS = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exitFS) {
+                Promise.resolve(exitFS.call(document)).catch(console.error);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleFSChange = () => {
+            setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+        };
+        document.addEventListener('fullscreenchange', handleFSChange);
+        document.addEventListener('webkitfullscreenchange', handleFSChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFSChange);
+            document.removeEventListener('webkitfullscreenchange', handleFSChange);
+        };
+    }, []);
     const [srReport, setSrReport] = useState(null);
     const [showSrPanel, setShowSrPanel] = useState(false);
     const studyKey = activeStudy?.folderName || activeStudy?.id || '';
@@ -168,61 +199,83 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
         }
     }, [activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid]);
 
-    // Conditional rendering: If 3D mode and volumetric series, show VolumeViewer3D
-    if (viewMode === '3d' && activeStudy?.selectedSeriesType === '3D Volume') {
-        return renderWithStructuredReport(
-            <VolumeViewer3D
+    const renderActiveViewer = () => {
+        if (viewMode === '3d' && activeStudy?.selectedSeriesType === '3D Volume') {
+            return (
+                <VolumeViewer3D
+                    study={activeStudy}
+                    onBack={onBack}
+                    onSwitchToSliceMode={() => setViewMode('slice')}
+                    onSwitchToLinkedMode={() => setViewMode('linked')}
+                    onSwitchSeries={handleSwitchSeries}
+                    comparisonPaneId={comparisonPaneId}
+                    comparisonSyncEnabled={comparisonSyncEnabled}
+                    isFullscreen={isFullscreen}
+                    toggleFullscreen={toggleFullscreen}
+                />
+            );
+        }
+
+        if (viewMode === 'linked' && activeStudy?.selectedSeriesType === '3D Volume') {
+            return (
+                <LinkedViewer
+                    study={activeStudy}
+                    onBack={onBack}
+                    onExit={() => setViewMode('3d')}
+                    onSwitchSeries={handleSwitchSeries}
+                    isFullscreen={isFullscreen}
+                    comparisonPaneId={comparisonPaneId}
+                />
+            );
+        }
+
+        if (viewMode === '2d') {
+            const seriesInfo = allSeries.find(s => s.series_uid === activeStudy?.selectedSeriesUid) || {
+                series_uid: activeStudy?.selectedSeriesUid,
+                series_description: 'Panoramic Image',
+                modality: 'OPG',
+            };
+            return (
+                <ImageViewer2D
+                    study={activeStudy}
+                    seriesInfo={seriesInfo}
+                    onBack={onBack}
+                    onSwitchSeries={handleSwitchSeries}
+                    comparisonPaneId={comparisonPaneId}
+                    comparisonSyncEnabled={comparisonSyncEnabled}
+                    isFullscreen={isFullscreen}
+                    toggleFullscreen={toggleFullscreen}
+                />
+            );
+        }
+
+        return (
+            <SliceViewer
                 study={activeStudy}
                 onBack={onBack}
-                onSwitchToSliceMode={() => setViewMode('slice')}
-                onSwitchToLinkedMode={() => setViewMode('linked')}
+                onSwitchTo3D={() => setViewMode('3d')}
                 onSwitchSeries={handleSwitchSeries}
                 comparisonPaneId={comparisonPaneId}
                 comparisonSyncEnabled={comparisonSyncEnabled}
+                isFullscreen={isFullscreen}
+                toggleFullscreen={toggleFullscreen}
             />
         );
-    }
+    };
 
-    if (viewMode === 'linked' && activeStudy?.selectedSeriesType === '3D Volume') {
-        return renderWithStructuredReport(
-            <LinkedViewer
-                study={activeStudy}
-                onBack={onBack}
-                onExit={() => setViewMode('3d')}
-                onSwitchSeries={handleSwitchSeries}
-            />
-        );
-    }
+    const isComparison = comparisonPaneId !== null;
 
-    // 2D Image mode — show ImageViewer2D for panoramic/cephalometric/single-slice
-    if (viewMode === '2d') {
-        const seriesInfo = allSeries.find(s => s.series_uid === activeStudy?.selectedSeriesUid) || {
-            series_uid: activeStudy?.selectedSeriesUid,
-            series_description: 'Panoramic Image',
-            modality: 'OPG',
-        };
-        return renderWithStructuredReport(
-            <ImageViewer2D
-                study={activeStudy}
-                seriesInfo={seriesInfo}
-                onBack={onBack}
-                onSwitchSeries={handleSwitchSeries}
-                comparisonPaneId={comparisonPaneId}
-                comparisonSyncEnabled={comparisonSyncEnabled}
-            />
-        );
-    }
-
-    // Slice viewer — VTK.js MPR, reuses cached volume from window.__volumeCache
-    return renderWithStructuredReport(
-        <SliceViewer
-            study={activeStudy}
-            onBack={onBack}
-            onSwitchTo3D={() => setViewMode('3d')}
-            onSwitchSeries={handleSwitchSeries}
-            comparisonPaneId={comparisonPaneId}
-            comparisonSyncEnabled={comparisonSyncEnabled}
-        />
+    return (
+        <div
+            ref={parentWrapperRef}
+            className={`h-full w-full bg-slate-950 transition-all duration-300 ${
+                isComparison
+                    ? 'rounded-none border-none shadow-none'
+                    : 'rounded-3xl border border-slate-800 shadow-2xl overflow-hidden'
+            }`}
+        >
+            {renderWithStructuredReport(renderActiveViewer())}
+        </div>
     );
 };
 

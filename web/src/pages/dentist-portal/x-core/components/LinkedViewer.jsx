@@ -4,7 +4,7 @@ import AppIcon from '../../../../components/AppIcon';
 import VolumeViewer3D from './VolumeViewer3D';
 import SliceViewerMini from './SliceViewerMini';
 
-const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
+const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries, isFullscreen = false, comparisonPaneId = null }) => {
     const [sharedImageData, setSharedImageData] = useState(null);
     const [crosshairWorld, setCrosshairWorld] = useState(null);
 
@@ -42,8 +42,15 @@ const LinkedViewer = ({ study, onBack, onExit, onSwitchSeries }) => {
         }
     };
 
+    const isComparison = comparisonPaneId !== null;
+    const containerClasses = `linked-viewer-container flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100 outline-none ${
+        isComparison
+            ? 'rounded-none border-none shadow-none'
+            : 'rounded-3xl border border-slate-800 shadow-2xl'
+    }`;
+
     return (
-        <div className="linked-viewer-container flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl">
+        <div className={containerClasses}>
             <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
                 <div className="flex items-center gap-3">
                     <button

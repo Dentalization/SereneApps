@@ -152,7 +152,7 @@ const ClinicSideBar = () => {
       icon: 'Receipt',
       path: '/clinic-portal/billing',
       description: t('clinic.sidebar.descriptions.billing') || 'Invoice & Insurance Claims',
-      roles: ['cashier', 'manager', 'owner', 'staff']
+      roles: ['cashier', 'manager']
     },
     {
       id: 'inventory',

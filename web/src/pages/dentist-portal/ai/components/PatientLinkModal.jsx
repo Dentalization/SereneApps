@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Search, ShieldAlert, X } from 'lucide-react';
 import { authHttp } from '../../../../utils/httpClient.js';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 
 export default function PatientLinkModal({ isOpen, onClose, onConfirm }) {
   const [query, setQuery] = useState('');
@@ -38,8 +39,9 @@ export default function PatientLinkModal({ isOpen, onClose, onConfirm }) {
   const confirmDisabled = !selected;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Link patient</h2>
@@ -127,5 +129,6 @@ export default function PatientLinkModal({ isOpen, onClose, onConfirm }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

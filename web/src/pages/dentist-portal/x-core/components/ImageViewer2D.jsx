@@ -160,7 +160,16 @@ const listHasSameItems = (a = [], b = []) => (
     && a.every((item, index) => item === b[index])
 );
 
-const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothContext = null }) => {
+const ImageViewer2D = ({
+    study,
+    seriesInfo,
+    onBack,
+    onSwitchSeries,
+    activeToothContext = null,
+    isFullscreen: passedIsFullscreen,
+    toggleFullscreen: passedToggleFullscreen,
+    comparisonPaneId = null,
+}) => {
     const { user } = useAuth();
     const containerRef = useRef(null);
     const wrapperRef = useRef(null);
@@ -176,7 +185,8 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     const [windowWidth, setWindowWidth] = useState(1.0);
     const [windowLevelDrag, setWindowLevelDrag] = useState(null);
     const [inverted, setInverted] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [localIsFullscreen, setLocalIsFullscreen] = useState(false);
+    const isFullscreen = passedIsFullscreen !== undefined ? passedIsFullscreen : localIsFullscreen;
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
@@ -778,19 +788,24 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
     }, [updateWindowLevelFromDrag, windowLevelDrag]);
 
     useEffect(() => {
-        const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+        const handleFullscreenChange = () => setLocalIsFullscreen(!!document.fullscreenElement);
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
 
     const toggleFullscreen = useCallback(() => {
+        if (passedToggleFullscreen) {
+            passedToggleFullscreen();
+            return;
+        }
+
         if (!wrapperRef.current) return;
         if (!document.fullscreenElement) {
             wrapperRef.current.requestFullscreen().catch(console.error);
             return;
         }
         document.exitFullscreen();
-    }, []);
+    }, [passedToggleFullscreen]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -1459,8 +1474,15 @@ const ImageViewer2D = ({ study, seriesInfo, onBack, onSwitchSeries, activeToothC
         }
     }, [historyOpen, refreshSnapshots]);
 
+    const isComparison = comparisonPaneId !== null;
+    const containerClasses = `relative flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100 outline-none ${
+        isComparison
+            ? 'rounded-none border-none shadow-none'
+            : 'rounded-3xl border border-slate-800 shadow-2xl'
+    }`;
+
     return (
-        <div ref={wrapperRef} tabIndex={0} className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
+        <div ref={wrapperRef} tabIndex={0} className={containerClasses}>
             <div className="relative z-30 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-3">
                     {showBack && (

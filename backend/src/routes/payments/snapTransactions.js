@@ -295,6 +295,7 @@ router.post('/', authenticateToken, async (req, res) => {
           appointmentId: appointment.id,
           activeAppointmentId: appointment.id,
           patientId: appointment.patientId,
+          clinicBranchId: appointment.clinicBranchId || null,
           ownerType: owner.ownerType,
           ownerClinicId: owner.ownerClinicId,
           ownerDentistId: owner.ownerDentistId,

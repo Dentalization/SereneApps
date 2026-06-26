@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import { cn } from '../../../utils/cn';
+import ModalPortal from '../../../components/ui/ModalPortal';
 import { shouldSuppressToastMessage } from '../../../contexts/ToastContext';
 import SideBar from '../ui/SideBar';
 import {
@@ -345,8 +346,9 @@ const MyServices = () => {
       </main>
 
       {dialogOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-2xl w-full max-w-2xl shadow-theme-lg border border-primary/10">
+        <ModalPortal>
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-2xl w-full max-w-2xl shadow-theme-lg border border-primary/10">
             <form onSubmit={handleSubmit}>
               <div className="p-6 border-b border-primary/10">
                 <h3 className="text-xl font-semibold text-foreground">
@@ -413,6 +415,7 @@ const MyServices = () => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

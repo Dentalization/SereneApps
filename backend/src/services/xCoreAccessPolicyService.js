@@ -226,12 +226,7 @@ export async function requireXCoreStudyReadAccess({ studyId, user, prismaClient 
     return { study, userId, accessScope: 'owner' };
   }
 
-  const recipientClinicIds = await activeDentistClinicIds(userId, { prismaClient });
-  if (
-    study.dentistShares?.length > 0
-    && recipientClinicIds.length > 0
-    && clinicIdsIntersect(recipientClinicIds, clinicIdsForStudy(study))
-  ) {
+  if (study.dentistShares?.length > 0) {
     return { study, userId, accessScope: 'shared_with_me' };
   }
 

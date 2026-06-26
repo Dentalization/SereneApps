@@ -11,13 +11,29 @@ import PromosView from './components/PromosView';
 import { authHttp } from '../../../utils/httpClient';
 import ModalPortal from '../../../components/ui/ModalPortal';
 
+const compactList = (items = []) => (
+  [...new Set((items || []).filter(Boolean))].join(', ') || '-'
+);
+
+const extractBillingAccessError = (error, source) => {
+  const data = error?.response?.data;
+  const message = data?.error?.message || data?.error || data?.message || error?.message || 'Akses pembayaran ditolak';
+
+  return {
+    source,
+    status: error?.response?.status || null,
+    code: data?.code || null,
+    message
+  };
+};
+
 const BillingPage = () => {
   const toast = useToast();
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('invoices');
+  const [activeTab, setActiveTab] = useState('payments');
   const [billingData, setBillingData] = useState({
     invoices: [],
     payments: [],
@@ -25,6 +41,9 @@ const BillingPage = () => {
     promos: []
   });
   const [loading, setLoading] = useState(true);
+  const [permission, setPermission] = useState(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [permissionError, setPermissionError] = useState(null);
 
   // Invoice Inspector Modal State
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
@@ -40,7 +59,7 @@ const BillingPage = () => {
   const fetchBillingData = async () => {
     setLoading(true);
     try {
-      const { data } = await authHttp.get('/financials/clinic/history');
+      const { data } = await authHttp.get('/clinic/billing/history');
       setBillingData({
         invoices: data.invoices || [],
         payments: data.payments || [],
@@ -65,15 +84,51 @@ const BillingPage = () => {
           }
         ]
       });
+      setAccessDenied(false);
+      setPermissionError(null);
     } catch (error) {
       console.error('Failed to load clinic billing data:', error);
+      if ([401, 403].includes(error.response?.status)) {
+        setPermissionError(extractBillingAccessError(error, 'clinic/billing/history'));
+        setAccessDenied(true);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBillingData();
+    let mounted = true;
+    const loadPermissions = async () => {
+      try {
+        const { data } = await authHttp.get('/clinic/billing/permissions');
+        if (!mounted) return;
+        setPermission(data);
+        if (!data?.canAccessPaymentMenu) {
+          setPermissionError({
+            source: 'clinic/billing/permissions',
+            status: 403,
+            code: 'PAYMENT_MENU_DISABLED',
+            message: 'Permission API mengembalikan canAccessPaymentMenu=false'
+          });
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        setPermissionError(null);
+        fetchBillingData();
+      } catch (error) {
+        if (!mounted) return;
+        console.error('Failed to load billing permissions:', error);
+        setPermissionError(extractBillingAccessError(error, 'clinic/billing/permissions'));
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    };
+    loadPermissions();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -81,7 +136,7 @@ const BillingPage = () => {
       const fetchInvoiceDetail = async () => {
         setInvoiceLoading(true);
         try {
-          const { data } = await authHttp.get(`/payments/invoices/${selectedInvoiceId}`);
+          const { data } = await authHttp.get(`/clinic/billing/invoices/${selectedInvoiceId}`);
           setInvoiceDetail(data.invoice);
         } catch (error) {
           console.error('Error fetching invoice details:', error);
@@ -295,7 +350,14 @@ const BillingPage = () => {
     </div>
   );
 
-  const renderPaymentsView = () => <PaymentsView payments={billingData.payments} loading={loading} />;
+  const renderPaymentsView = () => (
+    <PaymentsView
+      payments={billingData.payments}
+      loading={loading}
+      permission={permission}
+      onRefresh={fetchBillingData}
+    />
+  );
 
   const renderClaimsView = () => <ClaimsView />;
 
@@ -310,6 +372,78 @@ const BillingPage = () => {
       default: return renderInvoicesView();
     }
   };
+
+  if (accessDenied && !loading) {
+    const clinicStaff = user?.clinicStaff || user?.clinic_staff || null;
+    const activeRoles = compactList([
+      ...(Array.isArray(user?.roles) ? user.roles : []),
+      ...(Array.isArray(user?.effectiveRoles) ? user.effectiveRoles : []),
+      user?.role,
+      clinicStaff?.role
+    ]);
+    const permissionBranches = compactList(permission?.allowedBranchIds || []);
+    const activeAccountRows = [
+      ['Email aktif', user?.email || '-'],
+      ['Role aktif', activeRoles],
+      ['Clinic staff role', clinicStaff?.role || '-'],
+      ['Staff aktif', clinicStaff ? (clinicStaff.isActive ? 'Ya' : 'Tidak') : '-'],
+      ['Assigned branch', clinicStaff?.assignedBranchId || '-'],
+      ['Permission role', permission?.role || '-'],
+      ['Allowed branch', permissionBranches],
+      ['API source', permissionError?.source || '-'],
+      ['API status', permissionError?.status || '-'],
+      ['API code', permissionError?.code || '-'],
+      ['API error', permissionError?.message || '-']
+    ];
+
+    return (
+      <div className="flex min-h-screen bg-background theme-transition">
+        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+          <ClinicSideBar />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="p-6 md:p-8">
+            <section className="space-y-6 rounded-2xl border border-red-200/60 bg-red-50 p-8 dark:border-red-900/40 dark:bg-red-950/20">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="flex items-center gap-3">
+                  <Icon name="ShieldAlert" className="text-red-600" size={24} />
+                  <div>
+                    <h1 className="text-xl font-semibold text-red-900 dark:text-red-200">403</h1>
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      Akses pembayaran hanya tersedia untuk kasir dan manager aktif.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-900/30"
+                >
+                  <Icon name="RefreshCw" size={14} />
+                  Muat ulang izin
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-red-200/70 bg-white/70 p-4 dark:border-red-900/40 dark:bg-red-950/20">
+                <h2 className="text-sm font-semibold text-red-900 dark:text-red-200">Diagnostik akses saat ini</h2>
+                <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                  {activeAccountRows.map(([label, value]) => (
+                    <div key={label} className="rounded-lg bg-red-100/60 px-3 py-2 dark:bg-red-950/30">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-red-600 dark:text-red-300">{label}</dt>
+                      <dd className="mt-1 break-words font-medium text-red-950 dark:text-red-100">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-3 text-xs text-red-700 dark:text-red-300">
+                  Jika email atau role di atas tidak sesuai, logout lalu login ulang agar token dan data staff terbaru dipakai.
+                </p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     const tableSkeletons = Array.from({ length: 5 });

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 
@@ -45,6 +46,7 @@ import {
 import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { computeSyncedSliceIndices, quantizeDisplayCoordinate } from '../utils/sliceSyncMath';
 import { buildProjectedImageBounds, isProjectionFrameCurrent } from '../utils/annotationProjection.mjs';
+import { normalizeSliceClinicalContext } from '../utils/annotationClinicalContext.mjs';
 import AnnotationCanvas from './AnnotationCanvas';
 import AnnotationHistoryPanel from './AnnotationHistoryPanel';
 import AnnotationSessionModal from './AnnotationSessionModal';
@@ -128,12 +130,52 @@ const SLICE_SHORTCUTS = [
     { key: 'S', label: 'Sagittal plane' },
     { key: '1 / 2 / 3 / 4', label: 'Dental / Bone / Soft / Full W/L' },
     { key: 'Ctrl/Cmd + Z', label: 'Undo annotation/measurement' },
+    { key: 'Ctrl/Cmd + Shift + Z', label: 'Redo annotation' },
     { key: 'I', label: 'Invert image' },
     { key: 'Right-drag', label: 'Window/Level adjust' },
     { key: 'F', label: 'Fullscreen' },
 ];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const ANNOTATION_HISTORY_LIMIT = 50;
+
+const AnnotationCounterBadge = ({ value, activeClassName }) => {
+    const displayValue = value > 99 ? '99+' : String(value);
+
+    return (
+        <motion.span
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className={`pointer-events-none absolute right-0 top-0 flex h-4 min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center overflow-hidden rounded-full px-1 text-[9px] font-bold leading-none ${activeClassName}`}
+            aria-hidden="true"
+        >
+            <AnimatePresence mode="popLayout">
+                <motion.span
+                    key={displayValue}
+                    initial={{ y: -4, scale: 0.82 }}
+                    animate={{ y: 0, scale: 1, opacity: 1 }}
+                    exit={{ y: 4, scale: 0.82, opacity: 0 }}
+                    style={{ opacity: 0 }}
+                    transition={{ duration: 0.14, ease: [0.2, 0.8, 0.2, 1] }}
+                    className="font-mono tabular-nums absolute inset-0 flex items-center justify-center"
+                >
+                    {displayValue}
+                </motion.span>
+            </AnimatePresence>
+        </motion.span>
+    );
+};
+const resolveStateUpdate = (updater, current) => (
+    typeof updater === 'function' ? updater(current) : updater
+);
+const listHasSameItems = (first = [], second = []) => (
+    Array.isArray(first)
+    && Array.isArray(second)
+    && first.length === second.length
+    && first.every((item, index) => item === second[index])
+);
 
 const buildCenteredSlices = (dims) => ({
     axial: Math.floor(Math.max((dims?.[2] ?? 1) - 1, 0) / 2),
@@ -170,7 +212,16 @@ const drawMeasurementPillToCanvas = (ctx, label) => {
     ctx.restore();
 };
 
-const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
+const SliceViewer = ({
+    study,
+    onBack,
+    onSwitchTo3D,
+    onSwitchSeries,
+    comparisonPaneId = null,
+    comparisonSyncEnabled = false,
+    isFullscreen: passedIsFullscreen,
+    toggleFullscreen: passedToggleFullscreen,
+}) => {
     const { user } = useAuth();
     const wrapperRef = useRef(null);
     const moreToolsMenuRef = useRef(null);
@@ -190,6 +241,9 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const comparisonSyncGuardFrameRef = useRef(null);
     const hydrateClinicalRecordsRef = useRef(() => {});
     const pendingMeasurementRecordsRef = useRef([]);
+    const annotationsRef = useRef([]);
+    const annotationsHistoryRef = useRef([]);
+    const annotationsRedoRef = useRef([]);
     const comparisonLastBroadcastRef = useRef({
         axial: { slice: null, ratio: null },
         coronal: { slice: null, ratio: null },
@@ -210,7 +264,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [windowWidth, setWindowWidth] = useState(DEFAULT_WINDOW_LEVEL.width);
     const [windowLevelDrag, setWindowLevelDrag] = useState(null);
     const [inverted, setInverted] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [localIsFullscreen, setLocalIsFullscreen] = useState(false);
+    const isFullscreen = passedIsFullscreen !== undefined ? passedIsFullscreen : localIsFullscreen;
     const [showSeriesPanel, setShowSeriesPanel] = useState(false);
     const [showMetadataPanel, setShowMetadataPanel] = useState(false);
     const [showMoreTools, setShowMoreTools] = useState(false);
@@ -226,6 +281,8 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     const [annotateMode, setAnnotateMode] = useState(false);
     const [annotationTool, setAnnotationTool] = useState('arrow');
     const [annotations, setAnnotations] = useState([]);
+    const [annotationsHistory, setAnnotationsHistory] = useState([]);
+    const [annotationsRedo, setAnnotationsRedo] = useState([]);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
@@ -312,6 +369,76 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         sourceWidth: viewerSize.width,
         sourceHeight: viewerSize.height,
     }), [viewerSize.height, viewerSize.width]);
+    useEffect(() => {
+        annotationsRef.current = annotations;
+    }, [annotations]);
+    const replaceAnnotationsState = useCallback((updater) => {
+        const next = resolveStateUpdate(updater, annotationsRef.current);
+        const normalized = Array.isArray(next) ? next : [];
+        annotationsRef.current = normalized;
+        annotationsHistoryRef.current = [];
+        annotationsRedoRef.current = [];
+        setAnnotations(normalized);
+        setAnnotationsHistory([]);
+        setAnnotationsRedo([]);
+    }, []);
+    const applyPersistenceAnnotationsState = useCallback((updater) => {
+        if (typeof updater !== 'function') {
+            replaceAnnotationsState(updater);
+            return;
+        }
+
+        const next = updater(annotationsRef.current);
+        const normalized = Array.isArray(next) ? next : [];
+        annotationsRef.current = normalized;
+        setAnnotations(normalized);
+    }, [replaceAnnotationsState]);
+    const pushAnnotationsState = useCallback((updater) => {
+        const current = annotationsRef.current;
+        const next = resolveStateUpdate(updater, current);
+        if (!Array.isArray(next) || next === current || listHasSameItems(current, next)) return;
+
+        const nextHistory = [...annotationsHistoryRef.current, current]
+            .slice(-ANNOTATION_HISTORY_LIMIT);
+        annotationsRef.current = next;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = [];
+        setAnnotations(next);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo([]);
+    }, []);
+    const undoAnnotationsState = useCallback(() => {
+        const history = annotationsHistoryRef.current;
+        if (!history.length) return;
+
+        const current = annotationsRef.current;
+        const previous = history[history.length - 1];
+        const nextHistory = history.slice(0, -1);
+        const nextRedo = [current, ...annotationsRedoRef.current]
+            .slice(0, ANNOTATION_HISTORY_LIMIT);
+        annotationsRef.current = previous;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = nextRedo;
+        setAnnotations(previous);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo(nextRedo);
+    }, []);
+    const redoAnnotationsState = useCallback(() => {
+        const redo = annotationsRedoRef.current;
+        if (!redo.length) return;
+
+        const current = annotationsRef.current;
+        const next = redo[0];
+        const nextHistory = [...annotationsHistoryRef.current, current]
+            .slice(-ANNOTATION_HISTORY_LIMIT);
+        const nextRedo = redo.slice(1);
+        annotationsRef.current = next;
+        annotationsHistoryRef.current = nextHistory;
+        annotationsRedoRef.current = nextRedo;
+        setAnnotations(next);
+        setAnnotationsHistory(nextHistory);
+        setAnnotationsRedo(nextRedo);
+    }, []);
     const measurementClinicalRecords = useMemo(() => buildSliceMeasurementRecords(measurementStoreRef.current, {
         seriesUid,
         sourceWidth: viewerSize.width,
@@ -329,7 +456,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         seriesUid,
         viewerType: 'slice',
         annotations,
-        setAnnotations,
+        setAnnotations: applyPersistenceAnnotationsState,
         clinicalRecords: measurementClinicalRecords,
         onHydrateClinicalRecords: handleHydrateClinicalRecords,
         enabled: !loading && !error && !!imageData && !!seriesUid,
@@ -378,7 +505,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         if (!annotationPersistence.loading && !loading && !error && imageData) {
             scheduleProjectionRefresh();
         }
-    }, [annotationPersistence.loading, annotations.length, error, imageData, loading, scheduleProjectionRefresh]);
+    }, [annotationPersistence.loading, error, imageData, loading, scheduleProjectionRefresh]);
 
     const buildColorFunctionFromLut = useCallback((lut, invert) => {
         const ctf = vtkColorTransferFunction.newInstance();
@@ -1086,36 +1213,46 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, [axis, getPaneContext, syncMeasurementLabelForAxis]);
 
     const handleUndoAnnotation = useCallback(() => {
-        setAnnotations((current) => current.slice(0, -1));
-    }, []);
+        undoAnnotationsState();
+    }, [undoAnnotationsState]);
+
+    const handleRedoAnnotation = useCallback(() => {
+        redoAnnotationsState();
+    }, [redoAnnotationsState]);
 
     const handleAxisAnnotationsChange = useCallback((axisName, currentSliceIndex, nextVisibleAnnotations) => {
         const currentVisible = getCurrentSliceAnnotationsForAxis(axisName, currentSliceIndex);
         const visibleIds = new Set(currentVisible.map((annotation) => annotation.id));
         const sourceSize = getAxisSourceDimensions(axisName);
+        const sliceClinicalContext = normalizeSliceClinicalContext({
+            sliceAxis: axisName,
+            sliceIndex: currentSliceIndex,
+            sliceCount: dimensions[AXIS[axisName].dimIndex] || null,
+        });
         const scopedNext = nextVisibleAnnotations.map((annotation) => ({
             ...annotation,
             displayOpacity: undefined,
-            slice_axis: annotation.slice_axis || axisName,
-            slice_index: annotation.slice_index ?? currentSliceIndex,
+            slice_axis: axisName,
+            slice_index: currentSliceIndex,
             viewer_type: 'slice',
             series_uid: annotation.series_uid || seriesUid,
             metadata: {
                 ...(annotation.metadata || {}),
                 source_width: annotation.metadata?.source_width || sourceSize.width,
                 source_height: annotation.metadata?.source_height || sourceSize.height,
+                ...(sliceClinicalContext || {}),
             },
         }));
 
-        setAnnotations((current) => [
+        pushAnnotationsState((current) => [
             ...current.filter((annotation) => !visibleIds.has(annotation.id)),
             ...scopedNext,
         ]);
-    }, [getAxisSourceDimensions, getCurrentSliceAnnotationsForAxis, seriesUid]);
+    }, [dimensions, getAxisSourceDimensions, getCurrentSliceAnnotationsForAxis, pushAnnotationsState, seriesUid]);
 
     const handleVisibleAnnotationsChange = useCallback((nextVisibleAnnotations) => {
-        handleAxisAnnotationsChange(axis, sliceIndex, nextVisibleAnnotations, viewerSize);
-    }, [axis, handleAxisAnnotationsChange, sliceIndex, viewerSize]);
+        handleAxisAnnotationsChange(axis, sliceIndex, nextVisibleAnnotations);
+    }, [axis, handleAxisAnnotationsChange, sliceIndex]);
 
     const handleExportAnnotationsJson = useCallback(() => {
         exportAnnotationsJson(annotations, metadata, {
@@ -1216,7 +1353,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             if (saveBeforeClear && hasWork) {
                 await persistAnnotationSession({ note, source: 'new-session' });
             }
-            setAnnotations([]);
+            replaceAnnotationsState([]);
             clearAllMeasurements();
             setSnapshotOverlay(null);
             setAnnotateMode(false);
@@ -1230,7 +1367,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         } finally {
             setSessionSaving(false);
         }
-    }, [annotations.length, clearAllMeasurements, measurementCount, persistAnnotationSession, refreshSnapshots]);
+    }, [annotations.length, clearAllMeasurements, measurementCount, persistAnnotationSession, refreshSnapshots, replaceAnnotationsState]);
 
     const handleRestoreAnnotationSession = useCallback((snapshot) => {
         const nextAnnotations = (snapshot?.annotations || []).map((annotation) => normalizeAnnotationForPersistence(annotation, {
@@ -1240,7 +1377,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             sourceHeight: viewerSize.height,
         }));
         const featureState = snapshot?.feature_state || snapshot?.featureState || {};
-        setAnnotations(nextAnnotations);
+        replaceAnnotationsState(nextAnnotations);
         setSnapshotOverlay(null);
         if (featureState.axis && AXIS[featureState.axis]) {
             setAxis(featureState.axis);
@@ -1261,7 +1398,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         }
         setHistoryOpen(false);
         scheduleProjectionRefresh();
-    }, [axis, scheduleProjectionRefresh, seriesUid, viewerSize.height, viewerSize.width]);
+    }, [axis, replaceAnnotationsState, scheduleProjectionRefresh, seriesUid, viewerSize.height, viewerSize.width]);
 
     const handleDeleteAnnotationSession = useCallback(async (snapshot) => {
         if (!snapshot?.id) return;
@@ -1290,7 +1427,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             confidence_score: reviewStatus === 'approved' ? 1 : reviewStatus === 'rejected' ? 0 : 0.7,
         };
 
-        setAnnotations((current) => current.map((annotation) => (
+        pushAnnotationsState((current) => current.map((annotation) => (
             annotation.id === annotationId ? { ...annotation, ...localPatch } : annotation
         )));
 
@@ -1303,7 +1440,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         } catch (error) {
             console.warn('[SliceViewer] Failed to update annotation review:', error);
         }
-    }, [study?.id]);
+    }, [pushAnnotationsState, study?.id]);
 
     const handleSubmitAnnotationsForReview = useCallback(async () => {
         if (!study?.id || !annotations.length) return;
@@ -1314,7 +1451,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         }
         setReviewError('');
         const ids = annotations.map((annotation) => annotation.id).filter(Boolean);
-        setAnnotations((current) => current.map((annotation) => ({
+        pushAnnotationsState((current) => current.map((annotation) => ({
             ...annotation,
             review_status: 'submitted',
             confidence_score: annotation.confidence_score ?? 0.7,
@@ -1329,7 +1466,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         } catch (error) {
             console.warn('[SliceViewer] Failed to submit annotations:', error);
         }
-    }, [annotations, seriesUid, study?.id]);
+    }, [annotations, pushAnnotationsState, seriesUid, study?.id]);
 
     useEffect(() => {
         if (historyOpen) {
@@ -1447,6 +1584,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, [selectWlPreset]);
 
     const toggleFullscreen = useCallback(() => {
+        if (passedToggleFullscreen) {
+            passedToggleFullscreen();
+            return;
+        }
+
         if (!document.fullscreenElement && wrapperRef.current) {
             wrapperRef.current.requestFullscreen().catch(() => {});
             return;
@@ -1455,7 +1597,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         if (document.fullscreenElement) {
             document.exitFullscreen().catch(() => {});
         }
-    }, []);
+    }, [passedToggleFullscreen]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -1466,12 +1608,19 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
             if (document.activeElement !== document.body && !viewerFocused) return;
 
             const key = event.key.toLowerCase();
-            if ((event.ctrlKey || event.metaKey) && key === 'z') {
+            const isUndoShortcut = (event.ctrlKey || event.metaKey) && key === 'z' && !event.shiftKey;
+            const isRedoShortcut = (event.ctrlKey || event.metaKey)
+                && ((key === 'z' && event.shiftKey) || key === 'y');
+            if (isUndoShortcut || isRedoShortcut) {
                 if (!measurementMode && !annotateMode) return;
                 event.preventDefault();
                 if (annotateMode) {
-                    handleUndoAnnotation();
-                } else {
+                    if (isRedoShortcut) {
+                        handleRedoAnnotation();
+                    } else {
+                        handleUndoAnnotation();
+                    }
+                } else if (isUndoShortcut) {
                     handleUndoMeasurement();
                 }
                 return;
@@ -1505,7 +1654,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [annotateMode, goToSlice, handleUndoAnnotation, handleUndoMeasurement, measurementMode, selectWlShortcutPreset, switchAxis, toggleFullscreen]);
+    }, [annotateMode, goToSlice, handleRedoAnnotation, handleUndoAnnotation, handleUndoMeasurement, measurementMode, selectWlShortcutPreset, switchAxis, toggleFullscreen]);
 
     const handleToggleQuadView = useCallback(() => {
         clearAllMeasurements();
@@ -1700,7 +1849,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
 
     useEffect(() => {
         const onFullscreenChange = () => {
-            setIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+            setLocalIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
             scheduleProjectionRefresh();
         };
         document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -1820,7 +1969,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         setQuadCrosshairPositions({});
         setAnnotateMode(false);
         setAnnotationTool('arrow');
-        setAnnotations([]);
+        replaceAnnotationsState([]);
         setWindowLevelDrag(null);
         setReportModalOpen(false);
         setReportWarningMessage('');
@@ -1829,7 +1978,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         setSnapshotOverlay(null);
         setShowSeriesPanel(false);
         setShowMetadataPanel(false);
-    }, [cacheKey, resetMeasurementState]);
+    }, [cacheKey, replaceAnnotationsState, resetMeasurementState]);
 
     useEffect(() => {
         if (!study) return undefined;
@@ -2402,6 +2551,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                         tool={annotationTool}
                         annotations={getCurrentSliceAnnotationsForAxis(axisName, paneSlice)}
                         onChange={(nextAnnotations) => handleAxisAnnotationsChange(axisName, paneSlice, nextAnnotations)}
+                        clinicalContext={{
+                            sliceAxis: axisName,
+                            sliceIndex: paneSlice,
+                            sliceCount: dimensions[AXIS[axisName].dimIndex] || null,
+                        }}
                         reviewMode={reviewMode}
                         onReviewAnnotation={handleReviewAnnotation}
                         className="absolute inset-0 z-[70]"
@@ -2412,6 +2566,7 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
     }, [
         annotateMode,
         annotationTool,
+        dimensions,
         getCurrentSliceAnnotationsForAxis,
         getNeighborAnnotationsForAxis,
         getAnnotationProjectionForPane,
@@ -2436,8 +2591,15 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
         [axis, getAnnotationProjectionForPane, projectionReady, projectionRefreshTick, sliceIndex, viewerSize]
     );
 
+    const isComparison = comparisonPaneId !== null;
+    const containerClasses = `relative flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100 outline-none ${
+        isComparison
+            ? 'rounded-none border-none shadow-none'
+            : 'rounded-3xl border border-slate-800 shadow-2xl'
+    }`;
+
     return (
-        <div ref={wrapperRef} tabIndex={0} className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl outline-none">
+        <div ref={wrapperRef} tabIndex={0} className={containerClasses}>
             <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 p-3 backdrop-blur">
                 <div className="flex items-center gap-3">
                     {showBack && (
@@ -2763,20 +2925,65 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                                         <span>{label}</span>
                                     </button>
                                 ))}
-                                <button
-                                    onClick={handleUndoAnnotation}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Undo last annotation"
-                                >
-                                    <AppIcon name="Undo2" size={15} />
-                                </button>
-                                <button
-                                    onClick={() => setAnnotations([])}
-                                    className="rounded-xl bg-slate-800 p-1.5 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-                                    title="Clear annotations"
-                                >
-                                    <AppIcon name="Trash2" size={15} />
-                                </button>
+                                <div className="ml-1 flex shrink-0 items-center gap-2 border-l border-slate-700/80 py-1 pl-2 pr-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleUndoAnnotation}
+                                        disabled={annotationsHistory.length === 0}
+                                        className="relative grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-800 text-slate-300 transition-colors duration-150 hover:bg-slate-700 hover:text-white active:bg-slate-600 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-slate-800"
+                                        title={`Undo annotation (${annotationsHistory.length} available)`}
+                                        aria-label={`Undo annotation, ${annotationsHistory.length} available`}
+                                    >
+                                        <AppIcon name="Undo2" size={15} />
+                                        <AnimatePresence>
+                                            {annotationsHistory.length > 0 && (
+                                                <AnnotationCounterBadge
+                                                    key="undo-badge"
+                                                    value={annotationsHistory.length}
+                                                    activeClassName="bg-cyan-400 text-slate-950"
+                                                />
+                                            )}
+                                        </AnimatePresence>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleRedoAnnotation}
+                                        disabled={annotationsRedo.length === 0}
+                                        className="relative grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-800 text-slate-300 transition-colors duration-150 hover:bg-slate-700 hover:text-white active:bg-slate-600 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-slate-800"
+                                        title={`Redo annotation (${annotationsRedo.length} available)`}
+                                        aria-label={`Redo annotation, ${annotationsRedo.length} available`}
+                                    >
+                                        <AppIcon name="Redo2" size={15} />
+                                        <AnimatePresence>
+                                            {annotationsRedo.length > 0 && (
+                                                <AnnotationCounterBadge
+                                                    key="redo-badge"
+                                                    value={annotationsRedo.length}
+                                                    activeClassName="bg-violet-400 text-slate-950"
+                                                />
+                                            )}
+                                        </AnimatePresence>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => pushAnnotationsState([])}
+                                        disabled={annotations.length === 0}
+                                        className="relative grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-800 text-slate-300 transition-colors duration-150 hover:bg-rose-900/60 hover:text-rose-200 active:bg-rose-900/80 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-slate-800"
+                                        title={`Clear annotations (${annotations.length})`}
+                                        aria-label={`Clear ${annotations.length} annotations`}
+                                    >
+                                        <AppIcon name="Trash2" size={15} />
+                                        <AnimatePresence>
+                                            {annotations.length > 0 && (
+                                                <AnnotationCounterBadge
+                                                    key="clear-badge"
+                                                    value={annotations.length}
+                                                    activeClassName="bg-rose-400 text-slate-950"
+                                                />
+                                            )}
+                                        </AnimatePresence>
+                                    </button>
+                                </div>
                                 {annotationPersistence.saving && (
                                     <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-cyan-300">Saving</span>
                                 )}
@@ -2890,6 +3097,11 @@ const SliceViewer = ({ study, onBack, onSwitchTo3D, onSwitchSeries, comparisonPa
                                 tool={annotationTool}
                                 annotations={visibleAnnotations}
                                 onChange={handleVisibleAnnotationsChange}
+                                clinicalContext={{
+                                    sliceAxis: axis,
+                                    sliceIndex,
+                                    sliceCount: dimensions[AXIS[axis].dimIndex] || null,
+                                }}
                                 reviewMode={reviewMode}
                                 onReviewAnnotation={handleReviewAnnotation}
                                 className="absolute inset-0 z-[70]"

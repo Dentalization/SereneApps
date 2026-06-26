@@ -1574,7 +1574,8 @@ export default {
       },
       actions: {
         cancel: 'Cancel',
-        submit: 'Add Patient & Schedule'
+        submit: 'Add Patient & Schedule',
+        submitting: 'Saving...'
       },
       validation: {
         nameRequired: 'Name is required',
@@ -1583,7 +1584,8 @@ export default {
         ageRequired: 'Valid age is required',
         genderRequired: 'Gender is required',
         dateRequired: 'Appointment date is required',
-        timeRequired: 'Appointment time is required'
+        timeRequired: 'Appointment time is required',
+        submitFailed: 'Failed to add patient. Please try again.'
       }
     },
     ai: {
@@ -1933,6 +1935,16 @@ export default {
         inactive: 'Inactive',
         new: 'New'
       },
+      sources: {
+        all: 'All Sources',
+        serene_mobile: 'Serene Mobile',
+        clinic_added: 'Clinic Added'
+      },
+      actions: {
+        open: 'Open Patient Directory',
+        close: 'Close Patient Directory'
+      },
+      loadingDetails: 'Loading patient details...',
       badges: {
         ai: 'AI',
         allergy: 'Allergy'

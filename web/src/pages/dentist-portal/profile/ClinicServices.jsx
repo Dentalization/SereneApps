@@ -50,8 +50,11 @@ const ClinicServices = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary" />
+      <div className="min-h-screen bg-background flex theme-transition">
+        <SideBar />
+        <main className="flex-1 min-w-0 flex items-center justify-center bg-background theme-transition">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary" />
+        </main>
       </div>
     );
   }

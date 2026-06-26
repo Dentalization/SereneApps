@@ -39,8 +39,8 @@ export const clinicRoutes = [
 
 // Role-based Access Control Configuration
 export const rolePermissions = {
-  owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
-  clinic_owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'billing', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
+  owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
+  clinic_owner: ['dashboard', 'schedule', 'patients', 'staff', 'branches', 'inventory', 'reports', 'x-core', 'public-profile', 'settings'],
   clinical_director: ['x-core'],
   authorized_clinic_doctor: ['x-core'],
   clinic_admin_xcore: ['x-core'],
@@ -48,7 +48,7 @@ export const rolePermissions = {
   front_office: ['dashboard', 'schedule', 'patients'],
   nurse: ['dashboard', 'schedule', 'patients', 'inventory'],
   cashier: ['dashboard', 'billing'],
-  staff: ['dashboard', 'schedule', 'patients', 'billing', 'inventory', 'reports', 'settings'] // fallback
+  staff: ['dashboard', 'schedule', 'patients', 'inventory', 'reports', 'settings'] // fallback
 };
 
 // Menu Configuration (used by sidebar)
@@ -88,7 +88,7 @@ export const menuConfig = {
       id: 'billing', 
       path: '/clinic-portal/billing',
       icon: 'Receipt',
-      roles: ['cashier', 'manager', 'owner', 'staff']
+      roles: ['cashier', 'manager']
     },
     { 
       id: 'inventory', 

@@ -7,6 +7,56 @@ const VISIT_TYPES = [
   { id: 'teledentistry', label: 'Teledentistry' },
 ];
 
+const VITAL_FIELDS = [
+  { field: 'bloodPressure', label: 'Blood Pressure', unit: 'mmHg', placeholder: '120/80' },
+  { field: 'heartRate', label: 'Heart Rate', unit: 'bpm', placeholder: '80' },
+  { field: 'temperature', label: 'Temperature', unit: '°C', placeholder: '36.8' },
+  { field: 'spo2', label: 'SpO2', unit: '%', placeholder: '98' },
+];
+
+const normalizeDateInput = (value) => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+};
+
+const normalizeGender = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (['female', 'f', 'perempuan', 'wanita'].includes(normalized)) return 'Female';
+  if (['male', 'm', 'laki-laki', 'laki laki', 'pria'].includes(normalized)) return 'Male';
+  if (['other', 'non-binary', 'nonbinary'].includes(normalized)) return 'Other';
+  return value;
+};
+
+const stripVitalUnit = (field, value) => {
+  const unit = VITAL_FIELDS.find((item) => item.field === field)?.unit;
+  if (!unit || !value) return value || '';
+  return String(value)
+    .replace(new RegExp(`\\s*${unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i'), '')
+    .trim();
+};
+
+const sanitizeVitalInput = (field, value) => {
+  const raw = stripVitalUnit(field, value);
+  if (field === 'bloodPressure') {
+    return raw
+      .replace(/[^\d/]/g, '')
+      .replace(/\/+/g, '/')
+      .replace(/^\/+/, '')
+      .split('/')
+      .slice(0, 2)
+      .join('/');
+  }
+  if (field === 'temperature') {
+    const normalized = raw.replace(',', '.').replace(/[^\d.]/g, '');
+    const [whole, ...decimalParts] = normalized.split('.');
+    return decimalParts.length ? `${whole}.${decimalParts.join('')}` : whole;
+  }
+  return raw.replace(/\D/g, '');
+};
+
 const buildInitialForm = (prefilledPatient, visitType) => ({
   patientName: '',
   nik: '',
@@ -18,10 +68,10 @@ const buildInitialForm = (prefilledPatient, visitType) => ({
   chiefComplaint: '',
   medicalHistory: '',
   vitals: {
-    bloodPressure: '',
-    heartRate: '',
-    temperature: '',
-    spo2: '',
+    bloodPressure: sanitizeVitalInput('bloodPressure', prefilledPatient?.vitals?.bloodPressure),
+    heartRate: sanitizeVitalInput('heartRate', prefilledPatient?.vitals?.heartRate),
+    temperature: sanitizeVitalInput('temperature', prefilledPatient?.vitals?.temperature),
+    spo2: sanitizeVitalInput('spo2', prefilledPatient?.vitals?.spo2),
   },
   diagnosis: '',
   icd10: '',
@@ -37,8 +87,8 @@ const buildInitialForm = (prefilledPatient, visitType) => ({
     ? {
         patientName: prefilledPatient.name || '',
         nik: prefilledPatient.nik || '',
-        dob: prefilledPatient.dob || '',
-        gender: prefilledPatient.gender || '',
+        dob: normalizeDateInput(prefilledPatient.dob),
+        gender: normalizeGender(prefilledPatient.gender),
         rmNumber: prefilledPatient.rmNumber || '',
         allergies: (prefilledPatient.medicalDetails?.allergies || prefilledPatient.alerts?.allergies || []).join('\n'),
         systemic: (prefilledPatient.medicalDetails?.chronicConditions || prefilledPatient.alerts?.systemic || []).join('\n'),
@@ -54,10 +104,12 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
     [prefilledPatient, defaultVisitType]
   );
   const [form, setForm] = useState(initialState);
-  const [isSendingConsent, setIsSendingConsent] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
   const identityLocked = Boolean(prefilledPatient);
-  const identityInputClass = (base) =>
-    `${base} ${identityLocked ? 'bg-muted/40 cursor-not-allowed' : ''}`;
+  const saving = isSubmitting || isSubmittingLocal;
+  const identityInputClass = (base, locked = identityLocked) =>
+    `${base} ${locked ? 'bg-muted/40 cursor-not-allowed' : ''}`;
 
   useEffect(() => {
     setForm(buildInitialForm(prefilledPatient, defaultVisitType));
@@ -71,11 +123,12 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
   };
 
   const handleVitalChange = (field, value) => {
+    setSubmitError('');
     setForm((prev) => ({
       ...prev,
       vitals: {
         ...prev.vitals,
-        [field]: value,
+        [field]: sanitizeVitalInput(field, value),
       },
     }));
   };
@@ -86,16 +139,29 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
     handleChange('consentFile', file);
   };
 
-  const handleSendTeleConsent = async () => {
-    setIsSendingConsent(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setIsSendingConsent(false);
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onSubmit) onSubmit(form);
-    setForm(buildInitialForm(prefilledPatient, defaultVisitType));
+    setSubmitError('');
+    setIsSubmittingLocal(true);
+    try {
+      if (onSubmit) {
+        await onSubmit(form);
+      }
+      setForm(buildInitialForm(prefilledPatient, defaultVisitType));
+    } catch (error) {
+      const data = error?.response?.data;
+      const message =
+        (typeof data?.error === 'string' && data.error) ||
+        data?.error?.message ||
+        data?.error?.detail ||
+        data?.detail ||
+        data?.message ||
+        error?.message ||
+        'Unable to save EMR. Please try again.';
+      setSubmitError(message);
+    } finally {
+      setIsSubmittingLocal(false);
+    }
   };
 
   const consentSummary = useMemo(() => {
@@ -103,9 +169,9 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
       if (form.consentFile) {
         return `${form.consentFile.name} • ${(form.consentFile.size / 1024).toFixed(1)} KB`;
       }
-      return 'Upload signed informed consent from clinic template.';
+      return 'Optional for saving this EMR. Attach consent when the visit includes a procedure that requires it.';
     }
-    return 'Consent will be sent automatically to the patient via SereneAI Teledentistry.';
+    return 'Consent requirement will be saved in this EMR. Mobile signing flow is not available yet.';
   }, [form.visitType, form.consentFile]);
 
   return (
@@ -117,7 +183,7 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
         </div>
         {prefilledPatient && (
           <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 text-sm text-primary">
-            Patient identity and medical background are synced from their SereneAI account (teledentistry). Update only the clinical sections below.
+            Patient identity and medical background are synced from the patient profile. Update only the clinical sections below.
           </div>
         )}
         <div className="grid gap-4 md:grid-cols-2">
@@ -131,12 +197,12 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
             />
           </div>
           <div>
-            <label className="text-xs uppercase tracking-[0.3em] text-secondary">NIK</label>
+            <label className="text-xs uppercase tracking-[0.3em] text-secondary">NIK <span className="tracking-normal normal-case">(optional)</span></label>
             <input
               value={form.nik}
               onChange={(e) => handleChange('nik', e.target.value)}
-              readOnly={identityLocked}
-              className={identityInputClass('mt-1 w-full rounded-xl border border-border/40 bg-background/60 px-3 py-2 text-sm')}
+              placeholder="Optional for in-clinic identity verification"
+              className={identityInputClass('mt-1 w-full rounded-xl border border-border/40 bg-background/60 px-3 py-2 text-sm', false)}
             />
           </div>
           <div>
@@ -154,12 +220,12 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
             <select
               value={form.gender}
               onChange={(e) => handleChange('gender', e.target.value)}
-              disabled={identityLocked}
-              className={identityInputClass('mt-1 w-full rounded-xl border border-border/40 bg-background/60 px-3 py-2 text-sm')}
+              className={identityInputClass('mt-1 w-full rounded-xl border border-border/40 bg-background/60 px-3 py-2 text-sm', false)}
             >
               <option value="">Select</option>
               <option value="Female">Female</option>
               <option value="Male">Male</option>
+              <option value="Other">Other</option>
             </select>
           </div>
           <div>
@@ -220,14 +286,22 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
         <div className="rounded-2xl border border-primary/15 bg-background/50 p-4">
           <p className="text-xs uppercase tracking-[0.3em] text-secondary">Vital Signs</p>
           <div className="grid gap-4 md:grid-cols-4 mt-3 text-sm">
-            {['bloodPressure', 'heartRate', 'temperature', 'spo2'].map((field) => (
+            {VITAL_FIELDS.map(({ field, label, unit, placeholder }) => (
               <div key={field}>
-                <label className="text-secondary/70 capitalize">{field}</label>
-                <input
-                  value={form.vitals[field]}
-                  onChange={(e) => handleVitalChange(field, e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border/40 bg-background/60 px-3 py-2 text-sm"
-                />
+                <label className="text-secondary/70">{label}</label>
+                <div className="relative mt-1">
+                  <input
+                    value={form.vitals[field]}
+                    onChange={(e) => handleVitalChange(field, e.target.value)}
+                    inputMode={field === 'bloodPressure' ? 'numeric' : 'decimal'}
+                    pattern={field === 'bloodPressure' ? '[0-9/]*' : '[0-9.]*'}
+                    placeholder={placeholder}
+                    className="w-full rounded-xl border border-border/40 bg-background/60 py-2 pl-3 pr-14 text-sm"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-secondary/70">
+                    {unit}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -339,9 +413,9 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
 
         {form.visitType === 'in-clinic' ? (
           <div className="rounded-2xl border border-dashed border-border/40 bg-background/60 p-4 flex flex-col gap-3">
-            <label className="text-sm font-semibold text-primary">Upload Clinic Consent</label>
+            <label className="text-sm font-semibold text-primary">Upload Clinic Consent <span className="font-normal text-secondary">(optional)</span></label>
             <p className="text-xs text-secondary">
-              Each clinic uses its own informed consent template. Upload the signed consent to attach it to this EMR.
+              Each clinic can attach its own signed consent template. You can save this EMR without a consent file, then attach consent later for procedures that require it.
             </p>
             <label className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-primary cursor-pointer hover:border-accent">
               <Icon name="UploadCloud" size={16} />
@@ -352,20 +426,15 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
           </div>
         ) : (
           <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 flex flex-col gap-3">
-            <p className="text-sm font-semibold text-primary">Teledentistry Consent Workflow</p>
+            <p className="text-sm font-semibold text-primary">Teledentistry Consent Record</p>
             <p className="text-xs text-secondary">
-              The system will send an e-sign consent to the patient via SereneAI Teledentistry. You can re-send the link if the patient hasn’t signed yet.
+              Save this consent requirement to the EMR for audit tracking. The mobile app signing screen is not available yet, so no patient link will be sent from this form.
             </p>
             <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleSendTeleConsent}
-                disabled={isSendingConsent}
-                className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-primary hover:border-accent disabled:opacity-50"
-              >
-                <Icon name="Send" size={16} />
-                {isSendingConsent ? 'Sending...' : 'Send Consent Link'}
-              </button>
+              <span className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-primary">
+                <Icon name="Clock" size={16} />
+                Pending mobile flow
+              </span>
               <span className="text-xs text-secondary/80">{consentSummary}</span>
             </div>
           </div>
@@ -373,12 +442,18 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
       </section>
 
       <div className="flex flex-wrap justify-end gap-3">
+        {submitError && (
+          <div className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-700 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-300">
+            {submitError}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => {
             setForm(buildInitialForm(prefilledPatient, defaultVisitType));
+            setSubmitError('');
           }}
-          disabled={isSubmitting}
+          disabled={saving}
           className="inline-flex items-center gap-2 rounded-xl border border-border/40 px-4 py-2 text-sm font-medium text-secondary hover:text-primary disabled:opacity-50"
         >
           <Icon name="RotateCcw" size={16} />
@@ -386,11 +461,11 @@ const AddNewEMR = ({ onSubmit, prefilledPatient = null, defaultVisitType = 'in-c
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={saving}
           className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
         >
           <Icon name="Save" size={16} />
-          {isSubmitting ? 'Saving...' : 'Save EMR'}
+          {saving ? 'Saving...' : 'Save EMR'}
         </button>
       </div>
     </form>

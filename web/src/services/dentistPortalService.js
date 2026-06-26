@@ -25,6 +25,11 @@ export async function getDentistPatients(params = {}) {
   return data;
 }
 
+export async function createDentistPatient(payload) {
+  const { data } = await authHttp.post('/dentist-portal/patients', payload);
+  return data.patient;
+}
+
 /**
  * Get single patient details with appointments and AI results
  */
@@ -44,6 +49,27 @@ export async function getPatientAIResults(patientId) {
 export async function getDentistDashboardContinuity() {
   const { data } = await authHttp.get('/dentist-portal/dashboard/continuity');
   return data;
+}
+
+export async function getPatientEmrRecords(patientId) {
+  const { data } = await authHttp.get(`/dentist-portal/patients/${patientId}/emr-records`);
+  return data.emrRecords || [];
+}
+
+export async function createPatientEmrRecord(patientId, payload) {
+  const { data } = await authHttp.post(`/dentist-portal/patients/${patientId}/emr-records`, payload);
+  return data.emrRecord;
+}
+
+export async function uploadPatientEmrConsent(patientId, recordId, file) {
+  const formData = new FormData();
+  formData.append('consentFile', file);
+  const { data } = await authHttp.post(
+    `/dentist-portal/patients/${patientId}/emr-records/${recordId}/consent`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data.emrRecord;
 }
 
 // ==========================================

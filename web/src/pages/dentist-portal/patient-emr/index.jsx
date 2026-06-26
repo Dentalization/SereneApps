@@ -5,7 +5,7 @@ import Icon from '../../../components/AppIcon';
 import { PATIENT_EMR_DATA } from './data';
 import AddNewEMR from './components/AddNewEMR';
 import { fetchEmrList, createEmrRecord } from '../../../services/emrService';
-import { formatDateLabel } from './utils';
+import { buildEmrPayload, formatDateLabel } from './utils';
 
 const PatientEMRList = () => {
   const navigate = useNavigate();
@@ -44,118 +44,6 @@ const PatientEMRList = () => {
       active = false;
     };
   }, []);
-
-  const splitLines = (text) =>
-    text
-      ? text
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean)
-      : [];
-
-  const calculateAge = (dob) => {
-    if (!dob) return null;
-    const birth = new Date(dob);
-    if (Number.isNaN(birth.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age -= 1;
-    }
-    return age;
-  };
-
-  const buildDocuments = (formData) => {
-    if (formData.consentFile) {
-      return [
-        {
-          type: 'Informed Consent',
-          name: formData.consentFile.name,
-        },
-      ];
-    }
-    if (formData.visitType === 'teledentistry') {
-      return [
-        {
-          type: 'Digital Consent',
-          name: 'Sent via SereneAI',
-        },
-      ];
-    }
-    return [];
-  };
-
-  const buildEmrPayload = (formData) => {
-    const treatmentPlan = splitLines(formData.plan);
-    const proceduresList = splitLines(formData.procedures).map((procedure) => ({
-      label: procedure,
-      icd9: formData.icd9 || 'N/A',
-      status: 'Planned',
-    }));
-    const medications = splitLines(formData.medications).map((med) => ({
-      name: med,
-      dosage: '',
-    }));
-    const kieNotes = splitLines(formData.kie);
-    const now = new Date();
-    const isoTimestamp = now.toISOString();
-    const visitDate = formData.dateOfVisit || formData.lastVisit || isoTimestamp.slice(0, 10);
-
-    return {
-      rmNumber: formData.rmNumber || `RM-${Date.now()}`,
-      nik: formData.nik,
-      name: formData.patientName,
-      patientName: formData.patientName,
-      gender: formData.gender || 'N/A',
-      dob: formData.dob,
-      age: calculateAge(formData.dob),
-      lastVisit: visitDate,
-      lastUpdated: isoTimestamp,
-      alerts: {
-        allergies: splitLines(formData.allergies),
-        systemic: splitLines(formData.systemic),
-      },
-      medicalDetails: {
-        allergies: splitLines(formData.allergies),
-        chronicConditions: splitLines(formData.systemic),
-        medications: splitLines(formData.medications),
-        notes: formData.medicalHistory,
-      },
-      chiefComplaint: formData.chiefComplaint,
-      medicalHistory: formData.medicalHistory,
-      vitals: {
-        bloodPressure: formData.vitals.bloodPressure || '-',
-        heartRate: formData.vitals.heartRate || '-',
-        temperature: formData.vitals.temperature || '-',
-        spo2: formData.vitals.spo2 || '-',
-      },
-      extraOral: [],
-      intraOral: [],
-      diagnoses: {
-        working: formData.diagnosis || 'Pending',
-        icd10: formData.icd10 || 'N/A',
-      },
-      plan: {
-        treatmentPlan,
-        procedures: proceduresList,
-        medications,
-        kie: kieNotes,
-      },
-      odontogramMarks: Array.isArray(formData.odontogramMarks) ? formData.odontogramMarks : [],
-      documents: buildDocuments(formData),
-      consent: {
-        status:
-          formData.visitType === 'in-clinic'
-            ? formData.consentFile
-              ? `Uploaded ${formData.consentFile.name}`
-              : 'Awaiting upload'
-            : 'Sent via Teledentistry',
-        witness: formData.visitType === 'in-clinic' ? 'Clinic Staff' : 'SereneAI System',
-      },
-      doctorSignature: 'Pending Signature',
-    };
-  };
 
   const handleAddEmr = async (formData) => {
     const recordPayload = buildEmrPayload(formData);
