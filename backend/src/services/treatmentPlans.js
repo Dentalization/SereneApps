@@ -527,6 +527,7 @@ export async function ensureInvoiceForTreatmentPlan({ db, treatmentPlanId, statu
         data: {
           appointmentId: appointment.id,
           patientId: plan.patientId,
+          clinicBranchId: appointment.clinicBranchId || null,
           ownerType: owner.ownerType,
           ownerClinicId: owner.ownerClinicId,
           ownerDentistId: owner.ownerDentistId,
@@ -561,6 +562,7 @@ export async function ensureInvoiceForTreatmentPlan({ db, treatmentPlanId, statu
         appointmentId: appointment.id,
         treatmentPlanId: plan.id,
         patientId: plan.patientId,
+        clinicBranchId: appointment.clinicBranchId || null,
         ownerType: owner.ownerType,
         ownerClinicId: owner.ownerClinicId,
         ownerDentistId: owner.ownerDentistId,

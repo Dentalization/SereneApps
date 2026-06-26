@@ -9,6 +9,7 @@ import {
   Stethoscope, Lightbulb, AlertCircle,
 } from 'lucide-react';
 import { buildAnnotatedImageDataUrl } from './deepDentalSchemas.mjs';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 
 const CONCERN_CONFIG = {
   minimal: { icon: CheckCircle, accent: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' },
@@ -366,36 +367,38 @@ export default function VisualFindingsCard({
 export function ImageLightbox({ imageSrc, onClose }) {
   if (!imageSrc) return null;
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-        onClick={onClose}
-      >
+    <ModalPortal>
+      <AnimatePresence>
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          transition={{ type: 'spring', damping: 25 }}
-          className="relative max-w-[90vw] max-h-[90vh]"
-          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={onClose}
         >
-          <img
-            src={imageSrc}
-            alt="Full-size annotated scan"
-            className="max-w-full max-h-[90vh] rounded-xl object-contain"
-          />
-          <button
-            onClick={onClose}
-            aria-label="Close annotated image preview"
-            className="absolute -top-3 -right-3 p-2 rounded-full bg-surface-elevated border border-primary text-primary hover:bg-surface transition-colors shadow-lg"
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25 }}
+            className="relative max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-5 h-5" />
-          </button>
+            <img
+              src={imageSrc}
+              alt="Full-size annotated scan"
+              className="max-w-full max-h-[90vh] rounded-xl object-contain"
+            />
+            <button
+              onClick={onClose}
+              aria-label="Close annotated image preview"
+              className="absolute -top-3 -right-3 p-2 rounded-full bg-surface-elevated border border-primary text-primary hover:bg-surface transition-colors shadow-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </motion.div>
         </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </AnimatePresence>
+    </ModalPortal>
   );
 }

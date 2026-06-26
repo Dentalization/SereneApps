@@ -1574,7 +1574,8 @@ export default {
       },
       actions: {
         cancel: 'Batal',
-        submit: 'Tambah Pasien & Jadwalkan'
+        submit: 'Tambah Pasien & Jadwalkan',
+        submitting: 'Menyimpan...'
       },
       validation: {
         nameRequired: 'Nama wajib diisi',
@@ -1583,7 +1584,8 @@ export default {
         ageRequired: 'Usia harus valid',
         genderRequired: 'Jenis kelamin wajib diisi',
         dateRequired: 'Tanggal janji wajib diisi',
-        timeRequired: 'Waktu janji wajib diisi'
+        timeRequired: 'Waktu janji wajib diisi',
+        submitFailed: 'Gagal menambahkan pasien. Silakan coba lagi.'
       }
     },
     ai: {
@@ -1933,6 +1935,16 @@ export default {
         inactive: 'Tidak Aktif',
         new: 'Baru'
       },
+      sources: {
+        all: 'Semua Sumber',
+        serene_mobile: 'Serene Mobile',
+        clinic_added: 'Clinic/Dentist'
+      },
+      actions: {
+        open: 'Buka Direktori Pasien',
+        close: 'Tutup Direktori Pasien'
+      },
+      loadingDetails: 'Memuat detail pasien...',
       badges: {
         ai: 'AI',
         allergy: 'Alergi'

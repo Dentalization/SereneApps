@@ -5,6 +5,7 @@ import AnalysisSummaryRenderer from './AnalysisSummaryRenderer';
 import { stripDiagnosisIntro, cleanAIDentistOutput } from '../../../../utils/aiTextHelpers';
 import { aiHttp, http } from '../../../../utils/httpClient';
 import { buildAnnotatedImageDataUrl } from '../../ai/components/deepDentalSchemas.mjs';
+import ClinicalIcon from './ClinicalIcon';
 
 // ── Error Classifier ────────────────────────────────
 function classifyAIError(content = '', err = null) {
@@ -60,11 +61,11 @@ function isRawAIError(text = '') {
 }
 
 const ERROR_STYLES = {
-  unavailable: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800/50', icon: '🔧', badge: 'AI Tidak Tersedia', badgeCls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', textCls: 'text-amber-800 dark:text-amber-200' },
-  busy: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800/50', icon: '⏳', badge: 'AI Sedang Sibuk', badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', textCls: 'text-orange-800 dark:text-orange-200' },
-  network: { bg: 'bg-slate-50 dark:bg-slate-800/60', border: 'border-slate-200 dark:border-slate-700', icon: '📶', badge: 'Koneksi Terputus', badgeCls: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300', textCls: 'text-slate-700 dark:text-slate-300' },
-  maintenance: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: '🛠️', badge: 'Sedang Maintenance', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
-  generic: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: '⚠️', badge: 'Gangguan Sementara', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
+  unavailable: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800/50', icon: 'ai-unavailable', badge: 'AI Tidak Tersedia', badgeCls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', textCls: 'text-amber-800 dark:text-amber-200' },
+  busy: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800/50', icon: 'appointment-upcoming', badge: 'AI Sedang Sibuk', badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', textCls: 'text-orange-800 dark:text-orange-200' },
+  network: { bg: 'bg-slate-50 dark:bg-slate-800/60', border: 'border-slate-200 dark:border-slate-700', icon: 'communication', badge: 'Koneksi Terputus', badgeCls: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300', textCls: 'text-slate-700 dark:text-slate-300' },
+  maintenance: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: 'procedure', badge: 'Sedang Maintenance', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
+  generic: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800/50', icon: 'ai-error', badge: 'Gangguan Sementara', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', textCls: 'text-red-800 dark:text-red-200' },
 };
 
 const SUMMARY_CARD_STYLES = {
@@ -127,7 +128,7 @@ function AIErrorBubble({ errorType, title, description }) {
   return (
     <div className={`max-w-[85%] rounded-2xl rounded-bl-none border ${s.bg} ${s.border} overflow-hidden shadow-sm`}>
       <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
-        <span className="text-lg">{s.icon}</span>
+        <ClinicalIcon name={s.icon} size="xs" className="border-0 shadow-none" />
         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${s.badgeCls}`}>{s.badge}</span>
       </div>
       <p className={`px-4 pb-3 text-[14px] leading-relaxed font-semibold ${s.textCls}`}>{title}</p>
@@ -257,7 +258,7 @@ class PatientAIResultErrorBoundary extends React.Component {
       return (
         <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl shadow-sm p-8 transition-colors">
           <div className="text-center">
-            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500 dark:text-red-400 text-xl">⚠️</div>
+            <ClinicalIcon name="ai-error" size="lg" className="mx-auto mb-4" />
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Gagal Memuat Hasil</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{this.state.error?.message || 'Terjadi kesalahan sistem'}</p>
             <button
@@ -538,9 +539,7 @@ const PatientAIResult = ({ patient }) => {
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-12 transition-colors">
         <div className="text-center">
-          <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 border border-slate-100 dark:border-slate-700 shadow-inner">
-            <span className="text-4xl filter grayscale opacity-50">🦷</span>
-          </div>
+          <ClinicalIcon name="ai-diagnostic" size="xl" className="mx-auto mb-6" />
           <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{t('dentistPatient.ai.empty.title')}</h3>
           <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">{t('dentistPatient.ai.empty.description')}</p>
         </div>
@@ -1086,21 +1085,21 @@ const PatientAIResult = ({ patient }) => {
     return [
       {
         key: 'findings',
-        icon: '🔬',
+        icon: 'case-findings',
         title: 'Temuan Klinis Utama',
         style: SUMMARY_CARD_STYLES.findings,
         items: buckets.findings,
       },
       {
         key: 'interpretation',
-        icon: '🧠',
+        icon: 'ai-diagnostic',
         title: 'Interpretasi Klinis',
         style: SUMMARY_CARD_STYLES.interpretation,
         items: buckets.interpretation,
       },
       {
         key: 'recommendations',
-        icon: '💡',
+        icon: 'ai-recommendation',
         title: 'Rencana Tindak Lanjut',
         style: SUMMARY_CARD_STYLES.recommendations,
         items: buckets.recommendations,
@@ -1160,8 +1159,8 @@ const PatientAIResult = ({ patient }) => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Date Card */}
           <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <span className="text-4xl text-slate-900 dark:text-white">📅</span>
+            <div className="absolute top-4 right-4 opacity-70 group-hover:opacity-100 transition-opacity">
+              <ClinicalIcon name="appointment-calendar" size="md" className="shadow-none" />
             </div>
             <div className="flex items-center space-x-2.5 mb-2">
               <span className="flex h-2.5 w-2.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></span>
@@ -1172,8 +1171,8 @@ const PatientAIResult = ({ patient }) => {
 
           {/* Confidence Card */}
           <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <span className="text-4xl text-slate-900 dark:text-white">🎯</span>
+            <div className="absolute top-4 right-4 opacity-70 group-hover:opacity-100 transition-opacity">
+              <ClinicalIcon name="ai-confidence" size="md" className="shadow-none" />
             </div>
             <div className="flex items-center space-x-2.5 mb-2">
               <span className="flex h-2.5 w-2.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]"></span>
@@ -1186,8 +1185,8 @@ const PatientAIResult = ({ patient }) => {
 
           {/* Risk Card */}
           <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/50 dark:to-slate-800 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <span className="text-4xl text-slate-900 dark:text-white">🛡️</span>
+            <div className="absolute top-4 right-4 opacity-70 group-hover:opacity-100 transition-opacity">
+              <ClinicalIcon name="insurance-shield" size="md" className="shadow-none" />
             </div>
             <div className="flex items-center">
               <span className={`px-3 py-1 rounded-lg text-sm font-bold border ${getRiskColor(enrichedResult?.riskLevel)}`}>
@@ -1204,11 +1203,11 @@ const PatientAIResult = ({ patient }) => {
         <div className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
           <div className="flex overflow-x-auto no-scrollbar px-2">
             {[
-              { id: 'summary', label: t('dentistPatient.ai.tabs.summary'), icon: '📝' },
-              { id: 'diagnosis', label: t('dentistPatient.ai.tabs.diagnosis'), icon: '🔍' },
-              { id: 'symptoms', label: t('dentistPatient.ai.tabs.symptoms'), icon: '📋' },
-              { id: 'recommendations', label: t('dentistPatient.ai.tabs.recommendations'), icon: '💡' },
-              { id: 'images', label: t('dentistPatient.ai.tabs.images'), icon: '📸' }
+              { id: 'summary', label: t('dentistPatient.ai.tabs.summary'), icon: 'ai-summary' },
+              { id: 'diagnosis', label: t('dentistPatient.ai.tabs.diagnosis'), icon: 'case-findings' },
+              { id: 'symptoms', label: t('dentistPatient.ai.tabs.symptoms'), icon: 'clinical-note' },
+              { id: 'recommendations', label: t('dentistPatient.ai.tabs.recommendations'), icon: 'ai-recommendation' },
+              { id: 'images', label: t('dentistPatient.ai.tabs.images'), icon: 'ai-images' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -1221,7 +1220,7 @@ const PatientAIResult = ({ patient }) => {
                 {expandedSection === tab.id && (
                   <span className="absolute top-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-500 rounded-full mx-6" />
                 )}
-                <span className="text-lg opacity-80">{tab.icon}</span>
+                <ClinicalIcon name={tab.icon} size="sm" className={expandedSection === tab.id ? 'h-7 w-7' : 'h-7 w-7 opacity-80'} />
                 {tab.label}
               </button>
             ))}
@@ -1253,7 +1252,8 @@ const PatientAIResult = ({ patient }) => {
                 <div className="prose prose-slate dark:prose-invert max-w-none">
                   <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-8 border border-slate-100/80 dark:border-slate-800">
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                      <span className="text-2xl">📑</span> {t('dentistPatient.ai.summary.title')}
+                      <ClinicalIcon name="ai-summary" size="sm" />
+                      {t('dentistPatient.ai.summary.title')}
                     </h3>
                     {summaryText && (
                       <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-[15px] font-normal mb-6">
@@ -1283,7 +1283,7 @@ const PatientAIResult = ({ patient }) => {
                       onClick={() => setIsChatOpen(true)}
                       className="group relative inline-flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all duration-300"
                     >
-                      <span className="text-xl group-hover:rotate-12 transition-transform">✨</span>
+                      <ClinicalIcon name="ai-chat-prompt" size="xs" variant="solid" className="border-white/30 shadow-none" />
                       Tanya Clinical AI Assistant
                     </button>
                   </div>
@@ -1291,7 +1291,7 @@ const PatientAIResult = ({ patient }) => {
                   <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 ring-1 ring-slate-900/5 dark:ring-white/10">
                     <div className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 z-[10]">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-xl shadow-inner">🤖</div>
+                        <ClinicalIcon name="ai-assistant" size="md" />
                         <div>
                           <h4 className="font-bold text-slate-800 dark:text-white text-sm">Clinical Decision Support</h4>
                           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
@@ -1308,7 +1308,7 @@ const PatientAIResult = ({ patient }) => {
                     <div ref={chatContainerRef} className="h-[450px] overflow-y-auto p-6 space-y-6 bg-slate-50 dark:bg-slate-800/50 scroll-smooth">
                       {chatMessages.length === 0 && !chatLoading && (
                         <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-600 space-y-3">
-                          <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-3xl">💭</div>
+                          <ClinicalIcon name="ai-chat-prompt" size="xl" />
                           <p className="text-sm font-medium">Ajukan pertanyaan klinis Anda di sini.</p>
                         </div>
                       )}
@@ -1376,7 +1376,8 @@ const PatientAIResult = ({ patient }) => {
           {expandedSection === 'diagnosis' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                <span className="text-2xl">🔍</span> {t('dentistPatient.ai.diagnosis.title')}
+                <ClinicalIcon name="case-findings" size="sm" />
+                {t('dentistPatient.ai.diagnosis.title')}
               </h3>
               <div className="grid gap-4">
                 {enrichedResult.diagnosis?.map((diag, index) => (
@@ -1413,13 +1414,15 @@ const PatientAIResult = ({ patient }) => {
           {expandedSection === 'symptoms' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                <span className="text-2xl">📋</span> {t('dentistPatient.ai.tabs.symptoms') || 'Gejala & Temuan'}
+                <ClinicalIcon name="clinical-note" size="sm" />
+                {t('dentistPatient.ai.tabs.symptoms') || 'Gejala & Temuan'}
               </h3>
 
               {(enrichedResult?.sessionFindings?.length > 0 || enrichedResult?.findingsText) && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6 border border-blue-100 dark:border-blue-800/50">
                   <h4 className="text-base font-bold text-blue-800 dark:text-blue-300 mb-4 flex items-center gap-2">
-                    <span className="text-lg">🔬</span> Temuan Klinis AI
+                    <ClinicalIcon name="case-findings" size="xs" />
+                    Temuan Klinis AI
                   </h4>
                   {enrichedResult?.sessionFindings?.length > 0 ? (
                     <ul className="space-y-3">
@@ -1439,7 +1442,8 @@ const PatientAIResult = ({ patient }) => {
               {enrichedResult?.overallAssessmentText && (
                 <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-800/50">
                   <h4 className="text-base font-bold text-indigo-800 dark:text-indigo-300 mb-4 flex items-center gap-2">
-                    <span className="text-lg">📊</span> Penilaian Keseluruhan
+                    <ClinicalIcon name="ai-confidence" size="xs" />
+                    Penilaian Keseluruhan
                   </h4>
                   <div className="text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">{formatAIResponse(reinsertMarkdownBreaks(enrichedResult.overallAssessmentText))}</div>
                 </div>
@@ -1481,7 +1485,7 @@ const PatientAIResult = ({ patient }) => {
               ) : (
                 !enrichedResult?.sessionFindings?.length && !enrichedResult?.findingsText && !enrichedResult?.overallAssessmentText && (
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
-                    <span className="text-5xl mb-4">📋</span>
+                    <ClinicalIcon name="clinical-note" size="xl" className="mb-4" />
                     <p className="text-sm font-medium">Belum ada gejala yang terdeteksi</p>
                     <p className="text-xs mt-1">Data gejala akan muncul setelah AI menganalisis gambar dental</p>
                   </div>
@@ -1494,7 +1498,8 @@ const PatientAIResult = ({ patient }) => {
           {expandedSection === 'recommendations' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                <span className="text-2xl">💡</span> {t('dentistPatient.ai.tabs.recommendations') || 'Rekomendasi'}
+                <ClinicalIcon name="ai-recommendation" size="sm" />
+                {t('dentistPatient.ai.tabs.recommendations') || 'Rekomendasi'}
               </h3>
               {enrichedResult?.recommendations?.length > 0 ? (
                 <div className="grid gap-4">
@@ -1537,7 +1542,7 @@ const PatientAIResult = ({ patient }) => {
               ) : enrichedResult?.findingsText ? (
                 <div className="rounded-xl p-5 border bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50 transition-all hover:shadow-md">
                   <div className="flex items-start gap-3">
-                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/80 dark:bg-slate-800/80 text-sm flex-shrink-0 mt-0.5">📋</span>
+                    <ClinicalIcon name="ai-summary" size="sm" className="mt-0.5 bg-white/80 dark:bg-slate-800/80" />
                     <div className="flex-1">
                       <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-2">Ringkasan Analisis AI</h4>
                       <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
@@ -1548,7 +1553,7 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
-                  <span className="text-5xl mb-4">💡</span>
+                  <ClinicalIcon name="ai-recommendation" size="xl" className="mb-4" />
                   <p className="text-sm font-medium">Belum ada rekomendasi</p>
                   <p className="text-xs mt-1">Rekomendasi perawatan akan muncul setelah AI menganalisis gambar dental</p>
                 </div>
@@ -1560,7 +1565,8 @@ const PatientAIResult = ({ patient }) => {
           {expandedSection === 'images' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                <span className="text-2xl">📸</span> {t('dentistPatient.ai.tabs.images') || 'Gambar Dental'}
+                <ClinicalIcon name="ai-images" size="sm" />
+                {t('dentistPatient.ai.tabs.images') || 'Gambar Dental'}
               </h3>
               {effectiveImages.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1587,7 +1593,7 @@ const PatientAIResult = ({ patient }) => {
                           }}
                         />
                         <div className="hidden flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
-                          <span className="text-4xl">🖼️</span>
+                          <ClinicalIcon name="ai-image-unavailable" size="lg" />
                           <span className="text-xs">Gambar tidak tersedia</span>
                         </div>
                       </div>
@@ -1601,7 +1607,7 @@ const PatientAIResult = ({ patient }) => {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-600">
-                  <span className="text-5xl mb-4">📸</span>
+                  <ClinicalIcon name="ai-images" size="xl" className="mb-4" />
                   <p className="text-sm font-medium">Belum ada gambar dental</p>
                   <p className="text-xs mt-1">Gambar akan tersedia setelah pasien mengunggah foto untuk analisis AI</p>
                 </div>

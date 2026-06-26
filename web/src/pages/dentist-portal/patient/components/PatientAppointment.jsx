@@ -4,6 +4,7 @@ import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import axios from 'axios';
+import ClinicalIcon from './ClinicalIcon';
 
 // Inject animation keyframes
 if (typeof document !== 'undefined' && !document.getElementById('appointment-modal-animations')) {
@@ -34,9 +35,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
     return (
       <div className="bg-surface border border-primary/10 rounded-3xl shadow-theme-sm p-12 animate-in fade-in">
         <div className="text-center py-8">
-          <div className="w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-4 text-muted/50">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          </div>
+          <ClinicalIcon name="appointment-calendar" size="xl" className="mx-auto mb-4" />
           <p className="text-secondary font-medium">{t('dentistPatient.common.noPatientSelected')}</p>
         </div>
       </div>
@@ -95,8 +94,12 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
   const getConsultationTypeLabel = (appointment) => {
     const type = getNormalizedConsultationType(appointment);
-    return type === 'virtual' ? '💻 Teledentistry' : '🏥 In-Clinic';
+    return type === 'virtual' ? 'Teledentistry' : 'In-Clinic';
   };
+
+  const getConsultationTypeIcon = (appointment) => (
+    getNormalizedConsultationType(appointment) === 'virtual' ? 'teledentistry' : 'clinic-patient'
+  );
 
   const getLocalDate = (appointment) => {
     const d = appointment.startsAt || appointment.starts_at || appointment.date;
@@ -112,14 +115,14 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
   const getAppointmentTypeIcon = (type) => {
     switch (type?.toLowerCase()) {
-      case 'consultation': return '👨‍⚕️';
-      case 'checkup': case 'regular checkup': return '🔍';
-      case 'cleaning': return '🦷';
-      case 'root canal': return '🏥';
-      case 'filling': return '🔧';
-      case 'extraction': return '🔬';
-      case 'emergency': return '🚨';
-      default: return '📅';
+      case 'consultation': return 'patient-profile';
+      case 'checkup': case 'regular checkup': return 'case-findings';
+      case 'cleaning': return 'odontogram';
+      case 'root canal': return 'procedure';
+      case 'filling': return 'treatment-plan';
+      case 'extraction': return 'procedure';
+      case 'emergency': return 'emergency-contact';
+      default: return 'appointment-calendar';
     }
   };
 
@@ -192,7 +195,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
   const StatCard = ({ title, value, colorClass, icon, shadowColor }) => (
     <div className="bg-gradient-to-br from-surface-elevated to-surface rounded-2xl p-5 border border-primary/10 shadow-sm relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-        <span className="text-4xl">{icon}</span>
+        <ClinicalIcon name={icon} size="xl" className="border-0 shadow-none" />
       </div>
       <div className="flex items-center space-x-2.5 mb-2">
         <span className={`flex h-2.5 w-2.5 rounded-full ${colorClass}`} style={{ boxShadow: `0 0 8px ${shadowColor}` }}></span>
@@ -218,11 +221,11 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <StatCard title={t('dentistPatient.appointments.summary.total')} value={mappedAppointments.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️" />
-          <StatCard title={t('dentistPatient.appointments.summary.upcoming')} value={upcomingAppointments.length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳" />
-          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={mappedAppointments.filter(apt => apt.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅" />
-          <StatCard title="Overdue" value={overdueCount} colorClass="bg-orange-500" shadowColor="rgba(249,115,22,0.5)" icon="⚠️" />
-          <StatCard title={t('dentistPatient.appointments.summary.cancelled')} value={mappedAppointments.filter(apt => apt.status === 'cancelled').length} colorClass="bg-red-500" shadowColor="rgba(239,68,68,0.5)" icon="❌" />
+          <StatCard title={t('dentistPatient.appointments.summary.total')} value={mappedAppointments.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="appointment-calendar" />
+          <StatCard title={t('dentistPatient.appointments.summary.upcoming')} value={upcomingAppointments.length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="appointment-upcoming" />
+          <StatCard title={t('dentistPatient.appointments.summary.completed')} value={mappedAppointments.filter(apt => apt.status === 'completed').length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="appointment-completed" />
+          <StatCard title="Overdue" value={overdueCount} colorClass="bg-orange-500" shadowColor="rgba(249,115,22,0.5)" icon="appointment-overdue" />
+          <StatCard title={t('dentistPatient.appointments.summary.cancelled')} value={mappedAppointments.filter(apt => apt.status === 'cancelled').length} colorClass="bg-red-500" shadowColor="rgba(239,68,68,0.5)" icon="appointment-cancelled" />
         </div>
       </div>
 
@@ -254,20 +257,19 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
               <div key={appointment.id} className="group p-6 hover:bg-surface-elevated transition-colors duration-200">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="flex items-start lg:items-center space-x-5">
-                    <div className="w-14 h-14 bg-surface-elevated border border-primary/10 rounded-2xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">
-                      {getAppointmentTypeIcon(appointment.type)}
-                    </div>
+                    <ClinicalIcon name={getAppointmentTypeIcon(appointment.type || appointment.reason)} size="xl" />
 
                     <div>
                       <h4 className="text-lg font-bold text-primary mb-1">{appointment.reason || appointment.type || 'Appointment'}</h4>
                       <div className="flex flex-wrap items-center gap-3 text-sm text-secondary">
                         <span className="flex items-center gap-1.5 bg-surface px-2 py-1 rounded-md border border-primary/10">
-                          📅 {getLocalDate(appointment)}
+                          <ClinicalIcon name="appointment-calendar" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {getLocalDate(appointment)}
                         </span>
                         <span className="flex items-center gap-1.5 bg-surface px-2 py-1 rounded-md border border-primary/10">
-                          🕐 {getLocalTime(appointment)}
+                          <ClinicalIcon name="session-history" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {getLocalTime(appointment)}
                         </span>
-                        <span className="font-semibold text-accent bg-accent/10 px-2 py-1 rounded-md border border-accent/20">
+                        <span className="inline-flex items-center gap-1.5 font-semibold text-accent bg-accent/10 px-2 py-1 rounded-md border border-accent/20">
+                          <ClinicalIcon name={getConsultationTypeIcon(appointment)} size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" />
                           {getConsultationTypeLabel(appointment)}
                         </span>
                       </div>
@@ -305,7 +307,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
 
                 {appointment.status === 'overdue' && (
                   <div className="mt-4 ml-0 lg:ml-[4.75rem] p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800/50 flex items-start gap-3">
-                    <span className="text-orange-500 text-lg flex-shrink-0">⚠️</span>
+                    <ClinicalIcon name="appointment-overdue" size="sm" />
                     <div>
                       <h5 className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase tracking-wider mb-1">Overdue & Unpaid</h5>
                       <p className="text-sm text-orange-600 dark:text-orange-300 leading-relaxed">Appointment ini sudah melewati jadwal dan belum dibayar. Silakan hubungi pasien untuk follow-up.</p>
@@ -323,9 +325,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
             ))
           ) : (
             <div className="py-20 text-center">
-              <div className="w-20 h-20 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/10">
-                <svg className="w-10 h-10 text-muted/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              </div>
+              <ClinicalIcon name="appointment-calendar" size="xl" className="mx-auto mb-4" />
               <h3 className="text-lg font-bold text-primary mb-2">{t('dentistPatient.appointments.empty.title')}</h3>
               <p className="text-secondary max-w-sm mx-auto mb-6">
                 {t('dentistPatient.appointments.empty.noFilterMatches', { status: getStatusLabel(filterStatus) })}
@@ -341,7 +341,7 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
       {upcomingAppointments.length > 0 && (
         <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-2xl p-6 shadow-sm relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10 dark:opacity-20">
-            <span className="text-6xl">📅</span>
+            <ClinicalIcon name="appointment-upcoming" size="xl" className="border-0 shadow-none" />
           </div>
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
@@ -350,9 +350,9 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                 <h3 className="text-sm font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider">{t('dentistPatient.appointments.next.title')}</h3>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-base text-primary mt-2">
-                <span className="font-semibold bg-surface/60 px-2 py-1 rounded">📅 {getLocalDate(upcomingAppointments[0])}</span>
-                <span className="font-semibold bg-surface/60 px-2 py-1 rounded">🕐 {getLocalTime(upcomingAppointments[0])}</span>
-                <span className="font-bold text-accent">{getConsultationTypeLabel(upcomingAppointments[0])}</span>
+                <span className="inline-flex items-center gap-1.5 font-semibold bg-surface/60 px-2 py-1 rounded"><ClinicalIcon name="appointment-calendar" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {getLocalDate(upcomingAppointments[0])}</span>
+                <span className="inline-flex items-center gap-1.5 font-semibold bg-surface/60 px-2 py-1 rounded"><ClinicalIcon name="session-history" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {getLocalTime(upcomingAppointments[0])}</span>
+                <span className="inline-flex items-center gap-1.5 font-bold text-accent"><ClinicalIcon name={getConsultationTypeIcon(upcomingAppointments[0])} size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {getConsultationTypeLabel(upcomingAppointments[0])}</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -363,7 +363,10 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                 onClick={() => handleSendReminder(upcomingAppointments[0])}
                 disabled={sendingReminder}
               >
-                {sendingReminder ? '⏳ Sending...' : '🔔 Send Reminder'}
+                <span className="inline-flex items-center gap-1.5">
+                  <ClinicalIcon name={sendingReminder ? 'appointment-upcoming' : 'communication'} size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" />
+                  {sendingReminder ? 'Sending...' : 'Send Reminder'}
+                </span>
               </Button>
               <Button
                 size="sm"
@@ -413,7 +416,10 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
                   <span className={`px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wide border ${getStatusColor(detailAppointment.status)}`}>
                     {getStatusLabel(detailAppointment.status)}
                   </span>
-                  <span className="text-lg font-semibold text-primary">{getConsultationTypeLabel(detailAppointment)}</span>
+                  <span className="inline-flex items-center gap-2 text-lg font-semibold text-primary">
+                    <ClinicalIcon name={getConsultationTypeIcon(detailAppointment)} size="sm" />
+                    {getConsultationTypeLabel(detailAppointment)}
+                  </span>
                 </div>
 
                 <div>

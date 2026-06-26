@@ -1,10 +1,10 @@
 // /src/pages/dentist-portal/patient/PatientManagement.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
-import { getDentistPatients, getPatientDetails, getPatientAIResults } from '../../../services/dentistPortalService';
+import { createDentistPatient, createPatientEmrRecord, getDentistPatients, getPatientDetails, uploadPatientEmrConsent } from '../../../services/dentistPortalService';
 import { parseIndonesianAnalysis } from '../../../utils/indonesianAnalysisParser';
 import { cleanMarkdownFormatting, normalizeAIExplanation } from '../../../utils/textFormatting';
 import { stripDiagnosisIntro, deriveSummaryFromNarrative, normalizeAIText } from '../../../utils/aiTextHelpers';
@@ -20,14 +20,28 @@ import PatientMedicalHistory from './components/PatientMedicalHistory';
 import PatientProfile from './components/PatientProfile';
 import PatientTreatmentPlan from './components/PatientTreatmentPlan';
 import EnhancedHeader from './components/EnhancedHeader.jsx';
+import ClinicalIcon from './components/ClinicalIcon.jsx';
 
 const MIN_LOADING_MS = 500;
+
+const summarizePatients = (patientList, base = {}) => ({
+  ...base,
+  total: patientList.length,
+  byStatus: patientList.reduce((acc, pt) => {
+    acc[pt.status] = (acc[pt.status] || 0) + 1;
+    return acc;
+  }, {}),
+  withAiResults: patientList.filter(p => p.aiResults.length > 0).length
+});
 
 const PatientManagement = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [activeTab, setActiveTab] = useState('profile');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [isDirectoryOpen, setIsDirectoryOpen] = useState(true);
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,6 +53,8 @@ const PatientManagement = () => {
   });
   const { t } = useLanguage();
   const { socket } = useNotifications();
+  const patientDetailsCacheRef = useRef(new Map());
+  const selectRequestIdRef = useRef(0);
 
   // Normalize backend AI results
   const transformAIResults = useCallback((results = []) => {
@@ -233,23 +249,103 @@ const PatientManagement = () => {
     });
   }, []);
 
-  const getAIResultsWithRetry = useCallback(async (patientId, attempts = 2, delayMs = 1000) => {
-    for (let i = 0; i <= attempts; i++) {
-      try {
-        const aiRes = await getPatientAIResults(patientId);
-        const list = aiRes?.aiResults || aiRes || [];
-        if (Array.isArray(list) && list.length > 0) {
-          return list;
-        }
-      } catch (e) {
-        console.warn('getPatientAIResults attempt failed:', e?.message);
-      }
-      if (i < attempts) {
-        await new Promise((r) => setTimeout(r, delayMs));
+  const buildEmptyMedicalHistory = useCallback(() => ({
+    allergies: [],
+    conditions: [],
+    medications: [],
+    surgeries: [],
+    familyHistory: {},
+    emergencyContact: {}
+  }), []);
+
+  const normalizeMedicalHistory = useCallback((medicalDetails) => {
+    if (!medicalDetails) return null;
+
+    const medicalHistory = {
+      allergies: Array.isArray(medicalDetails.allergies) ? medicalDetails.allergies : [],
+      conditions: Array.isArray(medicalDetails.conditions) ? medicalDetails.conditions :
+                 Array.isArray(medicalDetails.chronicConditions) ? medicalDetails.chronicConditions : [],
+      medications: Array.isArray(medicalDetails.medications) ? medicalDetails.medications : [],
+      surgeries: Array.isArray(medicalDetails.surgeries) ? medicalDetails.surgeries : [],
+      familyHistory: typeof medicalDetails.familyHistory === 'object' && medicalDetails.familyHistory !== null
+        ? medicalDetails.familyHistory
+        : {},
+      emergencyContact: typeof medicalDetails.emergencyContact === 'object' && medicalDetails.emergencyContact !== null
+        ? medicalDetails.emergencyContact
+        : {}
+    };
+
+    const excludeKeys = ['allergies', 'chronicConditions', 'conditions', 'medications', 'surgeries', 'familyHistory', 'emergencyContact'];
+    for (const [key, value] of Object.entries(medicalDetails)) {
+      if (!excludeKeys.includes(key)) {
+        medicalHistory[key] = value;
       }
     }
-    return [];
+
+    return medicalHistory;
   }, []);
+
+  const buildPatientShell = useCallback((patient, isLoadingDetails = false) => ({
+    ...patient,
+    birthDate: patient.dateOfBirth || patient.birthDate,
+    medicalHistory: patient.medicalHistory || buildEmptyMedicalHistory(),
+    appointments: Array.isArray(patient.appointments) ? patient.appointments : [],
+    aiResults: Array.isArray(patient.aiResults) ? patient.aiResults : [],
+    emrRecords: Array.isArray(patient.emrRecords) ? patient.emrRecords : [],
+    treatmentPlans: Array.isArray(patient.treatmentPlans) ? patient.treatmentPlans : [],
+    billing: patient.billing || { totalBalance: 0, paidAmount: 0, pendingAmount: 0 },
+    isLoadingDetails
+  }), [buildEmptyMedicalHistory]);
+
+  const normalizePatientDetails = useCallback((patient, fullPatient) => {
+    const normalizedAppointments = (fullPatient.appointments || []).map(apt => ({
+      ...apt,
+      consultationType: apt.consultationType || apt.consultation_type || 'onsite',
+      date: apt.date || apt.startsAt || apt.starts_at,
+      time: apt.time || apt.startsAt || apt.starts_at
+    }));
+
+    return {
+      ...patient,
+      ...fullPatient,
+      source: fullPatient.source || patient.source || 'serene_mobile',
+      sourceLabel: fullPatient.sourceLabel || patient.sourceLabel || 'Serene Mobile',
+      createdAt: fullPatient.createdAt || patient.createdAt || null,
+      directorySortAt: fullPatient.directorySortAt || patient.directorySortAt || fullPatient.createdAt || patient.createdAt || null,
+      birthDate: fullPatient.dateOfBirth || fullPatient.birthDate || patient.dateOfBirth || patient.birthDate,
+      medicalHistory: normalizeMedicalHistory(fullPatient.medicalDetails) || patient.medicalHistory || buildEmptyMedicalHistory(),
+      appointments: normalizedAppointments,
+      aiResults: transformAIResults(fullPatient.aiResults || []),
+      emrRecords: Array.isArray(fullPatient.emrRecords) ? fullPatient.emrRecords : [],
+      isLoadingDetails: false
+    };
+  }, [buildEmptyMedicalHistory, normalizeMedicalHistory, transformAIResults]);
+
+  const normalizeDirectoryPatient = useCallback((p) => {
+    const id = p.id?.toString?.() || String(p.id);
+    const numericId = id.replace(/\D/g, '');
+    return {
+      id,
+      patientId: p.patientId || `PT${(numericId || id).padStart(3, '0')}`,
+      name: p.name || 'Unknown',
+      phone: p.phone,
+      email: p.email,
+      avatar: p.avatar,
+      age: Number.isFinite(Number(p.age)) ? Number(p.age) : null,
+      gender: p.gender || null,
+      status: p.status || 'inactive',
+      source: p.source || 'serene_mobile',
+      sourceLabel: p.sourceLabel || 'Serene Mobile',
+      createdAt: p.createdAt || null,
+      directorySortAt: p.directorySortAt || p.createdAt || p.lastVisit || p.nextAppointment || null,
+      lastVisit: p.lastVisit ? p.lastVisit.split('T')[0] : null,
+      nextAppointment: p.nextAppointment ? p.nextAppointment.split('T')[0] : null,
+      aiResults: transformAIResults(p.aiResults || []),
+      appointmentCount: p.appointmentCount || 0,
+      appointments: [],
+      billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
+    };
+  }, [transformAIResults]);
 
   const fetchPatients = useCallback(async () => {
     try {
@@ -257,36 +353,19 @@ const PatientManagement = () => {
       setError(null);
       
       const params = {};
-      if (searchTerm) params.search = searchTerm;
+      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (filterStatus && filterStatus !== 'all') params.status = filterStatus;
+      params.sortBy = 'createdAt';
+      params.sortOrder = 'desc';
       
       const response = await getDentistPatients(params);
       
-      const transformedPatients = (response.patients || []).map(p => ({
-        id: p.id,
-        patientId: `PT${p.id.padStart(3, '0')}`,
-        name: p.name || 'Unknown',
-        phone: p.phone,
-        email: p.email,
-        avatar: p.avatar,
-        status: p.status || 'inactive',
-        lastVisit: p.lastVisit ? p.lastVisit.split('T')[0] : null,
-        nextAppointment: p.nextAppointment ? p.nextAppointment.split('T')[0] : null,
-        aiResults: transformAIResults(p.aiResults || []),
-        appointmentCount: p.appointmentCount || 0,
-        appointments: [],
-        billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
-      }));
+      const transformedPatients = (response.patients || []).map(normalizeDirectoryPatient);
+
+      const combinedPatients = transformedPatients;
       
-      setPatients(transformedPatients);
-      setSummary(response.summary || {
-        total: transformedPatients.length,
-        byStatus: transformedPatients.reduce((acc, pt) => {
-          acc[pt.status] = (acc[pt.status] || 0) + 1;
-          return acc;
-        }, {}),
-        withAiResults: transformedPatients.filter(p => p.aiResults.length > 0).length
-      });
+      setPatients(combinedPatients);
+      setSummary(summarizePatients(combinedPatients, response.summary || {}));
     } catch (err) {
       let errorMessage = 'Gagal memuat daftar pasien';
       if (err.response?.status === 401) {
@@ -301,103 +380,68 @@ const PatientManagement = () => {
     } finally {
       setTimeout(() => setLoading(false), MIN_LOADING_MS);
     }
-  }, [searchTerm, filterStatus, transformAIResults]);
+  }, [debouncedSearchTerm, filterStatus, normalizeDirectoryPatient]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     fetchPatients();
   }, [fetchPatients]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchPatients();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+  const handleAddPatient = async (patientData) => {
+    try {
+      setError(null);
+      const savedPatient = await createDentistPatient(patientData);
+      const newPatient = normalizeDirectoryPatient(savedPatient);
+      const nextPatients = [newPatient, ...patients.filter(patient => String(patient.id) !== String(newPatient.id))];
 
-  const handleAddPatient = (patientData) => {
-    const newPatient = {
-      id: (patients.length + 1).toString(),
-      patientId: `PT${String(patients.length + 1).padStart(3, '0')}`,
-      ...patientData,
-      status: 'new',
-      lastVisit: null,
-      appointments: [],
-      billing: { totalBalance: 0, paidAmount: 0, pendingAmount: 0 }
-    };
-    setPatients((prev) => [...prev, newPatient]);
-    setShowAddPatient(false);
-    setSelectedPatient(newPatient);
+      setPatients(nextPatients);
+      setSummary(prevSummary => summarizePatients(nextPatients, prevSummary));
+      patientDetailsCacheRef.current.delete(String(newPatient.id));
+      setShowAddPatient(false);
+      handlePatientSelect(newPatient);
+    } catch (err) {
+      console.error('Error creating patient:', err);
+      const errorMessage = err.response?.data?.error?.message || err.response?.data?.message || 'Gagal menambahkan pasien.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
   };
 
   const handlePatientSelect = useCallback(async (patient) => {
+    const cacheKey = String(patient.id);
+    const cachedPatient = patientDetailsCacheRef.current.get(cacheKey);
+    const requestId = ++selectRequestIdRef.current;
+
+    if (cachedPatient) {
+      setSelectedPatient(cachedPatient);
+      return;
+    }
+
+    setSelectedPatient(buildPatientShell(patient, !patient.localOnly));
+
+    if (patient.localOnly) {
+      return;
+    }
+
     try {
       const fullPatient = await getPatientDetails(patient.id);
-      let transformed = transformAIResults(fullPatient.aiResults || []);
-      if (!transformed.length) {
-        const raw = await getAIResultsWithRetry(patient.id, 2, 1000);
-        transformed = transformAIResults(raw);
-      }
-      
-      let medicalHistory = null;
-      if (fullPatient.medicalDetails) {
-        medicalHistory = {
-          allergies: Array.isArray(fullPatient.medicalDetails.allergies) ? fullPatient.medicalDetails.allergies : [],
-          conditions: Array.isArray(fullPatient.medicalDetails.conditions) ? fullPatient.medicalDetails.conditions : 
-                     Array.isArray(fullPatient.medicalDetails.chronicConditions) ? fullPatient.medicalDetails.chronicConditions : [],
-          medications: Array.isArray(fullPatient.medicalDetails.medications) ? fullPatient.medicalDetails.medications : [],
-          surgeries: Array.isArray(fullPatient.medicalDetails.surgeries) ? fullPatient.medicalDetails.surgeries : [],
-          familyHistory: typeof fullPatient.medicalDetails.familyHistory === 'object' && fullPatient.medicalDetails.familyHistory !== null 
-            ? fullPatient.medicalDetails.familyHistory 
-            : {},
-        };
-        const excludeKeys = ['allergies', 'chronicConditions', 'conditions', 'medications', 'surgeries', 'familyHistory'];
-        for (const [key, value] of Object.entries(fullPatient.medicalDetails)) {
-          if (!excludeKeys.includes(key)) {
-            medicalHistory[key] = value;
-          }
-        }
-      }
-      
-      const normalizedAppointments = (fullPatient.appointments || []).map(apt => ({
-        ...apt,
-        consultationType: apt.consultationType || apt.consultation_type || 'onsite',
-        date: apt.date || apt.startsAt || apt.starts_at,
-        time: apt.time || apt.startsAt || apt.starts_at
-      }));
-      
-      const normalizedPatient = {
-        ...patient,
-        ...fullPatient,
-        birthDate: fullPatient.dateOfBirth || fullPatient.birthDate,
-        medicalHistory: medicalHistory || {
-          allergies: [],
-          conditions: [],
-          medications: [],
-          surgeries: [],
-          familyHistory: {},
-          emergencyContact: {}
-        },
-        appointments: normalizedAppointments,
-        aiResults: transformed
-      };
-      
+      if (requestId !== selectRequestIdRef.current) return;
+
+      const normalizedPatient = normalizePatientDetails(patient, fullPatient);
+      patientDetailsCacheRef.current.set(cacheKey, normalizedPatient);
       setSelectedPatient(normalizedPatient);
     } catch (err) {
+      if (requestId !== selectRequestIdRef.current) return;
       console.error('Error fetching patient details:', err);
-      setSelectedPatient({
-        ...patient,
-        medicalHistory: {
-          allergies: [],
-          conditions: [],
-          medications: [],
-          surgeries: [],
-          familyHistory: {},
-          emergencyContact: {}
-        },
-        aiResults: transformAIResults(patient.aiResults || []),
-      });
+      setSelectedPatient(buildPatientShell(patient, false));
     }
-  }, [transformAIResults, getAIResultsWithRetry]);
+  }, [buildPatientShell, normalizePatientDetails]);
 
   useEffect(() => {
     if (!patients.length) {
@@ -419,8 +463,9 @@ const PatientManagement = () => {
     if (!socket) return;
     const handleRealtimeUpdate = (data) => {
       console.log('🔄 Patient portal socket notification: reloading patients & selected detail...');
+      patientDetailsCacheRef.current.clear();
       fetchPatients();
-      if (selectedPatient?.id) {
+      if (selectedPatient?.id && !selectedPatient.localOnly) {
         handlePatientSelect(selectedPatient);
       }
     };
@@ -466,7 +511,36 @@ const PatientManagement = () => {
   const handleSendStatement = () => {};
   const handleSendMessage = (message) => {};
   const handleScheduleCall = () => {};
-  const handleUpdateHistory = (updatedHistory) => {};
+  const handleUpdateHistory = (updatedHistory) => {
+    setSelectedPatient(prev => prev ? ({
+      ...prev,
+      medicalHistory: updatedHistory
+    }) : prev);
+  };
+  const handleCreateEmr = async (recordPayload) => {
+    if (!selectedPatient?.id) {
+      throw new Error('No patient selected');
+    }
+    const savedRecord = await createPatientEmrRecord(selectedPatient.id, recordPayload);
+    setSelectedPatient(prev => prev ? ({
+      ...prev,
+      emrRecords: [savedRecord, ...(prev.emrRecords || [])],
+    }) : prev);
+    return savedRecord;
+  };
+  const handleUploadEmrConsent = async (recordId, file) => {
+    if (!selectedPatient?.id) {
+      throw new Error('No patient selected');
+    }
+    const updatedRecord = await uploadPatientEmrConsent(selectedPatient.id, recordId, file);
+    setSelectedPatient(prev => prev ? ({
+      ...prev,
+      emrRecords: (prev.emrRecords || []).map(record =>
+        record.id === updatedRecord.id ? updatedRecord : record
+      ),
+    }) : prev);
+    return updatedRecord;
+  };
   const mergeInvoiceIntoBilling = (billing = {}, invoice) => {
     if (!invoice) return billing;
     const invoices = Array.isArray(billing.invoices) ? billing.invoices : [];
@@ -512,8 +586,11 @@ const PatientManagement = () => {
 
   if (loading) {
     return (
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div className="flex h-screen overflow-hidden theme-transition">
         <SideBar />
+        <main className="flex-1 flex items-center justify-center bg-background">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary" />
+        </main>
       </div>
     );
   }
@@ -551,37 +628,58 @@ const PatientManagement = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start h-full">
+          <div className={`grid grid-cols-1 ${isDirectoryOpen ? 'lg:grid-cols-12' : ''} gap-8 items-start h-full`}>
             {/* Patient List */}
-            <div className="lg:col-span-4 xl:col-span-3 h-full flex flex-col min-h-[600px]">
-              <PatientList
-                patients={patients}
-                selectedPatient={selectedPatient}
-                onPatientSelect={handlePatientSelect}
-                onAddPatient={() => setShowAddPatient(true)}
-                searchTerm={searchTerm}
-                onSearchChange={setSearchTerm}
-                filterStatus={filterStatus}
-                onFilterChange={setFilterStatus}
-              />
-            </div>
+            {isDirectoryOpen && (
+              <div className="lg:col-span-4 xl:col-span-3 h-full flex flex-col min-h-[600px]">
+                <PatientList
+                  patients={patients}
+                  selectedPatient={selectedPatient}
+                  onPatientSelect={handlePatientSelect}
+                  onAddPatient={() => setShowAddPatient(true)}
+                  searchTerm={searchTerm}
+                  onSearchChange={setSearchTerm}
+                  filterStatus={filterStatus}
+                  onFilterChange={setFilterStatus}
+                  sourceFilter={sourceFilter}
+                  onSourceFilterChange={setSourceFilter}
+                  onClose={() => setIsDirectoryOpen(false)}
+                />
+              </div>
+            )}
 
             {/* Patient Details */}
-            <div className="lg:col-span-8 xl:col-span-9">
+            <div className={isDirectoryOpen ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'}>
+              {!isDirectoryOpen && (
+                <button
+                  type="button"
+                  onClick={() => setIsDirectoryOpen(true)}
+                  className="mb-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-300 transition-colors shadow-sm"
+                >
+                  <Icon name="PanelLeftOpen" size={16} />
+                  <span>{t('dentistPatient.list.actions.open')}</span>
+                </button>
+              )}
               {selectedPatient ? (
                 <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                  {selectedPatient.isLoadingDetails && (
+                    <div className="flex items-center gap-2 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 px-4 py-3 text-sm font-medium text-blue-700 dark:text-blue-300">
+                      <Icon name="Loader2" size={16} className="animate-spin" />
+                      <span>{t('dentistPatient.list.loadingDetails')}</span>
+                    </div>
+                  )}
 
                   {/* Tabs */}
                   <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-2 sticky top-0 z-30 backdrop-blur-md transition-colors">
                     <div className="flex gap-1 overflow-x-auto no-scrollbar p-1">
                       {[
-                        { id: 'profile', label: t('dentistPatient.tabs.profile'), icon: 'User' },
-                        { id: 'ai-results', label: t('dentistPatient.tabs.aiResults'), icon: 'Brain' },
-                        { id: 'appointments', label: t('dentistPatient.tabs.appointments'), icon: 'Calendar' },
-                        { id: 'medical-history', label: t('dentistPatient.tabs.medicalHistory'), icon: 'FileText' },
-                        { id: 'treatment-plan', label: t('dentistPatient.tabs.treatmentPlan'), icon: 'Clipboard' },
-                        { id: 'billing', label: t('dentistPatient.tabs.billing'), icon: 'CreditCard' },
-                        { id: 'communication', label: t('dentistPatient.tabs.communication'), icon: 'MessageSquare' }
+                        { id: 'profile', label: t('dentistPatient.tabs.profile'), icon: 'patient-profile' },
+                        { id: 'ai-results', label: t('dentistPatient.tabs.aiResults'), icon: 'ai-diagnostic' },
+                        { id: 'appointments', label: t('dentistPatient.tabs.appointments'), icon: 'appointment-calendar' },
+                        { id: 'medical-history', label: t('dentistPatient.tabs.medicalHistory'), icon: 'emr-record' },
+                        { id: 'treatment-plan', label: t('dentistPatient.tabs.treatmentPlan'), icon: 'treatment-plan' },
+                        { id: 'billing', label: t('dentistPatient.tabs.billing'), icon: 'billing-ledger' },
+                        { id: 'communication', label: t('dentistPatient.tabs.communication'), icon: 'communication' }
                       ].map((tab) => {
                         const isActive = activeTab === tab.id;
                         return (
@@ -594,7 +692,11 @@ const PatientManagement = () => {
                                 : 'bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                             }`}
                           >
-                            <Icon name={tab.icon} size={16} />
+                            <ClinicalIcon
+                              name={tab.icon}
+                              size="sm"
+                              className={isActive ? 'border-white/20 bg-white/15 text-white shadow-none dark:bg-slate-900/20 dark:text-slate-900' : 'h-7 w-7'}
+                            />
                             <span>{tab.label}</span>
                           </button>
                         );
@@ -628,6 +730,8 @@ const PatientManagement = () => {
                       <PatientMedicalHistory
                         patient={selectedPatient}
                         onUpdateHistory={handleUpdateHistory}
+                        onCreateEmr={handleCreateEmr}
+                        onUploadConsent={handleUploadEmrConsent}
                       />
                     )}
 
@@ -661,9 +765,7 @@ const PatientManagement = () => {
               ) : (
                 // Empty state
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-16 text-center animate-in zoom-in-95 duration-300 h-full flex flex-col items-center justify-center min-h-[600px] transition-colors">
-                  <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-slate-100 dark:border-slate-700">
-                    <Icon name="User" size={40} className="text-slate-300 dark:text-slate-600" />
-                  </div>
+                  <ClinicalIcon name="patient-directory" size="xl" className="mx-auto mb-6" />
                   <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">{t('dentistPatient.emptyState.title')}</h3>
                   <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">{t('dentistPatient.emptyState.subtitle')}</p>
                 </div>

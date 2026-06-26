@@ -30,6 +30,7 @@ import appointmentsRouter from './routes/appointments.js';
 import paymentsRouter from './routes/payments.js';
 import paymentWebhooksRouter from './routes/payment-webhooks.js';
 import financialsRouter from './routes/financials.js';
+import clinicBillingRouter from './routes/clinicBilling.js';
 import communicationsRouter from './routes/communications.js';
 import notificationsRouter from './routes/notifications.js';
 import chatRouter from './routes/chat.js';
@@ -226,6 +227,7 @@ app.use(`${prefix}`, authRouter); // Also mount auth routes under /v1 for profil
 app.use(`${prefix}/profile`, profileRouter);
 app.use(`${prefix}/patient`, patientRouter); // Patient-specific routes
 app.use(`${prefix}/clinic/teledentistry`, clinicTeledentistryRouter);
+app.use(`${prefix}/clinic/billing`, clinicBillingRouter);
 app.use(`${prefix}/clinic`, clinicRouter);
 app.use(`${prefix}/clinic`, clinicServicesRouter); // Clinic services management
 app.use(`${prefix}/clinic`, clinicProfileRouter); // Clinic profile (gallery, highlights, facilities)

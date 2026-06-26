@@ -15,6 +15,10 @@ import {
   simplifyPath,
   viewportToNormalizedPoint,
 } from '../utils/annotationGeometry.mjs';
+import {
+  normalizeSliceClinicalContext,
+  SLICE_CLINICAL_PLANES,
+} from '../utils/annotationClinicalContext.mjs';
 
 const MIN_POINTER_DISTANCE = 0.008;
 const HIT_TEST_EPSILON_PX = 1;
@@ -63,6 +67,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     style = {},
     hideSurface = false,
     freehandAnnotationType = 'region',
+    clinicalContext = null,
   },
   forwardedRef
 ) {
@@ -113,6 +118,10 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const freehandSimplifyEpsilonPx = useMemo(
     () => Math.max(0.2, Math.min(1.2, FREEHAND_SIMPLIFY_EPSILON_PX / imageDisplayScale)),
     [imageDisplayScale]
+  );
+  const activeSliceClinicalContext = useMemo(
+    () => normalizeSliceClinicalContext(clinicalContext || {}),
+    [clinicalContext]
   );
 
   const hasVisibleCanvas = useMemo(
@@ -345,6 +354,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     source_width: annotationWidth,
     source_height: annotationHeight,
     coordinate_system: 'normalized_image',
+    ...(activeSliceClinicalContext || {}),
     finding_type: 'other',
     severity: 'S1',
     tooth_number: activeToothContext?.number || activeToothContext?.tooth_number || '',
@@ -424,10 +434,12 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const withMetadataDraft = (annotation) => {
     if (!annotation) return;
     const anchor = getAnnotationAnchor(annotation);
+    const annotationSliceContext = normalizeSliceClinicalContext(clinicalContext || {}, annotation);
     setMetadataDraft({
       annotationId: annotation.id,
       anchor,
       metadata: {
+        ...(annotationSliceContext || {}),
         finding_type: annotation.metadata?.finding_type || 'other',
         severity: annotation.metadata?.severity || 'S1',
         surface: annotation.metadata?.surface || '',
@@ -467,6 +479,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
       };
       onChange([...annotations, annotation]);
       setSelectedAnnotationId(annotation.id);
+      withMetadataDraft(annotation);
     }
 
     setTextDraft(null);
@@ -683,6 +696,9 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
   const selectedAnchor = getAnnotationAnchor(selectedAnnotation);
   const selectedActionPosition = selectedAnchor ? getCanvasPoint(selectedAnchor) : null;
   const metadataDraftPosition = metadataDraft?.anchor ? getCanvasPoint(metadataDraft.anchor) : null;
+  const metadataDraftSliceContext = metadataDraft
+    ? normalizeSliceClinicalContext(clinicalContext || {}, { metadata: metadataDraft.metadata })
+    : null;
   const labelDraftPosition = labelDraft?.anchor ? getCanvasPoint(labelDraft.anchor) : null;
   const rejectDraftPosition = rejectDraft?.anchor ? getCanvasPoint(rejectDraft.anchor) : null;
 
@@ -899,6 +915,40 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
         >
           <div className="overflow-y-auto p-3 scrollbar-thin">
             <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Clinical Tags</div>
+            {metadataDraftSliceContext && (
+              <div className="mb-3 border-y border-slate-800 py-2">
+                <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span>Slice location</span>
+                  <span className="font-mono text-cyan-300">
+                    {metadataDraftSliceContext.slice_count
+                      ? `${metadataDraftSliceContext.slice_number}/${metadataDraftSliceContext.slice_count}`
+                      : `#${metadataDraftSliceContext.slice_number}`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1" aria-label="Anatomical plane">
+                  {SLICE_CLINICAL_PLANES.map((plane) => {
+                    const isActivePlane = metadataDraftSliceContext.anatomical_plane === plane;
+                    return (
+                      <span
+                        key={plane}
+                        aria-current={isActivePlane ? 'true' : undefined}
+                        className={`min-w-0 rounded px-1 py-1 text-center text-[9px] font-bold uppercase ${
+                          isActivePlane
+                            ? 'bg-cyan-400 text-slate-950'
+                            : 'bg-slate-900 text-slate-600'
+                        }`}
+                      >
+                        {plane}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="mt-1.5 text-[9px] text-slate-500">
+                  Stored as <span className="font-mono text-slate-300">{metadataDraftSliceContext.slice_axis}</span>
+                  {' · '}index <span className="font-mono text-slate-300">{metadataDraftSliceContext.slice_index}</span>
+                </div>
+              </div>
+            )}
             <label className="mb-2 block">
               <span className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Dentist Notes / AI Training</span>
               <textarea

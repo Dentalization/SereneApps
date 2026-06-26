@@ -21,6 +21,7 @@ function toBigInt(value, fieldName) {
 
 // Helper: map midtrans type to expected frontend method
 const getPaymentMethod = (pay) => {
+  if (pay.provider === 'cash') return 'cash';
   const type = pay.providerResponse?.payment_type?.toLowerCase() || '';
   if (type.includes('qris') || type.includes('gopay') || type.includes('shopeepay')) return 'qris';
   if (type.includes('transfer') || type.includes('va')) return 'transfer';

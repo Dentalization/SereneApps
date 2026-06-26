@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { resolvePatientAvatar } from '../../../../utils/mediaHelpers';
+import ClinicalIcon from './ClinicalIcon';
 
 // Helper function moved outside component to avoid re-creation
 const calculateAge = (birthDate, fallbackAge, unknownLabel) => {
@@ -28,9 +29,7 @@ const PatientProfile = ({ patient, onClose }) => {
     return (
       <div className="bg-surface border border-primary/10 rounded-3xl shadow-theme-lg p-12 animate-in fade-in">
         <div className="text-center py-8">
-          <div className="w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-4 text-muted">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          </div>
+          <ClinicalIcon name="patient-profile" size="xl" className="mx-auto mb-4" />
           <p className="text-secondary font-medium">{t('dentistPatient.common.noPatientSelected')}</p>
         </div>
       </div>
@@ -136,9 +135,7 @@ const PatientProfile = ({ patient, onClose }) => {
 
             {patient.nextAppointment && (
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs font-medium mt-2">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+                <ClinicalIcon name="appointment-upcoming" size="xs" className="border-0 shadow-none" />
                 <span>{t('dentistPatient.profile.header.nextAppointment', { date: formatDate(patient.nextAppointment) })}</span>
               </div>
             )}
@@ -150,9 +147,7 @@ const PatientProfile = ({ patient, onClose }) => {
         {/* Personal Information */}
         <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-primary/5">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            </div>
+            <ClinicalIcon name="patient-profile" size="sm" />
             <h3 className="text-lg font-bold text-primary">{personalLabels.title}</h3>
           </div>
           
@@ -176,9 +171,7 @@ const PatientProfile = ({ patient, onClose }) => {
         {/* Contact Information */}
         <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-primary/5">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-            </div>
+            <ClinicalIcon name="communication" size="sm" />
             <h3 className="text-lg font-bold text-primary">{contactLabels.title}</h3>
           </div>
 
@@ -202,7 +195,8 @@ const PatientProfile = ({ patient, onClose }) => {
       {/* Medical Summary */}
       <div className="bg-surface border border-primary/10 rounded-2xl shadow-sm p-8">
         <h3 className="text-lg font-bold text-primary mb-6 flex items-center gap-2">
-          <span className="text-xl">🩺</span> {medicalLabels.title}
+          <ClinicalIcon name="emr-record" size="sm" />
+          {medicalLabels.title}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Allergies */}
@@ -251,11 +245,12 @@ const PatientProfile = ({ patient, onClose }) => {
 
       {/* Visit History Summary */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-5">
-          <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5v-5z"/></svg>
+        <div className="absolute top-8 right-8 opacity-10">
+          <ClinicalIcon name="appointment-calendar" size="xl" className="border-white/10 bg-white/10 text-white shadow-none" />
         </div>
         
         <h3 className="text-lg font-bold mb-8 relative z-10 flex items-center gap-2">
+          <ClinicalIcon name="session-history" size="sm" className="border-white/10 bg-white/10 text-white shadow-none" />
           {visitLabels.title}
         </h3>
         

@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import AppIcon from '../../../../components/AppIcon';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { PY_API_BASE } from '../../../../config/api';
 import useConversionSocket from '../hooks/useConversionSocket';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import { useToast } from '../../../../contexts/ToastContext';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
     const results = [];
@@ -184,6 +186,8 @@ const Gallery = ({
     allowShare = true,
 }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const isIndependentDentist = !user?.clinicStaff?.clinicProfileId;
     const [viewMode, setViewMode] = useState('grid');
     const [searchQuery, setSearchQuery] = useState('');
     const [studies, setStudies] = useState([]);
@@ -198,6 +202,8 @@ const Gallery = ({
     const [shareResult, setShareResult] = useState(null);
     const [shareDentists, setShareDentists] = useState([]);
     const [selectedRecipientDentistId, setSelectedRecipientDentistId] = useState('');
+    const [shareType, setShareType] = useState('clinic'); // 'clinic' | 'email'
+    const [shareEmail, setShareEmail] = useState('');
     const [compareMode, setCompareMode] = useState(false);
     const [selectedCompareIds, setSelectedCompareIds] = useState([]);
     const [selectedStudyDetails, setSelectedStudyDetails] = useState(null);
@@ -263,6 +269,7 @@ const Gallery = ({
 
     React.useEffect(() => {
         const fetchStudies = async () => {
+            const start = Date.now();
             if (cachedStudies) {
                 const normalizedCache = cachedStudies.map(normalizeStudySeriesState);
                 setStudies(normalizedCache);
@@ -323,7 +330,13 @@ const Gallery = ({
                 console.error("[Gallery] Failed to fetch studies:", error.message);
                 setError(error.message);
             } finally {
-                setLoading(false);
+                const elapsed = Date.now() - start;
+                const remaining = 900 - elapsed;
+                if (remaining > 0) {
+                    setTimeout(() => setLoading(false), remaining);
+                } else {
+                    setLoading(false);
+                }
             }
         };
         fetchStudies();
@@ -714,7 +727,11 @@ const Gallery = ({
         setShareResult(null);
         setShareDentists([]);
         setSelectedRecipientDentistId('');
-        fetchEligibleShareDentists(study);
+        setShareType(isIndependentDentist ? 'email' : 'clinic');
+        setShareEmail('');
+        if (!isIndependentDentist) {
+            fetchEligibleShareDentists(study);
+        }
     };
 
     const canManageStudy = (study) => (
@@ -754,8 +771,17 @@ const Gallery = ({
             setShareLoading(true);
             setShareError(null);
 
-            if (!selectedRecipientDentistId) {
-                throw new Error('Select an active dentist in your clinic.');
+            let bodyData = {};
+            if (shareType === 'clinic') {
+                if (!selectedRecipientDentistId) {
+                    throw new Error('Select an active dentist in your clinic.');
+                }
+                bodyData = { recipientDentistId: selectedRecipientDentistId };
+            } else {
+                if (!shareEmail.trim()) {
+                    throw new Error('Enter a valid dentist email address.');
+                }
+                bodyData = { email: shareEmail.trim() };
             }
 
             const token = getAccessToken();
@@ -765,7 +791,7 @@ const Gallery = ({
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ recipientDentistId: selectedRecipientDentistId }),
+                body: JSON.stringify(bodyData),
             });
 
             const payload = await response.json().catch(() => ({}));
@@ -1101,13 +1127,68 @@ const Gallery = ({
                 </div>
             </div>
 
-            {/* Grid View */}
             {loading || fetchingSeries ? (
-                <div className="flex justify-center py-20">
-                    <div className="flex flex-col items-center gap-4 text-muted">
-                        <AppIcon name="Loader2" size={40} className="animate-spin text-accent" />
-                        <p>{fetchingSeries ? (studiesWithSeries.some(s => s.scanning) ? "Scanning study contents..." : "Analyzing metadata...") : "Loading studies..."}</p>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {Array.from({
+                        length: studies && studies.length > 0
+                            ? studies.length
+                            : cachedStudies && cachedStudies.length > 0
+                                ? cachedStudies.length
+                                : 3
+                    }).map((_, idx) => (
+                        <div key={idx} className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden animate-pulse">
+                            {/* Cover placeholder with overlay badges */}
+                            <div className="aspect-video bg-slate-900 relative overflow-hidden flex items-center justify-center">
+                                <AppIcon name="FolderOpen" size={48} className="text-slate-800 dark:text-slate-700" />
+                                
+                                {/* Modality tags placeholder */}
+                                <div className="absolute top-2 left-2 flex gap-1.5">
+                                    <div className="w-16 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
+                                </div>
+
+                                {/* Access badge placeholder */}
+                                <div className="absolute top-2 right-2">
+                                    <div className="w-14 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
+                                </div>
+
+                                {/* Scan count badge placeholder */}
+                                <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400/50 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
+                                    <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
+                                    <div className="w-8 h-2.5 bg-cyan-400/20 rounded" />
+                                </span>
+
+                                {/* Folder size badge placeholder */}
+                                <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white/50 text-[10px] rounded backdrop-blur-sm font-medium">
+                                    <div className="w-12 h-2.5 bg-white/20 rounded" />
+                                </span>
+                            </div>
+                            
+                            {/* Info placeholder */}
+                            <div className="p-4 space-y-2">
+                                <div className="flex justify-between items-start">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+                                        <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-1/3 mt-1.5" />
+                                        <div className="h-2 bg-slate-200/60 dark:bg-slate-700/60 rounded w-2/3 mt-1.5" />
+                                    </div>
+                                    <AppIcon name="ChevronRight" size={16} className="text-slate-300 dark:text-slate-700 mt-0.5" />
+                                </div>
+                                
+                                <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
+                                    <div className="h-2.5 bg-slate-200/70 dark:bg-slate-700/70 rounded w-16" />
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-12" />
+                                        <div className="p-1 rounded text-slate-300 dark:text-slate-700">
+                                            <AppIcon name="Share2" size={14} />
+                                        </div>
+                                        <div className="p-1 rounded text-slate-300 dark:text-slate-700">
+                                            <AppIcon name="Trash2" size={14} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : error ? (
                 <div className="flex justify-center py-20">
@@ -1615,107 +1696,167 @@ const Gallery = ({
 
             {/* Delete Confirmation Modal */}
             {deleteTarget !== null && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
-                    <div className="bg-white rounded-3xl border border-primary/10 shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Study</h3>
-                        <p className="text-gray-600 mb-6 font-medium">
-                            Are you sure you want to delete {deleteTarget.patientName}'s study? This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setDeleteTarget(null)}
-                                className="px-5 py-2.5 rounded-xl font-semibold text-gray-700 hover:bg-gray-100 transition"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => {
-                                    handleDelete(deleteTarget);
-                                    setDeleteTarget(null);
-                                }}
-                                className="px-5 py-2.5 rounded-xl font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 transition"
-                            >
-                                Delete
-                            </button>
+                <ModalPortal>
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
+                        <div className="bg-white rounded-3xl border border-primary/10 shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Study</h3>
+                            <p className="text-gray-600 mb-6 font-medium">
+                                Are you sure you want to delete {deleteTarget.patientName}'s study? This action cannot be undone.
+                            </p>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setDeleteTarget(null)}
+                                    className="px-5 py-2.5 rounded-xl font-semibold text-gray-700 hover:bg-gray-100 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        handleDelete(deleteTarget);
+                                        setDeleteTarget(null);
+                                    }}
+                                    className="px-5 py-2.5 rounded-xl font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 transition"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
 
             {shareTarget !== null && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setShareTarget(null)}>
-                    <div className="w-full max-w-md rounded-3xl border border-primary/10 bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                        <div className="mb-5 flex items-start justify-between gap-4">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-900">Share Study</h3>
-                                <p className="mt-1 text-sm text-gray-600">
-                                    Grant read-only X-Core access for {shareTarget.patientName || 'this patient'} to an active dentist in your clinic.
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setShareTarget(null)}
-                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-                            >
-                                <AppIcon name="X" size={18} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                    Recipient Dentist
-                                </label>
-                                <select
-                                    value={selectedRecipientDentistId}
-                                    onChange={(event) => setSelectedRecipientDentistId(event.target.value)}
-                                    disabled={shareLoading || shareDentists.length === 0}
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
-                                >
-                                    {shareDentists.length === 0 ? (
-                                        <option value="">No eligible active dentists</option>
-                                    ) : shareDentists.map((dentist) => (
-                                        <option key={dentist.id} value={dentist.id}>
-                                            {dentist.title ? `${dentist.title} ` : ''}{dentist.name}{dentist.specialization ? ` - ${dentist.specialization}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="mt-2 text-xs text-gray-500">Only active dentists in the same clinic are eligible.</p>
-                            </div>
-
-                            {shareError && (
-                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                                    {shareError}
-                                </div>
-                            )}
-
-                            {shareResult?.share && (
-                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Shared</div>
-                                    <p className="text-sm text-emerald-800">
-                                        {shareResult.share.recipient?.name || 'The selected dentist'} can now open this study from their X-Core gallery.
+                <ModalPortal>
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setShareTarget(null)}>
+                        <div className="w-full max-w-md rounded-3xl border border-primary/10 bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                            <div className="mb-5 flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-900">Share Study</h3>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        Grant read-only X-Core access for {shareTarget.patientName || 'this patient'} to another registered dentist.
                                     </p>
                                 </div>
-                            )}
-                        </div>
+                                <button
+                                    onClick={() => setShareTarget(null)}
+                                    className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                                >
+                                    <AppIcon name="X" size={18} />
+                                </button>
+                            </div>
 
-                        <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                onClick={() => setShareTarget(null)}
-                                className="rounded-xl px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-gray-100"
-                            >
-                                Close
-                            </button>
-                            <button
-                                onClick={handleCreateShare}
-                                disabled={shareLoading || !selectedRecipientDentistId}
-                                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                <AppIcon name={shareLoading ? 'Loader2' : 'Share2'} size={16} className={shareLoading ? 'animate-spin' : ''} />
-                                <span>{shareLoading ? 'Sharing...' : 'Share Study'}</span>
-                            </button>
+                            {!isIndependentDentist && (
+                                <div className="flex rounded-xl bg-gray-100 p-1 mb-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShareType('clinic');
+                                            setShareError(null);
+                                            setShareResult(null);
+                                        }}
+                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                                            shareType === 'clinic'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Clinic Dentist
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShareType('email');
+                                            setShareError(null);
+                                            setShareResult(null);
+                                        }}
+                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                                            shareType === 'email'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Independent Dentist (by Email)
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                {shareType === 'clinic' ? (
+                                    <div>
+                                        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                            Recipient Dentist
+                                        </label>
+                                        <select
+                                            value={selectedRecipientDentistId}
+                                            onChange={(event) => setSelectedRecipientDentistId(event.target.value)}
+                                            disabled={shareLoading || shareDentists.length === 0}
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+                                        >
+                                            {shareDentists.length === 0 ? (
+                                                <option value="">No eligible active dentists</option>
+                                            ) : shareDentists.map((dentist) => (
+                                                <option key={dentist.id} value={dentist.id}>
+                                                    {dentist.title ? `${dentist.title} ` : ''}{dentist.name}{dentist.specialization ? ` - ${dentist.specialization}` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="mt-2 text-xs text-gray-500">Only active dentists in the same clinic are eligible.</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                            Dentist's Registered Email
+                                        </label>
+                                        <input
+                                            type="email"
+                                            placeholder="dentist@example.com"
+                                            value={shareEmail}
+                                            onChange={(event) => setShareEmail(event.target.value)}
+                                            disabled={shareLoading}
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+                                        />
+                                        <p className="mt-2 text-xs text-gray-500">
+                                            {isIndependentDentist
+                                                ? "Enter the registered email of the dentist you want to share with (can be a clinic or independent dentist)."
+                                                : "Enter the registered email of the independent dentist."}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {shareError && (
+                                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                                        {shareError}
+                                    </div>
+                                )}
+
+                                {shareResult?.share && (
+                                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Shared</div>
+                                        <p className="text-sm text-emerald-800">
+                                            {shareResult.share.recipient?.name || 'The selected dentist'} ({shareResult.share.recipient?.email || shareEmail}) can now open this study from their X-Core gallery.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-6 flex justify-end gap-3">
+                                <button
+                                    onClick={() => setShareTarget(null)}
+                                    className="rounded-xl px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-gray-100"
+                                >
+                                    Close
+                                </button>
+                                <button
+                                    onClick={handleCreateShare}
+                                    disabled={shareLoading || (shareType === 'clinic' ? !selectedRecipientDentistId : !shareEmail.trim())}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <AppIcon name={shareLoading ? 'Loader2' : 'Share2'} size={16} className={shareLoading ? 'animate-spin' : ''} />
+                                    <span>{shareLoading ? 'Sharing...' : 'Share Study'}</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </ModalPortal>
             )}
         </div>
     );

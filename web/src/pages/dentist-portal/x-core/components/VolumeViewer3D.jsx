@@ -946,6 +946,9 @@ const VolumeViewer3D = ({
     onVolumeLoaded = null,
     onSurfaceClick = null,
     linkedMode = false,
+    isFullscreen: passedIsFullscreen,
+    toggleFullscreen: passedToggleFullscreen,
+    comparisonPaneId = null,
 }) => {
     const { user } = useAuth();
     const containerRef = useRef(null);
@@ -1218,7 +1221,8 @@ const VolumeViewer3D = ({
     const [inverted, setInverted] = useState(false);
 
     // Fullscreen
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [localIsFullscreen, setLocalIsFullscreen] = useState(false);
+    const isFullscreen = passedIsFullscreen !== undefined ? passedIsFullscreen : localIsFullscreen;
     const [showMoreTools, setShowMoreTools] = useState(false);
 
     // Series panel
@@ -2858,7 +2862,7 @@ const VolumeViewer3D = ({
     // ═══════════════════════════════════════════════════════════════════
     useEffect(() => {
         const handleFSChange = () => {
-            setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+            setLocalIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
             requestAnimationFrame(() => {
                 const ctx = vtkContextRef.current;
                 if (!ctx?.fullScreenRenderer) return;
@@ -2903,6 +2907,11 @@ const VolumeViewer3D = ({
     }, [showMoreTools]);
 
     const toggleFullscreen = useCallback(() => {
+        if (passedToggleFullscreen) {
+            passedToggleFullscreen();
+            return;
+        }
+
         if (!wrapperRef.current) return;
         if (!(document.fullscreenElement || document.webkitFullscreenElement)) {
             let target = wrapperRef.current;
@@ -2922,7 +2931,7 @@ const VolumeViewer3D = ({
                 Promise.resolve(exitFullscreen.call(document)).catch(console.error);
             }
         }
-    }, [linkedMode]);
+    }, [linkedMode, passedToggleFullscreen]);
 
     // ═══════════════════════════════════════════════════════════════════
     // Preset / Render-Mode Change Handler
@@ -6960,8 +6969,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         return projectWorldToViewportCached(textDraft3D.worldPoint) || textDraft3D.screenPoint || null;
     }, [projectWorldToViewportCached, textDraft3D, projectionTick]);
 
+    const isComparison = comparisonPaneId !== null;
+    const containerClasses = `flex flex-col h-full bg-slate-950 text-slate-100 outline-none ${
+        isComparison
+            ? 'rounded-none border-none shadow-none'
+            : 'rounded-3xl overflow-hidden shadow-2xl border border-slate-800'
+    }`;
+
     return (
-        <div ref={wrapperRef} tabIndex={0} className="flex flex-col h-full bg-slate-950 text-slate-100 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 outline-none">
+        <div ref={wrapperRef} tabIndex={0} className={containerClasses}>
             {/* ─── Header Toolbar ─────────────────────────────────── */}
             <div className="relative z-[100] border-b border-slate-800 bg-slate-900/95 px-3 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">

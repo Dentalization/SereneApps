@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import Button from '../../../../components/ui/Button';
+import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import { createPatientTreatmentPlan, completeTreatmentItem, sendPatientTreatmentPlan } from '../../../../services/dentistPortalService';
+import ClinicalIcon from './ClinicalIcon';
 const API_BASE = import.meta.env.VITE_AUTH_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:4000';
 
 /** Resolve avatar URL — prefix relative /uploads/... paths with the API base URL */
@@ -44,14 +46,14 @@ const DENTAL_TREATMENTS = {
 };
 
 const CATEGORY_ICONS = {
-  'Preventive & Diagnostic': '🔍',
-  'Restorative (Konservasi)': '🦷',
-  'Endodontics (Saraf)': '🩺',
-  'Prosthodontics (Gigi Tiruan)': '👑',
-  'Periodontics (Gusi & Tulang)': '🦴',
-  'Oral Surgery (Bedah Mulut)': '🔪',
-  'Orthodontics (Kawat Gigi)': '😁',
-  'Cosmetic Dentistry': '✨',
+  'Preventive & Diagnostic': 'case-findings',
+  'Restorative (Konservasi)': 'odontogram',
+  'Endodontics (Saraf)': 'procedure',
+  'Prosthodontics (Gigi Tiruan)': 'treatment-plan',
+  'Periodontics (Gusi & Tulang)': 'medical-condition',
+  'Oral Surgery (Bedah Mulut)': 'procedure',
+  'Orthodontics (Kawat Gigi)': 'odontogram',
+  'Cosmetic Dentistry': 'ai-recommendation',
 };
 
 const mapTreatmentCategory = (category = '') => {
@@ -286,9 +288,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
     return (
       <div className="bg-surface border border-primary/10 rounded-3xl shadow-theme-sm p-12 animate-in fade-in">
         <div className="text-center py-8">
-          <div className="w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-4 text-muted/50">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-          </div>
+          <ClinicalIcon name="treatment-plan" size="xl" className="mx-auto mb-4" />
           <p className="text-secondary font-medium">{t('dentistPatient.common.noPatientSelected')}</p>
         </div>
       </div>
@@ -333,15 +333,18 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
 
   const getTreatmentIcon = (name = '') => {
     const n = name.toLowerCase();
-    if (n.includes('root canal')) return '🦷';
-    if (n.includes('crown')) return '👑';
-    if (n.includes('cleaning')) return '🧽';
-    return '🏥';
+    if (n.includes('root canal')) return 'procedure';
+    if (n.includes('crown')) return 'treatment-plan';
+    if (n.includes('cleaning')) return 'odontogram';
+    if (n.includes('x-ray') || n.includes('cbct')) return 'case-findings';
+    return 'clinical-note';
   };
 
   const StatCard = ({ title, value, colorClass, icon, shadowColor }) => (
     <div className="bg-gradient-to-br from-surface-elevated to-surface rounded-2xl p-5 border border-primary/10 shadow-sm relative overflow-hidden group">
-      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span className="text-4xl">{icon}</span></div>
+      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <ClinicalIcon name={icon} size="xl" className="border-0 shadow-none" />
+      </div>
       <div className="flex items-center space-x-2.5 mb-2">
         <span className={`flex h-2.5 w-2.5 rounded-full ${colorClass}`} style={{boxShadow: `0 0 8px ${shadowColor}`}}></span>
         <span className="text-xs font-bold uppercase tracking-wider text-muted">{title}</span>
@@ -364,11 +367,11 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard title={labels.stats?.total} value={treatmentPlans.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="🗂️"/>
-          <StatCard title={labels.stats?.inProgress} value={treatmentPlans.filter(p => isInProgressPlan(p.status)).length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="⏳"/>
-          <StatCard title={labels.stats?.completed} value={treatmentPlans.filter(p => isCompletedPlan(p.status)).length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="✅"/>
+          <StatCard title={labels.stats?.total} value={treatmentPlans.length} colorClass="bg-blue-500" shadowColor="rgba(59,130,246,0.5)" icon="treatment-plan"/>
+          <StatCard title={labels.stats?.inProgress} value={treatmentPlans.filter(p => isInProgressPlan(p.status)).length} colorClass="bg-amber-500" shadowColor="rgba(245,158,11,0.5)" icon="treatment-progress"/>
+          <StatCard title={labels.stats?.completed} value={treatmentPlans.filter(p => isCompletedPlan(p.status)).length} colorClass="bg-emerald-500" shadowColor="rgba(16,185,129,0.5)" icon="appointment-completed"/>
           <div className="bg-gradient-to-br from-surface-elevated to-surface rounded-2xl p-5 border border-primary/10 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span className="text-4xl">💰</span></div>
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><ClinicalIcon name="treatment-cost" size="xl" className="border-0 shadow-none" /></div>
             <div className="flex items-center space-x-2.5 mb-2">
               <span className="flex h-2.5 w-2.5 rounded-full bg-indigo-500" style={{boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)'}}></span>
               <span className="text-xs font-bold uppercase tracking-wider text-muted">{labels.stats?.totalCost}</span>
@@ -381,7 +384,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
       {isCreatingPlan && (
         <div className="bg-surface border border-primary/10 rounded-3xl shadow-theme-lg p-8 animate-in zoom-in-95 duration-300">
           <h3 className="text-xl font-bold text-primary mb-6 flex items-center gap-3">
-            <span className="bg-accent/10 text-accent w-8 h-8 rounded-lg flex items-center justify-center text-sm">✏️</span>
+            <ClinicalIcon name="treatment-plan" size="sm" />
             {labels.form?.title || 'Create Treatment Plan'}
           </h3>
 
@@ -486,7 +489,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                     className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-surface-elevated transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">{CATEGORY_ICONS[category] || '🏥'}</span>
+                      <ClinicalIcon name={CATEGORY_ICONS[category] || 'clinical-note'} size="sm" />
                       <span className="font-bold text-primary text-sm">{category}</span>
                       <span className="text-xs text-muted bg-surface px-2 py-0.5 rounded-full border border-primary/10">
                         {items.filter(i => selectedTreatmentNames.has(i)).length}/{items.length}
@@ -549,7 +552,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                     className="group flex flex-col sm:flex-row sm:items-center gap-3 bg-surface-elevated border border-primary/10 rounded-xl px-4 py-3 hover:border-accent/20 transition-all"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className="text-lg flex-shrink-0">{getTreatmentIcon(treatment.name)}</span>
+                      <ClinicalIcon name={getTreatmentIcon(treatment.name)} size="xs" />
                       <span className="font-semibold text-primary text-sm truncate">{treatment.name}</span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900/20 dark:border-slate-700/50">planned</span>
                     </div>
@@ -648,9 +651,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                             onError={e => { e.currentTarget.style.display = 'none'; }}
                           />
                         ) : (
-                          <div className="w-5 h-5 rounded-full bg-accent/10 flex items-center justify-center">
-                            <svg className="w-3 h-3 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                          </div>
+                          <ClinicalIcon name="patient-profile" size="xs" className="h-5 w-5 rounded-full border-0 shadow-none" />
                         )}
                         <span className="text-xs text-secondary">
                           Created by <span className="font-semibold text-primary">{plan.dentist.name}</span>
@@ -683,7 +684,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                   )}
                   <Button variant="outline" size="sm" className="bg-surface hover:bg-surface-elevated border-primary/20 text-secondary">{labels.actions?.editPlan}</Button>
                   <Button variant="ghost" size="icon" className="w-9 h-9" onClick={() => setSelectedPlan(selectedPlan === plan.id ? null : plan.id)}>
-                    <span className={`transform transition-transform duration-200 ${selectedPlan === plan.id ? 'rotate-180' : ''}`}>▼</span>
+                    <Icon name="ChevronDown" size={18} className={`transition-transform duration-200 ${selectedPlan === plan.id ? 'rotate-180' : ''}`} />
                   </Button>
                 </div>
               </div>
@@ -700,13 +701,13 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
                     <div key={treatment.id} className="group bg-surface border border-primary/10 rounded-xl p-5 hover:border-primary/20 hover:shadow-sm transition-all">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-4 flex-1">
-                          <div className="w-12 h-12 bg-surface-elevated border border-primary/10 rounded-xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">{getTreatmentIcon(treatment.name)}</div>
+                          <ClinicalIcon name={getTreatmentIcon(treatment.name)} size="lg" />
                           <div className="flex-1 min-w-0">
                             <h5 className="font-bold text-primary text-base">{treatment.name}</h5>
                             <div className="flex flex-wrap items-center gap-4 text-sm text-secondary mt-1.5">
                               <span className="font-medium text-primary bg-surface-elevated px-2 py-0.5 rounded border border-primary/10">{formatCurrency(treatment.cost)}</span>
-                              {treatment.completedDate && <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">✓ {labels.labels?.completedOn} {formatDate(treatment.completedDate)}</span>}
-                              {treatment.scheduledDate && !treatment.completedDate && <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">🗓️ {labels.labels?.scheduledOn} {formatDate(treatment.scheduledDate)}</span>}
+                              {treatment.completedDate && <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><ClinicalIcon name="appointment-completed" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {labels.labels?.completedOn} {formatDate(treatment.completedDate)}</span>}
+                              {treatment.scheduledDate && !treatment.completedDate && <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1"><ClinicalIcon name="appointment-calendar" size="xs" className="h-4 w-4 border-0 bg-transparent shadow-none" /> {labels.labels?.scheduledOn} {formatDate(treatment.scheduledDate)}</span>}
                             </div>
                           </div>
                         </div>
@@ -777,9 +778,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
 
       {treatmentPlans.length === 0 && (
         <div className="bg-surface border-2 border-dashed border-primary/10 rounded-3xl p-16 text-center">
-          <div className="w-20 h-20 bg-surface-elevated rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-primary/10">
-            <svg className="w-10 h-10 text-muted/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-          </div>
+          <ClinicalIcon name="treatment-plan" size="xl" className="mx-auto mb-6" />
           <h3 className="text-xl font-bold text-primary mb-2">{labels.empty?.title}</h3>
           <p className="text-secondary mb-8 max-w-sm mx-auto leading-relaxed">{labels.empty?.description}</p>
           <Button onClick={() => setIsCreatingPlan(true)} className="shadow-lg shadow-accent/20 px-8 py-3 rounded-full">{labels.empty?.action}</Button>
@@ -797,9 +796,7 @@ const PatientTreatmentPlan = ({ patient, onCreatePlan, onUpdatePlan, onCompleteT
               {/* Header */}
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  </div>
+                  <ClinicalIcon name="appointment-completed" size="md" />
                   <div>
                     <h3 className="text-lg font-bold text-primary">Complete Treatment</h3>
                     <p className="text-sm text-secondary">{editingTreatment.treatment.name}</p>

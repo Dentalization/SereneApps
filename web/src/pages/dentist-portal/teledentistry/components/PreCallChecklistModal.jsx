@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../../components/AppIcon';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import {
   fetchAppointmentCommunicationsToken,
   recordCommunicationClientEvent
@@ -116,9 +117,10 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-    >
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+      >
       <div
         className="w-full max-w-lg overflow-hidden bg-surface border border-border/40 rounded-[1.5rem] shadow-2xl"
       >
@@ -184,6 +186,7 @@ export default function PreCallChecklistModal({ appointmentId, open, onClose, on
         </footer>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

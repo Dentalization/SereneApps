@@ -18,6 +18,8 @@ import {
     requireXCoreStudyReadAccess,
     serializeEligibleDentist,
     shareableClinicIdsForOwnedStudy,
+    clinicIdsForStudy,
+    clinicIdsIntersect,
 } from '../services/xCoreAccessPolicyService.js';
 
 const prisma = new PrismaClient();
@@ -121,7 +123,7 @@ function normalizeAnnotationInput(annotation, defaults = {}) {
         id: annotation.id && String(annotation.id).length <= 120 ? String(annotation.id) : randomUUID(),
         seriesUid,
         viewerType,
-        sliceAxis: sliceAxis ? String(sliceAxis) : null,
+        sliceAxis: sliceAxis ? String(sliceAxis).toLowerCase() : null,
         sliceIndex: Number.isInteger(sliceIndex) ? sliceIndex : null,
         type,
         coordinates: annotation.coordinates && typeof annotation.coordinates === 'object' ? annotation.coordinates : {},
@@ -1237,26 +1239,79 @@ export const createStudyShare = async (req, res) => {
     try {
         const { id } = req.params;
         const recipientDentistId = req.body?.recipientDentistId || req.body?.recipient_dentist_id;
+        const email = req.body?.email;
 
-        if (!recipientDentistId) {
-            return res.status(400).json({ error: 'recipientDentistId is required for same-clinic dentist sharing' });
+        if (!recipientDentistId && !email) {
+            return res.status(400).json({ error: 'recipientDentistId or email is required' });
         }
 
-        const shareScope = await shareableClinicIdsForOwnedStudy({
+        // Verify that the current user owns this study
+        const ownerAccess = await requireXCoreStudyOwner({
             studyId: id,
             user: req.user,
             prismaClient: prisma,
         });
-        const recipient = await requireEligibleShareRecipient({
-            recipientDentistId,
-            clinicIds: shareScope.clinicIds,
-            ownerDentistId: shareScope.userId,
-            prismaClient: prisma,
-        });
+
+        let recipient;
+        if (email) {
+            // Share via email: look up dentist user globally in the system
+            const recipientUser = await prisma.user.findUnique({
+                where: { email: String(email).trim().toLowerCase() },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    avatar_url: true,
+                    roles: true,
+                    clinicStaff: {
+                        select: {
+                            clinicProfileId: true,
+                            assignedBranchId: true,
+                        },
+                    },
+                    dentistProfile: {
+                        select: {
+                            title: true,
+                            primarySpecialization: true,
+                            clinic_id: true,
+                        },
+                        take: 1,
+                    },
+                }
+            });
+
+            if (!recipientUser || !recipientUser.roles.includes('dentist')) {
+                return res.status(404).json({ error: 'Dentist with this email is not registered in the system' });
+            }
+
+            if (recipientUser.id === ownerAccess.userId) {
+                return res.status(400).json({ error: 'You cannot share a study with yourself' });
+            }
+
+            recipient = recipientUser;
+        } else {
+            // Share via same-clinic dentist dropdown select
+            const ownerClinicIds = await activeDentistClinicIds(ownerAccess.userId, { prismaClient: prisma });
+            const studyClinicIds = clinicIdsForStudy(ownerAccess.study);
+            const shareableClinicIds = studyClinicIds.length > 0
+                ? ownerClinicIds.filter((clinicId) => clinicIdsIntersect([clinicId], studyClinicIds))
+                : ownerClinicIds;
+
+            if (shareableClinicIds.length === 0) {
+                return res.status(403).json({ error: 'Only active clinic dentists can share X-Core studies with same-clinic dentists' });
+            }
+
+            recipient = await requireEligibleShareRecipient({
+                recipientDentistId,
+                clinicIds: shareableClinicIds,
+                ownerDentistId: ownerAccess.userId,
+                prismaClient: prisma,
+            });
+        }
 
         const existingShare = await prisma.studyDentistShare.findFirst({
             where: {
-                studyId: shareScope.study.id,
+                studyId: ownerAccess.study.id,
                 recipientDentistId: recipient.id,
             },
             select: { id: true },
@@ -1266,17 +1321,17 @@ export const createStudyShare = async (req, res) => {
             ? await prisma.studyDentistShare.update({
                 where: { id: existingShare.id },
                 data: {
-                    ownerDentistId: shareScope.userId,
-                    createdById: shareScope.userId,
+                    ownerDentistId: ownerAccess.userId,
+                    createdById: ownerAccess.userId,
                     revokedAt: null,
                 },
             })
             : await prisma.studyDentistShare.create({
                 data: {
-                    studyId: shareScope.study.id,
-                    ownerDentistId: shareScope.userId,
+                    studyId: ownerAccess.study.id,
+                    ownerDentistId: ownerAccess.userId,
                     recipientDentistId: recipient.id,
-                    createdById: shareScope.userId,
+                    createdById: ownerAccess.userId,
                 },
             });
 

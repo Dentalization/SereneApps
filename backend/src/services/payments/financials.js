@@ -153,6 +153,7 @@ export async function ensureInvoiceForPaymentIntent({
       paymentIntentId: paymentIntent.id,
       treatmentPlanId,
       patientId: patient?.id ?? paymentIntent.patientId,
+      clinicBranchId: appointment?.clinicBranchId ?? paymentIntent.clinicBranchId ?? null,
       ownerType: owner.ownerType,
       ownerClinicId: owner.ownerClinicId,
       ownerDentistId: owner.ownerDentistId,

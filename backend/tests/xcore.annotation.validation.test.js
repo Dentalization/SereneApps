@@ -176,6 +176,58 @@ test('accepts draft 3d text with world-space point geometry', () => {
   assert.equal(result.valid, true);
 });
 
+test('accepts slice annotation with matching anatomical plane and slice index metadata', () => {
+  const result = validateAnnotationPayload({
+    ...base,
+    viewerType: 'slice',
+    sliceAxis: 'coronal',
+    sliceIndex: 49,
+    type: 'region',
+    coordinates: {
+      path: [
+        { x: 0.1, y: 0.1 },
+        { x: 0.2, y: 0.1 },
+        { x: 0.2, y: 0.2 },
+      ],
+    },
+    metadata: {
+      ...base.metadata,
+      anatomical_plane: 'coronal',
+      slice_axis: 'coronal',
+      slice_index: 49,
+      slice_number: 50,
+      slice_count: 200,
+      lesion_area_px: 100,
+    },
+  });
+
+  assert.equal(result.valid, true);
+});
+
+test('rejects slice annotations without a valid and consistent plane location', () => {
+  const result = validateAnnotationPayload({
+    ...base,
+    viewerType: 'slice',
+    sliceAxis: 'oblique',
+    sliceIndex: -1,
+    type: 'arrow',
+    coordinates: {
+      start: { x: 0.2, y: 0.3 },
+      end: { x: 0.4, y: 0.5 },
+    },
+    metadata: {
+      ...base.metadata,
+      anatomical_plane: 'axial',
+      slice_index: 12,
+    },
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(' '), /slice_axis/);
+  assert.match(result.errors.join(' '), /slice_index/);
+  assert.match(result.errors.join(' '), /anatomical plane/);
+});
+
 test('rejects malformed normalized coordinates', () => {
   const result = validateAnnotationPayload({
     ...base,

@@ -7,10 +7,18 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { fileURLToPath } from 'url';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import { PrismaClient } from '@prisma/client';
 import { recordStatusChange } from '../services/appointments/audit.js';
+import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
+import {
+  createEmrRecordForDentist,
+  listEmrRecordsForPatient,
+  updateEmrConsentDocumentForDentist
+} from '../services/emrRecords.js';
 import {
   addTreatmentPlanItem,
   createTreatmentPlan,
@@ -47,6 +55,27 @@ const uploadTreatmentImage = multer({
   },
 });
 
+const emrConsentUploadDir = path.join(__dirname, '../../uploads/emr-consents');
+if (!fs.existsSync(emrConsentUploadDir)) {
+  fs.mkdirSync(emrConsentUploadDir, { recursive: true });
+}
+const emrConsentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, emrConsentUploadDir),
+  filename: (req, file, cb) => {
+    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    cb(null, `emr-${req.params.recordId}-${Date.now()}-${safeOriginal}`);
+  },
+});
+const uploadEmrConsent = multer({
+  storage: emrConsentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowedMime = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (allowedMime.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Only PDF, JPG, and PNG consent files are allowed.'));
+  },
+});
+
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -66,12 +95,52 @@ function sendTreatmentPlanError(res, error) {
   return sendError(res, 500, 'TREATMENT_PLAN_FAILED', 'Gagal memproses rencana perawatan.');
 }
 
+function sendEmrError(res, error) {
+  if (error.status) {
+    return sendError(res, error.status, error.code || error.message || 'EMR_ERROR', error.publicMessage || error.message || 'Gagal memproses EMR pasien.');
+  }
+  if (error.message?.startsWith?.('INVALID_') || error.message?.startsWith?.('Invalid identifier')) {
+    return sendError(res, 400, 'INVALID_EMR_PAYLOAD', 'Data pasien atau payload EMR tidak valid.', {
+      detail: error.message,
+    });
+  }
+  return sendError(res, 500, 'EMR_CREATE_FAILED', 'Gagal menyimpan EMR pasien.', {
+    detail: process.env.NODE_ENV === 'production' ? undefined : error.message,
+  });
+}
+
 function toBigInt(value, fieldName) {
   try {
     return BigInt(value);
   } catch (err) {
     throw new Error(`INVALID_${fieldName?.toUpperCase() || 'ID'}`);
   }
+}
+
+function buildJakartaDateTime(date, time) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return null;
+  if (!/^\d{2}:\d{2}$/.test(String(time || ''))) return null;
+  return new Date(`${date}T${time}:00+07:00`);
+}
+
+function calculateAgeFromDate(date) {
+  if (!date) return null;
+  const birthDate = new Date(date);
+  if (Number.isNaN(birthDate.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const monthDelta = now.getMonth() - birthDate.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 0 ? age : null;
+}
+
+function approximateBirthDateFromAge(age) {
+  const parsedAge = Number(age);
+  if (!Number.isFinite(parsedAge) || parsedAge < 1 || parsedAge > 120) return null;
+  const year = new Date().getFullYear() - Math.floor(parsedAge);
+  return new Date(`${year}-01-01T00:00:00.000Z`);
 }
 
 function serializeScheduleEntry(entry) {
@@ -97,9 +166,18 @@ function serializePatient(user, appointments = [], aiResults = []) {
   const futureAppointments = appointments.filter(a => new Date(a.startsAt) >= now);
   const lastVisit = pastAppointments.length > 0 ? pastAppointments.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt))[0] : null;
   const nextAppointment = futureAppointments.length > 0 ? futureAppointments.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0] : null;
+  const patientProfile = user.patientProfile || null;
+  const medicalDetails = patientProfile?.medicalDetails && typeof patientProfile.medicalDetails === 'object'
+    ? patientProfile.medicalDetails
+    : {};
+  const source = appointments.some(a => a.metadata?.patientSource === 'clinic_added')
+    ? 'clinic_added'
+    : 'serene_mobile';
+  const createdAt = user.createdAt?.toISOString?.() || null;
 
   let status = 'inactive';
-  if (futureAppointments.length > 0) status = 'active';
+  if (source === 'clinic_added' && pastAppointments.length === 0) status = 'new';
+  else if (futureAppointments.length > 0) status = 'active';
   else if (pastAppointments.length > 0) status = 'completed';
   if (aiResults.some(r => r.riskLevel === 'high')) status = 'needs_attention';
 
@@ -109,6 +187,16 @@ function serializePatient(user, appointments = [], aiResults = []) {
     email: user.email || null,
     phone: user.phone_number || null,
     avatar: user.avatar_url || null,
+    age: Number.isFinite(Number(medicalDetails.age)) ? Number(medicalDetails.age) : calculateAgeFromDate(patientProfile?.dateOfBirth),
+    gender: patientProfile?.gender || null,
+    createdAt,
+    source,
+    sourceLabel: source === 'clinic_added' ? 'Clinic Added' : 'Serene Mobile',
+    directorySortAt: createdAt || (nextAppointment
+      ? new Date(nextAppointment.startsAt).toISOString()
+      : lastVisit
+        ? new Date(lastVisit.startsAt).toISOString()
+        : null),
     status,
     lastVisit: lastVisit ? new Date(lastVisit.startsAt).toISOString() : null,
     nextAppointment: nextAppointment ? new Date(nextAppointment.startsAt).toISOString() : null,
@@ -194,6 +282,13 @@ function serializePatientBilling(invoices = []) {
   };
 }
 
+async function ensureDentistPatientAccess(dentistId, patientId) {
+  return prisma.appointment.findFirst({
+    where: { dentistId, patientId },
+    select: { id: true },
+  });
+}
+
 // --- Routes ---
 
 // GET /v1/dentist-portal/patients
@@ -204,7 +299,7 @@ router.get(
   async (req, res) => {
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
-      const { search, status, sortBy = 'lastVisit', sortOrder = 'desc', limit = 50, offset = 0 } = req.query;
+      const { search, status, sortBy = 'createdAt', sortOrder = 'desc', limit = 50, offset = 0 } = req.query;
 
       const appointments = await prisma.appointment.findMany({
         where: { dentistId },
@@ -215,7 +310,15 @@ router.get(
               name: true,
               email: true,
               phone_number: true,
-              avatar_url: true
+              avatar_url: true,
+              createdAt: true,
+              patientProfile: {
+                select: {
+                  dateOfBirth: true,
+                  gender: true,
+                  medicalDetails: true
+                }
+              }
             }
           }
         },
@@ -305,6 +408,14 @@ router.get(
             aVal = a.nextAppointment ? new Date(a.nextAppointment) : new Date(0);
             bVal = b.nextAppointment ? new Date(b.nextAppointment) : new Date(0);
             break;
+          case 'directorySortAt':
+            aVal = a.directorySortAt ? new Date(a.directorySortAt) : new Date(0);
+            bVal = b.directorySortAt ? new Date(b.directorySortAt) : new Date(0);
+            break;
+          case 'createdAt':
+            aVal = a.createdAt ? new Date(a.createdAt) : new Date(0);
+            bVal = b.createdAt ? new Date(b.createdAt) : new Date(0);
+            break;
           case 'lastVisit':
           default:
             aVal = a.lastVisit ? new Date(a.lastVisit) : new Date(0);
@@ -341,6 +452,228 @@ router.get(
   }
 );
 
+// POST /v1/dentist-portal/patients
+router.post(
+  '/patients',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const {
+        name,
+        phone,
+        email,
+        age,
+        gender,
+        appointmentDate,
+        appointmentTime,
+        appointmentType,
+        notes
+      } = req.body || {};
+
+      const cleanName = typeof name === 'string' ? name.trim() : '';
+      const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+      const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      const cleanGender = typeof gender === 'string' ? gender.trim().toLowerCase() : '';
+      const parsedAge = Number(age);
+
+      if (!cleanName) return sendError(res, 400, 'PATIENT_NAME_REQUIRED', 'Nama pasien wajib diisi.');
+      if (!cleanPhone) return sendError(res, 400, 'PATIENT_PHONE_REQUIRED', 'Nomor telepon pasien wajib diisi.');
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return sendError(res, 400, 'PATIENT_EMAIL_INVALID', 'Email pasien tidak valid.');
+      }
+      if (!Number.isFinite(parsedAge) || parsedAge < 1 || parsedAge > 120) {
+        return sendError(res, 400, 'PATIENT_AGE_INVALID', 'Usia pasien tidak valid.');
+      }
+      if (!['male', 'female', 'other'].includes(cleanGender)) {
+        return sendError(res, 400, 'PATIENT_GENDER_INVALID', 'Jenis kelamin pasien tidak valid.');
+      }
+
+      const startsAt = buildJakartaDateTime(appointmentDate, appointmentTime);
+      if (!startsAt || Number.isNaN(startsAt.getTime())) {
+        return sendError(res, 400, 'APPOINTMENT_TIME_INVALID', 'Tanggal atau waktu janji tidak valid.');
+      }
+      if (startsAt < new Date()) {
+        return sendError(res, 400, 'APPOINTMENT_IN_PAST', 'Janji temu tidak bisa dijadwalkan pada waktu lampau.');
+      }
+      const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+
+      const dentistProfile = await prisma.dentistProfile.findFirst({
+        where: { userId: dentistId },
+        select: { dentist_type: true, clinic_id: true }
+      });
+      const dentistType = dentistProfile?.dentist_type || 'independent';
+      let resolvedClinicBranchId = null;
+      let resolvedClinicProfileId = null;
+
+      if (dentistType !== 'independent') {
+        if (dentistProfile?.clinic_id) {
+          const branch = await prisma.clinicBranch.findFirst({
+            where: { clinicProfileId: dentistProfile.clinic_id, isActive: true },
+            orderBy: [{ isMainBranch: 'desc' }, { id: 'asc' }],
+            select: { id: true, clinicProfileId: true }
+          });
+          if (branch) {
+            resolvedClinicBranchId = branch.id;
+            resolvedClinicProfileId = branch.clinicProfileId;
+          }
+        }
+        if (!resolvedClinicBranchId) {
+          return sendError(res, 400, 'CLINIC_BRANCH_REQUIRED', 'Cabang klinik diperlukan untuk membuat pasien klinik.');
+        }
+      }
+
+      const existingPatient = await prisma.user.findUnique({
+        where: { email: cleanEmail },
+        select: {
+          id: true,
+          roles: true,
+          patientProfile: { select: { dateOfBirth: true, medicalDetails: true } }
+        }
+      });
+      if (existingPatient && !existingPatient.roles?.includes('patient')) {
+        return sendError(res, 409, 'EMAIL_ALREADY_USED', 'Email ini sudah digunakan oleh akun non-pasien.');
+      }
+
+      const overlappingAppointment = await prisma.appointment.findFirst({
+        where: {
+          dentistId,
+          status: { in: ['scheduled', 'confirmed'] },
+          startsAt: { lt: endsAt },
+          endsAt: { gt: startsAt }
+        },
+        select: { id: true }
+      });
+      if (overlappingAppointment) {
+        return sendError(res, 409, 'SLOT_TAKEN', 'Slot janji ini sudah terisi.');
+      }
+
+      const passwordHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+      let createdPatient;
+      let createdAppointment;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1::bigint)', dentistId);
+        const overlappingInTx = await tx.appointment.findFirst({
+          where: {
+            dentistId,
+            status: { in: ['scheduled', 'confirmed'] },
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt }
+          },
+          select: { id: true }
+        });
+        if (overlappingInTx) {
+          const slotError = new Error('SLOT_TAKEN');
+          slotError.code = 'SLOT_TAKEN';
+          throw slotError;
+        }
+
+        const patient = existingPatient
+          ? await tx.user.update({
+            where: { id: existingPatient.id },
+            data: {
+              name: cleanName,
+              phone_number: cleanPhone,
+              roles: existingPatient.roles?.includes('patient') ? existingPatient.roles : [...(existingPatient.roles || []), 'patient']
+            }
+          })
+          : await tx.user.create({
+            data: {
+              name: cleanName,
+              email: cleanEmail,
+              password_hash: passwordHash,
+              roles: ['patient'],
+              phone_number: cleanPhone
+            }
+          });
+
+        const existingMedicalDetails = existingPatient?.patientProfile?.medicalDetails &&
+          typeof existingPatient.patientProfile.medicalDetails === 'object'
+          ? existingPatient.patientProfile.medicalDetails
+          : {};
+        const birthDate = existingPatient?.patientProfile?.dateOfBirth || approximateBirthDateFromAge(parsedAge);
+        const profile = await tx.patientProfile.upsert({
+          where: { userId: patient.id },
+          create: {
+            userId: patient.id,
+            dateOfBirth: birthDate,
+            gender: cleanGender,
+            medicalDetails: {
+              ...existingMedicalDetails,
+              age: parsedAge,
+              patientSource: 'clinic_added'
+            }
+          },
+          update: {
+            ...(birthDate ? { dateOfBirth: birthDate } : {}),
+            gender: cleanGender,
+            medicalDetails: {
+              ...existingMedicalDetails,
+              age: parsedAge,
+              patientSource: 'clinic_added'
+            }
+          }
+        });
+
+        createdAppointment = await tx.appointment.create({
+          data: {
+            dentistId,
+            patientId: patient.id,
+            clinicBranchId: resolvedClinicBranchId,
+            ownerType: dentistType !== 'independent' ? FINANCIAL_OWNER_TYPES.CLINIC : FINANCIAL_OWNER_TYPES.INDEPENDENT_DENTIST,
+            ownerClinicId: dentistType !== 'independent' ? resolvedClinicProfileId : null,
+            startsAt,
+            endsAt,
+            status: 'scheduled',
+            consultationType: 'onsite',
+            reason: appointmentType || 'consultation',
+            notes: notes || null,
+            metadata: {
+              appointmentType: appointmentType || 'consultation',
+              patientSource: 'clinic_added',
+              createdBy: dentistId.toString(),
+              createdByRole: 'dentist',
+              createdFrom: 'dentist_portal_patient_directory'
+            }
+          }
+        });
+
+        await recordStatusChange(tx, {
+          appointmentId: createdAppointment.id,
+          previousStatus: null,
+          newStatus: 'scheduled',
+          changedBy: dentistId,
+          changedByRole: 'dentist',
+          reason: 'clinic_patient_created',
+          metadata: {
+            patientSource: 'clinic_added',
+            createdFrom: 'dentist_portal_patient_directory'
+          }
+        });
+
+        createdPatient = {
+          ...patient,
+          patientProfile: profile
+        };
+      });
+
+      const serialized = serializePatient(createdPatient, [createdAppointment], []);
+      return res.status(201).json({ patient: serialized });
+    } catch (error) {
+      console.error('Error creating dentist portal patient:', error);
+      if (error.code === 'SLOT_TAKEN') {
+        return sendError(res, 409, 'SLOT_TAKEN', 'Slot janji ini sudah terisi.');
+      }
+      if (error.code === 'P2002') {
+        return sendError(res, 409, 'EMAIL_ALREADY_USED', 'Email pasien sudah terdaftar.');
+      }
+      return sendError(res, 500, 'CREATE_PATIENT_FAILED', 'Gagal menambahkan pasien.');
+    }
+  }
+);
+
 // GET /v1/dentist-portal/patients/:patientId
 router.get(
   '/patients/:patientId',
@@ -355,7 +688,21 @@ router.get(
         where: { dentistId, patientId },
         include: {
           patient: {
-            select: { id: true, name: true, email: true, phone_number: true, avatar_url: true }
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone_number: true,
+              avatar_url: true,
+              createdAt: true,
+              patientProfile: {
+                select: {
+                  dateOfBirth: true,
+                  gender: true,
+                  medicalDetails: true
+                }
+              }
+            }
           }
         },
         orderBy: { startsAt: 'desc' }
@@ -435,6 +782,8 @@ router.get(
         orderBy: { createdAt: 'desc' }
       });
 
+      const emrRecords = await listEmrRecordsForPatient(patientId);
+
       const serializedPatient = serializePatient(patient, appointments, aiResults);
       serializedPatient.appointments = appointments.map(a => ({
         id: a.id.toString(),
@@ -467,6 +816,7 @@ router.get(
 
       // Attach serialized treatment plans
       serializedPatient.treatmentPlans = treatmentPlans.map(serializeUnifiedTreatmentPlan);
+      serializedPatient.emrRecords = emrRecords;
       serializedPatient.billing = serializePatientBilling(invoices);
 
       return res.json({ patient: serializedPatient });
@@ -1017,6 +1367,104 @@ function serializeTreatmentPlan(plan) {
     })),
   };
 }
+
+// GET /v1/dentist-portal/patients/:patientId/emr-records
+router.get(
+  '/patients/:patientId/emr-records',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+
+      const hasAccess = await ensureDentistPatientAccess(dentistId, patientId);
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+
+      const emrRecords = await listEmrRecordsForPatient(patientId);
+      return res.json({ emrRecords });
+    } catch (error) {
+      console.error('Error fetching patient EMR records:', error);
+      return sendError(res, 500, 'EMR_FETCH_FAILED', 'Gagal memuat EMR pasien.');
+    }
+  }
+);
+
+// POST /v1/dentist-portal/patients/:patientId/emr-records
+router.post(
+  '/patients/:patientId/emr-records',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+
+      const hasAccess = await ensureDentistPatientAccess(dentistId, patientId);
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return sendError(res, 400, 'INVALID_EMR_PAYLOAD', 'Payload EMR tidak valid.');
+      }
+
+      const emrRecord = await createEmrRecordForDentist({
+        dentistId,
+        patientUserId: patientId,
+        payload: {
+          ...req.body,
+          patientUserId: patientId.toString(),
+        },
+      });
+
+      return res.status(201).json({ emrRecord });
+    } catch (error) {
+      console.error('Error creating patient EMR record:', error);
+      return sendEmrError(res, error);
+    }
+  }
+);
+
+// POST /v1/dentist-portal/patients/:patientId/emr-records/:recordId/consent
+router.post(
+  '/patients/:patientId/emr-records/:recordId/consent',
+  authenticateToken,
+  requireRoles(['dentist']),
+  uploadEmrConsent.single('consentFile'),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+
+      const hasAccess = await ensureDentistPatientAccess(dentistId, patientId);
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+      if (!req.file) {
+        return sendError(res, 400, 'CONSENT_FILE_REQUIRED', 'File informed consent wajib dipilih.');
+      }
+
+      const emrRecord = await updateEmrConsentDocumentForDentist({
+        dentistId,
+        patientUserId: patientId,
+        recordId: req.params.recordId,
+        document: {
+          name: req.file.originalname,
+          url: `/uploads/emr-consents/${req.file.filename}`,
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+        },
+      });
+
+      return res.json({ emrRecord });
+    } catch (error) {
+      console.error('Error uploading patient EMR consent:', error);
+      return sendEmrError(res, error);
+    }
+  }
+);
 
 // GET /v1/dentist-portal/patients/:patientId/treatment-plans
 router.get(

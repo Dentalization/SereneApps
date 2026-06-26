@@ -74,7 +74,8 @@ async function cleanupFixtures() {
       email: {
         in: [
           'xcore-share-dentist@test.local',
-          'xcore-share-patient@test.local'
+          'xcore-share-patient@test.local',
+          'xcore-recipient-independent@test.local'
         ]
       }
     }
@@ -154,5 +155,33 @@ test('public X-Core share token endpoints are disabled', async () => {
     assert.equal(validate.status, 410);
     assert.match(view.json.error, /disabled/);
     assert.match(validate.json.error, /disabled/);
+  });
+});
+
+test('POST /v1/x-core/studies/:id/share supports email-based sharing including independent dentists', async () => {
+  const { study } = await createFixtureStudy();
+
+  const recipient = await prisma.user.create({
+    data: {
+      name: 'Dr Recipient',
+      email: 'xcore-recipient-independent@test.local',
+      password_hash: 'hash',
+      roles: ['dentist']
+    }
+  });
+
+  await withServer(async (baseUrl) => {
+    const response = await httpJson(baseUrl, `/v1/x-core/studies/${study.id}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ email: 'xcore-recipient-independent@test.local' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.json.share.recipientDentistId, recipient.id.toString());
+    assert.equal(response.json.share.recipient.email, 'xcore-recipient-independent@test.local');
+
+    // Clean up
+    await prisma.studyDentistShare.deleteMany({ where: { studyId: study.id } });
+    await prisma.user.delete({ where: { id: recipient.id } });
   });
 });
