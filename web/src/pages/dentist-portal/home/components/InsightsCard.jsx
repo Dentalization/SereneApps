@@ -4,11 +4,7 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 
 const InsightsCard = ({
   title,
-  risks = [
-    { patient: 'Nadia Putri', risk: 0.82, reason: 'No-show history + morning slot' },
-    { patient: 'Joko Prabowo', risk: 0.74, reason: 'New patient + long travel distance' },
-    { patient: 'Siti Aminah', risk: 0.68, reason: 'Rainy day + traffic pattern' },
-  ],
+  risks = [],
 }) => {
   const { t } = useLanguage();
   
@@ -22,23 +18,28 @@ const InsightsCard = ({
         </div>
         <div>
           <h3 className="text-lg font-bold text-primary">{cardTitle}</h3>
-          <p className="text-xs text-muted">{t('home.topNoShowRisksToday')}</p>
+          <p className="text-xs text-muted">Berdasarkan status appointment tersimpan</p>
         </div>
       </div>
 
       <div className="space-y-3">
-        {risks.map((r, idx) => (
+        {risks.length === 0 ? (
+          <div className="rounded-lg border border-primary/10 bg-surface p-4 text-sm text-secondary">
+            Tidak ada pasien yang perlu ditindaklanjuti.
+          </div>
+        ) : risks.map((r, idx) => (
           <div key={idx} className="flex items-center justify-between bg-surface-elevated border border-primary/10 rounded-2xl p-3">
             <div>
               <div className="font-semibold text-primary">{r.patient}</div>
               <div className="text-xs text-secondary">{r.reason}</div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-20 h-2 bg-surface rounded-full">
-                <div className="h-full bg-red-500 rounded-full" style={{ width: `${Math.round(r.risk * 100)}%` }}></div>
-              </div>
-              <div className="text-sm font-bold text-primary">{Math.round(r.risk * 100)}%</div>
-            </div>
+            <span className={`rounded-md px-2 py-1 text-xs font-semibold ${
+              r.status === 'overdue'
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
+                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
+            }`}>
+              {r.statusLabel || r.status}
+            </span>
           </div>
         ))}
       </div>
@@ -47,4 +48,3 @@ const InsightsCard = ({
 };
 
 export default InsightsCard;
-

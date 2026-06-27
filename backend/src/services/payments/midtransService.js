@@ -26,9 +26,10 @@ class MidtransService {
    * @param {number} params.grossAmount
    * @param {Object} params.customerDetails
    * @param {Object} params.itemDetails
+   * @param {string[]} params.enabledPayments
    * @returns {Promise<{snapToken: string, redirectUrl: string}>}
    */
-  async createSnapTransaction({ orderId, grossAmount, customerDetails, itemDetails }) {
+  async createSnapTransaction({ orderId, grossAmount, customerDetails, itemDetails, enabledPayments }) {
     if (MIDTRANS_MOCK_MODE) {
       return {
         snapToken: `mock-snap-token-${orderId}`,
@@ -48,7 +49,8 @@ class MidtransService {
           email: customerDetails.email,
           phone: customerDetails.phone
         },
-        item_details: itemDetails
+        item_details: itemDetails,
+        ...(enabledPayments?.length ? { enabled_payments: enabledPayments } : {})
       };
 
       const response = await this.snap.createTransaction(parameter);

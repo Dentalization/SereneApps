@@ -10,6 +10,8 @@ import {
 test('DeepDental proxy recognizes only versioned DeepDental API paths', () => {
   assert.equal(isDeepDentalApiPath('/api/v1/chat/upload'), true);
   assert.equal(isDeepDentalApiPath('/api/v1/images/detect'), true);
+  assert.equal(isDeepDentalApiPath('/api/v1/health'), true);
+  assert.equal(isDeepDentalApiPath('/api/v1/health/'), true);
   assert.equal(isDeepDentalApiPath('/health'), false);
   assert.equal(isDeepDentalApiPath('/stream-slice/1/axial/1'), false);
 });

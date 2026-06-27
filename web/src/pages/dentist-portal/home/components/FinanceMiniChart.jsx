@@ -6,8 +6,8 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 const FinanceMiniChart = ({
   title,
   rangeLabel,
-  production = [10, 12, 9, 13, 14, 12, 15],
-  collections = [8, 10, 11, 12, 12, 11, 14],
+  production = [],
+  collections = [],
   currency = 'Rp',
 }) => {
   const { t } = useLanguage();
@@ -15,8 +15,11 @@ const FinanceMiniChart = ({
   const chartTitle = title || t('home.productionVsCollections');
   const chartRangeLabel = rangeLabel || t('home.lastSevenDays');
   
-  const max = Math.max(...production, ...collections) || 1;
-  const pts = (arr) => arr.map((v, i) => `${(i / (arr.length - 1)) * 100},${100 - (v / max) * 100}`).join(' ');
+  const max = Math.max(...production, ...collections, 1);
+  const pts = (arr) => arr.map((v, i) => {
+    const x = arr.length > 1 ? (i / (arr.length - 1)) * 100 : 50;
+    return `${x},${100 - (v / max) * 100}`;
+  }).join(' ');
 
   const totalProd = production.reduce((a, b) => a + b, 0);
   const totalColl = collections.reduce((a, b) => a + b, 0);
@@ -41,19 +44,19 @@ const FinanceMiniChart = ({
 
       <div className="h-32 relative">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-          <polyline fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-500" points={pts(production)} />
-          <polyline fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-500" points={pts(collections)} />
+          {production.length > 0 && <polyline fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-500" points={pts(production)} />}
+          {collections.length > 0 && <polyline fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-500" points={pts(collections)} />}
         </svg>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div className="p-3 rounded-xl bg-surface-elevated border border-primary/10">
           <div className="text-xs text-muted">{t('home.totalProduction')}</div>
-          <div className="text-lg font-bold text-primary">{currency} {Intl.NumberFormat('id-ID').format(totalProd * 1_000_000)}</div>
+          <div className="text-lg font-bold text-primary">{currency} {Intl.NumberFormat('id-ID').format(totalProd)}</div>
         </div>
         <div className="p-3 rounded-xl bg-surface-elevated border border-primary/10">
           <div className="text-xs text-muted">{t('home.totalCollections')}</div>
-          <div className="text-lg font-bold text-primary">{currency} {Intl.NumberFormat('id-ID').format(totalColl * 1_000_000)}</div>
+          <div className="text-lg font-bold text-primary">{currency} {Intl.NumberFormat('id-ID').format(totalColl)}</div>
         </div>
       </div>
     </div>
@@ -61,4 +64,3 @@ const FinanceMiniChart = ({
 };
 
 export default FinanceMiniChart;
-

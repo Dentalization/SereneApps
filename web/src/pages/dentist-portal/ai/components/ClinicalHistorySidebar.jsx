@@ -39,6 +39,34 @@ function formatTimestamp(value) {
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// Calendar-day comparison — avoids the Math.ceil duration bug where a session
+// created at 11pm yesterday shows up as "Today" if viewed before noon today.
+function groupItemsByDate(items, dateGroupLabels = {}) {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOf7DaysAgo = new Date(startOfToday);
+  startOf7DaysAgo.setDate(startOf7DaysAgo.getDate() - 7);
+
+  const groups = [
+    { key: 'today', label: dateGroupLabels.today || 'Hari Ini', items: [] },
+    { key: 'yesterday', label: dateGroupLabels.yesterday || 'Kemarin', items: [] },
+    { key: 'week', label: dateGroupLabels.week || '7 Hari Terakhir', items: [] },
+    { key: 'older', label: dateGroupLabels.older || 'Lebih Lama', items: [] },
+  ];
+
+  for (const item of items) {
+    const d = new Date(item.updatedAt || item.createdAt || item.timestamp || 0);
+    if (d >= startOfToday) groups[0].items.push(item);
+    else if (d >= startOfYesterday) groups[1].items.push(item);
+    else if (d >= startOf7DaysAgo) groups[2].items.push(item);
+    else groups[3].items.push(item);
+  }
+
+  return groups.filter((g) => g.items.length > 0);
+}
+
 function StatusBadge({ status }) {
   const meta = getCaseStatusMeta(status);
   const toneClass = {
@@ -253,16 +281,25 @@ export default function ClinicalHistorySidebar({
               </div>
             )}
 
-            <div className="space-y-2">
-              {filteredItems.map((item) => (
-                <HistoryItem
-                  key={`${item.type}:${item.id}`}
-                  item={item}
-                  isActive={(item.caseId && item.caseId === currentCaseId) || (item.sessionId && item.sessionId === currentSessionId)}
-                  onSelect={onSelect}
-                  onArchive={onArchive}
-                  labels={labels}
-                />
+            <div className="space-y-4">
+              {groupItemsByDate(filteredItems, labels.dateGroups || {}).map((group) => (
+                <div key={group.key}>
+                  <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600">
+                    {group.label}
+                  </p>
+                  <div className="space-y-2">
+                    {group.items.map((item) => (
+                      <HistoryItem
+                        key={`${item.type}:${item.id}`}
+                        item={item}
+                        isActive={(item.caseId && item.caseId === currentCaseId) || (item.sessionId && item.sessionId === currentSessionId)}
+                        onSelect={onSelect}
+                        onArchive={onArchive}
+                        labels={labels}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>

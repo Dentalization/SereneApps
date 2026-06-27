@@ -89,6 +89,92 @@ test('server-side analysis requires latest quality check to allow analysis', asy
   assert.ok(analysis.image.annotated_image_signed_url);
 });
 
+test('AI findings normalize string confidence and do not duplicate annotated base64 in database records', async () => {
+  const service = makeService({
+    aiResult: {
+      raw_ai_result: {
+        image_quality: 'adequate',
+        concern_level: 'moderate',
+        recommendations: ['Perform a clinical examination.'],
+        limitations: 'Clinical correlation is required.',
+        annotated_image_base64: Buffer.from('large-annotated-image').toString('base64'),
+      },
+      normalized_findings: {
+        findings: [{
+          label: 'possible caries',
+          tooth_or_region: '36',
+          severity: 'moderate',
+          confidence: 'high',
+          notes: 'Confirm clinically.',
+        }],
+      },
+      annotated_image_base64: Buffer.from('large-annotated-image').toString('base64'),
+      annotated_image_mime_type: 'image/jpeg',
+    },
+  });
+  const created = await service.createCase({ title: 'Contract normalization', actor: clinicA });
+  const image = await service.addCaseImage({ caseId: created.id, file: imageFile(), actor: clinicA });
+  await service.runQualityCheck({
+    caseId: created.id,
+    imageId: image.id,
+    actor: clinicA,
+    metrics: { width: 1200, height: 900, blur: 0.05, brightness: 0.52, contrast: 0.72, dentalRelevance: 0.94, teethVisible: true },
+  });
+
+  const analysis = await service.recordImageAnalysis({
+    caseId: created.id,
+    imageId: image.id,
+    actor: clinicA,
+  });
+
+  assert.equal(analysis.findings.length, 1);
+  assert.equal(analysis.findings[0].confidence, null);
+  assert.equal(analysis.findings[0].raw_ai_result.annotated_image_base64, undefined);
+  assert.equal(analysis.visual_findings.limitations, 'Clinical correlation is required.');
+  assert.equal(analysis.visual_findings.annotated_image_base64, undefined);
+});
+
+test('workspace converts detection-only AI output into reviewable findings', async () => {
+  const service = makeService({
+    aiResult: {
+      raw_ai_result: {
+        image_quality: 'adequate',
+        findings: [],
+        detections: [{ mark_id: '1', label: 'caries', confidence: 0.81, bbox: [10, 20, 30, 40] }],
+        concern_level: 'moderate',
+        recommendations: [],
+        limitations: 'Clinical confirmation is required.',
+        annotated_image_base64: null,
+      },
+      normalized_findings: {
+        findings: [],
+        detections: [{ mark_id: '1', label: 'caries', confidence: 0.81, bbox: [10, 20, 30, 40] }],
+        concern_level: 'moderate',
+      },
+      annotated_image_base64: null,
+      annotated_image_mime_type: 'image/jpeg',
+    },
+  });
+  const created = await service.createCase({ title: 'Detection fallback', actor: clinicA });
+  const image = await service.addCaseImage({ caseId: created.id, file: imageFile(), actor: clinicA });
+  await service.runQualityCheck({
+    caseId: created.id,
+    imageId: image.id,
+    actor: clinicA,
+    metrics: { width: 1200, height: 900, blur: 0.05, brightness: 0.52, contrast: 0.72, dentalRelevance: 0.94, teethVisible: true },
+  });
+
+  const analysis = await service.recordImageAnalysis({
+    caseId: created.id,
+    imageId: image.id,
+    actor: clinicA,
+  });
+
+  assert.equal(analysis.findings.length, 1);
+  assert.equal(analysis.findings[0].label, 'caries');
+  assert.equal(analysis.findings[0].confidence, 0.81);
+});
+
 test('multi-image analysis can continue after a case reaches pending clinician review', async () => {
   const service = makeService();
   const created = await service.createCase({ title: 'Multi-image analysis', actor: clinicA });

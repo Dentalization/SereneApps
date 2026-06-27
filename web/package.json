@@ -81,7 +81,7 @@
     "build:sourcemap": "NODE_OPTIONS=--max-old-space-size=8192 vite build --sourcemap",
     "serve": "vite preview",
     "test": "node --test tests/*.test.mjs",
-    "test:ai": "node --test tests/deepDentalAiContract.test.mjs tests/deepDentalRenderingSafety.test.mjs tests/clinicalArtifactStore.test.mjs",
+    "test:ai": "node --test tests/deepDentalAiContract.test.mjs tests/deepDentalRenderingSafety.test.mjs tests/clinicalArtifactStore.test.mjs tests/xCore2dAiAnalysis.test.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "i18n:audit:keys": "node scripts/i18n-audit.mjs --fail-on-missing-keys",
     "i18n:coverage": "node scripts/i18n-audit.mjs --fail-on-missing-keys --fail-on-parity",

@@ -12,12 +12,21 @@ import InsightsCard from './components/InsightsCard';
 import PipelineCard from './components/PipelineCard';
 import FinanceMiniChart from './components/FinanceMiniChart';
 import RecallManagerCard from './components/RecallManagerCard';
-import InventoryStockCard from './components/InventoryStockCard';
 import TreatmentPlanCard from './components/TreatmentPlanCard';
-import { getDentistDashboardContinuity } from '../../../services/dentistPortalService';
+import { getDentistDashboardContinuity, getDentistPatients } from '../../../services/dentistPortalService';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { fetchAppointments } from '../../../services/appointmentService';
 import { getDentistProfileApi } from '../../../services/authService';
+import { buildDentistDashboardMetrics } from './dashboardMetrics.mjs';
+
+const DENTIST_DASHBOARD_REALTIME_EVENTS = [
+  'notification:new',
+  'dashboard:metrics_updated',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated',
+  'clinic:billing_updated'
+];
 
 const GAP_PX = 24;                 // gap-6
 const DEFAULT_CARD_WIDTH = 320;    // w-[320px]
@@ -34,6 +43,7 @@ const DentistHome = () => {
   const [loading, setLoading] = useState(true);
   const [continuityData, setContinuityData] = useState({ treatmentPlans: [], metrics: null });
   const [appointments, setAppointments] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [dentistProfile, setDentistProfile] = useState(null);
 
   const scrollRef = useRef(null);
@@ -54,30 +64,43 @@ const DentistHome = () => {
     return `Rp ${val.toLocaleString('id-ID')}`;
   };
 
-  // Memoized lists of appointments
-  const todayAppointments = useMemo(() => {
-    const todayStr = new Date().toDateString();
-    return appointments.filter(a => {
-      const d = new Date(a.startsAt || a.starts_at);
-      return d.toDateString() === todayStr;
-    });
-  }, [appointments]);
+  const workingMinutes = useMemo(() => {
+    const rawHours = dentistProfile?.clinicWorkingHours;
+    if (!rawHours) return null;
+    let hours = rawHours;
+    if (typeof rawHours === 'string') {
+      try {
+        hours = JSON.parse(rawHours);
+      } catch {
+        return null;
+      }
+    }
+    const day = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta',
+      weekday: 'long'
+    }).format(new Date()).toLowerCase();
+    const schedule = hours?.[day];
+    if (!schedule || String(schedule).toLowerCase() === 'closed') return null;
+    const [open, close] = typeof schedule === 'string'
+      ? schedule.split('-')
+      : [schedule.open, schedule.close];
+    const toMinutes = (value) => {
+      const [hour, minute] = String(value || '').trim().split(':').map(Number);
+      return Number.isFinite(hour) && Number.isFinite(minute) ? (hour * 60) + minute : null;
+    };
+    const openMinutes = toMinutes(open);
+    const closeMinutes = toMinutes(close);
+    return openMinutes !== null && closeMinutes > openMinutes ? closeMinutes - openMinutes : null;
+  }, [dentistProfile]);
 
-  const monthAppointments = useMemo(() => {
-    return appointments;
-  }, [appointments]);
+  const dashboardMetrics = useMemo(() => buildDentistDashboardMetrics({
+    appointments,
+    patients,
+    treatmentPlans: continuityData.treatmentPlans,
+    workingMinutes
+  }), [appointments, patients, continuityData.treatmentPlans, workingMinutes]);
 
-  // Derived KPI statistics
-  const todayProfit = useMemo(() => {
-    return todayAppointments
-      .filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status))
-      .reduce((sum, a) => {
-        const amt = a.payment && ['paid', 'settled', 'succeeded'].includes(a.payment.status)
-          ? a.payment.amount
-          : (a.fee || dentistProfile?.consultationFee || 150000);
-        return sum + Number(amt);
-      }, 0);
-  }, [todayAppointments, dentistProfile]);
+  const todayAppointments = dashboardMetrics.todayAppointments;
 
   const patientsTodaySubtitle = useMemo(() => {
     const scheduledToday = todayAppointments.filter(a => ['scheduled', 'confirmed'].includes(a.status)).length;
@@ -93,40 +116,14 @@ const DentistHome = () => {
     return upcoming[0] || null;
   }, [todayAppointments]);
 
-  const monthRevenue = useMemo(() => {
-    return monthAppointments
-      .filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status))
-      .reduce((sum, a) => {
-        const amt = a.payment && ['paid', 'settled', 'succeeded'].includes(a.payment.status)
-          ? a.payment.amount
-          : (a.fee || dentistProfile?.consultationFee || 150000);
-        return sum + Number(amt);
-      }, 0);
-  }, [monthAppointments, dentistProfile]);
-
-  const treatmentSuccess = useMemo(() => {
-    const completed = monthAppointments.filter(a => a.status === 'completed').length;
-    const cancelled = monthAppointments.filter(a => a.status === 'cancelled').length;
-    const total = completed + cancelled;
-    if (total === 0) return '96.8%';
-    return `${((completed / total) * 100).toFixed(1)}%`;
-  }, [monthAppointments]);
-
-  const noShowRate = useMemo(() => {
-    const noShows = monthAppointments.filter(a => ['no-show', 'overdue'].includes(a.status)).length;
-    const totalPast = monthAppointments.filter(a => ['completed', 'no-show', 'overdue', 'cancelled'].includes(a.status)).length;
-    if (totalPast === 0) return '3.2%';
-    return `${((noShows / totalPast) * 100).toFixed(1)}%`;
-  }, [monthAppointments]);
-
   const kpis = useMemo(() => [
-    { title: "Today's Profit", value: formatCurrency(todayProfit), subtitle: 'Accrued today', icon: 'DollarSign', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
+    { title: 'Collections Today', value: formatCurrency(dashboardMetrics.todayCollections), subtitle: 'Paid transactions only', icon: 'DollarSign', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
     { title: 'Patients Today', value: String(todayAppointments.length), subtitle: patientsTodaySubtitle, icon: 'Users', color: 'blue', gradient: 'from-blue-500/10 to-blue-600/5' },
     { title: 'Next Appointment', value: nextAppointment ? new Date(nextAppointment.startsAt || nextAppointment.starts_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'No appt', subtitle: nextAppointment ? `${nextAppointment.patient?.name || 'Patient'} - ${nextAppointment.reason || 'Consultation'}` : 'No more today', icon: 'Clock', color: 'purple', gradient: 'from-purple-500/10 to-purple-600/5' },
-    { title: 'Revenue This Month', value: formatShortCurrency(monthRevenue), subtitle: 'Total accrued this month', icon: 'TrendingUp', color: 'amber', gradient: 'from-amber-500/10 to-amber-600/5' },
-    { title: 'Treatment Success', value: treatmentSuccess, subtitle: 'Patient satisfaction rate', icon: 'Award', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
-    { title: 'No-Show Rate', value: noShowRate, subtitle: 'No-show and overdue rate', icon: 'UserX', color: 'red', gradient: 'from-red-500/10 to-red-600/5' }
-  ], [todayProfit, todayAppointments.length, patientsTodaySubtitle, nextAppointment, monthRevenue, treatmentSuccess, noShowRate]);
+    { title: 'Collections This Month', value: formatShortCurrency(dashboardMetrics.monthCollections), subtitle: 'Paid transactions only', icon: 'TrendingUp', color: 'amber', gradient: 'from-amber-500/10 to-amber-600/5' },
+    { title: 'Total Patients', value: String(dashboardMetrics.totalPatients), subtitle: `${dashboardMetrics.activePatients} active`, icon: 'ContactRound', color: 'emerald', gradient: 'from-emerald-500/10 to-emerald-600/5' },
+    { title: 'Clinic Walk-ins', value: String(dashboardMetrics.walkInPatients), subtitle: `${dashboardMetrics.mobilePatients} from Serene Mobile`, icon: 'Footprints', color: 'red', gradient: 'from-red-500/10 to-red-600/5' }
+  ], [dashboardMetrics, nextAppointment, patientsTodaySubtitle, todayAppointments.length]);
 
   const kpiCards = useMemo(
     () => kpis.map((kpi, i) => ({ ...kpi, id: `kpi-${i}` })),
@@ -175,35 +172,13 @@ const DentistHome = () => {
     { title: 'Consent Forms', subtitle: 'Digital consent management', icon: 'Shield', color: 'teal' }
   ];
 
-  const chairUtilization = useMemo(() => {
-    const totalWorkingMinutes = 480; // 8 hours
-    const bookedMinutes = todayAppointments.filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status)).length * 60;
-    return Math.min(Math.round((bookedMinutes / totalWorkingMinutes) * 100), 100);
-  }, [todayAppointments]);
-
-  const avgTreatmentTime = useMemo(() => {
-    const activeAppts = todayAppointments.filter(a => ['confirmed', 'check-in', 'in-chair', 'completed'].includes(a.status));
-    if (activeAppts.length === 0) return 42;
-    const totalDuration = activeAppts.reduce((sum, a) => {
-      const start = new Date(a.startsAt || a.starts_at);
-      const end = new Date(a.endsAt || a.ends_at);
-      return sum + (end - start) / 60000;
-    }, 0);
-    return Math.round(totalDuration / activeAppts.length);
-  }, [todayAppointments]);
-
-  const patientSatisfaction = useMemo(() => {
-    const completedCount = todayAppointments.filter(a => a.status === 'completed').length;
-    return (4.7 + Math.min(completedCount * 0.05, 0.3)).toFixed(1);
-  }, [todayAppointments]);
-
   const loadDashboardData = useCallback(async () => {
     try {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      const [appointmentResponse, profileResponse] = await Promise.all([
+      const [appointmentResponse, profileResponse, patientResponse] = await Promise.all([
         fetchAppointments({
           view: 'dentist',
           from: startOfMonth.toISOString(),
@@ -214,7 +189,8 @@ const DentistHome = () => {
         getDentistProfileApi().catch(err => {
           console.warn('Failed to load dentist profile:', err);
           return null;
-        })
+        }),
+        getDentistPatients({ sortBy: 'createdAt', sortOrder: 'desc', limit: 200 })
       ]);
 
       if (appointmentResponse?.appointments) {
@@ -223,6 +199,7 @@ const DentistHome = () => {
       if (profileResponse) {
         setDentistProfile(profileResponse);
       }
+      setPatients(patientResponse?.patients || []);
     } catch (error) {
       console.error('Error loading dentist dashboard data:', error);
     }
@@ -372,9 +349,9 @@ const DentistHome = () => {
         .catch((err) => console.warn(err));
     };
 
-    socket.on('notification:new', handleRealtimeUpdate);
+    DENTIST_DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      DENTIST_DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, loadDashboardData]);
 
@@ -618,13 +595,16 @@ const DentistHome = () => {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3 mb-8">
-              <ClaimsCard />
-              <InsightsCard />
-              <PipelineCard />
+              <ClaimsCard {...dashboardMetrics.claims} />
+              <InsightsCard title="Patient Follow-up" risks={dashboardMetrics.risks} />
+              <PipelineCard items={dashboardMetrics.pipelineItems} />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-1">
-              <FinanceMiniChart />
+              <FinanceMiniChart
+                production={dashboardMetrics.financeSeries.production}
+                collections={dashboardMetrics.financeSeries.collections}
+              />
             </div>
           </div>
 
@@ -641,7 +621,7 @@ const DentistHome = () => {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-1">
-              <RecallManagerCard />
+              <RecallManagerCard recalls={dashboardMetrics.recalls} />
             </div>
           </div>
 
@@ -657,12 +637,11 @@ const DentistHome = () => {
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6">
               <TreatmentPlanCard
                 treatmentPlans={continuityData.treatmentPlans}
                 metrics={continuityData.metrics}
               />
-              <InventoryStockCard />
             </div>
           </div>
 
@@ -690,24 +669,27 @@ const DentistHome = () => {
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
                   <span className="text-secondary theme-transition">Chair Utilization</span>
                   <div className="text-right">
-                    <span className="font-bold text-primary theme-transition">{chairUtilization}%</span>
+                    <span className="font-bold text-primary theme-transition">
+                      {dashboardMetrics.chairUtilization === null ? '-' : `${dashboardMetrics.chairUtilization}%`}
+                    </span>
                     <div className="w-20 h-2 bg-surface rounded-full mt-1">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${chairUtilization}%` }}></div>
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${dashboardMetrics.chairUtilization || 0}%` }}></div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
                   <span className="text-secondary theme-transition">Avg Treatment Time</span>
-                  <span className="font-bold text-primary theme-transition">{avgTreatmentTime} min</span>
+                  <span className="font-bold text-primary theme-transition">
+                    {dashboardMetrics.averageTreatmentMinutes === null ? '-' : `${dashboardMetrics.averageTreatmentMinutes} min`}
+                  </span>
                 </div>
 
                 <div className="flex justify-between items-center p-3 bg-surface-elevated rounded-xl theme-transition">
-                  <span className="text-secondary theme-transition">Patient Satisfaction</span>
-                  <div className="flex items-center space-x-1">
-                    <span className="font-bold text-primary theme-transition">{patientSatisfaction}</span>
-                    <Icon name="Star" size={14} className="text-amber-500 fill-current" />
-                  </div>
+                  <span className="text-secondary theme-transition">No-show Rate</span>
+                  <span className="font-bold text-primary theme-transition">
+                    {dashboardMetrics.noShowRate === null ? '-' : `${dashboardMetrics.noShowRate.toFixed(1)}%`}
+                  </span>
                 </div>
               </div>
             </div>

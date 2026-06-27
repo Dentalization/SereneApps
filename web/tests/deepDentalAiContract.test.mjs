@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  buildDetectionAnalysisPayload,
+  createDeepDentalClient,
   createDeepDentalHeaders,
   resolveDeepDentalConfig,
 } from '../src/pages/dentist-portal/ai/components/deepDentalClient.mjs';
@@ -66,23 +66,29 @@ test('visual findings normalization records schema drift instead of hiding it', 
   ]);
 });
 
-test('analysis-from-detections payload is explicit and versioned', () => {
-  const payload = buildDetectionAnalysisPayload({
-    sessionId: 'session-1',
-    role: 'dentist',
-    language: 'id',
-    message: 'Apa prioritas klinisnya?',
-    detections: [{ label: 'caries', confidence: 0.91 }],
-    imageMetadata: { fileName: 'scan.png', mimeType: 'image/png' },
+test('DeepDental client follows the documented session messages path', async () => {
+  const calls = [];
+  const client = createDeepDentalClient({
+    config: {
+      baseUrl: 'https://deepdental.test/api/v1',
+      isConfigured: true,
+    },
+    getAccessToken: () => 'jwt-token',
+    retries: 0,
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ messages: [], total: 0 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
   });
 
-  assert.equal(payload.contract, 'analysis_from_detections');
-  assert.equal(payload.schema_version, '2026-05-07.deepdental.analysis-from-detections.v1');
-  assert.equal(payload.session_id, 'session-1');
-  assert.equal(payload.role, 'dentist');
-  assert.equal(payload.language, 'id');
-  assert.equal(payload.detections.length, 1);
-  assert.equal(payload.image_metadata.mime_type, 'image/png');
+  await client.loadMessages('session-1');
+
+  assert.equal(calls[0].url, 'https://deepdental.test/api/v1/sessions/session-1/messages');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer jwt-token');
+  assert.equal('analyzeFromDetections' in client, false);
 });
 
 test('quality coach blocks unsupported and oversized image files before analysis', () => {

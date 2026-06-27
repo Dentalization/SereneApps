@@ -4,6 +4,8 @@ export const SUPPORTED_DEEPDENTAL_IMAGE_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/heic',
+  'image/heif',
 ]);
 
 export function buildImageQualityCoach(file, dimensions = null) {

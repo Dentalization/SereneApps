@@ -128,7 +128,19 @@ app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
 
 app.use('/py-api', async (req, res) => {
   const proxyPath = req.originalUrl.replace(/^\/py-api/, '') || '/';
-  const targetUrl = new URL(proxyPath, `${pyApiBase}/`);
+  const isDeepDental = isDeepDentalApiPath(proxyPath);
+
+  // Distinguish between DeepDental AI and X-Core Streamer targets
+  let targetBaseUrl = process.env.XCORE_PY_API_BASE_URL || 'http://127.0.0.1:8000';
+  if (isDeepDental) {
+    targetBaseUrl = process.env.DEEPDENTAL_API_BASE_URL || 'https://api.dentalization.id';
+    // Fall back to cloud API if misconfigured to local port 8000 streamer
+    if (targetBaseUrl.includes('127.0.0.1:8000') || targetBaseUrl.includes('localhost:8000')) {
+      targetBaseUrl = 'https://api.dentalization.id';
+    }
+  }
+
+  const targetUrl = new URL(proxyPath, `${targetBaseUrl.replace(/\/$/, '')}/`);
   const backendApiKey = process.env.DEEPDENTAL_API_KEY || process.env.SERENE_AI_API_KEY || '';
 
   const authError = getDeepDentalProxyAuthError({

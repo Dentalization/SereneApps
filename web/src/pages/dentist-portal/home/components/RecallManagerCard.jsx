@@ -1,13 +1,7 @@
 import React from 'react';
 import Icon from '../../../../components/AppIcon';
 
-const RecallManagerCard = () => {
-  const recallData = [
-    { type: 'ortho-checkup', patient: 'Maya Putri', dueDate: '2025-09-16', treatment: 'Orthodontic Control', priority: 'high', lastVisit: '2025-07-16' },
-    { type: 'scaling-recall', patient: 'Ahmad Rahman', dueDate: '2025-09-18', treatment: 'Scaling & Polish', priority: 'medium', lastVisit: '2025-03-18' },
-    { type: 'missed-appointment', patient: 'Sari Indah', dueDate: '2025-09-14', treatment: 'Crown Follow-up', priority: 'urgent', lastVisit: '2025-08-28' },
-    { type: 'implant-followup', patient: 'Budi Santoso', dueDate: '2025-09-20', treatment: 'Implant Check', priority: 'high', lastVisit: '2025-06-20' },
-  ];
+const RecallManagerCard = ({ recalls = [] }) => {
 
   const getPriorityInfo = (priority) => {
     switch (priority) {
@@ -59,13 +53,17 @@ const RecallManagerCard = () => {
         </div>
         <div className="flex items-center space-x-2">
           <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-500 text-sm font-medium">
-            {recallData.filter(item => item.priority === 'urgent').length} Urgent
+            {recalls.filter(item => item.priority === 'urgent').length} Urgent
           </span>
         </div>
       </div>
 
       <div className="space-y-3 mb-6">
-        {recallData.slice(0, 4).map((recall, index) => {
+        {recalls.length === 0 ? (
+          <div className="rounded-lg border border-primary/10 bg-surface p-5 text-center text-sm text-secondary">
+            Tidak ada appointment yang memerlukan follow-up.
+          </div>
+        ) : recalls.slice(0, 4).map((recall, index) => {
           const priorityInfo = getPriorityInfo(recall.priority);
           return (
             <div key={index} className="flex items-center justify-between p-4 bg-surface-elevated rounded-xl hover:bg-accent/5 transition-colors theme-transition">
@@ -91,28 +89,19 @@ const RecallManagerCard = () => {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-emerald-500">12</p>
-          <p className="text-xs text-muted theme-transition">This Week</p>
+          <p className="text-2xl font-bold text-emerald-500">{recalls.length}</p>
+          <p className="text-xs text-muted theme-transition">Follow-up</p>
         </div>
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-blue-500">45</p>
-          <p className="text-xs text-muted theme-transition">This Month</p>
+          <p className="text-2xl font-bold text-blue-500">{recalls.filter((item) => item.priority === 'high').length}</p>
+          <p className="text-xs text-muted theme-transition">Overdue</p>
         </div>
         <div className="text-center p-3 bg-surface-elevated rounded-xl theme-transition">
-          <p className="text-2xl font-bold text-amber-500">88%</p>
-          <p className="text-xs text-muted theme-transition">Response Rate</p>
+          <p className="text-2xl font-bold text-amber-500">{recalls.filter((item) => item.priority === 'urgent').length}</p>
+          <p className="text-xs text-muted theme-transition">No-show</p>
         </div>
       </div>
 
-      <div className="flex justify-between items-center pt-4 border-t border-primary/10">
-        <button className="px-4 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-sm font-medium transition-colors flex items-center space-x-2">
-          <Icon name="Send" size={14} />
-          <span>Send Reminders</span>
-        </button>
-        <button className="px-4 py-2 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-sm font-medium transition-colors">
-          View All Recalls
-        </button>
-      </div>
     </div>
   );
 };

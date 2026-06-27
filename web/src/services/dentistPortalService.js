@@ -197,7 +197,7 @@ export async function completeTreatmentItem(patientId, planId, itemId, payload) 
 }
 
 // ==========================================
-// NOTIFICATIONS
+// NOTIFICATIONS & REPORTS
 // ==========================================
 
 export async function getNotifications(params = {}) {
@@ -212,5 +212,10 @@ export async function markNotificationAsRead(id) {
 
 export async function markAllNotificationsAsRead() {
   const { data } = await authHttp.patch('/notifications/read-all');
+  return data;
+}
+
+export async function getDentistReportsData(params = {}) {
+  const { data } = await authHttp.get('/dentist-portal/reports/data', { params });
   return data;
 }

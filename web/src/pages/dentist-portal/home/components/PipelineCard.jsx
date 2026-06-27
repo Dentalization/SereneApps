@@ -3,11 +3,7 @@ import Icon from '../../../../components/AppIcon';
 
 const PipelineCard = ({
   title = 'Unscheduled Treatment',
-  items = [
-    { patient: 'Andi Prakoso', treatment: 'Crown x2', value: 7_500_000 },
-    { patient: 'Rina Lestari', treatment: 'Implant consult', value: 12_000_000 },
-    { patient: 'Budi Santoso', treatment: 'Aligner plan', value: 18_000_000 },
-  ],
+  items = [],
 }) => {
   return (
     <div className="bg-surface rounded-3xl p-6 border border-primary/20 shadow-theme-lg hover:shadow-theme-xl transition-all duration-300 theme-transition">
@@ -22,7 +18,11 @@ const PipelineCard = ({
       </div>
 
       <div className="space-y-3">
-        {items.map((it, idx) => (
+        {items.length === 0 ? (
+          <div className="rounded-lg border border-primary/10 bg-surface-elevated p-4 text-sm text-secondary">
+            Belum ada rencana perawatan aktif.
+          </div>
+        ) : items.map((it, idx) => (
           <div key={idx} className="flex items-center justify-between bg-surface-elevated border border-primary/10 rounded-2xl p-3">
             <div>
               <div className="font-semibold text-primary">{it.patient}</div>
@@ -37,4 +37,3 @@ const PipelineCard = ({
 };
 
 export default PipelineCard;
-

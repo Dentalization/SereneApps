@@ -70,6 +70,13 @@ function sendStoreError(res, error) {
     code.includes('signed_storage') ||
     code.includes('signed') ? 403 :
     500);
+  if (status >= 500) {
+    console.error('[VerifiedCaseWorkspace] request failed', {
+      status,
+      code,
+      message: error?.message || String(error),
+    });
+  }
   return sendError(res, status, code, code.replace(/_/g, ' '));
 }
 

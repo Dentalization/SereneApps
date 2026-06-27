@@ -1,7 +1,7 @@
 /**
  * VisualFindingsCard — Theme-aware HUD card for dental AI analysis results.
  */
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Eye, Shield, AlertTriangle, CheckCircle, XCircle,
@@ -27,6 +27,14 @@ const SEVERITY_BADGE = {
   moderate: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
   severe: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700',
   critical: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
+};
+
+const formatConfidence = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+  const numeric = Number(String(value).replace(/%$/, ''));
+  if (!Number.isFinite(numeric)) return String(value);
+  const normalized = numeric <= 1 ? numeric * 100 : numeric;
+  return `${Math.round(normalized)}%`;
 };
 
 const ConfidenceBar = ({ confidence, label, index }) => {
@@ -68,6 +76,7 @@ const ConfidenceBar = ({ confidence, label, index }) => {
 const FindingItem = ({ finding, index }) => {
   const severity = finding.severity?.toLowerCase() || 'mild';
   const badgeClass = SEVERITY_BADGE[severity] || SEVERITY_BADGE.mild;
+  const confidenceLabel = formatConfidence(finding.confidence);
 
   return (
     <motion.div
@@ -87,9 +96,9 @@ const FindingItem = ({ finding, index }) => {
             </span>
           )}
         </div>
-        {finding.confidence && (
+        {confidenceLabel && (
           <span className="text-[10px] font-mono text-muted">
-            {Math.round(finding.confidence * 100)}%
+            {confidenceLabel}
           </span>
         )}
       </div>
@@ -118,6 +127,17 @@ export default function VisualFindingsCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAllDetections, setShowAllDetections] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
+
+  const handleReview = useCallback(async (status) => {
+    if (isReviewing) return;
+    setIsReviewing(true);
+    try {
+      await onReview?.(status);
+    } finally {
+      setIsReviewing(false);
+    }
+  }, [isReviewing, onReview]);
 
   if (!findings) return null;
 
@@ -129,8 +149,8 @@ export default function VisualFindingsCard({
   const clinicalFindings = findings.findings || [];
   const recommendations = findings.recommendations || [];
   const visibleDetections = showAllDetections ? detections : detections.slice(0, 6);
-  const hasAnnotated = !!findings.annotated_image_base64;
-  const annotatedImageSrc = buildAnnotatedImageDataUrl(findings);
+  const hasAnnotated = !!findings.annotated_image_base64 || !!findings.annotated_image_signed_url;
+  const annotatedImageSrc = findings.annotated_image_signed_url || buildAnnotatedImageDataUrl(findings);
   const reviewStatus = review?.status || 'pending_clinician_review';
 
   return (
@@ -327,27 +347,29 @@ export default function VisualFindingsCard({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => onReview?.('needs_revision')}
+                        onClick={() => handleReview('needs_revision')}
+                        disabled={isReviewing}
                         aria-label="Mark AI findings as needing revision"
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                           reviewStatus === 'needs_revision'
                             ? 'bg-amber-500/15 text-amber-700 border-amber-500/30'
                             : 'bg-surface-elevated text-muted border-primary hover:text-primary'
                         }`}
                       >
-                        Revise
+                        {isReviewing && reviewStatus !== 'needs_revision' ? '…' : 'Revisi'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => onReview?.('confirmed')}
+                        onClick={() => handleReview('confirmed')}
+                        disabled={isReviewing}
                         aria-label="Confirm AI findings as reviewed by clinician"
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                           reviewStatus === 'confirmed'
                             ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
                             : 'bg-accent text-white border-accent hover:bg-accent-hover'
                         }`}
                       >
-                        Confirm
+                        {isReviewing && reviewStatus !== 'confirmed' ? '…' : 'Konfirmasi'}
                       </button>
                     </div>
                   </div>

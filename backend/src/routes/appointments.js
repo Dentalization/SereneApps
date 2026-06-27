@@ -340,10 +340,61 @@ async function resolveClinicStaffContext(userId) {
     where: { userId: BigInt(userId), isActive: true },
     select: {
       id: true,
+      role: true,
       clinicProfileId: true,
       assignedBranchId: true
     }
   });
+}
+
+function makeRouteError(status, code, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
+}
+
+async function authorizeAppointmentStatusUpdate({ appointment, userId, roles }) {
+  if (roles.includes('dentist')) {
+    if (appointment.dentistId === userId) {
+      return STATUS_TRANSITION_ROLES.dentist;
+    }
+    if (!roles.some(isClinicRole)) {
+      throw makeRouteError(403, 'forbidden', 'Anda hanya dapat mengubah status janji temu Anda sendiri.');
+    }
+  }
+
+  if (!roles.some(isClinicRole)) {
+    throw makeRouteError(403, 'forbidden', 'Akses staf klinik diperlukan untuk mengubah status janji temu.');
+  }
+
+  const clinicContext = await resolveClinicStaffContext(userId);
+  if (!clinicContext) {
+    throw makeRouteError(403, 'clinic_context_missing', 'Akun Anda belum terhubung dengan klinik mana pun.');
+  }
+
+  const appointmentClinicId = appointment.ownerClinicId || appointment.clinicBranch?.clinicProfileId;
+  if (!appointmentClinicId || appointmentClinicId.toString() !== clinicContext.clinicProfileId.toString()) {
+    throw makeRouteError(403, 'cross_clinic_denied', 'Janji temu ini berada di klinik lain.');
+  }
+
+  if (
+    clinicContext.assignedBranchId
+    && appointment.clinicBranchId
+    && clinicContext.assignedBranchId.toString() !== appointment.clinicBranchId.toString()
+  ) {
+    throw makeRouteError(403, 'cross_branch_denied', 'Janji temu ini berada di cabang lain.');
+  }
+
+  return STATUS_TRANSITION_ROLES.staff;
+}
+
+function metadataWithStatusStamp(metadata, status, userId) {
+  const next = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+  next.lastOperationalStatus = status;
+  next.lastOperationalStatusAt = new Date().toISOString();
+  next.lastOperationalStatusBy = userId.toString();
+  return next;
 }
 
 router.get('/availability', authenticateToken, async (req, res) => {
@@ -1324,7 +1375,7 @@ router.get(
 router.patch(
   '/:appointmentId/confirm',
   authenticateToken,
-  requireRoles(['dentist', 'clinic_admin', 'clinic_staff', 'clinic_manager', 'owner', 'manager', 'front_office']),
+  requireRoles(['dentist', 'clinic_admin', 'clinic_staff', 'clinic_manager', 'owner', 'manager', 'front_office', 'nurse', 'cashier', 'staff']),
   async (req, res) => {
     try {
       const { appointmentId } = req.params;
@@ -1369,10 +1420,7 @@ router.patch(
         return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan atau sudah dihapus.');
       }
 
-      // If user is dentist, verify it's their appointment
-      if (roles.includes('dentist') && appointment.dentistId !== userId) {
-        return sendError(res, 403, 'forbidden', 'Anda hanya dapat mengkonfirmasi janji temu Anda sendiri.');
-      }
+      const changedByRole = await authorizeAppointmentStatusUpdate({ appointment, userId, roles });
 
       // Check if appointment is in a confirmable status
       if (!['scheduled', 'rescheduled'].includes(appointment.status)) {
@@ -1391,11 +1439,11 @@ router.patch(
           where: { id: appointment.id },
           data: {
             status: 'confirmed',
-            metadata: {
+            metadata: metadataWithStatusStamp({
               ...(appointment.metadata && typeof appointment.metadata === 'object' ? appointment.metadata : {}),
-              confirmedAt: new Date(),
+              confirmedAt: new Date().toISOString(),
               confirmedBy: userId.toString()
-            }
+            }, 'confirmed', userId)
           }
         });
 
@@ -1404,7 +1452,7 @@ router.patch(
           previousStatus: appointment.status,
           newStatus: 'confirmed',
           changedBy: userId,
-          changedByRole: roles.includes('dentist') ? STATUS_TRANSITION_ROLES.dentist : STATUS_TRANSITION_ROLES.staff,
+          changedByRole,
           reason: 'staff_confirmed',
           metadata: {
             confirmedAt: new Date(),
@@ -1463,10 +1511,203 @@ router.patch(
       });
     } catch (error) {
       console.error('Error confirming appointment:', error);
+      if (error.status) {
+        return sendError(res, error.status, error.code || 'confirm_forbidden', error.message);
+      }
       return sendError(res, 500, 'confirm_failed', 'Terjadi kesalahan saat mengkonfirmasi janji temu.');
     }
   }
 );
+
+const OPERATIONAL_STATUS_ACTIONS = {
+  'check-in': {
+    status: 'check-in',
+    allowedFrom: ['scheduled', 'rescheduled', 'confirmed'],
+    eventType: 'appointment_checked_in',
+    reason: 'staff_check_in'
+  },
+  start: {
+    status: 'in-chair',
+    allowedFrom: ['scheduled', 'rescheduled', 'confirmed', 'check-in'],
+    eventType: 'appointment_started',
+    reason: 'staff_started'
+  },
+  complete: {
+    status: 'completed',
+    allowedFrom: ['scheduled', 'rescheduled', 'confirmed', 'check-in', 'in-chair'],
+    eventType: 'appointment_completed',
+    reason: 'staff_completed'
+  },
+  'no-show': {
+    status: 'no-show',
+    allowedFrom: ['scheduled', 'rescheduled', 'confirmed', 'check-in'],
+    eventType: 'appointment_no_show',
+    reason: 'staff_no_show'
+  }
+};
+
+for (const [actionPath, transition] of Object.entries(OPERATIONAL_STATUS_ACTIONS)) {
+  router.patch(
+    `/:appointmentId/${actionPath}`,
+    authenticateToken,
+    requireRoles(['dentist', 'clinic_admin', 'clinic_staff', 'clinic_manager', 'owner', 'manager', 'front_office', 'nurse', 'cashier', 'staff']),
+    async (req, res) => {
+      try {
+        const appointmentBigInt = toBigInt(req.params.appointmentId, 'appointmentId');
+        const userId = toBigInt(req.user.id, 'userId');
+        const roles = req.user.roles || [];
+
+        const appointment = await prisma.appointment.findUnique({
+          where: { id: appointmentBigInt },
+          include: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone_number: true,
+                avatar_url: true
+              }
+            },
+            dentist: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone_number: true,
+                avatar_url: true
+              }
+            },
+            clinicBranch: {
+              select: {
+                id: true,
+                branchName: true,
+                city: true,
+                streetAddress: true,
+                clinicProfileId: true
+              }
+            },
+            statusHistory: {
+              orderBy: { createdAt: 'desc' },
+              take: 10
+            },
+            paymentIntents: {
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            }
+          }
+        });
+
+        if (!appointment) {
+          return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan atau sudah dihapus.');
+        }
+
+        const changedByRole = await authorizeAppointmentStatusUpdate({ appointment, userId, roles });
+
+        if (appointment.status === transition.status) {
+          return res.json({
+            appointment: serializeAppointment(appointment),
+            message: 'Status janji temu sudah sesuai.'
+          });
+        }
+
+        if (!transition.allowedFrom.includes(appointment.status)) {
+          return sendError(res, 409, 'cannot_update_status', `Janji temu dengan status ${appointment.status} tidak dapat diubah ke ${transition.status}.`);
+        }
+
+        let updatedAppointment;
+        await prisma.$transaction(async (tx) => {
+          updatedAppointment = await tx.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              status: transition.status,
+              metadata: metadataWithStatusStamp(appointment.metadata, transition.status, userId)
+            }
+          });
+
+          await recordStatusChange(tx, {
+            appointmentId: appointment.id,
+            previousStatus: appointment.status,
+            newStatus: transition.status,
+            changedBy: userId,
+            changedByRole,
+            reason: transition.reason,
+            notes: req.body?.notes || null,
+            metadata: {
+              source: 'clinic_schedule',
+              action: actionPath
+            }
+          });
+        });
+
+        const fullAppointment = await prisma.appointment.findUnique({
+          where: { id: updatedAppointment.id },
+          include: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone_number: true,
+                avatar_url: true
+              }
+            },
+            dentist: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone_number: true,
+                avatar_url: true
+              }
+            },
+            clinicBranch: {
+              select: {
+                id: true,
+                branchName: true,
+                city: true,
+                streetAddress: true,
+                clinicProfileId: true
+              }
+            },
+            statusHistory: {
+              orderBy: { createdAt: 'desc' },
+              take: 10
+            },
+            paymentIntents: {
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            }
+          }
+        });
+
+        emitAppointmentEvent({
+          type: transition.eventType,
+          appointmentId: appointment.id,
+          payload: {
+            previousStatus: appointment.status,
+            status: transition.status,
+            changedBy: userId.toString(),
+            branchId: appointment.clinicBranchId?.toString?.() || null
+          }
+        }).catch((error) => {
+          console.error('Failed to emit operational appointment event:', error);
+        });
+
+        return res.json({
+          appointment: serializeAppointment(fullAppointment),
+          message: 'Status janji temu diperbarui.'
+        });
+      } catch (error) {
+        console.error(`Error updating appointment status via ${actionPath}:`, error);
+        if (error.status) {
+          return sendError(res, error.status, error.code || 'status_update_forbidden', error.message);
+        }
+        return sendError(res, 500, 'status_update_failed', 'Terjadi kesalahan saat mengubah status janji temu.');
+      }
+    }
+  );
+}
 
 router.use('/', clinicalSummaryRouter);
 router.use('/', videoRouter);

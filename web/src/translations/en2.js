@@ -1938,7 +1938,9 @@ export default {
       sources: {
         all: 'All Sources',
         serene_mobile: 'Serene Mobile',
-        clinic_added: 'Clinic Added'
+        clinic_walk_in: 'Clinic Walk-in',
+        clinic_added: 'Dentist Added',
+        unknown: 'Source Not Recorded'
       },
       actions: {
         open: 'Open Patient Directory',

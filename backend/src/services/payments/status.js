@@ -7,6 +7,7 @@ import { createPaymentSnapshot } from './snapshotService.js';
 import { createSettlement } from './settlementService.js';
 import { accrueCompensation } from './compensationService.js';
 import { emitToUserRooms } from '../../sockets/chat.js';
+import { recordStatusChange } from '../appointments/audit.js';
 
 const prisma = new PrismaClient();
 
@@ -259,11 +260,27 @@ export async function applyPaymentStatus({
     let appointment = updatedIntent.appointment;
 
     if (appointmentStatus) {
+      const previousAppointmentStatus = appointment.status;
       appointment = await tx.appointment.update({
         where: { id: appointment.id },
         data: { status: appointmentStatus },
         select: appointmentSelect
       });
+      if (previousAppointmentStatus !== appointmentStatus) {
+        await recordStatusChange(tx, {
+          appointmentId: appointment.id,
+          previousStatus: previousAppointmentStatus,
+          newStatus: appointmentStatus,
+          changedBy: null,
+          changedByRole: 'system',
+          reason: `payment_${newStatus}`,
+          metadata: {
+            paymentIntentId: updatedIntent.id.toString(),
+            provider: updatedIntent.provider || null,
+            source: 'payment_status_sync'
+          }
+        });
+      }
     }
 
     if ([PAYMENT_STATUSES.PAID, PAYMENT_STATUSES.SETTLED].includes(newStatus)) {

@@ -3,11 +3,12 @@ import Icon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 
 const ClaimsCard = ({
-  outstanding = 18,
-  avgDays = 21,
-  aging = { '0-30': 8, '31-60': 5, '61-90': 3, '90+': 2 },
+  outstanding = 0,
+  avgDays = 0,
+  aging = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 },
 }) => {
   const { t } = useLanguage();
+  const totalClaims = Object.values(aging).reduce((a, b) => a + b, 0);
   
   return (
     <div className="bg-surface rounded-3xl p-6 border border-primary/20 shadow-theme-lg hover:shadow-theme-xl transition-all duration-300 theme-transition">
@@ -36,7 +37,7 @@ const ClaimsCard = ({
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-secondary">{t('home.agingBreakdown')}</span>
-          <span className="text-xs text-muted">{t('home.totalClaims')}: {Object.values(aging).reduce((a, b) => a + b, 0)}</span>
+          <span className="text-xs text-muted">{t('home.totalClaims')}: {totalClaims}</span>
         </div>
         <div className="space-y-2">
           {Object.entries(aging).map(([days, count]) => (
@@ -51,7 +52,7 @@ const ClaimsCard = ({
                       days === '61-90' ? 'bg-warning' :
                       'bg-error'
                     }`}
-                    style={{ width: `${(count / Object.values(aging).reduce((a, b) => a + b, 0)) * 100}%` }}
+                    style={{ width: `${totalClaims ? (count / totalClaims) * 100 : 0}%` }}
                   />
                 </div>
                 <span className="font-medium text-primary w-6 text-right">{count}</span>
@@ -65,4 +66,3 @@ const ClaimsCard = ({
 };
 
 export default ClaimsCard;
-

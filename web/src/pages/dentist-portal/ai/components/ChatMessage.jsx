@@ -192,6 +192,18 @@ export default function ChatMessage({
         badge: 'Tidak Ada Hasil',
         badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/20',
       },
+      workspace_error: {
+        Icon: ServerCrash,
+        bg: 'bg-rose-500/10',
+        border: 'border-rose-500/25',
+        iconBg: 'bg-rose-500/15',
+        iconColor: 'text-rose-500',
+        titleColor: 'text-rose-700 dark:text-rose-300',
+        descColor: 'text-rose-800/80 dark:text-rose-200/70',
+        hintColor: 'text-rose-600/60 dark:text-rose-400/50',
+        badge: 'Workspace Error',
+        badgeClass: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/20',
+      },
       generic: {
         Icon: AlertCircle,
         bg: 'bg-red-500/10',

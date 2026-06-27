@@ -1,7 +1,7 @@
 export const CLINICAL_ARTIFACT_DB_NAME = 'serene.deepdental.clinical-artifacts';
 export const CLINICAL_ARTIFACT_STORE_NAME = 'sessionArtifacts';
 export const CLINICAL_ARTIFACT_DB_VERSION = 1;
-export const DEFAULT_CLINICAL_ARTIFACT_RETENTION_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_CLINICAL_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — matches cloud session retention
 
 function createEntry({ sessionId, entry, now, retentionMs }) {
   const createdAt = now();
