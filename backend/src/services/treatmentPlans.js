@@ -248,10 +248,16 @@ function serializeItem(item) {
 export function serializeInvoice(invoice) {
   if (!invoice) return null;
   const total = invoice.grandTotal || invoice.total || 0;
+  const isCashier = invoice.ownerType === 'clinic' || invoice.issuerType === 'clinic' || invoice.issuerName === 'Clinic Portal' || (invoice.reference && invoice.reference.startsWith('CL-'));
+  const reference = invoice.reference || (
+    isCashier 
+      ? `CL-${invoice.id.toString().padStart(6, '0')}` 
+      : `INV-${invoice.id.toString().padStart(6, '0')}`
+  );
   return {
     id: asId(invoice.id),
     invoiceId: asId(invoice.id),
-    reference: invoice.reference || null,
+    reference,
     paymentIntentId: asId(invoice.paymentIntentId),
     appointmentId: asId(invoice.appointmentId),
     treatmentPlanId: asId(invoice.treatmentPlanId),

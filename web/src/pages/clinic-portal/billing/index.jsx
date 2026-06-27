@@ -1,15 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
+import { useNotifications } from '../../../contexts/NotificationContext';
 import PaymentsView from './components/PaymentsView';
 import ClaimsView from './components/ClaimsView';
 import PromosView from './components/PromosView';
 import { authHttp } from '../../../utils/httpClient';
 import ModalPortal from '../../../components/ui/ModalPortal';
+
+const BILLING_REALTIME_EVENTS = [
+  'notification:new',
+  'clinic:billing_updated',
+  'dashboard:metrics_updated',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated'
+];
 
 const compactList = (items = []) => (
   [...new Set((items || []).filter(Boolean))].join(', ') || '-'
@@ -32,7 +42,8 @@ const BillingPage = () => {
   const { t } = useLanguage();
   const { isDark } = useTheme();
   const { user } = useAuth();
-  
+  const { socket } = useNotifications();
+
   const [activeTab, setActiveTab] = useState('payments');
   const [billingData, setBillingData] = useState({
     invoices: [],
@@ -56,23 +67,14 @@ const BillingPage = () => {
   const [refundReason, setRefundReason] = useState('');
   const [refundLoading, setRefundLoading] = useState(false);
 
-  const fetchBillingData = async () => {
-    setLoading(true);
+  const fetchBillingData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await authHttp.get('/clinic/billing/history');
       setBillingData({
         invoices: data.invoices || [],
         payments: data.payments || [],
-        claims: [
-          {
-            id: 'CLM-001',
-            patient: 'Budi Santoso',
-            insurance: 'BPJS',
-            amount: 500000,
-            status: 'approved',
-            submittedAt: '2024-01-10'
-          }
-        ],
+        claims: data.claims || [],
         promos: [
           {
             id: 'PROMO-001',
@@ -93,9 +95,9 @@ const BillingPage = () => {
         setAccessDenied(true);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -129,7 +131,19 @@ const BillingPage = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [fetchBillingData]);
+
+  useEffect(() => {
+    if (!socket || accessDenied) return;
+    const handleRealtimeUpdate = (payload) => {
+      console.log('🔄 Real-time update: refreshing billing data:', payload);
+      fetchBillingData({ silent: true });
+    };
+    BILLING_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
+    return () => {
+      BILLING_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
+    };
+  }, [accessDenied, fetchBillingData, socket]);
 
   useEffect(() => {
     if (selectedInvoiceId) {
@@ -211,6 +225,7 @@ const BillingPage = () => {
     { id: 'claims', label: t('clinic.billing.tabs.claims') || 'Klaim Asuransi', icon: 'Shield' },
     { id: 'promos', label: t('clinic.billing.tabs.promos') || 'Promo & Paket', icon: 'Tag' }
   ];
+  const isCashierWorkspace = permission?.role === 'cashier';
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -267,7 +282,7 @@ const BillingPage = () => {
             <option value="overdue">Jatuh Tempo</option>
           </select>
         </div>
-        <button 
+        <button
           onClick={fetchBillingData}
           className="px-4 py-2 border border-primary/20 rounded-lg bg-surface text-primary hover:bg-surface-elevated transition-colors flex items-center gap-2"
         >
@@ -280,7 +295,7 @@ const BillingPage = () => {
         <div className="px-6 py-4 border-b border-primary/20">
           <h3 className="text-lg font-semibold text-primary">Daftar Invoice</h3>
         </div>
-        
+
         {billingData.invoices.length === 0 ? (
           <div className="p-12 text-center space-y-2">
             <Icon name="FileText" className="mx-auto text-muted/40" size={48} />
@@ -307,7 +322,7 @@ const BillingPage = () => {
                 {billingData.invoices.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-surface transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-primary">{invoice.id}</div>
+                      <div className="text-sm font-medium text-primary">{invoice.reference}</div>
                       <div className="text-xs text-secondary">{new Date(invoice.createdAt).toLocaleDateString('id-ID')}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -331,7 +346,7 @@ const BillingPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex space-x-2">
-                        <button 
+                        <button
                           onClick={() => setSelectedInvoiceId(invoice.dbId)}
                           className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
                           title="View details"
@@ -359,7 +374,35 @@ const BillingPage = () => {
     />
   );
 
-  const renderClaimsView = () => <ClaimsView />;
+  const handleAddClaim = async (newClaimData) => {
+    try {
+      setLoading(true);
+      await authHttp.post('/clinic/billing/claims', {
+        patientName: newClaimData.patient,
+        insurance: newClaimData.insurance,
+        policyNumber: newClaimData.policyNumber,
+        treatment: newClaimData.treatment,
+        amount: newClaimData.claimAmount,
+        notes: newClaimData.notes,
+        branchId: permission?.allowedBranchIds?.[0]
+      });
+      toast.success('Klaim berhasil diajukan');
+      fetchBillingData();
+    } catch (error) {
+      console.error('Failed to submit claim:', error);
+      toast.error('Gagal mengajukan klaim. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderClaimsView = () => (
+    <ClaimsView
+      claims={billingData.claims}
+      loading={loading}
+      onAddClaim={handleAddClaim}
+    />
+  );
 
   const renderPromosView = () => <PromosView />;
 
@@ -390,18 +433,15 @@ const BillingPage = () => {
       ['Assigned branch', clinicStaff?.assignedBranchId || '-'],
       ['Permission role', permission?.role || '-'],
       ['Allowed branch', permissionBranches],
-      ['API source', permissionError?.source || '-'],
-      ['API status', permissionError?.status || '-'],
-      ['API code', permissionError?.code || '-'],
-      ['API error', permissionError?.message || '-']
+      ['Pesan Error', permissionError?.message || 'Akses Ditolak']
     ];
 
     return (
       <div className="flex min-h-screen bg-background theme-transition">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <div className="hidden flex-shrink-0 lg:block" style={{ width: 'var(--sidebar-width, 20rem)' }}>
           <ClinicSideBar />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 w-full flex-1">
           <div className="p-6 md:p-8">
             <section className="space-y-6 rounded-2xl border border-red-200/60 bg-red-50 p-8 dark:border-red-900/40 dark:bg-red-950/20">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -450,11 +490,11 @@ const BillingPage = () => {
 
     return (
       <div className="flex min-h-screen bg-background theme-transition clinic-skeleton">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <div className="hidden flex-shrink-0 lg:block" style={{ width: 'var(--sidebar-width, 20rem)' }}>
           <ClinicSideBar />
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 w-full flex-1">
           <div className="p-6 md:p-8 space-y-8">
             <section className="space-y-6 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -509,29 +549,50 @@ const BillingPage = () => {
 
   return (
     <div className="flex min-h-screen bg-background theme-transition">
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div className="hidden flex-shrink-0 lg:block" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <ClinicSideBar />
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="p-6 md:p-8 space-y-8">
+      <div className="min-w-0 w-full flex-1">
+        <div className="space-y-8 p-4 sm:p-6 md:p-8">
           <section className="clinic-page-header space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold text-primary">
-                  {t('clinic.billing.title') || 'Billing & Asuransi'}
-                </h1>
-                <p className="text-sm text-secondary max-w-2xl">
-                  {t('clinic.billing.subtitle') || 'Kelola invoice, pembayaran, dan klaim asuransi'}
-                </p>
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-6 md:p-8 text-white shadow-xl theme-transition">
+              <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -left-10 -bottom-10 w-48 h-48 rounded-full bg-black/10 blur-2xl" />
+
+              <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6 z-10">
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider backdrop-blur-md">
+                    <Icon name="Activity" size={12} />
+                    {t('clinic.billing.badge') || 'Financial Ledger'}
+                  </span>
+                  <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+                    {t('clinic.billing.title') || 'Billing & Asuransi'}
+                  </h1>
+                  <p className="text-sm text-white/90 max-w-xl">
+                    {t('clinic.billing.subtitle') || 'Kelola invoice, pembayaran, dan klaim asuransi'}
+                  </p>
+                </div>
+
+                {/* Actions Widget (Refresh & Export) */}
+                <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 px-4 py-3 md:self-center shadow-inner self-start">
+                  <button
+                    onClick={fetchBillingData}
+                    className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all cursor-pointer text-white flex items-center justify-center border border-white/5"
+                    title="Refresh data"
+                  >
+                    <Icon name="RefreshCw" size={16} />
+                  </button>
+                  <div className="h-6 w-px bg-white/20" />
+                  <button
+                    onClick={fetchBillingData}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white text-indigo-700 hover:bg-white/90 px-4 py-2 text-sm font-bold transition-all shadow-md cursor-pointer border border-transparent"
+                  >
+                    <Icon name="Download" size={16} />
+                    Export
+                  </button>
+                </div>
               </div>
-              <button 
-                onClick={fetchBillingData}
-                className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover"
-              >
-                <Icon name="Download" size={16} />
-                Export
-              </button>
             </div>
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
@@ -539,11 +600,10 @@ const BillingPage = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-accent text-white shadow-sm'
-                        : 'text-secondary hover:text-primary hover:bg-surface'
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                      }`}
                   >
                     <Icon name={tab.icon} size={16} />
                     <span>{tab.label}</span>
@@ -563,11 +623,11 @@ const BillingPage = () => {
       {selectedInvoiceId && (
         <ModalPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div 
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm" 
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
               onClick={() => setSelectedInvoiceId(null)}
             />
-            <div 
+            <div
               className="relative w-full max-w-lg bg-surface-elevated border border-primary/20 rounded-3xl shadow-theme-xl overflow-hidden animate-slide-up"
               style={{ maxHeight: '90vh' }}
             >
@@ -577,7 +637,7 @@ const BillingPage = () => {
                   <Icon name="FileText" className="text-accent" />
                   <span className="font-semibold text-primary">Invoice Inspector</span>
                 </div>
-                <button 
+                <button
                   onClick={() => setSelectedInvoiceId(null)}
                   className="p-1 rounded-lg text-muted hover:text-primary hover:bg-surface-elevated transition-colors"
                 >
@@ -710,7 +770,7 @@ const BillingPage = () => {
                         <Icon name="Download" size={14} />
                         Download PDF
                       </button>
-                      
+
                       {!refundMode && ['paid', 'settled'].includes(invoiceDetail.status?.toLowerCase()) && (
                         <button
                           onClick={() => setRefundMode(true)}
@@ -724,7 +784,7 @@ const BillingPage = () => {
 
                     {/* Refund Form Panel */}
                     {refundMode && (
-                      <form onSubmit={handleRefundSubmit} className="border-t border-primary/10 pt-4 space-y-3 bg-red-50/50 dark:bg-red-950/10 p-4 rounded-2xl border border-red-200/30">
+                      <div className="border-t border-primary/10 pt-4 space-y-3 bg-red-50/50 dark:bg-red-950/10 p-4 rounded-2xl border border-red-200/30">
                         <div className="flex items-center justify-between">
                           <h5 className="text-xs font-bold text-red-600 flex items-center gap-1">
                             <Icon name="RotateCcw" size={12} />
@@ -765,13 +825,14 @@ const BillingPage = () => {
                         </div>
 
                         <button
-                          type="submit"
+                          type="button"
+                          onClick={handleRefundSubmit}
                           disabled={refundLoading}
                           className="w-full py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
                         >
                           {refundLoading ? 'Processing Refund...' : 'Confirm Refund'}
                         </button>
-                      </form>
+                      </div>
                     )}
                   </div>
                 )}

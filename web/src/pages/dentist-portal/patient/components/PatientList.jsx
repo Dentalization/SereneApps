@@ -80,27 +80,41 @@ const PatientList = ({
     return palettes[code];
   };
 
-  const normalizeSource = (source) => source || 'serene_mobile';
+  const normalizeSource = (source) => source || 'unknown';
 
   const getSourceLabel = (source) => {
     const key = normalizeSource(source);
     const translated = t(`dentistPatient.list.sources.${key}`);
     if (typeof translated === 'string' && !translated.startsWith('dentistPatient')) return translated;
-    if (key === 'clinic_added') return language === 'id' ? 'Clinic/Dentist' : 'Clinic Added';
-    return 'Serene Mobile';
+    if (key === 'clinic_walk_in') return language === 'id' ? 'Walk-in Klinik' : 'Clinic Walk-in';
+    if (key === 'clinic_added') return language === 'id' ? 'Ditambahkan Dokter' : 'Dentist Added';
+    if (key === 'serene_mobile') return 'Serene Mobile';
+    return language === 'id' ? 'Sumber tidak tercatat' : 'Source not recorded';
   };
 
   const getSourceBadge = (source) => {
     const key = normalizeSource(source);
+    if (key === 'clinic_walk_in') {
+      return {
+        icon: 'clinic-patient',
+        className: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50',
+      };
+    }
     if (key === 'clinic_added') {
       return {
         icon: 'clinic-patient',
         className: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50',
       };
     }
+    if (key === 'serene_mobile') {
+      return {
+        icon: 'mobile-patient',
+        className: 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/50',
+      };
+    }
     return {
-      icon: 'mobile-patient',
-      className: 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/50',
+      icon: 'patient-directory',
+      className: 'bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700',
     };
   };
 
@@ -171,7 +185,7 @@ const PatientList = ({
   }, [patients]);
 
   const sourceCounts = useMemo(() => {
-    const base = { all: patients.length, serene_mobile: 0, clinic_added: 0 };
+    const base = { all: patients.length, serene_mobile: 0, clinic_walk_in: 0, clinic_added: 0, unknown: 0 };
     patients.forEach((p) => {
       const source = normalizeSource(p.source);
       if (!base[source]) base[source] = 0;
@@ -196,7 +210,7 @@ const PatientList = ({
   };
 
   const getSourceFilterIcon = (source) => {
-    if (source === 'clinic_added') return 'clinic-patient';
+    if (['clinic_walk_in', 'clinic_added'].includes(source)) return 'clinic-patient';
     if (source === 'serene_mobile') return 'mobile-patient';
     return 'patient-directory';
   };
@@ -260,8 +274,8 @@ const PatientList = ({
                 );
               })}
             </div>
-            <div className="grid grid-cols-3 rounded-lg border border-primary/10 bg-surface-elevated p-1">
-              {(['all', 'serene_mobile', 'clinic_added']).map(source => {
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-primary/10 bg-surface-elevated p-1 xl:grid-cols-5">
+              {(['all', 'serene_mobile', 'clinic_walk_in', 'clinic_added', 'unknown']).map(source => {
                 const active = sourceFilter === source;
                 const label = getSourceFilterLabel(source);
                 return (

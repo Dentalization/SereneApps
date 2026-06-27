@@ -1,52 +1,57 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import Icon from '../../../../components/AppIcon';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line
+} from 'recharts';
 
-const RevenueChart = ({ data = [], loading = false }) => {
+const RevenueChart = ({ data, loading = false }) => {
   const { t } = useLanguage();
-  const [chartType, setChartType] = useState('line');
-  const [timeframe, setTimeframe] = useState('daily');
+  const [chartType, setChartType] = useState('area');
 
-  // Mock data for demonstration
-  const mockData = data.length > 0 ? data : [85, 92, 88, 95, 102, 110, 125];
-  const labels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-  
-  // Calculate statistics
-  const total = mockData.reduce((sum, val) => sum + val, 0);
-  const average = total / mockData.length;
-  const maxValue = Math.max(...mockData);
-  const minValue = Math.min(...mockData);
-  const trend = mockData[mockData.length - 1] > mockData[0] ? 'up' : 'down';
-  const trendPercentage = ((mockData[mockData.length - 1] - mockData[0]) / mockData[0] * 100).toFixed(1);
-
-  // Generate SVG path for line chart
-  const generatePath = (data) => {
-    const width = 100;
-    const height = 60;
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = max - min || 1;
-    
-    return data
-      .map((value, index) => {
-        const x = (index / (data.length - 1)) * width;
-        const y = height - ((value - min) / range) * height;
-        return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-      })
-      .join(' ');
+  // Format currency helpers
+  const formatYAxis = (tick) => {
+    if (tick >= 1000000) return `Rp ${(tick / 1000000).toFixed(1)}M`;
+    if (tick >= 1000) return `Rp ${(tick / 1000).toFixed(0)}K`;
+    return `Rp ${tick}`;
   };
 
-  const chartTypeOptions = [
-    { value: 'line', label: t('reports.lineChart'), icon: 'TrendingUp' },
-    { value: 'bar', label: t('reports.barChart'), icon: 'BarChart3' },
-    { value: 'area', label: t('reports.areaChart'), icon: 'Activity' }
-  ];
+  const formatTooltipValue = (value) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(value);
+  };
 
-  const timeframeOptions = [
-    { value: 'daily', label: t('reports.daily') },
-    { value: 'weekly', label: t('reports.weekly') },
-    { value: 'monthly', label: t('reports.monthly') }
-  ];
+  // Safe data extraction
+  const trends = data && data.labels ? data : {
+    labels: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'],
+    revenue: [85000000, 92000000, 88000000, 95000000, 102000000, 110000000, 125000000]
+  };
+
+  const chartData = trends.labels.map((label, idx) => ({
+    name: label,
+    revenue: trends.revenue[idx] || 0
+  }));
+
+  // Calculations
+  const total = trends.revenue.reduce((sum, val) => sum + val, 0);
+  const average = total / trends.revenue.length;
+  const trend = trends.revenue[trends.revenue.length - 1] > trends.revenue[0] ? 'up' : 'down';
+  const trendPercentage = trends.revenue[0] 
+    ? ((trends.revenue[trends.revenue.length - 1] - trends.revenue[0]) / trends.revenue[0] * 100).toFixed(1)
+    : '0.0';
 
   if (loading) {
     return (
@@ -62,238 +67,136 @@ const RevenueChart = ({ data = [], loading = false }) => {
     );
   }
 
+  // Styles for charts
+  const strokeColor = '#10B981'; // Emerald
+  const fillColor = 'url(#revenueAreaGradient)';
+
   return (
-    <div className="bg-surface rounded-2xl p-6 border border-primary/20 shadow-theme-lg hover:shadow-theme-xl transition-all duration-300 theme-transition">
+    <div className="bg-surface rounded-2xl p-6 border border-primary/20 shadow-theme-lg hover:shadow-theme-xl transition-all duration-300 theme-transition flex flex-col h-[420px]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
             <Icon name="TrendingUp" size={20} className="text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-primary theme-transition">
-              {t('reports.revenueAnalysis')}
+              {t('reports.revenueAnalysis') || 'Revenue Analysis'}
             </h3>
-            <p className="text-sm text-secondary theme-transition">
-              {t('reports.revenueDescription')}
+            <p className="text-xs text-secondary theme-transition">
+              {t('reports.revenueDescription') || 'Revenue collection trend'}
             </p>
           </div>
         </div>
 
-        {/* Chart Controls */}
-<div className="flex items-center space-x-2">
-  <select
-    value={timeframe}
-    onChange={(e) => setTimeframe(e.target.value)}
-    className="text-xs px-2 py-1 bg-surface-elevated border border-primary/20 rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent theme-transition"
-  >
-    {timeframeOptions.map((option) => (
-      <option key={option.value} value={option.value}>
-        {option.label}
-      </option>
-    ))}
-  </select>
-
-  <div className="flex border border-primary/20 rounded-lg overflow-hidden">
-    {chartTypeOptions.map((option) => (
-      <button
-        key={option.value}
-        onClick={() => setChartType(option.value)}
-        className={`p-2 text-xs transition-colors duration-200 ${
-          chartType === option.value
-            ? 'bg-accent text-white'
-            : 'bg-surface-elevated text-secondary hover:text-primary'
-        }`}
-        title={option.label}
-        style={{
-          width: 48,
-          height: 36,
-          display: 'grid',
-          placeItems: 'center',
-          lineHeight: 0,
-        }}
-      >
-        <Icon name={option.icon} size={16} />
-      </button>
-    ))}
-  </div>
-</div>
-
-      </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="text-center">
-          <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-            Rp {(total * 1000000).toLocaleString('id-ID')}
-          </div>
-          <div className="text-xs text-secondary">{t('reports.totalValue')}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-            Rp {(average * 1000000).toLocaleString('id-ID')}
-          </div>
-          <div className="text-xs text-secondary">{t('reports.averageValue')}</div>
-        </div>
-        <div className="text-center">
-          <div className={`text-lg font-bold ${trend === 'up' ? 'text-emerald-600' : 'text-red-600'}`}>
-            {trend === 'up' ? '+' : ''}{trendPercentage}%
-          </div>
-          <div className="text-xs text-secondary">{t('reports.percentageChange')}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-            {trend === 'up' ? '↗' : '↘'}
-          </div>
-          <div className="text-xs text-secondary">{t('reports.trend')}</div>
-        </div>
-      </div>
-
-      {/* Chart Visualization */}
-      <div className="relative">
-        {chartType === 'line' && (
-          <div className="h-64 relative bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-900/10 dark:to-blue-900/10 rounded-xl p-4">
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 100 60"
-              preserveAspectRatio="none"
-              className="absolute inset-4"
+        {/* Chart type controls */}
+        <div className="flex border border-primary/20 rounded-lg overflow-hidden flex-shrink-0">
+          {[
+            { value: 'area', icon: 'Activity', label: 'Area' },
+            { value: 'line', icon: 'TrendingUp', label: 'Line' },
+            { value: 'bar', icon: 'BarChart3', label: 'Bar' }
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setChartType(opt.value)}
+              className={`p-2 transition-colors duration-200 ${
+                chartType === opt.value
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-elevated text-secondary hover:text-primary'
+              }`}
+              title={opt.label}
+              style={{ width: 36, height: 32, display: 'grid', placeItems: 'center' }}
             >
-              {/* Grid lines */}
+              <Icon name={opt.icon} size={14} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mini KPIs */}
+      <div className="grid grid-cols-3 gap-2 mb-6 flex-shrink-0 border-b border-primary/10 pb-4 text-center">
+        <div>
+          <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+            Rp {(total / 1000000).toFixed(1)}M
+          </div>
+          <div className="text-[10px] text-secondary uppercase tracking-wider">{t('reports.totalValue') || 'Total'}</div>
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+            Rp {(average / 1000000).toFixed(1)}M
+          </div>
+          <div className="text-[10px] text-secondary uppercase tracking-wider">{t('reports.averageValue') || 'Average'}</div>
+        </div>
+        <div>
+          <div className={`text-sm font-semibold ${trend === 'up' ? 'text-emerald-600' : 'text-red-600'}`}>
+            {trend === 'up' ? '▲' : '▼'} {trendPercentage}%
+          </div>
+          <div className="text-[10px] text-secondary uppercase tracking-wider">{t('reports.percentageChange') || 'Growth'}</div>
+        </div>
+      </div>
+
+      {/* Chart visualization */}
+      <div className="flex-1 min-h-0 w-full relative">
+        <ResponsiveContainer width="100%" height="100%">
+          {chartType === 'area' ? (
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="revenueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="rgba(16, 185, 129, 0.3)" />
-                  <stop offset="100%" stopColor="rgba(16, 185, 129, 0.05)" />
+                <linearGradient id="revenueAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={strokeColor} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={strokeColor} stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              
-              {/* Grid */}
-              {[0, 20, 40, 60].map((y) => (
-                <line
-                  key={y}
-                  x1="0"
-                  y1={y}
-                  x2="100"
-                  y2={y}
-                  stroke="currentColor"
-                  strokeWidth="0.2"
-                  className="text-primary/20"
-                />
-              ))}
-              
-              {/* Area fill */}
-              <path
-                d={`${generatePath(mockData)} L 100 60 L 0 60 Z`}
-                fill="url(#revenueGradient)"
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(156, 163, 175, 0.15)" />
+              <XAxis dataKey="name" stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <YAxis tickFormatter={formatYAxis} stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <Tooltip 
+                formatter={formatTooltipValue}
+                contentStyle={{ 
+                  backgroundColor: 'var(--color-surface, #ffffff)', 
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  color: 'var(--color-primary, #1f2937)'
+                }}
               />
-              
-              {/* Line */}
-              <path
-                d={generatePath(mockData)}
-                fill="none"
-                stroke="rgb(16, 185, 129)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <Area type="monotone" dataKey="revenue" stroke={strokeColor} fill={fillColor} strokeWidth={2.5} />
+            </AreaChart>
+          ) : chartType === 'line' ? (
+            <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(156, 163, 175, 0.15)" />
+              <XAxis dataKey="name" stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <YAxis tickFormatter={formatYAxis} stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <Tooltip 
+                formatter={formatTooltipValue}
+                contentStyle={{ 
+                  backgroundColor: 'var(--color-surface, #ffffff)', 
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  color: 'var(--color-primary, #1f2937)'
+                }}
               />
-              
-              {/* Data points */}
-              {mockData.map((value, index) => {
-                const x = (index / (mockData.length - 1)) * 100;
-                const y = 60 - ((value - minValue) / (maxValue - minValue)) * 60;
-                return (
-                  <circle
-                    key={index}
-                    cx={x}
-                    cy={y}
-                    r="1.5"
-                    fill="rgb(16, 185, 129)"
-                    className="drop-shadow-sm"
-                  />
-                );
-              })}
-            </svg>
-            
-            {/* X-axis labels */}
-            <div className="absolute bottom-0 left-4 right-4 flex justify-between text-xs text-secondary">
-              {labels.map((label, index) => (
-                <span key={index}>{label}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {chartType === 'bar' && (
-          <div className="h-64 relative bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-900/10 dark:to-blue-900/10 rounded-xl p-4">
-            <div className="h-full flex items-end justify-between space-x-2">
-              {mockData.map((value, index) => {
-                const height = ((value - minValue) / (maxValue - minValue)) * 100;
-                return (
-                  <div key={index} className="flex-1 flex flex-col items-center">
-                    <div
-                      className="w-full bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-lg transition-all duration-700 hover:from-emerald-500 hover:to-emerald-300"
-                      style={{ height: `${height}%` }}
-                    />
-                    <span className="text-xs text-secondary mt-2">{labels[index]}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {chartType === 'area' && (
-          <div className="h-64 relative bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-900/10 dark:to-blue-900/10 rounded-xl p-4">
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 100 60"
-              preserveAspectRatio="none"
-              className="absolute inset-4"
-            >
-              <defs>
-                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="rgba(16, 185, 129, 0.6)" />
-                  <stop offset="50%" stopColor="rgba(16, 185, 129, 0.3)" />
-                  <stop offset="100%" stopColor="rgba(16, 185, 129, 0.1)" />
-                </linearGradient>
-              </defs>
-              
-              <path
-                d={`${generatePath(mockData)} L 100 60 L 0 60 Z`}
-                fill="url(#areaGradient)"
-                stroke="rgb(16, 185, 129)"
-                strokeWidth="2"
+              <Line type="monotone" dataKey="revenue" stroke={strokeColor} strokeWidth={2.5} activeDot={{ r: 6 }} dot={{ strokeWidth: 2, r: 3 }} />
+            </LineChart>
+          ) : (
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(156, 163, 175, 0.15)" />
+              <XAxis dataKey="name" stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <YAxis tickFormatter={formatYAxis} stroke="rgba(156, 163, 175, 0.6)" fontSize={10} tickLine={false} />
+              <Tooltip 
+                formatter={formatTooltipValue}
+                contentStyle={{ 
+                  backgroundColor: 'var(--color-surface, #ffffff)', 
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  color: 'var(--color-primary, #1f2937)'
+                }}
               />
-            </svg>
-            
-            <div className="absolute bottom-0 left-4 right-4 flex justify-between text-xs text-secondary">
-              {labels.map((label, index) => (
-                <span key={index}>{label}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Footer Actions */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-primary/10">
-        <div className="flex items-center space-x-2 text-xs text-secondary">
-          <Icon name="Info" size={12} />
-          <span>{t('reports.currency')}: IDR</span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <button className="flex items-center space-x-1 px-3 py-1 text-xs bg-surface-elevated border border-primary/20 rounded-lg hover:border-accent/50 transition-colors duration-200">
-            <Icon name="Download" size={12} />
-            <span>{t('reports.export')}</span>
-          </button>
-          <button className="flex items-center space-x-1 px-3 py-1 text-xs bg-surface-elevated border border-primary/20 rounded-lg hover:border-accent/50 transition-colors duration-200">
-            <Icon name="Share2" size={12} />
-            <span>{t('reports.share')}</span>
-          </button>
-        </div>
+              <Bar dataKey="revenue" fill={strokeColor} radius={[4, 4, 0, 0]} maxBarSize={40} />
+            </BarChart>
+          )}
+        </ResponsiveContainer>
       </div>
     </div>
   );

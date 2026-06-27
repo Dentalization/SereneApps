@@ -13,6 +13,16 @@ import {
 } from '../services/clinicPaymentAuthorization.js';
 import midtransService from '../services/payments/midtransService.js';
 import { applyPaymentStatus, ACTIVE_PAYMENT_STATUSES } from '../services/payments/status.js';
+import { reconcilePayment } from '../services/payments/reconcileJob.js';
+import {
+  classifyClinicAppointmentSource,
+  normalizeClinicPaymentChannel,
+  resolveActiveClinicPayment
+} from '../services/clinicPaymentWorkflow.js';
+import {
+  buildClinicAvailability,
+  CLINIC_AVAILABILITY_TIMEZONE
+} from '../services/clinicAppointmentAvailability.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -23,7 +33,8 @@ function sendError(res, error, fallbackStatus = 500, fallbackMessage = 'Internal
   const message = error?.message || fallbackMessage;
   return res.status(status).json({
     error: message,
-    code: error?.code || message
+    code: error?.code || message,
+    ...(error?.details ? { details: error.details } : {})
   });
 }
 
@@ -63,19 +74,14 @@ function resolveSnapExpiry(value) {
   return new Date(Date.now() + SNAP_EXPIRY_MS);
 }
 
-function canReuseMidtransIntent(intent) {
-  if (!intent || intent.provider !== 'midtrans') return false;
-  if (!['pending', 'requires_action'].includes(intent.status)) return false;
-  if (!intent.redirectUrl) return false;
-  if (!intent.expiresAt) return true;
-  return new Date(intent.expiresAt).getTime() > Date.now();
-}
-
 function paymentMethodForIntent(intent) {
   if (intent.provider === 'cash') return 'cash';
+  const requestedChannel = normalizeMetadata(intent.metadata).requestedChannel;
+  if (requestedChannel === 'qris') return 'qris';
+  if (requestedChannel === 'bank_transfer') return 'bank_transfer';
   const type = normalizeMetadata(intent.providerResponse).payment_type?.toLowerCase?.() || '';
   if (type.includes('qris') || type.includes('gopay') || type.includes('shopeepay')) return 'qris';
-  if (type.includes('transfer') || type.includes('va')) return 'transfer';
+  if (type.includes('transfer') || type.includes('va')) return 'bank_transfer';
   if (type.includes('card')) return 'credit';
   return intent.provider || 'midtrans';
 }
@@ -109,6 +115,7 @@ function serializeDentist(staff) {
   return {
     id: serializeId(staff.userId || staff.user?.id),
     userId: serializeId(staff.userId || staff.user?.id),
+    profileId: profile ? serializeId(profile.id) : null,
     name: staff.user?.name,
     email: staff.user?.email,
     phone: staff.user?.phone_number,
@@ -120,6 +127,7 @@ function serializeDentist(staff) {
 }
 
 function serializePatient(user) {
+  const medicalDetails = normalizeMetadata(user.patientProfile?.medicalDetails);
   return {
     id: serializeId(user.id),
     name: user.name,
@@ -127,11 +135,16 @@ function serializePatient(user) {
     phone: user.phone_number,
     dateOfBirth: user.patientProfile?.dateOfBirth?.toISOString?.().slice(0, 10) || null,
     gender: user.patientProfile?.gender || null,
-    address: user.patientProfile?.address || null
+    address: user.patientProfile?.address || null,
+    source: medicalDetails.patientSource || 'patient_mobile',
+    insuranceProvider: user.patientProfile?.insuranceProvider || null,
+    insuranceNumber: user.patientProfile?.insuranceNumber || null,
+    insuranceMemberId: user.patientProfile?.insuranceMemberId || null
   };
 }
 
 function serializeAppointment(appointment) {
+  const source = classifyClinicAppointmentSource(appointment);
   return {
     id: serializeId(appointment.id),
     patientId: serializeId(appointment.patientId),
@@ -143,6 +156,9 @@ function serializeAppointment(appointment) {
     status: appointment.status,
     reason: appointment.reason,
     notes: appointment.notes,
+    consultationType: appointment.consultationType || 'onsite',
+    source,
+    sourceLabel: source === 'clinic_walk_in' ? 'Walk-in Klinik' : 'Serene Mobile',
     patient: appointment.patient ? serializePatient(appointment.patient) : null,
     dentist: appointment.dentist
       ? {
@@ -155,6 +171,12 @@ function serializeAppointment(appointment) {
 }
 
 function serializeInvoice(invoice) {
+  const isCashier = invoice.issuerType === 'clinic' || invoice.issuerName === 'Clinic Portal' || invoice.metadata?.source === 'clinic' || invoice.metadata?.source === 'clinic_billing' || (invoice.reference && invoice.reference.startsWith('CL-'));
+  const reference = invoice.reference || (
+    isCashier
+      ? `CL-${invoice.id.toString().padStart(6, '0')}`
+      : `INV-${invoice.id.toString().padStart(6, '0')}`
+  );
   return {
     id: serializeId(invoice.id),
     dbId: serializeId(invoice.id),
@@ -163,7 +185,7 @@ function serializeInvoice(invoice) {
     patientId: serializeId(invoice.patientId),
     branchId: serializeId(invoice.clinicBranchId),
     ownerClinicId: serializeId(invoice.ownerClinicId),
-    reference: invoice.reference || `INV-${invoice.id.toString().padStart(6, '0')}`,
+    reference,
     patient: invoice.patient?.name || 'Pasien',
     patientDetail: invoice.patient ? serializePatient(invoice.patient) : null,
     services: (invoice.items || []).map((item) => item.description),
@@ -181,6 +203,7 @@ function serializeInvoice(invoice) {
     dueDate: invoice.dueAt?.toISOString?.() || null,
     paidAt: invoice.paidAt?.toISOString?.() || null,
     createdAt: invoice.createdAt?.toISOString?.() || invoice.createdAt,
+    payment: invoice.paymentIntent ? serializePaymentIntent(invoice.paymentIntent) : null,
     items: (invoice.items || []).map((item) => ({
       id: serializeId(item.id),
       invoiceId: serializeId(item.invoiceId),
@@ -194,6 +217,7 @@ function serializeInvoice(invoice) {
 
 function serializePaymentIntent(intent, invoice = null) {
   const metadata = normalizeMetadata(intent.metadata);
+  const flowSource = metadata.source === 'clinic_billing' ? 'clinic_cashier' : 'patient_mobile';
   return {
     id: serializeId(intent.id),
     dbId: serializeId(intent.id),
@@ -205,6 +229,9 @@ function serializePaymentIntent(intent, invoice = null) {
     currency: intent.currency || 'IDR',
     method: paymentMethodForIntent(intent),
     provider: intent.provider,
+    channel: paymentMethodForIntent(intent),
+    flowSource,
+    flowSourceLabel: flowSource === 'clinic_cashier' ? 'Kasir Klinik' : 'Aplikasi Pasien',
     status: paymentStatusForIntent(intent.status),
     rawStatus: intent.status,
     providerOrderId: intent.providerOrderId,
@@ -221,6 +248,33 @@ function serializePaymentIntent(intent, invoice = null) {
     dentistShare: invoice?.dentistShare || 0,
     notes: metadata.notes || normalizeMetadata(intent.providerResponse).status_message || null
   };
+}
+
+function activePaymentError(intent, invoice) {
+  const error = new Error('PAYMENT_IN_PROGRESS');
+  error.code = 'PAYMENT_IN_PROGRESS';
+  error.status = 409;
+  error.details = {
+    message: 'Tagihan ini sudah memiliki pembayaran aktif. Lanjutkan pembayaran yang sama agar tidak terjadi pembayaran ganda.',
+    payment: serializePaymentIntent(intent, invoice)
+  };
+  return error;
+}
+
+async function releaseStaleClinicPayment(intent, reason) {
+  if (!intent) return;
+  await prisma.paymentIntent.update({
+    where: { id: intent.id },
+    data: {
+      status: 'expired',
+      activeAppointmentId: null,
+      metadata: {
+        ...normalizeMetadata(intent.metadata),
+        expiredByClinicRetry: true,
+        expiryReason: reason
+      }
+    }
+  });
 }
 
 async function getContext(req) {
@@ -282,11 +336,6 @@ function assertInvoicePayable(invoice, branchId, amount) {
     error.status = 409;
     throw error;
   }
-  if (invoice.paymentIntent && ACTIVE_PAYMENT_STATUSES.has(invoice.paymentIntent.status)) {
-    const error = new Error('INVOICE_HAS_ACTIVE_PAYMENT');
-    error.status = 409;
-    throw error;
-  }
   const expectedAmount = invoice.grandTotal || invoice.total;
   if (parsePositiveAmount(amount) !== expectedAmount) {
     const error = new Error('PAYMENT_AMOUNT_MUST_EQUAL_INVOICE_TOTAL');
@@ -301,13 +350,10 @@ async function assertNoOtherActiveAppointmentPayment(appointmentId, currentPayme
     where: {
       activeAppointmentId: appointmentId,
       ...(currentPaymentIntentId ? { id: { not: currentPaymentIntentId } } : {})
-    },
-    select: { id: true, status: true, provider: true }
+    }
   });
   if (active) {
-    const error = new Error('APPOINTMENT_HAS_ACTIVE_PAYMENT');
-    error.status = 409;
-    throw error;
+    throw activePaymentError(active);
   }
   return true;
 }
@@ -318,6 +364,8 @@ async function emitClinicPaymentUpdate(req, payload) {
   io.emit('clinic:billing_updated', payload);
   io.emit('dashboard:metrics_updated', payload);
   io.emit('appointment:updated', payload);
+  io.emit('payment:status_updated', payload);
+  io.emit('billing:invoice_updated', payload);
 }
 
 router.get('/permissions', authenticateToken, async (req, res) => {
@@ -366,6 +414,7 @@ router.get('/branches/:branchId/dentists', authenticateToken, async (req, res) =
             phone_number: true,
             dentistProfile: {
               select: {
+                id: true,
                 title: true,
                 primarySpecialization: true,
                 consultationFee: true
@@ -381,6 +430,107 @@ router.get('/branches/:branchId/dentists', authenticateToken, async (req, res) =
     return res.json({ dentists: dentists.map(serializeDentist) });
   } catch (error) {
     return sendError(res, error, 403, 'FORBIDDEN');
+  }
+});
+
+router.get('/branches/:branchId/dentists/:dentistId/availability', authenticateToken, async (req, res) => {
+  try {
+    const ctx = await getContext(req);
+    const branchId = assertCanAccessBranch(ctx, req.params.branchId);
+    const dentistId = toBigInt(req.params.dentistId, 'dentistId');
+    const date = String(req.query.date || '').trim();
+    const durationMinutes = Number(req.query.duration || 30);
+    const parsedDate = new Date(`${date}T00:00:00Z`);
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || Number.isNaN(parsedDate.getTime())
+      || parsedDate.toISOString().slice(0, 10) !== date
+    ) {
+      return res.status(400).json({ error: 'INVALID_DATE' });
+    }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 120) {
+      return res.status(400).json({ error: 'INVALID_DURATION' });
+    }
+
+    await assertDentistInBranch(dentistId, branchId, { prismaClient: prisma });
+
+    const [branch, dentistProfile] = await Promise.all([
+      prisma.clinicBranch.findFirst({
+        where: {
+          id: branchId,
+          clinicProfileId: ctx.clinicProfileId,
+          isActive: true
+        },
+        select: {
+          id: true,
+          branchName: true,
+          operatingHours: true
+        }
+      }),
+      prisma.dentistProfile.findFirst({
+        where: { userId: dentistId },
+        select: {
+          id: true,
+          userId: true,
+          clinicWorkingHours: true
+        }
+      })
+    ]);
+
+    if (!branch) {
+      return res.status(404).json({ error: 'BRANCH_NOT_FOUND' });
+    }
+    if (!dentistProfile) {
+      return res.status(404).json({ error: 'DENTIST_PROFILE_NOT_FOUND' });
+    }
+
+    const dayStart = new Date(`${date}T00:00:00+07:00`);
+    const dayEnd = new Date(dayStart.getTime() + (24 * 60 * 60 * 1000));
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        dentistId,
+        clinicBranchId: branchId,
+        status: { notIn: ['cancelled', 'rejected', 'payment_failed', 'no_show'] },
+        startsAt: { lt: dayEnd },
+        endsAt: { gt: dayStart }
+      },
+      select: {
+        startsAt: true,
+        endsAt: true
+      }
+    });
+
+    const availability = buildClinicAvailability({
+      date,
+      durationMinutes,
+      clinicHours: branch.operatingHours,
+      dentistHours: dentistProfile.clinicWorkingHours,
+      appointments,
+      includeMeta: true
+    });
+    const messages = {
+      CLINIC_CLOSED: 'Klinik tutup pada tanggal ini.',
+      DENTIST_CLOSED: 'Dokter tidak praktik pada tanggal ini.',
+      NO_OVERLAPPING_HOURS: 'Jam praktik dokter tidak berada dalam jam operasional cabang.',
+      NO_FUTURE_SLOTS: 'Tidak ada jam praktik yang tersisa pada tanggal ini.',
+      NO_AVAILABLE_SLOTS: 'Semua jadwal dokter pada tanggal ini sudah terisi.'
+    };
+
+    return res.json({
+      branchId: serializeId(branch.id),
+      branchName: branch.branchName,
+      dentistId: serializeId(dentistProfile.userId),
+      dentistProfileId: serializeId(dentistProfile.id),
+      date,
+      timezone: CLINIC_AVAILABILITY_TIMEZONE,
+      durationMinutes,
+      slots: availability.slots,
+      reason: availability.reason,
+      message: availability.reason ? messages[availability.reason] : null
+    });
+  } catch (error) {
+    return sendError(res, error, 500, 'Failed to load dentist availability');
   }
 });
 
@@ -443,14 +593,47 @@ router.post('/patients', authenticateToken, async (req, res) => {
     const { name, email, phone, dateOfBirth, gender, address } = req.body || {};
     const normalizedName = String(name || '').trim();
     const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedPhone = String(phone || '').trim();
     if (!normalizedName) {
       return res.status(400).json({ error: 'name is required' });
     }
 
+    let reusedPatient = false;
     const patient = await prisma.$transaction(async (tx) => {
       let user = normalizedEmail
         ? await tx.user.findUnique({ where: { email: normalizedEmail } })
         : null;
+      if (user) reusedPatient = true;
+
+      if (!user && normalizedPhone) {
+        user = await tx.user.findFirst({
+          where: {
+            roles: { has: 'patient' },
+            phone_number: normalizedPhone,
+            OR: [
+              {
+                patientAppointments: {
+                  some: {
+                    clinicBranchId: branchId,
+                    ownerClinicId: ctx.clinicProfileId
+                  }
+                }
+              },
+              {
+                patientProfile: {
+                  is: {
+                    medicalDetails: {
+                      path: ['clinicBranchId'],
+                      equals: branchId.toString()
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        });
+        if (user) reusedPatient = true;
+      }
 
       if (!user) {
         const passwordHash = await bcrypt.hash(randomUUID(), 10);
@@ -459,7 +642,7 @@ router.post('/patients', authenticateToken, async (req, res) => {
             name: normalizedName,
             email: normalizedEmail || `walkin+${randomUUID()}@serene.local`,
             password_hash: passwordHash,
-            phone_number: phone || null,
+            phone_number: normalizedPhone || null,
             roles: ['patient']
           }
         });
@@ -470,6 +653,26 @@ router.post('/patients', authenticateToken, async (req, res) => {
         });
       }
 
+      const existingProfile = await tx.patientProfile.findUnique({
+        where: { userId: user.id },
+        select: { medicalDetails: true }
+      });
+      const existingMedicalDetails = (
+        existingProfile?.medicalDetails
+        && typeof existingProfile.medicalDetails === 'object'
+        && !Array.isArray(existingProfile.medicalDetails)
+      )
+        ? existingProfile.medicalDetails
+        : {};
+      const clinicMedicalDetails = {
+        ...existingMedicalDetails,
+        patientSource: existingMedicalDetails.patientSource || 'clinic_walk_in',
+        clinicProfileId: ctx.clinicProfileId.toString(),
+        clinicBranchId: branchId.toString(),
+        createdByStaffId: existingMedicalDetails.createdByStaffId || ctx.staffId.toString(),
+        updatedByStaffId: ctx.staffId.toString()
+      };
+
       return tx.patientProfile.upsert({
         where: { userId: user.id },
         create: {
@@ -477,17 +680,13 @@ router.post('/patients', authenticateToken, async (req, res) => {
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
           gender: gender || null,
           address: address || null,
-          medicalDetails: {
-            patientSource: 'clinic_created',
-            clinicProfileId: ctx.clinicProfileId.toString(),
-            clinicBranchId: branchId.toString(),
-            createdByStaffId: ctx.staffId.toString()
-          }
+          medicalDetails: clinicMedicalDetails
         },
         update: {
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
           gender: gender || undefined,
-          address: address || undefined
+          address: address || undefined,
+          medicalDetails: clinicMedicalDetails
         },
         include: {
           user: {
@@ -497,7 +696,11 @@ router.post('/patients', authenticateToken, async (req, res) => {
       });
     });
 
-    return res.status(201).json({ patient: serializePatient(patient.user) });
+    return res.status(reusedPatient ? 200 : 201).json({
+      patient: serializePatient(patient.user),
+      reused: reusedPatient,
+      message: reusedPatient ? 'Pasien dengan kontak yang sama sudah ada dan digunakan kembali.' : 'Pasien ditambahkan.'
+    });
   } catch (error) {
     return sendError(res, error, 500, 'Failed to create patient');
   }
@@ -508,28 +711,41 @@ router.get('/appointments', authenticateToken, async (req, res) => {
     const ctx = await getContext(req);
     const branchId = assertCanAccessBranch(ctx, req.query.branchId);
     const patientId = req.query.patientId ? toBigInt(req.query.patientId, 'patientId') : null;
+    const source = String(req.query.source || '').trim();
+    const walkInSourceConditions = ['clinic_walk_in', 'clinic_created', 'clinic_added', 'clinic_billing', 'walk_in']
+      .flatMap((value) => [
+        { metadata: { path: ['source'], equals: value } },
+        { metadata: { path: ['patientSource'], equals: value } }
+      ]);
+    const sourceFilter = source === 'clinic_walk_in'
+      ? { OR: walkInSourceConditions }
+      : {};
 
     const appointments = await prisma.appointment.findMany({
       where: {
         clinicBranchId: branchId,
         ownerClinicId: ctx.clinicProfileId,
-        ...(patientId ? { patientId } : {})
+        ...(patientId ? { patientId } : {}),
+        ...sourceFilter
       },
       include: {
         patient: { include: { patientProfile: true } },
         dentist: { select: { id: true, name: true, email: true } },
         invoices: {
-          include: { items: true },
+          include: { items: true, paymentIntent: true },
           orderBy: { createdAt: 'desc' },
           take: 1
         }
       },
-      orderBy: { startsAt: 'desc' },
-      take: 50
+      orderBy: { createdAt: 'desc' },
+      take: source === 'patient_mobile' ? 250 : 50
     });
+    const scopedAppointments = source === 'patient_mobile'
+      ? appointments.filter((appointment) => classifyClinicAppointmentSource(appointment) === 'patient_mobile').slice(0, 50)
+      : appointments;
 
     return res.json({
-      appointments: appointments.map((appointment) => ({
+      appointments: scopedAppointments.map((appointment) => ({
         ...serializeAppointment(appointment),
         invoice: appointment.invoices?.[0] ? serializeInvoice(appointment.invoices[0]) : null
       }))
@@ -593,7 +809,8 @@ router.post('/appointments', authenticateToken, async (req, res) => {
           consultationType: 'onsite',
           metadata: {
             channel: 'clinic',
-            source: 'clinic_created',
+            source: 'clinic_walk_in',
+            patientSource: 'clinic_walk_in',
             createdByUserId: ctx.userId.toString(),
             createdByStaffId: ctx.staffId.toString(),
             branchId: branchId.toString()
@@ -608,7 +825,7 @@ router.post('/appointments', authenticateToken, async (req, res) => {
           newStatus: 'scheduled',
           changedBy: ctx.userId,
           changedByRole: ctx.role,
-          reason: 'clinic_created',
+          reason: 'clinic_walk_in',
           metadata: { source: 'clinic_billing' }
         }
       });
@@ -620,6 +837,13 @@ router.post('/appointments', authenticateToken, async (req, res) => {
           dentist: { select: { id: true, name: true, email: true } }
         }
       });
+    });
+
+    await emitClinicPaymentUpdate(req, {
+      type: 'appointment_created',
+      appointmentId: appointment.id.toString(),
+      branchId: branchId.toString(),
+      dentistId: dentistId.toString()
     });
 
     return res.status(201).json({ appointment: serializeAppointment(appointment) });
@@ -795,7 +1019,7 @@ router.get('/history', authenticateToken, async (req, res) => {
       ...branchFilter
     };
 
-    const [invoices, payments] = await Promise.all([
+    const [invoices, payments, claimsInvoices] = await Promise.all([
       prisma.invoice.findMany({
         where: invoiceWhere,
         include: {
@@ -829,12 +1053,49 @@ router.get('/history', authenticateToken, async (req, res) => {
         },
         orderBy: { createdAt: 'desc' },
         take: 100
+      }),
+      prisma.invoice.findMany({
+        where: {
+          ownerType: 'clinic',
+          ownerClinicId: ctx.clinicProfileId,
+          ...branchFilter,
+          patient: {
+            patientProfile: {
+              insuranceProvider: { not: null }
+            }
+          }
+        },
+        include: {
+          patient: { include: { patientProfile: true } },
+          items: true,
+          paymentIntent: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
       })
     ]);
 
+    const claims = claimsInvoices.map((invoice) => {
+      const patientProfile = invoice.patient?.patientProfile;
+      return {
+        id: invoice.id.toString(),
+        claimNumber: patientProfile?.insuranceNumber || `CLM-${invoice.id.toString()}`,
+        patient: invoice.patient?.name || 'Pasien',
+        insurance: patientProfile?.insuranceProvider || 'Asuransi',
+        policyNumber: patientProfile?.insuranceNumber || '-',
+        treatment: invoice.items?.map((i) => i.description).join(', ') || 'Perawatan',
+        claimAmount: invoice.grandTotal || invoice.total,
+        approvedAmount: ['paid', 'settled'].includes(invoice.status?.toLowerCase()) ? (invoice.grandTotal || invoice.total) : 0,
+        status: ['paid', 'settled'].includes(invoice.status?.toLowerCase()) ? 'approved' : (invoice.status === 'cancelled' ? 'rejected' : 'pending'),
+        submittedAt: invoice.createdAt.toISOString().split('T')[0],
+        notes: invoice.metadata?.notes || ''
+      };
+    });
+
     return res.json({
       invoices: invoices.map(serializeInvoice),
-      payments: payments.map((payment) => serializePaymentIntent(payment, payment.invoices?.[0] || null))
+      payments: payments.map((payment) => serializePaymentIntent(payment, payment.invoices?.[0] || null)),
+      claims
     });
   } catch (error) {
     return sendError(res, error, 500, 'Failed to load billing history');
@@ -847,9 +1108,38 @@ router.post('/payments/cash', authenticateToken, async (req, res) => {
     const branchId = assertCanAccessBranch(ctx, req.body?.branchId);
     const invoice = await loadInvoiceForPayment(req.body?.invoiceId);
     const amount = assertInvoicePayable(invoice, branchId, req.body?.amount);
+    const existingResolution = resolveActiveClinicPayment(invoice.paymentIntent);
+    if (existingResolution.action === 'replace') {
+      await releaseStaleClinicPayment(invoice.paymentIntent, existingResolution.reason);
+    } else if (['resume', 'block'].includes(existingResolution.action)) {
+      throw activePaymentError(invoice.paymentIntent, invoice);
+    }
     await assertNoOtherActiveAppointmentPayment(invoice.appointmentId, invoice.paymentIntentId);
 
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM invoices WHERE id = ${invoice.id} FOR UPDATE`;
+      const lockedInvoice = await tx.invoice.findUnique({
+        where: { id: invoice.id },
+        include: {
+          paymentIntent: true,
+          appointment: true
+        }
+      });
+      assertInvoicePayable(lockedInvoice, branchId, req.body?.amount);
+      const lockedResolution = resolveActiveClinicPayment(lockedInvoice.paymentIntent);
+      if (['resume', 'block'].includes(lockedResolution.action)) {
+        throw activePaymentError(lockedInvoice.paymentIntent, lockedInvoice);
+      }
+      const activePayment = await tx.paymentIntent.findFirst({
+        where: {
+          activeAppointmentId: invoice.appointmentId,
+          ...(lockedInvoice.paymentIntentId ? { id: { not: lockedInvoice.paymentIntentId } } : {})
+        }
+      });
+      if (activePayment) {
+        throw activePaymentError(activePayment, lockedInvoice);
+      }
+
       const intent = await tx.paymentIntent.create({
         data: {
           appointmentId: invoice.appointmentId,
@@ -953,6 +1243,7 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
   try {
     const ctx = await getContext(req);
     const branchId = assertCanAccessBranch(ctx, req.body?.branchId);
+    const channel = normalizeClinicPaymentChannel(req.body?.channel);
     const invoice = await loadInvoiceForPayment(req.body?.invoiceId);
 
     if (!invoice) {
@@ -967,16 +1258,22 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
     }
 
     if (invoice.paymentIntent) {
-      if (canReuseMidtransIntent(invoice.paymentIntent)) {
+      const activeResolution = resolveActiveClinicPayment(invoice.paymentIntent);
+      if (activeResolution.action === 'resume') {
         return res.status(200).json({
           payment: serializePaymentIntent(invoice.paymentIntent, invoice),
           snapToken: normalizeMetadata(invoice.paymentIntent.metadata).snapToken || null,
           redirectUrl: invoice.paymentIntent.redirectUrl,
-          status: 'pending'
+          expiresAt: invoice.paymentIntent.expiresAt?.toISOString?.() || null,
+          status: 'pending',
+          outcome: 'resumed',
+          message: 'Instruksi pembayaran aktif dilanjutkan. Tidak ada transaksi baru yang dibuat.'
         });
       }
-      if (ACTIVE_PAYMENT_STATUSES.has(invoice.paymentIntent.status)) {
-        return res.status(409).json({ error: 'INVOICE_HAS_ACTIVE_PAYMENT' });
+      if (activeResolution.action === 'replace') {
+        await releaseStaleClinicPayment(invoice.paymentIntent, activeResolution.reason);
+      } else if (activeResolution.action === 'block') {
+        throw activePaymentError(invoice.paymentIntent, invoice);
       }
     }
     await assertNoOtherActiveAppointmentPayment(invoice.appointmentId, invoice.paymentIntentId);
@@ -1006,7 +1303,8 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
         email: invoice.patient?.email || undefined,
         phone: invoice.patient?.phone_number || '0000000000'
       },
-      itemDetails
+      itemDetails,
+      enabledPayments: channel.enabledPayments
     });
     const expiresAt = resolveSnapExpiry(providerResult.expiresAt || providerResult.expiryTime);
 
@@ -1034,6 +1332,7 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
             branchId: branchId.toString(),
             initiatedByStaffId: ctx.staffId.toString(),
             initiatedByUserId: ctx.userId.toString(),
+            requestedChannel: channel.id,
             source: 'clinic_billing'
           },
           providerResponse: {
@@ -1099,14 +1398,232 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
       redirectUrl: providerResult.redirectUrl,
       expiresAt: expiresAt.toISOString(),
       status: 'pending',
+      outcome: 'created',
+      channel: channel.id,
       environment: process.env.MIDTRANS_IS_PRODUCTION === 'true' ? 'production' : 'sandbox',
-      message: 'Menunggu Pembayaran Midtrans'
+      message: channel.id === 'qris'
+        ? 'QRIS siap ditampilkan kepada pasien.'
+        : 'Nomor virtual account akan dipilih pada halaman pembayaran.'
     });
   } catch (error) {
     if (error?.code === 'MIDTRANS_API_ERROR') {
       return sendError(res, error, error.statusCode || 502, 'Failed to initiate Midtrans payment');
     }
     return sendError(res, error, 500, 'Failed to initiate Midtrans payment');
+  }
+});
+
+router.post('/payments/:paymentIntentId/reconcile', authenticateToken, async (req, res) => {
+  try {
+    const ctx = await getContext(req);
+    const paymentIntentId = toBigInt(req.params.paymentIntentId, 'paymentIntentId');
+    const payment = await prisma.paymentIntent.findUnique({
+      where: { id: paymentIntentId },
+      include: {
+        invoices: {
+          include: {
+            items: true,
+            patient: { include: { patientProfile: true } }
+          },
+          take: 1
+        }
+      }
+    });
+    if (!payment) {
+      return res.status(404).json({ error: 'PAYMENT_INTENT_NOT_FOUND' });
+    }
+    if (payment.ownerType !== 'clinic' || payment.ownerClinicId?.toString() !== ctx.clinicProfileId.toString()) {
+      return res.status(403).json({ error: 'PAYMENT_ACCESS_DENIED' });
+    }
+    const branchId = assertCanAccessBranch(ctx, payment.clinicBranchId);
+
+    if (payment.provider === 'midtrans' && ['pending', 'requires_action', 'paid'].includes(payment.status)) {
+      await reconcilePayment(payment.id);
+    }
+
+    const refreshed = await prisma.paymentIntent.findUnique({
+      where: { id: payment.id },
+      include: {
+        patient: { select: { id: true, name: true, email: true, phone_number: true } },
+        invoices: {
+          include: {
+            items: true,
+            patient: { include: { patientProfile: true } }
+          },
+          take: 1
+        }
+      }
+    });
+    const invoice = refreshed.invoices?.[0] || null;
+
+    await emitClinicPaymentUpdate(req, {
+      type: 'clinic_payment_reconciled',
+      paymentIntentId: refreshed.id.toString(),
+      invoiceId: invoice?.id?.toString?.() || null,
+      appointmentId: refreshed.appointmentId?.toString?.() || null,
+      branchId: branchId.toString(),
+      status: refreshed.status
+    });
+
+    return res.json({
+      payment: serializePaymentIntent(refreshed, invoice),
+      invoice: invoice ? serializeInvoice(invoice) : null,
+      message: ['paid', 'settled'].includes(refreshed.status)
+        ? 'Pembayaran sudah diterima.'
+        : 'Status pembayaran sudah diperbarui.'
+    });
+  } catch (error) {
+    if (error?.code === 'MIDTRANS_API_ERROR') {
+      return sendError(res, error, error.statusCode || 502, 'Failed to refresh payment status');
+    }
+    return sendError(res, error, 500, 'Failed to refresh payment status');
+  }
+});
+
+router.post('/claims', authenticateToken, async (req, res) => {
+  try {
+    const ctx = await getContext(req);
+    const branchId = assertCanAccessBranch(ctx, req.body?.branchId || ctx.allowedBranchIds?.[0]);
+    const { patientName, insurance, policyNumber, treatment, amount, notes } = req.body || {};
+
+    if (!patientName || !insurance || !policyNumber || !treatment || !amount) {
+      return res.status(400).json({ error: 'Missing required claim fields' });
+    }
+
+    const claimAmount = parsePositiveAmount(amount);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Find or create patient user
+      let user = await tx.user.findFirst({
+        where: {
+          name: { equals: patientName.trim(), mode: 'insensitive' },
+          roles: { has: 'patient' }
+        }
+      });
+
+      if (!user) {
+        const passwordHash = await bcrypt.hash(randomUUID(), 10);
+        user = await tx.user.create({
+          data: {
+            name: patientName.trim(),
+            email: `patient+${randomUUID()}@serene.local`,
+            roles: ['patient'],
+            password_hash: passwordHash
+          }
+        });
+      }
+
+      // 2. Update patient profile with insurance info
+      await tx.patientProfile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          insuranceProvider: insurance,
+          insuranceNumber: policyNumber
+        },
+        update: {
+          insuranceProvider: insurance,
+          insuranceNumber: policyNumber
+        }
+      });
+
+      // 3. Create dummy dentist for appointment
+      const staff = await tx.clinicStaff.findFirst({
+        where: {
+          clinicProfileId: ctx.clinicProfileId,
+          assignedBranchId: branchId,
+          isActive: true,
+          OR: [
+            { role: 'dentist' },
+            { user: { roles: { has: 'dentist' } } }
+          ]
+        }
+      });
+      const dentistId = staff ? staff.userId : ctx.userId;
+
+      // 4. Create appointment
+      const startsAt = new Date();
+      const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+      const appointment = await tx.appointment.create({
+        data: {
+          dentistId,
+          patientId: user.id,
+          clinicBranchId: branchId,
+          ownerType: 'clinic',
+          ownerClinicId: ctx.clinicProfileId,
+          startsAt,
+          endsAt,
+          status: 'completed',
+          reason: treatment,
+          notes,
+          metadata: {
+            source: 'clinic_billing',
+            isInsuranceClaim: true
+          }
+        }
+      });
+
+      // 5. Create invoice
+      const split = calculateClinicSplit(claimAmount);
+      const invoice = await tx.invoice.create({
+        data: {
+          appointmentId: appointment.id,
+          patientId: user.id,
+          clinicBranchId: branchId,
+          ownerType: 'clinic',
+          ownerClinicId: ctx.clinicProfileId,
+          reference: `CLM-${appointment.id.toString()}-${Date.now()}`,
+          status: 'issued',
+          subtotal: claimAmount,
+          total: claimAmount,
+          platformFee: split.platformFee,
+          clinicShare: split.clinicShare,
+          dentistShare: split.dentistShare,
+          grandTotal: split.grandTotal,
+          issuedAt: new Date(),
+          metadata: {
+            source: 'clinic_billing',
+            isInsuranceClaim: true,
+            notes
+          }
+        }
+      });
+
+      // Create line item
+      await tx.invoiceLineItem.create({
+        data: {
+          invoiceId: invoice.id,
+          description: treatment,
+          quantity: 1,
+          unitPrice: claimAmount,
+          total: claimAmount
+        }
+      });
+
+      return {
+        id: invoice.id.toString(),
+        claimNumber: policyNumber,
+        patient: user.name,
+        insurance,
+        policyNumber,
+        treatment,
+        claimAmount,
+        approvedAmount: 0,
+        status: 'pending',
+        submittedAt: invoice.createdAt.toISOString().split('T')[0],
+        notes
+      };
+    });
+
+    await emitClinicPaymentUpdate(req, {
+      type: 'insurance_claim_created',
+      branchId: branchId.toString(),
+      status: 'pending'
+    });
+
+    return res.status(201).json({ claim: result });
+  } catch (error) {
+    return sendError(res, error, 500, 'Failed to create insurance claim');
   }
 });
 

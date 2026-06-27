@@ -1,5 +1,4 @@
 export const DEFAULT_DEEPDENTAL_PROXY_BASE_URL = '/py-api/api/v1';
-export const ANALYSIS_FROM_DETECTIONS_SCHEMA_VERSION = '2026-05-07.deepdental.analysis-from-detections.v1';
 
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -127,30 +126,6 @@ export async function requestDeepDental({
   throw lastError || new DeepDentalApiError('DeepDental request failed');
 }
 
-export function buildDetectionAnalysisPayload({
-  sessionId,
-  role,
-  language,
-  message = '',
-  detections = [],
-  imageMetadata = {},
-} = {}) {
-  return {
-    contract: 'analysis_from_detections',
-    schema_version: ANALYSIS_FROM_DETECTIONS_SCHEMA_VERSION,
-    session_id: sessionId,
-    role,
-    language,
-    message,
-    detections,
-    image_metadata: {
-      file_name: imageMetadata.fileName || imageMetadata.file_name || '',
-      mime_type: imageMetadata.mimeType || imageMetadata.mime_type || '',
-      size_bytes: imageMetadata.size || imageMetadata.size_bytes || null,
-    },
-  };
-}
-
 export function createDeepDentalClient({
   config = resolveDeepDentalConfig(),
   getAccessToken = () => '',
@@ -173,14 +148,13 @@ export function createDeepDentalClient({
     request,
     health: () => request('/health', { retries: 0, timeoutMs: 8000 }),
     createSession: (body) => request('/sessions', { method: 'POST', body }),
-    fetchSessions: () => request('/sessions?page=1&per_page=30'),
-    loadMessages: (sessionId) => request(`/sessions/${sessionId}/messages?limit=200&per_page=200`),
+    fetchSessions: () => request('/sessions?page=1&per_page=100'),
+    loadMessages: (sessionId) => request(`/sessions/${sessionId}/messages`),
     deleteSession: (sessionId) => request(`/sessions/${sessionId}`, { method: 'DELETE' }),
     detectImage: (formData, signal) => request('/images/detect', { method: 'POST', body: formData, signal, timeoutMs: 30000 }),
     analyzeImage: (formData, signal) => request('/images/analyze', { method: 'POST', body: formData, signal, timeoutMs: 45000 }),
-    analyzeFromDetections: (payload, signal) => request('/analysis/from-detections', { method: 'POST', body: payload, signal, timeoutMs: 30000 }),
     chat: (body, signal) => request('/chat', { method: 'POST', body, signal, timeoutMs: 30000 }),
     chatUpload: (formData, signal) => request('/chat/upload', { method: 'POST', body: formData, signal, timeoutMs: 30000 }),
-    knowledgeQuery: (body, signal) => request('/knowledge/query', { method: 'POST', body, signal }),
+    knowledgeQuery: (body, signal) => request('/knowledge/query', { method: 'POST', body, signal, timeoutMs: 45000 }),
   };
 }

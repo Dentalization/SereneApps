@@ -5,9 +5,19 @@ import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
 import { createCorrectionRequest, approveAndExecuteCorrection } from '../services/payments/financialCorrectionService.js';
 import { createPayoutBatch } from '../services/payments/payoutService.js';
 import { lockPeriod } from '../services/payments/periodLockService.js';
+import { resolveClinicStaffContext as resolveClinicStaffFinancialContext } from '../services/clinicPaymentAuthorization.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+const CLINIC_FINANCIAL_VIEW_ROLES = new Set([
+  'cashier',
+  'manager',
+  'clinic_manager',
+  'clinic_admin',
+  'owner',
+  'clinic_owner'
+]);
 
 function toBigInt(value, fieldName) {
   try {
@@ -17,6 +27,68 @@ function toBigInt(value, fieldName) {
     error.status = 400;
     throw error;
   }
+}
+
+async function resolveClinicFinancialContext(req) {
+  const userId = toBigInt(req.user.id, 'userId');
+  const tokenRoles = req.user.roles || [];
+
+  try {
+    const staffContext = await resolveClinicStaffFinancialContext(req.user, { prismaClient: prisma });
+    const canViewFinancials = CLINIC_FINANCIAL_VIEW_ROLES.has(staffContext.role)
+      || CLINIC_FINANCIAL_VIEW_ROLES.has(staffContext.rawRole)
+      || tokenRoles.some((role) => CLINIC_FINANCIAL_VIEW_ROLES.has(role));
+
+    return {
+      userId,
+      clinicProfileId: staffContext.clinicProfileId,
+      allowedBranchIds: staffContext.allowedBranchIds || [],
+      canViewFinancials,
+      source: 'clinic_staff'
+    };
+  } catch (error) {
+    const clinicProfile = await prisma.clinicProfile.findFirst({
+      where: { userId },
+      select: { id: true }
+    });
+
+    if (!clinicProfile) {
+      throw error;
+    }
+
+    const branches = await prisma.clinicBranch.findMany({
+      where: { clinicProfileId: clinicProfile.id, isActive: true },
+      select: { id: true }
+    });
+
+      return {
+        userId,
+        clinicProfileId: clinicProfile.id,
+        allowedBranchIds: branches.map((branch) => branch.id),
+        canViewFinancials: true,
+        source: 'clinic_owner'
+      };
+  }
+}
+
+function applyClinicBranchScope(where, context) {
+  const allowedBranchIds = context.allowedBranchIds || [];
+  if (!allowedBranchIds.length) {
+    where.clinicBranchId = { in: [] };
+    return where;
+  }
+  where.clinicBranchId = { in: allowedBranchIds };
+  return where;
+}
+
+function emptyClinicFinancialPayload(context, extra = {}) {
+  return {
+    invoices: [],
+    payments: [],
+    canViewFinancials: context.canViewFinancials,
+    allowedBranchIds: (context.allowedBranchIds || []).map((id) => id.toString()),
+    ...extra
+  };
 }
 
 // Helper: map midtrans type to expected frontend method
@@ -130,28 +202,12 @@ router.get(
 router.get(
   '/clinic/history',
   authenticateToken,
-  requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff', 'clinic_admin', 'clinic_manager']),
+  requireRoles(['owner', 'clinic_owner', 'manager', 'cashier', 'front_office', 'nurse', 'staff', 'clinic_staff', 'clinic_admin', 'clinic_manager']),
   async (req, res) => {
     try {
-      const userId = toBigInt(req.user.id, 'userId');
-      
-      // Resolve clinic profile
-      let clinicProfile = await prisma.clinicProfile.findFirst({
-        where: { userId }
-      });
-
-      if (!clinicProfile) {
-        const staffRecord = await prisma.clinicStaff.findFirst({
-          where: { userId },
-          include: { clinicProfile: true }
-        });
-        if (staffRecord?.clinicProfile) {
-          clinicProfile = staffRecord.clinicProfile;
-        }
-      }
-
-      if (!clinicProfile) {
-        return res.status(404).json({ error: 'Clinic profile not found for user' });
+      const clinicContext = await resolveClinicFinancialContext(req);
+      if (!clinicContext.canViewFinancials) {
+        return res.json(emptyClinicFinancialPayload(clinicContext));
       }
 
       const page = req.query.page ? parseInt(req.query.page, 10) : null;
@@ -164,12 +220,14 @@ router.get(
 
       const invoiceWhere = {
         ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
-        ownerClinicId: clinicProfile.id
+        ownerClinicId: clinicContext.clinicProfileId
       };
       const paymentWhere = {
         ownerType: FINANCIAL_OWNER_TYPES.CLINIC,
-        ownerClinicId: clinicProfile.id
+        ownerClinicId: clinicContext.clinicProfileId
       };
+      applyClinicBranchScope(invoiceWhere, clinicContext);
+      applyClinicBranchScope(paymentWhere, clinicContext);
 
       if (status) {
         const statusLower = status.toLowerCase();
@@ -235,6 +293,7 @@ router.get(
         where: paymentWhere,
         include: {
           patient: { select: { id: true, name: true, email: true } },
+          invoices: { take: 1 },
           appointment: {
             select: {
               startsAt: true,
@@ -258,7 +317,12 @@ router.get(
           dbId: inv.id.toString(),
           patient: inv.patient?.name || 'Pasien',
           services: inv.items.map(item => item.description),
-          amount: inv.total,
+          amount: inv.grandTotal || inv.total,
+          total: inv.total,
+          grandTotal: inv.grandTotal,
+          platformFee: inv.platformFee || 0,
+          clinicShare: inv.clinicShare || 0,
+          dentistShare: inv.dentistShare || 0,
           status,
           dueDate: inv.dueAt || new Date(new Date(inv.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           createdAt: inv.createdAt
@@ -267,7 +331,7 @@ router.get(
 
       // Map Payments to frontend schema
       const mappedPayments = payments.map(pay => {
-        const associatedInvoice = invoices.find(inv => inv.paymentIntentId === pay.id);
+        const associatedInvoice = pay.invoices?.[0] || invoices.find(inv => inv.paymentIntentId === pay.id);
         const invoiceRef = associatedInvoice 
           ? (associatedInvoice.reference || `INV-${associatedInvoice.id.toString().padStart(6, '0')}`)
           : `INV-${pay.id.toString().padStart(6, '0')}`;
@@ -280,6 +344,9 @@ router.get(
           amount: pay.amount,
           method: getPaymentMethod(pay),
           status: getPaymentStatus(pay.status),
+          platformFee: associatedInvoice?.platformFee || 0,
+          clinicShare: associatedInvoice?.clinicShare || 0,
+          dentistShare: associatedInvoice?.dentistShare || 0,
           receivedBy: pay.appointment?.dentist?.name?.split?.(',')[0] || 'Midtrans',
           receivedAt: pay.createdAt,
           notes: pay.providerResponse?.status_message || 'Online Payment'
@@ -288,7 +355,9 @@ router.get(
 
       const responsePayload = {
         invoices: mappedInvoices,
-        payments: mappedPayments
+        payments: mappedPayments,
+        canViewFinancials: clinicContext.canViewFinancials,
+        allowedBranchIds: (clinicContext.allowedBranchIds || []).map((id) => id.toString())
       };
 
       if (page || limit) {

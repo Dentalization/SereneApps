@@ -24,11 +24,10 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '')
       },
       '/py-api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://localhost:4000',
         changeOrigin: true,
         secure: false,
-        ws: true,
-        rewrite: (path) => path.replace(/^\/py-api/, '')
+        ws: true
       }
     }
   }

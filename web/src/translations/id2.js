@@ -1938,7 +1938,9 @@ export default {
       sources: {
         all: 'Semua Sumber',
         serene_mobile: 'Serene Mobile',
-        clinic_added: 'Clinic/Dentist'
+        clinic_walk_in: 'Walk-in Klinik',
+        clinic_added: 'Ditambahkan Dokter',
+        unknown: 'Sumber Tidak Tercatat'
       },
       actions: {
         open: 'Buka Direktori Pasien',

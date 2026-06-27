@@ -3,14 +3,22 @@ import assert from 'node:assert/strict';
 import {
   assertCanAccessBranch,
   assertCanAccessClinicPayment,
+  assertDentistInBranch,
   resolveClinicStaffContext,
   serializeClinicPaymentContext
 } from '../src/services/clinicPaymentAuthorization.js';
 
-function fakePrisma({ staff, branches = [] }) {
+function fakePrisma({ staff, branches = [], dentists = [] }) {
   return {
     clinicStaff: {
-      findUnique: async () => staff
+      findUnique: async () => staff,
+      findFirst: async ({ where }) => (
+        dentists.find((dentist) => (
+          dentist.isActive
+          && dentist.userId.toString() === where.userId.toString()
+          && dentist.assignedBranchId.toString() === where.assignedBranchId.toString()
+        )) || null
+      )
     },
     clinicBranch: {
       findMany: async () => branches
@@ -134,6 +142,58 @@ test('non payment clinic role is not allowed for payment menu actions', async ()
 
   assert.equal(ctx.canAccessPaymentMenu, false);
   assert.throws(() => assertCanAccessClinicPayment(ctx), /FORBIDDEN/);
+});
+
+test('dentist clinic staff role is not allowed for cashier payment menu actions', async () => {
+  const ctx = await resolveClinicStaffContext(
+    { id: '15' },
+    {
+      prismaClient: fakePrisma({
+        staff: {
+          id: 6n,
+          userId: 15n,
+          clinicProfileId: 20n,
+          role: 'dentist',
+          isActive: true,
+          assignedBranchId: 70n,
+          permissions: []
+        }
+      })
+    }
+  );
+
+  assert.equal(ctx.canAccessPaymentMenu, false);
+  assert.throws(() => assertCanAccessClinicPayment(ctx), /FORBIDDEN/);
+});
+
+test('dentist lookup is scoped to selected branch', async () => {
+  const dentistStaff = {
+    id: 7n,
+    userId: 16n,
+    clinicProfileId: 20n,
+    role: 'dentist',
+    isActive: true,
+    assignedBranchId: 80n,
+    user: {
+      id: 16n,
+      name: 'Dr. Branch A',
+      email: 'branch-a@example.test',
+      phone_number: null,
+      dentistProfile: []
+    },
+    assignedBranch: {
+      id: 80n,
+      branchName: 'Branch A',
+      clinicProfileId: 20n
+    }
+  };
+  const prismaClient = fakePrisma({ dentists: [dentistStaff] });
+
+  assert.equal(await assertDentistInBranch('16', '80', { prismaClient }), dentistStaff);
+  await assert.rejects(
+    () => assertDentistInBranch('16', '81', { prismaClient }),
+    /DENTIST_NOT_ASSIGNED_TO_BRANCH/
+  );
 });
 
 test('serialized permission context exposes string ids for API clients', async () => {

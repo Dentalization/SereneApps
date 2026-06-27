@@ -131,7 +131,7 @@ export const createAppointment = async (req, res, next) => {
 
     // Check if dentist/clinic is open at the requested time (only if hours are defined)
     if (operatingHours) {
-      const dayOfWeek = starts_at.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const dayOfWeek = starts_at.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Jakarta' }).toLowerCase();
       const dayHours = operatingHours[dayOfWeek];
 
       if (dayHours && (dayHours === 'Closed' || dayHours.isOpen === false)) {
@@ -845,8 +845,14 @@ export const getAvailableSlotsForReschedule = async (req, res, next) => {
     const operatingHours = appointment.operating_hours;
 
     // Get day of week
-    const requestedDate = new Date(date);
-    const dayOfWeek = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    let normalizedDate = String(date).trim();
+    if (/^\d{2}[/\-]\d{2}[/\-]\d{4}$/.test(normalizedDate)) {
+      const separators = /[/\-]/;
+      const [d, m, y] = normalizedDate.split(separators).map(Number);
+      normalizedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+    const requestedDate = new Date(`${normalizedDate}T00:00:00Z`);
+    const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][requestedDate.getUTCDay()];
     const dayHours = operatingHours[dayOfWeek];
 
     if (!dayHours || dayHours.isOpen === false) {

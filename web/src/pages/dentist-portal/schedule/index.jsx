@@ -19,6 +19,15 @@ import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
 import ScheduleStats from './components/ScheduleStats';
 import ScheduleSkeleton from './components/ScheduleSkeleton';
 
+const SCHEDULE_REALTIME_EVENTS = [
+  'notification:new',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated',
+  'dashboard:metrics_updated',
+  'clinic:billing_updated'
+];
+
 const channelPill = {
   clinic: { bg: 'bg-slate-100 dark:bg-slate-800/60', text: 'text-slate-700 dark:text-slate-300', icon: 'Building2' },
   tele: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-300', icon: 'Video' },
@@ -330,9 +339,9 @@ const mapScheduleEntry = useCallback((entry) => {
       console.log('🔄 Real-time update: refreshing schedule due to notification:', data);
       loadAppointments();
     };
-    socket.on('notification:new', handleRealtimeUpdate);
+    SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, loadAppointments]);
 

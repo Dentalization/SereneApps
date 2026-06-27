@@ -2,12 +2,19 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import AppIcon from '../../../../components/AppIcon';
 import Dropdown, { DropdownItem, DropdownDivider } from '../../../../components/ui/Dropdown';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { getAccessToken } from '../../../../utils/auth/tokenStorage';
+import {
+    createDeepDentalClient,
+    resolveDeepDentalConfig,
+} from '../../ai/components/deepDentalClient.mjs';
+import { buildAnnotatedImageDataUrl } from '../../ai/components/deepDentalSchemas.mjs';
 import useStudyMetadata from '../hooks/useStudyMetadata';
 import usePersistentAnnotations from '../hooks/usePersistentAnnotations';
 import AnnotationCanvas from './AnnotationCanvas';
 import AnnotationHistoryPanel from './AnnotationHistoryPanel';
 import AnnotationSessionModal from './AnnotationSessionModal';
 import ReportExportModal from './ReportExportModal';
+import XCoreAiAnalysisPanel from './XCoreAiAnalysisPanel';
 import { exportAnnotationsJson, exportPdfReport, drawAnnotations } from '../utils/reportUtils';
 import {
     deleteAnnotationSnapshot,
@@ -29,6 +36,10 @@ import {
 } from '../utils/clinicalPersistenceRecords.mjs';
 import { getAnnotationReviewIssues } from '../utils/annotationQuality';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
+import {
+    analyzeXCore2DSource,
+    buildXCore2DAnalysisContext,
+} from '../services/xCore2dAiAnalysis.mjs';
 import ShortcutHelpButton from './ShortcutHelpButton';
 import SeriesSidebar from './SeriesSidebar';
 
@@ -64,6 +75,14 @@ const distancePointToSegment = (point, start, end) => {
 };
 
 const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
+
+const getAiAnalysisErrorMessage = (error) => {
+    if (error?.name === 'AbortError') return '';
+    if (error?.status === 413) return 'Ukuran gambar terlalu besar untuk dianalisis.';
+    if (error?.status === 429) return 'Layanan AI sedang membatasi permintaan. Coba kembali beberapa saat lagi.';
+    if (error?.status >= 500) return 'Layanan reasoning AI gagal memproses gambar. Coba kembali atau periksa service DeepDental.';
+    return error?.message || 'Analisis AI tidak dapat diselesaikan.';
+};
 
 const drawMeasurementOverlay = (ctx, measurements, pixelSpacing) => {
     ctx.save();
@@ -222,6 +241,12 @@ const ImageViewer2D = ({
     const [sessionSaving, setSessionSaving] = useState(false);
     const [sessionError, setSessionError] = useState('');
     const [reviewError, setReviewError] = useState('');
+    const [aiAnalysis, setAiAnalysis] = useState(null);
+    const [aiAnalysisError, setAiAnalysisError] = useState('');
+    const [aiPanelOpen, setAiPanelOpen] = useState(false);
+    const [aiOverlayVisible, setAiOverlayVisible] = useState(false);
+    const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+    const aiAnalysisAbortRef = useRef(null);
     const annotationsRef = useRef([]);
     const annotationsHistoryRef = useRef([]);
     const annotationsRedoRef = useRef([]);
@@ -247,6 +272,13 @@ const ImageViewer2D = ({
         `/image/${studyKey}/${seriesUid}`,
         buildStudyAssetParams(study, { retry: retryCount })
     );
+    const aiClient = useMemo(() => createDeepDentalClient({
+        config: resolveDeepDentalConfig({
+            VITE_DEEPDENTAL_PROXY_BASE_URL: import.meta.env.VITE_DEEPDENTAL_PROXY_BASE_URL,
+        }),
+        getAccessToken,
+        retries: 0,
+    }), []);
     const canUseBackendSessions = useMemo(() => /^\d+$/.test(String(study?.id || '')), [study?.id]);
     const sessionScope = useMemo(() => ({
         study,
@@ -268,6 +300,13 @@ const ImageViewer2D = ({
         () => getScaleBar(imageSize.width, imageSize.height, zoom, effectivePixelSpacing),
         [effectivePixelSpacing, imageSize.height, imageSize.width, zoom]
     );
+    const aiAnnotatedImageUrl = useMemo(
+        () => (aiAnalysis ? buildAnnotatedImageDataUrl(aiAnalysis) : ''),
+        [aiAnalysis]
+    );
+    const displayedImageUrl = aiOverlayVisible && aiAnnotatedImageUrl
+        ? aiAnnotatedImageUrl
+        : imageUrl;
 
     const reportInitialValues = useMemo(() => ({
         dentistName,
@@ -288,6 +327,57 @@ const ImageViewer2D = ({
     useEffect(() => {
         measurementsRef.current = measurements;
     }, [measurements]);
+
+    const cancelAiAnalysis = useCallback(() => {
+        aiAnalysisAbortRef.current?.abort();
+        aiAnalysisAbortRef.current = null;
+        setIsAiAnalyzing(false);
+    }, []);
+
+    const handleAiAnalyze = useCallback(async () => {
+        if (!imageLoaded || isAiAnalyzing) return;
+
+        setShowSeriesPanel(false);
+        setAiPanelOpen(true);
+        setAiAnalysisError('');
+        setAiOverlayVisible(false);
+
+        if (!aiClient.config.isConfigured) {
+            setAiAnalysisError(aiClient.config.configurationError || 'DeepDental proxy belum dikonfigurasi.');
+            return;
+        }
+
+        aiAnalysisAbortRef.current?.abort();
+        const controller = new AbortController();
+        aiAnalysisAbortRef.current = controller;
+        setIsAiAnalyzing(true);
+
+        try {
+            const result = await analyzeXCore2DSource({
+                client: aiClient,
+                imageUrl,
+                context: buildXCore2DAnalysisContext({ modality, seriesTitle }),
+                signal: controller.signal,
+            });
+            if (aiAnalysisAbortRef.current !== controller || controller.signal.aborted) return;
+            setAiAnalysis(result);
+            setAiAnalysisError('');
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            console.warn('[ImageViewer2D] AI analysis failed:', error?.code || error?.message || error);
+            setAiAnalysisError(getAiAnalysisErrorMessage(error));
+        } finally {
+            if (aiAnalysisAbortRef.current === controller) {
+                aiAnalysisAbortRef.current = null;
+                setIsAiAnalyzing(false);
+            }
+        }
+    }, [aiClient, imageLoaded, imageUrl, isAiAnalyzing, modality, seriesTitle]);
+
+    const handleCloseAiPanel = useCallback(() => {
+        if (isAiAnalyzing) cancelAiAnalysis();
+        setAiPanelOpen(false);
+    }, [cancelAiAnalysis, isAiAnalyzing]);
 
     const replaceAnnotationsState = useCallback((updater) => {
         const next = resolveStateUpdate(updater, annotationsRef.current);
@@ -532,6 +622,8 @@ const ImageViewer2D = ({
     }, []);
 
     useEffect(() => {
+        aiAnalysisAbortRef.current?.abort();
+        aiAnalysisAbortRef.current = null;
         setRetryCount(0);
         setImageLoaded(false);
         setImageError(false);
@@ -558,7 +650,16 @@ const ImageViewer2D = ({
         setHistoryOpen(false);
         setSnapshots([]);
         setSnapshotOverlay(null);
+        setAiAnalysis(null);
+        setAiAnalysisError('');
+        setAiPanelOpen(false);
+        setAiOverlayVisible(false);
+        setIsAiAnalyzing(false);
     }, [replaceAnnotationsState, replaceMeasurementsState, studyKey, seriesUid]);
+
+    useEffect(() => () => {
+        aiAnalysisAbortRef.current?.abort();
+    }, []);
 
     useEffect(() => {
         if (measureMode) return;
@@ -1527,6 +1628,32 @@ const ImageViewer2D = ({
 
                     <div className="h-4 w-px bg-slate-800" />
 
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (aiAnalysis || aiAnalysisError || isAiAnalyzing) {
+                                setShowSeriesPanel(false);
+                                setAiPanelOpen(true);
+                                return;
+                            }
+                            handleAiAnalyze();
+                        }}
+                        disabled={!imageLoaded}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            aiAnalysis
+                                ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-200'
+                                : isAiAnalyzing
+                                    ? 'border-cyan-500/40 bg-cyan-500/20 text-cyan-200'
+                                    : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20'
+                        }`}
+                        title="Run DeepDental detection and clinical reasoning"
+                    >
+                        <AppIcon name={isAiAnalyzing ? 'Loader2' : aiAnalysis ? 'ScanSearch' : 'Brain'} size={15} className={isAiAnalyzing ? 'animate-spin' : ''} />
+                        <span className="hidden xl:inline">{isAiAnalyzing ? 'Analyzing' : 'AI Analyze'}</span>
+                    </button>
+
+                    <div className="h-4 w-px bg-slate-800" />
+
                     {/* Diagnostic Mode Tools Group */}
                     <div className="flex items-center gap-1.5">
                         <button
@@ -1748,7 +1875,7 @@ const ImageViewer2D = ({
                 >
                     <img
                         ref={imgRef}
-                        src={imageUrl}
+                        src={displayedImageUrl}
                         alt={seriesTitle}
                         draggable={false}
                         onLoad={(event) => {
@@ -1768,7 +1895,7 @@ const ImageViewer2D = ({
                         style={{
                             maxWidth: 'none',
                             maxHeight: 'none',
-                            filter: imageFilter,
+                            filter: aiOverlayVisible ? 'none' : imageFilter,
                             imageRendering: zoom > 2 ? 'pixelated' : 'auto',
                         }}
                     />
@@ -2165,6 +2292,18 @@ const ImageViewer2D = ({
                         </div>
                     </div>
                 )}
+
+                <XCoreAiAnalysisPanel
+                    visible={aiPanelOpen}
+                    findings={aiAnalysis}
+                    loading={isAiAnalyzing}
+                    error={aiAnalysisError}
+                    overlayVisible={aiOverlayVisible}
+                    onClose={handleCloseAiPanel}
+                    onRetry={handleAiAnalyze}
+                    onCancel={handleCloseAiPanel}
+                    onToggleOverlay={() => setAiOverlayVisible((current) => !current)}
+                />
 
                 <AnnotationHistoryPanel
                     visible={historyOpen}

@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, Activity, Zap, Wifi, WifiOff, Sparkles, ChevronRight } from 'lucide-react';
+import { Menu, Activity, Zap, WifiOff, Sparkles, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import SideBar from '../ui/SideBar';
@@ -100,10 +100,10 @@ const AIAnalysisPage = () => {
 
   const {
     sessionId, messages, sessions, clinicalHistory, caseWorkspace, isLoading, isBootstrapping, systemHealth,
-    bootstrap, sendMessage, startNewSession, loadSession, deleteSession,
+    bootstrap, sendMessage, startNewSession, deleteSession,
     reviewFindings, clearLocalClinicalData, createWorkspaceCase, loadCaseWorkspace,
     loadClinicalHistoryItem, archiveWorkspaceCase, uploadWorkspaceImages,
-    removeWorkspaceImage, analyzeWorkspaceImages, confirmWorkspaceFinding,
+    removeWorkspaceImage, retryWorkspaceImage, analyzeWorkspaceImages, confirmWorkspaceFinding,
     rejectWorkspaceFinding, editWorkspaceFinding, addManualWorkspaceFinding,
     verifyWorkspaceCase, exportWorkspacePdf, exportWorkspaceJson, linkWorkspacePatient,
   } = useDentalAPI('dentist', user?.id, language || 'id');
@@ -116,21 +116,29 @@ const AIAnalysisPage = () => {
   const [patientLinkOpen, setPatientLinkOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
+  // P1-B: Only auto-scroll if user is already near the bottom
+  // Prevents forcing scroll while reviewing older messages
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 180;
+  }, []);
 
   // Initialize
   useEffect(() => { bootstrap(); }, [bootstrap]);
   
-  // Auto-scroll logic
+  // Auto-scroll: only scroll to bottom if user is already near the bottom
   useEffect(() => { 
-    if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottom() && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, isNearBottom]);
 
   const handleSend = useCallback((text, imageFile) => { sendMessage(text, imageFile); }, [sendMessage]);
   const handleSuggestedQuestion = useCallback((q) => { sendMessage(q); }, [sendMessage]);
   const handleNewSession = useCallback(async () => { await startNewSession(); setSidebarOpen(false); }, [startNewSession]);
-  const handleLoadSession = useCallback(async (sid) => { await loadSession(sid); setSidebarOpen(false); }, [loadSession]);
   const handleSelectHistory = useCallback(async (item) => { await loadClinicalHistoryItem(item); setSidebarOpen(false); }, [loadClinicalHistoryItem]);
   const handleArchiveHistory = useCallback(async (item) => { await archiveWorkspaceCase(item); }, [archiveWorkspaceCase]);
   const handleCreateCase = useCallback(async () => { await createWorkspaceCase({ title: currentSessionTitle || 'Verified dental case' }); }, [createWorkspaceCase, currentSessionTitle]);
@@ -271,7 +279,7 @@ const AIAnalysisPage = () => {
         <div className="flex-1 flex min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
             {/* --- SCROLLABLE MESSAGES --- */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
               <div className="max-w-3xl mx-auto space-y-6 pb-4">
                 {messages.length === 0 ? (
                   <EmptyState labels={{
@@ -342,6 +350,7 @@ const AIAnalysisPage = () => {
             onRefresh={handleRefreshCase}
             onUploadImages={uploadWorkspaceImages}
             onRemoveImage={removeWorkspaceImage}
+            onRetryImage={retryWorkspaceImage}
             onAnalyzeImages={analyzeWorkspaceImages}
             onConfirmFinding={confirmWorkspaceFinding}
             onRejectFinding={rejectWorkspaceFinding}

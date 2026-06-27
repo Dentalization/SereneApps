@@ -12,9 +12,18 @@ import ClinicMultiCalendar from './components/ClinicMultiCalendar';
 import ClinicDailyCalendar from './components/ClinicDailyCalendar';
 import ClinicScheduleStats from './components/ClinicScheduleStats';
 import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
-import { fetchAppointments } from '../../../services/appointmentService';
+import { fetchAppointments, updateAppointmentStatus } from '../../../services/appointmentService';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import ClinicService from '../../../services/clinicService';
+
+const CLINIC_SCHEDULE_REALTIME_EVENTS = [
+  'notification:new',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated',
+  'dashboard:metrics_updated',
+  'clinic:billing_updated'
+];
 
 const SchedulePage = () => {
   const { t } = useLanguage();
@@ -209,55 +218,39 @@ const SchedulePage = () => {
   useEffect(() => {
     if (!socket) return;
     const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Real-time update: refreshing clinic schedule due to notification:', data);
+      console.log('🔄 Real-time update: refreshing clinic schedule:', data);
       loadSchedule();
     };
-    socket.on('notification:new', handleRealtimeUpdate);
+    CLINIC_SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      CLINIC_SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, loadSchedule]);
 
   // Handle appointment actions
-  const handleAppointmentAction = (action, appointment) => {
+  const handleAppointmentAction = async (action, appointment) => {
     console.log('Appointment action:', action, appointment);
 
     switch (action) {
       case 'confirm':
-        // Handle confirmation
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'confirmed' } : apt
-        ));
+      case 'checkin':
+      case 'start':
+      case 'complete':
+      case 'noshow':
+        try {
+          const { appointment: updated } = await updateAppointmentStatus(appointment.id, action);
+          const mapped = mapApiAppointment(updated);
+          if (mapped) {
+            setAppointments(prev => prev.map(apt => (apt.id === appointment.id ? mapped : apt)));
+            setSelectedAppointment(mapped);
+          }
+          await loadSchedule();
+        } catch (error) {
+          console.error('Failed to update appointment status:', error);
+        }
         break;
       case 'cancel':
-        // Handle cancellation
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'cancelled' } : apt
-        ));
-        break;
-      case 'checkin':
-        // Handle check-in
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'check-in' } : apt
-        ));
-        break;
-      case 'start':
-        // Handle start treatment
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'in-chair' } : apt
-        ));
-        break;
-      case 'complete':
-        // Handle completion
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'completed' } : apt
-        ));
-        break;
-      case 'noshow':
-        // Handle no-show
-        setAppointments(prev => prev.map(apt =>
-          apt.id === appointment.id ? { ...apt, status: 'no-show' } : apt
-        ));
+        console.log('Cancel action is not wired from clinic schedule drawer yet.');
         break;
       case 'viewPatient':
         if (appointment.patient?.id) {
@@ -268,7 +261,9 @@ const SchedulePage = () => {
         console.log('Unknown action:', action);
     }
 
-    setShowAppointmentDrawer(false);
+    if (action !== 'viewPatient') {
+      setShowAppointmentDrawer(false);
+    }
   };
 
   // Handle appointment click

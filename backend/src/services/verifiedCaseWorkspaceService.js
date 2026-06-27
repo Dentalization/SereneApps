@@ -763,7 +763,9 @@ function isSafePatientId(value) {
 }
 
 function extractAiFindings(normalizedFindings = {}) {
-  if (Array.isArray(normalizedFindings.findings)) return normalizedFindings.findings;
+  if (Array.isArray(normalizedFindings.findings) && normalizedFindings.findings.length > 0) {
+    return normalizedFindings.findings;
+  }
   if (Array.isArray(normalizedFindings.detections)) {
     return normalizedFindings.detections.map((detection) => ({
       label: detection.label || 'AI finding',
@@ -774,6 +776,32 @@ function extractAiFindings(normalizedFindings = {}) {
     }));
   }
   return [];
+}
+
+function normalizeAiConfidence(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const raw = typeof value === 'string' ? value.trim().replace(/%$/, '') : value;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return null;
+  const normalized = numeric > 1 && numeric <= 100 ? numeric / 100 : numeric;
+  return normalized >= 0 && normalized <= 1 ? normalized : null;
+}
+
+function sanitizeRawAiResult(rawAiResult = {}) {
+  if (!rawAiResult || typeof rawAiResult !== 'object' || Array.isArray(rawAiResult)) return {};
+  const {
+    annotated_image_base64: _annotatedImageBase64,
+    visual_findings: visualFindings,
+    ...safeResult
+  } = rawAiResult;
+  if (visualFindings && typeof visualFindings === 'object' && !Array.isArray(visualFindings)) {
+    const {
+      annotated_image_base64: _nestedAnnotatedImageBase64,
+      ...safeVisualFindings
+    } = visualFindings;
+    safeResult.visual_findings = safeVisualFindings;
+  }
+  return safeResult;
 }
 
 export function createVerifiedCaseWorkspaceService({
@@ -1026,6 +1054,7 @@ export function createVerifiedCaseWorkspaceService({
         annotated_image_mime_type: annotatedMime,
         updated_at: timestamp(),
       });
+      const persistedRawAiResult = sanitizeRawAiResult(aiResult.raw_ai_result || {});
       const createdFindings = [];
       for (const finding of extractAiFindings(aiResult.normalized_findings || {})) {
         createdFindings.push(await repository.createAiFinding({
@@ -1034,11 +1063,11 @@ export function createVerifiedCaseWorkspaceService({
           label: finding.label || finding.description || 'AI finding',
           tooth_or_region: finding.tooth_or_region || finding.location || null,
           severity: finding.severity || 'mild',
-          confidence: finding.confidence ?? null,
+          confidence: normalizeAiConfidence(finding.confidence),
           source: 'ai',
           status: FINDING_STATUSES.AI_SUGGESTED,
           notes: finding.notes || finding.description || '',
-          raw_ai_result: aiResult.raw_ai_result || {},
+          raw_ai_result: persistedRawAiResult,
           created_at: timestamp(),
           updated_at: timestamp(),
         }));
@@ -1080,6 +1109,7 @@ export function createVerifiedCaseWorkspaceService({
           annotated_image_signed_url: updatedImage.annotated_image_ref ? await storage.getSignedUrl(updatedImage.annotated_image_ref) : null,
         },
         findings: createdFindings,
+        visual_findings: persistedRawAiResult,
         case: pending,
       };
     },

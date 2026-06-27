@@ -11,6 +11,15 @@ import { resolveMediaUrl } from '../../../utils/media';
 import { fetchAppointments } from '../../../services/appointmentService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
+const DASHBOARD_REALTIME_EVENTS = [
+  'notification:new',
+  'clinic:billing_updated',
+  'dashboard:metrics_updated',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated'
+];
+
 const ClinicDashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -44,7 +53,8 @@ const ClinicDashboard = () => {
     recentActivities: [],
     dentistLoadData: [],
     paymentMethodData: [],
-    totalMethodRevenue: 0
+    totalMethodRevenue: 0,
+    canViewFinancials: true
   });
 
   const [activeTrendTab, setActiveTrendTab] = useState('revenue'); // 'revenue' | 'appointments'
@@ -94,6 +104,7 @@ const ClinicDashboard = () => {
       const appointments = appointmentsResponse?.appointments || [];
       const invoices = financialsResponse?.data?.invoices || [];
       const payments = financialsResponse?.data?.payments || [];
+      const canViewFinancials = financialsResponse?.data?.canViewFinancials !== false;
 
       // Calculate today stats
       const todayStart = new Date();
@@ -111,11 +122,11 @@ const ClinicDashboard = () => {
       const pendingToday = todayAppointments.filter((apt) =>
         ['scheduled', 'rescheduled', 'pending'].includes(apt.status)
       ).length;
-      const noShowToday = todayAppointments.filter((apt) => apt.status === 'no_show').length;
+      const noShowToday = todayAppointments.filter((apt) => ['no_show', 'no-show'].includes(apt.status)).length;
       const cancelledToday = todayAppointments.filter((apt) => apt.status === 'cancelled').length;
 
       // Today's revenue from payments
-      const todayRevenue = payments.reduce((sum, p) => {
+      const todayRevenue = canViewFinancials ? payments.reduce((sum, p) => {
         if (['completed', 'paid', 'settled'].includes(p.status?.toLowerCase())) {
           const date = new Date(p.receivedAt || p.created_at || p.updatedAt);
           if (date >= todayStart && date <= todayEnd) {
@@ -123,15 +134,15 @@ const ClinicDashboard = () => {
           }
         }
         return sum;
-      }, 0);
+      }, 0) : 0;
 
       // Pending revenue from unpaid/pending/overdue invoices
-      const pendingRevenue = invoices.reduce((sum, inv) => {
+      const pendingRevenue = canViewFinancials ? invoices.reduce((sum, inv) => {
         if (['unpaid', 'pending', 'overdue'].includes(inv.status?.toLowerCase())) {
           return sum + Number(inv.totalAmount || inv.amount || 0);
         }
         return sum;
-      }, 0);
+      }, 0) : 0;
 
       // Calculate active rooms (assume max 6 rooms)
       const totalRooms = 6;
@@ -239,7 +250,7 @@ const ClinicDashboard = () => {
       const dentistStats = {};
       appointments.forEach((apt) => {
         const date = new Date(apt.startsAt || apt.starts_at);
-        if (date.toDateString() === new Date().toDateString() && !['cancelled', 'no_show'].includes(apt.status)) {
+        if (date.toDateString() === new Date().toDateString() && !['cancelled', 'no_show', 'no-show'].includes(apt.status)) {
           const dentistName = apt.provider?.name || apt.dentist?.name || 'Dokter';
           dentistStats[dentistName] = (dentistStats[dentistName] || 0) + 1;
         }
@@ -251,7 +262,7 @@ const ClinicDashboard = () => {
 
       // Group payments by method for visualization
       const methodCounts = {};
-      payments.forEach((p) => {
+      if (canViewFinancials) payments.forEach((p) => {
         if (['completed', 'paid', 'settled'].includes(p.status?.toLowerCase())) {
           const method = p.method || 'online';
           methodCounts[method] = (methodCounts[method] || 0) + Number(p.amount || 0);
@@ -287,7 +298,8 @@ const ClinicDashboard = () => {
         recentActivities: sortedActivities,
         dentistLoadData,
         paymentMethodData,
-        totalMethodRevenue
+        totalMethodRevenue,
+        canViewFinancials
       });
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -309,9 +321,9 @@ const ClinicDashboard = () => {
       console.log('🔄 Real-time update: refreshing clinic dashboard due to socket notification:', data);
       loadDashboardData();
     };
-    socket.on('notification:new', handleRealtimeUpdate);
+    DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, loadDashboardData]);
 
@@ -365,7 +377,7 @@ const ClinicDashboard = () => {
   const getAptTimeInfo = useCallback((apt) => {
     const start = new Date(apt.startsAt || apt.starts_at);
     const end = new Date(apt.endsAt || apt.ends_at);
-    
+
     if (currentTime >= start && currentTime <= end) {
       return {
         text: t('clinic.dashboard.upcoming.inProgress') || 'Sedang Berlangsung',
@@ -373,10 +385,10 @@ const ClinicDashboard = () => {
         dotClass: 'bg-emerald-500 animate-ping'
       };
     }
-    
+
     const diffMs = start - currentTime;
     const diffMins = Math.round(diffMs / 60000);
-    
+
     if (diffMs < 0) {
       return {
         text: t('clinic.dashboard.upcoming.delayed') || `Terlambat ${Math.abs(diffMins)} mnt`,
@@ -384,7 +396,7 @@ const ClinicDashboard = () => {
         dotClass: 'bg-rose-500'
       };
     }
-    
+
     if (diffMins < 60) {
       return {
         text: t('clinic.dashboard.upcoming.startsIn') || `Mulai ${diffMins} mnt lagi`,
@@ -392,7 +404,7 @@ const ClinicDashboard = () => {
         dotClass: 'bg-blue-500 animate-pulse'
       };
     }
-    
+
     const diffHours = Math.round(diffMins / 60);
     if (diffHours < 24) {
       return {
@@ -401,7 +413,7 @@ const ClinicDashboard = () => {
         dotClass: 'bg-amber-500'
       };
     }
-    
+
     return {
       text: start.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
       badgeClass: 'bg-slate-500/10 text-secondary border-slate-500/20 font-medium',
@@ -505,12 +517,12 @@ const ClinicDashboard = () => {
 
       <div className="flex-1 min-w-0">
         <div className="p-6 md:p-8 space-y-8">
-          
+
           {/* Welcome Banner Card */}
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 p-6 md:p-8 text-white shadow-xl theme-transition">
             <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
             <div className="absolute -left-10 -bottom-10 w-48 h-48 rounded-full bg-black/10 blur-2xl" />
-            
+
             <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider backdrop-blur-md">
@@ -524,7 +536,7 @@ const ClinicDashboard = () => {
                   {t('clinic.dashboard.welcomeSubtitle', { defaultValue: 'Kelola jadwal pasien, transaksi billing, dan pantau performa klinik Anda secara real-time.' })}
                 </p>
               </div>
-              
+
               {/* Live Clock / Calendar widget */}
               <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 px-5 py-3 md:self-center shadow-inner self-start animate-fade-in">
                 <div className="p-2.5 bg-white/10 rounded-xl animate-pulse">
@@ -572,9 +584,9 @@ const ClinicDashboard = () => {
               <Icon name="BarChart3" className="text-amber-500" size={20} />
               {t('clinic.dashboard.todaySummary') || 'Ringkasan Hari Ini'}
             </h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              
+
               {/* Card 1: Today's Appointments */}
               <div className="relative overflow-hidden p-6 rounded-3xl bg-surface-elevated border border-border/40 hover:border-accent/40 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-default">
                 <div className="flex items-center justify-between mb-4">
@@ -596,7 +608,7 @@ const ClinicDashboard = () => {
                     {dashboardData.todayStats.completedToday} selesai, {dashboardData.todayStats.pendingToday} menunggu
                   </p>
                   <div className="w-full bg-border/40 rounded-full h-1.5 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
                       style={{ width: `${(dashboardData.todayStats.completedToday / (dashboardData.todayStats.totalToday || 1)) * 100}%` }}
                     />
@@ -611,23 +623,23 @@ const ClinicDashboard = () => {
                     <Icon name="TrendingUp" size={22} className="text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100/50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
-                    {Math.min(100, Math.round((dashboardData.todayStats.todayRevenue / 20000000) * 100))}% target
+                    {dashboardData.canViewFinancials ? `${Math.min(100, Math.round((dashboardData.todayStats.todayRevenue / 20000000) * 100))}% target` : 'Restricted'}
                   </span>
                 </div>
                 <div>
                   <p className="text-2xl font-extrabold text-primary mb-1 tracking-tight truncate" title={formatCurrency(dashboardData.todayStats.todayRevenue)}>
-                    {formatCurrency(dashboardData.todayStats.todayRevenue)}
+                    {dashboardData.canViewFinancials ? formatCurrency(dashboardData.todayStats.todayRevenue) : 'Tidak tersedia'}
                   </p>
                   <p className="text-sm font-bold text-primary mb-2">
                     {t('clinic.dashboard.dailyRevenue') || 'Pendapatan Hari Ini'}
                   </p>
                   <p className="text-xs text-secondary mb-3">
-                    Target: Rp 20.000.000
+                    {dashboardData.canViewFinancials ? 'Target: Rp 20.000.000' : 'Akses angka finansial dibatasi untuk role ini'}
                   </p>
                   <div className="w-full bg-border/40 rounded-full h-1.5 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, (dashboardData.todayStats.todayRevenue / 20000000) * 100)}%` }}
+                      style={{ width: dashboardData.canViewFinancials ? `${Math.min(100, (dashboardData.todayStats.todayRevenue / 20000000) * 100)}%` : '0%' }}
                     />
                   </div>
                 </div>
@@ -645,18 +657,18 @@ const ClinicDashboard = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-extrabold text-primary mb-1 tracking-tight truncate" title={formatCurrency(dashboardData.todayStats.pendingRevenue)}>
-                    {formatCurrency(dashboardData.todayStats.pendingRevenue)}
+                    {dashboardData.canViewFinancials ? formatCurrency(dashboardData.todayStats.pendingRevenue) : 'Tidak tersedia'}
                   </p>
                   <p className="text-sm font-bold text-primary mb-2">
                     {t('clinic.dashboard.outstandingRevenue') || 'Tagihan Outstanding'}
                   </p>
                   <p className="text-xs text-secondary mb-3">
-                    Invoices belum dilunasi
+                    {dashboardData.canViewFinancials ? 'Invoices belum dilunasi' : 'Akses angka finansial dibatasi untuk role ini'}
                   </p>
                   <div className="w-full bg-border/40 rounded-full h-1.5 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: '100%' }}
+                      style={{ width: dashboardData.canViewFinancials ? '100%' : '0%' }}
                     />
                   </div>
                 </div>
@@ -683,7 +695,7 @@ const ClinicDashboard = () => {
                     {dashboardData.todayStats.availableRooms} ruangan tersedia
                   </p>
                   <div className="w-full bg-border/40 rounded-full h-1.5 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-purple-500 h-1.5 rounded-full transition-all duration-500"
                       style={{ width: `${(dashboardData.todayStats.occupiedRooms / 6) * 100}%` }}
                     />
@@ -696,7 +708,7 @@ const ClinicDashboard = () => {
 
           {/* Data Visualizations Grid (Recharts Area & Pie) */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             {/* Left Chart: 7-Day Performance Trends (AreaChart) */}
             <div className="lg:col-span-2 bg-surface-elevated border border-border/40 rounded-3xl p-6 flex flex-col h-96 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -709,13 +721,13 @@ const ClinicDashboard = () => {
                     {t('clinic.dashboard.trendSubtitle') || 'Analisis pendapatan dan volume janji temu selama 7 hari terakhir'}
                   </p>
                 </div>
-                
+
                 {/* Chart Toggle tabs */}
                 <div className="flex bg-surface border border-border/40 rounded-xl p-1 self-start sm:self-auto">
                   <button
                     onClick={() => setActiveTrendTab('revenue')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTrendTab === 'revenue' 
-                      ? 'bg-accent text-white shadow-sm' 
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTrendTab === 'revenue'
+                      ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary'}`}
                   >
                     <Icon name="DollarSign" size={14} />
@@ -723,8 +735,8 @@ const ClinicDashboard = () => {
                   </button>
                   <button
                     onClick={() => setActiveTrendTab('appointments')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTrendTab === 'appointments' 
-                      ? 'bg-accent text-white shadow-sm' 
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTrendTab === 'appointments'
+                      ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary'}`}
                   >
                     <Icon name="Calendar" size={14} />
@@ -747,16 +759,16 @@ const ClinicDashboard = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.2} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} 
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
                       dy={8}
                     />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
                       tickFormatter={(value) => activeTrendTab === 'revenue' ? `Rp${value / 1000000}jt` : value}
                       width={55}
@@ -818,7 +830,7 @@ const ClinicDashboard = () => {
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
-                  
+
                   {/* Centered details */}
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                     <span className="text-3xl font-extrabold text-primary tracking-tight">
@@ -846,7 +858,7 @@ const ClinicDashboard = () => {
 
           {/* Dynamic Clinic Load & Financial Distributions (Custom Modern Visualizations) */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             {/* Horizontal Bar Load Breakdown: Dentist Busiest list */}
             <div className="bg-surface-elevated border border-border/40 rounded-3xl p-6 flex flex-col min-h-[260px] shadow-sm">
               <div className="mb-4">
@@ -880,9 +892,9 @@ const ClinicDashboard = () => {
                             <span>{dentist.count} Janji</span>
                           </div>
                           <div className="w-full bg-border/40 rounded-full h-2 overflow-hidden shadow-inner">
-                            <div 
-                              className="bg-gradient-to-r from-accent to-accent-hover h-full rounded-full transition-all duration-700" 
-                              style={{ width: `${pct}%` }} 
+                            <div
+                              className="bg-gradient-to-r from-accent to-accent-hover h-full rounded-full transition-all duration-700"
+                              style={{ width: `${pct}%` }}
                             />
                           </div>
                         </div>
@@ -908,7 +920,11 @@ const ClinicDashboard = () => {
               <div className="my-4 space-y-4">
                 {/* Custom Segmented Horizontal Bar Chart */}
                 <div className="w-full bg-border/40 rounded-full h-5 overflow-hidden flex shadow-inner">
-                  {dashboardData.paymentMethodData.length === 0 ? (
+                  {!dashboardData.canViewFinancials ? (
+                    <div className="w-full h-full bg-border/50 text-center text-[10px] text-secondary flex items-center justify-center font-bold">
+                      Akses finansial dibatasi
+                    </div>
+                  ) : dashboardData.paymentMethodData.length === 0 ? (
                     <div className="w-full h-full bg-border/50 text-center text-[10px] text-secondary flex items-center justify-center font-bold">
                       Belum ada transaksi sukses
                     </div>
@@ -917,12 +933,12 @@ const ClinicDashboard = () => {
                       const pct = dashboardData.totalMethodRevenue > 0 ? (item.value / dashboardData.totalMethodRevenue) * 100 : 0;
                       if (pct === 0) return null;
                       return (
-                        <div 
-                          key={index} 
+                        <div
+                          key={index}
                           className="h-full transition-all duration-300 border-r border-surface last:border-0 hover:brightness-110"
-                          style={{ 
-                            width: `${pct}%`, 
-                            backgroundColor: item.color 
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: item.color
                           }}
                           title={`${item.name}: ${formatCurrency(item.value)} (${Math.round(pct)}%)`}
                         />
@@ -933,7 +949,7 @@ const ClinicDashboard = () => {
 
                 {/* Legend Grid with values */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {dashboardData.paymentMethodData.map((item, index) => {
+                  {dashboardData.canViewFinancials && dashboardData.paymentMethodData.map((item, index) => {
                     const pct = dashboardData.totalMethodRevenue > 0 ? (item.value / dashboardData.totalMethodRevenue) * 100 : 0;
                     return (
                       <div key={index} className="p-2.5 rounded-xl border border-border/30 bg-surface flex flex-col justify-between">
@@ -956,7 +972,7 @@ const ClinicDashboard = () => {
 
           {/* Upcoming Appointments & Recent Activities columns */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+
             {/* Recent Activities Feed */}
             <div className="bg-surface-elevated rounded-3xl border border-border/40 p-6 flex flex-col min-h-[400px] shadow-sm">
               <div className="flex items-center justify-between mb-6">
@@ -969,7 +985,7 @@ const ClinicDashboard = () => {
                     {t('clinic.dashboard.recentActivitiesSubtitle') || 'Log riwayat janji temu dan pembayaran masuk'}
                   </p>
                 </div>
-                <button 
+                <button
                   onClick={() => navigate('/clinic-portal/patients')}
                   className="text-accent hover:text-accent-hover text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
                 >
@@ -986,25 +1002,24 @@ const ClinicDashboard = () => {
                   </div>
                 ) : (
                   dashboardData.recentActivities.map((activity) => (
-                    <div 
-                      key={activity.id} 
+                    <div
+                      key={activity.id}
                       className="flex items-start gap-4 p-3.5 rounded-2xl hover:bg-surface border border-transparent hover:border-border/30 transition-all duration-200"
                     >
-                      <div className={`p-2.5 rounded-xl flex-shrink-0 ${
-                        activity.type === 'checkin' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
-                          : activity.type === 'payment' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
+                      <div className={`p-2.5 rounded-xl flex-shrink-0 ${activity.type === 'checkin' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                        : activity.type === 'payment' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
                           : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
-                      }`}>
+                        }`}>
                         <Icon
                           name={
                             activity.type === 'checkin' ? 'UserCheck'
                               : activity.type === 'payment' ? 'CreditCard'
-                              : 'Calendar'
+                                : 'Calendar'
                           }
                           size={18}
                         />
                       </div>
-                      
+
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-bold text-primary">
@@ -1036,7 +1051,7 @@ const ClinicDashboard = () => {
                     {t('clinic.dashboard.upcomingAppointmentsSubtitle') || 'Daftar janji temu aktif/scheduled hari ini dan mendatang'}
                   </p>
                 </div>
-                <button 
+                <button
                   onClick={() => navigate('/clinic-portal/schedule')}
                   className="text-accent hover:text-accent-hover text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
                 >
@@ -1056,20 +1071,20 @@ const ClinicDashboard = () => {
                     const start = new Date(appointment.startsAt || appointment.starts_at);
                     const formattedTime = start.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                     const formattedDate = start.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                    
+
                     // Live dynamic countdown metrics based on currentTime ticks
                     const timeInfo = getAptTimeInfo(appointment);
-                    
+
                     return (
-                      <div 
-                        key={appointment.id} 
+                      <div
+                        key={appointment.id}
                         className="flex items-start gap-4 p-3.5 rounded-2xl hover:bg-surface border border-transparent hover:border-border/30 transition-all duration-200"
                       >
                         {/* Patient Avatar or fallback initials */}
                         {appointment.patient?.avatar ? (
-                          <img 
-                            src={resolveMediaUrl(appointment.patient.avatar)} 
-                            alt={appointment.patient.name} 
+                          <img
+                            src={resolveMediaUrl(appointment.patient.avatar)}
+                            alt={appointment.patient.name}
                             className="w-10 h-10 rounded-full object-cover ring-2 ring-accent/20 flex-shrink-0"
                             onError={(e) => {
                               e.target.onerror = null;
@@ -1079,7 +1094,7 @@ const ClinicDashboard = () => {
                             }}
                           />
                         ) : null}
-                        
+
                         {(!appointment.patient?.avatar || appointment.patient?.avatar === null) && (
                           <div className="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center font-bold text-sm ring-2 ring-accent/20 flex-shrink-0">
                             {appointment.patient?.name?.charAt(0) || 'P'}
@@ -1091,19 +1106,19 @@ const ClinicDashboard = () => {
                             <p className="text-sm font-bold text-primary">
                               {appointment.patient?.name}
                             </p>
-                            
+
                             {/* Live Countdown Badge */}
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] border ${timeInfo.badgeClass}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${timeInfo.dotClass}`} />
                               {timeInfo.text}
                             </span>
                           </div>
-                          
+
                           <div className="flex items-center justify-between">
                             <p className="text-xs text-secondary font-medium">
                               {appointment.reason || 'Pemeriksaan Gigi'} • {appointment.dentist?.name || 'Dokter'}
                             </p>
-                            
+
                             <div className="flex items-center gap-2">
                               <span className={`text-[10px] font-bold px-1.5 py-0.25 rounded-md ${getStatusBadgeClass(appointment.status)}`}>
                                 {getStatusLabel(appointment.status)}

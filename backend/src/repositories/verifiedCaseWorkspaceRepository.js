@@ -504,9 +504,9 @@ export function createVerifiedCaseWorkspaceRepository({ query }) {
 
     async listFindings(caseId) {
       const result = await query(
-        `(SELECT id, case_id, image_id, label, tooth_or_region, severity, confidence, source, status, notes, NULL::boolean AS urgent_referral, NULL::boolean AS needs_in_person_exam, NULL::bigint AS confirmed_by, NULL::timestamptz AS confirmed_at, created_at, updated_at FROM ai_findings WHERE case_id = $1)
+        `(SELECT id, case_id, image_id, label, tooth_or_region, severity, confidence, source, status, notes, raw_ai_result, NULL::boolean AS urgent_referral, NULL::boolean AS needs_in_person_exam, NULL::bigint AS confirmed_by, NULL::timestamptz AS confirmed_at, created_at, updated_at FROM ai_findings WHERE case_id = $1)
          UNION ALL
-         (SELECT id, case_id, image_id, label, tooth_or_region, severity, confidence, source, status, notes, urgent_referral, needs_in_person_exam, confirmed_by, confirmed_at, created_at, updated_at FROM clinician_findings WHERE case_id = $1)
+         (SELECT id, case_id, image_id, label, tooth_or_region, severity, confidence, source, status, notes, NULL::jsonb AS raw_ai_result, urgent_referral, needs_in_person_exam, confirmed_by, confirmed_at, created_at, updated_at FROM clinician_findings WHERE case_id = $1)
          ORDER BY created_at ASC`,
         [caseId]
       );
