@@ -1,332 +1,238 @@
-import { useState } from 'react';
-import { useLanguage } from '../../../../contexts/LanguageContext';
+import React from 'react';
 import AppIcon from '../../../../components/AppIcon';
 
-const ComplianceView = () => {
-  const { t } = useLanguage();
+const pct = value => (value == null ? '—' : `${Number(value).toFixed(1)}%`);
+const num = value => new Intl.NumberFormat('id-ID').format(Number(value) || 0);
 
-  // Mock data
-  const complianceScore = {
-    overall: 96,
-    dataPrivacy: 98,
-    consentForms: 95,
-    recordKeeping: 97,
-    securityProtocols: 94
+const fmtDate = iso => {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const clampPercent = value => Math.min(Math.max(Number(value) || 0, 0), 100);
+
+const MetricCard = ({ label, value, detail, icon, iconClass = 'text-accent' }) => (
+  <div className="space-y-3 rounded-2xl border border-primary/15 bg-surface-elevated p-5">
+    <div className="flex items-start justify-between">
+      <p className="text-xs uppercase tracking-wider text-secondary">{label}</p>
+      <AppIcon name={icon} size={18} className={iconClass} />
+    </div>
+    <p className="text-2xl font-bold text-primary">{value}</p>
+    {detail && <p className="text-xs text-secondary">{detail}</p>}
+  </div>
+);
+
+const BackupChip = ({ status }) => {
+  const map = {
+    healthy: { label: 'Sehat', bg: 'bg-emerald-500/10 text-emerald-700', icon: 'CheckCircle2' },
+    warning: { label: 'Peringatan', bg: 'bg-amber-500/10 text-amber-700', icon: 'AlertTriangle' },
+    critical: { label: 'Kritis', bg: 'bg-red-500/10 text-red-600', icon: 'XCircle' },
   };
-
-  const consentForms = [
-    { type: 'Informed Consent Perawatan', completed: 245, total: 250, percentage: 98, status: 'excellent' },
-    { type: 'Consent Foto Klinis', completed: 238, total: 250, percentage: 95, status: 'good' },
-    { type: 'Consent Data Medis', completed: 250, total: 250, percentage: 100, status: 'excellent' },
-    { type: 'Consent BPJS/Asuransi', completed: 82, total: 88, percentage: 93, status: 'good' }
-  ];
-
-  const auditLogs = [
-    { timestamp: '2024-01-15 14:23:15', user: 'drg. Sarah Ahmad', action: 'Akses Rekam Medis', patient: 'Ahmad Yani', ip: '192.168.1.45', status: 'success' },
-    { timestamp: '2024-01-15 14:18:32', user: 'Admin Klinik', action: 'Update Data Pasien', patient: 'Siti Nurhaliza', ip: '192.168.1.10', status: 'success' },
-    { timestamp: '2024-01-15 14:12:08', user: 'drg. Budi Santoso', action: 'Download Foto Rontgen', patient: 'Budi Santoso', ip: '192.168.1.52', status: 'success' },
-    { timestamp: '2024-01-15 13:55:41', user: 'Staff Resepsionis', action: 'Lihat Jadwal Dokter', patient: '-', ip: '192.168.1.15', status: 'success' },
-    { timestamp: '2024-01-15 13:42:19', user: 'Unknown User', action: 'Login Gagal', patient: '-', ip: '103.45.67.89', status: 'failed' }
-  ];
-
-  const dataBackups = [
-    { date: '2024-01-15 02:00:00', type: 'Full Backup', size: '2.4 GB', duration: '12 min', status: 'success', location: 'Cloud Storage' },
-    { date: '2024-01-14 02:00:00', type: 'Full Backup', size: '2.3 GB', duration: '11 min', status: 'success', location: 'Cloud Storage' },
-    { date: '2024-01-13 02:00:00', type: 'Full Backup', size: '2.3 GB', duration: '13 min', status: 'success', location: 'Cloud Storage' },
-    { date: '2024-01-12 02:00:00', type: 'Full Backup', size: '2.2 GB', duration: '10 min', status: 'warning', location: 'Cloud Storage' }
-  ];
-
-  const securityIncidents = [
-    { date: '2024-01-15', type: 'Multiple Failed Logins', severity: 'low', description: '5 failed login attempts from IP 103.45.67.89', action: 'IP Blocked', status: 'resolved' },
-    { date: '2024-01-12', type: 'Unauthorized Access Attempt', severity: 'medium', description: 'Attempt to access admin panel without credentials', action: 'Under Investigation', status: 'investigating' },
-    { date: '2024-01-08', type: 'Password Policy Violation', severity: 'low', description: 'Staff member using weak password', action: 'Password Reset Required', status: 'resolved' }
-  ];
-
-  const privacyCompliance = [
-    { requirement: 'Enkripsi Data Pasien', status: 'compliant', lastCheck: '2024-01-15', score: 100 },
-    { requirement: 'Akses Control & Role Management', status: 'compliant', lastCheck: '2024-01-15', score: 98 },
-    { requirement: 'Data Retention Policy', status: 'compliant', lastCheck: '2024-01-14', score: 95 },
-    { requirement: 'Patient Consent Management', status: 'warning', lastCheck: '2024-01-15', score: 92 },
-    { requirement: 'Audit Trail Logging', status: 'compliant', lastCheck: '2024-01-15', score: 100 },
-    { requirement: 'Regular Security Training', status: 'compliant', lastCheck: '2024-01-10', score: 88 }
-  ];
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'excellent': case 'compliant': case 'success': case 'resolved':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
-      case 'good': case 'warning': case 'investigating':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
-      case 'failed': case 'critical':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
-    }
-  };
-
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'low': return 'text-green-600';
-      case 'medium': return 'text-yellow-600';
-      case 'high': return 'text-orange-600';
-      case 'critical': return 'text-red-600';
-      default: return 'text-gray-600';
-    }
-  };
-
+  const cfg = map[status] || map.warning;
   return (
-    <div className="space-y-6">
-      {/* Compliance Score Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-xl border-2 border-green-200 dark:border-green-800">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="ShieldCheck" size={20} className="text-green-600" />
-            <span className="text-xs font-semibold text-green-600">OVERALL</span>
-          </div>
-          <div className="space-y-2">
-            <div className="text-3xl font-bold text-green-900 dark:text-green-300">{complianceScore.overall}%</div>
-            <h3 className="text-sm font-medium text-green-800 dark:text-green-400">
-              {t('clinic.reports.compliance.overallScore') || 'Compliance Score'}
-            </h3>
-          </div>
-        </div>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${cfg.bg}`}>
+      <AppIcon name={cfg.icon} size={13} />
+      {cfg.label}
+    </span>
+  );
+};
 
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Lock" size={20} className="text-blue-600" />
-            <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-              <span className="text-sm font-bold text-blue-900 dark:text-blue-300">{complianceScore.dataPrivacy}</span>
-            </div>
-          </div>
-          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-400">
-            {t('clinic.reports.compliance.dataPrivacy') || 'Data Privacy'}
-          </h3>
-        </div>
+const ProgressBar = ({ value, colorClass = 'bg-accent', height = 'h-2' }) => (
+  <div className={`w-full overflow-hidden rounded-full bg-surface ${height}`}>
+    <div
+      className={`${height} rounded-full ${colorClass} transition-all duration-500`}
+      style={{ width: `${clampPercent(value)}%` }}
+    />
+  </div>
+);
 
-        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="FileCheck" size={20} className="text-purple-600" />
-            <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
-              <span className="text-sm font-bold text-purple-900 dark:text-purple-300">{complianceScore.consentForms}</span>
-            </div>
-          </div>
-          <h3 className="text-sm font-medium text-purple-800 dark:text-purple-400">
-            {t('clinic.reports.compliance.consentForms') || 'Consent Forms'}
-          </h3>
-        </div>
-
-        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Database" size={20} className="text-orange-600" />
-            <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
-              <span className="text-sm font-bold text-orange-900 dark:text-orange-300">{complianceScore.recordKeeping}</span>
-            </div>
-          </div>
-          <h3 className="text-sm font-medium text-orange-800 dark:text-orange-400">
-            {t('clinic.reports.compliance.recordKeeping') || 'Record Keeping'}
-          </h3>
-        </div>
-
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Shield" size={20} className="text-red-600" />
-            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
-              <span className="text-sm font-bold text-red-900 dark:text-red-300">{complianceScore.securityProtocols}</span>
-            </div>
-          </div>
-          <h3 className="text-sm font-medium text-red-800 dark:text-red-400">
-            {t('clinic.reports.compliance.security') || 'Security'}
-          </h3>
-        </div>
-      </div>
-
-      {/* Consent Forms Compliance */}
-      <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-        <div className="px-6 py-4 border-b border-primary/20">
-          <h3 className="text-lg font-semibold text-primary">
-            {t('clinic.reports.compliance.consentStatus') || 'Status Consent Forms'}
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          {consentForms.map((form, idx) => (
-            <div key={idx} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-primary">{form.type}</span>
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(form.status)}`}>
-                      {form.percentage}%
-                    </span>
-                  </div>
-                  <div className="text-xs text-secondary mt-1">
-                    {form.completed} dari {form.total} formulir terisi
-                  </div>
-                </div>
-              </div>
-              <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
-                <div
-                  className={`h-full transition-all ${
-                    form.percentage >= 95 ? 'bg-green-600' : form.percentage >= 90 ? 'bg-yellow-600' : 'bg-red-600'
-                  }`}
-                  style={{ width: `${form.percentage}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Privacy Compliance & Security Incidents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Privacy Compliance Requirements */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.compliance.privacyRequirements') || 'Persyaratan Privasi Data'}
-            </h3>
-          </div>
-          <div className="divide-y divide-primary/10">
-            {privacyCompliance.map((req, idx) => (
-              <div key={idx} className="px-6 py-4 hover:bg-surface transition-colors">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-primary">{req.requirement}</span>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(req.status)}`}>
-                        {req.status === 'compliant' ? 'Compliant' : 'Warning'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-secondary mt-1">
-                      Last checked: {new Date(req.lastCheck).toLocaleDateString('id-ID')}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-accent">{req.score}%</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Security Incidents */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.compliance.securityIncidents') || 'Insiden Keamanan'}
-            </h3>
-            <span className="px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 text-xs font-medium rounded-full">
-              {securityIncidents.filter(i => i.status !== 'resolved').length} aktif
-            </span>
-          </div>
-          <div className="divide-y divide-primary/10">
-            {securityIncidents.map((incident, idx) => (
-              <div key={idx} className="px-6 py-4 hover:bg-surface transition-colors">
-                <div className="flex items-start gap-3">
-                  <AppIcon 
-                    name="AlertTriangle" 
-                    size={16} 
-                    className={getSeverityColor(incident.severity)} 
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-primary">{incident.type}</span>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(incident.status)}`}>
-                        {incident.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-secondary mb-2">{incident.description}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-secondary">{incident.date}</span>
-                      <span className="text-xs font-medium text-accent">{incident.action}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Audit Logs & Data Backups */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Audit Logs */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.compliance.auditLogs') || 'Audit Logs Terbaru'}
-            </h3>
-            <button className="text-sm text-accent hover:underline">View All</button>
-          </div>
-          <div className="divide-y divide-primary/10">
-            {auditLogs.map((log, idx) => (
-              <div key={idx} className="px-6 py-3 hover:bg-surface transition-colors">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <AppIcon 
-                        name={log.status === 'success' ? 'CheckCircle' : 'XCircle'} 
-                        size={14} 
-                        className={log.status === 'success' ? 'text-green-600' : 'text-red-600'} 
-                      />
-                      <span className="text-sm font-medium text-primary">{log.action}</span>
-                    </div>
-                    <div className="text-xs text-secondary space-y-0.5">
-                      <div>User: {log.user}</div>
-                      {log.patient !== '-' && <div>Patient: {log.patient}</div>}
-                      <div className="flex items-center gap-2">
-                        <span>IP: {log.ip}</span>
-                        <span>•</span>
-                        <span>{log.timestamp}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Data Backups */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.compliance.dataBackups') || 'Backup Data'}
-            </h3>
-          </div>
-          <div className="divide-y divide-primary/10">
-            {dataBackups.map((backup, idx) => (
-              <div key={idx} className="px-6 py-4 hover:bg-surface transition-colors">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <AppIcon 
-                      name={backup.status === 'success' ? 'Database' : 'AlertCircle'} 
-                      size={16} 
-                      className={backup.status === 'success' ? 'text-green-600' : 'text-yellow-600'} 
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-primary">{backup.type}</div>
-                      <div className="text-xs text-secondary">{backup.date}</div>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(backup.status)}`}>
-                    {backup.status}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-secondary">
-                  <span>Size: {backup.size}</span>
-                  <span>•</span>
-                  <span>Duration: {backup.duration}</span>
-                  <span>•</span>
-                  <span>{backup.location}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+const SourceNotice = ({ availability }) => {
+  const missingSources = availability?.missingSources || [];
+  const notes = availability?.notes || [];
+  if (!missingSources.length && !notes.length) return null;
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+      <AppIcon name="Info" size={17} className="mt-0.5 flex-shrink-0 text-amber-600" />
+      <div>
+        <p className="text-sm font-medium text-amber-700">Sebagian sumber data kepatuhan belum tersedia</p>
+        {missingSources.length > 0 && (
+          <p className="mt-0.5 text-xs text-amber-700/80">Belum aktif: {missingSources.join(', ')}</p>
+        )}
+        {notes.slice(0, 2).map(note => (
+          <p key={note} className="mt-0.5 text-xs text-secondary">{note}</p>
+        ))}
       </div>
     </div>
   );
 };
 
-export default ComplianceView;
+const ChecklistItem = ({ item }) => (
+  <div className="flex items-center gap-3 border-b border-primary/10 px-5 py-3.5 last:border-0">
+    <div className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${
+      item.done ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
+    }`}>
+      <AppIcon name={item.done ? 'Check' : 'Clock'} size={12} />
+    </div>
+    <span className={`flex-1 text-sm ${item.done ? 'text-primary' : 'text-secondary'}`}>
+      {item.label || 'Kontrol tanpa nama'}
+    </span>
+    {item.dueDate && (
+      <span className="flex-shrink-0 text-xs text-secondary">
+        Tenggat {fmtDate(item.dueDate)}
+      </span>
+    )}
+    <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+      item.done
+        ? 'bg-emerald-500/10 text-emerald-700'
+        : 'bg-amber-500/10 text-amber-700'
+    }`}>
+      {item.done ? 'Selesai' : 'Pending'}
+    </span>
+  </div>
+);
+
+export default function ComplianceView({ report }) {
+  const compliance = report?.compliance || {};
+  const availability = report?.dataAvailability?.compliance || {};
+  const checklistItems = Array.isArray(compliance.checklistItems) ? compliance.checklistItems : [];
+  const doneCount = checklistItems.filter(item => item?.done).length;
+  const checklistPct = checklistItems.length ? Math.round((doneCount / checklistItems.length) * 100) : 0;
+  const backupStatus = compliance.backupStatus || 'warning';
+  const consentRate = Number(compliance.consentRate ?? 0) || 0;
+  const totalConsents = Number(compliance.totalConsents ?? 0) || 0;
+  const missingConsents = Number(compliance.missingConsents ?? 0) || 0;
+  const incidents = Number(compliance.securityIncidents ?? 0) || 0;
+
+  const incidentConfig = incidents === 0
+    ? { iconClass: 'text-emerald-500', detail: 'Tidak ada insiden dalam periode ini' }
+    : { iconClass: 'text-red-500', detail: `${num(incidents)} insiden tercatat` };
+
+  return (
+    <div className="space-y-6">
+      <SourceNotice availability={availability} />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          label="Consent rate"
+          value={pct(consentRate)}
+          detail={`${num(totalConsents)} consent · ${num(missingConsents)} belum lengkap`}
+          icon="FileBadge"
+          iconClass={consentRate >= 95 ? 'text-emerald-500' : consentRate >= 80 ? 'text-amber-500' : 'text-red-500'}
+        />
+        <MetricCard
+          label="Status backup"
+          value={<BackupChip status={backupStatus} />}
+          detail={`Backup terakhir: ${fmtDate(compliance.lastBackupAt)} · ${pct(compliance.backupSuccessRate ?? 0)} berhasil`}
+          icon="DatabaseBackup"
+          iconClass={backupStatus === 'healthy' ? 'text-emerald-500' : backupStatus === 'critical' ? 'text-red-500' : 'text-amber-500'}
+        />
+        <MetricCard
+          label="Insiden keamanan"
+          value={num(incidents)}
+          detail={incidentConfig.detail}
+          icon="ShieldAlert"
+          iconClass={incidentConfig.iconClass}
+        />
+      </div>
+
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
+        <div className="border-b border-primary/10 p-5">
+          <h2 className="font-semibold text-primary">Audit Consent Pasien</h2>
+          <p className="mt-0.5 text-sm text-secondary">
+            Persentase appointment dengan consent digital yang valid dalam periode terpilih.
+          </p>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="flex items-end justify-between gap-4">
+            <span className="text-3xl font-bold text-primary">{pct(consentRate)}</span>
+            <span className="text-sm text-secondary">{num(totalConsents)} dari {num(totalConsents + missingConsents)} appointment</span>
+          </div>
+          <ProgressBar
+            value={consentRate}
+            colorClass={consentRate >= 95 ? 'bg-emerald-500' : consentRate >= 80 ? 'bg-amber-500' : 'bg-red-500'}
+            height="h-3"
+          />
+          <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-4">
+              <div className="mb-1 flex items-center gap-2">
+                <AppIcon name="CheckCircle2" size={15} className="text-emerald-600" />
+                <span className="text-xs uppercase tracking-wider text-emerald-700">Sudah consent</span>
+              </div>
+              <p className="text-2xl font-bold text-emerald-700">{num(totalConsents)}</p>
+            </div>
+            <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-4">
+              <div className="mb-1 flex items-center gap-2">
+                <AppIcon name="AlertCircle" size={15} className="text-amber-600" />
+                <span className="text-xs uppercase tracking-wider text-amber-700">Belum lengkap</span>
+              </div>
+              <p className="text-2xl font-bold text-amber-700">{num(missingConsents)}</p>
+            </div>
+          </div>
+          {missingConsents > 0 && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-600">
+              <AppIcon name="AlertTriangle" size={13} />
+              {num(missingConsents)} appointment memerlukan tindak lanjut pengumpulan consent.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
+        <div className="flex items-center justify-between gap-4 border-b border-primary/10 p-5">
+          <div>
+            <h2 className="font-semibold text-primary">Kontrol Kepatuhan</h2>
+            <p className="mt-0.5 text-sm text-secondary">Checklist regulasi BPJS dan internal klinik.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold text-primary">{checklistPct}%</p>
+            <p className="text-xs text-secondary">{doneCount}/{checklistItems.length} selesai</p>
+          </div>
+        </div>
+        <div className="px-5 py-3">
+          <ProgressBar value={checklistPct} colorClass="bg-accent" height="h-1.5" />
+        </div>
+        {checklistItems.length > 0
+          ? checklistItems.map(item => <ChecklistItem key={item.id || item.label} item={item} />)
+          : <div className="p-10 text-center text-sm text-secondary">Belum ada item checklist.</div>
+        }
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
+        <div className="border-b border-primary/10 p-5">
+          <h2 className="font-semibold text-primary">Keamanan Akses</h2>
+          <p className="mt-0.5 text-sm text-secondary">Aktivitas login dan hak akses staf aktif.</p>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-primary/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+          <div className="flex items-center gap-4 p-5">
+            <div className={`flex-shrink-0 rounded-xl p-3 ${
+              Number(compliance.failedLogins ?? 0) === 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'
+            }`}>
+              <AppIcon
+                name="LogIn"
+                size={20}
+                className={Number(compliance.failedLogins ?? 0) === 0 ? 'text-emerald-600' : 'text-red-500'}
+              />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-secondary">Gagal login</p>
+              <p className="mt-1 text-2xl font-bold text-primary">{num(compliance.failedLogins ?? 0)}</p>
+              <p className="mt-0.5 text-xs text-secondary">percobaan tidak sah dalam periode ini</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-5">
+            <div className="flex-shrink-0 rounded-xl bg-accent/10 p-3">
+              <AppIcon name="Users" size={20} className="text-accent" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-secondary">Staf dengan akses aktif</p>
+              <p className="mt-1 text-2xl font-bold text-primary">{num(compliance.activeStaffWithAccess ?? 0)}</p>
+              <p className="mt-0.5 text-xs text-secondary">akun aktif di sistem dalam cabang terpilih</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

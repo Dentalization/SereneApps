@@ -374,6 +374,95 @@ model AppointmentStatusHistory {
   @@map("appointment_status_history")
 }
 
+model SecurityEvent {
+  id              BigInt   @id @default(autoincrement())
+  clinicProfileId BigInt?  @map("clinic_profile_id")
+  userId          BigInt?  @map("user_id")
+  eventType       String   @map("event_type") @db.VarChar(64)
+  severity        String   @default("low") @db.VarChar(24)
+  ipAddress       String?  @map("ip_address") @db.VarChar(64)
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([clinicProfileId, createdAt], map: "idx_security_events_clinic_created")
+  @@index([eventType, createdAt], map: "idx_security_events_type_created")
+  @@map("security_events")
+}
+
+model ClinicBackupHealth {
+  id              BigInt   @id @default(autoincrement())
+  clinicProfileId BigInt   @map("clinic_profile_id")
+  status          String   @db.VarChar(24)
+  success         Boolean
+  checkedAt       DateTime @map("checked_at") @db.Timestamptz(6)
+  metadata        Json?    @default("{}")
+
+  @@index([clinicProfileId, checkedAt], map: "idx_clinic_backup_health_clinic_checked")
+  @@map("clinic_backup_health")
+}
+
+model ClinicComplianceChecklistItem {
+  id              BigInt    @id @default(autoincrement())
+  clinicProfileId BigInt    @map("clinic_profile_id")
+  key             String    @db.VarChar(120)
+  label           String
+  done            Boolean   @default(false)
+  dueDate         DateTime? @map("due_date") @db.Date
+  periodStart     DateTime? @map("period_start") @db.Date
+  periodEnd       DateTime? @map("period_end") @db.Date
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([clinicProfileId, periodStart, periodEnd], map: "idx_clinic_compliance_items_period")
+  @@map("clinic_compliance_checklist_items")
+}
+
+model ClinicPatientAttribution {
+  id              BigInt   @id @default(autoincrement())
+  clinicProfileId BigInt   @map("clinic_profile_id")
+  patientId       BigInt   @map("patient_id")
+  source          String   @db.VarChar(120)
+  campaignName    String?  @map("campaign_name") @db.VarChar(160)
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([clinicProfileId, patientId], map: "uniq_clinic_patient_attributions_patient")
+  @@index([clinicProfileId, source], map: "idx_clinic_patient_attributions_source")
+  @@map("clinic_patient_attributions")
+}
+
+model ClinicReview {
+  id              BigInt   @id @default(autoincrement())
+  clinicProfileId BigInt   @map("clinic_profile_id")
+  branchId        BigInt?  @map("branch_id")
+  patientId       BigInt?  @map("patient_id")
+  source          String?  @db.VarChar(80)
+  rating          Int
+  comment         String?
+  reviewedAt      DateTime @map("reviewed_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([clinicProfileId, reviewedAt], map: "idx_clinic_reviews_clinic_reviewed")
+  @@index([branchId, reviewedAt], map: "idx_clinic_reviews_branch_reviewed")
+  @@map("clinic_reviews")
+}
+
+model ClinicCampaignMetric {
+  id              BigInt   @id @default(autoincrement())
+  clinicProfileId BigInt   @map("clinic_profile_id")
+  name            String
+  reach           Int      @default(0)
+  conversions     Int      @default(0)
+  cost            Int      @default(0)
+  periodStart     DateTime @map("period_start") @db.Date
+  periodEnd       DateTime @map("period_end") @db.Date
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([clinicProfileId, periodStart, periodEnd], map: "idx_clinic_campaign_metrics_period")
+  @@map("clinic_campaign_metrics")
+}
+
 model PaymentIntent {
   id                BigInt          @id @default(autoincrement())
   appointmentId     BigInt          @map("appointment_id")
