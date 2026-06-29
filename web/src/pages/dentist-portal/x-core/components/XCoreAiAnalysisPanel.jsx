@@ -47,7 +47,7 @@ const XCoreAiAnalysisPanel = ({
             role="dialog"
             aria-modal="false"
             aria-label="X-Core AI clinical reasoning"
-            className="absolute right-0 top-0 z-[80] flex h-full w-full max-w-[420px] flex-col border-l border-cyan-500/20 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl"
+            className="absolute right-3 top-3 bottom-3 z-[80] flex w-full max-w-[400px] flex-col overflow-hidden rounded-2xl border border-cyan-500/20 bg-slate-950 text-slate-100 shadow-2xl backdrop-blur-xl"
         >
             <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
                 <div className="flex items-center gap-3">
@@ -127,7 +127,7 @@ const XCoreAiAnalysisPanel = ({
                         </div>
 
                         {annotatedImageSrc && (
-                            <section className="overflow-hidden rounded-2xl border border-slate-800 bg-black">
+                            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-black">
                                 <img
                                     src={annotatedImageSrc}
                                     alt="DeepDental annotated 2D radiograph"
@@ -136,27 +136,26 @@ const XCoreAiAnalysisPanel = ({
                                 <button
                                     type="button"
                                     onClick={onToggleOverlay}
-                                    className={`flex w-full items-center justify-center gap-2 border-t border-slate-800 px-3 py-2 text-xs font-semibold transition ${
-                                        overlayVisible
-                                            ? 'bg-cyan-500/20 text-cyan-200'
-                                            : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
-                                    }`}
+                                    className={`flex w-full items-center justify-center gap-2 border-t border-slate-800 px-3 py-2 text-xs font-semibold transition ${overlayVisible
+                                        ? 'bg-cyan-500/20 text-cyan-200'
+                                        : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                                        }`}
                                 >
                                     <AppIcon name={overlayVisible ? 'EyeOff' : 'ScanSearch'} size={14} />
                                     {overlayVisible ? 'Tampilkan citra asli' : 'Tampilkan anotasi di viewer'}
                                 </button>
-                            </section>
+                            </div>
                         )}
 
                         {detections.length > 0 && (
-                            <section>
+                            <div>
                                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
                                     <AppIcon name="Crosshair" size={14} className="text-cyan-300" />
                                     Deteksi
                                 </div>
                                 <div className="space-y-2">
                                     {detections.map((detection, index) => (
-                                        <div key={detection.mark_id || `${detection.label}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2">
+                                        <div key={detection.mark_id || `${detection.label}-${index}`} className="rounded-xl border border-white/5 bg-slate-900/60 px-3 py-2">
                                             <div className="flex items-center justify-between gap-3">
                                                 <span className="text-xs font-semibold capitalize text-white">
                                                     {detection.label || `Marker ${index + 1}`}
@@ -168,11 +167,11 @@ const XCoreAiAnalysisPanel = ({
                                         </div>
                                     ))}
                                 </div>
-                            </section>
+                            </div>
                         )}
 
                         {clinicalFindings.length > 0 && (
-                            <section>
+                            <div>
                                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
                                     <AppIcon name="Stethoscope" size={14} className="text-emerald-300" />
                                     Reasoning klinis
@@ -189,14 +188,14 @@ const XCoreAiAnalysisPanel = ({
                                                         {finding.severity}
                                                     </span>
                                                 )}
-                                                {finding.confidence && (
+                                                {finding.confidence !== null && finding.confidence !== undefined && finding.confidence !== '' && (
                                                     <span className="ml-auto font-mono text-[10px] text-slate-400">
                                                         {formatConfidence(finding.confidence)}
                                                     </span>
                                                 )}
                                             </div>
-                                            {finding.description && (
-                                                <p className="mt-2 text-xs leading-relaxed text-slate-300">{finding.description}</p>
+                                            {(finding.description || finding.finding) && (
+                                                <p className="mt-2 text-xs leading-relaxed text-slate-300">{finding.description || finding.finding}</p>
                                             )}
                                             {finding.differentials?.length > 0 && (
                                                 <div className="mt-3">
@@ -213,11 +212,11 @@ const XCoreAiAnalysisPanel = ({
                                         </article>
                                     ))}
                                 </div>
-                            </section>
+                            </div>
                         )}
 
                         {recommendations.length > 0 && (
-                            <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
                                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-emerald-200">
                                     <AppIcon name="Lightbulb" size={14} />
                                     Rekomendasi
@@ -230,18 +229,18 @@ const XCoreAiAnalysisPanel = ({
                                         </li>
                                     ))}
                                 </ul>
-                            </section>
+                            </div>
                         )}
 
                         {findings.limitations && (
-                            <section className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
                                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-amber-200">Limitations</div>
                                 <p className="text-xs leading-relaxed text-amber-100/75">{findings.limitations}</p>
-                            </section>
+                            </div>
                         )}
 
                         {suggestedQuestions.length > 0 && (
-                            <section>
+                            <div>
                                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Pertanyaan lanjutan</div>
                                 <div className="space-y-1.5">
                                     {suggestedQuestions.map((question, questionIndex) => (
@@ -250,7 +249,7 @@ const XCoreAiAnalysisPanel = ({
                                         </div>
                                     ))}
                                 </div>
-                            </section>
+                            </div>
                         )}
 
                         <button

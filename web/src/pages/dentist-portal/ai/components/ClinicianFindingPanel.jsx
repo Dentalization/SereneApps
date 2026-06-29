@@ -3,11 +3,11 @@ import { AlertTriangle, CheckCircle2, Edit3, Plus, ShieldCheck, Stethoscope, XCi
 import { useLanguage } from '../../../../contexts/LanguageContext';
 
 const STATUS_LABELS = {
-  ai_suggested: 'AI suggestion',
-  clinician_confirmed: 'Clinician confirmed',
-  clinician_rejected: 'Rejected',
-  clinician_edited: 'Edited by clinician',
-  manual_added: 'Manual clinician finding',
+  ai_suggested: 'Saran AI',
+  clinician_confirmed: 'Dikonfirmasi dokter',
+  clinician_rejected: 'Ditolak',
+  clinician_edited: 'Diedit dokter',
+  manual_added: 'Temuan manual dokter',
 };
 
 const SEVERITIES = ['minimal', 'mild', 'moderate', 'severe', 'critical'];
@@ -39,21 +39,21 @@ function FindingEditor({ initial = {}, submitLabel, onSubmit, onCancel }) {
         <input
           value={draft.label}
           onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
-          placeholder="Finding label"
-          aria-label="Finding label"
+          placeholder="Label temuan"
+          aria-label="Label temuan"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
         />
         <input
           value={draft.tooth_or_region}
           onChange={(event) => setDraft((current) => ({ ...current, tooth_or_region: event.target.value }))}
-          placeholder="Tooth or region"
-          aria-label="Tooth or region"
+          placeholder="Gigi atau area"
+          aria-label="Gigi atau area"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
         />
         <select
           value={draft.severity}
           onChange={(event) => setDraft((current) => ({ ...current, severity: event.target.value }))}
-          aria-label="Finding severity"
+          aria-label="Tingkat keparahan temuan"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
         >
           {SEVERITIES.map((severity) => <option key={severity} value={severity}>{severity}</option>)}
@@ -61,23 +61,23 @@ function FindingEditor({ initial = {}, submitLabel, onSubmit, onCancel }) {
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={draft.urgent_referral} onChange={(event) => setDraft((current) => ({ ...current, urgent_referral: event.target.checked }))} />
-            Urgent referral
+            Rujukan segera
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={draft.needs_in_person_exam} onChange={(event) => setDraft((current) => ({ ...current, needs_in_person_exam: event.target.checked }))} />
-            In-person exam
+            Pemeriksaan langsung
           </label>
         </div>
       </div>
       <textarea
         value={draft.notes}
         onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
-        placeholder="Clinician notes"
-        aria-label="Clinician notes"
+        placeholder="Catatan dokter"
+        aria-label="Catatan dokter"
         className="mt-2 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
       />
       <div className="mt-2 flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700">Cancel</button>
+        <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700">Batal</button>
         <button type="button" onClick={() => onSubmit?.(draft)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white">{submitLabel}</button>
       </div>
     </div>
@@ -108,10 +108,10 @@ export default function ClinicianFindingPanel({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            {labels.title || t('ai.deepDental.workspace.findings.title', { fallbackText: 'Clinician findings' })}
+            {labels.title || t('ai.deepDental.workspace.findings.title', { fallbackText: 'Temuan dokter gigi' })}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {labels.subtitle || t('ai.deepDental.workspace.findings.subtitle', { fallbackText: 'Review AI suggestions separately from final clinician findings.' })}
+            {labels.subtitle || t('ai.deepDental.workspace.findings.subtitle', { fallbackText: 'Tinjau saran AI secara terpisah dari temuan akhir dokter gigi.' })}
           </p>
         </div>
         <button
@@ -120,13 +120,13 @@ export default function ClinicianFindingPanel({
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300"
         >
           <Plus className="h-4 w-4" />
-          {labels.addManual || t('ai.deepDental.workspace.findings.manualFinding', { fallbackText: 'Manual finding' })}
+          {labels.addManual || t('ai.deepDental.workspace.findings.manualFinding', { fallbackText: 'Temuan manual' })}
         </button>
       </div>
 
       {addingManual && (
         <FindingEditor
-          submitLabel="Add finding"
+          submitLabel="Tambah temuan"
           onCancel={() => setAddingManual(false)}
           onSubmit={(draft) => { onAddManual?.(draft); setAddingManual(false); }}
         />
@@ -136,12 +136,12 @@ export default function ClinicianFindingPanel({
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
             <Stethoscope className="h-4 w-4" />
-            {t('ai.deepDental.workspace.findings.aiSuggestion', { fallbackText: 'AI suggestion' })}
+            {t('ai.deepDental.workspace.findings.aiSuggestion', { fallbackText: 'Saran AI' })}
           </div>
           <div className="space-y-2">
             {aiFindings.length === 0 && (
               <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">
-                {t('ai.deepDental.workspace.findings.noAI', { fallbackText: 'No AI suggestions yet.' })}
+                {t('ai.deepDental.workspace.findings.noAI', { fallbackText: 'Belum ada saran AI.' })}
               </p>
             )}
             {aiFindings.map((finding) => (
@@ -149,40 +149,40 @@ export default function ClinicianFindingPanel({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{finding.label}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{finding.tooth_or_region || 'Region not assigned'} · {finding.severity}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{finding.tooth_or_region || 'Area belum ditetapkan'} · {finding.severity}</p>
                   </div>
                   <FindingBadge status={finding.status} />
                 </div>
                 {finding.notes && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{finding.notes}</p>}
                 {finding.confidence !== null && finding.confidence !== undefined && (
-                  <p className="mt-1 text-[11px] text-slate-500">Confidence {Math.round(finding.confidence * 100)}%</p>
+                  <p className="mt-1 text-[11px] text-slate-500">Kepercayaan {Math.round(finding.confidence * 100)}%</p>
                 )}
                 {rejectingId === finding.id ? (
                   <div className="mt-3">
                     <input
                       value={rejectReason}
                       onChange={(event) => setRejectReason(event.target.value)}
-                      placeholder="Rejection reason"
-                      aria-label="Rejection reason"
+                      placeholder="Alasan penolakan"
+                      aria-label="Alasan penolakan"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
                     />
                     <div className="mt-2 flex justify-end gap-2">
-                      <button type="button" onClick={() => setRejectingId(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold">Cancel</button>
-                      <button type="button" onClick={() => { onReject?.(finding, rejectReason); setRejectingId(null); setRejectReason(''); }} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Reject</button>
+                      <button type="button" onClick={() => setRejectingId(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold">Batal</button>
+                      <button type="button" onClick={() => { onReject?.(finding, rejectReason); setRejectingId(null); setRejectReason(''); }} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Tolak</button>
                     </div>
                   </div>
                 ) : editingId === finding.id ? (
                   <FindingEditor
                     initial={finding}
-                    submitLabel="Save edited finding"
+                    submitLabel="Simpan perubahan"
                     onCancel={() => setEditingId(null)}
                     onSubmit={(draft) => { onEdit?.(finding, draft); setEditingId(null); }}
                   />
                 ) : (
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <button type="button" onClick={() => setRejectingId(finding.id)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300"><XCircle className="h-3 w-3" /> Reject</button>
+                    <button type="button" onClick={() => setRejectingId(finding.id)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300"><XCircle className="h-3 w-3" /> Tolak</button>
                     <button type="button" onClick={() => setEditingId(finding.id)} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-900 dark:text-amber-300"><Edit3 className="h-3 w-3" /> Edit</button>
-                    <button type="button" onClick={() => onConfirm?.(finding)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" /> Confirm</button>
+                    <button type="button" onClick={() => onConfirm?.(finding)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" /> Konfirmasi</button>
                   </div>
                 )}
               </div>
@@ -193,12 +193,12 @@ export default function ClinicianFindingPanel({
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
             <ShieldCheck className="h-4 w-4" />
-            {t('ai.deepDental.workspace.findings.confirmed', { fallbackText: 'Clinician confirmed' })}
+            {t('ai.deepDental.workspace.findings.confirmed', { fallbackText: 'Dikonfirmasi dokter' })}
           </div>
           <div className="space-y-2">
             {clinicianFindings.length === 0 && (
               <p className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">
-                {t('ai.deepDental.workspace.findings.noConfirmed', { fallbackText: 'No clinician findings confirmed yet.' })}
+                {t('ai.deepDental.workspace.findings.noConfirmed', { fallbackText: 'Belum ada temuan dokter yang dikonfirmasi.' })}
               </p>
             )}
             {clinicianFindings.map((finding) => (
@@ -206,7 +206,7 @@ export default function ClinicianFindingPanel({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{finding.label}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{finding.tooth_or_region || 'Region not assigned'} · {finding.severity}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{finding.tooth_or_region || 'Area belum ditetapkan'} · {finding.severity}</p>
                   </div>
                   <FindingBadge status={finding.status} />
                 </div>
@@ -214,7 +214,7 @@ export default function ClinicianFindingPanel({
                 {(finding.urgent_referral || finding.needs_in_person_exam) && (
                   <p className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                     <AlertTriangle className="h-3 w-3" />
-                    {finding.urgent_referral ? 'Urgent referral' : 'Needs in-person examination'}
+                    {finding.urgent_referral ? 'Rujukan segera' : 'Perlu pemeriksaan langsung'}
                   </p>
                 )}
               </div>
@@ -227,8 +227,8 @@ export default function ClinicianFindingPanel({
             className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {caseStatus === 'verified' || caseStatus === 'exported'
-              ? 'Case verified'
-              : t('ai.deepDental.workspace.findings.verifyCase', { fallbackText: 'Verify case' })}
+              ? 'Kasus sudah diverifikasi'
+              : t('ai.deepDental.workspace.findings.verifyCase', { fallbackText: 'Verifikasi kasus' })}
           </button>
         </div>
       </div>

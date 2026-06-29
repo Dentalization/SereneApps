@@ -41,6 +41,19 @@ async function getDefaultService() {
   return defaultServicePromise;
 }
 
+async function verifyDefaultDentistPatientAccess({ dentistId, patientId }) {
+  const { query } = await import('../db.js');
+  const result = await query(
+    `SELECT 1
+       FROM appointments
+      WHERE dentist_id = $1
+        AND patient_id = $2
+      LIMIT 1`,
+    [dentistId, patientId]
+  );
+  return result.rows.length > 0;
+}
+
 function actorFromRequest(req) {
   const roles = req.user?.roles || [];
   return {
@@ -90,7 +103,11 @@ function asyncRoute(handler) {
   };
 }
 
-function createVerifiedCasesRouter({ service = null, serviceFactory = null } = {}) {
+function createVerifiedCasesRouter({
+  service = null,
+  serviceFactory = null,
+  verifyDentistPatientAccess = verifyDefaultDentistPatientAccess,
+} = {}) {
   const router = express.Router();
   const resolveService = async () => service || (serviceFactory ? serviceFactory() : getDefaultService());
 
@@ -291,13 +308,24 @@ function createVerifiedCasesRouter({ service = null, serviceFactory = null } = {
 
   router.post('/cases/:caseId/link-patient', authenticateToken, requireRoles(['dentist', 'admin']), asyncRoute(async (req, res) => {
     const svc = await resolveService();
+    const actor = actorFromRequest(req);
+    const patientId = req.body.patient_id || req.body.patientId;
+    if (actor.role === 'dentist') {
+      const hasAccess = await verifyDentistPatientAccess({ dentistId: actor.id, patientId });
+      if (!hasAccess) {
+        const error = new Error('patient_access_denied');
+        error.code = 'patient_access_denied';
+        error.status = 403;
+        throw error;
+      }
+    }
     res.json({
       case: await svc.linkPatient({
         caseId: req.params.caseId,
-        patientId: req.body.patient_id || req.body.patientId,
+        patientId,
         patientName: req.body.patient_name || req.body.patientName || null,
         patientCode: req.body.patient_code || req.body.patientCode || null,
-        actor: actorFromRequest(req),
+        actor,
       }),
     });
   }));

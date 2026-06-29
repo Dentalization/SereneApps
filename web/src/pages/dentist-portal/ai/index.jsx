@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, Activity, Zap, WifiOff, Sparkles, ChevronRight } from 'lucide-react';
+import { Menu, Activity, Zap, WifiOff, Sparkles, ChevronRight, ScanLine, Stethoscope, BookOpen } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import SideBar from '../ui/SideBar';
@@ -70,10 +70,10 @@ function EmptyState({ labels = {} }) {
         </p>
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            { icon: 'P', label: labels.pathology || 'Deteksi Patologi', sub: 'YOLO AI' },
-            { icon: 'K', label: labels.clinical || 'Analisis Klinis', sub: 'LLM' },
-            { icon: 'E', label: labels.evidence || 'Berbasis Bukti', sub: 'Knowledge RAG' },
-          ].map((item, i) => (
+            { Icon: ScanLine, label: labels.pathology || 'Deteksi Patologi', sub: 'YOLO Object Detection', color: 'text-cyan-500' },
+            { Icon: Stethoscope, label: labels.clinical || 'Penalaran Klinis', sub: 'Gemini AI', color: 'text-violet-500' },
+            { Icon: BookOpen, label: labels.evidence || 'Berbasis Jurnal', sub: 'Rujukan Ilmiah', color: 'text-emerald-500' },
+          ].map(({ Icon, label, sub, color }, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 10 }}
@@ -81,9 +81,9 @@ function EmptyState({ labels = {} }) {
               transition={{ delay: 0.3 + i * 0.1 }}
               className="p-3 rounded-xl bg-surface border border-primary hover:border-indigo-500/30 transition-colors"
             >
-              <span className="text-lg font-bold text-indigo-500">{item.icon}</span>
-              <p className="text-[11px] font-medium text-primary mt-2">{item.label}</p>
-              <p className="text-[9px] text-muted mt-0.5">{item.sub}</p>
+              <Icon className={`w-5 h-5 mx-auto ${color}`} />
+              <p className="text-[11px] font-medium text-primary mt-2">{label}</p>
+              <p className="text-[9px] text-muted mt-0.5">{sub}</p>
             </motion.div>
           ))}
         </div>
@@ -270,7 +270,7 @@ const AIAnalysisPage = () => {
                 aria-label={t('ai.deepDental.clearLocalData', { fallbackText: 'Bersihkan data klinis lokal' })}
                 className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200/70 dark:border-slate-700/70 text-xs font-semibold text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
-                {t('ai.deepDental.clearLocalDataShort', { fallbackText: 'Bersihkan Lokal' })}
+                {t('ai.deepDental.clearLocalDataShort', { fallbackText: 'Reset Sesi' })}
               </motion.button>
             </div>
           </div>

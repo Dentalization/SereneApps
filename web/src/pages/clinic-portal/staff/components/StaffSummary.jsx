@@ -208,18 +208,31 @@ const StaffSummary = ({ stats, labels }) => {
           <div className="space-y-3">
             <h4 className="text-sm font-semibold text-primary">Performance Highlights</h4>
             <div className="space-y-2">
-              {stats.top_performers?.map((performer, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center">
-                      <span className="text-xs font-bold text-accent">#{idx + 1}</span>
+              {stats.top_performers && stats.top_performers.length > 0 ? (
+                stats.top_performers.map((performer, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-surface rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs font-bold text-accent">#{idx + 1}</span>
+                      </div>
+                      <span className="text-sm font-medium text-primary truncate" title={performer.name}>
+                        {performer.name}
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-primary">{performer.name}</span>
+                    <div className="flex flex-col items-end flex-shrink-0 pl-2">
+                      <span className="text-sm text-accent font-bold">
+                        {performer.score > 0 ? `${performer.score}%` : '0%'}
+                      </span>
+                      {performer.total !== undefined && performer.total > 0 && (
+                        <span className="text-[10px] text-secondary font-medium">
+                          {performer.completed}/{performer.total} janji temu
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-sm text-accent font-bold">{performer.score}%</span>
-                </div>
-              )) || (
-                <p className="text-xs text-secondary italic">Calculating performance metrics...</p>
+                ))
+              ) : (
+                <p className="text-sm text-secondary italic p-4 bg-surface rounded-lg">No performance highlights available for this month.</p>
               )}
             </div>
           </div>
@@ -227,13 +240,15 @@ const StaffSummary = ({ stats, labels }) => {
           <div className="space-y-3">
             <h4 className="text-sm font-semibold text-primary">Recommendations</h4>
             <div className="space-y-2">
-              {stats.recommendations?.map((rec, idx) => (
-                <div key={idx} className="flex items-start space-x-3 p-3 bg-surface rounded-lg">
-                  <AppIcon name="Lightbulb" size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-secondary">{rec}</p>
-                </div>
-              )) || (
-                <p className="text-xs text-secondary italic">Generating AI recommendations...</p>
+              {stats.recommendations && stats.recommendations.length > 0 ? (
+                stats.recommendations.map((rec, idx) => (
+                  <div key={idx} className="flex items-start space-x-3 p-3 bg-surface rounded-lg">
+                    <AppIcon name="Lightbulb" size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-secondary">{rec}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-secondary italic p-4 bg-surface rounded-lg">No recommendations generated.</p>
               )}
             </div>
           </div>

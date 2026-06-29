@@ -555,11 +555,15 @@ export function useChat({ userId } = {}) {
         }));
       }
 
-      const isWaitlisted = error?.response?.status === 409;
-      if (isWaitlisted && history.length) {
+      const errorCode = error?.response?.data?.error?.code;
+      const isNotReady = error?.response?.status === 409;
+      if (isNotReady) {
+        // 409 = COMMUNICATIONS_NOT_READY or ROOM_ENDED — appointment is not yet eligible
+        // or the session has ended. This is expected; do NOT mark chat as unavailable.
         setSocketConnected(false);
-        setConnectionState('ended');
+        setConnectionState(errorCode === 'ROOM_ENDED' ? 'ended' : 'disconnected');
         setReconnectError(null);
+        if (__DEV__) console.log('[useChat] Chat not ready (409) for appointmentId:', normalizedAppointmentId, errorCode || '');
         return;
       }
 

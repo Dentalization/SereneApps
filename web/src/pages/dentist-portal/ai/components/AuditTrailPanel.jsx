@@ -48,8 +48,8 @@ export default function AuditTrailPanel({ events = [], labels = {} }) {
                   </div>
                   <time className="shrink-0 text-[10px] font-medium text-slate-500">{formatTime(event.created_at)}</time>
                 </div>
-                {event.reason && <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Reason: {event.reason}</p>}
-                {event.request_id && <p className="mt-1 text-[10px] text-slate-500">Request: {event.request_id}</p>}
+                {event.reason && <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Alasan: {event.reason}</p>}
+                {event.request_id && <p className="mt-1 text-[10px] text-slate-500">ID Permintaan: {event.request_id}</p>}
               </div>
             </li>
           ))}

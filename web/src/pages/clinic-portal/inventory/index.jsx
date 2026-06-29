@@ -1,351 +1,308 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { useTheme } from '../../../contexts/ThemeContext';
-import { useAuth } from '../../../contexts/AuthContext';
+import { authHttp } from '../../../utils/httpClient.js';
 import PurchaseRequestsView from './components/PurchaseRequestsView';
 import ReceiptsView from './components/ReceiptsView';
 import UsageView from './components/UsageView';
 import EquipmentView from './components/EquipmentView';
+import {
+  DisabledPrimaryAction,
+  InventoryEmptyRow,
+  InventoryStatCard,
+  RefreshButton
+} from './components/InventoryUi';
+import {
+  formatRupiah,
+  getStatusBadgeClass,
+  isWithinDays
+} from './inventoryUtils.mjs';
+
+const EMPTY_INVENTORY = {
+  stock: [],
+  purchaseRequests: [],
+  receipts: [],
+  usage: [],
+  equipment: []
+};
+
+const INVENTORY_REQUESTS = [
+  { key: 'stock', path: '/clinic/inventory/stock', responseKeys: ['items', 'stock'] },
+  { key: 'purchaseRequests', path: '/clinic/inventory/purchase-requests', responseKeys: ['requests', 'purchaseRequests'] },
+  { key: 'receipts', path: '/clinic/inventory/receipts', responseKeys: ['receipts', 'items'] },
+  { key: 'usage', path: '/clinic/inventory/usage', responseKeys: ['records', 'usage'] },
+  { key: 'equipment', path: '/clinic/inventory/equipment', responseKeys: ['equipment', 'items'] }
+];
+
+function extractCollection(result, responseKeys) {
+  if (result.status !== 'fulfilled') return [];
+  const payload = result.value?.data;
+  if (Array.isArray(payload)) return payload;
+  if (responseKeys.includes('equipment')) {
+    const equipment = Array.isArray(payload?.equipment) ? payload.equipment : [];
+    const sterilization = [
+      ...(Array.isArray(payload?.sterilizationRecords) ? payload.sterilizationRecords : []),
+      ...(Array.isArray(payload?.sterilization_records) ? payload.sterilization_records : []),
+      ...(Array.isArray(payload?.sterilization) ? payload.sterilization : [])
+    ].map((record) => ({ ...record, recordType: record.recordType || 'sterilization' }));
+    if (equipment.length || sterilization.length) return [...equipment, ...sterilization];
+  }
+  for (const key of responseKeys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+  }
+  return [];
+}
+
+function quantityOf(item) {
+  return Number(item.currentStock ?? item.current_stock ?? item.quantity ?? 0) || 0;
+}
+
+function minimumOf(item) {
+  return Number(item.minLevel ?? item.minimumLevel ?? item.minimum_stock ?? item.min_stock ?? 0) || 0;
+}
+
+function expiryOf(item) {
+  return item.expiryDate ?? item.expiry_date ?? item.expiresAt ?? item.expires_at ?? null;
+}
+
+function stockStatus(item) {
+  const expiry = expiryOf(item);
+  const expiryDate = expiry ? new Date(expiry) : null;
+  if (expiryDate && !Number.isNaN(expiryDate.getTime()) && expiryDate < new Date()) return 'expired';
+  if (expiry && isWithinDays(expiry, 30)) return 'expiring';
+  if (quantityOf(item) <= minimumOf(item)) return 'low';
+  return item.status || 'normal';
+}
+
+function InventorySkeleton({ tabs }) {
+  return (
+    <div className="flex min-h-screen bg-background theme-transition clinic-skeleton">
+      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+        <ClinicSideBar />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="space-y-8 p-6 md:p-8">
+          <section className="space-y-6 rounded-3xl border border-primary/15 bg-surface-elevated p-6 skeleton-surface">
+            <div className="h-7 w-56 animate-pulse rounded bg-accent/10" />
+            <div className="flex flex-wrap gap-2 border-t border-primary/15 pt-4">
+              {tabs.map((tab) => (
+                <div key={tab.id} className="h-9 w-32 animate-pulse rounded-lg bg-accent/10" />
+              ))}
+            </div>
+          </section>
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-xl border border-primary/15 bg-surface-elevated" />
+            ))}
+          </section>
+          <section className="h-80 animate-pulse rounded-2xl border border-primary/15 bg-surface-elevated" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const InventoryPage = () => {
   const { t } = useLanguage();
-  const { isDark } = useTheme();
-  const { user } = useAuth();
-
   const [activeTab, setActiveTab] = useState('stock');
-  const [inventoryData, setInventoryData] = useState({
-    stock: [],
-    purchaseRequests: [],
-    receipts: [],
-    usage: [],
-    equipment: []
-  });
+  const [inventoryData, setInventoryData] = useState(EMPTY_INVENTORY);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [failedSections, setFailedSections] = useState([]);
+  const [stockSearch, setStockSearch] = useState('');
+  const [stockCategory, setStockCategory] = useState('');
 
-  useEffect(() => {
-    const fetchInventoryData = async () => {
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      setInventoryData({
-        stock: [
-          {
-            id: 1,
-            name: 'Dental Composite A2',
-            category: 'Filling Material',
-            currentStock: 12,
-            minLevel: 5,
-            unit: 'Tube',
-            expiryDate: '2024-12-31',
-            supplier: 'PT. Dental Supply',
-            status: 'normal'
-          },
-          {
-            id: 2,
-            name: 'Anestesi Lidocaine 2%',
-            category: 'Anesthetic',
-            currentStock: 3,
-            minLevel: 10,
-            unit: 'Vial',
-            expiryDate: '2024-06-30',
-            supplier: 'PT. Medical Care',
-            status: 'low'
-          },
-          {
-            id: 3,
-            name: 'Disposable Gloves',
-            category: 'PPE',
-            currentStock: 850,
-            minLevel: 200,
-            unit: 'Pcs',
-            expiryDate: '2025-03-15',
-            supplier: 'PT. Safety First',
-            status: 'normal'
-          }
-        ],
-        purchaseRequests: [
-          {
-            id: 'PR-001',
-            items: ['Anestesi Lidocaine 2%', 'Dental Bur Set'],
-            requestedBy: 'Dr. Sarah',
-            status: 'pending',
-            createdAt: '2024-01-15',
-            totalAmount: 2500000
-          }
-        ],
-        receipts: [
-          {
-            id: 'GR-001',
-            supplier: 'PT. Dental Supply',
-            items: 5,
-            receivedAt: '2024-01-10',
-            totalAmount: 3200000,
-            status: 'completed'
-          }
-        ],
-        usage: [
-          {
-            id: 1,
-            item: 'Dental Composite A2',
-            quantity: 2,
-            procedure: 'Composite Filling',
-            patient: 'Ahmad Sutrisno',
-            usedAt: '2024-01-15'
-          }
-        ],
-        equipment: [
-          {
-            id: 1,
-            name: 'Dental Unit Chair 1',
-            type: 'Treatment Equipment',
-            location: 'Room 1',
-            lastMaintenance: '2023-12-01',
-            nextMaintenance: '2024-03-01',
-            status: 'operational'
-          },
-          {
-            id: 2,
-            name: 'Autoclave Sterilizer',
-            type: 'Sterilization',
-            location: 'Sterilization Room',
-            lastMaintenance: '2024-01-01',
-            nextMaintenance: '2024-04-01',
-            status: 'due_maintenance'
-          }
-        ]
-      });
-
-      setLoading(false);
-    };
-
-    fetchInventoryData();
-  }, []);
-
-  const tabs = [
+  const tabs = useMemo(() => [
     { id: 'stock', label: t('clinic.inventory.tabs.stock') || 'Stok Barang', icon: 'Package' },
     { id: 'purchase', label: t('clinic.inventory.tabs.purchase') || 'Permintaan Beli', icon: 'ShoppingCart' },
     { id: 'receipts', label: t('clinic.inventory.tabs.receipts') || 'Penerimaan', icon: 'Truck' },
     { id: 'usage', label: t('clinic.inventory.tabs.usage') || 'Pemakaian', icon: 'Activity' },
     { id: 'equipment', label: t('clinic.inventory.tabs.equipment') || 'Sterilisasi & Alat', icon: 'Wrench' }
-  ];
+  ], [t]);
 
-  if (loading) {
-    const statSkeletons = Array.from({ length: 4 });
-    const tableRows = Array.from({ length: 5 });
+  const fetchInventoryData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const results = await Promise.allSettled(
+        INVENTORY_REQUESTS.map(({ path }) => authHttp.get(path))
+      );
+      const nextData = {};
+      const failures = [];
 
-    return (
-      <div className="flex min-h-screen bg-background theme-transition clinic-skeleton">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
-          <ClinicSideBar />
-        </div>
+      INVENTORY_REQUESTS.forEach((request, index) => {
+        nextData[request.key] = extractCollection(results[index], request.responseKeys);
+        if (results[index].status === 'rejected') failures.push(request.key);
+      });
 
-        <div className="flex-1 min-w-0">
-          <div className="p-6 md:p-8 space-y-8">
-            <section className="space-y-6 rounded-3xl border border-primary/15 bg-surface-elevated skeleton-surface p-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-3">
-                  <div className="h-6 w-56 rounded bg-accent/10 animate-pulse"></div>
-                  <div className="h-4 w-80 rounded bg-accent/10 animate-pulse"></div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <div className="h-10 w-40 rounded-xl bg-accent/10 animate-pulse"></div>
-                  <div className="h-10 w-44 rounded-xl bg-accent/20 animate-pulse"></div>
-                </div>
-              </div>
-              <div className="border-t border-primary/15 pt-4 flex flex-wrap gap-2">
-                {tabs.map((tab) => (
-                  <div key={tab.id} className="h-9 w-32 rounded-lg bg-accent/10 animate-pulse"></div>
-                ))}
-              </div>
-            </section>
-
-            <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {statSkeletons.map((_, idx) => (
-                <div key={idx} className="p-4 rounded-xl border border-primary/15 bg-surface-elevated skeleton-surface space-y-3">
-                  <div className="h-4 w-24 rounded bg-accent/10 animate-pulse"></div>
-                  <div className="h-6 w-16 rounded bg-accent/20 animate-pulse"></div>
-                </div>
-              ))}
-            </section>
-
-            <section className="rounded-2xl border border-primary/15 bg-surface-elevated skeleton-surface p-6 space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1">
-                  <div className="h-10 w-full sm:w-80 rounded-lg bg-accent/10 animate-pulse"></div>
-                  <div className="h-10 w-40 rounded-lg bg-accent/10 animate-pulse"></div>
-                </div>
-                <div className="h-10 w-36 rounded-lg bg-accent/20 animate-pulse"></div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-primary/15 bg-surface-elevated skeleton-surface overflow-hidden">
-              <div className="px-6 py-4 border-b border-primary/15">
-                <div className="h-5 w-48 rounded bg-accent/10 animate-pulse"></div>
-              </div>
-              <div className="p-6 space-y-4">
-                {tableRows.map((_, idx) => (
-                  <div key={idx} className="flex items-center justify-between border border-primary/10 bg-surface rounded-xl p-4 animate-pulse">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-accent/10"></div>
-                      <div className="space-y-2">
-                        <div className="h-3 w-32 rounded bg-accent/10"></div>
-                        <div className="h-3 w-24 rounded bg-accent/10"></div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="h-3 w-16 rounded bg-accent/10"></div>
-                      <div className="h-3 w-12 rounded bg-accent/10"></div>
-                      <div className="h-3 w-20 rounded bg-accent/10"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  const getStockStatusColor = (status) => {
-    switch (status) {
-      case 'normal': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 'low': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 'expired': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
-      case 'expiring': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
-      default: return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      setInventoryData(nextData);
+      setFailedSections(failures);
+    } catch (error) {
+      console.error('Inventory fetch error:', error);
+      setInventoryData(EMPTY_INVENTORY);
+      setFailedSections(INVENTORY_REQUESTS.map(({ key }) => key));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchInventoryData();
+  }, [fetchInventoryData]);
+
+  const stockMetrics = useMemo(() => {
+    const now = new Date();
+    return inventoryData.stock.reduce((metrics, item) => {
+      const quantity = quantityOf(item);
+      const minimum = minimumOf(item);
+      const expiry = expiryOf(item);
+      const unitCost = Number(item.unitCost ?? item.unit_cost ?? item.cost ?? 0) || 0;
+      const explicitValue = Number(item.totalValue ?? item.total_value);
+      metrics.total += 1;
+      if (quantity <= minimum) metrics.critical += 1;
+      if (expiry && isWithinDays(expiry, 30, now)) metrics.expiring += 1;
+      metrics.value += Number.isFinite(explicitValue) ? explicitValue : quantity * unitCost;
+      return metrics;
+    }, { total: 0, critical: 0, expiring: 0, value: 0 });
+  }, [inventoryData.stock]);
+
+  const categories = useMemo(() => (
+    [...new Set(inventoryData.stock.map((item) => item.category).filter(Boolean))].sort()
+  ), [inventoryData.stock]);
+
+  const filteredStock = useMemo(() => {
+    const query = stockSearch.trim().toLowerCase();
+    return inventoryData.stock.filter((item) => {
+      const matchesSearch = !query || [
+        item.name,
+        item.supplier,
+        item.category,
+        item.sku
+      ].some((value) => String(value || '').toLowerCase().includes(query));
+      const matchesCategory = !stockCategory || item.category === stockCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [inventoryData.stock, stockCategory, stockSearch]);
 
   const renderStockView = () => (
     <div className="space-y-6">
-      {/* Stock Alerts */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <Icon name="AlertTriangle" size={20} className="text-red-600" />
-            <div>
-              <p className="text-sm text-red-800 dark:text-red-400">Stok Kritis</p>
-              <p className="text-xl font-bold text-red-900 dark:text-red-300">5</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <Icon name="Clock" size={20} className="text-yellow-600" />
-            <div>
-              <p className="text-sm text-yellow-800 dark:text-yellow-400">Akan Expired</p>
-              <p className="text-xl font-bold text-yellow-900 dark:text-yellow-300">3</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <Icon name="Package" size={20} className="text-blue-600" />
-            <div>
-              <p className="text-sm text-blue-800 dark:text-blue-400">Total Item</p>
-              <p className="text-xl font-bold text-blue-900 dark:text-blue-300">156</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <Icon name="TrendingUp" size={20} className="text-green-600" />
-            <div>
-              <p className="text-sm text-green-800 dark:text-green-400">Nilai Stok</p>
-              <p className="text-xl font-bold text-green-900 dark:text-green-300">Rp 45M</p>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <InventoryStatCard icon="AlertTriangle" iconClass="text-red-500" label="Stok Kritis" value={stockMetrics.critical} />
+        <InventoryStatCard icon="Clock3" iconClass="text-amber-500" label="Akan Expired ≤30 Hari" value={stockMetrics.expiring} />
+        <InventoryStatCard icon="Package" iconClass="text-blue-500" label="Total Item" value={stockMetrics.total} />
+        <InventoryStatCard icon="WalletCards" iconClass="text-emerald-500" label="Nilai Stok Tercatat" value={formatRupiah(stockMetrics.value)} />
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <div className="relative">
+      <div className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-surface-elevated p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+          <label className="relative block w-full sm:max-w-sm">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
-              type="text"
-              placeholder="Cari item..."
-              className="pl-10 pr-4 py-2 w-80 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+              type="search"
+              value={stockSearch}
+              onChange={(event) => setStockSearch(event.target.value)}
+              placeholder="Cari item, supplier, atau SKU..."
+              className="min-h-10 w-full rounded-xl border border-primary/20 bg-surface py-2 pl-10 pr-4 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
-          </div>
-          <select className="px-3 py-2 pr-8 border border-primary/20 rounded-lg bg-surface text-primary appearance-none focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
+          </label>
+          <select
+            value={stockCategory}
+            onChange={(event) => setStockCategory(event.target.value)}
+            className="min-h-10 rounded-xl border border-primary/20 bg-surface px-3 py-2 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          >
             <option value="">Semua Kategori</option>
-            <option value="filling">Filling Material</option>
-            <option value="anesthetic">Anesthetic</option>
-            <option value="ppe">PPE</option>
+            {categories.map((category) => <option key={category} value={category}>{category}</option>)}
           </select>
         </div>
-        <button className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors">
-          <Icon name="Plus" size={16} className="mr-2" />
-          Tambah Item
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <RefreshButton onRefresh={fetchInventoryData} />
+          <DisabledPrimaryAction>Tambah Item · Segera hadir</DisabledPrimaryAction>
+        </div>
       </div>
 
-      {/* Stock Table */}
-      <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-        <div className="px-6 py-4 border-b border-primary/20">
+      <div className="overflow-hidden rounded-xl border border-primary/20 bg-surface-elevated">
+        <div className="border-b border-primary/20 px-6 py-4">
           <h3 className="text-lg font-semibold text-primary">Daftar Stok</h3>
+          <p className="mt-0.5 text-xs text-secondary">{filteredStock.length} item ditampilkan</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Kategori</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Stok</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Min Level</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Expired</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Aksi</th>
+                {['Item', 'Kategori', 'Stok', 'Min Level', 'Expired', 'Status', 'Aksi'].map((heading) => (
+                  <th key={heading} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-secondary">{heading}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-primary/10">
-              {inventoryData.stock.map((item) => (
-                <tr key={item.id} className="hover:bg-surface transition-colors">
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="text-sm font-medium text-primary">{item.name}</div>
-                      <div className="text-xs text-secondary">{item.supplier}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary">
-                    {item.category}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className={`text-sm font-semibold ${item.currentStock <= item.minLevel ? 'text-red-600' : 'text-primary'}`}>
-                      {item.currentStock} {item.unit}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary">
-                    {item.minLevel} {item.unit}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary">
-                    {new Date(item.expiryDate).toLocaleDateString('id-ID')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStockStatusColor(item.status)}`}>
-                      {item.status === 'normal' ? 'Normal' : item.status === 'low' ? 'Stok Rendah' : 'Expired'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex space-x-2">
-                      <button className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
-                        <Icon name="Edit" size={16} />
+              {filteredStock.map((item) => {
+                const quantity = quantityOf(item);
+                const minimum = minimumOf(item);
+                const expiry = expiryOf(item);
+                const expiryDate = expiry ? new Date(expiry) : null;
+                const daysLeft = expiryDate && !Number.isNaN(expiryDate.getTime())
+                  ? Math.ceil((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+                  : null;
+                const status = stockStatus(item);
+                const progress = minimum > 0 ? Math.min(100, (quantity / (minimum * 3)) * 100) : 100;
+                return (
+                  <tr key={item.id} className="transition-colors hover:bg-surface">
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-medium text-primary">{item.name || 'Item tanpa nama'}</p>
+                      <p className="text-xs text-secondary">{item.supplier || item.sku || 'Supplier belum tersedia'}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-secondary">{item.category || '—'}</td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <div className="min-w-[110px] space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-sm font-semibold ${quantity <= minimum ? 'text-red-600' : 'text-primary'}`}>
+                            {quantity} {item.unit || ''}
+                          </span>
+                          <span className="text-[10px] text-secondary">/{minimum} min</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-primary/10">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              quantity <= minimum
+                                ? 'bg-red-500'
+                                : quantity <= minimum * 1.5
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-secondary">{minimum} {item.unit || ''}</td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <p className={`text-sm ${
+                        daysLeft != null && daysLeft < 0
+                          ? 'font-semibold text-red-600'
+                          : daysLeft != null && daysLeft <= 30
+                            ? 'font-semibold text-amber-600'
+                            : 'text-secondary'
+                      }`}>
+                        {expiryDate && !Number.isNaN(expiryDate.getTime()) ? expiryDate.toLocaleDateString('id-ID') : '—'}
+                      </p>
+                      {daysLeft != null && daysLeft < 0 && <p className="text-[10px] font-semibold text-red-500">Sudah expired</p>}
+                      {daysLeft != null && daysLeft >= 0 && daysLeft <= 30 && <p className="text-[10px] text-amber-500">{daysLeft} hari lagi</p>}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${getStatusBadgeClass(status)}`}>
+                        {status === 'normal' ? 'Normal' : status === 'low' ? 'Stok Rendah' : status === 'expiring' ? 'Akan Expired' : status}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <button type="button" disabled title="Fitur ini segera hadir" className="cursor-not-allowed rounded-lg p-2 text-secondary/40">
+                        <Icon name="MoreHorizontal" size={17} />
                       </button>
-                      <button className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
-                        <Icon name="Plus" size={16} />
-                      </button>
-                      <button className="p-1 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded">
-                        <Icon name="ShoppingCart" size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredStock.length === 0 && <InventoryEmptyRow colSpan={7} message="Belum ada data stok dari layanan inventory." />}
             </tbody>
           </table>
         </div>
@@ -353,64 +310,39 @@ const InventoryPage = () => {
     </div>
   );
 
-  const renderPurchaseView = () => <PurchaseRequestsView />;
-
-  const renderReceiptsView = () => <ReceiptsView />;
-
-  const renderUsageView = () => <UsageView />;
-
-  const renderEquipmentView = () => <EquipmentView />;
-
   const renderContent = () => {
     switch (activeTab) {
-      case 'stock': return renderStockView();
-      case 'purchase': return renderPurchaseView();
-      case 'receipts': return renderReceiptsView();
-      case 'usage': return renderUsageView();
-      case 'equipment': return renderEquipmentView();
-      default: return renderStockView();
+      case 'purchase':
+        return <PurchaseRequestsView data={inventoryData.purchaseRequests} onRefresh={fetchInventoryData} />;
+      case 'receipts':
+        return <ReceiptsView data={inventoryData.receipts} onRefresh={fetchInventoryData} />;
+      case 'usage':
+        return <UsageView data={inventoryData.usage} onRefresh={fetchInventoryData} />;
+      case 'equipment':
+        return <EquipmentView data={inventoryData.equipment} onRefresh={fetchInventoryData} />;
+      default:
+        return renderStockView();
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen bg-background theme-transition">
-        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
-          <ClinicSideBar />
-        </div>
-        <div className="flex-1 min-w-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin mb-4">
-              <Icon name="Loader2" size={48} className="text-accent mx-auto" />
-            </div>
-            <p className="text-secondary">Loading inventory data...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <InventorySkeleton tabs={tabs} />;
 
   return (
     <div className="flex min-h-screen bg-background theme-transition">
       <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
         <ClinicSideBar />
       </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="p-6 md:p-8 space-y-8">
+      <div className="min-w-0 flex-1">
+        <div className="space-y-8 p-6 md:p-8">
           <section className="clinic-page-header space-y-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <h1 className="text-3xl font-bold text-primary">
-                  {t('clinic.inventory.title') || 'Inventori & Sterilisasi'}
-                </h1>
-                <p className="text-sm text-secondary max-w-2xl">
-                  {t('clinic.inventory.subtitle') || 'Kelola stok, pembelian, dan sterilisasi peralatan'}
-                </p>
+                <h1 className="text-3xl font-bold text-primary">{t('clinic.inventory.title') || 'Inventori & Sterilisasi'}</h1>
+                <p className="max-w-2xl text-sm text-secondary">{t('clinic.inventory.subtitle') || 'Kelola stok, pembelian, dan sterilisasi peralatan'}</p>
               </div>
-              <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover">
+              <button type="button" disabled title="Fitur ini segera hadir" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-accent/50 px-4 py-2 text-sm font-medium text-white opacity-60">
                 <Icon name="Download" size={16} />
-                Export
+                Export · Segera hadir
               </button>
             </div>
             <div className="border-t border-border/40 pt-4">
@@ -418,11 +350,11 @@ const InventoryPage = () => {
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
-                      ? 'bg-accent text-white shadow-sm'
-                      : 'text-secondary hover:text-primary hover:bg-surface'
-                      }`}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      activeTab === tab.id ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:bg-surface hover:text-primary'
+                    }`}
                   >
                     <Icon name={tab.icon} size={16} />
                     <span>{tab.label}</span>
@@ -432,9 +364,22 @@ const InventoryPage = () => {
             </div>
           </section>
 
-          <div className="min-h-[500px]">
-            {renderContent()}
-          </div>
+          {failedSections.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <Icon name="CloudAlert" size={20} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Sebagian data inventory belum tersedia</p>
+                  <p className="mt-0.5 text-xs opacity-80">Layanan gagal: {failedSections.join(', ')}. Data dari layanan lain tetap ditampilkan.</p>
+                </div>
+              </div>
+              <button type="button" onClick={fetchInventoryData} disabled={refreshing} className="min-h-10 rounded-xl border border-current/25 px-4 text-sm font-semibold disabled:opacity-60">
+                {refreshing ? 'Menyegarkan…' : 'Coba lagi'}
+              </button>
+            </div>
+          )}
+
+          <div className="min-h-[500px]">{renderContent()}</div>
         </div>
       </div>
     </div>

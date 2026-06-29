@@ -1,372 +1,221 @@
 import React, { useMemo, useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 
-/**
- * BranchDirectory
- * - Pure render (no Math.random in JSX)
- * - Safe filtering (never calls .includes on non-strings)
- * - Stable, deterministic fallback metrics (seeded from branch id/name)
- * - Defensive guards for all optional fields
- */
+const toText = (value) => (value == null ? '' : String(value));
+
+function resolveStatus(branch) {
+  if (branch?.status === 'maintenance' || branch?.isActive === 'maintenance') return 'maintenance';
+  if (branch?.status === 'active' || branch?.isActive === true) return 'active';
+  return 'inactive';
+}
+
+function statusBadge(status) {
+  const config = {
+    active: {
+      label: 'Aktif',
+      className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+      dot: 'bg-emerald-500'
+    },
+    maintenance: {
+      label: 'Maintenance',
+      className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      dot: 'bg-amber-500'
+    },
+    inactive: {
+      label: 'Tidak aktif',
+      className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
+      dot: 'bg-slate-400'
+    }
+  }[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${config.className}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
+      {config.label}
+    </span>
+  );
+}
+
+function formatPhone(phone) {
+  const value = toText(phone).trim();
+  return value || 'Belum tersedia';
+}
+
+function formatAddress(branch) {
+  return [
+    branch?.streetAddress,
+    branch?.city,
+    branch?.province,
+    branch?.postalCode
+  ].filter(Boolean).join(', ') || 'Alamat belum dilengkapi';
+}
+
+function formatOperatingHours(operatingHours) {
+  if (typeof operatingHours === 'string' && operatingHours.trim()) return operatingHours.trim();
+  if (!operatingHours || typeof operatingHours !== 'object') return null;
+  const monday = operatingHours.monday ?? operatingHours.weekdays ?? operatingHours.default;
+  return typeof monday === 'string' && monday.trim() ? `Senin: ${monday.trim()}` : 'Jadwal operasional tersedia';
+}
+
 const BranchDirectory = ({ branches, onEdit, onDelete, onAdd }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-
-  // --- Utilities -------------------------------------------------------------
-
-  // Normalize any value to lowercase string for safe "includes" checks
-  const toText = (v) => (v === undefined || v === null) ? '' : String(v);
-  const includesCaseInsensitive = (value, queryLower) =>
-    toText(value).toLowerCase().includes(queryLower);
-
-  // Deterministic "random-like" generator from a string seed (pure function)
-  const seededInt = (seed, min, max) => {
-    const s = toText(seed);
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-      h = (h << 5) - h + s.charCodeAt(i);
-      h |= 0; // to 32-bit int
-    }
-    const abs = Math.abs(h);
-    return min + (abs % (max - min + 1));
-  };
-
-  const getStableMetrics = (branch) => {
-    const seed = branch?.id ?? branch?.branchName ?? 'branch';
-    return {
-      rooms: branch?.treatmentRoomsCount ?? seededInt(seed, 2, 9),
-      patientsPerMonth: branch?.monthlyPatients ?? seededInt(seed + 'm', 100, 400),
-      rating: branch?.rating ?? (seededInt(seed + 'r', 40, 49) / 10).toFixed(1), // 4.0–4.9
-    };
-  };
-
-  const formatPhone = (phone) => {
-    const digits = toText(phone).replace(/\D/g, '');
-    if (!digits) return '—';
-    // Format as 4-4-remaining; if not enough, return digits
-    const m = digits.match(/^(\d{4})(\d{4})(\d+)$/);
-    return m ? `${m[1]}-${m[2]}-${m[3]}` : digits;
-  };
-
-  const formatAddress = (address) => {
-    const txt = toText(address);
-    return txt.length > 50 ? `${txt.substring(0, 50)}...` : (txt || '—');
-  };
-
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      active: {
-        bg: 'bg-green-100 dark:bg-green-900/20',
-        text: 'text-green-800 dark:text-green-400',
-        label: 'Active',
-      },
-      inactive: {
-        bg: 'bg-gray-100 dark:bg-gray-900/20',
-        text: 'text-gray-800 dark:text-gray-400',
-        label: 'Inactive',
-      },
-      maintenance: {
-        bg: 'bg-yellow-100 dark:bg-yellow-900/20',
-        text: 'text-yellow-800 dark:text-yellow-400',
-        label: 'Maintenance',
-      },
-    };
-    const config = statusConfig[status] || statusConfig.inactive;
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-        {config.label}
-      </span>
-    );
-  };
-
-  // --- Data guards -----------------------------------------------------------
-
-  const safeBranches = useMemo(() => {
-    try {
-      if (!Array.isArray(branches)) return [];
-      return branches.filter(Boolean); // strip null/undefined
-    } catch (e) {
-      console.error('❌ Error processing branches:', e);
-      return [];
-    }
-  }, [branches]);
-
-  // --- Filtering -------------------------------------------------------------
+  const safeBranches = useMemo(() => (Array.isArray(branches) ? branches.filter(Boolean) : []), [branches]);
 
   const filteredBranches = useMemo(() => {
-    try {
-      const q = toText(search).trim().toLowerCase();
-      return safeBranches.filter((branch) => {
-        try {
-          const searchMatch =
-            !q ||
-            includesCaseInsensitive(branch?.branchName, q) ||
-            includesCaseInsensitive(branch?.streetAddress, q) ||
-            includesCaseInsensitive(branch?.phone, q);
-
-          const status =
-            branch?.isActive === true
-              ? 'active'
-              : branch?.isActive === 'maintenance'
-              ? 'maintenance'
-              : 'inactive'; // default fallback
-
-          const statusMatch = statusFilter === 'all' || status === statusFilter;
-          return searchMatch && statusMatch;
-        } catch (filterError) {
-          console.error('❌ Error filtering a branch:', branch, filterError);
-          return false;
-        }
-      });
-    } catch (e) {
-      console.error('❌ Error computing filteredBranches:', e);
-      return [];
-    }
+    const query = search.trim().toLowerCase();
+    return safeBranches.filter((branch) => {
+      const searchable = [
+        branch.branchName,
+        branch.streetAddress,
+        branch.city,
+        branch.province,
+        branch.phone
+      ].map((value) => toText(value).toLowerCase());
+      const matchesSearch = !query || searchable.some((value) => value.includes(query));
+      const matchesStatus = statusFilter === 'all' || resolveStatus(branch) === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
   }, [safeBranches, search, statusFilter]);
-
-  // --- Handlers (defensive defaults) ----------------------------------------
 
   const handleAdd = typeof onAdd === 'function' ? onAdd : () => {};
   const handleEdit = typeof onEdit === 'function' ? onEdit : () => {};
   const handleDelete = typeof onDelete === 'function' ? onDelete : () => {};
 
-  // --- Render ---------------------------------------------------------------
-
   return (
-    <div className="space-y-6">
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="relative flex-1 min-w-[280px]">
-          <AppIcon
-            name="Search"
-            size={18}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary/60"
-          />
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-2xl border border-primary/15 bg-surface-elevated p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full lg:max-w-xl">
+          <AppIcon name="Search" size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary/60" />
           <input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search branches by name, address, or phone..."
-            className="w-full rounded-lg border border-border/40 bg-surface py-3 pl-9 pr-3 text-sm text-primary shadow-sm transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Cari nama, alamat, kota, atau telepon..."
+            className="min-h-11 w-full rounded-xl border border-primary/20 bg-surface py-2 pl-10 pr-4 text-sm text-primary transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label htmlFor="status-filter" className="text-sm font-medium text-secondary whitespace-nowrap">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="min-w-[120px] appearance-none rounded-lg border border-border/40 bg-surface pl-3 pr-8 py-2 text-sm text-primary transition hover:border-border/60 focus:border-accent focus:outline-none"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="maintenance">Maintenance</option>
-            </select>
-          </div>
-
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <select
+            aria-label="Filter status cabang"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="min-h-11 rounded-xl border border-primary/20 bg-surface px-3 py-2 text-sm text-primary focus:border-accent focus:outline-none"
+          >
+            <option value="all">Semua status</option>
+            <option value="active">Aktif</option>
+            <option value="inactive">Tidak aktif</option>
+            <option value="maintenance">Maintenance</option>
+          </select>
           <button
+            type="button"
             onClick={handleAdd}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover"
           >
             <AppIcon name="Plus" size={16} />
-            Add Branch
+            Tambah Cabang
           </button>
         </div>
       </div>
 
-      {/* Branch Cards */}
       {filteredBranches.length === 0 ? (
-        safeBranches.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/40 bg-surface-elevated p-10 text-center shadow-sm">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <AppIcon name="Building2" size={28} />
-            </div>
-            <h3 className="text-lg font-semibold text-primary">No branches yet</h3>
-            <p className="mt-2 max-w-md text-sm text-secondary">
-              Create your first branch to start managing multiple clinic locations.
-            </p>
-            <button
-              onClick={handleAdd}
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover"
-            >
+        <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-elevated px-6 py-14 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary">
+            <AppIcon name={safeBranches.length === 0 ? 'Hospital' : 'SearchX'} size={23} />
+          </div>
+          <h3 className="font-semibold text-primary">{safeBranches.length === 0 ? 'Belum ada cabang' : 'Cabang tidak ditemukan'}</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-secondary">
+            {safeBranches.length === 0
+              ? 'Tambahkan lokasi pertama untuk mulai mengelola operasional multi-cabang.'
+              : 'Ubah kata pencarian atau filter status untuk melihat hasil lain.'}
+          </p>
+          {safeBranches.length === 0 && (
+            <button type="button" onClick={handleAdd} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white">
               <AppIcon name="Plus" size={16} />
-              Add First Branch
+              Tambah Cabang Pertama
             </button>
-          </div>
-        ) : (
-          <div className="text-center py-8 text-secondary">
-            <AppIcon name="Search" size={48} className="mx-auto mb-4 opacity-50" />
-            <p>No branches match your search criteria.</p>
-          </div>
-        )
+          )}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredBranches.map((branch, idx) => {
-            const status = branch?.isActive === true
-              ? 'active'
-              : branch?.isActive === 'maintenance'
-              ? 'maintenance'
-              : 'inactive';
-
-            const metrics = getStableMetrics(branch);
-
-            // Prefer a nice human-readable string if provided; else fallback
-            let hoursText = 'Mon-Fri: 08:00-17:00';
-            const oh = branch?.operatingHours;
-            if (typeof oh === 'string' && oh.trim()) {
-              hoursText = oh.trim();
-            } else if (oh && typeof oh === 'object') {
-              const common = oh.monday ?? oh.weekdays ?? oh.default ?? null;
-              if (typeof common === 'string' && common.trim()) {
-                hoursText = common.trim();
-              }
-            }
-
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {filteredBranches.map((branch, index) => {
+            const status = resolveStatus(branch);
+            const hours = formatOperatingHours(branch.operatingHours);
+            const rooms = branch.treatmentRoomsCount ?? branch.treatment_rooms_count;
+            const staff = branch.staffCount ?? branch.staff_count;
+            const patients = branch.monthlyPatients ?? branch.monthly_patients;
             return (
-              <div
-                key={branch?.id ?? branch?.branchName ?? `branch-${idx}`}
-                className="bg-surface-elevated rounded-2xl p-6 border border-border/40 hover:border-accent/20 transition-all duration-200 group"
+              <article
+                key={branch.id ?? branch.branchName ?? `branch-${index}`}
+                className="rounded-2xl border border-primary/15 bg-surface-elevated p-5 transition-colors hover:border-accent/30"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
-                      {toText(branch?.branchName).charAt(0) || 'B'}
+                <header className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/5 text-accent">
+                      <AppIcon name={branch.isMainBranch ? 'Landmark' : 'MapPinned'} size={21} />
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-primary group-hover:text-accent transition-colors">
-                        {toText(branch?.branchName) || 'Unnamed Branch'}
-                      </h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(status)}
-                        {branch?.isMainBranch && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent">
-                            <AppIcon name="Star" size={12} />
-                            Main
-                          </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold text-primary">{branch.branchName || 'Cabang tanpa nama'}</h3>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {statusBadge(status)}
+                        {branch.isMainBranch && (
+                          <span className="rounded-full border border-accent/20 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent">Cabang utama</span>
                         )}
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleEdit(branch)}
-                      className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
-                      title="Edit Branch"
-                    >
-                      <AppIcon name="Edit" size={16} />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => handleEdit(branch)} className="rounded-lg p-2 text-secondary transition hover:bg-surface hover:text-primary" title="Edit cabang" aria-label={`Edit ${branch.branchName || 'cabang'}`}>
+                      <AppIcon name="Pencil" size={16} />
                     </button>
-                    {!branch?.isMainBranch && (
-                      <button
-                        onClick={() => handleDelete(branch)}
-                        className="p-2 rounded-lg text-secondary hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title="Delete Branch"
-                      >
+                    {!branch.isMainBranch && (
+                      <button type="button" onClick={() => handleDelete(branch)} className="rounded-lg p-2 text-secondary transition hover:bg-red-500/10 hover:text-red-600" title="Hapus cabang" aria-label={`Hapus ${branch.branchName || 'cabang'}`}>
                         <AppIcon name="Trash2" size={16} />
                       </button>
                     )}
                   </div>
+                </header>
+
+                <div className="mt-5 grid gap-4 border-t border-primary/10 pt-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-secondary/70">Alamat</p>
+                    <p className="mt-1 text-sm leading-relaxed text-primary">{formatAddress(branch)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-secondary/70">Telepon</p>
+                    <p className="mt-1 text-sm text-primary">{formatPhone(branch.phone)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-secondary/70">Jam operasional</p>
+                    <p className="mt-1 text-sm text-primary">{hours || 'Belum dilengkapi'}</p>
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <AppIcon name="MapPin" size={16} className="text-secondary mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-primary font-medium">Address</p>
-                      <p className="text-sm text-secondary" title={toText(branch?.streetAddress)}>
-                        {formatAddress(branch?.streetAddress)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <AppIcon name="Phone" size={16} className="text-secondary flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-primary font-medium">Phone</p>
-                      <p className="text-sm text-secondary">
-                        {formatPhone(branch?.phone)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <AppIcon name="Users" size={16} className="text-secondary flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-primary font-medium">Staff</p>
-                      <p className="text-sm text-secondary">
-                        {Number.isFinite(branch?.staffCount) ? branch.staffCount : 0} members
-                      </p>
-                    </div>
-                  </div>
-
-                  {branch?.ownerEmail && (
-                    <div className="flex items-center gap-3">
-                      <AppIcon name="Mail" size={16} className="text-secondary flex-shrink-0" />
-                      <div>
-                        <p className="text-sm text-primary font-medium">Owner Email</p>
-                        <p className="text-sm text-secondary break-all">
-                          {branch.ownerEmail}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {branch?.operatingHours && (
-                    <div className="flex items-center gap-3">
-                      <AppIcon name="Clock" size={16} className="text-secondary flex-shrink-0" />
-                      <div>
-                        <p className="text-sm text-primary font-medium">Operating Hours</p>
-                        <p className="text-sm text-secondary">{hoursText}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Facilities */}
-                {Array.isArray(branch?.facilities) && branch.facilities.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-border/20">
-                    <p className="text-sm text-primary font-medium mb-2">Facilities</p>
-                    <div className="flex flex-wrap gap-1">
-                      {branch.facilities.slice(0, 3).map((facility, index) => (
-                        <span
-                          key={`${branch?.id ?? branch?.branchName ?? 'b'}-facility-${index}`}
-                          className="inline-block px-2 py-1 rounded-md bg-surface text-xs text-secondary border border-border/20"
-                        >
-                          {toText(facility)}
-                        </span>
-                      ))}
-                      {branch.facilities.length > 3 && (
-                        <span className="inline-block px-2 py-1 rounded-md bg-surface text-xs text-secondary border border-border/20">
-                          +{branch.facilities.length - 3} more
-                        </span>
-                      )}
-                    </div>
+                {Array.isArray(branch.facilities) && branch.facilities.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-1.5 border-t border-primary/10 pt-4">
+                    {branch.facilities.slice(0, 4).map((facility, facilityIndex) => (
+                      <span key={`${branch.id}-facility-${facilityIndex}`} className="rounded-md border border-primary/10 bg-surface px-2 py-1 text-xs text-secondary">
+                        {toText(facility)}
+                      </span>
+                    ))}
+                    {branch.facilities.length > 4 && <span className="px-2 py-1 text-xs text-secondary">+{branch.facilities.length - 4} lainnya</span>}
                   </div>
                 )}
 
-                {/* Quick Stats (stable, deterministic) */}
-                <div className="mt-4 pt-4 border-t border-border/20">
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-lg font-semibold text-primary">{metrics.rooms}</p>
-                      <p className="text-xs text-secondary">Rooms</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-primary">{metrics.patientsPerMonth}</p>
-                      <p className="text-xs text-secondary">Patients/mo</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-primary">{metrics.rating}</p>
-                      <p className="text-xs text-secondary">Rating</p>
-                    </div>
+                <dl className="mt-4 grid grid-cols-3 divide-x divide-primary/10 border-t border-primary/10 pt-4 text-center">
+                  <div>
+                    <dt className="text-[11px] text-secondary">Ruang</dt>
+                    <dd className="mt-1 font-semibold text-primary">{rooms ?? '—'}</dd>
                   </div>
-                </div>
-              </div>
+                  <div>
+                    <dt className="text-[11px] text-secondary">Staf</dt>
+                    <dd className="mt-1 font-semibold text-primary">{staff ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] text-secondary">Pasien/bulan</dt>
+                    <dd className="mt-1 font-semibold text-primary">{patients ?? '—'}</dd>
+                  </div>
+                </dl>
+              </article>
             );
           })}
         </div>

@@ -15,6 +15,7 @@ import httpClient from '../../../utils/httpClient';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { formToBranchPayload, normalizeBranch } from './branchData.mjs';
 
 const BranchManagement = () => {
   const navigate = useNavigate();
@@ -125,22 +126,6 @@ const BranchManagement = () => {
   //   }
   // }, [hasAccess, user, navigate]);
 
-const normalizeBranch = (branch, ownerFallback = null) => {
-  if (!branch || typeof branch !== 'object') return null;
-  const normalized = {
-    ...branch,
-    id: branch.id?.toString?.() || branch.id,
-    clinicProfileId: branch.clinicProfileId?.toString?.() || branch.clinicProfileId,
-  };
-
-  return {
-    ...normalized,
-    ownerEmail: normalized.ownerEmail || ownerFallback?.email || null,
-    ownerName: normalized.ownerName || ownerFallback?.name || null,
-    ownerWhatsapp: normalized.ownerWhatsapp || ownerFallback?.whatsapp || null,
-  };
-};
-
   const extractBranchesFromPayload = (payload) => {
     if (!payload) return [];
     if (Array.isArray(payload)) return payload;
@@ -209,47 +194,13 @@ const normalizeBranch = (branch, ownerFallback = null) => {
         params: { _t: Date.now() },
       });
 
-      if (response?.data) {
-        const revenueResult = response.data?.data || response.data;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('💰 Real revenue data:', revenueResult);
-        }
-        if (Array.isArray(revenueResult)) {
-          setRevenueData(revenueResult);
-        } else if (Array.isArray(revenueResult?.branches)) {
-          setRevenueData(revenueResult.branches);
-        } else {
-          setRevenueData([]);
-        }
+      const revenueResult = response?.data?.data || response?.data;
+      if (Array.isArray(revenueResult)) {
+        setRevenueData(revenueResult);
+      } else if (Array.isArray(revenueResult?.branches)) {
+        setRevenueData(revenueResult.branches);
       } else {
-        // Fallback to calculated revenue data based on real branches with realistic numbers
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('💰 Using calculated revenue data for real branches');
-        }
-        const calculatedRevenueData = branches.map((branch, index) => {
-          // Base revenue on branch characteristics
-          const baseRevenue = branch.isMainBranch ? 300000000 : 150000000; // 300M for main, 150M for others
-          const variationFactor = 0.7 + (Math.random() * 0.6); // 0.7 to 1.3 multiplier
-          const monthlyRevenue = Math.floor(baseRevenue * variationFactor);
-          
-          return {
-            branchId: branch.id,
-            branchName: branch.branchName || `Branch ${index + 1}`,
-            monthlyRevenue,
-            yearlyRevenue: monthlyRevenue * 12,
-            growth: (Math.random() * 20 - 5).toFixed(1), // -5% to 15%
-            transactions: Math.floor((monthlyRevenue / 1500000) * (0.8 + Math.random() * 0.4)), // Realistic transaction count
-            avgTransaction: Math.floor(monthlyRevenue / Math.max(1, Math.floor(monthlyRevenue / 1500000))),
-            topServices: [
-              'Pembersihan Gigi',
-              'Tambal Gigi',
-              'Perawatan Saluran Akar',
-              'Pemutihan Gigi',
-              'Cabut Gigi'
-            ]
-          };
-        });
-        setRevenueData(calculatedRevenueData);
+        setRevenueData([]);
       }
     } catch (error) {
       const errorMsg = error?.message || 'Failed to fetch revenue data';
@@ -258,36 +209,11 @@ const normalizeBranch = (branch, ownerFallback = null) => {
           console.error('❌ Error fetching revenue data:', error);
         }
       }
-      // Fallback to realistic calculated data for real branches
-      if (branches.length > 0) {
-        const fallbackRevenueData = branches.map((branch, index) => {
-          const baseRevenue = branch.isMainBranch ? 300000000 : 150000000;
-          const variationFactor = 0.7 + (Math.random() * 0.6);
-          const monthlyRevenue = Math.floor(baseRevenue * variationFactor);
-          
-          return {
-            branchId: branch.id,
-            branchName: branch.branchName || `Branch ${index + 1}`,
-            monthlyRevenue,
-            yearlyRevenue: monthlyRevenue * 12,
-            growth: (Math.random() * 20 - 5).toFixed(1),
-            transactions: Math.floor((monthlyRevenue / 1500000) * (0.8 + Math.random() * 0.4)),
-            avgTransaction: Math.floor(monthlyRevenue / Math.max(1, Math.floor(monthlyRevenue / 1500000))),
-            topServices: [
-              'Pembersihan Gigi',
-              'Tambal Gigi', 
-              'Perawatan Saluran Akar',
-              'Pemutihan Gigi',
-              'Cabut Gigi'
-            ]
-          };
-        });
-        setRevenueData(fallbackRevenueData);
-      }
+      setRevenueData([]);
     } finally {
       setRevenueLoading(false);
     }
-  }, [branches]);
+  }, []);
 
   useEffect(() => {
     if (hasAccess) {
@@ -317,27 +243,10 @@ const normalizeBranch = (branch, ownerFallback = null) => {
 
       // Prepare branch data for API - match database schema
       const branchData = {
-        branchName: formData.branchName?.trim() || '',
+        ...formToBranchPayload(formData),
         branchCode: (formData.branchName?.substring(0, 3).toUpperCase() || 'BR') + Math.floor(Math.random() * 100),
-        streetAddress: formData.address?.trim() || '',
-        city: formData.city?.trim() || 'Jakarta',
-        province: formData.province?.trim() || 'DKI Jakarta',
-        postalCode: formData.postalCode?.trim() || '12345',
-        phone: formData.phone?.trim() || '',
-        treatmentRoomsCount: parseInt(formData.treatmentRooms) || 1,
         hasSterlization: Boolean(formData.facilities?.includes('Autoclave Sterilizer')),
         hasRadiography: Boolean(formData.facilities?.includes('X-Ray Machine')),
-        operatingHours: {
-          monday: formData.operatingHours || '08:00-17:00',
-          tuesday: formData.operatingHours || '08:00-17:00',
-          wednesday: formData.operatingHours || '08:00-17:00',
-          thursday: formData.operatingHours || '08:00-17:00',
-          friday: formData.operatingHours || '08:00-17:00',
-          saturday: '08:00-14:00',
-          sunday: 'closed'
-        },
-        isMainBranch: Boolean(formData.isMainBranch),
-        isActive: formData.status !== 'inactive'
       };
 
       console.log('📤 Sending branch data:', branchData);
@@ -382,7 +291,7 @@ const normalizeBranch = (branch, ownerFallback = null) => {
       }
 
       // API call to update branch
-      const updatedBranch = await clinicService.updateBranch(branchId, formData);
+      const updatedBranch = await clinicService.updateBranch(branchId, formToBranchPayload(formData));
       const normalizedBranch = normalizeBranch(updatedBranch?.branch || updatedBranch, ownerInfo);
       setBranches(prev => prev.map(branch => 
         branch.id === branchId ? normalizedBranch || branch : branch
@@ -436,11 +345,14 @@ const normalizeBranch = (branch, ownerFallback = null) => {
 
   // Calculate summary statistics
   const branchStats = useMemo(() => {
-    const totalRevenue = revenueData.reduce((sum, branch) => sum + branch.monthlyRevenue, 0);
-    const avgGrowth = revenueData.length > 0 
-      ? (revenueData.reduce((sum, branch) => sum + parseFloat(branch.growth), 0) / revenueData.length).toFixed(1)
-      : '0.0';
-    const totalTransactions = revenueData.reduce((sum, branch) => sum + branch.transactions, 0);
+    const totalRevenue = revenueData.reduce((sum, branch) => sum + (Number(branch.monthlyRevenue) || 0), 0);
+    const growthValues = revenueData
+      .map((branch) => Number(branch.growth))
+      .filter(Number.isFinite);
+    const avgGrowth = growthValues.length > 0
+      ? (growthValues.reduce((sum, growth) => sum + growth, 0) / growthValues.length).toFixed(1)
+      : null;
+    const totalTransactions = revenueData.reduce((sum, branch) => sum + (Number(branch.transactions) || 0), 0);
     const avgTransactionValue = totalTransactions > 0 
       ? Math.floor(totalRevenue / totalTransactions) 
       : 0;
@@ -648,24 +560,19 @@ const normalizeBranch = (branch, ownerFallback = null) => {
                   {t('clinic.branches.subtitle') || 'Kelola cabang klinik, monitor performa, dan analisis pendapatan'}
                 </p>
                 {ownerInfo && (
-                  <div className="text-xs sm:text-sm text-secondary flex flex-wrap gap-4 items-center">
-                    <span className="flex items-center gap-2">
-                      <AppIcon name="UserCircle" size={14} />
-                      <strong className="text-primary">Owner:</strong> {ownerInfo.name || '—'}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-l-2 border-accent/60 pl-3 text-xs text-secondary sm:text-sm">
+                    <span>
+                      <strong className="font-semibold text-primary">Penanggung jawab:</strong> {ownerInfo.name || '—'}
                     </span>
                     {ownerInfo.email && (
-                      <span className="flex items-center gap-2">
-                        <AppIcon name="Mail" size={14} />
-                        <a href={`mailto:${ownerInfo.email}`} className="text-accent hover:underline">
+                      <span>
+                        <a href={`mailto:${ownerInfo.email}`} className="text-secondary underline-offset-4 hover:text-accent hover:underline">
                           {ownerInfo.email}
                         </a>
                       </span>
                     )}
                     {ownerInfo.whatsapp && (
-                      <span className="flex items-center gap-2">
-                        <AppIcon name="PhoneCall" size={14} />
-                        {ownerInfo.whatsapp}
-                      </span>
+                      <span>{ownerInfo.whatsapp}</span>
                     )}
                   </div>
                 )}

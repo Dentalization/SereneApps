@@ -304,7 +304,7 @@ const BranchAddModal = ({ open, onClose, onSubmit, loading, error }) => {
               </div>
 
               {/* GPS Coordinates */}
-              <div className="space-y-3 p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="space-y-3 rounded-xl border border-primary/15 bg-surface p-4">
                 <div className="flex items-center gap-2 text-blue-700">
                   <AppIcon name="MapPin" size={16} />
                   <h4 className="text-sm font-medium">GPS Coordinates</h4>

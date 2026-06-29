@@ -168,8 +168,8 @@ export default function VisualFindingsCard({
               <Activity className={`w-4 h-4 ${config.accent}`} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-primary tracking-tight">Clinical Findings</h3>
-              <p className="text-[10px] text-muted mt-0.5">AI-Powered Dental Analysis</p>
+              <h3 className="text-sm font-semibold text-primary tracking-tight">Temuan Klinis</h3>
+              <p className="text-[10px] text-muted mt-0.5">Analisis Dental · Serene AI</p>
             </div>
           </div>
           <button
@@ -251,7 +251,7 @@ export default function VisualFindingsCard({
                   <div className="flex items-center gap-2 mb-3">
                     <Crosshair className="w-3.5 h-3.5 text-accent" />
                     <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                      Pathology Markers ({detections.length})
+                      Penanda Patologi ({detections.length})
                     </span>
                   </div>
                   <div className="space-y-2.5">
@@ -262,10 +262,10 @@ export default function VisualFindingsCard({
                   {detections.length > 6 && (
                     <button
                       onClick={() => setShowAllDetections(!showAllDetections)}
-                      aria-label={showAllDetections ? 'Show fewer pathology markers' : `Show all ${detections.length} pathology markers`}
+                      aria-label={showAllDetections ? 'Tampilkan lebih sedikit penanda patologi' : `Tampilkan semua ${detections.length} penanda patologi`}
                       className="mt-2 text-xs text-accent hover:underline font-medium"
                     >
-                      {showAllDetections ? 'Show less' : `Show all ${detections.length} detections`}
+                      {showAllDetections ? 'Tampilkan lebih sedikit' : `Tampilkan semua ${detections.length} temuan`}
                     </button>
                   )}
                 </div>
@@ -277,7 +277,7 @@ export default function VisualFindingsCard({
                   <div className="flex items-center gap-2 mb-3">
                     <Stethoscope className="w-3.5 h-3.5 text-accent" />
                     <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                      Detailed Findings ({clinicalFindings.length})
+                      Temuan Terperinci ({clinicalFindings.length})
                     </span>
                   </div>
                   <div className="space-y-2">
@@ -294,7 +294,7 @@ export default function VisualFindingsCard({
                   <div className="flex items-center gap-2 mb-3">
                     <Lightbulb className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                      Recommendations
+                      Rekomendasi
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -318,7 +318,7 @@ export default function VisualFindingsCard({
               {findings.limitations && (
                 <div className="px-3 py-2 rounded-lg bg-surface border border-primary">
                   <p className="text-[10px] text-muted leading-relaxed">
-                    <span className="font-semibold text-primary">Note: </span>
+                    <span className="font-semibold text-primary">Catatan: </span>
                     {findings.limitations}
                   </p>
                 </div>
@@ -329,18 +329,18 @@ export default function VisualFindingsCard({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-xs font-semibold text-primary uppercase tracking-wider">
-                        Clinician Review
+                        Tinjauan Dokter Gigi
                       </p>
                       <p className="text-[11px] text-muted mt-1">
                         {reviewStatus === 'confirmed'
-                          ? 'Findings confirmed by clinician.'
+                          ? 'Temuan telah dikonfirmasi oleh dokter gigi.'
                           : reviewStatus === 'needs_revision'
-                            ? 'Marked for clinical revision.'
-                            : 'AI draft awaiting clinician confirmation.'}
+                            ? 'Ditandai untuk revisi klinis.'
+                            : 'Draf AI menunggu konfirmasi dokter gigi.'}
                       </p>
                       {caseWorkspace && (
                         <p className="text-[10px] text-muted mt-1">
-                          Workspace prepared: {caseWorkspace.imageCount || 0} image, export {caseWorkspace.exportReady ? 'ready' : 'pending'}
+                          Workspace: {caseWorkspace.imageCount || 0} gambar · ekspor {caseWorkspace.exportReady ? 'siap' : 'menunggu'}
                         </p>
                       )}
                     </div>
@@ -408,7 +408,7 @@ export function ImageLightbox({ imageSrc, onClose }) {
           >
             <img
               src={imageSrc}
-              alt="Full-size annotated scan"
+              alt="Gambar dental teranotasi ukuran penuh"
               className="max-w-full max-h-[90vh] rounded-xl object-contain"
             />
             <button

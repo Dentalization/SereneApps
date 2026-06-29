@@ -6,6 +6,8 @@ import Input from '../../../../components/ui/Input';
 
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
+import AppIcon from '../../../../components/AppIcon';
+import { FACILITY_ICON_OPTIONS, resolveFacilityIcon } from '../profileIcons.mjs';
 
 const FacilitiesManagement = () => {
   const { user } = useAuth();
@@ -32,13 +34,10 @@ const FacilitiesManagement = () => {
   const fetchFacilities = async () => {
     try {
       setIsLoading(true);
-      console.log('🔄 Fetching facilities from /clinic/facilities...');
       const response = await authHttp.get('/clinic/facilities');
-      console.log('✅ Facilities response:', response.data);
       setFacilities(response.data.facilities || []);
     } catch (error) {
-      console.error('❌ Error fetching facilities:', error);
-      console.error('Error response:', error.response?.data);
+      console.error('Error fetching facilities:', error);
       showMessage('error', `Failed to load facilities: ${error.response?.data?.error || error.message}`);
     } finally {
       setIsLoading(false);
@@ -105,7 +104,7 @@ const FacilitiesManagement = () => {
   if (!canEdit) {
     return (
       <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
-        <span className="text-2xl">🔒</span>
+        <AppIcon name="ShieldAlert" size={22} className="shrink-0" />
         <span className="font-medium">You don't have permission to manage facilities. Contact your clinic owner or manager.</span>
       </div>
     );
@@ -119,6 +118,7 @@ const FacilitiesManagement = () => {
           "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
           message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
+          <AppIcon name={message.type === 'success' ? 'CircleCheck' : 'CircleAlert'} size={18} className="shrink-0" />
           {message.text}
         </div>
       )}
@@ -129,21 +129,21 @@ const FacilitiesManagement = () => {
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Facilities</h2>
           <p className="text-muted-foreground mt-1">Amenities and equipment available at your clinic</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
-          <span className="mr-2 text-lg">+</span> Add Facility
+        <Button onClick={() => handleOpenDialog()} className="inline-flex items-center gap-2 rounded-xl shadow-sm transition-all">
+          <AppIcon name="Plus" size={16} /> Add Facility
         </Button>
       </div>
 
       {/* Facilities Grid */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
-          <p className="text-muted-foreground animate-pulse">Loading facilities...</p>
+          <AppIcon name="LoaderCircle" size={30} className="animate-spin text-brand-primary" />
+          <p className="text-muted-foreground">Loading facilities...</p>
         </div>
       ) : facilities.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
-            🏥
+        <div className="rounded-2xl border border-primary/15 bg-surface-elevated p-12 text-center">
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary">
+            <AppIcon name="Hospital" size={25} />
           </div>
           <h3 className="text-xl font-semibold text-foreground mb-2">No Facilities Listed</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">List your key facilities like "Waiting Room", "X-Ray Room", or "Dental Chairs" to inform patients.</p>
@@ -154,11 +154,10 @@ const FacilitiesManagement = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {facilities.map((facility) => (
-            <div key={facility.id} className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 transition-all duration-300 hover:shadow-lg hover:border-brand-primary/20 hover:-translate-y-1 relative">
+            <div key={facility.id} className="group relative rounded-2xl border border-primary/15 bg-surface-elevated p-5 transition-colors hover:border-accent/35">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
-                  {/* Dynamic icon based on name/icon field could go here, fallback to generic facility icon */}
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/5 text-accent">
+                  <AppIcon name={resolveFacilityIcon(facility.icon, facility.facility_name)} size={21} />
                 </div>
                 <div className="flex-1 min-w-0 pt-1">
                   <h3 className="font-semibold text-foreground text-lg mb-1">{facility.facility_name}</h3>
@@ -175,14 +174,14 @@ const FacilitiesManagement = () => {
                     className="p-1.5 text-gray-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-colors"
                     title="Edit"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    <AppIcon name="Pencil" size={16} />
                   </button>
                   <button
                     onClick={() => handleDelete(facility.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     title="Delete"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    <AppIcon name="Trash2" size={16} />
                   </button>
                 </div>
               </div>
@@ -217,7 +216,7 @@ const FacilitiesManagement = () => {
                   onClick={handleCloseDialog}
                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  <AppIcon name="X" size={22} />
                 </button>
               </div>
 
@@ -244,12 +243,19 @@ const FacilitiesManagement = () => {
                       />
                     </div>
 
-                    <Input
-                      label="Icon (optional)"
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Jenis fasilitas
+                    </label>
+                    <select
                       value={formData.icon}
                       onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                      placeholder="e.g., smart-room, lounge"
-                    />
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white"
+                    >
+                      <option value="">Pilih otomatis dari nama</option>
+                      {FACILITY_ICON_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
                   </div>
                 </form>
               </div>

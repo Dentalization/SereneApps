@@ -211,7 +211,7 @@ export default function InputBar({ onSend, isLoading, labels = {} }) {
           </div>
         )}
 
-        <p className="text-center text-[10px] text-slate-400/70 font-medium mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500 select-none">
+        <p className="text-center text-[10px] text-slate-400/60 font-medium mt-3 select-none">
           {labels.verifyNotice || 'Serene AI dapat keliru. Verifikasi temuan klinis.'}
         </p>
 

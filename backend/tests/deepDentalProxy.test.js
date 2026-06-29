@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   buildDeepDentalProxyHeaders,
   getDeepDentalProxyAuthError,
   isDeepDentalApiPath,
+  resolveDeepDentalTlsPolicy,
+  resolveProxyTimeoutMs,
 } from '../src/utils/deepDentalProxy.js';
 
 test('DeepDental proxy recognizes only versioned DeepDental API paths', () => {
@@ -63,4 +66,47 @@ test('DeepDental proxy requires bearer auth and backend API key', () => {
     }),
     null
   );
+});
+
+test('DeepDental TLS policy is secure by default and forbids insecure production mode', () => {
+  assert.deepEqual(resolveDeepDentalTlsPolicy({}), {
+    rejectUnauthorized: true,
+    ca: null,
+    insecureDevelopmentMode: false,
+  });
+  assert.deepEqual(resolveDeepDentalTlsPolicy({
+    NODE_ENV: 'development',
+    DEEPDENTAL_ALLOW_INSECURE_TLS: 'true',
+  }), {
+    rejectUnauthorized: false,
+    ca: null,
+    insecureDevelopmentMode: true,
+  });
+  assert.throws(
+    () => resolveDeepDentalTlsPolicy({
+      NODE_ENV: 'production',
+      DEEPDENTAL_ALLOW_INSECURE_TLS: 'true',
+    }),
+    /deepdental_insecure_tls_forbidden/
+  );
+  assert.throws(
+    () => resolveDeepDentalTlsPolicy({
+      NODE_ENV: 'production',
+      NODE_TLS_REJECT_UNAUTHORIZED: '0',
+    }),
+    /deepdental_insecure_tls_forbidden/
+  );
+});
+
+test('DeepDental proxy timeout configuration is bounded and rejects invalid values', () => {
+  assert.equal(resolveProxyTimeoutMs(undefined), 75_000);
+  assert.equal(resolveProxyTimeoutMs('invalid'), 75_000);
+  assert.equal(resolveProxyTimeoutMs('1000'), 10_000);
+  assert.equal(resolveProxyTimeoutMs('90000'), 90_000);
+});
+
+test('DeepDental image analysis proxy has a four minute default request window', () => {
+  const serverSource = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  assert.match(serverSource, /DEEPDENTAL_PROXY_TIMEOUT_MS/);
+  assert.match(serverSource, /240_000/);
 });

@@ -141,11 +141,48 @@ const PatientManagement = () => {
 
         const summarySections = Array.isArray(normalized?.sections) ? normalized.sections : [];
 
+      sanitizedSummary = summaryCandidate;
+      let diagnosis = [];
+      let symptoms = [];
+      let parsed = { symptoms: [], recommendations: [] };
+
+      if (r.source === 'verified_case') {
+        sanitizedSummary = r.summary || '';
+        if (detections.length > 0) {
+          diagnosis = detections.map((d, idx) => {
+            const diagProb = normalizeConfidence(d.confidence || d.probability) || 100;
+            const diagSeverity = d.severity || (diagProb && diagProb >= 70 ? 'medium' : 'low');
+            return {
+              condition: d.label || d.name || `Temuan ${idx + 1}`,
+              description: d.description || d.notes || shortSummary,
+              probability: diagProb,
+              severity: diagSeverity,
+              details: stripDiagnosisIntro(d.description || ''),
+              sections: [],
+            };
+          });
+        } else {
+          diagnosis = [{
+            condition: 'Kondisi Gigi',
+            description: shortSummary,
+            probability: probabilitySafe,
+            severity: null,
+            details: fullDetails,
+            sections: [],
+          }];
+        }
+
+        if (detections.length > 0) {
+          symptoms = detections.map((d, idx) => ({
+            name: d.label || d.name || `Temuan ${idx + 1}`,
+            severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
+            description: d.description || null,
+          }));
+        }
+      } else {
         const normalizedText = normalizeAIText(detailSource || summaryCandidate || '');
         const normalizedSummary = normalizedText.summary || summaryCandidate || '';
         sanitizedSummary = stripDiagnosisIntro(cleanMarkdownFormatting(normalizedSummary)) || normalizedSummary;
-
-        let diagnosis = [];
 
         if (detections.length > 0) {
           diagnosis = detections.map((d, idx) => {
@@ -193,48 +230,94 @@ const PatientManagement = () => {
           }];
         }
 
-      const fullText = [sanitizedSummary, r.findings, r.overallAssessment].filter(Boolean).join(' ');
-      const parsed = parseIndonesianAnalysis(fullText);
-      
-      let symptoms = [];
-      if (Array.isArray(r.symptoms) && r.symptoms.length > 0) {
-        symptoms = r.symptoms;
-      } else if (parsed.symptoms.length > 0) {
-        symptoms = parsed.symptoms;
-      } else if (detections.length > 0) {
-        symptoms = detections.map((d, idx) => ({
-          name: d.label || d.name || `Temuan ${idx + 1}`,
-          severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
-          description: d.description || null,
-        }));
+        const fullText = [sanitizedSummary, r.findings, r.overallAssessment].filter(Boolean).join(' ');
+        parsed = parseIndonesianAnalysis(fullText);
+
+        if (Array.isArray(r.symptoms) && r.symptoms.length > 0) {
+          symptoms = r.symptoms;
+        } else if (parsed.symptoms.length > 0) {
+          symptoms = parsed.symptoms;
+        } else if (detections.length > 0) {
+          symptoms = detections.map((d, idx) => ({
+            name: d.label || d.name || `Temuan ${idx + 1}`,
+            severity: d.severity || (d.confidence > 0.7 ? 'high' : d.confidence > 0.4 ? 'medium' : 'low'),
+            description: d.description || null,
+          }));
+        }
       }
       
       let recommendations = [];
       if (Array.isArray(r.recommendations) && r.recommendations.length > 0) {
-        recommendations = r.recommendations.map((rec, idx) => ({
-          title: rec.title || rec.name || `Rekomendasi ${idx + 1}`,
-          description: rec.description || rec.text || rec.recommendation || '',
-          priority: rec.priority || rec.importance || 'normal',
-          urgency: rec.urgency || rec.timeframe || 'normal',
-        }));
-      } else if (parsed.recommendations.length > 0) {
+        recommendations = r.recommendations.map((rec, idx) => {
+          const txt = typeof rec === 'string'
+            ? rec
+            : (rec.description || rec.text || rec.recommendation || '');
+          return {
+            title: typeof rec === 'object' && rec.title ? rec.title : `Rekomendasi ${idx + 1}`,
+            description: txt,
+            text: txt,
+            recommendation: txt,
+            priority: (typeof rec === 'object' && (rec.priority || rec.importance)) || 'normal',
+            urgency: (typeof rec === 'object' && (rec.urgency || rec.timeframe)) || 'normal',
+          };
+        });
+      } else if (r.source !== 'verified_case' && parsed.recommendations.length > 0) {
         recommendations = parsed.recommendations;
+      } else if (r.source === 'verified_case' && detections.length > 0) {
+        const generated = [];
+        const uniqueLabels = [...new Set(detections.map(d => d.label?.toLowerCase()).filter(Boolean))];
+
+        if (uniqueLabels.includes('caries')) {
+          generated.push('Lakukan konfirmasi taktil menggunakan probe tumpul untuk menilai keaktifan lesi karies.');
+          generated.push('Diskusikan rencana penambalan gigi atau aplikasi topikal remineralisasi (seperti fluoride varnish).');
+        }
+        if (uniqueLabels.includes('tooth_discoloration')) {
+          generated.push('Lakukan tes vitalitas termal/elektrik pada gigi yang mengalami diskolorasi untuk menyingkirkan nekrosis pulpa.');
+          generated.push('Identifikasi faktor etiologi diskolorasi (ekstrinsik/intrinsik) sebelum menentukan rencana perawatan estetis.');
+        }
+        if (uniqueLabels.includes('calculus') || uniqueLabels.includes('plaque') || uniqueLabels.includes('gingivitis')) {
+          generated.push('Lakukan tindakan pembersihan karang gigi (scaling) dan profilaksis.');
+          generated.push('Berikan instruksi kebersihan mulut (oral hygiene instruction) dan teknik menyikat gigi yang tepat.');
+        }
+
+        if (generated.length === 0) {
+          generated.push('Lakukan evaluasi klinis menyeluruh dan rontgen dental jika diindikasikan.');
+        }
+
+        recommendations = generated.map((txt, idx) => ({
+          title: `Rekomendasi ${idx + 1}`,
+          description: txt,
+          text: txt,
+          recommendation: txt,
+          priority: 'normal',
+          urgency: 'normal'
+        }));
       }
       
-      const images = [
-        ...(r.imageUrl
-          ? [{ url: r.imageUrl, type: 'original', description: 'Gambar asli' }]
-          : []),
-        ...(r.annotatedImageUrl
-          ? [{ url: r.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' }]
-          : []),
-      ];
+      const images = Array.isArray(r.images) && r.images.length > 0
+        ? r.images
+        : [
+            ...(r.imageUrl
+              ? [{ url: r.imageUrl, type: 'original', description: 'Gambar asli' }]
+              : []),
+            ...(r.annotatedImageUrl
+              ? [{ url: r.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' }]
+              : []),
+          ];
 
       return {
         id: r.id?.toString?.() || r.id,
+        caseId: r.caseId || null,
+        source: r.source || 'mobile_ai',
+        title: r.title || null,
+        caseStatus: r.caseStatus || null,
+        reviewStatus: r.reviewStatus || null,
+        createdBy: r.createdBy || null,
+        chatEnabled: r.chatEnabled !== false,
+        imageCount: r.imageCount || images.length,
         sessionId: r.sessionId || r.session_id || null,
         date: (r.createdAt || '').split('T')[0] || r.createdAt || new Date().toISOString().split('T')[0],
-        type: r.overallAssessment || r.summary ? 'Analisis Dental AI' : 'Deteksi AI',
+        type: r.source === 'verified_case' ? 'Kasus Terverifikasi' : (r.overallAssessment || r.summary ? 'Diagnosis AI Mobile' : 'Deteksi AI Mobile'),
         confidence: normalized?.confidence || Number(r.confidenceScore || 0),
         riskLevel: r.riskLevel || 'unknown',
         diagnosis,

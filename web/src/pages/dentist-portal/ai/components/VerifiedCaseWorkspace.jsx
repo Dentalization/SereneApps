@@ -78,6 +78,7 @@ export default function VerifiedCaseWorkspace({
 }) {
   const { t } = useLanguage();
   const verified = ['verified', 'exported', 'archived'].includes(caseRecord?.status);
+  const patientLinked = Boolean(caseRecord?.patient_id);
   const analyzableImages = images.filter((image) => ['acceptable', 'warning'].includes(image.quality_status || image.quality_check?.quality_status));
   const [activeMobileTab, setActiveMobileTab] = useState('case');
   const panelClass = (expanded) => `${expanded ? 'flex' : 'hidden lg:flex'} flex-shrink-0 flex-col overflow-hidden transition-all duration-300 bg-surface border-l border-border/60 rounded-l-2xl ${expanded ? 'w-[28rem] min-w-[28rem]' : 'w-[44px] min-w-[44px]'}`;
@@ -106,6 +107,11 @@ export default function VerifiedCaseWorkspace({
       >
         {t('ai.deepDental.workspace.analysis.button', { count: analyzableImages.length, fallbackText: `Analyze eligible images (${analyzableImages.length})` })}
       </button>
+      {!patientLinked && (
+        <p className="mt-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+          Tautkan pasien sebelum verifikasi agar temuan dan laporan tercatat pada timeline klinis yang tepat.
+        </p>
+      )}
     </section>
   ) : null;
 

@@ -39,6 +39,7 @@ import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import {
     analyzeXCore2DSource,
     buildXCore2DAnalysisContext,
+    getXCore2DAnalysisErrorMessage,
 } from '../services/xCore2dAiAnalysis.mjs';
 import ShortcutHelpButton from './ShortcutHelpButton';
 import SeriesSidebar from './SeriesSidebar';
@@ -75,14 +76,6 @@ const distancePointToSegment = (point, start, end) => {
 };
 
 const buildDentistName = (user) => [user?.profile?.title, user?.name].filter(Boolean).join(' ').trim();
-
-const getAiAnalysisErrorMessage = (error) => {
-    if (error?.name === 'AbortError') return '';
-    if (error?.status === 413) return 'Ukuran gambar terlalu besar untuk dianalisis.';
-    if (error?.status === 429) return 'Layanan AI sedang membatasi permintaan. Coba kembali beberapa saat lagi.';
-    if (error?.status >= 500) return 'Layanan reasoning AI gagal memproses gambar. Coba kembali atau periksa service DeepDental.';
-    return error?.message || 'Analisis AI tidak dapat diselesaikan.';
-};
 
 const drawMeasurementOverlay = (ctx, measurements, pixelSpacing) => {
     ctx.save();
@@ -365,7 +358,7 @@ const ImageViewer2D = ({
         } catch (error) {
             if (controller.signal.aborted) return;
             console.warn('[ImageViewer2D] AI analysis failed:', error?.code || error?.message || error);
-            setAiAnalysisError(getAiAnalysisErrorMessage(error));
+            setAiAnalysisError(getXCore2DAnalysisErrorMessage(error));
         } finally {
             if (aiAnalysisAbortRef.current === controller) {
                 aiAnalysisAbortRef.current = null;
@@ -770,7 +763,7 @@ const ImageViewer2D = ({
 
     const handleWheel = useCallback((event) => {
         event.preventDefault();
-        
+
         // If there is significant horizontal scroll, pan horizontally
         if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
             setPan((current) => ({
@@ -1234,7 +1227,7 @@ const ImageViewer2D = ({
         if ((!measureMode && !calibrationMode) || (!measurementDragState && !pendingPoint)) return;
         event.preventDefault();
         event.stopPropagation();
-        try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) { }
 
         if (measurementDragState?.type === 'edit') {
             pushMeasurementsHistorySnapshot(measurementDragState.originalMeasurements);
@@ -1576,11 +1569,10 @@ const ImageViewer2D = ({
     }, [historyOpen, refreshSnapshots]);
 
     const isComparison = comparisonPaneId !== null;
-    const containerClasses = `relative flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100 outline-none ${
-        isComparison
-            ? 'rounded-none border-none shadow-none'
-            : 'rounded-3xl border border-slate-800 shadow-2xl'
-    }`;
+    const containerClasses = `relative flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100 outline-none ${isComparison
+        ? 'rounded-none border-none shadow-none'
+        : 'rounded-3xl border border-slate-800 shadow-2xl'
+        }`;
 
     return (
         <div ref={wrapperRef} tabIndex={0} className={containerClasses}>
@@ -1615,44 +1607,17 @@ const ImageViewer2D = ({
                     <div className="flex items-center gap-1.5 bg-slate-900/60 p-0.5 rounded-lg border border-slate-800/80">
                         <button
                             onClick={() => setInverted((current) => !current)}
-                            className={`rounded-lg p-1.5 text-xs transition ${
-                                inverted
-                                    ? 'border border-amber-500/40 bg-amber-500/20 text-amber-400'
-                                    : 'bg-transparent text-gray-400 hover:text-white'
-                            }`}
+                            className={`rounded-lg p-1.5 text-xs transition ${inverted
+                                ? 'border border-amber-500/40 bg-amber-500/20 text-amber-400'
+                                : 'bg-transparent text-gray-400 hover:text-white'
+                                }`}
                             title="Invert Colors"
                         >
                             <AppIcon name="Contrast" size={16} />
                         </button>
                     </div>
 
-                    <div className="h-4 w-px bg-slate-800" />
 
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (aiAnalysis || aiAnalysisError || isAiAnalyzing) {
-                                setShowSeriesPanel(false);
-                                setAiPanelOpen(true);
-                                return;
-                            }
-                            handleAiAnalyze();
-                        }}
-                        disabled={!imageLoaded}
-                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                            aiAnalysis
-                                ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-200'
-                                : isAiAnalyzing
-                                    ? 'border-cyan-500/40 bg-cyan-500/20 text-cyan-200'
-                                    : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20'
-                        }`}
-                        title="Run DeepDental detection and clinical reasoning"
-                    >
-                        <AppIcon name={isAiAnalyzing ? 'Loader2' : aiAnalysis ? 'ScanSearch' : 'Brain'} size={15} className={isAiAnalyzing ? 'animate-spin' : ''} />
-                        <span className="hidden xl:inline">{isAiAnalyzing ? 'Analyzing' : 'AI Analyze'}</span>
-                    </button>
-
-                    <div className="h-4 w-px bg-slate-800" />
 
                     {/* Diagnostic Mode Tools Group */}
                     <div className="flex items-center gap-1.5">
@@ -1671,11 +1636,10 @@ const ImageViewer2D = ({
                                 setMeasurementDragState(null);
                                 setPreviewPoint(null);
                             }}
-                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                                measureMode
-                                    ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
-                                    : 'bg-slate-800 text-gray-400 hover:text-white'
-                            }`}
+                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${measureMode
+                                ? 'border border-cyan-500/40 bg-cyan-500/20 text-cyan-400'
+                                : 'bg-slate-800 text-gray-400 hover:text-white'
+                                }`}
                             title="Measurement Mode"
                         >
                             <AppIcon name="Ruler" size={15} />
@@ -1693,11 +1657,10 @@ const ImageViewer2D = ({
                                     setMeasurementDragState(null);
                                     setPreviewPoint(null);
                                 }}
-                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                                    calibrationMode
-                                        ? 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
-                                        : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
-                                }`}
+                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${calibrationMode
+                                    ? 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                                    }`}
                                 title="Manual calibration"
                             >
                                 <AppIcon name="Gauge" size={15} />
@@ -1721,11 +1684,10 @@ const ImageViewer2D = ({
                                     return next;
                                 });
                             }}
-                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                                annotateMode
-                                    ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
-                                    : 'bg-slate-800 text-gray-400 hover:text-white'
-                            }`}
+                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${annotateMode
+                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
+                                : 'bg-slate-800 text-gray-400 hover:text-white'
+                                }`}
                             title="Annotation Mode"
                         >
                             <AppIcon name="Edit3" size={15} />
@@ -2038,6 +2000,31 @@ const ImageViewer2D = ({
                     )}
                 </div>
 
+                {/* Floating AI Analyze button — top-left corner of canvas */}
+                <div className="pointer-events-none absolute left-3 top-3 z-[75]" onPointerDown={(e) => e.stopPropagation()}>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (aiAnalysis || aiAnalysisError || isAiAnalyzing) {
+                                setAiPanelOpen(true);
+                                return;
+                            }
+                            handleAiAnalyze();
+                        }}
+                        disabled={!imageLoaded}
+                        className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${aiAnalysis
+                            ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-200 shadow-emerald-900/30'
+                            : isAiAnalyzing
+                                ? 'border-cyan-500/40 bg-cyan-500/20 text-cyan-200 shadow-cyan-900/30'
+                                : 'border-cyan-500/30 bg-slate-950/80 text-cyan-200 hover:bg-cyan-500/15 shadow-black/40'
+                            }`}
+                        title="Run DeepDental detection and clinical reasoning"
+                    >
+                        <AppIcon name={isAiAnalyzing ? 'Loader2' : aiAnalysis ? 'ScanSearch' : 'Brain'} size={14} className={isAiAnalyzing ? 'animate-spin' : ''} />
+                        <span>{isAiAnalyzing ? 'Analyzing…' : aiAnalysis ? 'AI Analyzed' : 'AI Analyze'}</span>
+                    </button>
+                </div>
+
                 {imageLoaded && imageSize.width > 0 && imageSize.height > 0 && viewportSize.width > 0 && viewportSize.height > 0 && (
                     <>
                         {snapshotOverlay?.annotations?.length > 0 && (
@@ -2057,7 +2044,7 @@ const ImageViewer2D = ({
                                     color: '#22c55e',
                                     displayOpacity: 0.5,
                                 }))}
-                                onChange={() => {}}
+                                onChange={() => { }}
                                 className="absolute inset-0 z-[65]"
                                 hideSurface={true}
                             />
@@ -2144,11 +2131,10 @@ const ImageViewer2D = ({
                                         key={toolName}
                                         type="button"
                                         onClick={() => setAnnotationTool(toolName)}
-                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
-                                            annotationTool === toolName
-                                                ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
-                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                        }`}
+                                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${annotationTool === toolName
+                                            ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                            }`}
                                         title={`${label} annotation`}
                                     >
                                         <AppIcon name={iconName} size={14} />

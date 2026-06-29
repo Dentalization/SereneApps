@@ -31,6 +31,7 @@ const StaffManagement = () => {
   const [staff, setStaff] = useState([]);
   const [branches, setBranches] = useState([]);
   const [clinic, setClinic] = useState(null);
+  const [backendStats, setBackendStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [clinicLoading, setClinicLoading] = useState(true);
@@ -334,6 +335,12 @@ const StaffManagement = () => {
         console.log('🔧 Transformed staff data:', staffData[0]); // Log first item to see structure
         console.log('📈 Setting staff state with', staffData.length, 'members');
         setStaff(staffData);
+        if (result && result.stats) {
+          console.log('📈 Setting backendStats state:', result.stats);
+          setBackendStats(result.stats);
+        } else {
+          setBackendStats(null);
+        }
         console.log('✅ Staff state updated successfully');
         
         // Clear any previous fallback notice
@@ -1122,6 +1129,9 @@ const StaffManagement = () => {
 
   // Calculate advanced KPI stats for staff summary
   const calculateStaffKPIs = useMemo(() => {
+    if (backendStats) {
+      return backendStats;
+    }
     if (!staff.length) {
       return {
         total: 0,
@@ -1298,7 +1308,7 @@ const StaffManagement = () => {
       top_performers: topPerformers,
       recommendations
     };
-  }, [staff]);
+  }, [staff, backendStats]);
 
   const summaryLabels = useMemo(() => ({
     total: t('clinic.staff.summary.total'),
@@ -1997,7 +2007,7 @@ const StaffManagement = () => {
                   onEdit={handleEditRole}
                   onRemove={handleRemoveStaff}
                   onChangeBranch={handleChangeBranch}
-                  onInvite={() => console.log('Invite staff')}
+                  onInvite={handleInviteStaff}
                 />
               )}
 

@@ -6,6 +6,8 @@ import {
   analyzeXCore2DSource,
   buildXCore2DAnalysisContext,
   buildXCore2DAnalysisFormData,
+  getXCore2DAnalysisErrorMessage,
+  normalizeXCore2DAnalysis,
 } from '../src/pages/dentist-portal/x-core/services/xCore2dAiAnalysis.mjs';
 
 test('X-Core 2D analysis context requests complete Indonesian clinical reasoning', () => {
@@ -19,6 +21,8 @@ test('X-Core 2D analysis context requests complete Indonesian clinical reasoning
   assert.match(context, /Bahasa Indonesia/);
   assert.match(context, /diagnosis banding/i);
   assert.match(context, /limitations/i);
+  assert.match(context, /processing_time_ms/);
+  assert.match(context, /never omit required fields/i);
 });
 
 test('X-Core 2D analysis form follows the documented DeepDental multipart contract', () => {
@@ -121,6 +125,123 @@ test('X-Core 2D analysis does not call DeepDental when the source image cannot b
   assert.equal(analysisCalled, false);
 });
 
+test('X-Core 2D analysis repairs structured-output failures with fresh multipart data', async () => {
+  const contexts = [];
+  let sourceFetchCount = 0;
+  const parseError = Object.assign(new Error('Failed to parse DentistVisualAnalysisSchema: limitations field required'), {
+    status: 500,
+    code: 'http_500',
+  });
+  const client = {
+    analyzeImage: async (formData) => {
+      contexts.push(formData.get('context'));
+      if (contexts.length === 1) throw parseError;
+      return {
+        image_quality: 'adequate',
+        findings: [],
+        detections: [],
+        concern_level: 'low',
+        recommendations: [],
+        limitations: 'Single-view image.',
+        suggested_questions: [],
+        processing_time_ms: 10,
+      };
+    },
+  };
+
+  const result = await analyzeXCore2DSource({
+    client,
+    imageUrl: '/py-api/image/study/series',
+    context: buildXCore2DAnalysisContext(),
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      sourceFetchCount += 1;
+      return new Response(new Blob(['source-image'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      });
+    },
+  });
+
+  assert.equal(sourceFetchCount, 1);
+  assert.equal(contexts.length, 2);
+  assert.match(contexts[1], /previous response failed/i);
+  assert.equal(result.limitations, 'Single-view image.');
+});
+
+test('X-Core 2D analysis bounds repair attempts and does not retry validation errors', async () => {
+  let parsingAttempts = 0;
+  await assert.rejects(
+    () => analyzeXCore2DSource({
+      client: {
+        analyzeImage: async () => {
+          parsingAttempts += 1;
+          throw Object.assign(new Error('OUTPUT_PARSING_FAILURE: limitations missing'), {
+            status: 500,
+          });
+        },
+      },
+      imageUrl: '/py-api/image/study/series',
+      context: buildXCore2DAnalysisContext(),
+      retryDelayMs: 0,
+      fetchImpl: async () => new Response(new Blob(['source'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      }),
+    }),
+    /OUTPUT_PARSING_FAILURE/
+  );
+  assert.equal(parsingAttempts, 3);
+
+  let validationAttempts = 0;
+  await assert.rejects(
+    () => analyzeXCore2DSource({
+      client: {
+        analyzeImage: async () => {
+          validationAttempts += 1;
+          throw Object.assign(new Error('Unsupported image'), { status: 422 });
+        },
+      },
+      imageUrl: '/py-api/image/study/series',
+      retryDelayMs: 0,
+      fetchImpl: async () => new Response(new Blob(['source'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      }),
+    }),
+    /Unsupported image/
+  );
+  assert.equal(validationAttempts, 1);
+});
+
+test('X-Core 2D normalization accepts observed finding aliases and timeout errors stay visible', () => {
+  const normalized = normalizeXCore2DAnalysis({
+    image_quality: 'adequate',
+    findings: [{
+      mark_id: '[1]',
+      location: 'FDI 47',
+      finding: 'Brown opacity visible in the occlusal fissure.',
+      differentials: ['Extrinsic staining', 'Early demineralization'],
+      severity: 'mild',
+      confidence: 'medium',
+    }],
+    detections: [],
+    concern_level: 'low',
+    recommendations: [],
+    limitations: 'Single-view image.',
+  });
+
+  assert.equal(normalized.findings[0].description, 'Brown opacity visible in the occlusal fissure.');
+  assert.match(
+    getXCore2DAnalysisErrorMessage(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+    /waktu/i
+  );
+  assert.match(
+    getXCore2DAnalysisErrorMessage(Object.assign(new Error('request_timeout'), { code: 'request_timeout' })),
+    /waktu/i
+  );
+});
+
 test('X-Core 2D AI integration keeps credentials server-side and renders reasoning as React text', () => {
   const serviceSource = fs.readFileSync(
     new URL('../src/pages/dentist-portal/x-core/services/xCore2dAiAnalysis.mjs', import.meta.url),
@@ -133,4 +254,5 @@ test('X-Core 2D AI integration keeps credentials server-side and renders reasoni
 
   assert.doesNotMatch(serviceSource, /X-API-Key|localStorage|sessionStorage/);
   assert.doesNotMatch(panelSource, /dangerouslySetInnerHTML/);
+  assert.doesNotMatch(panelSource, /<section(?:\s|>)/);
 });

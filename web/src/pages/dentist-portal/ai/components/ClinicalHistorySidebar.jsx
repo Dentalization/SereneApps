@@ -97,7 +97,7 @@ function HistoryItem({ item, isActive, onSelect, onArchive, labels }) {
       <button
         type="button"
         onClick={() => onSelect?.(item)}
-        aria-label={`${labels.open || 'Open'} ${item.title}`}
+        aria-label={`${labels.open || 'Buka'} ${item.title}`}
         className="w-full text-left"
       >
         <div className="flex items-start gap-3">
@@ -108,7 +108,7 @@ function HistoryItem({ item, isActive, onSelect, onArchive, labels }) {
             <div className="flex items-start justify-between gap-2">
               <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{item.title}</h3>
               {isCase && <StatusBadge status={item.status} />}
-              {!isCase && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-700">Chat</span>}
+              {!isCase && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-700">Obrolan</span>}
             </div>
             {item.patientLabel && (
               <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{item.patientLabel}</p>
@@ -146,11 +146,11 @@ function HistoryItem({ item, isActive, onSelect, onArchive, labels }) {
           <button
             type="button"
             onClick={() => onArchive?.(item)}
-            aria-label={`${labels.archive || 'Archive case'} ${item.title}`}
+            aria-label={`${labels.archive || 'Arsipkan kasus'} ${item.title}`}
             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-500 opacity-0 transition-opacity hover:text-rose-600 group-hover:opacity-100 focus:opacity-100 dark:border-slate-700"
           >
             <Archive className="h-3 w-3" />
-            {labels.archive || 'Archive'}
+            {labels.archive || 'Arsipkan'}
           </button>
         </div>
       )}
@@ -193,7 +193,7 @@ export default function ClinicalHistorySidebar({
         initial={false}
         animate={{ x: isOpen ? 0 : -390 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed left-0 top-0 z-50 h-screen w-[22rem] p-4"
+        className="fixed left-0 top-0 z-50 h-screen w-80 p-4"
       >
         <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950">
           <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
@@ -203,14 +203,14 @@ export default function ClinicalHistorySidebar({
                   <Activity className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">{labels.title || 'Clinical history'}</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{labels.subtitle || 'Sessions and verified cases'}</p>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">{labels.title || 'Riwayat Klinis'}</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{labels.subtitle || 'Sesi dan kasus terverifikasi'}</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                aria-label={labels.close || 'Close clinical history'}
+                aria-label={labels.close || 'Tutup riwayat klinis'}
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="h-4 w-4" />
@@ -225,7 +225,7 @@ export default function ClinicalHistorySidebar({
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
             >
               <Plus className="h-4 w-4" />
-              {labels.newSession || 'New clinical case'}
+              {labels.newSession || 'Kasus Klinis Baru'}
             </button>
 
             <label className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500 focus-within:border-indigo-400 dark:border-slate-800 dark:bg-slate-900">
@@ -233,8 +233,8 @@ export default function ClinicalHistorySidebar({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={labels.search || 'Search title, patient, case, findings'}
-                aria-label={labels.search || 'Search clinical history'}
+                placeholder={labels.search || 'Cari judul, pasien, kasus, temuan'}
+                aria-label={labels.search || 'Cari riwayat klinis'}
                 className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
               />
             </label>
@@ -261,13 +261,13 @@ export default function ClinicalHistorySidebar({
             {isLoading && (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {labels.loading || 'Loading clinical history...'}
+                {labels.loading || 'Memuat riwayat klinis...'}
               </div>
             )}
 
             {!isLoading && error && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
-                {labels.error || 'Unable to load clinical history.'}
+                {labels.error || 'Riwayat klinis tidak dapat dimuat.'}
               </div>
             )}
 
@@ -276,8 +276,8 @@ export default function ClinicalHistorySidebar({
                 <div className="mb-3 rounded-full border border-slate-200 bg-slate-50 p-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900">
                   <Calendar className="h-6 w-6" />
                 </div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{labels.empty || 'No clinical history'}</p>
-                <p className="mt-1 max-w-[14rem] text-xs text-slate-500 dark:text-slate-400">{labels.emptyDescription || 'Create a case or open a chat session to begin.'}</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{labels.empty || 'Belum ada riwayat klinis'}</p>
+                <p className="mt-1 max-w-[14rem] text-xs text-slate-500 dark:text-slate-400">{labels.emptyDescription || 'Mulai kasus baru atau buka sesi analisis untuk melihat riwayat.'}</p>
               </div>
             )}
 
@@ -307,7 +307,7 @@ export default function ClinicalHistorySidebar({
           <div className="border-t border-slate-200 px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800">
             <span className="inline-flex items-center gap-2">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              {labels.sourceOfTruth || 'Backend case source of truth'}
+              {labels.sourceOfTruth || 'Data klinis tersimpan di backend'}
             </span>
           </div>
         </div>

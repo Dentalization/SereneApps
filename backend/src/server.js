@@ -11,7 +11,9 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import http from 'http';
+import https from 'https';
 import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { fileURLToPath } from 'url';
 import { Server as SocketIOServer } from 'socket.io';
 import authRouter from './routes/auth.js';
@@ -48,7 +50,10 @@ import {
   buildDeepDentalProxyHeaders,
   getDeepDentalProxyAuthError,
   isDeepDentalApiPath,
+  resolveDeepDentalTlsPolicy,
+  resolveProxyTimeoutMs,
 } from './utils/deepDentalProxy.js';
+import nodeFetch from 'node-fetch';
 import { registerChatGateway } from './sockets/chat.js';
 import { startNotificationWorker } from './services/notifications/index.js';
 import { start as startOutboxWorker } from './services/events/outboxWorker.js';
@@ -71,6 +76,16 @@ const pyApiBase = (
   process.env.XCORE_PY_API_BASE_URL ||
   'http://127.0.0.1:8000'
 ).replace(/\/$/, '');
+const deepDentalTlsPolicy = resolveDeepDentalTlsPolicy();
+const deepDentalHttpsAgent = new https.Agent({
+  rejectUnauthorized: deepDentalTlsPolicy.rejectUnauthorized,
+  ...(deepDentalTlsPolicy.ca ? { ca: deepDentalTlsPolicy.ca } : {}),
+});
+const proxyTimeoutMs = resolveProxyTimeoutMs(process.env.PY_API_PROXY_TIMEOUT_MS);
+
+if (deepDentalTlsPolicy.insecureDevelopmentMode) {
+  console.warn('⚠️ DeepDental TLS verification is disabled for local development only.');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -122,8 +137,12 @@ startWebhookWorker();
 startReconcileScheduler();
 
 app.use(cors(corsOptions));
-// Increase JSON body size limit to handle AI analysis payloads safely
-// Default 100kb was causing PayloadTooLargeError for annotated images metadata
+// Dental image data is accepted only by the authenticated AI analysis route.
+// Keep the wider application body limit small to reduce unauthenticated payload exposure.
+app.use(
+  '/v1/ai-analysis',
+  express.json({ limit: process.env.AI_ANALYSIS_JSON_BODY_LIMIT || '12mb' }),
+);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
 
 app.use('/py-api', async (req, res) => {
@@ -161,6 +180,24 @@ app.use('/py-api', async (req, res) => {
     });
   }
 
+  const upstreamController = new AbortController();
+  let upstreamTimedOut = false;
+  const abortUpstream = () => {
+    if (!upstreamController.signal.aborted) upstreamController.abort();
+  };
+  const handleDownstreamClose = () => {
+    if (!res.writableEnded) abortUpstream();
+  };
+  const requestTimeoutMs = isDeepDental
+    ? resolveProxyTimeoutMs(process.env.DEEPDENTAL_PROXY_TIMEOUT_MS, 240_000)
+    : proxyTimeoutMs;
+  const timeoutId = setTimeout(() => {
+    upstreamTimedOut = true;
+    abortUpstream();
+  }, requestTimeoutMs);
+  req.once('aborted', abortUpstream);
+  res.once('close', handleDownstreamClose);
+
   try {
     const headers = buildDeepDentalProxyHeaders({
       incomingHeaders: req.headers,
@@ -170,8 +207,16 @@ app.use('/py-api', async (req, res) => {
     const init = {
       method: req.method,
       headers,
-      redirect: 'manual'
+      redirect: 'manual',
+      signal: upstreamController.signal,
     };
+
+    // api.dentalization.id uses an incomplete SSL certificate chain.
+    // Use node-fetch with a custom https.Agent only for DeepDental cloud calls.
+    const fetchFn = isDeepDental ? nodeFetch : fetch;
+    if (isDeepDental) {
+      init.agent = deepDentalHttpsAgent;
+    }
 
     if (!['GET', 'HEAD'].includes(req.method)) {
       if (req.body && Object.keys(req.body).length > 0) {
@@ -181,11 +226,14 @@ app.use('/py-api', async (req, res) => {
         }
       } else if (req.headers['content-length'] || req.headers['transfer-encoding']) {
         init.body = req;
-        init.duplex = 'half';
+        // duplex:'half' is only required by the built-in undici fetch, not node-fetch
+        if (!isDeepDental) {
+          init.duplex = 'half';
+        }
       }
     }
 
-    const upstream = await fetch(targetUrl, init);
+    const upstream = await fetchFn(targetUrl, init);
 
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
@@ -198,13 +246,42 @@ app.use('/py-api', async (req, res) => {
       return;
     }
 
-    Readable.fromWeb(upstream.body).pipe(res);
+    // node-fetch body is already a Node.js Readable; global fetch body is a Web ReadableStream
+    const bodyStream = typeof upstream.body.pipe === 'function'
+      ? upstream.body
+      : Readable.fromWeb(upstream.body);
+    await pipeline(bodyStream, res);
   } catch (error) {
-    console.error(`[py-api] Proxy request failed for ${targetUrl}:`, error.message);
-    res.status(502).json({
-      error: 'Imaging service unavailable',
-      detail: 'Cannot connect to the X-Core Python service'
+    const downstreamClosed = req.aborted || (res.destroyed && !res.writableEnded);
+    if (downstreamClosed) return;
+
+    const serviceName = isDeepDental ? 'DeepDental' : 'X-Core Python';
+    const status = upstreamTimedOut ? 504 : 502;
+    const code = upstreamTimedOut
+      ? isDeepDental ? 'deepdental_proxy_timeout' : 'xcore_proxy_timeout'
+      : isDeepDental ? 'deepdental_proxy_unavailable' : 'xcore_proxy_unavailable';
+    console.error(`[py-api] ${serviceName} proxy request failed`, {
+      path: targetUrl.pathname,
+      status,
+      code,
+      message: error?.message || String(error),
     });
+    if (!res.headersSent) {
+      res.status(status).json({
+        error: {
+          code,
+          message: upstreamTimedOut
+            ? `${serviceName} request timed out.`
+            : `${serviceName} service is unavailable.`,
+        },
+      });
+    } else {
+      res.destroy(error);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    req.removeListener('aborted', abortUpstream);
+    res.removeListener('close', handleDownstreamClose);
   }
 });
 

@@ -25,11 +25,38 @@ function unwrapData(response) {
   return response?.data || response || {};
 }
 
+export function resolveWorkspaceArtifactUrl(value, baseUrl = '') {
+  if (!value || typeof value !== 'string') return value || null;
+  if (/^(?:https?:|blob:|data:)/i.test(value)) return value;
+  try {
+    const configured = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    const origin = new URL(configured, typeof window !== 'undefined' ? window.location.origin : 'http://localhost').origin;
+    return new URL(value, `${origin}/`).toString();
+  } catch {
+    return value;
+  }
+}
+
+function normalizeImageArtifacts(payload, baseUrl) {
+  const data = unwrapData(payload);
+  const normalizeImage = (image) => ({
+    ...image,
+    signed_url: resolveWorkspaceArtifactUrl(image?.signed_url, baseUrl),
+    annotated_image_signed_url: resolveWorkspaceArtifactUrl(image?.annotated_image_signed_url, baseUrl),
+  });
+  return {
+    ...data,
+    ...(Array.isArray(data.images) ? { images: data.images.map(normalizeImage) } : {}),
+    ...(data.image ? { image: normalizeImage(data.image) } : {}),
+  };
+}
+
 export function createVerifiedCaseWorkspaceClient({ http = authHttp } = {}) {
+  const normalize = (response) => normalizeImageArtifacts(response, http?.defaults?.baseURL || '');
   return {
     listCases: (params = {}) => http.get(VERIFIED_CASE_ENDPOINTS.cases, { params }).then(unwrapData),
     createCase: (body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.cases, body).then(unwrapData),
-    getCase: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseById(caseId)).then(unwrapData),
+    getCase: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseById(caseId)).then(normalize),
     patchCase: (caseId, body = {}) => http.patch(VERIFIED_CASE_ENDPOINTS.caseById(caseId), body).then(unwrapData),
     verifyCase: (caseId) => http.post(VERIFIED_CASE_ENDPOINTS.verifyCase(caseId), {}).then(unwrapData),
     archiveCase: (caseId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.archiveCase(caseId), body).then(unwrapData),
@@ -41,12 +68,12 @@ export function createVerifiedCaseWorkspaceClient({ http = authHttp } = {}) {
       return http.post(VERIFIED_CASE_ENDPOINTS.caseImages(caseId), formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress,
-      }).then(unwrapData);
+      }).then(normalize);
     },
-    listImages: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseImages(caseId)).then(unwrapData),
+    listImages: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseImages(caseId)).then(normalize),
     removeImage: (caseId, imageId, body = {}) => http.delete(VERIFIED_CASE_ENDPOINTS.caseImage(caseId, imageId), { data: body }).then(unwrapData),
-    runQualityCheck: (caseId, imageId, metrics = {}) => http.post(VERIFIED_CASE_ENDPOINTS.qualityCheck(caseId, imageId), { metrics }).then(unwrapData),
-    recordImageAnalysis: (caseId, imageId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.analyzeImage(caseId, imageId), body).then(unwrapData),
+    runQualityCheck: (caseId, imageId, metrics = {}) => http.post(VERIFIED_CASE_ENDPOINTS.qualityCheck(caseId, imageId), { metrics }).then(normalize),
+    recordImageAnalysis: (caseId, imageId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.analyzeImage(caseId, imageId), body).then(normalize),
     listFindings: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.findings(caseId)).then(unwrapData),
     addManualFinding: (caseId, body = {}) => http.post(VERIFIED_CASE_ENDPOINTS.findings(caseId), body).then(unwrapData),
     editFinding: (caseId, findingId, body = {}) => http.patch(VERIFIED_CASE_ENDPOINTS.finding(caseId, findingId), body).then(unwrapData),

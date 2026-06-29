@@ -288,8 +288,9 @@ export const cleanAIDentistOutput = (rawText = '') => {
     });
   }
 
+  let findingsBlock = '';
   if (findings.length > 0) {
-    const findingsBlock = `**Temuan Klinis:**\n${findings.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
+    findingsBlock = `**Temuan Klinis:**\n${findings.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
     text = text.replace(/(?:Temuan|Findings?|Lokasi)[\s:]*[^]+?(?=(?:Apa Artinya|Rekomendasi|Perawatan|$))/gi, findingsBlock);
   }
 

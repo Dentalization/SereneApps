@@ -33,6 +33,8 @@ import {
   updateTreatmentPlanItem
 } from '../services/treatmentPlans.js';
 import { resolvePatientSource } from '../services/patientSource.js';
+import { createDentistAIChatService } from '../services/dentistAIChatService.js';
+import { createLocalImageStorageAdapter } from '../services/verifiedCaseImageStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,13 +79,255 @@ const uploadEmrConsent = multer({
   },
 });
 
+const uploadDentistChatImages = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+    files: 2,
+    fields: 4,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedMime = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (allowedMime.has(file.mimetype)) return cb(null, true);
+    const error = new Error('invalid_chat_attachment_type');
+    error.code = 'INVALID_CHAT_ATTACHMENT_TYPE';
+    return cb(error);
+  },
+});
+
 const router = express.Router();
 const prisma = new PrismaClient();
+const dentistChatStorage = createLocalImageStorageAdapter();
+const dentistAIChatService = createDentistAIChatService({
+  prisma,
+  storage: dentistChatStorage,
+});
+const dentistChatRateLimits = new Map();
 
 // --- Helper Functions ---
 
 function sendError(res, status, code, message, extras = {}) {
   return res.status(status).json({ error: { code, message, ...extras } });
+}
+
+function handleDentistChatImages(req, res, next) {
+  uploadDentistChatImages.array('images', 2)(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return sendError(res, 413, 'chat_attachment_too_large', 'Ukuran setiap gambar maksimal 8 MB.');
+    }
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_COUNT') {
+      return sendError(res, 400, 'too_many_chat_attachments', 'Maksimal dua gambar per pertanyaan.');
+    }
+    return sendError(res, 400, 'invalid_chat_attachment', 'Gunakan gambar JPG, PNG, atau WebP yang valid.');
+  });
+}
+
+async function listLinkedVerifiedCaseResults(patientId, dentistId = null) {
+  // Find cases linked to this patient either:
+  //  (a) directly via verified_cases.patient_id, OR
+  //  (b) indirectly via patient_timeline_events (written when linkPatient is called)
+  // Only non-archived cases are returned.
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT
+       vc.id,
+       vc.session_id,
+       vc.title,
+       vc.status,
+       vc.created_at,
+       vc.updated_at,
+       vc.verified_at,
+       vc.created_by,
+       creator.name AS created_by_name,
+       COALESCE(
+         jsonb_agg(DISTINCT jsonb_build_object(
+           'label', cf.label,
+           'tooth_or_region', cf.tooth_or_region,
+           'severity', cf.severity,
+           'confidence', cf.confidence,
+           'status', cf.status,
+           'notes', cf.notes,
+           'urgent_referral', cf.urgent_referral,
+           'needs_in_person_exam', cf.needs_in_person_exam
+         )) FILTER (WHERE cf.id IS NOT NULL),
+         '[]'::jsonb
+       ) AS clinician_findings,
+       COALESCE(
+         jsonb_agg(DISTINCT jsonb_build_object(
+           'label', af.label,
+           'tooth_or_region', af.tooth_or_region,
+           'severity', af.severity,
+           'confidence', af.confidence,
+           'status', af.status,
+           'notes', af.notes
+         )) FILTER (WHERE af.id IS NOT NULL),
+         '[]'::jsonb
+       ) AS ai_findings,
+       COALESCE(
+         jsonb_agg(DISTINCT af.raw_ai_result) FILTER (WHERE af.id IS NOT NULL),
+         '[]'::jsonb
+       ) AS raw_ai_results,
+       COALESCE(
+         jsonb_agg(DISTINCT jsonb_build_object(
+           'id', ci.id,
+           'file_name', ci.file_name,
+           'storage_ref', ci.storage_ref,
+           'annotated_image_ref', ci.annotated_image_ref,
+           'quality_status', ci.quality_status
+         )) FILTER (WHERE ci.id IS NOT NULL AND ci.archived = FALSE),
+         '[]'::jsonb
+       ) AS images,
+       COUNT(DISTINCT ci.id) FILTER (WHERE ci.archived = FALSE)::int AS image_count
+     FROM verified_cases vc
+     LEFT JOIN users creator ON creator.id = vc.created_by
+     LEFT JOIN clinician_findings cf ON cf.case_id = vc.id AND cf.status <> 'clinician_rejected'
+     LEFT JOIN ai_findings af ON af.case_id = vc.id
+     LEFT JOIN case_images ci ON ci.case_id = vc.id
+     WHERE vc.status <> 'archived'
+       AND (
+         vc.patient_id = $1
+         OR EXISTS (
+           SELECT 1 FROM patient_timeline_events pte
+           WHERE pte.case_id = vc.id AND pte.patient_id = $1
+         )
+       )
+       ${dentistId ? `AND (
+         vc.created_by = ${BigInt(dentistId)}
+         OR EXISTS (
+           SELECT 1 FROM appointments apt
+           WHERE apt.dentist_id = ${BigInt(dentistId)} AND apt.patient_id = $1 LIMIT 1
+         )
+       )` : ''}
+     GROUP BY vc.id, creator.name
+     ORDER BY vc.updated_at DESC`,
+    patientId
+  );
+
+  console.log(`[listLinkedVerifiedCaseResults] patientId=${patientId} → ${rows.length} case(s) found`);
+
+  const storage = createLocalImageStorageAdapter();
+
+  return Promise.all(rows.map(async (row) => {
+    const clinicianFindings = Array.isArray(row.clinician_findings) ? row.clinician_findings : [];
+    const aiFindings = Array.isArray(row.ai_findings) ? row.ai_findings : [];
+    const preferredFindings = clinicianFindings.length ? clinicianFindings : aiFindings;
+    const detections = preferredFindings.map((finding) => ({
+      label: finding.label,
+      confidence: finding.confidence,
+      severity: finding.severity,
+      description: finding.notes,
+      area: finding.tooth_or_region,
+      status: finding.status,
+    }));
+
+    // Process case images and generate signed URLs
+    const rawImages = Array.isArray(row.images) ? row.images : [];
+    const images = [];
+    for (const img of rawImages) {
+      if (img.storage_ref) {
+        try {
+          const url = await storage.getSignedUrl(img.storage_ref);
+          if (url) {
+            images.push({
+              url,
+              type: 'original',
+              description: 'Gambar asli'
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to sign original image:', img.storage_ref, e);
+        }
+      }
+      if (img.annotated_image_ref) {
+        try {
+          const url = await storage.getSignedUrl(img.annotated_image_ref);
+          if (url) {
+            images.push({
+              url,
+              type: 'annotated',
+              description: 'Hasil anotasi AI'
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to sign annotated image:', img.annotated_image_ref, e);
+        }
+      }
+    }
+
+    // Extract recommendations from raw_ai_results
+    const rawAiResults = Array.isArray(row.raw_ai_results) ? row.raw_ai_results : [];
+    let recommendations = [];
+    for (const raw of rawAiResults) {
+      if (raw && Array.isArray(raw.recommendations)) {
+        recommendations = [...recommendations, ...raw.recommendations];
+      }
+    }
+    // De-duplicate
+    recommendations = [...new Set(recommendations)];
+
+    return {
+      id: `case:${row.id}`,
+      caseId: row.id,
+      source: 'verified_case',
+      sessionId: row.session_id,
+      title: row.title,
+      caseStatus: row.status,
+      reviewStatus: row.status,
+      findings: [...new Set(preferredFindings.map((finding) => {
+        const mapping = {
+          caries: 'Karies (Gigi Berlubang)',
+          tooth_discoloration: 'Diskolorasi (Perubahan Warna Gigi)',
+          calculus: 'Kalkulus (Karang Gigi)',
+          gingivitis: 'Gingivitis (Radang Gusi)',
+          plaque: 'Plak Gigi',
+        };
+        return mapping[finding.label?.toLowerCase()] || finding.label;
+      }).filter(Boolean))].join(', '),
+      summary: preferredFindings.length
+        ? `Berdasarkan analisis skrining AI pada ${row.title}, terdeteksi beberapa indikasi klinis potensial meliputi: ${[...new Set(preferredFindings.map((finding) => {
+            const mapping = {
+              caries: 'Karies (Gigi Berlubang)',
+              tooth_discoloration: 'Diskolorasi (Perubahan Warna Gigi)',
+              calculus: 'Kalkulus (Karang Gigi)',
+              gingivitis: 'Gingivitis (Radang Gusi)',
+              plaque: 'Plak Gigi',
+            };
+            return mapping[finding.label?.toLowerCase()] || finding.label;
+          }).filter(Boolean))].join(', ')}. Temuan ini bersifat skrining awal dan memerlukan konfirmasi melalui pemeriksaan taktil serta radiografis.`
+        : `Kasus klinis ${row.title} sedang dalam tahap ${row.status}.`,
+      overallAssessment: clinicianFindings.length
+        ? 'Temuan telah diolah oleh dokter gigi pada Verified Case Workspace.'
+        : 'Temuan AI masih menunggu tinjauan atau konfirmasi dokter gigi.',
+      riskLevel: preferredFindings.some((finding) => ['severe', 'critical'].includes(finding.severity))
+        ? 'high'
+        : preferredFindings.some((finding) => finding.severity === 'moderate') ? 'medium' : 'low',
+      detections,
+      recommendations,
+      images,
+      imageCount: Number(row.image_count || 0),
+      createdAt: row.created_at?.toISOString?.() || row.created_at,
+      updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
+      verifiedAt: row.verified_at?.toISOString?.() || row.verified_at,
+      createdBy: row.created_by ? {
+        id: row.created_by.toString(),
+        name: row.created_by_name || 'Dokter Gigi',
+        role: 'dentist',
+      } : null,
+    };
+  }));
+}
+
+function enforceDentistChatRateLimit(dentistId) {
+  const key = String(dentistId);
+  const now = Date.now();
+  const recent = (dentistChatRateLimits.get(key) || []).filter((timestamp) => now - timestamp < 60_000);
+  if (recent.length >= 12) {
+    const error = new Error('rate_limit_exceeded');
+    error.status = 429;
+    throw error;
+  }
+  recent.push(now);
+  dentistChatRateLimits.set(key, recent);
 }
 
 function sendTreatmentPlanError(res, error) {
@@ -754,11 +998,14 @@ router.get(
         }
       }
 
-      const aiResults = await prisma.aIAnalysisResult.findMany({
-        where: { userId: patientId },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      });
+      const [aiResults, linkedCaseResults] = await Promise.all([
+        prisma.aIAnalysisResult.findMany({
+          where: { userId: patientId },
+          orderBy: { createdAt: 'desc' },
+          take: 10
+        }),
+        listLinkedVerifiedCaseResults(patientId, dentistId),
+      ]);
 
       const patientProfile = await prisma.patientProfile.findUnique({ where: { userId: patientId } });
 
@@ -787,6 +1034,10 @@ router.get(
       const emrRecords = await listEmrRecordsForPatient(patientId);
 
       const serializedPatient = serializePatient(patient, appointments, aiResults);
+      serializedPatient.aiResults = [
+        ...(serializedPatient.aiResults || []).map((result) => ({ ...result, source: 'mobile_ai', chatEnabled: true })),
+        ...linkedCaseResults,
+      ].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
       serializedPatient.appointments = appointments.map(a => ({
         id: a.id.toString(),
         startsAt: a.startsAt?.toISOString(),
@@ -932,15 +1183,20 @@ router.get(
         return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
       }
 
-      const aiResults = await prisma.aIAnalysisResult.findMany({
-        where: { userId: patientId },
-        orderBy: { createdAt: 'desc' }
-      });
-      console.log(`[Dentist] Fetched ${aiResults.length} AI results for patient ${patientId}`);
+      const [aiResults, linkedCaseResults] = await Promise.all([
+        prisma.aIAnalysisResult.findMany({
+          where: { userId: patientId },
+          orderBy: { createdAt: 'desc' }
+        }),
+        listLinkedVerifiedCaseResults(patientId, dentistId),
+      ]);
 
       return res.json({
-        aiResults: aiResults.map(result => ({
+        aiResults: [
+          ...aiResults.map(result => ({
           id: result.id.toString(),
+          source: 'mobile_ai',
+          chatEnabled: true,
           sessionId: result.sessionId,
           imageUrl: result.imageUrl,
           annotatedImageUrl: result.annotatedImageUrl,
@@ -952,8 +1208,10 @@ router.get(
           detections: result.detections || [],
           recommendations: result.recommendations || [],
           createdAt: result.createdAt?.toISOString() || null
-        })),
-        total: aiResults.length
+          })),
+          ...linkedCaseResults,
+        ].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)),
+        total: aiResults.length + linkedCaseResults.length
       });
     } catch (error) {
       console.error('Error fetching patient AI results:', error);
@@ -1085,70 +1343,73 @@ router.get(
     try {
       const dentistId = toBigInt(req.user.id, 'dentistId');
       const patientId = toBigInt(req.params.patientId, 'patientId');
-      const resultId = toBigInt(req.params.resultId, 'resultId');
+      const resultId = req.params.resultId;
       const limit = parseInt(req.query.limit || '100', 10);
 
-      // Verify dentist has access to this patient
-      const hasAppointment = await prisma.appointment.findFirst({
-        where: { dentistId, patientId },
-        select: { id: true }
-      });
-
-      if (!hasAppointment) {
-        return sendError(res, 403, 'forbidden', 'Anda tidak memiliki akses ke data pasien ini.');
+      if (typeof resultId === 'string' && resultId.startsWith('case:')) {
+        const messages = await dentistAIChatService.listMessages({ dentistId, patientId, resultId, limit });
+        return res.json({ messages, total: messages.length, context: { images: [], imageContextAvailable: false, sessionLinked: true } });
       }
 
-      // Verify AI result belongs to patient
-      const aiResult = await prisma.aIAnalysisResult.findFirst({
-        where: { id: resultId, userId: patientId },
-        select: { id: true }
+      const conversation = await dentistAIChatService.getConversation({
+        dentistId,
+        patientId,
+        resultId,
+        limit,
       });
-
-      if (!aiResult) {
-        return sendError(res, 404, 'not_found', 'AI analysis result tidak ditemukan.');
-      }
-
-      // Fetch chat messages
-      const messages = await prisma.aIChatMessage.findMany({
-        where: { aiResultId: resultId },
-        orderBy: { createdAt: 'asc' },
-        take: limit,
-        select: {
-          id: true,
-          role: true,
-          content: true,
-          metadata: true,
-          createdAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              avatar_url: true
-            }
-          }
-        }
-      });
-
-      console.log(`[AI Chat] Fetched ${messages.length} messages for AI result ${resultId}`);
-
       return res.json({
-        messages: messages.map(msg => ({
-          id: msg.id.toString(),
-          role: msg.role,
-          content: msg.content,
-          metadata: msg.metadata || {},
-          createdAt: msg.createdAt.toISOString(),
-          user: {
-            id: msg.user.id.toString(),
-            name: msg.user.name,
-            avatar: msg.user.avatar_url
-          }
-        })),
-        total: messages.length
+        ...conversation,
+        total: conversation.messages.length,
       });
     } catch (error) {
-      console.error('Error fetching AI chat messages:', error);
-      return sendError(res, 500, 'fetch_failed', 'Gagal memuat riwayat chat AI.');
+      const status = error.status || 500;
+      return sendError(res, status, error.message || 'fetch_failed', status === 403
+        ? 'Anda tidak memiliki akses ke data pasien ini.'
+        : status === 404 ? 'AI analysis result tidak ditemukan.' : 'Gagal memuat riwayat chat AI.');
+    }
+  }
+);
+
+router.post(
+  '/patients/:patientId/ai-results/:resultId/chat',
+  authenticateToken,
+  requireRoles(['dentist']),
+  handleDentistChatImages,
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const resultId = req.params.resultId;
+
+      if (typeof resultId === 'string' && resultId.startsWith('case:')) {
+        return sendError(res, 400, 'case_chat_readonly', 'Chat bersifat read-only untuk Kasus Terverifikasi.');
+      }
+
+      const resultIdBigInt = toBigInt(resultId, 'resultId');
+      enforceDentistChatRateLimit(dentistId);
+      const idempotencyKey = req.get('Idempotency-Key');
+      const result = await dentistAIChatService.chat({
+        dentistId,
+        patientId,
+        resultId: resultIdBigInt,
+        message: req.body?.message,
+        idempotencyKey,
+        attachments: req.files || [],
+      });
+      return res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) {
+      const status = error.status || 500;
+      const publicMessages = {
+        forbidden: 'Anda tidak memiliki akses ke data pasien ini.',
+        ai_result_not_found: 'AI analysis result tidak ditemukan.',
+        invalid_message: 'Pesan wajib diisi dan maksimal 4.000 karakter.',
+        idempotency_key_required: 'Idempotency-Key wajib disertakan.',
+        invalid_attachments: 'Gunakan maksimal dua gambar JPG, PNG, atau WebP dengan ukuran maksimal 8 MB.',
+        attachment_storage_unavailable: 'Penyimpanan gambar klinis sedang tidak tersedia.',
+        rate_limit_exceeded: 'Terlalu banyak permintaan. Coba kembali dalam satu menit.',
+        clinical_ai_unavailable: 'Serene AI sedang tidak tersedia. Silakan coba lagi.',
+      };
+      return sendError(res, status, error.code || error.message || 'chat_failed', publicMessages[error.message] || publicMessages[error.code] || 'Gagal memproses chat klinis.');
     }
   }
 );
@@ -1165,15 +1426,12 @@ router.post(
       const patientId = toBigInt(req.params.patientId, 'patientId');
       const resultId = toBigInt(req.params.resultId, 'resultId');
 
-      const { role, content, metadata } = req.body || {};
+      const { content, metadata } = req.body || {};
+      const role = 'dentist';
 
       // Validation
-      if (!role || !content) {
-        return sendError(res, 400, 'invalid_input', 'Role dan content wajib diisi.');
-      }
-
-      if (!['user', 'ai', 'dentist'].includes(role)) {
-        return sendError(res, 400, 'invalid_role', 'Role harus salah satu dari: user, ai, dentist.');
+      if (!content) {
+        return sendError(res, 400, 'invalid_input', 'Content wajib diisi.');
       }
 
       if (typeof content !== 'string' || content.trim().length === 0) {
