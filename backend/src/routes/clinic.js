@@ -6,6 +6,11 @@ import path from 'path';
 import fs from 'fs/promises';
 import bcrypt from 'bcrypt';
 import { fileURLToPath } from 'url';
+import {
+  buildComplianceReport,
+  buildMarketingReport,
+  fetchOptionalReportSources
+} from '../services/clinicReportInsights.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +18,111 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 const prisma = new PrismaClient();
+const CLINIC_PORTAL_ROLES = ['owner', 'clinic_owner', 'manager', 'clinic_staff'];
+
+async function findClinicProfileForPortalUser(userId) {
+  const normalizedUserId = BigInt(userId);
+  let clinicProfile = await prisma.clinicProfile.findFirst({
+    where: { userId: normalizedUserId }
+  });
+
+  if (!clinicProfile) {
+    const staffRecord = await prisma.clinicStaff.findFirst({
+      where: { userId: normalizedUserId },
+      include: { clinicProfile: true }
+    });
+    clinicProfile = staffRecord?.clinicProfile || null;
+  }
+
+  return clinicProfile;
+}
+
+function sendInventoryUnavailable(res, key, reason) {
+  return res.json({
+    [key]: [],
+    dataSource: {
+      available: false,
+      reason
+    }
+  });
+}
+
+function toId(value) {
+  return value == null ? null : value.toString();
+}
+
+function toIso(value) {
+  return value?.toISOString?.() || null;
+}
+
+function lineItemName(item) {
+  return item.description || item.metadata?.name || item.metadata?.procedureName || 'Item tindakan';
+}
+
+function invoiceToUsageRecord(invoice) {
+  const items = (invoice.items || []).map(item => ({
+    id: toId(item.id),
+    name: lineItemName(item),
+    itemName: lineItemName(item),
+    quantity: item.quantity || 1,
+    qty: item.quantity || 1,
+    unit: item.metadata?.unit || 'item',
+    unitCost: item.unitPrice || 0,
+    totalCost: item.total || 0
+  }));
+  const date = invoice.paidAt || invoice.createdAt;
+  const firstItem = items[0]?.name;
+  return {
+    id: `invoice-${invoice.id.toString()}`,
+    recordNumber: invoice.reference || `INV-${invoice.id.toString()}`,
+    date: toIso(date),
+    createdAt: toIso(invoice.createdAt),
+    treatmentType: invoice.appointment?.reason || firstItem || 'Tindakan klinik',
+    patient: invoice.patient?.name || null,
+    patientName: invoice.patient?.name || null,
+    dentist: invoice.appointment?.dentist?.name || null,
+    dentistName: invoice.appointment?.dentist?.name || null,
+    totalItems: items.reduce((sum, item) => sum + item.quantity, 0),
+    totalCost: invoice.grandTotal || invoice.total || 0,
+    items
+  };
+}
+
+function branchEquipment(branch, kind) {
+  const isSterilization = kind === 'sterilization';
+  const label = isSterilization ? 'Sterilization Unit' : 'Radiography Unit';
+  return {
+    id: `branch-${branch.id.toString()}-${kind}`,
+    name: `${label} · ${branch.branchName}`,
+    type: isSterilization ? 'Sterilisasi' : 'Radiografi',
+    brand: null,
+    model: null,
+    serialNumber: branch.branchCode || null,
+    location: branch.branchName,
+    condition: branch.isActive ? 'good' : 'fair',
+    status: branch.isActive ? 'operational' : 'maintenance',
+    nextMaintenance: null,
+    source: 'clinic_branches',
+    branchId: branch.id.toString()
+  };
+}
+
+function facilityEquipment(branch, facility, index) {
+  return {
+    id: `branch-${branch.id.toString()}-facility-${index}`,
+    name: `${facility.facility_name} · ${branch.branchName}`,
+    type: 'Fasilitas Klinik',
+    brand: null,
+    model: null,
+    serialNumber: branch.branchCode || null,
+    location: branch.branchName,
+    condition: branch.isActive ? 'good' : 'fair',
+    status: branch.isActive ? 'operational' : 'maintenance',
+    nextMaintenance: null,
+    source: 'clinic_facilities',
+    branchId: branch.id.toString()
+  };
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -783,6 +893,394 @@ router.get('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner'
   } catch (error) {
     console.error('❌ Error fetching branches:', error);
     res.status(500).json({ error: 'Failed to fetch branches' });
+  }
+});
+
+router.get('/inventory/stock', authenticateToken, requireRoles(CLINIC_PORTAL_ROLES), async (req, res) => {
+  try {
+    const clinicProfile = await findClinicProfileForPortalUser(req.user.id);
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    return sendInventoryUnavailable(
+      res,
+      'items',
+      'Native inventory stock table is not present in the current database schema.'
+    );
+  } catch (error) {
+    console.error('Error fetching clinic inventory stock:', error);
+    return res.status(500).json({ error: 'Failed to fetch inventory stock' });
+  }
+});
+
+router.get('/inventory/purchase-requests', authenticateToken, requireRoles(CLINIC_PORTAL_ROLES), async (req, res) => {
+  try {
+    const clinicProfile = await findClinicProfileForPortalUser(req.user.id);
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    return sendInventoryUnavailable(
+      res,
+      'requests',
+      'Native inventory purchase request table is not present in the current database schema.'
+    );
+  } catch (error) {
+    console.error('Error fetching clinic inventory purchase requests:', error);
+    return res.status(500).json({ error: 'Failed to fetch inventory purchase requests' });
+  }
+});
+
+router.get('/inventory/receipts', authenticateToken, requireRoles(CLINIC_PORTAL_ROLES), async (req, res) => {
+  try {
+    const clinicProfile = await findClinicProfileForPortalUser(req.user.id);
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    return sendInventoryUnavailable(
+      res,
+      'receipts',
+      'Native inventory goods receipt table is not present in the current database schema.'
+    );
+  } catch (error) {
+    console.error('Error fetching clinic inventory receipts:', error);
+    return res.status(500).json({ error: 'Failed to fetch inventory receipts' });
+  }
+});
+
+router.get('/inventory/usage', authenticateToken, requireRoles(CLINIC_PORTAL_ROLES), async (req, res) => {
+  try {
+    const clinicProfile = await findClinicProfileForPortalUser(req.user.id);
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    let branchId = null;
+    if (req.query.branchId) {
+      try {
+        branchId = BigInt(req.query.branchId);
+      } catch {
+        return res.status(400).json({ error: 'Invalid branchId' });
+      }
+    }
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        ownerClinicId: clinicProfile.id,
+        status: { in: ['paid', 'settled'] },
+        ...(branchId ? { clinicBranchId: branchId } : {})
+      },
+      select: {
+        id: true,
+        reference: true,
+        grandTotal: true,
+        total: true,
+        paidAt: true,
+        createdAt: true,
+        patient: { select: { name: true } },
+        appointment: {
+          select: {
+            reason: true,
+            dentist: { select: { name: true } }
+          }
+        },
+        items: {
+          select: {
+            id: true,
+            description: true,
+            quantity: true,
+            unitPrice: true,
+            total: true,
+            metadata: true
+          }
+        }
+      },
+      orderBy: [
+        { paidAt: 'desc' },
+        { createdAt: 'desc' }
+      ],
+      take: limit
+    });
+
+    return res.json({
+      records: invoices.map(invoiceToUsageRecord),
+      dataSource: {
+        available: true,
+        source: 'invoices.invoice_items',
+        note: 'Usage is derived from paid clinic invoice line items because no native stock usage ledger exists yet.'
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching clinic inventory usage:', error);
+    return res.status(500).json({ error: 'Failed to fetch inventory usage' });
+  }
+});
+
+router.get('/inventory/equipment', authenticateToken, requireRoles(CLINIC_PORTAL_ROLES), async (req, res) => {
+  try {
+    const clinicProfile = await findClinicProfileForPortalUser(req.user.id);
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    const branches = await prisma.clinicBranch.findMany({
+      where: { clinicProfileId: clinicProfile.id },
+      select: {
+        id: true,
+        branchName: true,
+        branchCode: true,
+        isActive: true,
+        hasSterlization: true,
+        hasRadiography: true,
+        clinic_facilities: {
+          where: { is_active: true },
+          orderBy: { display_order: 'asc' },
+          select: { facility_name: true }
+        }
+      },
+      orderBy: [
+        { isMainBranch: 'desc' },
+        { branchName: 'asc' }
+      ]
+    });
+
+    const equipment = [];
+    for (const branch of branches) {
+      if (branch.hasSterlization) equipment.push(branchEquipment(branch, 'sterilization'));
+      if (branch.hasRadiography) equipment.push(branchEquipment(branch, 'radiography'));
+
+      branch.clinic_facilities
+        .filter(facility => /steril|radiografi|radiography|x-?ray|scanner|alat|equipment/i.test(facility.facility_name))
+        .forEach((facility, index) => {
+          const duplicate = equipment.some(item => item.name.toLowerCase().includes(facility.facility_name.toLowerCase()));
+          if (!duplicate) equipment.push(facilityEquipment(branch, facility, index));
+        });
+    }
+
+    return res.json({
+      equipment,
+      sterilizationRecords: [],
+      dataSource: {
+        available: true,
+        source: 'clinic_branches.clinic_facilities',
+        note: 'Equipment is derived from real branch facility flags. No native equipment maintenance or sterilization cycle table exists yet.'
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching clinic inventory equipment:', error);
+    return res.status(500).json({ error: 'Failed to fetch inventory equipment' });
+  }
+});
+
+router.get('/reports', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+  try {
+    const userId = BigInt(req.user.id);
+    let clinicProfile = await prisma.clinicProfile.findFirst({ where: { userId } });
+    if (!clinicProfile) {
+      const staff = await prisma.clinicStaff.findFirst({
+        where: { userId },
+        include: { clinicProfile: true }
+      });
+      clinicProfile = staff?.clinicProfile || null;
+    }
+    if (!clinicProfile) return res.status(404).json({ error: 'Clinic profile not found' });
+
+    const end = req.query.end ? new Date(req.query.end) : new Date();
+    const start = req.query.start ? new Date(req.query.start) : new Date(end.getTime() - 29 * 86400000);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+      return res.status(400).json({ error: 'Invalid report date range' });
+    }
+    if (end.getTime() - start.getTime() > 366 * 86400000) {
+      return res.status(400).json({ error: 'Report range cannot exceed 366 days' });
+    }
+    let branchId = null;
+    if (req.query.branchId) {
+      try {
+        branchId = BigInt(req.query.branchId);
+      } catch {
+        return res.status(400).json({ error: 'Invalid branchId' });
+      }
+    }
+    const branchWhere = {
+      clinicProfileId: clinicProfile.id,
+      ...(branchId ? { id: branchId } : {})
+    };
+    const branches = await prisma.clinicBranch.findMany({
+      where: branchWhere,
+      select: { id: true, branchName: true, treatmentRoomsCount: true }
+    });
+    const branchIds = branches.map(branch => branch.id);
+    const appointmentWhere = {
+      ownerClinicId: clinicProfile.id,
+      clinicBranchId: { in: branchIds },
+      startsAt: { gte: start, lte: end }
+    };
+    const [appointments, invoices, staff] = await Promise.all([
+      prisma.appointment.findMany({
+        where: appointmentWhere,
+        select: {
+          id: true, startsAt: true, endsAt: true, status: true, dentistId: true, metadata: true,
+          patientId: true, clinicBranchId: true,
+          dentist: { select: { name: true } },
+          preSessionHealthForm: { select: { id: true } }
+        }
+      }),
+      prisma.invoice.findMany({
+        where: {
+          ownerClinicId: clinicProfile.id,
+          clinicBranchId: { in: branchIds },
+          status: { in: ['paid', 'settled'] },
+          paidAt: { gte: start, lte: end }
+        },
+        select: {
+          grandTotal: true, total: true, clinicBranchId: true,
+          appointment: { select: { dentistId: true } }
+        }
+      }),
+      prisma.clinicStaff.findMany({
+        where: {
+          clinicProfileId: clinicProfile.id,
+          ...(branchId ? { assignedBranchId: branchId } : {})
+        },
+        select: {
+          userId: true, role: true, isActive: true, assignedBranchId: true,
+          user: { select: { name: true } }
+        }
+      })
+    ]);
+
+    const paidValue = invoice => invoice.grandTotal || invoice.total || 0;
+    const peopleMap = new Map();
+    for (const member of staff) {
+      peopleMap.set(member.userId.toString(), {
+        id: member.userId.toString(),
+        name: member.user.name,
+        role: member.role,
+        active: member.isActive,
+        branchId: member.assignedBranchId?.toString() || null,
+        branchName: branches.find(branch => branch.id === member.assignedBranchId)?.branchName || null,
+        appointments: 0, completed: 0, cancelled: 0, noShow: 0,
+        uniquePatients: 0, revenue: 0, averageDurationMinutes: null
+      });
+    }
+    const patientSets = new Map();
+    const durationTotals = new Map();
+    for (const appointment of appointments) {
+      const key = appointment.dentistId.toString();
+      if (!peopleMap.has(key)) {
+        peopleMap.set(key, {
+          id: key, name: appointment.dentist.name, role: 'dentist', active: true,
+          branchId: appointment.clinicBranchId?.toString() || null,
+          branchName: branches.find(branch => branch.id === appointment.clinicBranchId)?.branchName || null,
+          appointments: 0, completed: 0, cancelled: 0, noShow: 0,
+          uniquePatients: 0, revenue: 0, averageDurationMinutes: null
+        });
+      }
+      const person = peopleMap.get(key);
+      person.appointments++;
+      const status = String(appointment.status).toLowerCase().replace('_', '-');
+      if (status === 'completed') person.completed++;
+      if (status === 'cancelled') person.cancelled++;
+      if (status === 'no-show' || status === 'noshow') person.noShow++;
+      if (!patientSets.has(key)) patientSets.set(key, new Set());
+      patientSets.get(key).add(appointment.patientId.toString());
+      const duration = Math.max(0, (appointment.endsAt - appointment.startsAt) / 60000);
+      durationTotals.set(key, (durationTotals.get(key) || 0) + duration);
+    }
+    for (const invoice of invoices) {
+      const key = invoice.appointment?.dentistId?.toString();
+      if (key && peopleMap.has(key)) peopleMap.get(key).revenue += paidValue(invoice);
+    }
+    for (const [key, person] of peopleMap) {
+      person.uniquePatients = patientSets.get(key)?.size || 0;
+      person.completionRate = person.appointments ? Math.round(person.completed / person.appointments * 100) : null;
+      person.averageDurationMinutes = person.appointments
+        ? Math.round((durationTotals.get(key) || 0) / person.appointments)
+        : null;
+    }
+
+    const dailyMap = new Map();
+    for (const appointment of appointments) {
+      const day = appointment.startsAt.toISOString().slice(0, 10);
+      const row = dailyMap.get(day) || { date: day, scheduled: 0, completed: 0, cancelled: 0, noShow: 0 };
+      row.scheduled++;
+      const status = String(appointment.status).toLowerCase().replace('_', '-');
+      if (status === 'completed') row.completed++;
+      if (status === 'cancelled') row.cancelled++;
+      if (status === 'no-show' || status === 'noshow') row.noShow++;
+      dailyMap.set(day, row);
+    }
+    const completed = appointments.filter(item => item.status === 'completed').length;
+    const cancelled = appointments.filter(item => item.status === 'cancelled').length;
+    const noShow = appointments.filter(item => ['no-show', 'no_show', 'noshow'].includes(item.status)).length;
+    const revenue = invoices.reduce((sum, invoice) => sum + paidValue(invoice), 0);
+    const periodPatientIds = [...new Set(appointments.map(item => item.patientId))];
+    const appointmentHistory = periodPatientIds.length
+      ? await prisma.appointment.findMany({
+          where: {
+            ownerClinicId: clinicProfile.id,
+            clinicBranchId: { in: branchIds },
+            patientId: { in: periodPatientIds },
+            startsAt: { lte: end }
+          },
+          select: {
+            patientId: true,
+            startsAt: true
+          }
+        })
+      : [];
+    const optionalSources = await fetchOptionalReportSources({
+      db: prisma,
+      clinicProfileId: clinicProfile.id,
+      branchId,
+      start,
+      end,
+      newPatientIds: periodPatientIds
+    });
+    const complianceReport = buildComplianceReport({
+      appointments,
+      staff,
+      securityMetrics: optionalSources.securityMetrics,
+      backupMetrics: optionalSources.backupMetrics,
+      checklistItems: optionalSources.checklistItems,
+      optionalSourceStatus: optionalSources.optionalSourceStatus
+    });
+    const marketingReport = buildMarketingReport({
+      appointments,
+      appointmentHistory,
+      periodStart: start,
+      attributionByPatient: optionalSources.attributionByPatient,
+      reviewSummary: optionalSources.reviewSummary,
+      campaignPerformance: optionalSources.campaignPerformance,
+      optionalSourceStatus: optionalSources.optionalSourceStatus
+    });
+
+    return res.json({
+      period: { start: start.toISOString(), end: end.toISOString() },
+      branches: branches.map(branch => ({
+        id: branch.id.toString(),
+        name: branch.branchName,
+        treatmentRooms: branch.treatmentRoomsCount
+      })),
+      summary: {
+        appointments: appointments.length,
+        completed,
+        cancelled,
+        noShow,
+        completionRate: appointments.length ? Math.round(completed / appointments.length * 100) : null,
+        uniquePatients: new Set(appointments.map(item => item.patientId.toString())).size,
+        revenue,
+        transactions: invoices.length,
+        averageTransaction: invoices.length ? Math.round(revenue / invoices.length) : 0,
+        activeStaff: staff.filter(member => member.isActive).length
+      },
+      daily: [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      people: [...peopleMap.values()].sort((a, b) => b.completed - a.completed || b.revenue - a.revenue),
+      compliance: complianceReport.compliance,
+      marketing: marketingReport.marketing,
+      dataAvailability: {
+        operational: true,
+        financial: true,
+        compliance: complianceReport.availability,
+        marketing: marketingReport.availability
+      }
+    });
+  } catch (error) {
+    console.error('Error generating clinic report:', error);
+    return res.status(500).json({ error: 'Failed to generate clinic report' });
   }
 });
 

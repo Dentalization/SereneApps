@@ -18,41 +18,11 @@ import {
   getStatusBadgeClass,
   isWithinDays
 } from './inventoryUtils.mjs';
-
-const EMPTY_INVENTORY = {
-  stock: [],
-  purchaseRequests: [],
-  receipts: [],
-  usage: [],
-  equipment: []
-};
-
-const INVENTORY_REQUESTS = [
-  { key: 'stock', path: '/clinic/inventory/stock', responseKeys: ['items', 'stock'] },
-  { key: 'purchaseRequests', path: '/clinic/inventory/purchase-requests', responseKeys: ['requests', 'purchaseRequests'] },
-  { key: 'receipts', path: '/clinic/inventory/receipts', responseKeys: ['receipts', 'items'] },
-  { key: 'usage', path: '/clinic/inventory/usage', responseKeys: ['records', 'usage'] },
-  { key: 'equipment', path: '/clinic/inventory/equipment', responseKeys: ['equipment', 'items'] }
-];
-
-function extractCollection(result, responseKeys) {
-  if (result.status !== 'fulfilled') return [];
-  const payload = result.value?.data;
-  if (Array.isArray(payload)) return payload;
-  if (responseKeys.includes('equipment')) {
-    const equipment = Array.isArray(payload?.equipment) ? payload.equipment : [];
-    const sterilization = [
-      ...(Array.isArray(payload?.sterilizationRecords) ? payload.sterilizationRecords : []),
-      ...(Array.isArray(payload?.sterilization_records) ? payload.sterilization_records : []),
-      ...(Array.isArray(payload?.sterilization) ? payload.sterilization : [])
-    ].map((record) => ({ ...record, recordType: record.recordType || 'sterilization' }));
-    if (equipment.length || sterilization.length) return [...equipment, ...sterilization];
-  }
-  for (const key of responseKeys) {
-    if (Array.isArray(payload?.[key])) return payload[key];
-  }
-  return [];
-}
+import {
+  EMPTY_INVENTORY,
+  INVENTORY_REQUESTS,
+  extractInventoryCollection
+} from './inventoryData.mjs';
 
 function quantityOf(item) {
   return Number(item.currentStock ?? item.current_stock ?? item.quantity ?? 0) || 0;
@@ -131,7 +101,7 @@ const InventoryPage = () => {
       const failures = [];
 
       INVENTORY_REQUESTS.forEach((request, index) => {
-        nextData[request.key] = extractCollection(results[index], request.responseKeys);
+        nextData[request.key] = extractInventoryCollection(results[index], request.responseKeys);
         if (results[index].status === 'rejected') failures.push(request.key);
       });
 
@@ -196,7 +166,7 @@ const InventoryPage = () => {
 
       <div className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-surface-elevated p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-1 flex-col gap-3 sm:flex-row">
-          <label className="relative block w-full sm:max-w-sm">
+          <label className="relative block w-full sm:max-w-sm flex-shrink-0">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
               type="search"
@@ -209,7 +179,7 @@ const InventoryPage = () => {
           <select
             value={stockCategory}
             onChange={(event) => setStockCategory(event.target.value)}
-            className="min-h-10 rounded-xl border border-primary/20 bg-surface px-3 py-2 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            className="min-h-10 rounded-xl border border-primary/20 bg-surface pl-3 pr-10 py-2 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           >
             <option value="">Semua Kategori</option>
             {categories.map((category) => <option key={category} value={category}>{category}</option>)}

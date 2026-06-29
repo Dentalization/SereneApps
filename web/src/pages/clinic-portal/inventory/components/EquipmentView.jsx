@@ -297,7 +297,7 @@ const ActionBar = ({
 }) => (
   <div className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-surface-elevated p-4 lg:flex-row lg:items-center lg:justify-between">
     <div className="flex flex-1 flex-col gap-3 sm:flex-row">
-      <label className="relative block w-full sm:max-w-sm">
+      <label className="relative block w-full sm:max-w-sm flex-shrink-0">
         <AppIcon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input
           type="search"
@@ -307,7 +307,7 @@ const ActionBar = ({
           className="min-h-10 w-full rounded-xl border border-primary/20 bg-surface py-2 pl-10 pr-4 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
       </label>
-      <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-10 rounded-xl border border-primary/20 bg-surface px-3 py-2 text-primary">
+      <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-10 rounded-xl border border-primary/20 bg-surface pl-3 pr-10 py-2 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20">
         <option value="">Semua Status</option>
         {statuses.map((status) => <option key={status} value={status}>{statusText(status)}</option>)}
       </select>

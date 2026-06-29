@@ -1,330 +1,224 @@
-import { useState } from 'react';
-import { useLanguage } from '../../../../contexts/LanguageContext';
+import React, { useMemo, useState } from 'react';
 import AppIcon from '../../../../components/AppIcon';
+import { boundedPercent, sparklineHeightPercent } from '../reportUtils.mjs';
 
-const OperationalView = () => {
-  const { t } = useLanguage();
-  const [selectedMetric, setSelectedMetric] = useState('all');
+const number = value => new Intl.NumberFormat('id-ID').format(Number(value) || 0);
+const percent = value => value == null ? '—' : `${value}%`;
 
-  // Mock data
-  const kpiData = {
-    roomUtilization: {
-      current: 75,
-      target: 80,
-      trend: +5,
-      chartData: [65, 70, 72, 75, 78, 75, 76]
-    },
-    waitTime: {
-      current: 18,
-      target: 20,
-      trend: -2,
-      chartData: [22, 20, 19, 18, 17, 18, 18]
-    },
-    satisfaction: {
-      current: 4.2,
-      target: 4.0,
-      trend: +0.3,
-      chartData: [3.8, 3.9, 4.0, 4.1, 4.2, 4.2, 4.2]
-    },
-    completion: {
-      current: 92,
-      target: 95,
-      trend: +3,
-      chartData: [88, 89, 90, 91, 92, 92, 92]
-    }
-  };
+const MiniSparkline = ({ data = [], color = 'bg-accent' }) => {
+  const values = data.map(value => Math.max(0, Number(value) || 0));
+  const max = Math.max(...values, 1);
 
-  const appointmentStats = [
-    { day: 'Senin', scheduled: 45, completed: 42, cancelled: 2, noShow: 1 },
-    { day: 'Selasa', scheduled: 50, completed: 47, cancelled: 2, noShow: 1 },
-    { day: 'Rabu', scheduled: 48, completed: 45, cancelled: 1, noShow: 2 },
-    { day: 'Kamis', scheduled: 52, completed: 48, cancelled: 3, noShow: 1 },
-    { day: 'Jumat', scheduled: 55, completed: 51, cancelled: 2, noShow: 2 },
-    { day: 'Sabtu', scheduled: 40, completed: 38, cancelled: 1, noShow: 1 }
+  return (
+    <div className="flex h-8 items-end gap-0.5">
+      {values.slice(-7).map((value, index) => (
+        <div
+          key={`${value}-${index}`}
+          className={`flex-1 rounded-sm ${color} opacity-80`}
+          style={{ height: `${sparklineHeightPercent(value, max)}%` }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const Card = ({ label, value, detail, icon, sparkData, sparkColor, trend }) => (
+  <div className="space-y-3 rounded-2xl border border-primary/15 bg-surface-elevated p-5">
+    <div className="flex items-start justify-between">
+      <p className="text-xs uppercase tracking-wider text-secondary">{label}</p>
+      <AppIcon name={icon} size={18} className="text-accent" />
+    </div>
+    <div>
+      <p className="text-2xl font-bold text-primary">{value}</p>
+      {trend != null && (
+        <span className={`mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          <AppIcon name={trend >= 0 ? 'TrendingUp' : 'TrendingDown'} size={12} />
+          {Math.abs(trend)}%
+        </span>
+      )}
+    </div>
+    {sparkData?.length > 0 && <MiniSparkline data={sparkData} color={sparkColor} />}
+    <p className="text-xs text-secondary">{detail}</p>
+  </div>
+);
+
+const Empty = ({ text, icon = 'Inbox' }) => (
+  <div className="flex flex-col items-center gap-2 p-12 text-center">
+    <AppIcon name={icon} size={28} className="text-secondary/40" />
+    <p className="text-sm text-secondary">{text}</p>
+  </div>
+);
+
+const RankBadge = ({ index }) => {
+  if (index > 2) return null;
+  const classes = [
+    'bg-amber-100 text-amber-700',
+    'bg-slate-100 text-slate-600',
+    'bg-orange-50 text-orange-600'
   ];
+  return (
+    <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${classes[index]}`}>
+      {index + 1}
+    </span>
+  );
+};
 
-  const roomUsage = [
-    { room: 'Ruang Perawatan 1', usage: 85, hours: 6.8, patients: 12 },
-    { room: 'Ruang Perawatan 2', usage: 78, hours: 6.2, patients: 10 },
-    { room: 'Ruang Perawatan 3', usage: 72, hours: 5.8, patients: 9 },
-    { room: 'Ruang Konsultasi', usage: 65, hours: 5.2, patients: 15 }
-  ];
+const OperationalView = ({ report }) => {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('completed');
+  const summary = report?.summary || {};
+  const daily = report?.daily || [];
 
-  const staffPerformance = [
-    { name: 'drg. Sarah Ahmad', appointments: 48, avgDuration: 45, satisfaction: 4.5, onTime: 92 },
-    { name: 'drg. Budi Santoso', appointments: 52, avgDuration: 42, satisfaction: 4.3, onTime: 95 },
-    { name: 'drg. Linda Wijaya', appointments: 45, avgDuration: 48, satisfaction: 4.4, onTime: 88 },
-    { name: 'drg. Ahmad Yani', appointments: 50, avgDuration: 40, satisfaction: 4.2, onTime: 90 }
-  ];
+  const completedSpark = daily.map(row => row.completed);
+  const scheduledSpark = daily.map(row => row.scheduled);
+  const cancelledSpark = daily.map(row => row.cancelled);
+  const activeStaffSpark = daily.map(() => summary.activeStaff || 0);
+  const maxScheduled = Math.max(...daily.map(row => Number(row.scheduled) || 0), 1);
 
-  const treatmentDistribution = [
-    { name: 'Scaling & Polishing', count: 85, percentage: 28, avgDuration: 30 },
-    { name: 'Filling', count: 72, percentage: 24, avgDuration: 45 },
-    { name: 'Extraction', count: 45, percentage: 15, avgDuration: 25 },
-    { name: 'Root Canal', count: 38, percentage: 13, avgDuration: 90 },
-    { name: 'Crown/Bridge', count: 32, percentage: 11, avgDuration: 120 },
-    { name: 'Lainnya', count: 28, percentage: 9, avgDuration: 40 }
-  ];
+  const people = useMemo(() => [...(report?.people || [])]
+    .filter(person => String(person.name || '').toLowerCase().includes(query.toLowerCase()))
+    .sort((left, right) => (Number(right[sort]) || 0) - (Number(left[sort]) || 0)), [report, query, sort]);
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Building" size={20} className="text-blue-600" />
-            <div className="flex items-center gap-1">
-              <AppIcon name={kpiData.roomUtilization.trend > 0 ? "TrendingUp" : "TrendingDown"} size={14} className="text-blue-600" />
-              <span className="text-xs text-blue-600">{Math.abs(kpiData.roomUtilization.trend)}%</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-blue-900 dark:text-blue-300">{kpiData.roomUtilization.current}%</span>
-              <span className="text-xs text-blue-600">/ {kpiData.roomUtilization.target}%</span>
-            </div>
-            <h3 className="text-sm font-medium text-blue-800 dark:text-blue-400">
-              {t('clinic.reports.operational.roomUtilization') || 'Keterisian Ruang'}
-            </h3>
-            <div className="w-full bg-blue-200 dark:bg-blue-900/40 rounded-full h-1.5">
-              <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${kpiData.roomUtilization.current}%` }}></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Clock" size={20} className="text-green-600" />
-            <div className="flex items-center gap-1">
-              <AppIcon name="TrendingDown" size={14} className="text-green-600" />
-              <span className="text-xs text-green-600">{Math.abs(kpiData.waitTime.trend)} min</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-green-900 dark:text-green-300">{kpiData.waitTime.current}</span>
-              <span className="text-xs text-green-600">min</span>
-            </div>
-            <h3 className="text-sm font-medium text-green-800 dark:text-green-400">
-              {t('clinic.reports.operational.avgWaitTime') || 'Rata-rata Waktu Tunggu'}
-            </h3>
-            <p className="text-xs text-green-600">Target: &lt;{kpiData.waitTime.target} min</p>
-          </div>
-        </div>
-
-        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="Star" size={20} className="text-purple-600" />
-            <div className="flex items-center gap-1">
-              <AppIcon name="TrendingUp" size={14} className="text-purple-600" />
-              <span className="text-xs text-purple-600">+{kpiData.satisfaction.trend}</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-purple-900 dark:text-purple-300">{kpiData.satisfaction.current}</span>
-              <span className="text-xs text-purple-600">/ 5.0</span>
-            </div>
-            <h3 className="text-sm font-medium text-purple-800 dark:text-purple-400">
-              {t('clinic.reports.operational.satisfaction') || 'Kepuasan Pasien'}
-            </h3>
-            <div className="flex gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <AppIcon 
-                  key={star} 
-                  name={star <= Math.floor(kpiData.satisfaction.current) ? "Star" : "StarOff"} 
-                  size={12} 
-                  className={star <= Math.floor(kpiData.satisfaction.current) ? "text-purple-600" : "text-purple-300"}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-          <div className="flex items-center justify-between mb-3">
-            <AppIcon name="CheckCircle" size={20} className="text-orange-600" />
-            <div className="flex items-center gap-1">
-              <AppIcon name="TrendingUp" size={14} className="text-orange-600" />
-              <span className="text-xs text-orange-600">+{kpiData.completion.trend}%</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-orange-900 dark:text-orange-300">{kpiData.completion.current}%</span>
-              <span className="text-xs text-orange-600">/ {kpiData.completion.target}%</span>
-            </div>
-            <h3 className="text-sm font-medium text-orange-800 dark:text-orange-400">
-              {t('clinic.reports.operational.completionRate') || 'Completion Rate'}
-            </h3>
-            <p className="text-xs text-orange-600">No-show: {100 - kpiData.completion.current}%</p>
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card
+          label="Appointment"
+          value={number(summary.appointments)}
+          detail={`${number(summary.uniquePatients)} pasien unik`}
+          icon="CalendarDays"
+          sparkData={scheduledSpark}
+          sparkColor="bg-blue-500"
+        />
+        <Card
+          label="Completion rate"
+          value={percent(summary.completionRate)}
+          detail={`${number(summary.completed)} selesai`}
+          icon="CircleCheck"
+          sparkData={completedSpark}
+          sparkColor="bg-emerald-500"
+          trend={summary.completionTrend}
+        />
+        <Card
+          label="Pembatalan"
+          value={number(summary.cancelled)}
+          detail={`${number(summary.noShow)} no-show`}
+          icon="CalendarX"
+          sparkData={cancelledSpark}
+          sparkColor="bg-amber-500"
+          trend={summary.cancelledTrend}
+        />
+        <Card
+          label="Staf aktif"
+          value={number(summary.activeStaff)}
+          detail="Dalam cabang terpilih"
+          icon="UsersRound"
+          sparkData={activeStaffSpark}
+          sparkColor="bg-violet-500"
+        />
       </div>
 
-      {/* Appointment Statistics */}
-      <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-        <div className="px-6 py-4 border-b border-primary/20">
-          <h3 className="text-lg font-semibold text-primary">
-            {t('clinic.reports.operational.appointmentStats') || 'Statistik Appointment Mingguan'}
-          </h3>
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
+        <div className="border-b border-primary/10 p-5">
+          <h2 className="font-semibold text-primary">Tren Appointment Harian</h2>
+          <p className="text-sm text-secondary">Status aktual berdasarkan jadwal pada periode terpilih</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-surface">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Hari</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Terjadwal</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Selesai</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Dibatalkan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">No-Show</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Completion %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-primary/10">
-              {appointmentStats.map((stat, idx) => (
-                <tr key={idx} className="hover:bg-surface transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{stat.day}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-primary">{stat.scheduled}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">{stat.completed}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-600">{stat.cancelled}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{stat.noShow}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-surface rounded-full h-2 overflow-hidden max-w-[100px]">
-                        <div
-                          className="bg-green-600 h-full transition-all"
-                          style={{ width: `${(stat.completed / stat.scheduled) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-medium text-primary">
-                        {Math.round((stat.completed / stat.scheduled) * 100)}%
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Room Usage & Treatment Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Room Usage */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.operational.roomUsage') || 'Penggunaan Ruang'}
-            </h3>
-          </div>
-          <div className="p-6 space-y-4">
-            {roomUsage.map((room, idx) => (
-              <div key={idx} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-primary">{room.room}</div>
-                    <div className="text-xs text-secondary">{room.hours}h • {room.patients} pasien</div>
-                  </div>
-                  <span className="text-lg font-bold text-accent">{room.usage}%</span>
-                </div>
-                <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-accent h-full transition-all"
-                    style={{ width: `${room.usage}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Treatment Distribution */}
-        <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary/20">
-            <h3 className="text-lg font-semibold text-primary">
-              {t('clinic.reports.operational.treatmentDistribution') || 'Distribusi Tindakan'}
-            </h3>
-          </div>
-          <div className="p-6 space-y-3">
-            {treatmentDistribution.map((treatment, idx) => (
-              <div key={idx} className="flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-primary">{treatment.name}</span>
-                    <span className="text-sm font-bold text-accent">{treatment.percentage}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-surface rounded-full h-1.5 overflow-hidden">
+        {daily.length ? (
+          <div className="p-5">
+            <div className="mb-2 flex gap-4 text-xs text-secondary">
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Selesai</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-500" />Batal</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-red-500" />No-show</span>
+            </div>
+            <div className="-mx-5">
+              {daily.map(row => (
+                <div key={row.date} className="border-b border-primary/10 px-5 py-3 last:border-0">
+                  <div className="mb-1.5 flex items-center gap-4">
+                    <span className="w-24 flex-shrink-0 text-xs text-secondary">
+                      {new Date(`${row.date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-surface">
                       <div
-                        className="bg-accent h-full transition-all"
-                        style={{ width: `${treatment.percentage}%` }}
+                        className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/20"
+                        style={{ width: `${boundedPercent(row.scheduled, maxScheduled)}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
+                        style={{ width: `${boundedPercent(row.completed, maxScheduled)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-secondary">{treatment.count}x</span>
+                    <div className="flex w-32 flex-shrink-0 justify-end gap-3 text-right text-xs">
+                      <span className="font-medium text-emerald-600">{number(row.completed)}</span>
+                      <span className="text-amber-600">{number(row.cancelled)}</span>
+                      <span className="text-red-500">{number(row.noShow)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+        ) : <Empty text="Belum ada appointment pada periode ini." icon="CalendarOff" />}
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
+        <div className="flex flex-col gap-3 border-b border-primary/10 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="font-semibold text-primary">KPI Dokter & Staf</h2>
+            <p className="text-sm text-secondary">Tidak ada skor atau rating sintetis.</p>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Cari nama…"
+              className="rounded-xl border border-primary/20 bg-surface px-3 py-2 text-sm"
+            />
+            <select value={sort} onChange={event => setSort(event.target.value)} className="rounded-xl border border-primary/20 bg-surface px-3 py-2 text-sm">
+              <option value="completed">Selesai terbanyak</option>
+              <option value="appointments">Appointment</option>
+              <option value="revenue">Revenue</option>
+              <option value="completionRate">Completion rate</option>
+            </select>
           </div>
         </div>
-      </div>
-
-      {/* Staff Performance */}
-      <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-        <div className="px-6 py-4 border-b border-primary/20">
-          <h3 className="text-lg font-semibold text-primary">
-            {t('clinic.reports.operational.staffPerformance') || 'Performa Staff'}
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-surface">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Dokter</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Appointments</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Avg. Durasi</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Kepuasan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">On-Time %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-primary/10">
-              {staffPerformance.map((staff, idx) => (
-                <tr key={idx} className="hover:bg-surface transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-primary">{staff.name}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-accent">{staff.appointments}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-primary">{staff.avgDuration} min</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      <AppIcon name="Star" size={14} className="text-yellow-500" />
-                      <span className="text-sm font-medium text-primary">{staff.satisfaction}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-surface rounded-full h-2 overflow-hidden max-w-[80px]">
-                        <div
-                          className={`h-full transition-all ${staff.onTime >= 90 ? 'bg-green-600' : 'bg-yellow-600'}`}
-                          style={{ width: `${staff.onTime}%` }}
-                        />
+        {people.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-surface text-xs uppercase text-secondary">
+                <tr>{['Nama', 'Role / Cabang', 'Appointment', 'Selesai', 'Completion', 'Pasien', 'Durasi rata-rata'].map(heading => <th key={heading} className="px-5 py-3 text-left">{heading}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-primary/10">
+                {people.map((person, index) => (
+                  <tr key={person.id}>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <RankBadge index={index} />
+                        <span className="font-medium text-primary">{person.name || 'Tanpa nama'}</span>
                       </div>
-                      <span className="text-sm font-medium text-primary">{staff.onTime}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    </td>
+                    <td className="px-5 py-4 text-secondary">{person.role || '—'}{person.branchName ? ` · ${person.branchName}` : ''}</td>
+                    <td className="px-5 py-4">{number(person.appointments)}</td>
+                    <td className="px-5 py-4">{number(person.completed)}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 min-w-[60px] flex-1 overflow-hidden rounded-full bg-surface">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${boundedPercent(person.completionRate, 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-10 text-xs text-secondary">{percent(person.completionRate)}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">{number(person.uniquePatients)}</td>
+                    <td className="px-5 py-4">{person.averageDurationMinutes == null ? '—' : `${number(person.averageDurationMinutes)} menit`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <Empty text="Tidak ada staf atau dokter yang cocok." icon="UserSearch" />}
+      </section>
     </div>
   );
 };
