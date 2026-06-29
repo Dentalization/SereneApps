@@ -47,6 +47,8 @@ test('Verified Case Workspace client exposes the required clinical endpoints wit
   ].forEach((endpoint) => assert.match(client, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
 
   assert.doesNotMatch(client, /VITE_DEEPDENTAL_API_KEY|VITE_SERENE_AI_API_KEY|X-API-Key/i);
+  assert.match(client, /resolveWorkspaceArtifactUrl/);
+  assert.ok(client.includes("http?.defaults?.baseURL"));
 });
 
 test('backend route registers case, image, finding, audit, export, timeline, and session-case contracts', () => {
@@ -72,4 +74,18 @@ test('backend route registers case, image, finding, audit, export, timeline, and
   ].forEach((snippet) => assert.ok(route.includes(snippet), snippet));
 
   assert.match(server, /verifiedCasesRouter/);
+});
+
+test('patient linking is scoped to the authenticated dentist patient relationship', () => {
+  const route = readRepoFile('backend/src/routes/verified-cases.js');
+  const modal = readRepoFile('web/src/pages/dentist-portal/ai/components/PatientLinkModal.jsx');
+
+  assert.match(route, /verifyDentistPatientAccess/);
+  assert.match(route, /patient_access_denied/);
+  assert.match(route, /FROM appointments/);
+  assert.match(route, /dentist_id = \$1/);
+  assert.match(route, /patient_id = \$2/);
+  assert.match(modal, /sortBy: 'lastVisit'/);
+  assert.match(modal, /limit: 20/);
+  assert.match(modal, /Daftar ini hanya menampilkan pasien/);
 });

@@ -13,6 +13,16 @@ import {
 import {
   buildImageQualityCoach,
 } from '../src/pages/dentist-portal/ai/components/qualityCoach.mjs';
+import {
+  buildVisualFindingsFromCaseAnalysis,
+  rehydrateAnnotatedImageArtifacts,
+  resolveWorkspaceAssetUrl,
+} from '../src/pages/dentist-portal/ai/components/caseAnalysisMapper.mjs';
+import {
+  buildFollowUpMessage,
+  buildJournalReferenceQuestion,
+  buildPriorImageContext,
+} from '../src/pages/dentist-portal/ai/components/dentalConversationContext.mjs';
 
 test('DeepDental config defaults to the local proxy and never to production cloud', () => {
   const config = resolveDeepDentalConfig({});
@@ -107,4 +117,161 @@ test('quality coach blocks unsupported and oversized image files before analysis
   });
   assert.equal(oversized.status, 'blocked');
   assert.equal(oversized.canAnalyze, false);
+});
+
+test('workspace analysis mapping preserves annotated image fallback and differentials', () => {
+  const findings = buildVisualFindingsFromCaseAnalysis({
+    analysis: {
+      visual_findings: {
+        image_quality: 'adequate',
+        concern_level: 'low',
+        findings: [{
+          location: 'FDI 47',
+          finding: 'Possible early enamel change.',
+          severity: 'mild',
+          confidence: 'low',
+          differentials: ['Extrinsic staining', 'Early demineralization'],
+        }],
+        detections: [],
+        recommendations: ['Perform clinical examination.'],
+        limitations: 'Single-view image.',
+        annotated_image_base64: 'base64-fallback',
+      },
+      image: {
+        annotated_image_mime_type: 'image/jpeg',
+        annotated_image_signed_url: '/v1/case-storage/signed-token',
+      },
+    },
+    authBaseUrl: 'http://localhost:4000/v1',
+  });
+
+  assert.equal(findings.concern_level, 'low');
+  assert.equal(findings.findings[0].description, 'Possible early enamel change.');
+  assert.deepEqual(findings.findings[0].differentials, ['Extrinsic staining', 'Early demineralization']);
+  assert.equal(findings.annotated_image_base64, 'base64-fallback');
+  assert.equal(findings.annotated_image_signed_url, 'http://localhost:4000/v1/case-storage/signed-token');
+});
+
+test('workspace signed artifact URL resolves against the backend origin', () => {
+  assert.equal(
+    resolveWorkspaceAssetUrl('/v1/case-storage/token', 'https://api.serene.test/v1'),
+    'https://api.serene.test/v1/case-storage/token'
+  );
+  assert.equal(
+    resolveWorkspaceAssetUrl('data:image/jpeg;base64,abc', 'https://api.serene.test/v1'),
+    'data:image/jpeg;base64,abc'
+  );
+});
+
+test('workspace persisted finding fallback preserves differentials', () => {
+  const findings = buildVisualFindingsFromCaseAnalysis({
+    analysis: {
+      findings: [{
+        tooth_or_region: 'FDI 45',
+        notes: 'Surface opacity requires clinical correlation.',
+        severity: 'mild',
+        confidence: 'low',
+        differentials: ['Fluorosis', 'Early demineralization'],
+      }],
+      visual_findings: {
+        image_quality: 'adequate',
+        concern_level: 'low',
+        findings: [],
+        detections: [],
+      },
+    },
+  });
+
+  assert.deepEqual(findings.findings[0].differentials, ['Fluorosis', 'Early demineralization']);
+});
+
+test('session history replaces expired annotated URLs with fresh workspace artifacts', () => {
+  const messages = [
+    {
+      id: 'assistant-1',
+      type: 'ai',
+      visualFindings: {
+        detections: [{ label: 'caries', confidence: 0.42 }],
+        annotated_image_signed_url: 'http://localhost:4000/v1/case-storage/expired-token',
+      },
+    },
+    {
+      id: 'assistant-follow-up',
+      type: 'ai',
+      visualFindings: null,
+    },
+    {
+      id: 'assistant-2',
+      type: 'ai',
+      visualFindings: {
+        findings: [{ description: 'Second image finding.' }],
+        annotated_image_signed_url: 'http://localhost:4000/v1/case-storage/another-expired-token',
+      },
+    },
+  ];
+  const images = [
+    {
+      id: 'image-1',
+      created_at: '2026-06-28T01:00:00.000Z',
+      annotated_image_mime_type: 'image/png',
+      annotated_image_signed_url: '/v1/case-storage/fresh-token-1',
+    },
+    {
+      id: 'image-2',
+      created_at: '2026-06-28T01:01:00.000Z',
+      annotated_image_mime_type: 'image/jpeg',
+      annotated_image_signed_url: '/v1/case-storage/fresh-token-2',
+    },
+  ];
+
+  const hydrated = rehydrateAnnotatedImageArtifacts({
+    messages,
+    images,
+    authBaseUrl: 'http://localhost:4000/v1',
+  });
+
+  assert.equal(
+    hydrated[0].visualFindings.annotated_image_signed_url,
+    'http://localhost:4000/v1/case-storage/fresh-token-1'
+  );
+  assert.equal(hydrated[0].visualFindings.annotated_image_mime_type, 'image/png');
+  assert.equal(hydrated[1], messages[1]);
+  assert.equal(
+    hydrated[2].visualFindings.annotated_image_signed_url,
+    'http://localhost:4000/v1/case-storage/fresh-token-2'
+  );
+  assert.equal(messages[0].visualFindings.annotated_image_signed_url.includes('expired-token'), true);
+});
+
+test('follow-up context carries prior image findings and builds a focused journal question', () => {
+  const visualFindings = {
+    image_quality: 'adequate',
+    concern_level: 'moderate',
+    detections: [{ mark_id: '1', label: 'caries', confidence: 0.42 }],
+    findings: [{
+      location: 'FDI 47',
+      description: 'Possible occlusal lesion.',
+      severity: 'mild',
+      differentials: ['Staining', 'Early demineralization'],
+    }],
+    limitations: 'Single intraoral photograph.',
+  };
+  const messages = [{ type: 'ai', visualFindings }];
+
+  const context = buildPriorImageContext(messages);
+  const followUpMessage = buildFollowUpMessage(messages, 'Apa langkah berikutnya?');
+  const question = buildJournalReferenceQuestion({
+    message: 'Apa langkah berikutnya?',
+    findings: visualFindings,
+  });
+
+  assert.match(context, /KONTEKS ANALISIS GAMBAR DENTAL SESI INI/);
+  assert.match(context, /caries \(42% confidence, mark 1\)/);
+  assert.match(context, /Possible occlusal lesion/);
+  assert.match(context, /Staining, Early demineralization/);
+  assert.match(followUpMessage, /Dentist Question: Apa langkah berikutnya\?/);
+  assert.match(followUpMessage, /Possible occlusal lesion/);
+  assert.match(question, /Apa langkah berikutnya\?/);
+  assert.match(question, /FDI 47/);
+  assert.match(question, /evidence klinis/i);
 });

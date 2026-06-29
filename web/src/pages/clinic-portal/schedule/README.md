@@ -86,14 +86,14 @@ Memperbarui halaman jadwal klinik agar dapat:
 
 ### ✅ **Technical Improvements**
 1. **Modular components** - Reusable dan maintainable
-2. **Mock data structure** - Ready for API integration
+2. **Data API terstruktur** - Appointment, staf klinik, payment, dan status history
 3. **State management** - Proper React hooks usage
 4. **Performance optimization** - Memoized calculations
 5. **TypeScript ready** - Type-safe props structure
 
 ## 🔄 Integrasi dengan Sistem
 
-### **Mock Data Structure**
+### **Data API yang Digunakan**
 ```javascript
 // Doctors
 {
@@ -121,11 +121,12 @@ Memperbarui halaman jadwal klinik agar dapat:
 ```
 
 ### **API Integration Points**
-1. `GET /api/clinic/doctors` - List semua dokter
-2. `GET /api/clinic/appointments` - List appointments dengan filter
-3. `POST /api/clinic/appointments` - Buat appointment baru
-4. `PUT /api/clinic/appointments/:id` - Update appointment
-5. `GET /api/clinic/stats` - Dashboard statistics
+1. `GET /v1/clinic/staff` - Daftar dokter aktif di klinik
+2. `GET /v1/appointments?view=clinic` - Appointment klinik beserta payment dan status history
+3. `PATCH /v1/appointments/:id/:action` - Transisi status appointment
+
+Statistik dihitung dari response appointment aktual. UI tidak membuat prediksi, waktu
+tunggu, revenue, atau rekomendasi ketika data sumber yang diperlukan belum tersedia.
 
 ## 🚀 Cara Penggunaan
 

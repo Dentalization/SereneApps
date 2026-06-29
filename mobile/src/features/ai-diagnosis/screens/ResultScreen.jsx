@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, ScrollView, StatusBar, StyleSheet, Dimensions, Platform, PixelRatio, Image } from 'react-native';
-import { Text, Card, Button, useTheme, Chip, Divider } from 'react-native-paper';
+import { View, ScrollView, StatusBar, StyleSheet, Dimensions, Platform, PixelRatio, Image, TouchableOpacity } from 'react-native';
+import { Text, Card, Button, useTheme, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,6 +10,8 @@ import RiskBadge from '../../../components/shared/RiskBadge';
 import AuthGuard from '../../../components/shared/AuthGuard';
 import { AUTH_LEVELS } from '../../../store/slices/authSlice';
 import useAnchoredHeaderHeight from '../../../hooks/useAnchoredHeaderHeight';
+import { normalizeAnalysisResult, toImageUri } from '../utils/analysisResult';
+import { syncAnalysisToBackend } from '../../../store/slices/aiSlice';
 
 // --- UTILS RESPONSIVE ---
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -36,253 +38,55 @@ const ResultScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { sessionId, analysisData, images } = route.params;
+  const dispatch = useDispatch();
   const { authLevel } = useSelector((state) => state.auth);
   const [showAuthGuard, setShowAuthGuard] = React.useState(false);
+  const imageBackfillRef = React.useRef(null);
   
   // Header height logic
   const { headerHeight, handleHeaderLayout } = useAnchoredHeaderHeight(180); // Default estimate reduced
 
-  // --- PARSING LOGIC (Sama seperti sebelumnya) ---
-  const parseAnalysisData = () => {
-    if (__DEV__) {
-      console.log('📊 ResultScreen - Raw analysisData received:', JSON.stringify(analysisData, null, 2));
-      
-      // Check all possible data paths
-      console.log('🔍 Checking data paths:');
-      console.log('  - analysisData.findings:', analysisData?.findings);
-      console.log('  - analysisData.detections:', analysisData?.detections);
-      console.log('  - analysisData.content:', analysisData?.content);
-      console.log('  - analysisData.data?.findings:', analysisData?.data?.findings);
-      console.log('  - analysisData.visual_findings:', analysisData?.visual_findings);
-      console.log('  - analysisData.recommendations:', analysisData?.recommendations);
-      console.log('  - analysisData.data?.recommendations:', analysisData?.data?.recommendations);
-      console.log('  - analysisData.observations:', analysisData?.observations);
-      console.log('  - analysisData.data?.observations:', analysisData?.data?.observations);
-    }
-    
-    if (!analysisData) {
-      return {
-        riskLevel: 'low',
-        confidence: 0.5,
-        findings: [],
-        recommendations: [],
-        observations: [],
-        annotatedImage: null,
-      };
-    }
-    
-    const stripMarkdown = (text = '') => text.replace(/\*\*/g, '').trim();
-    const parseContentSections = (text = '') => {
-      if (typeof text !== 'string' || !text.includes('**')) return {};
-      const sections = {};
-      const regex = /\*\*([^\*]+)\*\*:?([\s\S]*?)(?=\n\*\*|$)/g;
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const title = match[1].trim().toLowerCase();
-        const body = match[2]
-          .split('\n')
-          .map(line => line.trim())
-          .filter(Boolean);
-        if (body.length) {
-          sections[title] = body;
-        }
-      }
-      return sections;
-    };
+  const result = React.useMemo(
+    () => normalizeAnalysisResult(analysisData),
+    [analysisData],
+  );
+  const annotatedImageUri = toImageUri(result.annotatedImage);
 
-    const contentText = typeof analysisData.content === 'string' ? analysisData.content : '';
-    const contentSections = parseContentSections(contentText);
-
-    const annotatedImage = 
-      analysisData.annotated_image_base64 || 
-      analysisData.annotatedImage ||
-      (analysisData.visual_findings && analysisData.visual_findings.annotated_image_base64) ||
-      (analysisData.data && analysisData.data.annotated_image_base64) ||
+  React.useEffect(() => {
+    if (!sessionId || !analysisData || imageBackfillRef.current === sessionId) return;
+    const originalImageUri =
+      analysisData.source_image_uri ||
+      analysisData.images?.[0]?.url ||
+      images?.[0]?.uri ||
       null;
+    if (!originalImageUri && !annotatedImageUri) return;
 
-    // Extract findings - can come from 'findings', 'detections', or 'content' array
-    let findings = [];
-    
-    // Try findings array first (structured findings with description)
-    if (analysisData.findings && Array.isArray(analysisData.findings) && analysisData.findings.length > 0) {
-      findings = analysisData.findings;
-    } 
-    // Visual findings (structured) from DeepDental visual response
-    else if (analysisData.visual_findings?.findings?.length) {
-      findings = analysisData.visual_findings.findings;
-    }
-    // Fallback to detections array (raw detections from model)
-    else if (
-      (analysisData.detections && Array.isArray(analysisData.detections) && analysisData.detections.length > 0) ||
-      (analysisData.visual_findings?.detections?.length)
-    ) {
-      const detectionsSource = analysisData.detections?.length
-        ? analysisData.detections
-        : analysisData.visual_findings?.detections || [];
-      findings = detectionsSource.map((det, idx) => {
-        const confValue = normalizeConfidence(det.confidence);
-        return {
-          mark_id: det.mark_id || `[${idx + 1}]`,
-          description: det.description || `Detected ${det.label || 'issue'}`,
-          confidence: confValue,
-          severity: det.severity || (confValue > 0.7 ? 'medium' : 'low'),
-          location: det.location || null,
-          name: det.label || det.description || 'Unknown',
-        };
-      });
-    }
-    // Check content array (from chat response structure)
-    else if (analysisData.content && Array.isArray(analysisData.content)) {
-      const contentWithFindings = analysisData.content.find(c => c.findings && Array.isArray(c.findings));
-      if (contentWithFindings && contentWithFindings.findings.length > 0) {
-        findings = contentWithFindings.findings;
-      }
-    }
-    // Fallback to nested paths
-    else if (analysisData.data && analysisData.data.findings) {
-      findings = analysisData.data.findings;
-    }
-    
-    // Extract observations/positive findings from various possible paths
-    let observations = 
-      analysisData.observations || 
-      analysisData.visual_findings?.observations ||
-      analysisData.data?.observations ||
-      analysisData.data?.visual_findings?.observations ||
-      [];
-    
-    // Check content array for observations
-    if ((!observations || observations.length === 0) && analysisData.content && Array.isArray(analysisData.content)) {
-      const contentWithObs = analysisData.content.find(c => c.observations && Array.isArray(c.observations));
-      if (contentWithObs && contentWithObs.observations.length > 0) {
-        observations = contentWithObs.observations;
-      }
-    }
-    
-    // Extract recommendations from multiple paths (filter out empty arrays)
-    let recommendations = 
-      analysisData.recommendations ||
-      analysisData.visual_findings?.recommendations ||
-      analysisData.data?.recommendations ||
-      [];
-    
-    // Check content array for recommendations
-    if ((!recommendations || recommendations.length === 0) && analysisData.content && Array.isArray(analysisData.content)) {
-      const contentWithRec = analysisData.content.find(c => c.recommendations && Array.isArray(c.recommendations));
-      if (contentWithRec && contentWithRec.recommendations.length > 0) {
-        recommendations = contentWithRec.recommendations;
-      }
-    }
-    
-    if ((!observations || observations.length === 0) && Object.keys(contentSections).length) {
-      const areaObservations = Object.entries(contentSections)
-        .filter(([title]) => title.startsWith('area bertanda'))
-        .flatMap(([title, lines]) => {
-          const statement = stripMarkdown(`${title}: ${lines.join(' ')}`);
-          return statement ? [statement] : [];
-        });
-      if (areaObservations.length) {
-        observations = areaObservations;
-      }
-    }
-
-    if ((!recommendations || recommendations.length === 0) && Object.keys(contentSections).length) {
-      const recSection =
-        contentSections['rekomendasi'] ||
-        contentSections['rekomendasi perawatan di rumah'] ||
-        contentSections['rekomendasi tambahan'];
-      if (recSection && recSection.length) {
-        recommendations = recSection.map(line => stripMarkdown(line.replace(/^\*\s*/, '')));
-      }
-    }
-    
-    if (!recommendations || (Array.isArray(recommendations) && recommendations.length === 0)) {
-      recommendations = [];
-    }
-    
-    // Extract summary from multiple paths
-    let summary = 
-      analysisData.summary || 
-      analysisData.overall_assessment ||
-      analysisData.visual_findings?.summary ||
-      analysisData.data?.summary ||
-      analysisData.data?.overall_assessment ||
-      null;
-    if (!summary && contentSections['apa artinya ini?']) {
-      summary = stripMarkdown(contentSections['apa artinya ini?'].join(' '));
-    }
-    if (!summary && contentText) {
-      summary = stripMarkdown(contentText);
-    }
-    
-    if (__DEV__) {
-      const findingsSource = analysisData.findings
-        ? 'findings'
-        : analysisData.visual_findings?.findings
-          ? 'visual_findings.findings'
-          : analysisData.detections?.length
-            ? 'detections'
-            : analysisData.visual_findings?.detections
-              ? 'visual_findings.detections'
-              : 'none';
-      console.log('📋 ResultScreen - Parsed data:', {
-        findingsSource,
-        findings: findings.length,
-        observations: observations.length,
-        recommendations: recommendations.length,
-        hasAnnotatedImage: !!annotatedImage,
-        hasSummary: !!summary
-      });
-      
-      if (findings.length > 0) {
-        console.log('🔍 Sample finding:', findings[0]);
-      }
-    }
-    
-    let riskLevel = analysisData.concern_level || analysisData.visual_findings?.concern_level || 'low';
-    if (findings.some(f => f.severity === 'high' || f.severity === 'critical')) {
-      riskLevel = 'high';
-    } else if (findings.some(f => f.severity === 'medium')) {
-      riskLevel = 'medium';
-    }
-
-    const normalizeConfidence = (value) => {
-      if (value === null || value === undefined) return 0.5;
-      if (typeof value === 'string') {
-        const parsed = parseFloat(value);
-        if (isNaN(parsed)) return 0.5;
-        return value.includes('%') || parsed > 1 ? parsed / 100 : parsed;
-      }
-      if (typeof value === 'number') {
-        return value > 1 ? value / 100 : value;
-      }
-      return 0.5;
-    };
-
-    const avgConfidence = findings.length > 0
-      ? findings.reduce((sum, f) => sum + normalizeConfidence(f.confidence), 0) / findings.length
-      : 0.5;
-
-    return {
-      riskLevel,
-      confidence: avgConfidence,
-      findings: findings.map((f, idx) => ({
-        id: f.id || idx + 1,
-        name: f.name || f.condition || f.label || f.description || 'Kondisi tidak diketahui',
-        severity: f.severity || 'low',
-        confidence: normalizeConfidence(f.confidence),
-        location: f.location || f.area || '-',
-        mark: f.mark_id || f.mark || `[${idx + 1}]`,
-        description: f.description,
-      })),
-      recommendations: recommendations,
-      observations: observations,
-      annotatedImage: annotatedImage,
-      summary: summary,
-    };
-  };
-
-  const result = parseAnalysisData();
+    imageBackfillRef.current = sessionId;
+    dispatch(syncAnalysisToBackend({
+      id: analysisData.message_id || sessionId,
+      session_id: sessionId,
+      image_url: originalImageUri,
+      annotated_image_url: annotatedImageUri,
+      findings: analysisData.reply || analysisData.content || result.summary || '',
+      summary: result.summary || '',
+      overall_assessment: analysisData.overall_assessment || '',
+      risk_level: result.riskLevel,
+      confidence_score: result.confidence === null ? null : Math.round(result.confidence * 100),
+      detections: analysisData.detections || analysisData.visual_findings?.detections || [],
+      recommendations: result.recommendations,
+      timestamp: new Date().toISOString(),
+    }));
+  }, [
+    analysisData,
+    annotatedImageUri,
+    dispatch,
+    images,
+    result.confidence,
+    result.recommendations,
+    result.riskLevel,
+    result.summary,
+    sessionId,
+  ]);
 
   const handleBookAppointment = () => {
     if (authLevel === AUTH_LEVELS.GUEST) {
@@ -296,7 +100,11 @@ const ResultScreen = ({ route, navigation }) => {
 
   // Stats Data
   const stats = [
-    { label: 'Akurasi', value: `${Math.round(result.confidence * 100)}%`, icon: 'bullseye-arrow' },
+    {
+      label: 'Keyakinan',
+      value: result.confidence === null ? '—' : `${Math.round(result.confidence * 100)}%`,
+      icon: 'bullseye-arrow',
+    },
     { label: 'Temuan', value: result.findings.length, icon: 'alert-circle-outline' },
     { label: 'Saran', value: result.recommendations.length || 1, icon: 'clipboard-list-outline' },
   ];
@@ -335,9 +143,9 @@ const ResultScreen = ({ route, navigation }) => {
           {/* Title Row (Compact) */}
           <View style={styles.heroCompactContent}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroLabel}>Hasil Diagnosis AI</Text>
-              <Text style={styles.heroTitle}>Risiko Terdeteksi</Text>
-              <Text style={styles.heroSubtitle}>Cek detail di bawah</Text>
+              <Text style={styles.heroLabel}>Hasil Analisis Serene AI</Text>
+              <Text style={styles.heroTitle}>Temuan Perlu Ditinjau</Text>
+              <Text style={styles.heroSubtitle}>Baca temuan dan maknanya di bawah</Text>
             </View>
             
             <View style={styles.heroBadgeContainer}>
@@ -371,23 +179,37 @@ const ResultScreen = ({ route, navigation }) => {
         </View>
 
         {/* 2. Annotated Image */}
-        {result.annotatedImage && (
+        {annotatedImageUri && (
           <Card style={styles.card}>
             <Card.Content style={{ padding: normalize(12) }}>
               <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom: normalize(8)}}>
-                <Text style={styles.cardTitle}>Visualisasi Area</Text>
-                <Chip icon="eye" style={{height: normalize(24)}} textStyle={{fontSize: normalize(10), marginVertical: -4}}>AI View</Chip>
+                <Text style={styles.cardTitle}>Area yang Ditandai AI</Text>
+                <Chip icon="eye" style={{height: normalize(24)}} textStyle={{fontSize: normalize(10), marginVertical: -4}}>Gambar anotasi</Chip>
               </View>
               <Image
-                source={{ uri: `data:image/jpeg;base64,${result.annotatedImage}` }}
+                source={{ uri: annotatedImageUri }}
                 style={styles.annotatedImage}
                 resizeMode="contain"
               />
+              <Text style={styles.imageCaption}>
+                Nomor penanda pada gambar sesuai dengan nomor temuan di bawah.
+              </Text>
             </Card.Content>
           </Card>
         )}
 
-        {/* 3. Summary */}
+        {/* 3. Analysis context */}
+        {result.imageQuality && (
+          <View style={styles.qualityBanner}>
+            <MaterialCommunityIcons name="image-check-outline" size={normalize(20)} color="#0369A1" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.qualityLabel}>Kualitas gambar</Text>
+              <Text style={styles.qualityValue}>{result.imageQuality}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 4. Summary */}
         {result.summary && (
           <Card style={styles.card}>
             <Card.Content>
@@ -399,37 +221,52 @@ const ResultScreen = ({ route, navigation }) => {
           </Card>
         )}
 
-        {/* 4. Findings List */}
+        {/* 5. Findings and reasoning */}
         {result.findings.length > 0 && (
           <Card style={styles.card}>
             <Card.Content>
-              <Text style={styles.cardTitle}>Detail Temuan ({result.findings.length})</Text>
+              <Text style={styles.cardTitle}>Temuan dan Penjelasan ({result.findings.length})</Text>
               {result.findings.map((finding, index) => (
-                <View key={finding.id}>
-                  <View style={styles.findingRow}>
+                <View key={finding.id} style={styles.findingCard}>
+                  <View style={styles.findingHeader}>
                     <View style={styles.findingNumberBadge}>
-                       <Text style={styles.findingNumberText}>{index + 1}</Text>
+                      <Text style={styles.findingNumberText}>{finding.mark || `[${index + 1}]`}</Text>
                     </View>
-                    <View style={{ flex: 1, marginLeft: normalize(10), marginRight: normalize(4) }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={styles.findingName} numberOfLines={2}>{finding.name}</Text>
-                        <View style={{ marginLeft: normalize(8) }}>
-                          <RiskBadge level={finding.severity} size="big" />
-                        </View>
-                      </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.findingName}>{finding.name}</Text>
                       <Text style={styles.findingMeta}>
-                        Lokasi: {finding.location || '-'} • Akurasi {Math.round(finding.confidence * 100)}%
+                        {finding.confidence === null
+                          ? 'Keyakinan deteksi tidak tersedia'
+                          : `Keyakinan deteksi ${Math.round(finding.confidence * 100)}%`}
+                        {finding.location ? ` · ${finding.location}` : ''}
                       </Text>
                     </View>
+                    <RiskBadge level={finding.severity} size="big" />
                   </View>
-                  {index < result.findings.length - 1 && <Divider style={{ marginVertical: normalize(12) }} />}
+
+                  {finding.description ? (
+                    <View style={styles.findingDetail}>
+                      <Text style={styles.findingDetailLabel}>Yang terlihat</Text>
+                      <Text selectable style={styles.bodyText}>{finding.description}</Text>
+                    </View>
+                  ) : null}
+
+                  {finding.reasoning ? (
+                    <View style={styles.reasoningBox}>
+                      <View style={styles.reasoningTitleRow}>
+                        <MaterialCommunityIcons name="lightbulb-on-outline" size={normalize(17)} color="#6D28D9" />
+                        <Text style={styles.reasoningTitle}>Makna temuan</Text>
+                      </View>
+                      <Text selectable style={styles.reasoningText}>{finding.reasoning}</Text>
+                    </View>
+                  ) : null}
                 </View>
               ))}
             </Card.Content>
           </Card>
         )}
 
-        {/* 5. Positive Observations */}
+        {/* 6. Positive Observations */}
         {result.observations && result.observations.length > 0 && (
           <Card style={styles.card}>
             <Card.Content>
@@ -444,7 +281,7 @@ const ResultScreen = ({ route, navigation }) => {
           </Card>
         )}
 
-        {/* 6. Recommendations */}
+        {/* 7. Recommendations */}
         <Card style={styles.card}>
           <Card.Content>
             <Text style={styles.cardTitle}>Saran Tindakan</Text>
@@ -467,6 +304,53 @@ const ResultScreen = ({ route, navigation }) => {
             </View>
           </Card.Content>
         </Card>
+
+        {/* 8. Suggested follow-ups */}
+        {result.suggestedQuestions.length > 0 && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.cardTitle}>Pertanyaan Lanjutan</Text>
+              <Text style={styles.sectionIntro}>
+                Ketuk pertanyaan untuk melanjutkan percakapan dengan Serene AI.
+              </Text>
+              {result.suggestedQuestions.map((question, index) => (
+                <TouchableOpacity
+                  key={`${question}-${index}`}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Tanyakan: ${question}`}
+                  style={styles.questionRow}
+                  onPress={() => navigation.navigate('Chat', {
+                    sessionId,
+                    analysisData,
+                    images,
+                    initialQuestion: question,
+                  })}
+                >
+                  <MaterialCommunityIcons name="message-question-outline" size={normalize(18)} color="#4F46E5" />
+                  <Text selectable style={styles.questionText}>{question}</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={normalize(18)} color="#6366F1" />
+                </TouchableOpacity>
+              ))}
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* 9. Limits and disclaimer */}
+        {result.limitations && (
+          <Card style={styles.limitationCard}>
+            <Card.Content>
+              <View style={styles.limitationTitleRow}>
+                <MaterialCommunityIcons name="information-outline" size={normalize(19)} color="#92400E" />
+                <Text style={styles.limitationTitle}>Keterbatasan Analisis</Text>
+              </View>
+              <Text selectable style={styles.limitationText}>{result.limitations}</Text>
+              <Text style={styles.disclaimerText}>
+                Hasil ini merupakan skrining AI, bukan diagnosis pasti. Konfirmasi pemeriksaan dengan dokter gigi.
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
       </ScrollView>
 
       {/* --- BOTTOM FLOATING BAR --- */}
@@ -636,36 +520,113 @@ const styles = StyleSheet.create({
     borderRadius: normalize(8),
     backgroundColor: '#F1F5F9',
   },
+  imageCaption: {
+    color: '#64748B',
+    fontSize: normalize(10),
+    lineHeight: normalize(15),
+    marginTop: normalize(8),
+  },
+  qualityBanner: {
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+    borderRadius: normalize(14),
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: normalize(10),
+    marginBottom: normalize(16),
+    padding: normalize(12),
+  },
+  qualityLabel: {
+    color: '#0369A1',
+    fontSize: normalize(10),
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  qualityValue: {
+    color: '#0C4A6E',
+    fontSize: normalize(13),
+    fontWeight: '600',
+    marginTop: normalize(2),
+  },
   
   // Finding List Styles
-  findingRow: {
-    flexDirection: 'row', 
-    alignItems: 'flex-start'
+  findingCard: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderRadius: normalize(14),
+    borderWidth: 1,
+    marginTop: normalize(10),
+    padding: normalize(12),
+  },
+  findingHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: normalize(9),
   },
   findingNumberBadge: {
-    width: normalize(24),
+    minWidth: normalize(30),
     height: normalize(24),
-    borderRadius: normalize(12),
-    backgroundColor: '#F1F5F9',
+    borderRadius: normalize(8),
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: normalize(2),
+    paddingHorizontal: normalize(5),
   },
   findingNumberText: {
     fontSize: normalize(12),
     fontWeight: '700',
-    color: '#64748B',
+    color: '#4F46E5',
   },
   findingName: {
-    fontWeight: '600', 
+    fontWeight: '700',
     color: '#0F172A', 
     fontSize: normalize(13),
-    flex: 1,
   },
   findingMeta: {
     color: '#64748B', 
     fontSize: normalize(11), 
-    marginTop: normalize(2)
+    marginTop: normalize(3),
+  },
+  findingDetail: {
+    borderTopColor: '#E2E8F0',
+    borderTopWidth: 1,
+    marginTop: normalize(11),
+    paddingTop: normalize(11),
+  },
+  findingDetailLabel: {
+    color: '#334155',
+    fontSize: normalize(10),
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    marginBottom: normalize(5),
+    textTransform: 'uppercase',
+  },
+  reasoningBox: {
+    backgroundColor: '#F5F3FF',
+    borderColor: '#DDD6FE',
+    borderRadius: normalize(11),
+    borderWidth: 1,
+    marginTop: normalize(10),
+    padding: normalize(10),
+  },
+  reasoningTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: normalize(6),
+    marginBottom: normalize(5),
+  },
+  reasoningTitle: {
+    color: '#5B21B6',
+    fontSize: normalize(11),
+    fontWeight: '700',
+  },
+  reasoningText: {
+    color: '#4C1D95',
+    fontSize: normalize(12),
+    lineHeight: normalize(19),
   },
 
   recommendationChips: {
@@ -678,6 +639,61 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  sectionIntro: {
+    color: '#64748B',
+    fontSize: normalize(12),
+    lineHeight: normalize(18),
+    marginBottom: normalize(10),
+  },
+  questionRow: {
+    alignItems: 'flex-start',
+    backgroundColor: '#EEF2FF',
+    borderRadius: normalize(11),
+    flexDirection: 'row',
+    gap: normalize(9),
+    marginTop: normalize(8),
+    minHeight: normalize(44),
+    padding: normalize(11),
+  },
+  questionText: {
+    color: '#312E81',
+    flex: 1,
+    fontSize: normalize(12),
+    lineHeight: normalize(18),
+  },
+  limitationCard: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderRadius: normalize(16),
+    borderWidth: 1,
+    marginBottom: normalize(16),
+  },
+  limitationTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: normalize(7),
+    marginBottom: normalize(7),
+  },
+  limitationTitle: {
+    color: '#78350F',
+    fontSize: normalize(13),
+    fontWeight: '700',
+  },
+  limitationText: {
+    color: '#92400E',
+    fontSize: normalize(12),
+    lineHeight: normalize(18),
+  },
+  disclaimerText: {
+    borderTopColor: '#FDE68A',
+    borderTopWidth: 1,
+    color: '#78350F',
+    fontSize: normalize(11),
+    fontWeight: '600',
+    lineHeight: normalize(17),
+    marginTop: normalize(10),
+    paddingTop: normalize(10),
   },
 
   bottomBar: {

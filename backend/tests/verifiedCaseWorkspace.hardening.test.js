@@ -147,7 +147,14 @@ test('workspace converts detection-only AI output into reviewable findings', asy
         annotated_image_base64: null,
       },
       normalized_findings: {
-        findings: [],
+        findings: [{
+          label: 'caries',
+          description: 'Low-confidence visual detector signal requiring clinical confirmation.',
+          differentials: ['Extrinsic staining', 'Early enamel demineralization'],
+          confidence: 0.81,
+          mark_id: '1',
+          bbox: [10, 20, 30, 40],
+        }],
         detections: [{ mark_id: '1', label: 'caries', confidence: 0.81, bbox: [10, 20, 30, 40] }],
         concern_level: 'moderate',
       },
@@ -173,6 +180,8 @@ test('workspace converts detection-only AI output into reviewable findings', asy
   assert.equal(analysis.findings.length, 1);
   assert.equal(analysis.findings[0].label, 'caries');
   assert.equal(analysis.findings[0].confidence, 0.81);
+  assert.equal(analysis.visual_findings.findings[0].description, 'Low-confidence visual detector signal requiring clinical confirmation.');
+  assert.deepEqual(analysis.visual_findings.findings[0].differentials, ['Extrinsic staining', 'Early enamel demineralization']);
 });
 
 test('multi-image analysis can continue after a case reaches pending clinician review', async () => {

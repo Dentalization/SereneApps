@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useToast } from '../../../../contexts/ToastContext';
+import { branchToForm } from '../branchData.mjs';
 
 // Indonesian cities with GPS coordinates
 const INDONESIAN_CITIES = [
@@ -65,23 +66,7 @@ const BranchEditModal = ({ open, branch, onClose, onSubmit, loading, error }) =>
 
   useEffect(() => {
     if (open && branch) {
-      setForm({
-        branchName: branch.branchName || '',
-        address: branch.address || '',
-        city: branch.city || '',
-        province: branch.province || '',
-        district: branch.district || '',
-        postalCode: branch.postalCode || '',
-        latitude: branch.latitude?.toString() || '',
-        longitude: branch.longitude?.toString() || '',
-        phone: branch.phone || '',
-        email: branch.email || '',
-        operatingHours: branch.operatingHours || '08:00 - 17:00',
-        treatmentRooms: branch.treatmentRooms || 3,
-        facilities: branch.facilities || [],
-        isMainBranch: branch.isMainBranch || false,
-        status: branch.status || 'active'
-      });
+      setForm(branchToForm(branch));
       setFacilityInput('');
     }
   }, [open, branch]);
@@ -318,7 +303,7 @@ const BranchEditModal = ({ open, branch, onClose, onSubmit, loading, error }) =>
               </div>
 
               {/* GPS Coordinates */}
-              <div className="space-y-3 p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="space-y-3 rounded-xl border border-primary/15 bg-surface p-4">
                 <div className="flex items-center gap-2 text-blue-700">
                   <AppIcon name="MapPin" size={16} />
                   <h4 className="text-sm font-medium">GPS Coordinates</h4>

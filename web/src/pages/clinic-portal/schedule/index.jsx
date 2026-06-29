@@ -43,6 +43,7 @@ const SchedulePage = () => {
   const [showAppointmentDrawer, setShowAppointmentDrawer] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const clinicRole = useMemo(() => getClinicRole(user), [user]);
   const canObserveVideoRoom = canObserveSessions(clinicRole);
 
@@ -121,6 +122,12 @@ const SchedulePage = () => {
         : null,
       reason: appointment.reason,
       risk: appointment.metadata?.risk ?? 0,
+      rawStatus: appointment.status,
+      fee: Number(appointment.fee) || 0,
+      payment: appointment.payment || null,
+      statusHistory: Array.isArray(appointment.statusHistory) ? appointment.statusHistory : [],
+      createdAt: appointment.createdAt || null,
+      updatedAt: appointment.updatedAt || null,
       tele: appointment.videoRoomRef
         ? { videoRoomUrl: `/clinic-portal/teledentistry?appointmentId=${appointment.id}` }
         : null
@@ -131,6 +138,7 @@ const SchedulePage = () => {
     setRefreshing(true);
     loadStartRef.current = Date.now();
     setLoading(true);
+    setLoadError('');
     try {
       const from = new Date(selectedDate);
       from.setDate(from.getDate() - 45);
@@ -145,7 +153,8 @@ const SchedulePage = () => {
           view: 'clinic',
           from: from.toISOString(),
           to: to.toISOString(),
-          includeHistory: true
+          includeHistory: true,
+          limit: 500
         }),
         ClinicService.getClinicStaffList().catch((err) => {
           console.error('Failed to fetch clinic staff:', err);
@@ -200,7 +209,12 @@ const SchedulePage = () => {
       setLastSyncedAt(new Date());
     } catch (error) {
       console.error('Error fetching clinic schedule:', error);
-      // Keep existing states on error rather than falling back to mock data
+      setLoadError(
+        error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || 'Data jadwal klinik belum dapat dimuat. Coba segarkan kembali.'
+      );
+      // Keep existing data on refresh failure; never replace it with mock data.
     } finally {
       setRefreshing(false);
       finishLoading();
@@ -455,6 +469,25 @@ const SchedulePage = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-background theme-transition">
+          {loadError && (
+            <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-rose-300/60 bg-rose-50/80 p-4 text-rose-900 dark:border-rose-700/50 dark:bg-rose-950/20 dark:text-rose-100 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <Icon name="CloudAlert" size={20} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Sinkronisasi jadwal gagal</p>
+                  <p className="mt-0.5 text-xs opacity-80">{loadError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={loadSchedule}
+                disabled={refreshing}
+                className="min-h-11 rounded-xl border border-current/25 px-4 text-sm font-semibold transition hover:bg-rose-100/70 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-rose-900/30"
+              >
+                {refreshing ? 'Mencoba kembali…' : 'Coba lagi'}
+              </button>
+            </div>
+          )}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Calendar Section Header */}
@@ -536,129 +569,6 @@ const SchedulePage = () => {
                 doctors={doctors}
                 selectedDate={selectedDate}
               />
-
-              {/* Advanced Analytics Section */}
-              <div className="bg-surface rounded-3xl border border-primary/30 shadow-theme-lg theme-transition p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500/10 to-purple-600/5 rounded-2xl flex items-center justify-center border border-purple-200/50">
-                    <Icon name="TrendingUp" size={24} className="text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-primary theme-transition">
-                      {t('clinic.schedule.advancedAnalytics') || 'Advanced Analytics'}
-                    </h3>
-                    <p className="text-sm text-secondary theme-transition">
-                      {t('clinic.schedule.advancedAnalyticsSubtitle') || 'Predictive insights untuk optimisasi klinik'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Advanced Analytics Grid */}
-                <div className="grid gap-6 lg:grid-cols-3 mb-6">
-                  <div className="rounded-2xl border border-primary/15 dark:border-primary/25 bg-surface dark:bg-slate-950/60 shadow-theme-md p-6 theme-transition bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-10 h-10 bg-emerald-500/15 dark:bg-emerald-500/20 rounded-xl flex items-center justify-center">
-                        <Icon name="Brain" size={20} className="text-emerald-600 dark:text-emerald-200" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-primary">{t('clinic.schedule.predictiveAnalytics') || 'Predictive Analytics'}</h4>
-                        <p className="text-xs text-secondary">{t('clinic.schedule.aiDrivenPredictions') || 'AI-driven predictions'}</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.nextWeekDemand') || 'Next week demand'}</span>
-                        <span className="font-semibold text-primary">+23%</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.peakHoursPrediction') || 'Peak hours prediction'}</span>
-                        <span className="font-semibold text-primary">10:00-12:00</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.cancellationRisk') || 'Cancellation risk'}</span>
-                        <span className="font-semibold text-primary">Low (8%)</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-primary/15 dark:border-primary/25 bg-surface dark:bg-slate-950/60 shadow-theme-md p-6 theme-transition bg-gradient-to-br from-blue-500/10 via-transparent to-transparent">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-10 h-10 bg-blue-500/15 dark:bg-blue-500/20 rounded-xl flex items-center justify-center">
-                        <Icon name="Users" size={20} className="text-blue-600 dark:text-blue-200" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-primary">{t('clinic.schedule.patientFlowOptimization') || 'Patient Flow Optimization'}</h4>
-                        <p className="text-xs text-secondary">{t('clinic.schedule.streamlineOperations') || 'Streamline operations'}</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.averageWaitTime') || 'Average wait time'}</span>
-                        <span className="font-semibold text-primary">12 min</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.throughputEfficiency') || 'Throughput efficiency'}</span>
-                        <span className="font-semibold text-primary">87%</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.bottleneckIdentified') || 'Bottleneck identified'}</span>
-                        <span className="font-semibold text-primary">{t('clinic.schedule.xrayRoom') || 'X-Ray Room'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-primary/15 dark:border-primary/25 bg-surface dark:bg-slate-950/60 shadow-theme-md p-6 theme-transition bg-gradient-to-br from-amber-500/10 via-transparent to-transparent">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-10 h-10 bg-amber-500/15 dark:bg-amber-500/20 rounded-xl flex items-center justify-center">
-                        <Icon name="DollarSign" size={20} className="text-amber-600 dark:text-amber-200" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-primary">{t('clinic.schedule.revenueForecasting') || 'Revenue Forecasting'}</h4>
-                        <p className="text-xs text-secondary">{t('clinic.schedule.financialPredictions') || 'Financial predictions'}</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.monthlyProjection') || 'Monthly projection'}</span>
-                        <span className="font-semibold text-primary">Rp 485M</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.growthRate') || 'Growth rate'}</span>
-                        <span className="font-semibold text-primary">+14.2%</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-secondary">{t('clinic.schedule.optimalPricing') || 'Optimal pricing'}</span>
-                        <span className="font-semibold text-primary">{t('clinic.schedule.implemented') || 'Implemented'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Items */}
-                <div className="rounded-2xl border border-primary/15 dark:border-primary/25 bg-surface dark:bg-slate-950/60 shadow-theme-md p-6 theme-transition">
-                  <h4 className="font-semibold text-primary mb-4">{t('clinic.schedule.actionableInsights') || 'Actionable Insights'}</h4>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="flex items-start space-x-3">
-                      <div className="w-6 h-6 bg-indigo-500/10 dark:bg-indigo-600/20 rounded-lg flex items-center justify-center mt-0.5">
-                        <Icon name="AlertTriangle" size={14} className="text-indigo-600 dark:text-indigo-200" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-primary">{t('clinic.schedule.recommendation1') || 'Add 2 more slots at 10:00-11:00'}</p>
-                        <p className="text-xs text-secondary">{t('clinic.schedule.recommendation1Desc') || 'High demand period with 23% increase expected'}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start space-x-3">
-                      <div className="w-6 h-6 bg-purple-500/10 dark:bg-purple-600/20 rounded-lg flex items-center justify-center mt-0.5">
-                        <Icon name="Zap" size={14} className="text-purple-600 dark:text-purple-200" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-primary">{t('clinic.schedule.recommendation2') || 'Optimize X-Ray scheduling'}</p>
-                        <p className="text-xs text-secondary">{t('clinic.schedule.recommendation2Desc') || 'Reduce bottleneck by 15 minutes average'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
         </div>

@@ -17,6 +17,20 @@ import {
   buildQualityMetricsFromFile,
   createWorkspaceRaceGuard,
 } from './caseWorkspaceModels.mjs';
+import {
+  buildVisualFindingsFromCaseAnalysis,
+  rehydrateAnnotatedImageArtifacts,
+} from './caseAnalysisMapper.mjs';
+import {
+  buildFollowUpMessage,
+  buildJournalReferenceQuestion,
+  findLatestVisualFindings,
+} from './dentalConversationContext.mjs';
+
+const WORKSPACE_API_BASE_URL = [
+  (import.meta.env.VITE_AUTH_API_BASE_URL || 'http://localhost:4000').replace(/\/$/, ''),
+  (import.meta.env.VITE_AUTH_API_VERSION || '').replace(/^\//, ''),
+].filter(Boolean).join('/');
 
 function classifyError(content = '', err = null) {
   const raw = (content + (err?.message || '') + (err?.code || '')).toLowerCase();
@@ -251,42 +265,6 @@ function createCaseWorkspaceDraft({ sessionId, imageFile, findings }) {
     timelineLinkReady: false,
   };
 }
-function buildVisualFindingsFromCaseAnalysis({ analysis = {}, qualityCheck = null } = {}) {
-  const aiFindings = analysis.findings || analysis.analysis?.findings || [];
-  const rawAiResult = analysis.visual_findings || analysis.analysis?.visual_findings || aiFindings[0]?.raw_ai_result || {};
-  const aiDetections = rawAiResult.detections || [];
-  const rawFindings = Array.isArray(rawAiResult.findings) ? rawAiResult.findings : [];
-  const displayFindings = rawFindings.length > 0
-    ? rawFindings
-    : aiFindings.map((finding) => ({
-        location: finding.tooth_or_region,
-        tooth_or_region: finding.tooth_or_region,
-        severity: finding.severity,
-        confidence: finding.confidence,
-        description: finding.notes || finding.label,
-        label: finding.label,
-      }));
-
-  return normalizeVisualFindings({
-    image_quality: rawAiResult.image_quality || qualityCheck?.quality_status || 'quality_checked',
-    concern_level: rawAiResult.concern_level || (aiFindings.some((finding) => ['critical', 'severe'].includes(finding.severity)) ? 'high' : 'moderate'),
-    findings: displayFindings,
-    detections: aiDetections.map((det) => ({
-      mark_id: det.mark_id,
-      label: det.label,
-      confidence: det.confidence,
-      bbox: det.bbox,
-    })),
-    recommendations: rawAiResult.recommendations?.length
-      ? rawAiResult.recommendations
-      : qualityCheck?.recommendation ? [qualityCheck.recommendation] : [],
-    limitations: rawAiResult.limitations || 'AI-assisted case findings are preliminary until clinician confirmation.',
-    suggested_questions: rawAiResult.suggested_questions || [],
-    annotated_image_mime_type: analysis.image?.annotated_image_mime_type || analysis.analysis?.image?.annotated_image_mime_type || null,
-    annotated_image_signed_url: analysis.image?.annotated_image_signed_url || analysis.analysis?.image?.annotated_image_signed_url || null,
-  });
-}
-
 function getWorkspaceErrorHint(error) {
   const payload = error?.response?.data || {};
   const apiError = payload?.error;
@@ -552,8 +530,18 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       setMessages(loaded);
       try {
         const sessionCase = await caseClient.getSessionCase(sid);
-        if (sessionCase.case?.id) await loadCaseWorkspace(sessionCase.case.id);
-        else setCaseWorkspace((current) => current.caseRecord?.session_id === sid ? current : { ...current, caseRecord: null, images: [], findings: [], auditEvents: [], exports: [], timeline: [], error: null });
+        if (sessionCase.case?.id) {
+          const workspace = await loadCaseWorkspace(sessionCase.case.id);
+          if (workspace) {
+            setMessages(rehydrateAnnotatedImageArtifacts({
+              messages: loaded,
+              images: workspace.images,
+              authBaseUrl: WORKSPACE_API_BASE_URL,
+            }));
+          }
+        } else {
+          setCaseWorkspace((current) => current.caseRecord?.session_id === sid ? current : { ...current, caseRecord: null, images: [], findings: [], auditEvents: [], exports: [], timeline: [], error: null });
+        }
       } catch {
         setCaseWorkspace((current) => current.caseRecord?.session_id === sid ? current : { ...current, caseRecord: null, images: [], findings: [], auditEvents: [], exports: [], timeline: [], error: null });
       }
@@ -674,6 +662,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       let textContent = '';
       let sources = [];
       let suggestedQuestions = [];
+      const priorVisualFindings = imageFile ? null : findLatestVisualFindings(messages);
 
       if (imageFile) {
         try {
@@ -698,7 +687,11 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
                   context: trimmedMessage || 'Analisis klinis gambar dental dalam Bahasa Indonesia untuk dokter gigi.',
                 });
                 const analysis = analysisData.analysis || analysisData;
-                findings = buildVisualFindingsFromCaseAnalysis({ analysis, qualityCheck });
+                findings = buildVisualFindingsFromCaseAnalysis({
+                  analysis,
+                  qualityCheck,
+                  authBaseUrl: WORKSPACE_API_BASE_URL,
+                });
                 textContent = buildSummary(findings) || 'Analisis server-side selesai. Temuan masih berupa AI suggestion dan menunggu konfirmasi klinisi.';
               } else {
                 findings = normalizeVisualFindings({
@@ -733,7 +726,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
         }
       } else {
         const chatData = await client.chat({
-          message: trimmedMessage,
+          message: buildFollowUpMessage(messages, trimmedMessage),
           session_id: activeSid,
           role,
           language,
@@ -745,39 +738,28 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
         suggestedQuestions = chatData.suggested_questions || [];
       }
 
-      const isImageAnalysis = !!imageFile;
-      if (isImageAnalysis) {
-        const labels = [
-          ...new Set([
-            ...(findings?.detections || []).map((d) => d.label),
-            ...(findings?.findings || []).map((f) => f.label || f.description),
-          ].filter(Boolean))
-        ];
+      const referenceFindings = imageFile ? findings : priorVisualFindings;
+      const referenceQuestion = buildJournalReferenceQuestion({
+        message: trimmedMessage,
+        findings: referenceFindings,
+      });
+      if (referenceFindings && referenceQuestion) {
+        try {
+          const referenceData = await client.knowledgeQuery({
+            question: referenceQuestion,
+            role,
+            k: 6,
+          }, requestController.signal);
 
-        // Determine RAG question: prefer user message context, fallback to findings
-        const ragQuestion = trimmedMessage || (labels.length > 0
-          ? `Analisis klinis lengkap dan perawatan untuk: ${labels.join(', ')}. Sertakan diagnosis diferensial, tingkat keparahan, opsi perawatan, dan prognosis. Jawab dalam Bahasa Indonesia.`
-          : '');
-
-        if (ragQuestion) {
-          try {
-            const kbData = await client.knowledgeQuery({
-              question: ragQuestion,
-              role,
-              k: 6,
-            }, requestController.signal);
-
-            sources = [...sources, ...(kbData.sources || [])];
-            if (kbData.answer) {
-              if (textContent) {
-                textContent = `${textContent}\n\n---\n\n### 📚 Analisis RAG & Rujukan Jurnal\n${kbData.answer}`;
-              } else {
-                textContent = kbData.answer;
-              }
-            }
-          } catch (kbError) {
-            console.warn('RAG/Knowledge query failed for image:', kbError);
+          sources = [...sources, ...(referenceData.sources || [])];
+          if (referenceData.answer) {
+            const referenceSection = `### 📚 Rujukan Jurnal\n${referenceData.answer}`;
+            textContent = textContent
+              ? `${textContent}\n\n---\n\n${referenceSection}`
+              : referenceSection;
           }
+        } catch (referenceError) {
+          console.warn('Journal reference query failed:', referenceError);
         }
       }
 
@@ -816,7 +798,7 @@ export default function useDentalAPI(role = 'dentist', dentistId = null, languag
       abortControllersRef.current.delete(requestController);
       setIsLoading(false);
     }
-  }, [addMessage, caseClient, client, createSession, createTrackedObjectUrl, language, loadCaseWorkspace, role, sessionId]);
+  }, [addMessage, caseClient, client, createSession, createTrackedObjectUrl, language, loadCaseWorkspace, messages, role, sessionId]);
 
   const reviewFindings = useCallback((messageId, status) => {
     const updatedAt = new Date().toISOString();

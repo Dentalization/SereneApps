@@ -44,3 +44,53 @@ test('DeepDental image artifacts are not cached in localStorage', () => {
   assert.equal(source.includes('userImageBase64'), false);
   assert.match(source, /clinicalArtifactStore/);
 });
+
+test('DeepDental UI does not expose internal RAG terminology', () => {
+  const source = read('web/src/pages/dentist-portal/ai/components/useDentalAPI.js');
+
+  assert.equal(source.includes('Analisis RAG'), false);
+  assert.match(source, /Rujukan Jurnal/);
+});
+
+test('Visual findings support low concern and non-numeric confidence labels', () => {
+  const source = read('web/src/pages/dentist-portal/ai/components/VisualFindingsCard.jsx');
+
+  assert.match(source, /low:/);
+  assert.match(source, /formatConfidence/);
+  assert.doesNotMatch(source, /finding\\.confidence\\s*&&/);
+});
+
+test('DeepDental clinical UI uses permanent safety copy and Indonesian presentation labels', () => {
+  const page = read('web/src/pages/dentist-portal/ai/index.jsx');
+  const input = read('web/src/pages/dentist-portal/ai/components/InputBar.jsx');
+  const findings = read('web/src/pages/dentist-portal/ai/components/VisualFindingsCard.jsx');
+  const history = read('web/src/pages/dentist-portal/ai/components/ClinicalHistorySidebar.jsx');
+  const clinician = read('web/src/pages/dentist-portal/ai/components/ClinicianFindingPanel.jsx');
+  const audit = read('web/src/pages/dentist-portal/ai/components/AuditTrailPanel.jsx');
+  const patient = read('web/src/pages/dentist-portal/ai/components/PatientLinkModal.jsx');
+
+  assert.match(page, /ScanLine/);
+  assert.match(page, /Stethoscope/);
+  assert.match(page, /BookOpen/);
+  assert.match(page, /Reset Sesi/);
+  assert.doesNotMatch(page, /Knowledge RAG|YOLO AI/);
+  assert.doesNotMatch(input, /opacity-0 group-hover:opacity-100 transition-opacity duration-500 select-none/);
+
+  for (const label of [
+    'Temuan Klinis',
+    'Penanda Patologi',
+    'Temuan Terperinci',
+    'Tinjauan Dokter Gigi',
+    'Gambar dental teranotasi ukuran penuh',
+  ]) {
+    assert.match(findings, new RegExp(label));
+  }
+
+  assert.match(history, /Riwayat Klinis/);
+  assert.match(history, /Obrolan/);
+  assert.match(clinician, /Dikonfirmasi dokter/);
+  assert.match(clinician, /Tambah temuan/);
+  assert.match(audit, /ID Permintaan:/);
+  assert.match(patient, /Tautkan pasien/);
+  assert.match(patient, /Konfirmasi tautan/);
+});

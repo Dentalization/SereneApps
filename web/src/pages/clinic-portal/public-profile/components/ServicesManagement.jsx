@@ -6,6 +6,7 @@ import Input from '../../../../components/ui/Input';
 // Pastikan path import ModalPortal ini sesuai dengan struktur project Anda
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
+import AppIcon from '../../../../components/AppIcon';
 
 const ServicesManagement = () => {
   const { user } = useAuth();
@@ -192,7 +193,7 @@ const ServicesManagement = () => {
   if (!canEdit) {
     return (
       <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
-        <span className="text-2xl">🔒</span>
+        <AppIcon name="ShieldAlert" size={22} className="shrink-0" />
         <span className="font-medium">You don't have permission to manage services. Contact your clinic owner or manager.</span>
       </div>
     );
@@ -206,6 +207,7 @@ const ServicesManagement = () => {
           "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
           message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
+          <AppIcon name={message.type === 'success' ? 'CircleCheck' : 'CircleAlert'} size={18} className="shrink-0" />
           {message.text}
         </div>
       )}
@@ -216,21 +218,21 @@ const ServicesManagement = () => {
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Services & Pricing</h2>
           <p className="text-muted-foreground mt-1">Manage your clinic's service catalog and pricing</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
-          <span className="mr-2 text-lg">+</span> Add New Service
+        <Button onClick={() => handleOpenDialog()} className="inline-flex items-center gap-2 rounded-xl shadow-sm transition-all">
+          <AppIcon name="Plus" size={16} /> Add New Service
         </Button>
       </div>
 
       {/* Services List */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
-          <p className="text-muted-foreground animate-pulse">Loading services...</p>
+          <AppIcon name="LoaderCircle" size={30} className="animate-spin text-brand-primary" />
+          <p className="text-muted-foreground">Loading services...</p>
         </div>
       ) : services.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
-            🩺
+        <div className="rounded-2xl border border-primary/15 bg-surface-elevated p-12 text-center">
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary">
+            <AppIcon name="Stethoscope" size={25} />
           </div>
           <h3 className="text-xl font-semibold text-foreground mb-2">No Services Yet</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">Start building your service catalog to showcase your treatments to patients.</p>
@@ -243,7 +245,7 @@ const ServicesManagement = () => {
           {services.map((service) => (
             <div
               key={service.id}
-              className="group bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden flex flex-col justify-between h-full"
+              className="group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated p-6 transition-colors hover:border-accent/35"
             >
               <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                 <button
@@ -251,26 +253,26 @@ const ServicesManagement = () => {
                   className="p-2 bg-white/90 dark:bg-gray-700/90 backdrop-blur-sm text-gray-400 hover:text-brand-primary rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-all hover:scale-105"
                   title="Edit"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                  <AppIcon name="Pencil" size={16} />
                 </button>
                 <button
                   onClick={() => handleDelete(service.id)}
                   className="p-2 bg-white/90 dark:bg-gray-700/90 backdrop-blur-sm text-gray-400 hover:text-red-500 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-all hover:scale-105"
                   title="Delete"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  <AppIcon name="Trash2" size={16} />
                 </button>
               </div>
 
               <div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm",
+                    "flex h-11 w-11 items-center justify-center rounded-xl border",
                     service.category === 'specialist'
-                      ? "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400"
-                      : "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                      ? "border-violet-500/20 bg-violet-500/5 text-violet-600 dark:text-violet-400"
+                      : "border-accent/20 bg-accent/5 text-accent"
                   )}>
-                    {service.category === 'specialist' ? '🦷' : '🩺'}
+                    <AppIcon name={service.category === 'specialist' ? 'ScanLine' : 'Stethoscope'} size={21} />
                   </div>
                   <div>
                     <h3 className="font-bold text-lg text-foreground line-clamp-1 group-hover:text-brand-primary transition-colors">
@@ -305,7 +307,7 @@ const ServicesManagement = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <AppIcon name="Clock3" size={16} />
                     {service.duration_minutes} min
                   </div>
                 </div>
@@ -347,7 +349,7 @@ const ServicesManagement = () => {
                   onClick={handleCloseDialog}
                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  <AppIcon name="X" size={22} />
                 </button>
               </div>
 
@@ -388,7 +390,7 @@ const ServicesManagement = () => {
                             <option value="specialist">Specialist Treatment</option>
                           </select>
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            <AppIcon name="ChevronDown" size={18} />
                           </div>
                         </div>
                       </div>
@@ -408,7 +410,7 @@ const ServicesManagement = () => {
                               ))}
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                              <AppIcon name="ChevronDown" size={18} />
                             </div>
                           </div>
                         </div>

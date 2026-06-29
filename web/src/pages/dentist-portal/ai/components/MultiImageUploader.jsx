@@ -151,10 +151,19 @@ export default function MultiImageUploader({
                 <div className="flex gap-3">
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-200 dark:bg-slate-800">
                     {preview ? (
-                      <img src={preview} alt={image.file_name || image.name || 'Dental case image'} className="h-full w-full object-cover" />
+                      <img
+                        src={preview}
+                        alt={image.file_name || image.name || 'Dental case image'}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
+                          event.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                      />
                     ) : (
                       <ImagePlus className="m-5 h-6 w-6 text-slate-400" />
                     )}
+                    {preview && <ImagePlus className="m-5 hidden h-6 w-6 text-slate-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">

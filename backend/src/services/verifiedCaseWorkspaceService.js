@@ -1103,13 +1103,17 @@ export function createVerifiedCaseWorkspaceService({
       }
       const pending = workingCase;
       await recordTimeline({ caseRecord: pending, actor, eventType: 'analysis_completed' });
+      const responseVisualFindings = sanitizeRawAiResult({
+        ...persistedRawAiResult,
+        ...(aiResult.normalized_findings || {}),
+      });
       return {
         image: {
           ...updatedImage,
           annotated_image_signed_url: updatedImage.annotated_image_ref ? await storage.getSignedUrl(updatedImage.annotated_image_ref) : null,
         },
         findings: createdFindings,
-        visual_findings: persistedRawAiResult,
+        visual_findings: responseVisualFindings,
         case: pending,
       };
     },

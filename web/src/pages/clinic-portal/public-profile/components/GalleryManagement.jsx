@@ -5,6 +5,7 @@ import Button from '../../../../components/ui/Button';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
 import { resolveMediaUrl } from '../../../../utils/media';
+import AppIcon from '../../../../components/AppIcon';
 
 const GalleryManagement = () => {
   const { user } = useAuth();
@@ -119,7 +120,7 @@ const GalleryManagement = () => {
   if (!canEdit) {
     return (
       <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
-        <span className="text-2xl">🔒</span>
+        <AppIcon name="ShieldAlert" size={22} className="shrink-0" />
         <span className="font-medium">You don't have permission to manage gallery. Contact your clinic owner or manager.</span>
       </div>
     );
@@ -133,6 +134,7 @@ const GalleryManagement = () => {
           "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
           message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
+          <AppIcon name={message.type === 'success' ? 'CircleCheck' : 'CircleAlert'} size={18} className="shrink-0" />
           {message.text}
         </div>
       )}
@@ -143,21 +145,21 @@ const GalleryManagement = () => {
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Gallery & Photos</h2>
           <p className="text-muted-foreground mt-1">Showcase your clinic's environment and facilities</p>
         </div>
-        <Button onClick={() => setShowDialog(true)} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
-          <span className="mr-2 text-lg">📷</span> Upload Image
+        <Button onClick={() => setShowDialog(true)} className="inline-flex items-center gap-2 rounded-xl shadow-sm transition-all">
+          <AppIcon name="ImagePlus" size={16} /> Upload Image
         </Button>
       </div>
 
       {/* Gallery Grid */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
-          <p className="text-muted-foreground animate-pulse">Loading gallery...</p>
+          <AppIcon name="LoaderCircle" size={30} className="animate-spin text-brand-primary" />
+          <p className="text-muted-foreground">Loading gallery...</p>
         </div>
       ) : images.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
-            🖼️
+        <div className="rounded-2xl border border-primary/15 bg-surface-elevated p-12 text-center">
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary">
+            <AppIcon name="Images" size={25} />
           </div>
           <h3 className="text-xl font-semibold text-foreground mb-2">Gallery is Empty</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">Upload high-quality photos of your clinic to build trust with potential patients.</p>
@@ -168,7 +170,7 @@ const GalleryManagement = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {images.map((image) => (
-            <div key={image.id} className="group relative bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div key={image.id} className="group relative overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated transition-colors hover:border-accent/35">
               <div className="aspect-[4/3] w-full relative bg-gray-100 dark:bg-gray-700 overflow-hidden">
                 <img
                   src={image.image_url}
@@ -193,7 +195,7 @@ const GalleryManagement = () => {
                     className="p-2 bg-white/90 backdrop-blur-sm text-red-500 hover:bg-red-500 hover:text-white rounded-lg shadow-sm transition-colors"
                     title="Delete Image"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    <AppIcon name="Trash2" size={16} />
                   </button>
                 </div>
               </div>
@@ -236,7 +238,7 @@ const GalleryManagement = () => {
                   }}
                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  <AppIcon name="X" size={22} />
                 </button>
               </div>
 
@@ -258,7 +260,7 @@ const GalleryManagement = () => {
                         ))}
                       </select>
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        <AppIcon name="ChevronDown" size={18} />
                       </div>
                     </div>
                   </div>
@@ -283,18 +285,16 @@ const GalleryManagement = () => {
                         <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
                           {uploadData.file ? (
                             <>
-                              <div className="w-12 h-12 mb-3 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-brand-primary/20 bg-brand-primary/10 text-brand-primary">
+                                <AppIcon name="FileCheck2" size={21} />
                               </div>
                               <p className="text-sm text-gray-900 dark:text-white font-medium truncate max-w-full px-4">{uploadData.file.name}</p>
                               <p className="text-xs text-brand-primary mt-1">Click to change file</p>
                             </>
                           ) : (
                             <>
-                              <div className="w-12 h-12 mb-3 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:bg-white group-hover:text-brand-primary transition-colors flex items-center justify-center shadow-sm">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                                </svg>
+                              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary transition-colors group-hover:border-brand-primary/30 group-hover:text-brand-primary">
+                                <AppIcon name="UploadCloud" size={21} />
                               </div>
                               <p className="text-sm text-gray-600 dark:text-gray-400"><span className="font-semibold text-brand-primary">Click to upload</span> or drag and drop</p>
                               <p className="text-xs text-gray-400 mt-1">PNG, JPG, WebP (Max 5MB)</p>

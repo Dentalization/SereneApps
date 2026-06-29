@@ -5,6 +5,32 @@
  */
 
 import api from './api';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const MAX_STORED_IMAGE_BYTES = 6 * 1024 * 1024;
+
+const inferImageMimeType = (uri = '') => {
+  const normalized = String(uri).toLowerCase();
+  if (normalized.includes('.png')) return 'image/png';
+  if (normalized.includes('.webp')) return 'image/webp';
+  return 'image/jpeg';
+};
+
+const toPersistableImageUrl = async (value) => {
+  if (!value || typeof value !== 'string') return null;
+  if (/^data:image\//i.test(value)) {
+    return value.length <= 8 * 1024 * 1024 ? value : null;
+  }
+  if (/^(https?:\/\/|\/uploads\/)/i.test(value)) return value;
+  if (!/^(file|content):\/\//i.test(value)) return null;
+
+  const info = await FileSystem.getInfoAsync(value);
+  if (!info?.exists || (info.size && info.size > MAX_STORED_IMAGE_BYTES)) return null;
+  const base64 = await FileSystem.readAsStringAsync(value, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return `data:${inferImageMimeType(value)};base64,${base64}`;
+};
 
 /**
  * Save AI analysis result to backend
@@ -25,12 +51,22 @@ export const saveAIAnalysis = async (analysisResult) => {
     }));
 
     const rawRecommendations = Array.isArray(analysisResult.recommendations) ? analysisResult.recommendations : [];
-    const recommendations = rawRecommendations.map((r) => ({
-      title: r.title || r.name || r.action || 'Rekomendasi',
-      description: r.description || r.text || r.details || r.recommendation || '',
-      priority: r.priority || r.importance || 'normal',
-      urgency: r.urgency || r.timeframe || 'normal',
-    }));
+    const recommendations = rawRecommendations.map((r) => {
+      if (typeof r === 'string') {
+        return {
+          title: 'Rekomendasi',
+          description: r,
+          priority: 'normal',
+          urgency: 'normal',
+        };
+      }
+      return {
+        title: r.title || r.name || r.action || 'Rekomendasi',
+        description: r.description || r.text || r.details || r.recommendation || '',
+        priority: r.priority || r.importance || 'normal',
+        urgency: r.urgency || r.timeframe || 'normal',
+      };
+    });
 
     // Extract confidence from multiple possible sources
     const confidenceScoreRaw = analysisResult.confidence_score || analysisResult.confidenceScore || analysisResult.confidence;
@@ -48,7 +84,10 @@ export const saveAIAnalysis = async (analysisResult) => {
     // Previously capped at 300k chars, causing missing images on web.
     // Now allowing full base64 string to pass through.
     const annotatedRaw = analysisResult.annotatedImageUrl || analysisResult.annotated_image_url || null;
-    const annotatedImageUrl = annotatedRaw; 
+    const [imageUrl, annotatedImageUrl] = await Promise.all([
+      toPersistableImageUrl(analysisResult.imageUrl || analysisResult.image_url || null),
+      toPersistableImageUrl(annotatedRaw),
+    ]);
 
     const rawSession = analysisResult.session_id || analysisResult.sessionId || analysisResult.id;
     const sessionIdSafe = typeof rawSession === 'string' ? rawSession.slice(0, 255) : String(rawSession || '').slice(0, 255);
@@ -83,7 +122,7 @@ export const saveAIAnalysis = async (analysisResult) => {
 
     const payload = {
       sessionId: sessionIdSafe,
-      imageUrl: analysisResult.imageUrl || analysisResult.image_url || null,
+      imageUrl,
       annotatedImageUrl, // Now contains the full base64 string
       findings,
       summary,
@@ -104,11 +143,8 @@ export const saveAIAnalysis = async (analysisResult) => {
     // Defensive: avoid sending extremely large payloads that may break the server
     try {
       const payloadSize = JSON.stringify(payload).length;
-      if (payloadSize > 200000) {
-        // mark and remove annotated image to keep payload small
-        payload.metadata.annotatedImageTooLarge = true;
-        payload.annotatedImageUrl = null;
-        console.warn('AI analysis payload large, stripping annotatedImageUrl before send:', payloadSize);
+      if (payloadSize > 12 * 1024 * 1024) {
+        throw new Error('AI analysis payload exceeds the secure upload limit.');
       }
 
       const response = await api.post('/ai-analysis', payload);
@@ -116,7 +152,7 @@ export const saveAIAnalysis = async (analysisResult) => {
     } catch (postError) {
       const status = postError.response?.status;
       // If server error (5xx) and we originally included annotated image, retry without it
-      if ((status >= 500 || status === undefined) && annotatedImageUrl) {
+      if ((status === 413 || status >= 500 || status === undefined) && annotatedImageUrl) {
         try {
           const fallback = { ...payload };
           fallback.annotatedImageUrl = null;

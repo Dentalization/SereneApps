@@ -12,7 +12,13 @@ test('case analysis adapter sends the documented image analysis multipart contra
       request = { url: String(url), init };
       return new Response(JSON.stringify({
         image_quality: 'adequate',
-        findings: [],
+        findings: [{
+          location: 'FDI 47',
+          finding: 'Visible brown opacity in the occlusal fissure.',
+          differentials: ['Extrinsic stain', 'Early demineralization'],
+          severity: 'mild',
+          confidence: 'medium',
+        }],
         detections: [],
         concern_level: 'low',
         recommendations: [],
@@ -27,7 +33,7 @@ test('case analysis adapter sends the documented image analysis multipart contra
     },
   });
 
-  await adapter.analyzeImage({
+  const result = await adapter.analyzeImage({
     imageBuffer: Buffer.from('image-bytes'),
     image: { file_name: 'scan.jpg', mime_type: 'image/jpeg' },
     context: 'Review tooth 36.',
@@ -43,9 +49,13 @@ test('case analysis adapter sends the documented image analysis multipart contra
   ]);
   assert.match(request.init.body.get('context'), /Review tooth 36\./);
   assert.match(request.init.body.get('context'), /limitations/i);
+  assert.match(request.init.body.get('context'), /visible evidence/i);
+  assert.match(request.init.body.get('context'), /differentials/i);
   assert.equal(request.init.body.get('role'), 'dentist');
   assert.equal(request.init.body.get('include_annotated'), 'true');
   assert.equal(request.init.body.has('language'), false);
+  assert.equal(result.normalized_findings.findings[0].description, 'Visible brown opacity in the occlusal fissure.');
+  assert.deepEqual(result.normalized_findings.findings[0].differentials, ['Extrinsic stain', 'Early demineralization']);
 });
 
 test('case analysis adapter retries once when DeepDental structured output parsing fails', async () => {
@@ -119,6 +129,32 @@ test('case analysis adapter does not retry authentication or validation failures
   assert.equal(requestCount, 1);
 });
 
+test('case analysis adapter bounds structured-output repair attempts', async () => {
+  let requestCount = 0;
+  const adapter = createDeepDentalCaseAnalysisAdapter({
+    baseUrl: 'https://deepdental.test',
+    apiKey: 'server-key',
+    fetchImpl: async () => {
+      requestCount += 1;
+      return new Response(JSON.stringify({
+        detail: 'Vision analysis error: OUTPUT_PARSING_FAILURE',
+      }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  await assert.rejects(
+    () => adapter.analyzeImage({
+      imageBuffer: Buffer.from('image-bytes'),
+      image: { file_name: 'scan.jpg', mime_type: 'image/jpeg' },
+    }),
+    (error) => error.status === 500
+  );
+  assert.equal(requestCount, 3);
+});
+
 test('case analysis adapter promotes YOLO detections when detailed findings are empty', async () => {
   const adapter = createDeepDentalCaseAnalysisAdapter({
     baseUrl: 'https://deepdental.test',
@@ -152,6 +188,12 @@ test('case analysis adapter promotes YOLO detections when detailed findings are 
   assert.equal(result.normalized_findings.findings.length, 1);
   assert.equal(result.normalized_findings.findings[0].label, 'caries');
   assert.equal(result.normalized_findings.findings[0].confidence, 0.84);
+  assert.match(result.normalized_findings.findings[0].description, /84% detector confidence/);
+  assert.deepEqual(result.normalized_findings.findings[0].differentials, [
+    'Extrinsic staining',
+    'Developmental groove pigmentation',
+    'Early enamel demineralization',
+  ]);
   assert.deepEqual(result.normalized_findings.recommendations, ['Perform a clinical examination.']);
   assert.equal(result.normalized_findings.limitations, 'Radiographic interpretation requires clinical correlation.');
 });

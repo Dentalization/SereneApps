@@ -80,7 +80,6 @@ const AnalysisScreen = ({ route, navigation }) => {
         sessionId,
         imageUris: images.map((img) => img.uri),
         language: 'id',
-        role: 'patient',
       });
 
       // Stage 4: Process results
@@ -102,11 +101,15 @@ const AnalysisScreen = ({ route, navigation }) => {
             findings: analysisResponse.data.reply || analysisResponse.data.content || '',
             summary: vf.summary || vf.overall_summary || '',
             overall_assessment: vf.overall_assessment || '',
-            risk_level: vf.risk_level || 'unknown',
+            risk_level: vf.concern_level || vf.risk_level || 'unknown',
             confidence_score: typeof vf.confidence === 'number' ? Math.round(vf.confidence * 100) : vf.confidence_score || null,
             detections: vf.detections || [],
             recommendations: vf.recommendations || [],
-            image_url: analysisResponse.data.images?.[0]?.url || null,
+            image_url:
+              analysisResponse.data.source_image_uri ||
+              analysisResponse.data.images?.[0]?.url ||
+              images[0]?.uri ||
+              null,
             annotated_image_url: vf.annotated_image_base64 ? `data:image/jpeg;base64,${vf.annotated_image_base64}` : null,
             timestamp: new Date().toISOString(),
           };

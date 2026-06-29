@@ -2,14 +2,15 @@ import axios from 'axios';
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AI_URL, AI_API_KEY, API_CONFIG } from '../config/api.config';
+import { AI_URL, API_CONFIG } from '../config/api.config';
+import { API_BASE_URL } from './api';
 
 // MOCK MODE DISABLED - Using real DeepDental API
 const ENABLE_MOCK = false;
 
 console.log('🤖 AI DIAGNOSIS SERVICE - REAL API MODE');
-console.log('   API URL:', AI_URL);
-console.log('   API Key:', AI_API_KEY ? `${AI_API_KEY.substring(0, 15)}...` : 'NOT SET');
+const AI_PROXY_URL = AI_URL || `${API_BASE_URL}/py-api/api/v1`;
+console.log('   API Proxy URL:', AI_PROXY_URL);
 
 // Request queue to prevent overwhelming the server
 let requestQueue = [];
@@ -19,11 +20,8 @@ const MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
 
 // Create axios instance
 const aiClient = axios.create({
-  baseURL: AI_URL,
+  baseURL: AI_PROXY_URL,
   timeout: API_CONFIG.AI_TIMEOUT,
-  headers: {
-    'X-API-Key': AI_API_KEY,
-  },
 });
 
 // Retry configuration
@@ -33,6 +31,86 @@ const RETRY_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
 // Longer timeout for image analysis (first upload often slower due to cold start)
 const IMAGE_ANALYSIS_TIMEOUT = 240000; // 4 minutes for image analysis
+const PATIENT_ROLE = 'patient';
+
+const normalizeMessages = (data) => {
+  const messages = Array.isArray(data) ? data : (data?.messages || data?.items || []);
+  return messages.map((message) => ({
+    ...message,
+    id: message.id || message.message_id,
+    role: message.role || message.sender || 'assistant',
+    actorType: message.actorType || (message.role === 'user' ? PATIENT_ROLE : message.role),
+    content: message.content || message.message || message.reply || '',
+    created_at: message.created_at || message.createdAt || null,
+  }));
+};
+
+const normalizeAnnotatedImage = (data = {}) => {
+  const visual = data.visual_findings || data.analysis?.visual_findings || {};
+  return data.annotated_image_signed_url ||
+    data.annotated_image_url ||
+    data.annotated_image_base64 ||
+    data.annotated_image ||
+    visual.annotated_image_signed_url ||
+    visual.annotated_image_base64 ||
+    null;
+};
+
+const PATIENT_ANALYSIS_CONTEXT = [
+  'Analyze this dental image for a patient-facing screening result.',
+  'Use cautious language and never present the output as a definitive diagnosis.',
+  'Return a complete structured response with image_quality, findings, detections, concern_level, recommendations, limitations, suggested_questions, and processing_time_ms.',
+  'The limitations field is mandatory and must explain the limits of the image, modality, field of view, and AI interpretation.',
+  'Use empty arrays instead of omitting array fields. Respond in Bahasa Indonesia.',
+].join(' ');
+
+const isStructuredAnalysisFailure = (error) => {
+  if (error?.response?.status !== 500) return false;
+  const data = error.response?.data || {};
+  const detail = [
+    data.detail,
+    data.message,
+    data.error?.code,
+    data.error?.message,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return /output[_ ]parsing|failed to parse|pydantic|schema|limitations|vision analysis/.test(detail);
+};
+
+const toPatientAnalysisPayload = (analyses, sessionId) => {
+  const items = analyses.filter(Boolean);
+  const detections = items.flatMap((item) => item.detections || item.visual_findings?.detections || []);
+  const findings = items.flatMap((item) => item.findings || item.visual_findings?.findings || []);
+  const recommendations = [...new Set(items.flatMap((item) => item.recommendations || item.visual_findings?.recommendations || []))];
+  const primary = items[0] || {};
+  const concernLevel = items
+    .map((item) => item.concern_level || item.visual_findings?.concern_level)
+    .find(Boolean) || 'low';
+  const summary = findings
+    .map((finding) => finding.finding || finding.description || finding.label)
+    .filter(Boolean)
+    .join(' ');
+  const visualFindings = {
+    image_quality: primary.image_quality || primary.visual_findings?.image_quality || {},
+    findings,
+    detections,
+    concern_level: concernLevel,
+    recommendations,
+    limitations: primary.limitations || primary.visual_findings?.limitations || '',
+    suggested_questions: primary.suggested_questions || primary.visual_findings?.suggested_questions || [],
+    annotated_image_base64: normalizeAnnotatedImage(primary),
+  };
+  return {
+    ...primary,
+    session_id: sessionId,
+    reply: summary || 'Analisis gambar selesai. Hasil ini merupakan skrining AI dan perlu dikonfirmasi oleh dokter gigi.',
+    visual_findings: visualFindings,
+    annotated_image_base64: visualFindings.annotated_image_base64,
+    detections,
+    findings,
+    recommendations,
+    concern_level: concernLevel,
+  };
+};
 
 // Sleep utility
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -109,7 +187,12 @@ const requestWithRetry = async (config, retries = MAX_RETRIES) => {
 
 // Request interceptor for logging
 aiClient.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    const accessToken = await AsyncStorage.getItem('accessToken');
+    if (accessToken) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
     if (__DEV__) {
       console.log(`🤖 AI Request: ${config.method?.toUpperCase()} ${config.url}`);
     }
@@ -209,7 +292,7 @@ export const createSession = async (metadata = {}) => {
     }
     
     const response = await aiClient.post('/sessions', {
-      role: 'patient',
+      role: PATIENT_ROLE,
       language: 'bilingual',
       metadata: {
         source: 'mobile_app',
@@ -220,7 +303,7 @@ export const createSession = async (metadata = {}) => {
     return {
       success: true,
       data: response.data,
-      sessionId: response.data.id,
+      sessionId: response.data.id || response.data.session_id || response.data.session?.id,
     };
   } catch (error) {
     return {
@@ -291,6 +374,9 @@ export const listSessions = async (page = 1, perPage = 20) => {
   try {
     // Get current Serene user ID to filter sessions
     const sereneUserId = await getSereneUserId();
+    if (!sereneUserId) {
+      return { success: true, data: { sessions: [] }, sessions: [], total: 0 };
+    }
     
     if (__DEV__) {
       console.log('📋 Listing sessions for Serene user:', sereneUserId || 'anonymous');
@@ -302,12 +388,10 @@ export const listSessions = async (page = 1, perPage = 20) => {
     
     // Filter sessions by serene_user_id in metadata
     const allSessions = response.data.sessions || [];
-    const userSessions = sereneUserId 
-      ? allSessions.filter(session => {
-          const sessionSereneUserId = session.metadata?.serene_user_id;
-          return sessionSereneUserId === sereneUserId;
-        })
-      : allSessions; // If no user logged in, show all (shouldn't happen normally)
+    const userSessions = allSessions.filter((session) => {
+      const sessionSereneUserId = session.metadata?.serene_user_id;
+      return sessionSereneUserId === sereneUserId;
+    });
     
     if (__DEV__) {
       console.log(`📋 Found ${allSessions.length} total sessions, ${userSessions.length} for current user`);
@@ -354,18 +438,21 @@ export const deleteSession = async (sessionId) => {
 // Get session messages (history)
 export const getSessionMessages = async (sessionId) => {
   try {
-    const response = await aiClient.get(`/sessions/${sessionId}/messages`);
+    const response = await aiClient.get(`/sessions/${sessionId}/messages`, {
+      params: { limit: 200, per_page: 200 },
+    });
+    const messages = normalizeMessages(response.data);
     
     if (__DEV__) {
       console.log('📨 getSessionMessages API Response:', {
         status: response.status,
         hasData: !!response.data,
         dataKeys: response.data ? Object.keys(response.data) : [],
-        messagesCount: response.data?.messages?.length || 0,
+        messagesCount: messages.length,
       });
       // Log first message structure if available
-      if (response.data?.messages?.[0]) {
-        const firstMsg = response.data.messages[0];
+      if (messages[0]) {
+        const firstMsg = messages[0];
         console.log('📨 First message from API:', {
           id: firstMsg.id,
           role: firstMsg.role,
@@ -381,7 +468,7 @@ export const getSessionMessages = async (sessionId) => {
     return {
       success: true,
       data: response.data,
-      messages: response.data.messages || response.data || [],
+      messages,
     };
   } catch (error) {
     if (__DEV__) {
@@ -400,8 +487,8 @@ export const getSessionMessages = async (sessionId) => {
  * ============================
  */
 
-// Analyze image with full AI analysis (using /chat/upload endpoint for flexibility)
-export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual', role = 'patient' }) => {
+// Analyze the initial image through the dedicated visual-analysis endpoint.
+export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual' }) => {
   // Mock mode
   if (ENABLE_MOCK) {
     console.log('🔧 MOCK MODE: Analyzing image...');
@@ -429,68 +516,55 @@ export const analyzeImage = async ({ sessionId, imageUris, language = 'bilingual
   }
 
   try {
-    // Fail fast if API key missing to avoid silent network errors
-    if (!AI_API_KEY || AI_API_KEY === 'dd_live_your_api_key_here') {
-      throw new Error('AI API key not configured. Set EXPO_PUBLIC_AI_KEY / AI_API_KEY.');
-    }
-
-    // Use /chat/upload endpoint instead of /images/analyze
-    // This endpoint is more flexible with data structure
-    const formData = new FormData();
-    
-    // Add analysis request message
-    formData.append('message', 'Tolong analisis kondisi gigi saya dari foto yang saya upload. Berikan diagnosis lengkap, temuan, dan rekomendasi perawatan.');
-    formData.append('session_id', sessionId);
-    formData.append('role', role);
-    formData.append('language', language);
-    
-    // Add images (support multiple images) - compress first
     const imageArray = Array.isArray(imageUris) ? imageUris : [imageUris];
-    
+    const analyses = [];
+    const compressedImageUris = [];
     for (const imageUri of imageArray) {
       if (__DEV__) console.log('📸 Processing image for upload:', imageUri);
-      
-      // Compress image to stay under 413 limit
       const compressedUri = await compressImage(imageUri);
-      
+      compressedImageUris.push(compressedUri);
       const filename = imageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
-      
-      formData.append('images', {
-        uri: compressedUri,
-        name: filename,
-        type: type,
-      });
+      const requestAnalysis = async (repair = false) => {
+        const formData = new FormData();
+        formData.append('image', { uri: compressedUri, name: filename, type });
+        formData.append(
+          'context',
+          `${PATIENT_ANALYSIS_CONTEXT} Requested language: ${language}.${repair ? ' Regenerate the complete response and verify every required field.' : ''}`,
+        );
+        formData.append('role', PATIENT_ROLE);
+        formData.append('include_annotated', 'true');
+        return aiClient.post('/images/analyze', formData, {
+          timeout: API_CONFIG.AI_TIMEOUT,
+          headers: { Accept: 'application/json' },
+        });
+      };
+      try {
+        analyses.push((await requestAnalysis(false)).data);
+      } catch (analysisError) {
+        if (!isStructuredAnalysisFailure(analysisError)) throw analysisError;
+        analyses.push((await requestAnalysis(true)).data);
+      }
     }
-
-    const response = await aiClient.post('/chat/upload', formData, {
-      // Let axios set multipart boundaries automatically
-      timeout: API_CONFIG.AI_TIMEOUT,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        Accept: 'application/json',
-      },
-    });
-
-    // Extract data from chat response
-    const replyContent = response.data.reply || response.data.content || '';
-    const visualFindings = response.data.visual_findings || {};
-    const annotatedImage = visualFindings.annotated_image_base64 || response.data.annotated_image || null;
+    const normalized = toPatientAnalysisPayload(analyses, sessionId);
+    normalized.source_image_uri = compressedImageUris[0] || imageArray[0] || null;
+    const visualFindings = normalized.visual_findings;
+    const annotatedImage = normalizeAnnotatedImage(normalized);
 
     return {
       success: true,
-      data: response.data,
-      findings: replyContent,
+      data: normalized,
+      findings: normalized.reply,
       imageQuality: visualFindings.image_quality || {},
       recommendations: visualFindings.recommendations || [],
       annotatedImage: annotatedImage,
       detections: visualFindings.detections || [],
-      messageId: response.data.message_id || null,
+      messageId: normalized.message_id || null,
     };
   } catch (error) {
     if (__DEV__) {
-      console.log('❌ analyzeImage /chat/upload error payload:', {
+      console.log('❌ analyzeImage /images/analyze error payload:', {
         status: error.response?.status,
         data: error.response?.data,
         message: error.message,
@@ -521,9 +595,6 @@ export const detectOnly = async (imageUri, confidenceThreshold = 0.25) => {
     formData.append('confidence_threshold', confidenceThreshold.toString());
 
     const response = await aiClient.post('/images/detect', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       timeout: API_CONFIG.TIMEOUT,
     });
 
@@ -556,7 +627,7 @@ export const sendChatMessage = async (message, sessionId, images = []) => {
       data: {
         message,
         session_id: sessionId,
-        role: 'patient',
+        role: PATIENT_ROLE,
         language: 'bilingual',
         images: images.map(img => ({
           data: img.base64,
@@ -604,7 +675,7 @@ export const sendChatWithImages = async (message, sessionId, imageUris = []) => 
     
     formData.append('message', messageText);
     formData.append('session_id', sessionId);
-    formData.append('role', 'patient');
+    formData.append('role', PATIENT_ROLE);
     formData.append('language', 'bilingual');
     
     // Add images
@@ -681,7 +752,7 @@ export const queryKnowledge = async (question, k = 4) => {
   try {
     const response = await aiClient.post('/knowledge/query', {
       question,
-      role: 'patient',
+      role: PATIENT_ROLE,
       k,
     });
 

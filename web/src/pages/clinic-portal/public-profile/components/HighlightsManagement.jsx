@@ -6,6 +6,8 @@ import Input from '../../../../components/ui/Input';
 
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { cn } from '../../../../utils/cn';
+import AppIcon from '../../../../components/AppIcon';
+import { HIGHLIGHT_ICON_OPTIONS, resolveHighlightIcon } from '../profileIcons.mjs';
 
 const HighlightsManagement = () => {
   const { user } = useAuth();
@@ -31,13 +33,10 @@ const HighlightsManagement = () => {
   const fetchHighlights = async () => {
     try {
       setIsLoading(true);
-      console.log('🔄 Fetching highlights from /clinic/highlights...');
       const response = await authHttp.get('/clinic/highlights');
-      console.log('✅ Highlights response:', response.data);
       setHighlights(response.data.highlights || []);
     } catch (error) {
-      console.error('❌ Error fetching highlights:', error);
-      console.error('Error response:', error.response?.data);
+      console.error('Error fetching highlights:', error);
       showMessage('error', `Failed to load highlights: ${error.response?.data?.error || error.message}`);
     } finally {
       setIsLoading(false);
@@ -103,7 +102,7 @@ const HighlightsManagement = () => {
   if (!canEdit) {
     return (
       <div className="bg-warning/10 border border-warning/20 rounded-2xl p-6 text-warning flex items-center gap-3">
-        <span className="text-2xl">🔒</span>
+        <AppIcon name="ShieldAlert" size={22} className="shrink-0" />
         <span className="font-medium">You don't have permission to manage highlights. Contact your clinic owner or manager.</span>
       </div>
     );
@@ -117,6 +116,7 @@ const HighlightsManagement = () => {
           "rounded-2xl p-4 border flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2",
           message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
         )}>
+          <AppIcon name={message.type === 'success' ? 'CircleCheck' : 'CircleAlert'} size={18} className="shrink-0" />
           {message.text}
         </div>
       )}
@@ -127,21 +127,21 @@ const HighlightsManagement = () => {
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Clinic Highlights</h2>
           <p className="text-muted-foreground mt-1">Key features that make your clinic special</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="rounded-xl shadow-lg shadow-brand-primary/20 hover:shadow-brand-primary/40 transition-all">
-          <span className="mr-2 text-lg">✨</span> Add Highlight
+        <Button onClick={() => handleOpenDialog()} className="inline-flex items-center gap-2 rounded-xl shadow-sm transition-all">
+          <AppIcon name="Plus" size={16} /> Add Highlight
         </Button>
       </div>
 
       {/* Highlights Grid */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary"></div>
-          <p className="text-muted-foreground animate-pulse">Loading highlights...</p>
+          <AppIcon name="LoaderCircle" size={30} className="animate-spin text-brand-primary" />
+          <p className="text-muted-foreground">Loading highlights...</p>
         </div>
       ) : highlights.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-3xl">
-            ⭐
+        <div className="rounded-2xl border border-primary/15 bg-surface-elevated p-12 text-center">
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-primary/15 bg-surface text-secondary">
+            <AppIcon name="BadgeCheck" size={25} />
           </div>
           <h3 className="text-xl font-semibold text-foreground mb-2">No Highlights Yet</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">Add key features like "24/7 Emergency", "Free Parking", or "Child Friendly" to attract patients.</p>
@@ -152,21 +152,14 @@ const HighlightsManagement = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {highlights.map((highlight) => (
-            <div key={highlight.id} className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 transition-all duration-300 hover:shadow-lg hover:border-brand-primary/20 hover:-translate-y-1 relative">
+            <div key={highlight.id} className="group relative rounded-2xl border border-primary/15 bg-surface-elevated p-5 transition-colors hover:border-accent/35">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-brand-primary/10 text-brand-primary flex items-center justify-center flex-shrink-0 text-xl">
-                  {/* Try to use icon from data, or fallback to Star */}
-                  {highlight.icon === 'wifi' ? '📶' :
-                    highlight.icon === 'parking' ? '🅿️' :
-                      highlight.icon === 'card' ? '💳' :
-                        highlight.icon === 'child' ? '🧸' :
-                          highlight.icon === '24h' ? '🕒' :
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
-                  }
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/5 text-accent">
+                  <AppIcon name={resolveHighlightIcon(highlight.icon, highlight.highlight_text)} size={21} />
                 </div>
                 <div className="flex-1 min-w-0 pt-1">
                   <h3 className="font-semibold text-foreground text-lg mb-1">{highlight.highlight_text}</h3>
-                  <p className="text-xs text-muted-foreground">Feature active</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Ditampilkan di profil</p>
                 </div>
 
                 <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -175,14 +168,14 @@ const HighlightsManagement = () => {
                     className="p-1.5 text-gray-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-colors"
                     title="Edit"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    <AppIcon name="Pencil" size={16} />
                   </button>
                   <button
                     onClick={() => handleDelete(highlight.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     title="Delete"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    <AppIcon name="Trash2" size={16} />
                   </button>
                 </div>
               </div>
@@ -217,7 +210,7 @@ const HighlightsManagement = () => {
                   onClick={handleCloseDialog}
                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  <AppIcon name="X" size={22} />
                 </button>
               </div>
 
@@ -234,17 +227,20 @@ const HighlightsManagement = () => {
                     />
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Icon (optional)</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Jenis ikon</label>
                       <div className="relative">
-                        <input
-                          type="text"
+                        <select
                           value={formData.icon}
                           onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                          placeholder="e.g., scan, check, star"
                           className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/50"
-                        />
+                        >
+                          <option value="">Pilih otomatis dari teks</option>
+                          {HIGHLIGHT_ICON_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Enter an icon name or emoji.</p>
+                      <p className="text-xs text-gray-500 mt-1">Gunakan kategori visual yang konsisten; emoji bebas tidak ditampilkan.</p>
                     </div>
                   </div>
                 </form>

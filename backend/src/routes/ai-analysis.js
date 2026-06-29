@@ -35,6 +35,20 @@ function sanitizeValue(value) {
   return value === '' || value === undefined ? null : value;
 }
 
+function sanitizeImageValue(value) {
+  const normalized = sanitizeValue(value);
+  if (normalized === null) return null;
+  if (typeof normalized !== 'string') throw new Error('INVALID_IMAGE_VALUE');
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(normalized)) {
+    if (normalized.length > 8 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
+    return normalized;
+  }
+  if (/^(https?:\/\/|\/uploads\/)/i.test(normalized) && normalized.length <= 4096) {
+    return normalized;
+  }
+  throw new Error('INVALID_IMAGE_VALUE');
+}
+
 /**
  * Parse JSON safely
  */
@@ -111,8 +125,8 @@ router.post(
         const updated = await prisma.aIAnalysisResult.update({
           where: { id: existing.id },
           data: {
-            imageUrl: sanitizeValue(imageUrl) ?? existing.imageUrl,
-            annotatedImageUrl: sanitizeValue(annotatedImageUrl) ?? existing.annotatedImageUrl,
+            imageUrl: sanitizeImageValue(imageUrl) ?? existing.imageUrl,
+            annotatedImageUrl: sanitizeImageValue(annotatedImageUrl) ?? existing.annotatedImageUrl,
             findings: sanitizeValue(findings) ?? existing.findings,
             summary: sanitizeValue(summary) ?? existing.summary,
             overallAssessment: sanitizeValue(overallAssessment) ?? existing.overallAssessment,
@@ -150,8 +164,8 @@ router.post(
       const dataToInsert = {
         userId,
         sessionId,
-        imageUrl: sanitizeValue(imageUrl),
-        annotatedImageUrl: sanitizeValue(annotatedImageUrl),
+        imageUrl: sanitizeImageValue(imageUrl),
+        annotatedImageUrl: sanitizeImageValue(annotatedImageUrl),
         findings: sanitizeValue(findings),
         summary: sanitizeValue(summary),
         overallAssessment: sanitizeValue(overallAssessment),
@@ -183,6 +197,12 @@ router.post(
       });
 
     } catch (error) {
+      if (error.message === 'IMAGE_TOO_LARGE') {
+        return sendError(res, 413, 'image_too_large', 'Gambar hasil analisis melebihi batas penyimpanan.');
+      }
+      if (error.message === 'INVALID_IMAGE_VALUE') {
+        return sendError(res, 400, 'invalid_image', 'Format gambar hasil analisis tidak valid.');
+      }
       console.error('Error saving AI analysis:', error);
       return sendError(res, 500, 'save_failed', 'Gagal menyimpan hasil AI analysis.');
     }

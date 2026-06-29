@@ -1,251 +1,187 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import AppIcon from '../../../../components/AppIcon';
+import {
+  DisabledPrimaryAction,
+  InventoryEmptyRow,
+  InventoryStatCard,
+  RefreshButton
+} from './InventoryUi';
+import {
+  formatRupiah,
+  getRecordDate,
+  isSameLocalDay,
+  isWithinCurrentMonth
+} from '../inventoryUtils.mjs';
 
-const UsageView = () => {
+function recordQuantity(record) {
+  if (Array.isArray(record.items)) {
+    return record.items.reduce((total, item) => total + (Number(item.qty ?? item.quantity ?? 0) || 0), 0);
+  }
+  return Number(record.quantity ?? record.totalQuantity ?? record.total_quantity ?? record.totalItems ?? 0) || 0;
+}
+
+function isWithinPastDays(value, days, now = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const difference = now.getTime() - date.getTime();
+  return difference >= 0 && difference <= days * 24 * 60 * 60 * 1000;
+}
+
+const UsageView = ({ data = [], onRefresh }) => {
   const { t } = useLanguage();
-  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [search, setSearch] = useState('');
+  const [treatmentFilter, setTreatmentFilter] = useState('');
+  const usageRecords = Array.isArray(data) ? data : [];
 
-  // Mock data
-  const usageRecords = [
-    {
-      id: 1,
-      recordNumber: 'USG-2024-001',
-      treatmentType: 'Scaling & Polishing',
-      patient: 'John Doe',
-      dentist: 'Dr. Sarah Clinic',
-      date: '2024-01-16',
-      items: [
-        { name: 'Scaling Tips', qty: 2, unit: 'pcs', cost: 50000 },
-        { name: 'Polishing Paste', qty: 1, unit: 'pack', cost: 25000 },
-        { name: 'Disposable Gloves', qty: 2, unit: 'pair', cost: 10000 }
-      ],
-      totalItems: 3,
-      totalCost: 85000,
-      status: 'recorded'
-    },
-    {
-      id: 2,
-      recordNumber: 'USG-2024-002',
-      treatmentType: 'Composite Filling',
-      patient: 'Jane Smith',
-      dentist: 'Dr. John Dentist',
-      date: '2024-01-16',
-      items: [
-        { name: 'Composite Resin A2', qty: 1, unit: 'syringe', cost: 150000 },
-        { name: 'Bonding Agent', qty: 1, unit: 'bottle', cost: 75000 },
-        { name: 'Local Anesthetic', qty: 1, unit: 'ampul', cost: 25000 }
-      ],
-      totalItems: 3,
-      totalCost: 250000,
-      status: 'recorded'
-    },
-    {
-      id: 3,
-      recordNumber: 'USG-2024-003',
-      treatmentType: 'Tooth Extraction',
-      patient: 'Robert Johnson',
-      dentist: 'Dr. Sarah Clinic',
-      date: '2024-01-15',
-      items: [
-        { name: 'Surgical Gloves', qty: 2, unit: 'pair', cost: 20000 },
-        { name: 'Local Anesthetic', qty: 2, unit: 'ampul', cost: 50000 },
-        { name: 'Gauze Pads', qty: 5, unit: 'pcs', cost: 15000 }
-      ],
-      totalItems: 3,
-      totalCost: 85000,
-      status: 'recorded'
+  const stats = useMemo(() => usageRecords.reduce((result, record) => {
+    const quantity = recordQuantity(record);
+    const date = getRecordDate(record);
+    if (isSameLocalDay(date)) result.today += quantity;
+    if (isWithinPastDays(date, 7)) result.thisWeek += quantity;
+    if (isWithinCurrentMonth(date)) {
+      result.thisMonth += quantity;
+      result.totalCost += Number(record.totalCost ?? record.total_cost ?? 0) || 0;
     }
-  ];
+    return result;
+  }, { today: 0, thisWeek: 0, thisMonth: 0, totalCost: 0 }), [usageRecords]);
 
-  // Top used items
-  const topUsedItems = [
-    { name: 'Disposable Gloves', usage: 150, unit: 'pair', trend: '+12%' },
-    { name: 'Local Anesthetic', usage: 45, unit: 'ampul', trend: '+8%' },
-    { name: 'Composite Resin', usage: 32, unit: 'syringe', trend: '+15%' },
-    { name: 'Scaling Tips', usage: 28, unit: 'pcs', trend: '+5%' }
-  ];
+  const topUsedItems = useMemo(() => {
+    const totals = new Map();
+    usageRecords.forEach((record) => {
+      (Array.isArray(record.items) ? record.items : []).forEach((item) => {
+        const name = item.name || item.itemName || item.item_name;
+        if (!name) return;
+        const current = totals.get(name) || { name, usage: 0, unit: item.unit || '' };
+        current.usage += Number(item.qty ?? item.quantity ?? 0) || 0;
+        totals.set(name, current);
+      });
+    });
+    return [...totals.values()].sort((left, right) => right.usage - left.usage).slice(0, 6);
+  }, [usageRecords]);
+
+  const treatments = useMemo(() => (
+    [...new Set(usageRecords.map((record) => record.treatmentType ?? record.treatment_type).filter(Boolean))].sort()
+  ), [usageRecords]);
+
+  const filteredRecords = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return usageRecords.filter((record) => {
+      const treatment = record.treatmentType ?? record.treatment_type ?? '';
+      const matchesSearch = !query || [
+        record.recordNumber,
+        record.record_number,
+        treatment,
+        record.patient,
+        record.patientName,
+        record.dentist,
+        record.dentistName
+      ].some((value) => String(value || '').toLowerCase().includes(query));
+      return matchesSearch && (!treatmentFilter || treatment === treatmentFilter);
+    });
+  }, [search, treatmentFilter, usageRecords]);
 
   return (
     <div className="space-y-6">
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <AppIcon name="Activity" size={20} className="text-blue-600" />
-            <div>
-              <p className="text-sm text-blue-800 dark:text-blue-400">
-                {t('clinic.inventory.usage.stats.today') || 'Pemakaian Hari Ini'}
-              </p>
-              <p className="text-xl font-bold text-blue-900 dark:text-blue-300">24 items</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <AppIcon name="TrendingUp" size={20} className="text-green-600" />
-            <div>
-              <p className="text-sm text-green-800 dark:text-green-400">
-                {t('clinic.inventory.usage.stats.thisWeek') || 'Minggu Ini'}
-              </p>
-              <p className="text-xl font-bold text-green-900 dark:text-green-300">156 items</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <AppIcon name="Package" size={20} className="text-purple-600" />
-            <div>
-              <p className="text-sm text-purple-800 dark:text-purple-400">
-                {t('clinic.inventory.usage.stats.thisMonth') || 'Bulan Ini'}
-              </p>
-              <p className="text-xl font-bold text-purple-900 dark:text-purple-300">642 items</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-          <div className="flex items-center space-x-3">
-            <AppIcon name="DollarSign" size={20} className="text-orange-600" />
-            <div>
-              <p className="text-sm text-orange-800 dark:text-orange-400">
-                {t('clinic.inventory.usage.stats.totalCost') || 'Total Biaya'}
-              </p>
-              <p className="text-xl font-bold text-orange-900 dark:text-orange-300">Rp 12M</p>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <InventoryStatCard icon="Activity" iconClass="text-blue-500" label={t('clinic.inventory.usage.stats.today') || 'Pemakaian Hari Ini'} value={`${stats.today} item`} />
+        <InventoryStatCard icon="CalendarRange" iconClass="text-emerald-500" label={t('clinic.inventory.usage.stats.thisWeek') || '7 Hari Terakhir'} value={`${stats.thisWeek} item`} />
+        <InventoryStatCard icon="Package" iconClass="text-violet-500" label={t('clinic.inventory.usage.stats.thisMonth') || 'Bulan Ini'} value={`${stats.thisMonth} item`} />
+        <InventoryStatCard icon="WalletCards" iconClass="text-orange-500" label={t('clinic.inventory.usage.stats.totalCost') || 'Biaya Bulan Ini'} value={formatRupiah(stats.totalCost)} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Usage Records */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Actions */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-surface-elevated p-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+              <label className="relative block w-full sm:max-w-sm">
                 <AppIcon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                 <input
-                  type="text"
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder={t('clinic.inventory.usage.searchPlaceholder') || 'Cari pemakaian...'}
-                  className="pl-10 pr-4 py-2 w-64 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                  className="min-h-10 w-full rounded-xl border border-primary/20 bg-surface py-2 pl-10 pr-4 text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 />
-              </div>
-              <select className="px-3 py-2 border border-primary/20 rounded-lg bg-surface text-primary">
+              </label>
+              <select
+                value={treatmentFilter}
+                onChange={(event) => setTreatmentFilter(event.target.value)}
+                className="min-h-10 rounded-xl border border-primary/20 bg-surface px-3 py-2 text-primary"
+              >
                 <option value="">{t('clinic.inventory.usage.allTreatments') || 'Semua Tindakan'}</option>
-                <option value="scaling">Scaling</option>
-                <option value="filling">Filling</option>
-                <option value="extraction">Extraction</option>
+                {treatments.map((treatment) => <option key={treatment} value={treatment}>{treatment}</option>)}
               </select>
             </div>
-            <button 
-              onClick={() => setShowRecordModal(true)}
-              className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors flex items-center gap-2"
-            >
-              <AppIcon name="Plus" size={16} />
-              {t('clinic.inventory.usage.recordUsage') || 'Catat Pemakaian'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <RefreshButton onRefresh={onRefresh} />
+              <DisabledPrimaryAction>{t('clinic.inventory.usage.recordUsage') || 'Catat Pemakaian'} · Segera hadir</DisabledPrimaryAction>
+            </div>
           </div>
 
-          {/* Usage Records Table */}
-          <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-            <div className="px-6 py-4 border-b border-primary/20">
-              <h3 className="text-lg font-semibold text-primary">
-                {t('clinic.inventory.usage.title') || 'Riwayat Pemakaian'}
-              </h3>
+          <div className="overflow-hidden rounded-xl border border-primary/20 bg-surface-elevated">
+            <div className="border-b border-primary/20 px-6 py-4">
+              <h3 className="text-lg font-semibold text-primary">{t('clinic.inventory.usage.title') || 'Riwayat Pemakaian'}</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.date') || 'Tanggal'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.treatment') || 'Tindakan'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.patient') || 'Pasien'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.items') || 'Item'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.cost') || 'Biaya'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">
-                      {t('clinic.inventory.usage.table.actions') || 'Aksi'}
-                    </th>
+                    {['Tanggal', 'Tindakan', 'Pasien', 'Item', 'Biaya', 'Aksi'].map((heading) => (
+                      <th key={heading} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-secondary">{heading}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-primary/10">
-                  {usageRecords.map((record) => (
-                    <tr key={record.id} className="hover:bg-surface transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-primary">
-                          {new Date(record.date).toLocaleDateString('id-ID')}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-primary">{record.treatmentType}</div>
-                          <div className="text-xs text-secondary">{record.dentist}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-primary">{record.patient}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-primary">{record.totalItems} item(s)</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-primary">
-                          Rp {record.totalCost.toLocaleString('id-ID')}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex space-x-2">
-                          <button className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
-                            <AppIcon name="Eye" size={16} />
+                  {filteredRecords.map((record) => {
+                    const dateValue = getRecordDate(record);
+                    const date = dateValue ? new Date(dateValue) : null;
+                    return (
+                      <tr key={record.id} className="transition-colors hover:bg-surface">
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-primary">{!date || Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('id-ID')}</td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium text-primary">{record.treatmentType ?? record.treatment_type ?? '—'}</p>
+                          <p className="text-xs text-secondary">{record.dentist ?? record.dentistName ?? '—'}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-primary">{record.patient ?? record.patientName ?? '—'}</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-primary">{recordQuantity(record)} item</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-primary">{formatRupiah(record.totalCost ?? record.total_cost ?? 0)}</td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <button type="button" disabled title="Fitur ini segera hadir" className="cursor-not-allowed rounded-lg p-2 text-secondary/40">
+                            <AppIcon name="MoreHorizontal" size={17} />
                           </button>
-                          <button className="p-1 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded">
-                            <AppIcon name="Printer" size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredRecords.length === 0 && <InventoryEmptyRow colSpan={6} message="Belum ada catatan pemakaian dari layanan inventory." />}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        {/* Top Used Items */}
-        <div className="lg:col-span-1">
-          <div className="bg-surface-elevated rounded-xl border border-primary/20 overflow-hidden">
-            <div className="px-6 py-4 border-b border-primary/20">
-              <h3 className="text-lg font-semibold text-primary">
-                {t('clinic.inventory.usage.topUsed') || 'Item Paling Banyak Digunakan'}
-              </h3>
-            </div>
-            <div className="p-6 space-y-4">
-              {topUsedItems.map((item, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-primary">{item.name}</div>
-                    <div className="text-xs text-secondary mt-1">
-                      {item.usage} {item.unit}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                      {item.trend}
-                    </span>
-                    <AppIcon name="TrendingUp" size={14} className="text-green-600" />
-                  </div>
+        <div className="overflow-hidden rounded-xl border border-primary/20 bg-surface-elevated lg:col-span-1">
+          <div className="border-b border-primary/20 px-6 py-4">
+            <h3 className="text-lg font-semibold text-primary">{t('clinic.inventory.usage.topUsed') || 'Item Paling Banyak Digunakan'}</h3>
+            <p className="mt-0.5 text-xs text-secondary">Dihitung dari record yang tersedia</p>
+          </div>
+          <div className="space-y-3 p-6">
+            {topUsedItems.map((item, index) => (
+              <div key={item.name} className="flex items-center gap-3 rounded-xl bg-surface p-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-xs font-bold text-accent">{index + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-primary">{item.name}</p>
+                  <p className="text-xs text-secondary">{item.usage} {item.unit}</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+            {topUsedItems.length === 0 && (
+              <div className="py-8 text-center">
+                <AppIcon name="PackageSearch" size={30} className="mx-auto mb-2 text-secondary/30" />
+                <p className="text-sm text-secondary">Belum ada rincian item pemakaian.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

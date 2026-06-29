@@ -68,7 +68,7 @@ const ClinicMultiCalendar = ({
     return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
   };
 
-  // API appointments may arrive as UTC ISO strings while mock rows use Date objects.
+  // API appointments may arrive as UTC ISO strings; normalize them before calendar comparison.
   // Calendar bucketing is intentionally based on the clinic timezone, not the browser timezone.
   const isSameDay = (date1, date2) => {
     const k1 = getClinicDateKey(date1);

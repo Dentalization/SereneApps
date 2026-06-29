@@ -25,6 +25,7 @@ import { syncAnalysisToBackend } from '../../../store/slices/aiSlice';
 import useToast from '../../../hooks/useToast';
 import ValidationToast from '../../settings/components/ValidationToast';
 import { compressImages, needsCompression } from '../../../utils/imageCompression';
+import { normalizeAnalysisResult, toImageUri } from '../utils/analysisResult';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 375;
@@ -37,11 +38,15 @@ const normalize = (size) => {
 const ChatScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
-  const { sessionId, analysisData, images, pendingImages, mode } = route.params || {};
+  const { sessionId, analysisData, images, pendingImages, mode, initialQuestion } = route.params || {};
   const dispatch = useDispatch();
+  const normalizedAnalysis = React.useMemo(
+    () => normalizeAnalysisResult(analysisData),
+    [analysisData],
+  );
 
   const [messages, setMessages] = React.useState([]);
-  const [inputText, setInputText] = React.useState('');
+  const [inputText, setInputText] = React.useState(initialQuestion || '');
   const [selectedImages, setSelectedImages] = React.useState([]);
   const [isSending, setIsSending] = React.useState(false);
   const [hasProvidedContext, setHasProvidedContext] = React.useState(false);
@@ -158,25 +163,32 @@ const ChatScreen = ({ route, navigation }) => {
   React.useEffect(() => {
     if (analysisData && mode !== 'pre-analysis') {
       let context = '[KONTEKS: User sudah melakukan analisis AI sebelumnya dengan hasil berikut]\n';
-      if (analysisData.riskLevel) context += `Tingkat Risiko: ${analysisData.riskLevel}\n`;
-      if (analysisData.summary) context += `Ringkasan: ${analysisData.summary}\n`;
-      if (analysisData.findings?.length > 0) {
-        context += 'Temuan: ' + analysisData.findings.map(f => f.name || f.condition || f).join(', ') + '\n';
+      context += `Tingkat Perhatian: ${normalizedAnalysis.riskLevel}\n`;
+      if (normalizedAnalysis.summary) context += `Ringkasan: ${normalizedAnalysis.summary}\n`;
+      if (normalizedAnalysis.findings.length > 0) {
+        context += 'Temuan:\n';
+        normalizedAnalysis.findings.forEach((finding) => {
+          context += `${finding.mark} ${finding.name}: ${finding.description || 'Tidak ada deskripsi.'}\n`;
+          if (finding.reasoning) context += `Makna: ${finding.reasoning}\n`;
+        });
       }
+      if (normalizedAnalysis.limitations) context += `Keterbatasan: ${normalizedAnalysis.limitations}\n`;
       context += '[END KONTEKS]\n\n';
       analysisContextRef.current = context;
     }
-  }, [analysisData, mode]);
+  }, [analysisData, mode, normalizedAnalysis]);
 
   React.useEffect(() => {
     if (analysisData && mode !== 'pre-analysis') {
       let content = '';
-      const annotatedImageUri = analysisData.annotated_image_base64 || analysisData.annotatedImage;
-      if (analysisData.summary) content += analysisData.summary + '\n\n';
-      if (analysisData.findings?.length > 0) {
+      const annotatedImageUri = normalizedAnalysis.annotatedImage;
+      if (normalizedAnalysis.summary) content += normalizedAnalysis.summary + '\n\n';
+      if (normalizedAnalysis.findings.length > 0) {
         content += '📋 **Temuan:**\n';
-        analysisData.findings.forEach((finding, idx) => {
-          content += `${idx + 1}. ${finding.name || finding.condition}\n`;
+        normalizedAnalysis.findings.forEach((finding) => {
+          content += `${finding.mark} ${finding.name}\n`;
+          if (finding.description) content += `${finding.description}\n`;
+          if (finding.reasoning) content += `Makna: ${finding.reasoning}\n`;
         });
       }
       if (content.trim() || annotatedImageUri) {
@@ -196,7 +208,7 @@ const ChatScreen = ({ route, navigation }) => {
         setInputText('Ini foto gigi saya. Saya ingin menjelaskan kondisi saya.');
       }
     }
-  }, [analysisData, pendingImages, mode]);
+  }, [analysisData, pendingImages, mode, normalizedAnalysis]);
 
   // --- ACTIONS ---
   const pickImage = async () => {
@@ -356,7 +368,7 @@ const ChatScreen = ({ route, navigation }) => {
                 </View>
               )}
               {message.annotatedImage && (
-                <Image source={{ uri: `data:image/jpeg;base64,${message.annotatedImage}` }} style={styles.annotatedImage} resizeMode="contain" />
+                <Image source={{ uri: toImageUri(message.annotatedImage) }} style={styles.annotatedImage} resizeMode="contain" />
               )}
               <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.aiText]}>
                 {message.content.replace(/\*\*/g, '').replace(/\*/g, '•')}

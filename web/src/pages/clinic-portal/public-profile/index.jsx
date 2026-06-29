@@ -21,19 +21,19 @@ const PublicProfileView = () => {
       },
       {
         id: 'gallery',
-        icon: 'Image',
+        icon: 'Images',
         label: t('clinic.publicProfile.tabs.gallery') || 'Gallery & Photos',
         description: t('clinic.publicProfile.tabDescriptions.gallery'),
       },
       {
         id: 'highlights',
-        icon: 'Star',
+        icon: 'BadgeCheck',
         label: t('clinic.publicProfile.tabs.highlights') || 'Highlights',
         description: t('clinic.publicProfile.tabDescriptions.highlights'),
       },
       {
         id: 'facilities',
-        icon: 'Building',
+        icon: 'Hospital',
         label: t('clinic.publicProfile.tabs.facilities') || 'Facilities',
         description: t('clinic.publicProfile.tabDescriptions.facilities'),
       },
@@ -75,8 +75,7 @@ const PublicProfileView = () => {
           <section className="clinic-page-header space-y-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary">
-                  <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                <div className="inline-flex items-center gap-2 border-l-2 border-accent pl-3 text-xs font-semibold uppercase tracking-[0.16em] text-secondary">
                   {t('clinic.publicProfile.badge') || 'Public Profile'}
                 </div>
                 <div>
@@ -132,9 +131,11 @@ const PublicProfileView = () => {
 
           <div className="mt-8 transition-all duration-300 ease-in-out">
             {/* Tab Description - Styled to be more subtle */}
-            <div className="mb-6 text-sm text-secondary bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 flex items-start gap-3">
-              <span className="text-xl">💡</span>
-              <p className="pt-0.5">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-primary/15 bg-surface-elevated p-4 text-sm text-secondary">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                <Icon name="Info" size={15} />
+              </div>
+              <p className="pt-1">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
             </div>
 
             {/* Content Rendered Directly - Each component manages its own containers/cards */}

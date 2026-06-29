@@ -94,7 +94,7 @@ describe('mobile AI analysis sync service', () => {
 
     const result = await saveAIAnalysis({
       id: 'local-session-1',
-      image_url: 'file://synthetic.png',
+      image_url: 'data:image/png;base64,b3JpZ2luYWw=',
       confidence: 0.82,
       detections: [
         {
@@ -112,6 +112,7 @@ describe('mobile AI analysis sync service', () => {
           importance: 'high',
           timeframe: 'soon',
         },
+        'Segera periksa langsung bila nyeri atau bengkak memburuk.',
       ],
       overallAssessment: 'Screening support only',
       timestamp: '2026-07-01T00:00:00.000Z',
@@ -121,7 +122,7 @@ describe('mobile AI analysis sync service', () => {
     expect(api.post).toHaveBeenCalledWith('/ai-analysis', expect.any(Object));
     expect(payload).toMatchObject({
       sessionId: 'local-session-1',
-      imageUrl: 'file://synthetic.png',
+      imageUrl: 'data:image/png;base64,b3JpZ2luYWw=',
       findings: 'Caries suspect',
       overallAssessment: 'Screening support only',
       riskLevel: 'medium',
@@ -142,6 +143,12 @@ describe('mobile AI analysis sync service', () => {
           priority: 'high',
           urgency: 'soon',
         },
+        {
+          title: 'Rekomendasi',
+          description: 'Segera periksa langsung bila nyeri atau bengkak memburuk.',
+          priority: 'normal',
+          urgency: 'normal',
+        },
       ],
     });
     expect(payload.metadata).toMatchObject({
@@ -149,7 +156,7 @@ describe('mobile AI analysis sync service', () => {
       analyzedAt: '2026-07-01T00:00:00.000Z',
       originalId: 'local-session-1',
       detectionCount: 1,
-      recommendationCount: 1,
+      recommendationCount: 2,
     });
     expect(result).toEqual({ id: 77, synced: true });
   });

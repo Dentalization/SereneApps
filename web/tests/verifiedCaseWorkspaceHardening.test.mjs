@@ -36,8 +36,8 @@ test('patient linkage uses confirmation modal instead of window.prompt', () => {
 
   assert.doesNotMatch(page, /window\.prompt/);
   assert.match(page, /PatientLinkModal/);
-  assert.match(modal, /Confirm link/);
-  assert.match(modal, /Search name, code, phone, or email/);
+  assert.match(modal, /Konfirmasi tautan/);
+  assert.match(modal, /Cari nama, kode, telepon, atau email/);
 });
 
 test('Verified Case Workspace exposes mobile tabs for teledentistry devices', () => {
