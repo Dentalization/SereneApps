@@ -1,30 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
 import AppIcon from '../../../../components/AppIcon';
-import { useLanguage } from '../../../../contexts/LanguageContext';
+import { AdminEmptyState } from '../../ui/AdminPagePrimitives';
 
 const IntegrationStatus = () => {
-    const { t } = useLanguage();
-
-    // Mock real-time data
-    const [data, setData] = useState(Array.from({ length: 20 }, (_, i) => ({ time: i, latency: 120 + Math.random() * 50 })));
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setData(prev => {
-                const newData = [...prev.slice(1), { time: prev[prev.length - 1].time + 1, latency: 120 + Math.random() * 50 }];
-                return newData;
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    }, []);
-
-    const integrations = [
-        { id: 1, name: 'EMR Sync Service', uptime: '99.99%', latency: '45ms', status: 'healthy', requests: '450/min' },
-        { id: 2, name: 'Payment Gateway', uptime: '99.95%', latency: '120ms', status: 'healthy', requests: '120/min' },
-        { id: 3, name: 'Lab Result Hook', uptime: '98.50%', latency: '450ms', status: 'degraded', requests: '65/min' },
-        { id: 4, name: 'Notification API', uptime: '99.99%', latency: '30ms', status: 'healthy', requests: '800/min' },
-    ];
+    const data = [];
+    const integrations = [];
 
     return (
         <div className="space-y-6">
@@ -40,29 +21,39 @@ const IntegrationStatus = () => {
                             </span>
                             System Heartbeat
                         </h3>
-                        <div className="text-xs font-mono text-emerald-400">LIVE MONITORING</div>
+                        <div className="text-xs font-mono text-slate-400">BACKEND SOURCE REQUIRED</div>
                     </div>
                     <div className="h-64 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={data}>
-                                <Line type="monotone" dataKey="latency" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff' }}
-                                    itemStyle={{ color: '#10b981' }}
-                                    labelStyle={{ display: 'none' }}
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
+                        {data.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={data}>
+                                    <Line type="monotone" dataKey="latency" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff' }}
+                                        itemStyle={{ color: '#10b981' }}
+                                        labelStyle={{ display: 'none' }}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex h-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/40 p-6 text-center">
+                                <div>
+                                    <AppIcon name="Database" size={32} className="mx-auto mb-3 text-slate-500" />
+                                    <p className="text-sm font-medium text-slate-200">Integration telemetry unavailable</p>
+                                    <p className="mt-1 text-xs text-slate-400">Backend belum mengirim health, latency, uptime, atau request-rate integrations.</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="flex justify-between items-center mt-4 text-sm text-slate-400 font-mono">
-                        <span>Avg Latency: 145ms</span>
-                        <span>Peak Load: 2.1k req/s</span>
+                        <span>Avg Latency: N/A</span>
+                        <span>Peak Load: N/A</span>
                     </div>
                 </div>
 
                 {/* Status List */}
                 <div className="space-y-4">
-                    {integrations.map((integration) => (
+                    {integrations.length > 0 ? integrations.map((integration) => (
                         <div key={integration.id} className="bg-surface border border-border/40 rounded-2xl p-4 flex items-center justify-between">
                             <div>
                                 <h4 className="font-bold text-primary text-sm">{integration.name}</h4>
@@ -76,9 +67,19 @@ const IntegrationStatus = () => {
                                 <p className="text-xs text-secondary">{integration.requests}</p>
                             </div>
                         </div>
-                    ))}
+                    )) : (
+                        <AdminEmptyState
+                            icon="PlugZap"
+                            title="Integration status belum tersedia"
+                            description="Tidak ada data integration health dari backend. Tambahkan endpoint telemetry sebelum menampilkan SLA, latency, dan request rate."
+                        />
+                    )}
 
-                    <button className="w-full py-3 rounded-2xl border-2 border-dashed border-border/40 text-secondary font-medium hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2">
+                    <button
+                        disabled
+                        title="Flow connect API belum tersedia di Admin Portal"
+                        className="w-full py-3 rounded-2xl border-2 border-dashed border-border/40 text-secondary font-medium opacity-60 cursor-not-allowed flex items-center justify-center gap-2"
+                    >
                         <AppIcon name="Plus" size={16} /> Connect New API
                     </button>
                 </div>

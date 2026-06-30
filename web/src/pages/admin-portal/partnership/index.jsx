@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -6,17 +7,21 @@ import PartnershipOverview from './components/PartnershipOverview';
 import PartnerDirectory from './components/PartnerDirectory';
 import AgreementLifecycle from './components/AgreementLifecycle';
 import IntegrationStatus from './components/IntegrationStatus';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
 
 const Partnership = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const activeTab = adminTabFromPath(location.pathname, 'overview', invertPathMap(ADMIN_TAB_PATHS.partnership));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.partnership[tabId] || ADMIN_TAB_PATHS.partnership.overview);
 
   if (loading) {
     return (
@@ -103,7 +108,7 @@ const Partnership = () => {
                   Ecosystem Healthy
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+                  <button disabled title="Flow tambah partner belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-indigo-600/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Plus" size={16} />
                     <span>Add Partner</span>
                   </button>
@@ -115,7 +120,7 @@ const Partnership = () => {
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
                         ? 'bg-indigo-600 text-white shadow-sm'
                         : 'text-secondary hover:text-primary hover:bg-surface'

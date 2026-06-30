@@ -94,6 +94,12 @@ const InventoryPage = () => {
   const fetchInventoryData = useCallback(async () => {
     setRefreshing(true);
     try {
+      // The following endpoints are requested via INVENTORY_REQUESTS:
+      // - /clinic/inventory/stock
+      // - /clinic/inventory/purchase-requests
+      // - /clinic/inventory/receipts
+      // - /clinic/inventory/usage
+      // - /clinic/inventory/equipment
       const results = await Promise.allSettled(
         INVENTORY_REQUESTS.map(({ path }) => authHttp.get(path))
       );

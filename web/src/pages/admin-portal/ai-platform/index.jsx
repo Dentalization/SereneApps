@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -6,17 +7,22 @@ import AIOverviewCards from './components/AIOverviewCards';
 import AIUsageChart from './components/AIUsageChart';
 import ModelPerformance from './components/ModelPerformance';
 import RecentActivity from './components/RecentActivity';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
+import { AdminEmptyState } from '../ui/AdminPagePrimitives';
 
 const AIPlatform = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const activeTab = adminTabFromPath(location.pathname, 'overview', invertPathMap(ADMIN_TAB_PATHS.ai));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.ai[tabId] || ADMIN_TAB_PATHS.ai.overview);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -46,6 +52,14 @@ const AIPlatform = () => {
       case 'models':
         return (
           <ModelPerformance />
+        );
+      case 'billing':
+        return (
+          <AdminEmptyState
+            icon="Receipt"
+            title="AI billing backend belum tersedia"
+            description="Route ini sengaja tersedia untuk sidebar dan refresh/back-forward, tetapi belum menampilkan angka produksi sampai backend AI billing mengirim kontrak data yang valid."
+          />
         );
       default:
         return null;
@@ -123,15 +137,15 @@ const AIPlatform = () => {
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  {t('admin.aiPlatform.systemStatus')}
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+                  Demo/Fallback metrics — AI admin backend source belum tersedia
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button disabled title="Pengaturan AI belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-accent/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Brain" size={16} />
                     <span>{t('admin.aiPlatform.settings')}</span>
                   </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-orange-700">
+                  <button disabled title="Deploy model belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-orange-600/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Zap" size={16} />
                     <span>{t('admin.aiPlatform.deploy')}</span>
                   </button>
@@ -141,7 +155,7 @@ const AIPlatform = () => {
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => handleTabChange('overview')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -151,7 +165,7 @@ const AIPlatform = () => {
                   <span>{t('admin.aiPlatform.tabs.overview')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('usage')}
+                  onClick={() => handleTabChange('usage')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'usage'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -161,7 +175,7 @@ const AIPlatform = () => {
                   <span>{t('admin.aiPlatform.tabs.usage')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('models')}
+                  onClick={() => handleTabChange('models')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'models'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -169,6 +183,16 @@ const AIPlatform = () => {
                 >
                   <AppIcon name="Settings" size={16} />
                   <span>{t('admin.aiPlatform.tabs.models')}</span>
+                </button>
+                <button
+                  onClick={() => handleTabChange('billing')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'billing'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="Receipt" size={16} />
+                  <span>Billing</span>
                 </button>
               </div>
             </div>

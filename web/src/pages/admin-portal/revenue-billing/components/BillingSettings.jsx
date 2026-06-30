@@ -1,21 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 
 const BillingSettings = () => {
     const { t } = useLanguage();
-    // Dummy settings state
-    const [settings, setSettings] = useState({
-        paymentGateway: 'Midtrans',
-        currency: 'IDR',
-        autoInvoice: true,
-        reminderEmails: true,
-        taxRate: 11,
-    });
-
-    const handleToggle = (key) => {
-        setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-    };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -35,27 +23,23 @@ const BillingSettings = () => {
                     <div>
                         <label className="block text-sm font-medium text-secondary mb-2">{t('admin.revenueBilling.settings.general.paymentGateway')}</label>
                         <select
-                            value={settings.paymentGateway}
-                            onChange={(e) => setSettings({ ...settings, paymentGateway: e.target.value })}
-                            className="w-full bg-background border border-border/40 rounded-lg px-4 py-2 text-primary focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            value=""
+                            disabled
+                            className="w-full cursor-not-allowed bg-background border border-border/40 rounded-lg px-4 py-2 text-secondary opacity-70"
                         >
-                            <option value="Midtrans">Midtrans</option>
-                            <option value="Xendit">Xendit</option>
-                            <option value="Stripe">Stripe</option>
+                            <option value="">Belum tersedia dari backend</option>
                         </select>
-                        <p className="mt-1 text-xs text-secondary">{t('admin.revenueBilling.settings.general.paymentGatewayHint')}</p>
+                        <p className="mt-1 text-xs text-secondary">Backend belum mengirim payment gateway configuration untuk Admin Portal.</p>
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-secondary mb-2">{t('admin.revenueBilling.settings.general.defaultCurrency')}</label>
                         <select
-                            value={settings.currency}
-                            onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
-                            className="w-full bg-background border border-border/40 rounded-lg px-4 py-2 text-primary focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            value="IDR"
+                            disabled
+                            className="w-full cursor-not-allowed bg-background border border-border/40 rounded-lg px-4 py-2 text-secondary opacity-70"
                         >
                             <option value="IDR">Indonesian Rupiah (IDR)</option>
-                            <option value="USD">US Dollar (USD)</option>
-                            <option value="SGD">Singapore Dollar (SGD)</option>
                         </select>
                     </div>
 
@@ -64,9 +48,10 @@ const BillingSettings = () => {
                         <div className="relative">
                             <input
                                 type="number"
-                                value={settings.taxRate}
-                                onChange={(e) => setSettings({ ...settings, taxRate: e.target.value })}
-                                className="w-full bg-background border border-border/40 rounded-lg px-4 py-2 text-primary focus:outline-none focus:ring-2 focus:ring-accent/20"
+                                value=""
+                                disabled
+                                placeholder="N/A"
+                                className="w-full cursor-not-allowed bg-background border border-border/40 rounded-lg px-4 py-2 text-secondary opacity-70"
                             />
                             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                                 <span className="text-secondary">%</span>
@@ -95,10 +80,11 @@ const BillingSettings = () => {
                             <p className="text-xs text-secondary mt-0.5">{t('admin.revenueBilling.settings.automation.autoGenerateHint')}</p>
                         </div>
                         <button
-                            onClick={() => handleToggle('autoInvoice')}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.autoInvoice ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-700'}`}
+                            disabled
+                            title="Setting auto invoice belum tersedia dari backend"
+                            className="relative inline-flex h-6 w-11 cursor-not-allowed items-center rounded-full bg-gray-200 opacity-70 dark:bg-gray-700"
                         >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.autoInvoice ? 'translate-x-6' : 'translate-x-1'}`} />
+                            <span className="inline-block h-4 w-4 translate-x-1 rounded-full bg-white" />
                         </button>
                     </div>
 
@@ -108,25 +94,26 @@ const BillingSettings = () => {
                             <p className="text-xs text-secondary mt-0.5">{t('admin.revenueBilling.settings.automation.remindersHint')}</p>
                         </div>
                         <button
-                            onClick={() => handleToggle('reminderEmails')}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.reminderEmails ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-700'}`}
+                            disabled
+                            title="Setting reminder belum tersedia dari backend"
+                            className="relative inline-flex h-6 w-11 cursor-not-allowed items-center rounded-full bg-gray-200 opacity-70 dark:bg-gray-700"
                         >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.reminderEmails ? 'translate-x-6' : 'translate-x-1'}`} />
+                            <span className="inline-block h-4 w-4 translate-x-1 rounded-full bg-white" />
                         </button>
                     </div>
 
                     <div className="border-t border-border/40 pt-4">
                         <h4 className="text-sm font-medium text-primary mb-3">{t('admin.revenueBilling.settings.automation.gatewayStatus')}</h4>
                         <div className="bg-surface-elevated rounded-lg p-3 flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                            <span className="text-sm text-secondary">{t('admin.revenueBilling.settings.automation.midtransConnection')} <span className="font-medium text-green-600 dark:text-green-400">{t('admin.revenueBilling.settings.automation.active')}</span></span>
+                            <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                            <span className="text-sm text-secondary">Gateway status belum tersedia dari backend.</span>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div className="lg:col-span-2 flex justify-end">
-                <button className="px-6 py-2.5 bg-primary text-white rounded-xl font-medium shadow-sm hover:bg-primary/90 transition-all flex items-center gap-2">
+                <button disabled title="Save billing settings belum tersedia" className="px-6 py-2.5 cursor-not-allowed bg-primary/60 text-white rounded-xl font-medium shadow-sm opacity-70 flex items-center gap-2">
                     <AppIcon name="Save" size={18} />
                     {t('admin.revenueBilling.settings.saveChanges')}
                 </button>

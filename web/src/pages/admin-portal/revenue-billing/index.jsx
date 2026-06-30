@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -8,25 +9,102 @@ import TransactionRecent from './components/TransactionRecent';
 import SubscriptionDistribution from './components/SubscriptionDistribution';
 import InvoicesList from './components/InvoicesList';
 import BillingSettings from './components/BillingSettings';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
+import { authHttp } from '../../../utils/httpClient';
+
+const buildPlaceholderFinancialData = (reason = 'Backend revenue billing belum tersedia.') => ({
+  summary: {
+    totalRevenue: 0,
+    formattedTotalRevenue: 'Rp0',
+    mrr: 0,
+    formattedMrr: 'Rp0',
+    activeSubscriptions: 0,
+    pendingInvoices: 0,
+    overdueInvoices: 0,
+    paidInvoices: 0,
+    transactionCount: 0,
+    averageTransaction: 0,
+    formattedAverageTransaction: 'Rp0'
+  },
+  revenueTrends: [],
+  subscriptionDistribution: [],
+  transactions: [],
+  invoices: [],
+  dataAvailability: {
+    payments: {
+      available: false,
+      placeholder: true,
+      sources: [],
+      missingSources: ['payment_intents'],
+      notes: [reason]
+    },
+    invoices: {
+      available: false,
+      placeholder: true,
+      sources: [],
+      missingSources: ['invoices'],
+      notes: [reason]
+    },
+    subscriptions: {
+      available: false,
+      placeholder: true,
+      sources: [],
+      missingSources: ['subscriptions'],
+      notes: ['Belum ada sumber subscription. Ditampilkan sebagai Rp0/0 sementara.']
+    },
+    expenses: {
+      available: false,
+      placeholder: true,
+      sources: [],
+      missingSources: ['expenses'],
+      notes: ['Belum ada sumber expenses. Chart expenses tidak ditampilkan.']
+    }
+  }
+});
 
 const RevenueBilling = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
-
-  // Dummy stats data (Updated to IDR)
-  const [stats, setStats] = useState({
-    totalRevenue: 'Rp 18.679.500.000',
-    mrr: 'Rp 1.267.500.000',
-    activeSubscriptions: '856',
-    pendingInvoices: '14'
-  });
+  const [financialData, setFinancialData] = useState(() => buildPlaceholderFinancialData());
+  const [sourceNotice, setSourceNotice] = useState('');
+  const activeTab = adminTabFromPath(location.pathname, 'overview', invertPathMap(ADMIN_TAB_PATHS.revenue));
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
-    return () => clearTimeout(timer);
+    let isActive = true;
+
+    const loadFinancialSummary = async () => {
+      try {
+        setSourceNotice('');
+        const { data } = await authHttp.get('/admin/dashboard/financial-summary');
+        if (!isActive) return;
+        setFinancialData(data?.data || buildPlaceholderFinancialData('Response financial summary kosong. Ditampilkan sebagai placeholder Rp0.'));
+      } catch (err) {
+        if (!isActive) return;
+        const status = err?.response?.status;
+        const reason = status === 404
+          ? 'Endpoint financial summary belum tersedia. Ditampilkan sebagai placeholder Rp0.'
+          : err?.response?.data?.error || err.message || 'Financial summary gagal dimuat. Ditampilkan sebagai placeholder Rp0.';
+        setFinancialData(buildPlaceholderFinancialData(reason));
+        setSourceNotice(reason);
+      } finally {
+        setTimeout(() => {
+          if (isActive) setLoading(false);
+        }, MIN_LOADING_MS);
+      }
+    };
+
+    loadFinancialSummary();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
+
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.revenue[tabId] || ADMIN_TAB_PATHS.revenue.overview);
+  const availability = financialData?.dataAvailability || {};
 
   // --- Render Tab Content ---
   const renderTabContent = () => {
@@ -35,34 +113,33 @@ const RevenueBilling = () => {
         return (
           <>
             {/* Overview Cards */}
-            <RevenueOverviewCards stats={stats} />
+            <RevenueOverviewCards summary={financialData?.summary} availability={availability} />
 
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <RevenueChart />
+                <RevenueChart data={financialData?.revenueTrends || []} availability={availability} />
               </div>
               <div>
-                <SubscriptionDistribution />
+                <SubscriptionDistribution data={financialData?.subscriptionDistribution || []} availability={availability} />
               </div>
             </div>
 
             {/* Recent Transactions */}
-            <TransactionRecent />
+            <TransactionRecent transactions={financialData?.transactions || []} />
           </>
         );
       case 'transactions':
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold text-primary">All Transactions</h2>
-            <TransactionRecent />
-            {/* Can add more detailed transaction table or filters here */}
+            <TransactionRecent transactions={financialData?.transactions || []} />
           </div>
         );
       case 'invoices':
         return (
           <div className="space-y-6">
-            <InvoicesList />
+            <InvoicesList invoices={financialData?.invoices || []} availability={availability} />
           </div>
         );
       case 'settings':
@@ -154,11 +231,11 @@ const RevenueBilling = () => {
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                  system status: optimal
+                  <span className={`w-2 h-2 rounded-full ${sourceNotice ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+                  {sourceNotice ? 'placeholder Rp0' : 'financial data connected'}
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button disabled title="Export laporan revenue belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-accent/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Download" size={16} />
                     <span>Download Report</span>
                   </button>
@@ -170,7 +247,7 @@ const RevenueBilling = () => {
             <div className="border-t border-border/40 pt-4 overflow-x-auto">
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => handleTabChange('overview')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -180,7 +257,7 @@ const RevenueBilling = () => {
                   <span>Overview</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('transactions')}
+                  onClick={() => handleTabChange('transactions')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -190,7 +267,7 @@ const RevenueBilling = () => {
                   <span>Transactions</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('invoices')}
+                  onClick={() => handleTabChange('invoices')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'invoices'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -200,7 +277,7 @@ const RevenueBilling = () => {
                   <span>Invoices</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('settings')}
+                  onClick={() => handleTabChange('settings')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'settings'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -215,6 +292,11 @@ const RevenueBilling = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-0 pb-6 md:pb-8 bg-background theme-transition space-y-6">
+          {sourceNotice && (
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
+              {sourceNotice}
+            </div>
+          )}
           {renderTabContent()}
         </div>
       </div>

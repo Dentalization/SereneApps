@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
 import ClinicDirectoryContent from './ClinicDirectoryContent';
+import ClinicPlatformOversight from './ClinicPlatformOversight';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
 
 const ClinicManagement = () => {
   const { t } = useLanguage();
@@ -15,13 +17,37 @@ const ClinicManagement = () => {
     verified: 0,
     rejected: 0
   });
-  const [activeStatus, setActiveStatus] = useState('all');
   const navigate = useNavigate();
+  const location = useLocation();
+  const clinicPathToStatus = useMemo(() => invertPathMap(ADMIN_TAB_PATHS.clinic), []);
+  const routeStatus = adminTabFromPath(location.pathname, 'all', clinicPathToStatus);
+  const [manualStatus, setManualStatus] = useState(null);
+  const oversightSections = useMemo(() => ['owners', 'compliance', 'actions', 'audit', 'analytics'], []);
+  const activeSection = oversightSections.includes(routeStatus) ? routeStatus : 'directory';
+  const activeStatus = activeSection === 'directory'
+    ? (manualStatus || routeStatus)
+    : (manualStatus || 'all');
+
+  useEffect(() => {
+    setManualStatus(null);
+  }, [location.pathname]);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+
+  const sectionTabs = [
+    { id: 'directory', label: 'Directory', icon: 'Building2', path: ADMIN_TAB_PATHS.clinic.all },
+    { id: 'verification', label: 'Verification', icon: 'ShieldCheck', path: ADMIN_TAB_PATHS.clinic.pending },
+    { id: 'owners', label: 'Owner Accounts', icon: 'Crown', path: ADMIN_TAB_PATHS.clinic.owners },
+    { id: 'compliance', label: 'Compliance Flags', icon: 'Flag', path: ADMIN_TAB_PATHS.clinic.compliance },
+    { id: 'actions', label: 'Suspend / Transfer', icon: 'ShieldAlert', path: ADMIN_TAB_PATHS.clinic.actions },
+    { id: 'audit', label: 'Activity Audit', icon: 'ScrollText', path: ADMIN_TAB_PATHS.clinic.audit },
+    { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: ADMIN_TAB_PATHS.clinic.analytics }
+  ];
+
+  const currentSectionTab = routeStatus === 'pending' ? 'verification' : activeSection;
 
   if (loading) {
     return (
@@ -112,7 +138,7 @@ const ClinicManagement = () => {
                     <span>{t('admin.clinicManagement.directory.actions.addClinic')}</span>
                   </button>
                   <button
-                    onClick={() => setActiveStatus('pending')}
+                    onClick={() => navigate(ADMIN_TAB_PATHS.clinic.pending)}
                     className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
                   >
                     <AppIcon name="Building2" size={16} />
@@ -123,35 +149,53 @@ const ClinicManagement = () => {
             </div>
             <div className="border-t border-border/40 pt-4 space-y-4">
               <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setActiveStatus('all')}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'all' ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
-                >
-                  <AppIcon name="Building2" size={16} />
-                  <span>{t('admin.clinicManagement.header.statusTabs.all')}</span>
-                </button>
-                <button
-                  onClick={() => setActiveStatus('pending')}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'pending' ? 'bg-amber-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
-                >
-                  <AppIcon name="Clock" size={16} />
-                  <span>{t('admin.clinicManagement.header.statusTabs.pending')}</span>
-                </button>
-                <button
-                  onClick={() => setActiveStatus('verified')}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'verified' ? 'bg-emerald-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
-                >
-                  <AppIcon name="ShieldCheck" size={16} />
-                  <span>{t('admin.clinicManagement.header.statusTabs.verified')}</span>
-                </button>
-                <button
-                  onClick={() => setActiveStatus('rejected')}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'rejected' ? 'bg-rose-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
-                >
-                  <AppIcon name="CircleX" size={16} />
-                  <span>{t('admin.clinicManagement.header.statusTabs.rejected')}</span>
-                </button>
+                {sectionTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => navigate(tab.path)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      currentSectionTab === tab.id
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <AppIcon name={tab.icon} size={16} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
               </div>
+              {activeSection === 'directory' && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => navigate(ADMIN_TAB_PATHS.clinic.all)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'all' ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
+                  >
+                    <AppIcon name="Building2" size={16} />
+                    <span>{t('admin.clinicManagement.header.statusTabs.all')}</span>
+                  </button>
+                  <button
+                    onClick={() => navigate(ADMIN_TAB_PATHS.clinic.pending)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'pending' ? 'bg-amber-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
+                  >
+                    <AppIcon name="Clock" size={16} />
+                    <span>{t('admin.clinicManagement.header.statusTabs.pending')}</span>
+                  </button>
+                  <button
+                    onClick={() => setManualStatus('verified')}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'verified' ? 'bg-emerald-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
+                  >
+                    <AppIcon name="ShieldCheck" size={16} />
+                    <span>{t('admin.clinicManagement.header.statusTabs.verified')}</span>
+                  </button>
+                  <button
+                    onClick={() => setManualStatus('rejected')}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeStatus === 'rejected' ? 'bg-rose-500 text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'}`}
+                  >
+                    <AppIcon name="CircleX" size={16} />
+                    <span>{t('admin.clinicManagement.header.statusTabs.rejected')}</span>
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <div className="rounded-2xl border border-border/40 bg-surface p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-secondary">
@@ -195,15 +239,21 @@ const ClinicManagement = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
-          {/* Directory content (delegated to ClinicDirectoryContent) */}
           <div className="bg-surface border border-border/40 rounded-2xl p-6">
-            <ClinicDirectoryContent
-              onView={(clinic) => navigate(`/admin/clinic-management/${clinic.id}`, { state: { clinic } })}
-              onCreate={() => navigate('/admin/clinic-management/create')}
-              activeStatus={activeStatus}
-              onStatusChange={setActiveStatus}
-              onStatsChange={setStats}
-            />
+            {activeSection === 'directory' ? (
+              <ClinicDirectoryContent
+                onView={(clinic) => navigate(`/admin/clinic-management/${clinic.id}`, { state: { clinic } })}
+                onCreate={() => navigate('/admin/clinic-management/create')}
+                activeStatus={activeStatus}
+                onStatusChange={setManualStatus}
+                onStatsChange={setStats}
+              />
+            ) : (
+              <ClinicPlatformOversight
+                section={activeSection}
+                onViewClinic={(clinic) => navigate(`/admin/clinic-management/${clinic.id}`, { state: { clinic } })}
+              />
+            )}
           </div>
         </div>
       </div>

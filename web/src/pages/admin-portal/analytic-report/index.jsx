@@ -125,15 +125,12 @@ const AnalyticReport = () => {
                                 </p>
                             </div>
                             <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
-                                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary flex items-center gap-2">
-                                    <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                    </span>
-                                    Live Data Stream
+                                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                                    <AppIcon name="Database" size={14} />
+                                    Analytics source unavailable
                                 </div>
                                 <div className="flex gap-2">
-                                    <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">
+                                    <button disabled title="Export report belum tersedia karena backend analytics source belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-emerald-600/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                                         <AppIcon name="Download" size={16} />
                                         <span>Export Report</span>
                                     </button>

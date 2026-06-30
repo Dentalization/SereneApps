@@ -3,6 +3,8 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { authHttp } from '../../../../utils/httpClient';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const ProfessionalNetwork = ({ onStatsUpdate }) => {
   const { t } = useLanguage();
@@ -40,33 +42,18 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
       return;
     }
 
-    const token = localStorage.getItem('auth.accessToken');
-    if (!token) {
-      toast.error('Authentication required. Please log in again.');
-      return;
-    }
-
     try {
-      const response = await fetch(`http://localhost:4000/v1/admin/dentists/${userId}/documents/${docType}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await authHttp.get(`/admin/dentists/${userId}/documents/${docType}`, {
+        responseType: 'blob'
       });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        setPdfUrl(url);
-        setPdfTitle(title);
-        setShowPdfModal(true);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Document fetch failed:', errorData);
-        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
-      }
+
+      const url = window.URL.createObjectURL(response.data);
+      setPdfUrl(url);
+      setPdfTitle(title);
+      setShowPdfModal(true);
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      toast.error('Error loading document. Please try again.');
+      toast.error(error?.response?.data?.error || 'Error loading document. Please try again.');
     }
   };
 
@@ -102,18 +89,25 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                     dentist?.clinicAddress?.includes('Surabaya') ? 'Surabaya' :
                     dentist?.clinicAddress?.includes('Bandung') ? 'Bandung' :
                     dentist?.clinicAddress?.includes('Medan') ? 'Medan' :
-                    'Jakarta'; // Default fallback
+                    'Unknown';
 
     return {
       ...dentist,
       location,
-      // Add network performance metrics (would come from real data in production)
-      rating: 4.5 + Math.random() * 0.5, // Random between 4.5-5.0
-      totalReviews: Math.floor(Math.random() * 200) + 50,
-      patientsServed: Math.floor(Math.random() * 500) + 200,
-      networkConnections: Math.floor(Math.random() * 80) + 20,
-      referralsMade: Math.floor(Math.random() * 50) + 10,
-      referralsReceived: Math.floor(Math.random() * 40) + 5,
+      rating: dentist?.rating ?? null,
+      totalReviews: dentist?.totalReviews ?? null,
+      patientsServed: dentist?.patientsServed ?? null,
+      networkConnections: dentist?.networkConnections ?? null,
+      referralsMade: dentist?.referralsMade ?? null,
+      referralsReceived: dentist?.referralsReceived ?? null,
+      networkMetricsAvailable: Boolean(
+        dentist?.rating != null ||
+        dentist?.totalReviews != null ||
+        dentist?.patientsServed != null ||
+        dentist?.networkConnections != null ||
+        dentist?.referralsMade != null ||
+        dentist?.referralsReceived != null
+      ),
       // Normalize boolean fields
       acceptsBPJS: dentist?.acceptsBpjs || false,
       isVerified: dentist?.isVerified || dentist?.status === 'verified',
@@ -125,21 +119,7 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('auth.accessToken');
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      // Use the working /admin/dentists endpoint instead of /admin/dentists/verified
-      const response = await fetch('http://localhost:4000/v1/admin/dentists', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dentists (HTTP ${response.status})`);
-      }
-
-      const result = await response.json();
+      const { data: result } = await authHttp.get('/admin/dentists', { params: { limit: 1000 } });
       const allDentists = Array.isArray(result?.data) ? result.data : [];
       
       // Filter only verified dentists and transform data
@@ -157,7 +137,7 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
       }
     } catch (err) {
       console.error('Error fetching verified dentists:', err);
-      setError(err.message || 'Failed to fetch verified dentists');
+      setError(err?.response?.data?.error || err.message || 'Failed to fetch verified dentists');
     } finally {
       setLoading(false);
     }
@@ -187,6 +167,15 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
 
   // ---------- UI helpers ----------
   const getPerformanceBadge = (rating) => {
+    if (rating == null) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+          <AppIcon name="Database" size={12} />
+          Metrics unavailable
+        </span>
+      );
+    }
+
     const r = Number(rating);
     if (r >= 4.8) {
       return (
@@ -395,9 +384,7 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 flex items-center justify-center flex-shrink-0">
                     {dentist?.avatar_url ? (
                       <img 
-                        src={dentist.avatar_url.startsWith('http') 
-                          ? dentist.avatar_url 
-                          : `http://localhost:4000/${dentist.avatar_url}`} 
+                        src={resolveMediaUrl(dentist.avatar_url)}
                         alt={dentist.name} 
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => {
@@ -462,12 +449,14 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <AppIcon name="Star" size={16} className="text-yellow-500" />
-                    <span className="text-lg font-bold text-primary">{dentist.rating}</span>
+                    <span className="text-lg font-bold text-primary">{dentist.rating ?? 'N/A'}</span>
                   </div>
-                  <div className="text-xs text-secondary">{dentist.totalReviews} reviews</div>
+                  <div className="text-xs text-secondary">
+                    {dentist.totalReviews != null ? `${dentist.totalReviews} reviews` : 'Review data unavailable'}
+                  </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-bold text-primary">{dentist.patientsServed}</div>
+                  <div className="text-lg font-bold text-primary">{dentist.patientsServed ?? 'N/A'}</div>
                   <div className="text-xs text-secondary">Patients served</div>
                 </div>
               </div>
@@ -475,15 +464,15 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
               {/* Network Stats */}
               <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border/40">
                 <div className="text-center">
-                  <div className="text-sm font-semibold text-primary">{dentist.networkConnections}</div>
+                  <div className="text-sm font-semibold text-primary">{dentist.networkConnections ?? 'N/A'}</div>
                   <div className="text-xs text-secondary">Connections</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-semibold text-green-600">{dentist.referralsMade}</div>
+                  <div className="text-sm font-semibold text-green-600">{dentist.referralsMade ?? 'N/A'}</div>
                   <div className="text-xs text-secondary">Referred</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-semibold text-blue-600">{dentist.referralsReceived}</div>
+                  <div className="text-sm font-semibold text-blue-600">{dentist.referralsReceived ?? 'N/A'}</div>
                   <div className="text-xs text-secondary">Received</div>
                 </div>
               </div>
@@ -533,9 +522,7 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                 <div className="relative group">
                   {selectedDentist?.avatar_url ? (
                     <img
-                      src={selectedDentist.avatar_url.startsWith('http') 
-                        ? selectedDentist.avatar_url 
-                        : `http://localhost:4000/${selectedDentist.avatar_url}`}
+                      src={resolveMediaUrl(selectedDentist.avatar_url)}
                       alt={selectedDentist.name}
                       className="w-24 h-24 rounded-2xl object-cover border-2 border-border/20"
                       onError={(e) => {
@@ -608,7 +595,9 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                       ))}
                     </div>
                     <span className="text-sm text-secondary">
-                      {selectedDentist?.rating} ({selectedDentist?.totalReviews || 0} reviews)
+                      {selectedDentist?.rating != null
+                        ? `${selectedDentist.rating} (${selectedDentist?.totalReviews ?? 0} reviews)`
+                        : 'Review data unavailable'}
                     </span>
                   </div>
                 </div>
@@ -663,17 +652,17 @@ const ProfessionalNetwork = ({ onStatsUpdate }) => {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-secondary">Network Connections:</span>
-                      <span className="text-primary font-medium">{selectedDentist?.networkConnections || 0}</span>
+                      <span className="text-primary font-medium">{selectedDentist?.networkConnections ?? 'N/A'}</span>
                     </div>
 
                     <div className="flex justify-between">
                       <span className="text-secondary">Referrals Made:</span>
-                      <span className="text-primary font-medium">{selectedDentist?.referralsMade || 0}</span>
+                      <span className="text-primary font-medium">{selectedDentist?.referralsMade ?? 'N/A'}</span>
                     </div>
 
                     <div className="flex justify-between">
                       <span className="text-secondary">Referrals Received:</span>
-                      <span className="text-primary font-medium">{selectedDentist?.referralsReceived || 0}</span>
+                      <span className="text-primary font-medium">{selectedDentist?.referralsReceived ?? 'N/A'}</span>
                     </div>
 
                     <div className="flex justify-between">

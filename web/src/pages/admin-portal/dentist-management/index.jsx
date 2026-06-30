@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
 import DentistDirectory from './components/DentistDirectory';
 import VerificationQueue from './components/VerificationQueue';
 import ProfessionalNetwork from './components/ProfessionalNetwork';
+import { authHttp } from '../../../utils/httpClient';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
 
 const DentistManagement = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('directory');
+  const dentistPathToTab = invertPathMap(ADMIN_TAB_PATHS.dentist);
+  const activeTab = adminTabFromPath(location.pathname, 'directory', dentistPathToTab);
   const [stats, setStats] = useState({
     totalDentists: 0,
     pendingVerification: 0,
@@ -26,13 +32,7 @@ const DentistManagement = () => {
   // Define before useEffect to avoid TDZ
   const fetchDentistStats = useCallback(async () => {
     try {
-      const token = localStorage.getItem('auth.accessToken');
-      if (!token) return;
-      const res = await fetch('http://localhost:4000/v1/admin/dentists?limit=1000', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const result = await res.json();
+      const { data: result } = await authHttp.get('/admin/dentists', { params: { limit: 1000 } });
       const data = Array.isArray(result?.data) ? result.data : [];
       const verified = data.filter(d => d.isVerified).length;
       const pending  = data.filter(d => !d.isVerified && d.status !== 'rejected').length;
@@ -78,16 +78,18 @@ const DentistManagement = () => {
     },
   ];
 
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.dentist[tabId] || ADMIN_TAB_PATHS.dentist.directory);
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'directory':
-        return <DentistDirectory onStatsUpdate={handleStatsUpdate} />;
+        return <DentistDirectory onStatsUpdate={handleStatsUpdate} onGoToVerification={() => handleTabChange('verification')} />;
       case 'verification':
         return <VerificationQueue onStatsUpdate={handleStatsUpdate} />;
       case 'network':
         return <ProfessionalNetwork onStatsUpdate={handleStatsUpdate} />;
       default:
-        return <DentistDirectory onStatsUpdate={handleStatsUpdate} />;
+        return <DentistDirectory onStatsUpdate={handleStatsUpdate} onGoToVerification={() => handleTabChange('verification')} />;
     }
   };
 
@@ -181,13 +183,13 @@ const DentistManagement = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button disabled title="Flow tambah dokter belum tersedia di Admin Portal" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-accent/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="UserPlus" size={16} />
-                    <span>Add Dentist</span>
+                    <span>Tambah Dokter</span>
                   </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700">
+                  <button onClick={() => handleTabChange('verification')} className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700">
                     <AppIcon name="UserCheck" size={16} />
-                    <span>Verify</span>
+                    <span>Verifikasi</span>
                   </button>
                 </div>
               </div>
@@ -197,7 +199,7 @@ const DentistManagement = () => {
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors relative ${
                       activeTab === tab.id ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:text-primary hover:bg-surface'
                     }`}

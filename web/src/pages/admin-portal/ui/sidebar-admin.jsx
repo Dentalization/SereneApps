@@ -7,6 +7,7 @@ import AppIcon from '../../../components/AppIcon';
 import AppImage from '../../../components/AppImage';
 import { resolveMediaUrl } from '../../../utils/media';
 import { getAdminNotificationsForRoles } from './adminNotificationsData';
+import { hasAdminAccess, normalizeAdminRoles } from './adminAccess';
 
 const FLAG_SRC = {
   en: '/assets/images/ukflag.png',
@@ -53,14 +54,8 @@ const AdminSideBar = () => {
     return title ? `${title} ${name}` : name;
   };
 
-  const getUserRole = () => user?.roles?.[0] || user?.role || 'admin';
-  const userRole = getUserRole();
-  const resolvedRoles = useMemo(() => {
-    const roles = user?.roles && user.roles.length ? [...user.roles] : [];
-    if (!roles.length && user?.role) roles.push(user.role);
-    if (!roles.length) roles.push('admin');
-    return roles;
-  }, [user?.roles, user?.role]);
+  const resolvedRoles = useMemo(() => normalizeAdminRoles(user), [user]);
+  const userRole = resolvedRoles[0] || 'admin';
   const isSuperAdmin = resolvedRoles.includes('super_admin');
   const roleNotifications = useMemo(
     () => getAdminNotificationsForRoles(resolvedRoles, { includeAll: isSuperAdmin }),
@@ -79,7 +74,7 @@ const AdminSideBar = () => {
       path: '/admin',
       exact: true,
       description: t('admin.pages.dashboard.subtitle') || 'Executive Summary & Platform Overview',
-      roles: ['super_admin', 'business_manager', 'platform_manager', 'compliance_officer'], // All admin roles can see dashboard
+      roles: ['admin', 'super_admin', 'business_manager', 'platform_manager', 'finance_manager', 'customer_success_manager', 'compliance_officer'],
       badge: null
     },
     {
@@ -92,7 +87,11 @@ const AdminSideBar = () => {
       submenu: [
         { label: t('admin.nav.clinicDirectory') || 'Clinic Directory', icon: 'Building', path: '/admin/clinic-management', exact: true },
         { label: t('admin.nav.clinicVerification') || 'Clinic Verification', icon: 'Shield', path: '/admin/clinic-management/verification' },
-        { label: t('admin.nav.ownerAccounts') || 'Owner Accounts', icon: 'Crown', path: '/admin/clinic-management/owners' }
+        { label: t('admin.nav.ownerAccounts') || 'Owner Accounts', icon: 'Crown', path: '/admin/clinic-management/owners' },
+        { label: 'Compliance Flags', icon: 'Flag', path: '/admin/clinic-management/compliance' },
+        { label: 'Platform Actions', icon: 'ShieldAlert', path: '/admin/clinic-management/actions' },
+        { label: 'Activity Audit', icon: 'ScrollText', path: '/admin/clinic-management/audit' },
+        { label: 'Directory Analytics', icon: 'BarChart3', path: '/admin/clinic-management/analytics' }
       ]
     },
     {
@@ -222,10 +221,7 @@ const AdminSideBar = () => {
     }
   ];
 
-  const hasRoleAccess = (itemRoles = []) => {
-    // Check if user role exactly matches any of the allowed roles
-    return itemRoles.includes(userRole);
-  };
+  const hasRoleAccess = (itemRoles = []) => hasAdminAccess(resolvedRoles, itemRoles);
 
   const filteredMenuItems = menuItems.filter(item => hasRoleAccess(item.roles));
 
@@ -242,6 +238,7 @@ const AdminSideBar = () => {
   };
 
   const isActive = (item) => (item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path));
+  const isSubmenuActive = (item) => (item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path));
 
 
 
@@ -386,6 +383,30 @@ const AdminSideBar = () => {
                       </div>
                     )}
 
+                    {!isCollapsed && item.submenu && active && (
+                      <div className="mt-1 space-y-1 pl-8">
+                        {item.submenu.map((subitem) => {
+                          const subActive = isSubmenuActive(subitem);
+                          return (
+                            <button
+                              key={subitem.path}
+                              onClick={() => handleNavigation(subitem.path)}
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                                subActive
+                                  ? 'bg-accent/15 text-accent'
+                                  : 'text-secondary hover:bg-accent/10 hover:text-primary'
+                              }`}
+                            >
+                              <AppIcon name={subitem.icon} size={14} />
+                              <span className="flex-1 truncate">{subitem.label}</span>
+                              {subitem.badge && (
+                                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{subitem.badge}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                   </div>
                 );
@@ -535,7 +556,10 @@ const AdminSideBar = () => {
                     </div>
                   </button>
 
-                  <button onClick={() => navigate('/admin/preferences')} className="w-full flex items-center px-4 py-3 text-left hover:bg-accent hover:bg-opacity-10 transition-colors group">
+                  <button onClick={() => {
+                    navigate('/admin/profile');
+                    setIsUserMenuOpen(false);
+                  }} className="w-full flex items-center px-4 py-3 text-left hover:bg-accent hover:bg-opacity-10 transition-colors group">
                     <AppIcon name="Settings" size={20} className="mr-3 text-muted group-hover:text-accent" />
                     <div className="flex-1">
                       <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{t('admin.sidebar.preferences') || 'Preferences'}</p>

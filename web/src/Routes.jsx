@@ -65,6 +65,8 @@ import AdminProfile from './pages/admin-portal/admin-profile';
 import AnalyticReport from './pages/admin-portal/analytic-report';
 import NotificationScreenAdmin from './pages/admin-portal/ui/NotificationScreenAdmin';
 import AppointmentDiagnosticsDashboard from './pages/admin-portal/communications-diagnostics';
+import AdminRouteGate from './pages/admin-portal/ui/AdminRouteGate';
+import { ADMIN_ROUTE_ROLES } from './pages/admin-portal/ui/adminAccess';
 
 const Routes = () => {
   return (
@@ -146,22 +148,51 @@ const Routes = () => {
 
           {/* Admin Portal Routes - Protected for admin roles */}
           <Route element={<ProtectedRoute allow={["admin", "super_admin", "business_manager", "platform_manager", "finance_manager", "customer_success", "customer_success_manager", "technical_support", "ai_engineer", "compliance_officer"]} />}>
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/notifications" element={<NotificationScreenAdmin />} />
-            <Route path="/admin/clinic-management" element={<ClinicManagement />} />
-            <Route path="/admin/clinic-management/create" element={<CreateClinic />} />
-            <Route path="/admin/clinic-management/:id" element={<ClinicDetail />} />
-            <Route path="/admin/dentist-management" element={<DentistManagement />} />
-            <Route path="/admin/revenue-billing" element={<RevenueBilling />} />
-            <Route path="/admin/ai-platform" element={<AIPlatform />} />
-            <Route path="/admin/support-helpdesk" element={<SupportHelpdesk />} />
-            <Route path="/admin/communications-diagnostics" element={<AppointmentDiagnosticsDashboard />} />
-            <Route path="/admin/system-administration" element={<SystemAdministration />} />
-            <Route path="/admin/compliance-security" element={<ComplianceSecurity />} />
-            <Route path="/admin/partnership" element={<Partnership />} />
-            <Route path="/admin/content-management" element={<ContentManagement />} />
-            <Route path="/admin/analytics-reporting/*" element={<AnalyticReport />} />
-            <Route path="/admin/profile" element={<AdminProfile />} />
+            <Route path="/admin" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.dashboard}><AdminDashboard /></AdminRouteGate>} />
+            <Route path="/admin/notifications" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.notifications}><NotificationScreenAdmin /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/verification" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/owners" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/compliance" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/actions" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/audit" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/analytics" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicManagement /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/create" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><CreateClinic /></AdminRouteGate>} />
+            <Route path="/admin/clinic-management/:id" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.clinics}><ClinicDetail /></AdminRouteGate>} />
+            <Route path="/admin/dentist-management" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.dentists}><DentistManagement /></AdminRouteGate>} />
+            <Route path="/admin/dentist-management/verification" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.dentists}><DentistManagement /></AdminRouteGate>} />
+            <Route path="/admin/dentist-management/network" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.dentists}><DentistManagement /></AdminRouteGate>} />
+            <Route path="/admin/revenue-billing" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.revenue}><RevenueBilling /></AdminRouteGate>} />
+            <Route path="/admin/revenue-billing/payments" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.revenue}><RevenueBilling /></AdminRouteGate>} />
+            <Route path="/admin/revenue-billing/subscriptions" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.revenue}><RevenueBilling /></AdminRouteGate>} />
+            <Route path="/admin/revenue-billing/settings" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.revenue}><RevenueBilling /></AdminRouteGate>} />
+            <Route path="/admin/ai-platform" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.ai}><AIPlatform /></AdminRouteGate>} />
+            <Route path="/admin/ai-platform/usage" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.ai}><AIPlatform /></AdminRouteGate>} />
+            <Route path="/admin/ai-platform/models" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.ai}><AIPlatform /></AdminRouteGate>} />
+            <Route path="/admin/ai-platform/billing" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.ai}><AIPlatform /></AdminRouteGate>} />
+            <Route path="/admin/support-helpdesk" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.support}><SupportHelpdesk /></AdminRouteGate>} />
+            <Route path="/admin/support-helpdesk/communication" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.support}><SupportHelpdesk /></AdminRouteGate>} />
+            <Route path="/admin/support-helpdesk/knowledge-base" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.support}><SupportHelpdesk /></AdminRouteGate>} />
+            <Route path="/admin/communications-diagnostics" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.diagnostics}><AppointmentDiagnosticsDashboard /></AdminRouteGate>} />
+            <Route path="/admin/system-administration" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.system}><SystemAdministration /></AdminRouteGate>} />
+            <Route path="/admin/system-administration/users" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.system}><SystemAdministration /></AdminRouteGate>} />
+            <Route path="/admin/system-administration/audit" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.system}><SystemAdministration /></AdminRouteGate>} />
+            <Route path="/admin/system-administration/config" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.system}><SystemAdministration /></AdminRouteGate>} />
+            <Route path="/admin/system-administration/monitoring" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.system}><SystemAdministration /></AdminRouteGate>} />
+            <Route path="/admin/compliance-security" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.compliance}><ComplianceSecurity /></AdminRouteGate>} />
+            <Route path="/admin/compliance-security/audit" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.compliance}><ComplianceSecurity /></AdminRouteGate>} />
+            <Route path="/admin/compliance-security/security" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.compliance}><ComplianceSecurity /></AdminRouteGate>} />
+            <Route path="/admin/compliance-security/regulatory" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.compliance}><ComplianceSecurity /></AdminRouteGate>} />
+            <Route path="/admin/partnership" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.partnership}><Partnership /></AdminRouteGate>} />
+            <Route path="/admin/partnership/directory" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.partnership}><Partnership /></AdminRouteGate>} />
+            <Route path="/admin/partnership/api" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.partnership}><Partnership /></AdminRouteGate>} />
+            <Route path="/admin/partnership/integrations" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.partnership}><Partnership /></AdminRouteGate>} />
+            <Route path="/admin/content-management" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.content}><ContentManagement /></AdminRouteGate>} />
+            <Route path="/admin/content-management/education" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.content}><ContentManagement /></AdminRouteGate>} />
+            <Route path="/admin/content-management/library" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.content}><ContentManagement /></AdminRouteGate>} />
+            <Route path="/admin/content-management/media" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.content}><ContentManagement /></AdminRouteGate>} />
+            <Route path="/admin/analytics-reporting/*" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.analytics}><AnalyticReport /></AdminRouteGate>} />
+            <Route path="/admin/profile" element={<AdminRouteGate allow={ADMIN_ROUTE_ROLES.profile}><AdminProfile /></AdminRouteGate>} />
           </Route>
           <Route path="/product-platform" element={<ProductPlatform />} />
           <Route path="/clinical-research" element={<ClinicalResearch />} />

@@ -1,15 +1,11 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { AdminEmptyState } from '../../ui/AdminPagePrimitives';
 
-const SubscriptionDistribution = () => {
+const SubscriptionDistribution = ({ data = [], availability }) => {
     const { t } = useLanguage();
-
-    const data = [
-        { name: t('admin.revenueBilling.charts.subscriptionTiers.tiers.basic'), value: 450, color: '#94A3B8' },
-        { name: t('admin.revenueBilling.charts.subscriptionTiers.tiers.professional'), value: 320, color: '#A08A48' },
-        { name: t('admin.revenueBilling.charts.subscriptionTiers.tiers.enterprise'), value: 110, color: '#1E293B' }, // Dark slate for Enterprise (or secondary color)
-    ];
+    const hasData = data.length > 0;
 
     const RADIAN = Math.PI / 180;
     const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
@@ -30,8 +26,9 @@ const SubscriptionDistribution = () => {
             <p className="text-sm text-secondary mb-4">{t('admin.revenueBilling.charts.subscriptionTiers.subtitle')}</p>
 
             <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+                {hasData ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
                         <Pie
                             data={data}
                             cx="50%"
@@ -61,8 +58,15 @@ const SubscriptionDistribution = () => {
                             height={36}
                             wrapperStyle={{ paddingTop: '20px' }}
                         />
-                    </PieChart>
-                </ResponsiveContainer>
+                        </PieChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <AdminEmptyState
+                        icon="PieChart"
+                        title="Subscription tiers belum tersedia"
+                        description={availability?.subscriptions?.notes?.[0] || 'Backend belum mengirim data subscriptions.'}
+                    />
+                )}
             </div>
         </div>
     );
