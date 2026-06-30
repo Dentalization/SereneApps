@@ -336,10 +336,10 @@ app.use(`${prefix}/notifications`, notificationsRouter);
 app.use(`${prefix}/chat`, chatRouter);
 app.use(`${prefix}/admin`, adminProfileRouter);
 app.use(`${prefix}/admin`, adminDentistsRouter);
+app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 app.use(`${prefix}/admin`, adminRouter);
 app.use(`${prefix}/x-core`, xCoreRouter);
 app.use(`${prefix}/webhooks`, webhooksRouter);
-app.use(`${prefix}/admin/dashboard`, adminDashboardRouter);
 
 // Global error handler (must be last middleware)
 app.use(errorHandler);

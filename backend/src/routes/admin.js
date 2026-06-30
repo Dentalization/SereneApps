@@ -414,12 +414,12 @@ router.get('/dentists/verified', authenticateToken, requireRoles(['admin', 'supe
           clinicName = clinicStaff.clinicProfile?.brandName || clinicStaff.clinicProfile?.legalName;
         }
 
-        // Extract location from clinic address (simplified)
+        // Extract coarse location only when the profile address contains a known city.
         const location = profile?.clinicAddress?.includes('Jakarta') ? 'Jakarta' :
                         profile?.clinicAddress?.includes('Surabaya') ? 'Surabaya' :
                         profile?.clinicAddress?.includes('Bandung') ? 'Bandung' :
                         profile?.clinicAddress?.includes('Medan') ? 'Medan' :
-                        'Jakarta'; // Default fallback
+                        'Unknown';
 
         return {
           id: user.id.toString(),
@@ -437,13 +437,13 @@ router.get('/dentists/verified', authenticateToken, requireRoles(['admin', 'supe
           yearsOfExperience: profile?.yearsOfExperience || 5,
           location,
           
-          // Professional network metrics (mock data for now)
-          rating: 4.5 + Math.random() * 0.5, // Random between 4.5-5.0
-          totalReviews: Math.floor(Math.random() * 200) + 50,
-          patientsServed: Math.floor(Math.random() * 500) + 200,
-          networkConnections: Math.floor(Math.random() * 80) + 20,
-          referralsMade: Math.floor(Math.random() * 50) + 10,
-          referralsReceived: Math.floor(Math.random() * 40) + 5,
+          rating: null,
+          totalReviews: null,
+          patientsServed: null,
+          networkConnections: null,
+          referralsMade: null,
+          referralsReceived: null,
+          networkMetricsAvailable: false,
           
           // Practice details
           consultationFee: profile?.consultationFee || 200000,

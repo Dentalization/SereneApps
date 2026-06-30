@@ -1,57 +1,16 @@
 import React from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { AdminEmptyState } from '../../ui/AdminPagePrimitives';
 
-const TransactionRecent = () => {
+const formatIdr = (value) => new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0
+}).format(Number(value));
+
+const TransactionRecent = ({ transactions = [] }) => {
     const { t } = useLanguage();
-    // Dummy data
-    const transactions = [
-        {
-            id: 'TRX-10234',
-            date: '2026-02-13T10:30:00',
-            entity: 'Smile Dental Clinic',
-            type: 'Subscription',
-            plan: 'Professional Plan',
-            amount: 'Rp 2.985.000',
-            status: 'success',
-        },
-        {
-            id: 'TRX-10233',
-            date: '2026-02-13T09:15:00',
-            entity: 'Dr. Sarah Wilson',
-            type: 'Consultation Fee',
-            plan: 'Platform Fee (10%)',
-            amount: 'Rp 232.500',
-            status: 'success',
-        },
-        {
-            id: 'TRX-10232',
-            date: '2026-02-12T16:45:00',
-            entity: 'Healthy Teeth Center',
-            type: 'Subscription',
-            plan: 'Enterprise Plan',
-            amount: 'Rp 7.485.000',
-            status: 'pending',
-        },
-        {
-            id: 'TRX-10231',
-            date: '2026-02-12T14:20:00',
-            entity: 'Dr. James Chen',
-            type: 'Verification',
-            plan: 'One-time Fee',
-            amount: 'Rp 750.000',
-            status: 'failed',
-        },
-        {
-            id: 'TRX-10230',
-            date: '2026-02-12T11:10:00',
-            entity: 'Bright Smile Studio',
-            type: 'Subscription',
-            plan: 'Basic Plan',
-            amount: 'Rp 1.485.000',
-            status: 'success',
-        },
-    ];
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -85,11 +44,12 @@ const TransactionRecent = () => {
         <div className="bg-surface border border-border/40 rounded-2xl overflow-hidden">
             <div className="p-6 border-b border-border/40 flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-primary">{t('admin.revenueBilling.transactions.recentTitle')}</h3>
-                <button className="text-sm font-medium text-accent hover:text-accent/80 transition-colors">
+                <button disabled className="text-sm font-medium text-secondary opacity-60 cursor-not-allowed">
                     {t('admin.revenueBilling.transactions.viewAll')}
                 </button>
             </div>
-            <div className="overflow-x-auto">
+            {transactions.length > 0 ? (
+                <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-surface-elevated">
                         <tr>
@@ -123,7 +83,7 @@ const TransactionRecent = () => {
                                     <div className="text-xs text-secondary">{trx.plan}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary">
-                                    {trx.amount}
+                                    {typeof trx.amount === 'number' ? formatIdr(trx.amount) : trx.amount}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     {getStatusBadge(trx.status)}
@@ -137,7 +97,16 @@ const TransactionRecent = () => {
                         ))}
                     </tbody>
                 </table>
-            </div>
+                </div>
+            ) : (
+                <div className="p-6">
+                    <AdminEmptyState
+                        icon="CreditCard"
+                        title="Transaksi belum tersedia"
+                        description="Belum ada payment intent dari backend untuk ditampilkan."
+                    />
+                </div>
+            )}
         </div>
     );
 };

@@ -3,6 +3,8 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { authHttp } from '../../../../utils/httpClient';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const VerificationQueue = ({ onStatsUpdate }) => {
   const { t } = useLanguage();
@@ -28,33 +30,18 @@ const VerificationQueue = ({ onStatsUpdate }) => {
       return;
     }
 
-    const token = localStorage.getItem('auth.accessToken');
-    if (!token) {
-      toast.error('Authentication required. Please log in again.');
-      return;
-    }
-
     try {
-      const response = await fetch(`http://localhost:4000/v1/admin/dentists/${userId}/documents/${docType}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await authHttp.get(`/admin/dentists/${userId}/documents/${docType}`, {
+        responseType: 'blob'
       });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        setPdfUrl(url);
-        setPdfTitle(title);
-        setShowPdfModal(true);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Document fetch failed:', errorData);
-        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
-      }
+
+      const url = window.URL.createObjectURL(response.data);
+      setPdfUrl(url);
+      setPdfTitle(title);
+      setShowPdfModal(true);
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      toast.error('Error loading document. Please try again.');
+      toast.error(error?.response?.data?.error || 'Error loading document. Please try again.');
     }
   };
 
@@ -69,32 +56,9 @@ const VerificationQueue = ({ onStatsUpdate }) => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('auth.accessToken');
-      if (!token) {
-        setError('Authentication required');
-        return;
-      }
-
-      const queryParams = new URLSearchParams({ type: filter });
-      const response = await fetch(
-        `http://localhost:4000/v1/admin/dentists/pending?${queryParams}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError('Access denied - insufficient permissions');
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
+      const { data: result } = await authHttp.get('/admin/dentists/pending', {
+        params: { type: filter }
+      });
       console.log('🦷 Pending dentists fetched:', result);
 
       if (result?.success) {
@@ -111,7 +75,9 @@ const VerificationQueue = ({ onStatsUpdate }) => {
       }
     } catch (err) {
       console.error('Error fetching pending dentists:', err);
-      setError('Failed to load verification queue');
+      setError(err?.response?.status === 403
+        ? 'Access denied - insufficient permissions'
+        : err?.response?.data?.error || 'Failed to load verification queue');
     } finally {
       setLoading(false);
     }
@@ -139,33 +105,12 @@ const VerificationQueue = ({ onStatsUpdate }) => {
 
     setProcessing(true);
     try {
-      const token = localStorage.getItem('auth.accessToken');
-      if (!token) {
-        toast.error('Authentication required');
-        return;
-      }
-
       const payload = {
         action: verificationAction,
         rejectionReason: verificationAction === 'reject' ? rejectionReason : null,
       };
 
-      const response = await fetch(
-        `http://localhost:4000/v1/admin/dentists/${selectedDentist.id}/verify`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.error || `HTTP ${response.status}`);
-      }
+      const { data: result } = await authHttp.post(`/admin/dentists/${selectedDentist.id}/verify`, payload);
 
       if (result?.success) {
         // Optimistic update
@@ -344,7 +289,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 flex items-center justify-center flex-shrink-0">
                       {dentist?.avatar_url ? (
                         <img
-                          src={dentist.avatar_url.startsWith('http') ? dentist.avatar_url : `http://localhost:4000/${dentist.avatar_url}`}
+                          src={resolveMediaUrl(dentist.avatar_url)}
                           alt={dentist.name}
                           className="w-12 h-12 rounded-full object-cover"
                           onError={(e) => {
@@ -592,7 +537,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
                   {selectedDentist?.avatar_url ? (
                     <>
                       <img
-                        src={selectedDentist.avatar_url.startsWith('http') ? selectedDentist.avatar_url : `http://localhost:4000/${selectedDentist.avatar_url}`}
+                        src={resolveMediaUrl(selectedDentist.avatar_url)}
                         alt={selectedDentist.name}
                         className="w-24 h-24 rounded-2xl object-cover border-2 border-border/20"
                         onError={(e) => {
@@ -782,7 +727,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
                           <button
                             key={index}
                             onClick={() => {
-                              const eduUrl = `http://localhost:4000/${filePath}`;
+                              const eduUrl = resolveMediaUrl(filePath);
                               window.open(eduUrl, '_blank');
                             }}
                             className="w-full px-4 py-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/40 text-purple-600 rounded-lg border border-purple-200 dark:border-purple-800 transition-colors text-sm"
@@ -823,7 +768,7 @@ const VerificationQueue = ({ onStatsUpdate }) => {
                           <button
                             key={index}
                             onClick={() => {
-                              const certUrl = `http://localhost:4000/${filePath}`;
+                              const certUrl = resolveMediaUrl(filePath);
                               window.open(certUrl, '_blank');
                             }}
                             className="w-full px-4 py-2 bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/40 text-orange-600 rounded-lg border border-orange-200 dark:border-orange-800 transition-colors text-sm"

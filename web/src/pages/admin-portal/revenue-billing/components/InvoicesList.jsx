@@ -1,52 +1,16 @@
 import React from 'react';
 import AppIcon from '../../../../components/AppIcon';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { AdminEmptyState } from '../../ui/AdminPagePrimitives';
 
-const InvoicesList = () => {
+const formatIdr = (value) => new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0
+}).format(Number(value));
+
+const InvoicesList = ({ invoices = [], availability }) => {
     const { t } = useLanguage();
-    // Dummy data for invoices
-    const invoices = [
-        {
-            id: 'INV-2024-001',
-            date: '2026-02-13',
-            client: 'Smile Dental Clinic',
-            amount: 'Rp 2.985.000',
-            status: 'paid',
-            dueDate: '2026-02-13',
-        },
-        {
-            id: 'INV-2024-002',
-            date: '2026-02-12',
-            client: 'Healthy Teeth Center',
-            amount: 'Rp 7.485.000',
-            status: 'pending',
-            dueDate: '2026-02-19',
-        },
-        {
-            id: 'INV-2024-003',
-            date: '2026-02-10',
-            client: 'Dr. Sarah Wilson',
-            amount: 'Rp 232.500',
-            status: 'paid',
-            dueDate: '2026-02-10',
-        },
-        {
-            id: 'INV-2024-004',
-            date: '2026-02-08',
-            client: 'Bright Smile Studio',
-            amount: 'Rp 1.485.000',
-            status: 'overdue',
-            dueDate: '2026-02-05',
-        },
-        {
-            id: 'INV-2024-005',
-            date: '2026-02-05',
-            client: 'Gentle Care Dental',
-            amount: 'Rp 4.500.000',
-            status: 'paid',
-            dueDate: '2026-02-05',
-        },
-    ];
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -83,12 +47,13 @@ const InvoicesList = () => {
                     <h3 className="text-lg font-semibold text-primary">{t('admin.revenueBilling.invoices.title')}</h3>
                     <p className="text-sm text-secondary">{t('admin.revenueBilling.invoices.subtitle')}</p>
                 </div>
-                <button className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors">
+                <button disabled title="Create invoice admin flow belum tersedia" className="flex cursor-not-allowed items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-primary/60 text-white opacity-70">
                     <AppIcon name="Plus" size={16} />
                     <span>{t('admin.revenueBilling.invoices.createInvoice')}</span>
                 </button>
             </div>
-            <div className="overflow-x-auto">
+            {invoices.length > 0 ? (
+                <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-surface-elevated">
                         <tr>
@@ -117,17 +82,17 @@ const InvoicesList = () => {
                                     {new Date(inv.dueDate).toLocaleDateString()}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary">
-                                    {inv.amount}
+                                    {typeof inv.amount === 'number' ? formatIdr(inv.amount) : inv.amount}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     {getStatusBadge(inv.status)}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex items-center justify-end gap-2">
-                                        <button className="p-1.5 text-secondary hover:text-primary hover:bg-surface-elevated rounded-lg transition-colors" title="Download">
+                                        <button disabled className="p-1.5 text-secondary opacity-50 cursor-not-allowed rounded-lg" title="Download belum tersedia">
                                             <AppIcon name="Download" size={16} />
                                         </button>
-                                        <button className="p-1.5 text-secondary hover:text-primary hover:bg-surface-elevated rounded-lg transition-colors" title="View Details">
+                                        <button disabled className="p-1.5 text-secondary opacity-50 cursor-not-allowed rounded-lg" title="Detail invoice admin belum tersedia">
                                             <AppIcon name="Eye" size={16} />
                                         </button>
                                     </div>
@@ -136,12 +101,23 @@ const InvoicesList = () => {
                         ))}
                     </tbody>
                 </table>
-            </div>
-            <div className="p-4 border-t border-border/40 flex justify-center">
-                <button className="text-sm text-secondary hover:text-primary transition-colors">
+                </div>
+            ) : (
+                <div className="p-6">
+                    <AdminEmptyState
+                        icon="FileText"
+                        title="Invoice belum tersedia"
+                        description={availability?.invoices?.notes?.[0] || 'Belum ada invoice dari backend untuk ditampilkan.'}
+                    />
+                </div>
+            )}
+            {invoices.length > 0 && (
+                <div className="p-4 border-t border-border/40 flex justify-center">
+                <button disabled className="text-sm text-secondary opacity-60 cursor-not-allowed">
                     {t('admin.revenueBilling.invoices.loadMore')}
                 </button>
-            </div>
+                </div>
+            )}
         </div>
     );
 };

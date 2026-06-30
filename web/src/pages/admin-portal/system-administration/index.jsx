@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -6,17 +7,22 @@ import SystemHealth from './components/SystemHealth';
 import UserManagement from './components/UserManagement';
 import AuditLogs from './components/AuditLogs';
 import IntegrationSettings from './components/IntegrationSettings';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
+import { AdminEmptyState } from '../ui/AdminPagePrimitives';
 
 const SystemAdministration = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('health');
+  const activeTab = adminTabFromPath(location.pathname, 'health', invertPathMap(ADMIN_TAB_PATHS.system));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.system[tabId] || ADMIN_TAB_PATHS.system.health);
 
   if (loading) {
     return (
@@ -92,11 +98,11 @@ const SystemAdministration = () => {
                   {t('admin.systemAdmin.systemHealth') || 'System Health: Optimal'}
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button onClick={() => handleTabChange('integrations')} className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
                     <AppIcon name="Settings2" size={16} />
                     <span>{t('admin.systemAdmin.systemConfig')}</span>
                   </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700">
+                  <button onClick={() => handleTabChange('audit')} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700">
                     <AppIcon name="Shield" size={16} />
                     <span>{t('admin.systemAdmin.security')}</span>
                   </button>
@@ -106,7 +112,7 @@ const SystemAdministration = () => {
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveTab('health')}
+                  onClick={() => handleTabChange('health')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'health'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -116,7 +122,7 @@ const SystemAdministration = () => {
                   <span>{t('admin.systemAdmin.tabs.health')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('users')}
+                  onClick={() => handleTabChange('users')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'users'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -126,7 +132,7 @@ const SystemAdministration = () => {
                   <span>{t('admin.systemAdmin.tabs.users')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('audit')}
+                  onClick={() => handleTabChange('audit')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'audit'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -136,7 +142,7 @@ const SystemAdministration = () => {
                   <span>{t('admin.systemAdmin.tabs.audit')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('integrations')}
+                  onClick={() => handleTabChange('integrations')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'integrations'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -144,6 +150,16 @@ const SystemAdministration = () => {
                 >
                   <AppIcon name="Plug" size={16} />
                   <span>{t('admin.systemAdmin.tabs.integrations')}</span>
+                </button>
+                <button
+                  onClick={() => handleTabChange('monitoring')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'monitoring'
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                >
+                  <AppIcon name="Monitor" size={16} />
+                  <span>Monitoring</span>
                 </button>
               </div>
             </div>
@@ -155,6 +171,13 @@ const SystemAdministration = () => {
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'audit' && <AuditLogs />}
           {activeTab === 'integrations' && <IntegrationSettings />}
+          {activeTab === 'monitoring' && (
+            <AdminEmptyState
+              icon="Monitor"
+              title="System monitoring backend belum tersedia"
+              description="Subroute monitoring sudah valid dan dapat direfresh, tetapi metrik produksi belum ditampilkan sampai endpoint observability admin tersedia."
+            />
+          )}
         </div>
       </div>
     </div>

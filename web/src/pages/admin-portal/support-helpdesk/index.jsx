@@ -1,24 +1,24 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
-import SupportOverviewCards from './components/SupportOverviewCards';
-import TicketVolumeChart from './components/TicketVolumeChart';
-import RecentTickets from './components/RecentTickets';
-import TeamPerformance from './components/TeamPerformance';
-import LiveChat from './components/LiveChat';
-import KnowledgeBase from './components/KnowledgeBase';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
+import { AdminEmptyState } from '../ui/AdminPagePrimitives';
 
 const SupportHelpdesk = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('tickets');
+  const activeTab = adminTabFromPath(location.pathname, 'tickets', invertPathMap(ADMIN_TAB_PATHS.support));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.support[tabId] || ADMIN_TAB_PATHS.support.tickets);
 
   if (loading) {
     return (
@@ -90,15 +90,15 @@ const SupportHelpdesk = () => {
                 </p>
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-2 text-sm text-secondary">
-                  23 {t('admin.supportHelpdesk.openTickets')}
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+                  Demo/Fallback metrics — helpdesk backend source belum tersedia
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button disabled title="Pembuatan tiket admin belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-accent/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Plus" size={16} />
                     <span>{t('admin.supportHelpdesk.newTicket')}</span>
                   </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700">
+                  <button onClick={() => handleTabChange('knowledgeBase')} className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700">
                     <AppIcon name="BookOpen" size={16} />
                     <span>{t('admin.supportHelpdesk.knowledgeBase')}</span>
                   </button>
@@ -108,7 +108,7 @@ const SupportHelpdesk = () => {
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveTab('tickets')}
+                  onClick={() => handleTabChange('tickets')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'tickets'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -118,7 +118,7 @@ const SupportHelpdesk = () => {
                   <span>{t('admin.supportHelpdesk.tabs.tickets')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('liveChat')}
+                  onClick={() => handleTabChange('liveChat')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'liveChat'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -128,7 +128,7 @@ const SupportHelpdesk = () => {
                   <span>{t('admin.supportHelpdesk.tabs.liveChat')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('knowledgeBase')}
+                  onClick={() => handleTabChange('knowledgeBase')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'knowledgeBase'
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary hover:bg-surface'
@@ -144,28 +144,28 @@ const SupportHelpdesk = () => {
 
         <div className="flex-1 overflow-y-auto px-6 md:px-8 pt-4 pb-6 md:pb-8 bg-background theme-transition">
           {activeTab === 'tickets' && (
-            <div className="space-y-6">
-              {/* Overview Cards */}
-              <SupportOverviewCards />
-
-              {/* Charts & Lists */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <TicketVolumeChart />
-                </div>
-                <div>
-                  <TeamPerformance />
-                </div>
-              </div>
-
-              {/* Recent Tickets */}
-              <RecentTickets />
-            </div>
+            <AdminEmptyState
+              icon="HeadphonesIcon"
+              title="Helpdesk tickets belum tersedia"
+              description="Backend helpdesk belum mengirim daftar ticket, volume, dan performa team. Tidak ada ticket dummy yang ditampilkan sebagai data produksi."
+            />
           )}
 
-          {activeTab === 'liveChat' && <LiveChat />}
+          {activeTab === 'liveChat' && (
+            <AdminEmptyState
+              icon="MessageCircle"
+              title="Live chat backend belum tersedia"
+              description="Percakapan live chat tidak ditampilkan sampai sumber data support realtime tersedia."
+            />
+          )}
 
-          {activeTab === 'knowledgeBase' && <KnowledgeBase />}
+          {activeTab === 'knowledgeBase' && (
+            <AdminEmptyState
+              icon="BookOpen"
+              title="Knowledge base backend belum tersedia"
+              description="Artikel dan kategori knowledge base belum dimuat dari backend. Tab ini aktif untuk navigasi, refresh, dan back-forward tanpa data dummy."
+            />
+          )}
         </div>
       </div>
     </div>

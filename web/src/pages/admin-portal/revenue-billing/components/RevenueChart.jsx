@@ -1,25 +1,12 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { AdminEmptyState } from '../../ui/AdminPagePrimitives';
 
-const RevenueChart = () => {
+const RevenueChart = ({ data = [], availability }) => {
     const { t } = useLanguage();
-
-    // Dummy data (scaled for IDR - roughly $1 = Rp 15.000)
-    const data = [
-        { name: 'Jan', revenue: 600000000, expenses: 360000000 },
-        { name: 'Feb', revenue: 675000000, expenses: 330000000 },
-        { name: 'Mar', revenue: 870000000, expenses: 390000000 },
-        { name: 'Apr', revenue: 780000000, expenses: 420000000 },
-        { name: 'May', revenue: 975000000, expenses: 480000000 },
-        { name: 'Jun', revenue: 1080000000, expenses: 525000000 },
-        { name: 'Jul', revenue: 1275000000, expenses: 570000000 },
-        { name: 'Aug', revenue: 1410000000, expenses: 600000000 },
-        { name: 'Sep', revenue: 1530000000, expenses: 660000000 },
-        { name: 'Oct', revenue: 1650000000, expenses: 690000000 },
-        { name: 'Nov', revenue: 1770000000, expenses: 750000000 },
-        { name: 'Dec', revenue: 1875000000, expenses: 810000000 },
-    ];
+    const hasRevenue = data.some((item) => item.revenue != null && Number(item.revenue) > 0);
+    const hasExpenses = availability?.expenses?.available && data.some((item) => item.expenses != null);
 
     const formatCurrency = (value) => {
         if (value >= 1000000000) {
@@ -43,16 +30,17 @@ const RevenueChart = () => {
             </div>
 
             <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                        data={data}
-                        margin={{
-                            top: 10,
-                            right: 10,
-                            left: 0,
-                            bottom: 0,
-                        }}
-                    >
+                {hasRevenue ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart
+                            data={data}
+                            margin={{
+                                top: 10,
+                                right: 10,
+                                left: 0,
+                                bottom: 0,
+                            }}
+                        >
                         <defs>
                             <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#A08A48" stopOpacity={0.2} />
@@ -98,17 +86,26 @@ const RevenueChart = () => {
                             fill="url(#colorRevenue)"
                             strokeWidth={2}
                         />
-                        <Area
-                            type="monotone"
-                            dataKey="expenses"
-                            name={t('admin.revenueBilling.charts.legend.expenses')}
-                            stroke="#EF4444"
-                            fillOpacity={1}
-                            fill="url(#colorExpenses)"
-                            strokeWidth={2}
-                        />
-                    </AreaChart>
-                </ResponsiveContainer>
+                        {hasExpenses && (
+                            <Area
+                                type="monotone"
+                                dataKey="expenses"
+                                name={t('admin.revenueBilling.charts.legend.expenses')}
+                                stroke="#EF4444"
+                                fillOpacity={1}
+                                fill="url(#colorExpenses)"
+                                strokeWidth={2}
+                            />
+                        )}
+                        </AreaChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <AdminEmptyState
+                        icon="LineChart"
+                        title="Revenue trend belum tersedia"
+                        description={availability?.payments?.notes?.[0] || 'Belum ada payment intent settled/paid untuk ditampilkan.'}
+                    />
+                )}
             </div>
         </div>
     );

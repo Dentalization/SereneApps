@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -6,17 +7,21 @@ import CMSOverview from './components/CMSOverview';
 import ContentRepository from './components/ContentRepository';
 import PublicationWorkflow from './components/PublicationWorkflow';
 import MediaGallery from './components/MediaGallery';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
 
 const ContentManagement = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const activeTab = adminTabFromPath(location.pathname, 'overview', invertPathMap(ADMIN_TAB_PATHS.content));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.content[tabId] || ADMIN_TAB_PATHS.content.overview);
 
   if (loading) {
     return (
@@ -103,7 +108,7 @@ const ContentManagement = () => {
                   System Healthy
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">
+                  <button disabled title="Flow create content belum tersedia" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-emerald-600/60 px-4 py-2 text-sm font-medium text-white opacity-70 shadow-sm">
                     <AppIcon name="Plus" size={16} />
                     <span>Create Content</span>
                   </button>
@@ -115,7 +120,7 @@ const ContentManagement = () => {
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'

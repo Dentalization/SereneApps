@@ -3,6 +3,8 @@ import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import AppIcon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { authHttp } from '../../../../utils/httpClient';
+import { resolveMediaUrl } from '../../../../utils/media';
 
 const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
   const { t } = useLanguage();
@@ -29,33 +31,18 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
       return;
     }
 
-    const token = localStorage.getItem('auth.accessToken');
-    if (!token) {
-      toast.error('Authentication required. Please log in again.');
-      return;
-    }
-
     try {
-      const response = await fetch(`http://localhost:4000/v1/admin/dentists/${userId}/documents/${docType}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await authHttp.get(`/admin/dentists/${userId}/documents/${docType}`, {
+        responseType: 'blob'
       });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        setPdfUrl(url);
-        setPdfTitle(title);
-        setShowPdfModal(true);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Document fetch failed:', errorData);
-        toast.error(`Error: ${errorData.error || 'Failed to load document'}`);
-      }
+
+      const url = window.URL.createObjectURL(response.data);
+      setPdfUrl(url);
+      setPdfTitle(title);
+      setShowPdfModal(true);
     } catch (error) {
       console.error('❌ Error fetching document:', error);
-      toast.error('Error loading document. Please try again.');
+      toast.error(error?.response?.data?.error || 'Error loading document. Please try again.');
     }
   };
 
@@ -64,20 +51,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('auth.accessToken');
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      const response = await fetch('http://localhost:4000/v1/admin/dentists?limit=1000', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dentists (HTTP ${response.status})`);
-      }
-
-      const result = await response.json();
+      const { data: result } = await authHttp.get('/admin/dentists', { params: { limit: 1000 } });
       const data = Array.isArray(result?.data) ? result.data : [];
 
       setDentists(data);
@@ -88,7 +62,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
       }
     } catch (err) {
       console.error('Error fetching dentists:', err);
-      setError(err.message || 'Failed to fetch dentists');
+      setError(err?.response?.data?.error || err.message || 'Failed to fetch dentists');
     } finally {
       setLoading(false);
     }
@@ -289,7 +263,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 flex items-center justify-center flex-shrink-0">
                       {dentist?.avatar_url ? (
                         <img
-                          src={dentist.avatar_url.startsWith('http') ? dentist.avatar_url : `http://localhost:4000/${dentist.avatar_url}`}
+                          src={resolveMediaUrl(dentist.avatar_url)}
                           alt={dentist?.name || 'Dentist'}
                           className="w-12 h-12 rounded-full object-cover"
                           onError={(e) => {
@@ -364,7 +338,6 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log('Verify clicked for:', dentist?.name);
                           if (typeof onGoToVerification === 'function') {
                             onGoToVerification();
                           } else {
@@ -429,7 +402,7 @@ const DentistDirectory = ({ onStatsUpdate, onGoToVerification }) => {
                   {selectedDentist?.avatar_url ? (
                     <>
                       <img
-                        src={selectedDentist.avatar_url.startsWith('http') ? selectedDentist.avatar_url : `http://localhost:4000/${selectedDentist.avatar_url}`}
+                        src={resolveMediaUrl(selectedDentist.avatar_url)}
                         alt={selectedDentist.name}
                         className="w-24 h-24 rounded-2xl object-cover border-2 border-border/20"
                         onError={(e) => {

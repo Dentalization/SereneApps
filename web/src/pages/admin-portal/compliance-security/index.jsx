@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import AdminSideBar from '../ui/sidebar-admin';
 import AppIcon from '../../../components/AppIcon';
@@ -6,17 +7,21 @@ import SecurityOverview from './components/SecurityOverview';
 import AuditTrail from './components/AuditTrail';
 import ComplianceStandards from './components/ComplianceStandards';
 import DataPrivacy from './components/DataPrivacy';
+import { ADMIN_TAB_PATHS, adminTabFromPath, invertPathMap } from '../ui/adminAccess';
 
 const ComplianceSecurity = () => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
   const MIN_LOADING_MS = 900;
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const activeTab = adminTabFromPath(location.pathname, 'overview', invertPathMap(ADMIN_TAB_PATHS.compliance));
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), MIN_LOADING_MS);
     return () => clearTimeout(timer);
   }, []);
+  const handleTabChange = (tabId) => navigate(ADMIN_TAB_PATHS.compliance[tabId] || ADMIN_TAB_PATHS.compliance.overview);
 
   if (loading) {
     return (
@@ -92,11 +97,11 @@ const ComplianceSecurity = () => {
                   {t('admin.complianceSecurity.securityScore')}: <span className="font-bold text-primary">98%</span>
                 </div>
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
+                  <button onClick={() => handleTabChange('audit')} className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent/90">
                     <AppIcon name="ShieldCheck" size={16} />
                     <span>{t('admin.complianceSecurity.securityAudit')}</span>
                   </button>
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700">
+                  <button onClick={() => handleTabChange('overview')} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700">
                     <AppIcon name="AlertTriangle" size={16} />
                     <span>{t('admin.complianceSecurity.alerts')}</span>
                   </button>
@@ -106,7 +111,7 @@ const ComplianceSecurity = () => {
             <div className="border-t border-border/40 pt-4">
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => handleTabChange('overview')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -116,7 +121,7 @@ const ComplianceSecurity = () => {
                   <span>{t('admin.complianceSecurity.tabs.overview')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('audit')}
+                  onClick={() => handleTabChange('audit')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'audit'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -126,7 +131,7 @@ const ComplianceSecurity = () => {
                   <span>{t('admin.complianceSecurity.tabs.audit')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('standards')}
+                  onClick={() => handleTabChange('standards')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'standards'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
@@ -136,7 +141,7 @@ const ComplianceSecurity = () => {
                   <span>{t('admin.complianceSecurity.tabs.standards')}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('privacy')}
+                  onClick={() => handleTabChange('privacy')}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'privacy'
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-secondary hover:text-primary hover:bg-surface'
