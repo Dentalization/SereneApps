@@ -170,3 +170,32 @@ test('admin role contract keeps aliases and restricted dashboard access explicit
   assert.doesNotMatch(accessSource, /dashboard:\s*\[[^\]]*technical_support[^\]]*\]/);
   assert.doesNotMatch(accessSource, /dashboard:\s*\[[^\]]*ai_engineer[^\]]*\]/);
 });
+
+test('communications diagnostics supports safe live triage workflows', () => {
+  const diagnosticsSource = read('pages/admin-portal/communications-diagnostics/index.jsx');
+  const constantsSource = read('pages/admin-portal/communications-diagnostics/diagnosticsConstants.js');
+  const confirmDialogSource = read('components/ConfirmDialog.jsx');
+
+  assert.match(diagnosticsSource, /get\('appointmentId'\)/);
+  assert.match(diagnosticsSource, /window\.history\.replaceState/);
+  assert.match(diagnosticsSource, /event\.key === 'Enter'/);
+  assert.match(diagnosticsSource, /const POLL_INTERVAL_MS = 15000/);
+  assert.match(diagnosticsSource, /clearInterval\(pollRef\.current\)/);
+  assert.match(diagnosticsSource, /Last refreshed:/);
+  assert.match(diagnosticsSource, /downloadAudit\('csv'\)/);
+  assert.match(diagnosticsSource, /downloadAudit\('json'\)/);
+  assert.match(diagnosticsSource, /jumpToAppointment\(row\.appointmentId\)/);
+  assert.match(diagnosticsSource, /itemType="participant"/);
+  assert.match(diagnosticsSource, /itemType="webhookReceipt"/);
+  assert.match(diagnosticsSource, /itemType="outboxAttempt"/);
+  assert.match(diagnosticsSource, /<DashboardSkeleton \/>/);
+  assert.match(diagnosticsSource, /aria-label=\{isExpanded \? 'Collapse details' : 'Expand details'\}/);
+  assert.equal(diagnosticsSource.includes('window.confirm('), false);
+  assert.equal(diagnosticsSource.includes('err?.response?.data?.error?.code ||'), false);
+
+  assert.match(constantsSource, /APPOINTMENT_NOT_FOUND/);
+  assert.match(constantsSource, /COMMUNICATIONS_PROVIDER_UNAVAILABLE/);
+  assert.match(constantsSource, /export function describeError/);
+  assert.match(confirmDialogSource, /role="dialog"/);
+  assert.match(confirmDialogSource, /aria-modal="true"/);
+});

@@ -1566,6 +1566,17 @@ const PaymentHistory = ({ payments, loading }) => (
                   <span className={`rounded-full px-2 py-1 text-xs font-medium ${paymentStatusClass(payment.status)}`}>
                     {statusLabel(payment.status)}
                   </span>
+                  {payment.reconciliationStatus && payment.method !== 'cash' && (
+                    <p
+                      className={`mt-1 text-[10px] ${
+                        payment.reconciliationStatus === 'failed' ? 'text-red-600' : 'text-secondary'
+                      }`}
+                      title={payment.reconciliationError || undefined}
+                    >
+                      Rekonsiliasi: {payment.reconciliationStatus}
+                      {payment.reconciliationAttempts ? ` · ${payment.reconciliationAttempts}x` : ''}
+                    </p>
+                  )}
                 </td>
               </tr>
             ))}

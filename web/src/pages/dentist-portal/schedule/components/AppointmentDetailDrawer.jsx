@@ -20,7 +20,7 @@ if (typeof document !== 'undefined' && !document.getElementById('modal-animation
   document.head.appendChild(style);
 }
 
-const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onReschedule, onCancel, onStartVideo }) => {
+const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onCancel, onStartVideo }) => {
   // HAPUS semua state/ref scroll manual. Kita serahkan sepenuhnya pada CSS.
   
   if (!isOpen || !appointment) return null;
@@ -86,7 +86,7 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onRe
     </div>
   );
 
-  const ActionButton = ({ onClick, variant = 'secondary', children, icon }) => {
+  const ActionButton = ({ onClick, variant = 'secondary', children, icon, disabled = false, title }) => {
     const variants = {
       primary: 'bg-accent hover:bg-accent/90 text-white',
       secondary: 'bg-accent/10 hover:bg-accent/20 text-accent',
@@ -96,7 +96,12 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onRe
       info: 'bg-cyan-500 hover:bg-cyan-600 text-white'
     };
     return (
-      <button onClick={onClick} className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center space-x-2 ${variants[variant]}`}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center space-x-2 ${variants[variant]} disabled:cursor-not-allowed disabled:opacity-50`}
+      >
         {icon && <Icon name={icon} size={16} />}
         <span>{children}</span>
       </button>
@@ -179,14 +184,39 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onRe
               </div>
             </div>
 
+            {appointment.healthForm && (
+              <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold">
+                    <Icon name="ClipboardHeart" size={16} />
+                    Pre-session health form
+                  </h3>
+                  <span className="text-xs">
+                    {appointment.healthForm.submittedAt
+                      ? formatDate(appointment.healthForm.submittedAt)
+                      : '-'}
+                  </span>
+                </div>
+                <div className="grid gap-2 text-sm md:grid-cols-2">
+                  <div><strong>Gejala:</strong> {appointment.healthForm.symptoms || '-'}</div>
+                  <div><strong>Skala nyeri:</strong> {appointment.healthForm.painLevel ?? '-'}</div>
+                  <div><strong>Alergi:</strong> {appointment.healthForm.allergies || '-'}</div>
+                  <div><strong>Obat:</strong> {appointment.healthForm.medications || '-'}</div>
+                </div>
+                {appointment.healthForm.notes && (
+                  <p className="text-sm"><strong>Catatan:</strong> {appointment.healthForm.notes}</p>
+                )}
+              </div>
+            )}
+
             {/* Quick Actions */}
             <div className="space-y-3 pt-2">
               <h3 className="text-lg font-semibold text-primary">{t('dentistSchedule.detail.quickActions.title')}</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <ActionButton variant="secondary" icon="MessageSquare">Message</ActionButton>
-                <ActionButton variant="secondary" icon="Camera">Photo</ActionButton>
-                <ActionButton variant="secondary" icon="FileText">Instruct</ActionButton>
-                <ActionButton variant="secondary" icon="Phone">Call</ActionButton>
+                <ActionButton disabled title="Segera tersedia" variant="secondary" icon="MessageSquare">Message</ActionButton>
+                <ActionButton disabled title="Segera tersedia" variant="secondary" icon="Camera">Photo</ActionButton>
+                <ActionButton disabled title="Segera tersedia" variant="secondary" icon="FileText">Instruct</ActionButton>
+                <ActionButton disabled title="Segera tersedia" variant="secondary" icon="Phone">Call</ActionButton>
               </div>
             </div>
 
@@ -198,15 +228,18 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onRe
                 {appointment.status === 'pending' && (
                   <>
                     <ActionButton onClick={() => onConfirm(appointment)} variant="success" icon="Check">Confirm</ActionButton>
-                    <ActionButton onClick={() => onReschedule(appointment)} variant="warning" icon="Calendar">Reschedule</ActionButton>
+                    <ActionButton disabled title="Form perubahan waktu belum tersedia" variant="warning" icon="Calendar">Reschedule</ActionButton>
                   </>
                 )}
                 {/* Confirmed Actions */}
                 {appointment.status === 'confirmed' && (
                   <>
-                    <ActionButton onClick={() => onReschedule(appointment)} variant="secondary" icon="Calendar">Reschedule</ActionButton>
+                    <ActionButton disabled title="Form perubahan waktu belum tersedia" variant="secondary" icon="Calendar">Reschedule</ActionButton>
                     {appointment.channel === 'clinic' && (
-                       <ActionButton variant="success" icon="UserCheck">Check In</ActionButton>
+                       <ActionButton disabled title="Segera tersedia" variant="success" icon="UserCheck">Check In</ActionButton>
+                    )}
+                    {appointment.channel === 'tele' && appointment.tele?.videoRoomUrl && (
+                      <ActionButton onClick={() => onStartVideo(appointment)} variant="info" icon="Video">Mulai Sesi</ActionButton>
                     )}
                   </>
                 )}

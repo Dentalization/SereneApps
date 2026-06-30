@@ -23,6 +23,11 @@ import {
   buildClinicAvailability,
   CLINIC_AVAILABILITY_TIMEZONE
 } from '../services/clinicAppointmentAvailability.js';
+import {
+  findPatientByIdentity,
+  normalizePatientPhone,
+  withPatientIdentityTransaction
+} from '../services/patients/patientIdentityResolver.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -236,6 +241,10 @@ function serializePaymentIntent(intent, invoice = null) {
     rawStatus: intent.status,
     providerOrderId: intent.providerOrderId,
     providerPaymentId: intent.providerPaymentId,
+    reconciliationStatus: intent.reconciliationStatus || 'pending',
+    reconciliationAttempts: intent.reconciliationAttempts || 0,
+    reconciliationError: intent.reconciliationError || null,
+    lastReconciledAt: intent.lastReconciledAt?.toISOString?.() || null,
     snapToken: metadata.snapToken || null,
     redirectUrl: intent.redirectUrl,
     expiresAt: intent.expiresAt?.toISOString?.() || null,
@@ -358,14 +367,45 @@ async function assertNoOtherActiveAppointmentPayment(appointmentId, currentPayme
   return true;
 }
 
-async function emitClinicPaymentUpdate(req, payload) {
+async function emitClinicPaymentUpdate(req, payload, ctx) {
   const io = req.app?.get?.('io');
-  if (!io) return;
-  io.emit('clinic:billing_updated', payload);
-  io.emit('dashboard:metrics_updated', payload);
-  io.emit('appointment:updated', payload);
-  io.emit('payment:status_updated', payload);
-  io.emit('billing:invoice_updated', payload);
+  const clinicProfileId = ctx?.clinicProfileId;
+  if (!io || !clinicProfileId) return;
+
+  const eventNames = [
+    'clinic:billing_updated',
+    'dashboard:metrics_updated',
+    'appointment:updated',
+    'payment:status_updated',
+    'billing:invoice_updated'
+  ];
+  const participantIds = new Set();
+  if (payload.dentistId) participantIds.add(payload.dentistId.toString());
+  if (payload.patientId) participantIds.add(payload.patientId.toString());
+
+  if (payload.appointmentId && participantIds.size < 2) {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: BigInt(payload.appointmentId),
+        ownerClinicId: clinicProfileId
+      },
+      select: { dentistId: true, patientId: true }
+    });
+    if (appointment) {
+      participantIds.add(appointment.dentistId.toString());
+      participantIds.add(appointment.patientId.toString());
+    }
+  }
+
+  for (const eventName of eventNames) {
+    let audience = io
+      .to(`clinic:${clinicProfileId.toString()}`)
+      .to('admin:platform');
+    for (const userId of participantIds) {
+      audience = audience.to(`user:${userId}`);
+    }
+    audience.emit(eventName, payload);
+  }
 }
 
 router.get('/permissions', authenticateToken, async (req, res) => {
@@ -593,49 +633,28 @@ router.post('/patients', authenticateToken, async (req, res) => {
     const { name, email, phone, dateOfBirth, gender, address } = req.body || {};
     const normalizedName = String(name || '').trim();
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    const normalizedPhone = String(phone || '').trim();
+    const normalizedPhone = normalizePatientPhone(phone);
     if (!normalizedName) {
       return res.status(400).json({ error: 'name is required' });
     }
 
     let reusedPatient = false;
-    const patient = await prisma.$transaction(async (tx) => {
-      let user = normalizedEmail
-        ? await tx.user.findUnique({ where: { email: normalizedEmail } })
-        : null;
+    const patient = await withPatientIdentityTransaction(prisma, async (tx) => {
+      let user = await findPatientByIdentity(tx, {
+        email: normalizedEmail,
+        phone: normalizedPhone
+      });
       if (user) reusedPatient = true;
 
-      if (!user && normalizedPhone) {
-        user = await tx.user.findFirst({
-          where: {
-            roles: { has: 'patient' },
-            phone_number: normalizedPhone,
-            OR: [
-              {
-                patientAppointments: {
-                  some: {
-                    clinicBranchId: branchId,
-                    ownerClinicId: ctx.clinicProfileId
-                  }
-                }
-              },
-              {
-                patientProfile: {
-                  is: {
-                    medicalDetails: {
-                      path: ['clinicBranchId'],
-                      equals: branchId.toString()
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        });
-        if (user) reusedPatient = true;
-      }
-
       if (!user) {
+        const emailOwner = normalizedEmail
+          ? await tx.user.findUnique({ where: { email: normalizedEmail } })
+          : null;
+        if (emailOwner) {
+          const conflict = new Error('Email is already used by a non-patient account');
+          conflict.status = 409;
+          throw conflict;
+        }
         const passwordHash = await bcrypt.hash(randomUUID(), 10);
         user = await tx.user.create({
           data: {
@@ -646,16 +665,35 @@ router.post('/patients', authenticateToken, async (req, res) => {
             roles: ['patient']
           }
         });
-      } else if (!user.roles?.includes('patient')) {
-        user = await tx.user.update({
-          where: { id: user.id },
-          data: { roles: [...(user.roles || []), 'patient'] }
-        });
+      } else {
+        const identityUpdates = {};
+        if (!user.name && normalizedName) identityUpdates.name = normalizedName;
+        if (!user.phone_number && normalizedPhone) identityUpdates.phone_number = normalizedPhone;
+        if (
+          normalizedEmail &&
+          (!user.email || user.email.endsWith('@serene.local')) &&
+          user.email !== normalizedEmail
+        ) {
+          const emailOwner = await tx.user.findUnique({ where: { email: normalizedEmail } });
+          if (!emailOwner || emailOwner.id === user.id) identityUpdates.email = normalizedEmail;
+        }
+        if (Object.keys(identityUpdates).length) {
+          user = await tx.user.update({
+            where: { id: user.id },
+            data: identityUpdates,
+            include: { patientProfile: true }
+          });
+        }
       }
 
       const existingProfile = await tx.patientProfile.findUnique({
         where: { userId: user.id },
-        select: { medicalDetails: true }
+        select: {
+          dateOfBirth: true,
+          gender: true,
+          address: true,
+          medicalDetails: true
+        }
       });
       const existingMedicalDetails = (
         existingProfile?.medicalDetails
@@ -683,9 +721,9 @@ router.post('/patients', authenticateToken, async (req, res) => {
           medicalDetails: clinicMedicalDetails
         },
         update: {
-          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-          gender: gender || undefined,
-          address: address || undefined,
+          dateOfBirth: !existingProfile?.dateOfBirth && dateOfBirth ? new Date(dateOfBirth) : undefined,
+          gender: !existingProfile?.gender && gender ? gender : undefined,
+          address: !existingProfile?.address && address ? address : undefined,
           medicalDetails: clinicMedicalDetails
         },
         include: {
@@ -843,8 +881,9 @@ router.post('/appointments', authenticateToken, async (req, res) => {
       type: 'appointment_created',
       appointmentId: appointment.id.toString(),
       branchId: branchId.toString(),
-      dentistId: dentistId.toString()
-    });
+      dentistId: dentistId.toString(),
+      patientId: appointment.patientId.toString()
+    }, ctx);
 
     return res.status(201).json({ appointment: serializeAppointment(appointment) });
   } catch (error) {
@@ -1227,7 +1266,7 @@ router.post('/payments/cash', authenticateToken, async (req, res) => {
       appointmentId: invoice.appointmentId?.toString?.(),
       branchId: branchId.toString(),
       status: 'paid'
-    });
+    }, ctx);
 
     return res.status(201).json({
       payment: serializePaymentIntent(result, result.invoices?.[0] || invoice),
@@ -1390,7 +1429,7 @@ router.post('/payments/midtrans', authenticateToken, async (req, res) => {
       appointmentId: invoice.appointmentId?.toString?.(),
       branchId: branchId.toString(),
       status: 'pending'
-    });
+    }, ctx);
 
     return res.status(201).json({
       payment: serializePaymentIntent(intent, invoice),
@@ -1463,7 +1502,7 @@ router.post('/payments/:paymentIntentId/reconcile', authenticateToken, async (re
       appointmentId: refreshed.appointmentId?.toString?.() || null,
       branchId: branchId.toString(),
       status: refreshed.status
-    });
+    }, ctx);
 
     return res.json({
       payment: serializePaymentIntent(refreshed, invoice),
@@ -1619,7 +1658,7 @@ router.post('/claims', authenticateToken, async (req, res) => {
       type: 'insurance_claim_created',
       branchId: branchId.toString(),
       status: 'pending'
-    });
+    }, ctx);
 
     return res.status(201).json({ claim: result });
   } catch (error) {

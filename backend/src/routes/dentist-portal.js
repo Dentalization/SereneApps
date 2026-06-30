@@ -16,7 +16,7 @@ import { recordStatusChange } from '../services/appointments/audit.js';
 import { FINANCIAL_OWNER_TYPES } from '../services/payments/ownership.js';
 import {
   createEmrRecordForDentist,
-  listEmrRecordsForPatient,
+  listEmrRecordsForPatientForDentist,
   updateEmrConsentDocumentForDentist
 } from '../services/emrRecords.js';
 import {
@@ -35,6 +35,11 @@ import {
 import { resolvePatientSource } from '../services/patientSource.js';
 import { createDentistAIChatService } from '../services/dentistAIChatService.js';
 import { createLocalImageStorageAdapter } from '../services/verifiedCaseImageStorage.js';
+import {
+  findPatientByIdentity,
+  normalizePatientPhone,
+  withPatientIdentityTransaction
+} from '../services/patients/patientIdentityResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -550,6 +555,7 @@ router.get(
       const appointments = await prisma.appointment.findMany({
         where: { dentistId },
         include: {
+          preSessionHealthForm: true,
           patient: {
             select: {
               id: true,
@@ -570,37 +576,6 @@ router.get(
         },
         orderBy: { startsAt: 'desc' }
       });
-
-      // --- AUTO-MARK OVERDUE across all fetched appointments ---
-      const now = new Date();
-      const overdueCandiates = appointments.filter(a =>
-        ['scheduled', 'confirmed'].includes(a.status) && new Date(a.startsAt) < now
-      );
-      for (const apt of overdueCandiates) {
-        try {
-          const hasPaid = await prisma.paymentIntent.findFirst({
-            where: { appointmentId: apt.id, status: 'succeeded' },
-            select: { id: true }
-          });
-          if (!hasPaid) {
-            await prisma.$transaction(async (tx) => {
-              await tx.appointment.update({ where: { id: apt.id }, data: { status: 'overdue' } });
-              await recordStatusChange(tx, {
-                appointmentId: apt.id,
-                previousStatus: apt.status,
-                newStatus: 'overdue',
-                changedBy: null,
-                changedByRole: 'system',
-                reason: 'Auto-marked overdue: past scheduled time with no successful payment',
-                metadata: { trigger: 'dentist_portal_patients_list' }
-              });
-            });
-            apt.status = 'overdue';
-          }
-        } catch (err) {
-          console.error(`[DentistPortal] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, err.message);
-        }
-      }
 
       const patientMap = new Map();
       for (const appointment of appointments) {
@@ -719,7 +694,7 @@ router.post(
       } = req.body || {};
 
       const cleanName = typeof name === 'string' ? name.trim() : '';
-      const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+      const cleanPhone = normalizePatientPhone(phone);
       const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
       const cleanGender = typeof gender === 'string' ? gender.trim().toLowerCase() : '';
       const parsedAge = Number(age);
@@ -770,18 +745,6 @@ router.post(
         }
       }
 
-      const existingPatient = await prisma.user.findUnique({
-        where: { email: cleanEmail },
-        select: {
-          id: true,
-          roles: true,
-          patientProfile: { select: { dateOfBirth: true, medicalDetails: true } }
-        }
-      });
-      if (existingPatient && !existingPatient.roles?.includes('patient')) {
-        return sendError(res, 409, 'EMAIL_ALREADY_USED', 'Email ini sudah digunakan oleh akun non-pasien.');
-      }
-
       const overlappingAppointment = await prisma.appointment.findFirst({
         where: {
           dentistId,
@@ -799,8 +762,7 @@ router.post(
       let createdPatient;
       let createdAppointment;
 
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock($1::bigint)', dentistId);
+      await withPatientIdentityTransaction(prisma, async (tx) => {
         const overlappingInTx = await tx.appointment.findFirst({
           where: {
             dentistId,
@@ -816,13 +778,25 @@ router.post(
           throw slotError;
         }
 
+        const existingPatient = await findPatientByIdentity(tx, {
+          email: cleanEmail,
+          phone: cleanPhone
+        });
+        if (!existingPatient) {
+          const emailOwner = await tx.user.findUnique({ where: { email: cleanEmail } });
+          if (emailOwner) {
+            const identityError = new Error('EMAIL_ALREADY_USED');
+            identityError.code = 'EMAIL_ALREADY_USED';
+            throw identityError;
+          }
+        }
+
         const patient = existingPatient
           ? await tx.user.update({
             where: { id: existingPatient.id },
             data: {
-              name: cleanName,
-              phone_number: cleanPhone,
-              roles: existingPatient.roles?.includes('patient') ? existingPatient.roles : [...(existingPatient.roles || []), 'patient']
+              name: existingPatient.name || cleanName,
+              phone_number: existingPatient.phone_number || cleanPhone
             }
           })
           : await tx.user.create({
@@ -848,17 +822,17 @@ router.post(
             gender: cleanGender,
             medicalDetails: {
               ...existingMedicalDetails,
-              age: parsedAge,
-              patientSource: 'clinic_added'
+              age: existingMedicalDetails.age ?? parsedAge,
+              patientSource: existingMedicalDetails.patientSource || 'clinic_added'
             }
           },
           update: {
-            ...(birthDate ? { dateOfBirth: birthDate } : {}),
-            gender: cleanGender,
+            ...(!existingPatient?.patientProfile?.dateOfBirth && birthDate ? { dateOfBirth: birthDate } : {}),
+            gender: existingPatient?.patientProfile?.gender ? undefined : cleanGender,
             medicalDetails: {
               ...existingMedicalDetails,
-              age: parsedAge,
-              patientSource: 'clinic_added'
+              age: existingMedicalDetails.age ?? parsedAge,
+              patientSource: existingMedicalDetails.patientSource || 'clinic_added'
             }
           }
         });
@@ -915,6 +889,9 @@ router.post(
       if (error.code === 'P2002') {
         return sendError(res, 409, 'EMAIL_ALREADY_USED', 'Email pasien sudah terdaftar.');
       }
+      if (error.code === 'EMAIL_ALREADY_USED') {
+        return sendError(res, 409, 'EMAIL_ALREADY_USED', 'Email ini sudah digunakan oleh akun non-pasien.');
+      }
       return sendError(res, 500, 'CREATE_PATIENT_FAILED', 'Gagal menambahkan pasien.');
     }
   }
@@ -933,6 +910,7 @@ router.get(
       const appointments = await prisma.appointment.findMany({
         where: { dentistId, patientId },
         include: {
+          preSessionHealthForm: true,
           patient: {
             select: {
               id: true,
@@ -960,44 +938,6 @@ router.get(
 
       const patient = appointments[0].patient;
 
-      // --- AUTO-MARK OVERDUE for this patient's appointments ---
-      const now = new Date();
-      const overdueCandiates = appointments.filter(a =>
-        ['scheduled', 'confirmed'].includes(a.status) && new Date(a.startsAt) < now
-      );
-      if (overdueCandiates.length > 0) {
-        // Check which have no successful payment
-        for (const apt of overdueCandiates) {
-          try {
-            const hasPaid = await prisma.paymentIntent.findFirst({
-              where: { appointmentId: apt.id, status: 'succeeded' },
-              select: { id: true }
-            });
-            if (!hasPaid) {
-              await prisma.$transaction(async (tx) => {
-                await tx.appointment.update({
-                  where: { id: apt.id },
-                  data: { status: 'overdue' }
-                });
-                await recordStatusChange(tx, {
-                  appointmentId: apt.id,
-                  previousStatus: apt.status,
-                  newStatus: 'overdue',
-                  changedBy: null,
-                  changedByRole: 'system',
-                  reason: 'Auto-marked overdue: past scheduled time with no successful payment',
-                  notes: null,
-                  metadata: { trigger: 'dentist_portal_view' }
-                });
-              });
-              apt.status = 'overdue'; // Reflect in-memory for serialization
-            }
-          } catch (err) {
-            console.error(`[DentistPortal] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, err.message);
-          }
-        }
-      }
-
       const [aiResults, linkedCaseResults] = await Promise.all([
         prisma.aIAnalysisResult.findMany({
           where: { userId: patientId },
@@ -1011,7 +951,7 @@ router.get(
 
       // Fetch treatment plans for this patient
       const treatmentPlans = await prisma.treatmentPlan.findMany({
-        where: { patientId },
+        where: { patientId, dentistId },
         include: {
           items: { orderBy: { sortOrder: 'asc' } },
           dentist: { select: { id: true, name: true, avatar_url: true, dentistProfile: { select: { avatar_url: true }, take: 1 } } },
@@ -1022,7 +962,13 @@ router.get(
       });
 
       const invoices = await prisma.invoice.findMany({
-        where: { patientId },
+        where: {
+          patientId,
+          OR: [
+            { ownerDentistId: dentistId },
+            { appointment: { dentistId } }
+          ]
+        },
         include: {
           items: true,
           paymentIntent: true,
@@ -1031,7 +977,7 @@ router.get(
         orderBy: { createdAt: 'desc' }
       });
 
-      const emrRecords = await listEmrRecordsForPatient(patientId);
+      const emrRecords = await listEmrRecordsForPatientForDentist(patientId, dentistId);
 
       const serializedPatient = serializePatient(patient, appointments, aiResults);
       serializedPatient.aiResults = [
@@ -1050,12 +996,27 @@ router.get(
         channel: a.consultationType === 'virtual' ? 'tele' : 'clinic',
         reason: a.reason,
         notes: a.notes,
-        metadata: a.metadata || {}
+        metadata: a.metadata || {},
+        healthForm: a.preSessionHealthForm
+          ? {
+              symptoms: a.preSessionHealthForm.symptoms,
+              painLevel: a.preSessionHealthForm.painLevel,
+              allergies: a.preSessionHealthForm.allergies,
+              medications: a.preSessionHealthForm.medications,
+              notes: a.preSessionHealthForm.notes,
+              answers: a.preSessionHealthForm.answers || {},
+              submittedAt: a.preSessionHealthForm.submittedAt?.toISOString() || null,
+              updatedAt: a.preSessionHealthForm.updatedAt?.toISOString() || null
+            }
+          : null
       }));
 
       if (patientProfile) {
         serializedPatient.dateOfBirth = patientProfile.dateOfBirth?.toISOString().split('T')[0] || null;
         serializedPatient.gender = patientProfile.gender;
+        serializedPatient.insuranceProvider = patientProfile.insuranceProvider || null;
+        serializedPatient.insuranceNumber = patientProfile.insuranceNumber || null;
+        serializedPatient.insuranceMemberId = patientProfile.insuranceMemberId || null;
         serializedPatient.insurance = patientProfile.insuranceProvider
           ? {
             provider: patientProfile.insuranceProvider,
@@ -1064,8 +1025,22 @@ router.get(
           }
           : null;
         serializedPatient.emergencyContact = patientProfile.emergencyContact;
+        serializedPatient.address = patientProfile.address || null;
+        serializedPatient.preferredLanguage = patientProfile.preferredLanguage || null;
         serializedPatient.medicalDetails = patientProfile.medicalDetails;
       }
+      const latestHealthForm = appointments.find(appointment => appointment.preSessionHealthForm)
+        ?.preSessionHealthForm;
+      serializedPatient.latestHealthForm = latestHealthForm
+        ? {
+            symptoms: latestHealthForm.symptoms || null,
+            painLevel: latestHealthForm.painLevel ?? null,
+            allergies: latestHealthForm.allergies || null,
+            medications: latestHealthForm.medications || null,
+            notes: latestHealthForm.notes || null,
+            submittedAt: latestHealthForm.submittedAt?.toISOString() || null
+          }
+        : null;
 
       // Attach serialized treatment plans
       serializedPatient.treatmentPlans = treatmentPlans.map(serializeUnifiedTreatmentPlan);
@@ -1643,7 +1618,7 @@ router.get(
         return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
       }
 
-      const emrRecords = await listEmrRecordsForPatient(patientId);
+      const emrRecords = await listEmrRecordsForPatientForDentist(patientId, dentistId);
       return res.json({ emrRecords });
     } catch (error) {
       console.error('Error fetching patient EMR records:', error);

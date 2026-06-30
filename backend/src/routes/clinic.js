@@ -641,35 +641,40 @@ router.get('/admin/:id', authenticateToken, requireRoles(['super_admin', 'admin'
 });
 
 // Admin: Verify clinic
-router.put('/admin/:id/verify', authenticateToken, requireRoles(['admin']), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, verificationNotes } = req.body;
+router.put(
+  '/admin/:id/verify',
+  authenticateToken,
+  requireRoles(['admin', 'super_admin', 'business_manager', 'customer_success_manager']),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, verificationNotes } = req.body;
 
-    if (!['verified', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    const updatedClinic = await prisma.clinicProfile.update({
-      where: { id: BigInt(id) },
-      data: {
-        status,
-        verificationNotes,
-        isVerified: status === 'verified',
-        verificationDate: status === 'verified' ? new Date() : null
+      if (!['verified', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
       }
-    });
 
-    res.json({
-      message: `Clinic ${status} successfully`,
-      clinic: updatedClinic
-    });
+      const updatedClinic = await prisma.clinicProfile.update({
+        where: { id: BigInt(id) },
+        data: {
+          status,
+          verificationNotes,
+          isVerified: status === 'verified',
+          verificationDate: status === 'verified' ? new Date() : null
+        }
+      });
 
-  } catch (error) {
-    console.error('Error verifying clinic:', error);
-    res.status(500).json({ error: 'Failed to verify clinic' });
+      res.json({
+        message: `Clinic ${status} successfully`,
+        clinic: updatedClinic
+      });
+
+    } catch (error) {
+      console.error('Error verifying clinic:', error);
+      res.status(500).json({ error: 'Failed to verify clinic' });
+    }
   }
-});
+);
 
 // Branch management routes
 router.post('/branches', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
@@ -1802,8 +1807,82 @@ router.get('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', '
   }
 });
 
+const CLINIC_STAFF_MANAGER_TOKEN_ROLES = [
+  'owner',
+  'clinic_owner',
+  'manager',
+  'clinic_manager',
+  'clinic_admin',
+  'admin'
+];
+const CLINIC_STAFF_MANAGER_ROLES = new Set(['owner', 'manager', 'admin']);
+const CLINIC_STAFF_ELEVATED_ROLES = new Set(['manager', 'admin']);
+const CLINIC_STAFF_ASSIGNABLE_ROLES = new Set([
+  'manager',
+  'front_office',
+  'nurse',
+  'cashier',
+  'admin',
+  'dentist',
+  'staff'
+]);
+
+function staffManagementError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function clinicStaffAuthRole(role) {
+  return role === 'admin' ? 'clinic_admin' : role;
+}
+
+async function assertCanManageClinicStaff(
+  userId,
+  { requestedRole, targetStaff, modifiesPermissions = false } = {}
+) {
+  const requester = await prisma.clinicStaff.findUnique({
+    where: { userId: BigInt(userId) },
+    include: { clinicProfile: true }
+  });
+  if (!requester || !requester.isActive || !CLINIC_STAFF_MANAGER_ROLES.has(requester.role)) {
+    throw staffManagementError(403, 'Only an active clinic owner or manager can manage staff');
+  }
+  if (requestedRole === 'owner') {
+    throw staffManagementError(403, 'Clinic ownership can only be changed through ownership transfer');
+  }
+  if (requestedRole && !CLINIC_STAFF_ASSIGNABLE_ROLES.has(requestedRole)) {
+    throw staffManagementError(400, 'Invalid role specified');
+  }
+  if (
+    requestedRole &&
+    CLINIC_STAFF_ELEVATED_ROLES.has(requestedRole) &&
+    requester.role !== 'owner'
+  ) {
+    throw staffManagementError(403, 'Only the clinic owner can assign manager or admin roles');
+  }
+  if (modifiesPermissions && requester.role !== 'owner') {
+    throw staffManagementError(403, 'Only the clinic owner can change staff permissions');
+  }
+  if (targetStaff) {
+    if (targetStaff.clinicProfileId !== requester.clinicProfileId) {
+      throw staffManagementError(403, 'Access denied - staff member not in your clinic');
+    }
+    if (targetStaff.role === 'owner') {
+      throw staffManagementError(403, 'Cannot modify owner account');
+    }
+    if (
+      requester.role !== 'owner' &&
+      CLINIC_STAFF_ELEVATED_ROLES.has(targetStaff.role)
+    ) {
+      throw staffManagementError(403, 'Only the clinic owner can manage manager or admin accounts');
+    }
+  }
+  return requester;
+}
+
 // Add staff to clinic (owner/manager only)
-router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.post('/staff', authenticateToken, requireRoles(CLINIC_STAFF_MANAGER_TOKEN_ROLES), async (req, res) => {
   try {
     const { name, email, password, role, position, department, permissions, assignedBranchId } = req.body;
     const user = req.user;
@@ -1822,21 +1901,10 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
       return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
-    // Validate role
-    const validRoles = ['manager', 'front_office', 'nurse', 'cashier', 'admin', 'dentist', 'staff'];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({ error: 'Invalid role specified' });
-    }
-
-    // Find the clinic for the requesting user
-    const requestingUserStaff = await prisma.clinicStaff.findUnique({
-      where: { userId: user.id },
-      include: { clinicProfile: true }
+    const requestingUserStaff = await assertCanManageClinicStaff(user.id, {
+      requestedRole: role,
+      modifiesPermissions: permissions !== undefined
     });
-
-    if (!requestingUserStaff) {
-      return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
-    }
 
     const clinicId = requestingUserStaff.clinicProfileId;
 
@@ -1857,7 +1925,7 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
           name: name,
           email: email,
           password_hash: hashedPassword,
-          roles: [role] // Set the clinic role
+          roles: [clinicStaffAuthRole(role)]
         }
       });
 
@@ -1954,7 +2022,8 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
     await prisma.user.update({
       where: { id: targetUser.id },
       data: {
-        roles: [...(targetUser.roles || []), role].filter((r, i, arr) => arr.indexOf(r) === i) // Remove duplicates
+        roles: [...(targetUser.roles || []), clinicStaffAuthRole(role)]
+          .filter((r, i, arr) => arr.indexOf(r) === i)
       }
     });
 
@@ -1990,12 +2059,12 @@ router.post('/staff', authenticateToken, requireRoles(['owner', 'clinic_owner', 
 
   } catch (error) {
     console.error('Error adding staff:', error);
-    res.status(500).json({ error: 'Failed to add staff member' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to add staff member' });
   }
 });
 
 // Update staff (owner/manager only)
-router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.put('/staff/:staffId', authenticateToken, requireRoles(CLINIC_STAFF_MANAGER_TOKEN_ROLES), async (req, res) => {
   try {
     const { staffId } = req.params;
     const { role, position, department, status, permissions, phone, name, email, branchId } = req.body;
@@ -2007,15 +2076,6 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
       userId: user.id
     });
 
-    // Find the clinic for the requesting user
-    const requestingUserStaff = await prisma.clinicStaff.findUnique({
-      where: { userId: user.id }
-    });
-
-    if (!requestingUserStaff) {
-      return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
-    }
-
     // Find the staff member to update
     const targetStaff = await prisma.clinicStaff.findUnique({
       where: { id: parseInt(staffId) },
@@ -2026,14 +2086,16 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
       return res.status(404).json({ error: 'Staff member not found' });
     }
 
-    // Ensure the staff member belongs to the same clinic
-    if (targetStaff.clinicProfileId !== requestingUserStaff.clinicProfileId) {
-      return res.status(403).json({ error: 'Access denied - staff member not in your clinic' });
-    }
-
-    // Don't allow changing owner role
-    if (targetStaff.role === 'owner') {
-      return res.status(403).json({ error: 'Cannot modify owner account' });
+    const requestingUserStaff = await assertCanManageClinicStaff(user.id, {
+      requestedRole: role,
+      targetStaff,
+      modifiesPermissions: permissions !== undefined
+    });
+    if (
+      targetStaff.userId === BigInt(user.id) &&
+      (role !== undefined || status !== undefined)
+    ) {
+      throw staffManagementError(403, 'Use another authorized manager to change your own role or status');
     }
 
     // Prepare update data
@@ -2093,8 +2155,12 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
 
     if (role && role !== targetStaff.role) {
       const currentRoles = targetStaff.user.roles || [];
-      const filtered = currentRoles.filter((r) => r !== targetStaff.role);
-      const nextRoles = [...filtered, role].filter((value, index, self) => self.indexOf(value) === index);
+      const previousAuthRole = clinicStaffAuthRole(targetStaff.role);
+      const filtered = currentRoles.filter(
+        (currentRole) => currentRole !== targetStaff.role && currentRole !== previousAuthRole
+      );
+      const nextRoles = [...filtered, clinicStaffAuthRole(role)]
+        .filter((value, index, self) => self.indexOf(value) === index);
       userUpdates.roles = nextRoles;
     }
 
@@ -2180,7 +2246,7 @@ router.put('/staff/:staffId', authenticateToken, requireRoles(['owner', 'clinic_
 
   } catch (error) {
     console.error('Error updating staff:', error);
-    res.status(500).json({ error: 'Failed to update staff member' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to update staff member' });
   }
 });
 
@@ -2276,17 +2342,11 @@ router.get('/staff/:userId/profile', authenticateToken, requireRoles(['owner', '
 });
 
 // Update staff member role and status
-router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.put('/staff/:userId/role', authenticateToken, requireRoles(CLINIC_STAFF_MANAGER_TOKEN_ROLES), async (req, res) => {
   try {
     const { userId } = req.params;
     const { role, status } = req.body;
     const user = req.user;
-
-    // Validate role
-    const validRoles = ['owner', 'manager', 'front_office', 'nurse', 'cashier'];
-    if (role && !validRoles.includes(role)) {
-      return res.status(400).json({ error: 'Invalid role specified' });
-    }
 
     // Validate status
     const validStatuses = ['active', 'inactive'];
@@ -2294,15 +2354,9 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
       return res.status(400).json({ error: 'Invalid status specified' });
     }
 
-    // Find the clinic for the requesting user
-    const requestingUserStaff = await prisma.clinicStaff.findUnique({
-      where: { userId: BigInt(user.id) }
+    const requestingUserStaff = await assertCanManageClinicStaff(user.id, {
+      requestedRole: role
     });
-
-    if (!requestingUserStaff) {
-      return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
-    }
-
     const clinicId = requestingUserStaff.clinicProfileId;
 
     // Get target staff member
@@ -2312,7 +2366,7 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
         clinicProfileId: clinicId
       },
       include: {
-        user: { select: { name: true, email: true } }
+        user: { select: { name: true, email: true, roles: true } }
       }
     });
 
@@ -2320,9 +2374,9 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
       return res.status(404).json({ error: 'Staff member not found' });
     }
 
-    // Prevent changing owner role
-    if (targetStaff.role === 'owner' && role && role !== 'owner') {
-      return res.status(400).json({ error: 'Cannot change owner role' });
+    await assertCanManageClinicStaff(user.id, { requestedRole: role, targetStaff });
+    if (targetStaff.userId === BigInt(user.id)) {
+      throw staffManagementError(403, 'Use another authorized manager to change your own role or status');
     }
 
     // Prepare update data
@@ -2330,21 +2384,35 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
     if (role !== undefined) updateData.role = role;
     if (status !== undefined) updateData.isActive = status === 'active';
 
-    // Update staff member
-    const updatedStaff = await prisma.clinicStaff.update({
-      where: { userId: BigInt(userId) },
-      data: updateData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar_url: true,
-            lastLoginAt: true
+    const updatedStaff = await prisma.$transaction(async (tx) => {
+      if (role !== undefined && role !== targetStaff.role) {
+        const previousAuthRole = clinicStaffAuthRole(targetStaff.role);
+        const retainedRoles = (targetStaff.user.roles || []).filter(
+          (currentRole) => currentRole !== targetStaff.role && currentRole !== previousAuthRole
+        );
+        await tx.user.update({
+          where: { id: targetStaff.userId },
+          data: {
+            roles: [...retainedRoles, clinicStaffAuthRole(role)]
+              .filter((value, index, roles) => roles.indexOf(value) === index)
+          }
+        });
+      }
+      return tx.clinicStaff.update({
+        where: { userId: BigInt(userId) },
+        data: updateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar_url: true,
+              lastLoginAt: true
+            }
           }
         }
-      }
+      });
     });
 
     res.json({
@@ -2362,12 +2430,12 @@ router.put('/staff/:userId/role', authenticateToken, requireRoles(['owner', 'cli
 
   } catch (error) {
     console.error('Error updating staff role:', error);
-    res.status(500).json({ error: 'Failed to update staff member' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to update staff member' });
   }
 });
 
 // Remove staff member (owner/manager only)
-router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.delete('/staff/:userId', authenticateToken, requireRoles(CLINIC_STAFF_MANAGER_TOKEN_ROLES), async (req, res) => {
   try {
     const { userId } = req.params;
     const user = req.user;
@@ -2376,15 +2444,7 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
     console.log('🗑️ Received userId parameter:', userId, 'type:', typeof userId);
     console.log('🗑️ Requesting user:', user.id, 'roles:', user.roles);
 
-    // Find the clinic for the requesting user
-    const requestingUserStaff = await prisma.clinicStaff.findUnique({
-      where: { userId: BigInt(user.id) }
-    });
-
-    if (!requestingUserStaff) {
-      return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
-    }
-
+    const requestingUserStaff = await assertCanManageClinicStaff(user.id);
     const clinicId = requestingUserStaff.clinicProfileId;
 
     // Get target staff member
@@ -2410,9 +2470,9 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
       return res.status(404).json({ error: 'Staff member not found' });
     }
 
-    // Prevent removing owner
-    if (targetStaff.role === 'owner') {
-      return res.status(400).json({ error: 'Cannot remove clinic owner' });
+    await assertCanManageClinicStaff(user.id, { targetStaff });
+    if (targetStaff.userId === BigInt(user.id)) {
+      throw staffManagementError(403, 'You cannot remove your own staff access');
     }
 
     // Remove staff member and update user roles
@@ -2424,7 +2484,8 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
 
       // Update user roles to remove clinic role
       const currentRoles = targetStaff.user.roles || [];
-      const newRoles = currentRoles.filter(r => r !== targetStaff.role);
+      const authRole = clinicStaffAuthRole(targetStaff.role);
+      const newRoles = currentRoles.filter(r => r !== targetStaff.role && r !== authRole);
 
       await tx.user.update({
         where: { id: BigInt(userId) },
@@ -2447,7 +2508,7 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(['owner', 'clini
 
   } catch (error) {
     console.error('Error removing staff member:', error);
-    res.status(500).json({ error: 'Failed to remove staff member' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to remove staff member' });
   }
 });
 
@@ -2461,8 +2522,8 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
     const userId = BigInt(user.id);
 
     // 1. Find the clinic for this user
-    const staffRecord = await prisma.clinicStaff.findUnique({
-      where: { userId },
+    const staffRecord = await prisma.clinicStaff.findFirst({
+      where: { userId, isActive: true },
       select: { clinicProfileId: true }
     });
 
@@ -2496,7 +2557,11 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
     // 3. Get all appointments for these dentists
     const appointments = await prisma.appointment.findMany({
       where: {
-        dentistId: { in: dentistUserIds }
+        dentistId: { in: dentistUserIds },
+        OR: [
+          { ownerClinicId: clinicId },
+          { clinicBranch: { clinicProfileId: clinicId } }
+        ]
       },
       include: {
         patient: {
@@ -2512,9 +2577,12 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
                 dateOfBirth: true,
                 gender: true,
                 insuranceProvider: true,
+                insuranceNumber: true,
+                insuranceMemberId: true,
                 medicalDetails: true,
                 address: true,
-                emergencyContact: true
+                emergencyContact: true,
+                preferredLanguage: true
               }
             }
           }
@@ -2533,6 +2601,18 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
             amount: true,
             status: true,
             createdAt: true
+          }
+        },
+        preSessionHealthForm: {
+          select: {
+            symptoms: true,
+            painLevel: true,
+            allergies: true,
+            medications: true,
+            notes: true,
+            answers: true,
+            submittedAt: true,
+            updatedAt: true
           }
         }
       },
@@ -2570,7 +2650,14 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
         notes: apt.notes || '',
         fee,
         isPaid,
-        consultationType: apt.consultationType || 'onsite'
+        consultationType: apt.consultationType || 'onsite',
+        healthForm: apt.preSessionHealthForm
+          ? {
+              ...apt.preSessionHealthForm,
+              submittedAt: apt.preSessionHealthForm.submittedAt?.toISOString() || null,
+              updatedAt: apt.preSessionHealthForm.updatedAt?.toISOString() || null
+            }
+          : null
       });
 
       // Build or update patient entry
@@ -2604,6 +2691,10 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
           dateOfBirth: dob ? dob.toISOString().split('T')[0] : null,
           address: profile?.address || null,
           insuranceProvider: profile?.insuranceProvider || null,
+          insuranceNumber: profile?.insuranceNumber || null,
+          insuranceMemberId: profile?.insuranceMemberId || null,
+          preferredLanguage: profile?.preferredLanguage || null,
+          medicalDetails: profile?.medicalDetails || null,
           medicalRecord: {
             allergies: profile?.medicalDetails?.allergies || [],
             conditions: profile?.medicalDetails?.conditions || [],
@@ -2611,6 +2702,16 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
             lastTreatment: null
           },
           emergencyContact: profile?.emergencyContact || null,
+          latestHealthForm: apt.preSessionHealthForm
+            ? {
+                symptoms: apt.preSessionHealthForm.symptoms || null,
+                painLevel: apt.preSessionHealthForm.painLevel ?? null,
+                allergies: apt.preSessionHealthForm.allergies || null,
+                medications: apt.preSessionHealthForm.medications || null,
+                notes: apt.preSessionHealthForm.notes || null,
+                submittedAt: apt.preSessionHealthForm.submittedAt?.toISOString() || null
+              }
+            : null,
           status: 'active',
           createdAt: apt.patient?.createdAt?.toISOString() || null,
           // Will be updated below
@@ -2625,6 +2726,16 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
       }
 
       const patientEntry = patientsMap.get(patientIdStr);
+      if (!patientEntry.latestHealthForm && apt.preSessionHealthForm) {
+        patientEntry.latestHealthForm = {
+          symptoms: apt.preSessionHealthForm.symptoms || null,
+          painLevel: apt.preSessionHealthForm.painLevel ?? null,
+          allergies: apt.preSessionHealthForm.allergies || null,
+          medications: apt.preSessionHealthForm.medications || null,
+          notes: apt.preSessionHealthForm.notes || null,
+          submittedAt: apt.preSessionHealthForm.submittedAt?.toISOString() || null
+        };
+      }
       patientEntry.totalVisits++;
       if (isPaid) patientEntry.totalRevenue += fee;
 

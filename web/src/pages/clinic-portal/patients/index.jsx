@@ -65,6 +65,14 @@ const StatCard = ({ title, value, icon, iconColor = 'text-accent' }) => (
 );
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
+const CLINIC_PATIENT_REALTIME_EVENTS = [
+  'notification:new',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated',
+  'clinic:billing_updated'
+];
+
 const PatientsPage = () => {
   const { t, language } = useLanguage();
   const { isDark } = useTheme();
@@ -135,9 +143,9 @@ const PatientsPage = () => {
       console.log('🔄 Real-time update: refreshing clinic patients due to notification:', data);
       fetchData();
     };
-    socket.on('notification:new', handleRealtimeUpdate);
+    CLINIC_PATIENT_REALTIME_EVENTS.forEach(eventName => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      CLINIC_PATIENT_REALTIME_EVENTS.forEach(eventName => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, fetchData]);
 

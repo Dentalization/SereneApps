@@ -87,9 +87,24 @@ const TransactionRecent = ({ transactions = [] }) => {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     {getStatusBadge(trx.status)}
+                                    {trx.reconciliationStatus && (
+                                        <div
+                                            className={`mt-1 text-[10px] ${
+                                                trx.reconciliationStatus === 'failed' ? 'text-red-600' : 'text-secondary'
+                                            }`}
+                                            title={trx.reconciliationError || undefined}
+                                        >
+                                            Rekonsiliasi: {trx.reconciliationStatus}
+                                            {trx.reconciliationAttempts ? ` · ${trx.reconciliationAttempts}x` : ''}
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <button className="text-secondary hover:text-primary transition-colors">
+                                    <button
+                                        disabled
+                                        title="Detail transaksi segera tersedia"
+                                        className="cursor-not-allowed text-secondary opacity-50"
+                                    >
                                         <AppIcon name="MoreHorizontal" size={16} />
                                     </button>
                                 </td>

@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { query } from '../db.js';
+import { getClient, query } from '../db.js';
 import { signAccess, signRefresh, verify, authenticateToken } from '../utils/tokens.js';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
@@ -19,6 +19,7 @@ import {
   verifyOTPSchema,
 } from '../schemas/auth.schema.js';
 import { APIError } from '../utils/error-codes.js';
+import { normalizePatientPhone } from '../services/patients/patientIdentityResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -256,7 +257,7 @@ router.post('/patient/register', async (req, res) => {
       errors.push('Password must be at least 8 characters');
     }
 
-    const normalizedPhoneNumber = normalizeOptionalString(phoneNumber);
+    const normalizedPhoneNumber = normalizePatientPhone(phoneNumber);
     if (!normalizedPhoneNumber) {
       errors.push('Phone number is required');
     }
@@ -287,13 +288,52 @@ router.post('/patient/register', async (req, res) => {
     }
     console.log('✅ [PATIENT REGISTRATION] Email is available:', normalizedEmail);
 
-    await query('BEGIN');
+    const client = await getClient();
+    let transactionStarted = false;
 
     try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1))',
+        [normalizedPhoneNumber]
+      );
+      const existingPhone = await client.query(
+        `SELECT id
+         FROM users
+         WHERE roles @> ARRAY['patient']::text[]
+           AND (
+             CASE
+               WHEN regexp_replace(COALESCE(phone_number, ''), '[^0-9]', '', 'g') LIKE '0%'
+                 THEN '62' || substring(regexp_replace(phone_number, '[^0-9]', '', 'g') FROM 2)
+               WHEN regexp_replace(COALESCE(phone_number, ''), '[^0-9]', '', 'g') LIKE '8%'
+                 THEN '62' || regexp_replace(phone_number, '[^0-9]', '', 'g')
+               ELSE regexp_replace(COALESCE(phone_number, ''), '[^0-9]', '', 'g')
+             END
+           ) = $1
+         LIMIT 1`,
+        [normalizedPhoneNumber.slice(1)]
+      );
+      if (existingPhone.rows.length) {
+        const conflict = new Error('Phone number already registered');
+        conflict.code = 'DUPLICATE_PHONE';
+        throw conflict;
+      }
+
+      const existingEmailInTransaction = await client.query(
+        'SELECT id FROM users WHERE lower(email) = $1 LIMIT 1',
+        [normalizedEmail]
+      );
+      if (existingEmailInTransaction.rows.length) {
+        const conflict = new Error('Email already registered');
+        conflict.code = 'DUPLICATE_EMAIL';
+        throw conflict;
+      }
+
       const passwordHash = await bcrypt.hash(password, 10);
       const roles = ['patient'];
 
-      const userResult = await query(
+      const userResult = await client.query(
         `INSERT INTO users(name, email, password_hash, roles, phone_number)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING id, name, email, roles, phone_number, about, avatar_url, last_login_at`,
@@ -333,6 +373,7 @@ router.post('/patient/register', async (req, res) => {
       const addressJson = Object.keys(address).length ? address : null;
 
       const medicalDetails = {};
+      medicalDetails.patientSource = 'mobile_self';
       const notes = normalizeOptionalString(medicalNotes);
       const allergiesList = normalizeStringArray(allergies);
       const chronicConditionsList = normalizeStringArray(chronicConditions);
@@ -349,7 +390,7 @@ router.post('/patient/register', async (req, res) => {
         normalizedPreferredLanguage = normalizedPreferredLanguage.slice(0, 8);
       }
 
-      await query(
+      await client.query(
         `INSERT INTO patient_profiles(
           user_id,
           date_of_birth,
@@ -379,12 +420,12 @@ router.post('/patient/register', async (req, res) => {
       const accessToken = signAccess(user);
       const refreshToken = signRefresh(user);
 
-      await query(
+      await client.query(
         'INSERT INTO refresh_tokens(user_id, token) VALUES ($1, $2)',
         [user.id, refreshToken]
       );
 
-      await query('COMMIT');
+      await client.query('COMMIT');
 
       return res.status(201).json({
         accessToken,
@@ -403,9 +444,21 @@ router.post('/patient/register', async (req, res) => {
         }
       });
     } catch (error) {
-      await query('ROLLBACK');
+      if (transactionStarted) {
+        await client.query('ROLLBACK');
+      }
       console.error('Patient registration failed:', error);
+      if (error.code === 'DUPLICATE_PHONE' || error.code === 'DUPLICATE_EMAIL' || error.code === '23505') {
+        return res.status(409).json({
+          message: error.code === 'DUPLICATE_PHONE'
+            ? 'Phone number already registered'
+            : 'Email already registered',
+          error: error.code === 'DUPLICATE_PHONE' ? 'DUPLICATE_PHONE' : 'DUPLICATE_EMAIL'
+        });
+      }
       return res.status(500).json({ message: 'Server error during patient registration' });
+    } finally {
+      client.release();
     }
   } catch (error) {
     console.error('Unexpected error in patient registration:', error);

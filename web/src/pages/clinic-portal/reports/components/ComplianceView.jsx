@@ -100,9 +100,9 @@ export default function ComplianceView({ report }) {
   const doneCount = checklistItems.filter(item => item?.done).length;
   const checklistPct = checklistItems.length ? Math.round((doneCount / checklistItems.length) * 100) : 0;
   const backupStatus = compliance.backupStatus || 'warning';
-  const consentRate = Number(compliance.consentRate ?? 0) || 0;
-  const totalConsents = Number(compliance.totalConsents ?? 0) || 0;
-  const missingConsents = Number(compliance.missingConsents ?? 0) || 0;
+  const healthFormRate = Number(compliance.healthFormRate ?? compliance.consentRate ?? 0) || 0;
+  const submittedHealthForms = Number(compliance.submittedHealthForms ?? compliance.totalConsents ?? 0) || 0;
+  const missingHealthForms = Number(compliance.missingHealthForms ?? compliance.missingConsents ?? 0) || 0;
   const incidents = Number(compliance.securityIncidents ?? 0) || 0;
 
   const incidentConfig = incidents === 0
@@ -115,11 +115,11 @@ export default function ComplianceView({ report }) {
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
-          label="Consent rate"
-          value={pct(consentRate)}
-          detail={`${num(totalConsents)} consent · ${num(missingConsents)} belum lengkap`}
+          label="Kelengkapan formulir kesehatan"
+          value={pct(healthFormRate)}
+          detail={`${num(submittedHealthForms)} formulir · ${num(missingHealthForms)} belum lengkap`}
           icon="FileBadge"
-          iconClass={consentRate >= 95 ? 'text-emerald-500' : consentRate >= 80 ? 'text-amber-500' : 'text-red-500'}
+          iconClass={healthFormRate >= 95 ? 'text-emerald-500' : healthFormRate >= 80 ? 'text-amber-500' : 'text-red-500'}
         />
         <MetricCard
           label="Status backup"
@@ -139,41 +139,41 @@ export default function ComplianceView({ report }) {
 
       <section className="overflow-hidden rounded-2xl border border-primary/15 bg-surface-elevated">
         <div className="border-b border-primary/10 p-5">
-          <h2 className="font-semibold text-primary">Audit Consent Pasien</h2>
+          <h2 className="font-semibold text-primary">Kelengkapan Formulir Kesehatan</h2>
           <p className="mt-0.5 text-sm text-secondary">
-            Persentase appointment dengan consent digital yang valid dalam periode terpilih.
+            Persentase appointment dengan pre-session health form yang telah diisi dalam periode terpilih.
           </p>
         </div>
         <div className="space-y-4 p-5">
           <div className="flex items-end justify-between gap-4">
-            <span className="text-3xl font-bold text-primary">{pct(consentRate)}</span>
-            <span className="text-sm text-secondary">{num(totalConsents)} dari {num(totalConsents + missingConsents)} appointment</span>
+            <span className="text-3xl font-bold text-primary">{pct(healthFormRate)}</span>
+            <span className="text-sm text-secondary">{num(submittedHealthForms)} dari {num(submittedHealthForms + missingHealthForms)} appointment</span>
           </div>
           <ProgressBar
-            value={consentRate}
-            colorClass={consentRate >= 95 ? 'bg-emerald-500' : consentRate >= 80 ? 'bg-amber-500' : 'bg-red-500'}
+            value={healthFormRate}
+            colorClass={healthFormRate >= 95 ? 'bg-emerald-500' : healthFormRate >= 80 ? 'bg-amber-500' : 'bg-red-500'}
             height="h-3"
           />
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-4">
               <div className="mb-1 flex items-center gap-2">
                 <AppIcon name="CheckCircle2" size={15} className="text-emerald-600" />
-                <span className="text-xs uppercase tracking-wider text-emerald-700">Sudah consent</span>
+                <span className="text-xs uppercase tracking-wider text-emerald-700">Sudah diisi</span>
               </div>
-              <p className="text-2xl font-bold text-emerald-700">{num(totalConsents)}</p>
+              <p className="text-2xl font-bold text-emerald-700">{num(submittedHealthForms)}</p>
             </div>
             <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-4">
               <div className="mb-1 flex items-center gap-2">
                 <AppIcon name="AlertCircle" size={15} className="text-amber-600" />
                 <span className="text-xs uppercase tracking-wider text-amber-700">Belum lengkap</span>
               </div>
-              <p className="text-2xl font-bold text-amber-700">{num(missingConsents)}</p>
+              <p className="text-2xl font-bold text-amber-700">{num(missingHealthForms)}</p>
             </div>
           </div>
-          {missingConsents > 0 && (
+          {missingHealthForms > 0 && (
             <p className="flex items-center gap-1.5 text-xs text-amber-600">
               <AppIcon name="AlertTriangle" size={13} />
-              {num(missingConsents)} appointment memerlukan tindak lanjut pengumpulan consent.
+              {num(missingHealthForms)} appointment memerlukan tindak lanjut pengisian formulir kesehatan.
             </p>
           )}
         </div>

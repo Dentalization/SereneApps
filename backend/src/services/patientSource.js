@@ -13,6 +13,7 @@ const DENTIST_ADDED_SOURCES = new Set([
 
 const MOBILE_SOURCES = new Set([
   'mobile',
+  'mobile_self',
   'patient_mobile',
   'serene_mobile',
   'standard_booking'
@@ -60,4 +61,3 @@ export function resolvePatientSource({ appointments = [], medicalDetails = null 
 
   return { ...SOURCE_DETAILS.unknown };
 }
-

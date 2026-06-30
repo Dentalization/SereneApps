@@ -314,6 +314,22 @@ export const listEmrRecordsForPatient = async (patientUserId) => {
   return rows.map(deserializeRow);
 };
 
+export const listEmrRecordsForPatientForDentist = async (patientUserId, dentistId) => {
+  await ensureSchema();
+  const patientBigInt = toBigIntOrNull(patientUserId);
+  const dentistBigInt = toBigIntOrNull(dentistId);
+  if (!patientBigInt || !dentistBigInt) {
+    throw new Error('patientUserId and dentistId are required');
+  }
+  const { rows } = await query(
+    `${EMR_RECORD_SELECT}
+     WHERE r.patient_user_id = $1 AND r.dentist_id = $2
+     ORDER BY r.created_at DESC`,
+    [patientBigInt, dentistBigInt]
+  );
+  return rows.map(deserializeRow);
+};
+
 export const updateEmrConsentDocumentForDentist = async ({
   dentistId,
   patientUserId,

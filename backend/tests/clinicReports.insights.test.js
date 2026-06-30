@@ -6,7 +6,7 @@ import {
   emptyReviewSummary
 } from '../src/services/clinicReportInsights.js';
 
-test('compliance report always returns the frontend contract with real consent counts', () => {
+test('compliance report exposes health-form completion without claiming informed consent', () => {
   const { compliance, availability } = buildComplianceReport({
     appointments: [
       { id: 1n, preSessionHealthForm: { id: 10n } },
@@ -19,6 +19,10 @@ test('compliance report always returns the frontend contract with real consent c
   assert.equal(compliance.totalConsents, 1);
   assert.equal(compliance.missingConsents, 1);
   assert.equal(compliance.consentRate, 50);
+  assert.equal(compliance.healthFormRate, 50);
+  assert.equal(compliance.submittedHealthForms, 1);
+  assert.equal(compliance.missingHealthForms, 1);
+  assert.equal(compliance.metricSource, 'appointment_pre_session_health_forms');
   assert.equal(compliance.activeStaffWithAccess, 1);
   assert.equal(compliance.backupStatus, 'warning');
   assert.ok(availability.missingSources.includes('security_events'));

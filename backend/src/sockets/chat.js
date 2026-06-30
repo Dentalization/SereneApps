@@ -111,7 +111,7 @@ export function emitToUserRooms({ userIds = [], eventName, payload }) {
 export function registerChatGateway(io) {
   ioRef = io;
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     const user = socket.data.user;
     if (!user?.id) {
       socket.disconnect(true);
@@ -124,6 +124,27 @@ export function registerChatGateway(io) {
     // Join a personal room so we can reach this user even if they haven't opened a chat
     const personalRoom = `user:${user.id}`;
     socket.join(personalRoom);
+
+    try {
+      const clinicMemberships = await prisma.clinicStaff.findMany({
+        where: {
+          userId: BigInt(user.id),
+          isActive: true
+        },
+        select: { clinicProfileId: true }
+      });
+      for (const membership of clinicMemberships) {
+        socket.join(`clinic:${membership.clinicProfileId.toString()}`);
+      }
+      const roles = Array.isArray(user.roles) ? user.roles : [];
+      if (roles.some((role) => role === 'admin' || role === 'super_admin')) {
+        socket.join('admin:platform');
+      }
+    } catch (error) {
+      console.error('Socket tenant room setup failed', error);
+      socket.disconnect(true);
+      return;
+    }
 
     socket.emit('chat:connected', { userId: user.id.toString() });
 

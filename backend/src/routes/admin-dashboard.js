@@ -451,6 +451,10 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
           provider: true,
           providerOrderId: true,
           providerPaymentId: true,
+          reconciliationStatus: true,
+          reconciliationAttempts: true,
+          reconciliationError: true,
+          lastReconciledAt: true,
           createdAt: true,
           patient: { select: { name: true, email: true } },
           ownerClinic: { select: { brandName: true, legalName: true } },
@@ -469,6 +473,10 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
           provider: true,
           providerOrderId: true,
           providerPaymentId: true,
+          reconciliationStatus: true,
+          reconciliationAttempts: true,
+          reconciliationError: true,
+          lastReconciledAt: true,
           createdAt: true,
           patient: { select: { name: true, email: true } },
           ownerClinic: { select: { brandName: true, legalName: true } },
@@ -493,7 +501,16 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
           ownerClinic: { select: { brandName: true, legalName: true } },
           ownerDentist: { select: { name: true, email: true } },
           patient: { select: { name: true, email: true } },
-          paymentIntent: { select: { status: true, provider: true } }
+          paymentIntent: {
+            select: {
+              status: true,
+              provider: true,
+              reconciliationStatus: true,
+              reconciliationAttempts: true,
+              reconciliationError: true,
+              lastReconciledAt: true
+            }
+          }
         }
       }),
       prisma.invoice.count({ where: { status: { in: PENDING_INVOICE_STATUSES } } }),
@@ -551,7 +568,11 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
         amount: toNumber(invoice?.grandTotal || invoice?.total || payment.amount),
         currency: payment.currency || 'IDR',
         status: mapPaymentStatus(payment.status),
-        rawStatus: payment.status
+        rawStatus: payment.status,
+        reconciliationStatus: payment.reconciliationStatus,
+        reconciliationAttempts: payment.reconciliationAttempts,
+        reconciliationError: payment.reconciliationError,
+        lastReconciledAt: payment.lastReconciledAt?.toISOString?.() || null
       };
     });
 
@@ -572,7 +593,11 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
         rawStatus: invoice.status,
         dueDate: invoice.dueAt?.toISOString?.() || null,
         paidAt: invoice.paidAt?.toISOString?.() || null,
-        paymentStatus: invoice.paymentIntent?.status || null
+        paymentStatus: invoice.paymentIntent?.status || null,
+        reconciliationStatus: invoice.paymentIntent?.reconciliationStatus || null,
+        reconciliationAttempts: invoice.paymentIntent?.reconciliationAttempts || 0,
+        reconciliationError: invoice.paymentIntent?.reconciliationError || null,
+        lastReconciledAt: invoice.paymentIntent?.lastReconciledAt?.toISOString?.() || null
       };
     });
 
@@ -605,7 +630,10 @@ router.get('/financial-summary', authenticateToken, requireRoles(['super_admin',
             available: recentPayments.length > 0,
             sources: ['payment_intents'],
             missingSources: [],
-            notes: recentPayments.length ? [] : ['Belum ada payment intent pada database.']
+            notes: recentPayments.length ? [] : ['Belum ada payment intent pada database.'],
+            reconciliationFailures: recentPayments.filter(
+              payment => payment.reconciliationStatus === 'failed'
+            ).length
           },
           invoices: {
             available: recentInvoices.length > 0,

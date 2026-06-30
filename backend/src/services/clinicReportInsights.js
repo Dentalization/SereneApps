@@ -42,15 +42,15 @@ function sourceAvailability(sources, missingSources, notes = []) {
 
 export function buildComplianceReport({ appointments = [], staff = [], securityMetrics = null, backupMetrics = null, checklistItems = [], optionalSourceStatus = {} }) {
   const totalAppointments = appointments.length;
-  const totalConsents = appointments.filter(appointment => Boolean(appointment.preSessionHealthForm)).length;
-  const missingConsents = Math.max(0, totalAppointments - totalConsents);
-  const consentRate = totalAppointments ? Number(((totalConsents / totalAppointments) * 100).toFixed(1)) : 0;
+  const submittedHealthForms = appointments.filter(appointment => Boolean(appointment.preSessionHealthForm)).length;
+  const missingHealthForms = Math.max(0, totalAppointments - submittedHealthForms);
+  const healthFormRate = totalAppointments ? Number(((submittedHealthForms / totalAppointments) * 100).toFixed(1)) : 0;
   const activeStaffWithAccess = staff.filter(member => member.isActive).length;
 
   const sources = ['appointment_pre_session_health_forms', 'clinic_staff'];
   const missingSources = [];
   const notes = [
-    'Consent dihitung dari appointment_pre_session_health_forms.',
+    'Kelengkapan formulir kesehatan dihitung dari appointment_pre_session_health_forms; ini bukan informed consent.',
     'Akses aktif dihitung dari clinic_staff.is_active.'
   ];
 
@@ -75,9 +75,14 @@ export function buildComplianceReport({ appointments = [], staff = [], securityM
 
   return {
     compliance: {
-      consentRate,
-      totalConsents,
-      missingConsents,
+      healthFormRate,
+      submittedHealthForms,
+      missingHealthForms,
+      // Backward-compatible aliases. Consumers should migrate to the health-form fields above.
+      consentRate: healthFormRate,
+      totalConsents: submittedHealthForms,
+      missingConsents: missingHealthForms,
+      metricSource: 'appointment_pre_session_health_forms',
       backupStatus: backupMetrics?.backupStatus || 'warning',
       lastBackupAt: backupMetrics?.lastBackupAt || null,
       backupSuccessRate: asNumber(backupMetrics?.backupSuccessRate),
