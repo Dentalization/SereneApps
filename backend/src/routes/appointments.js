@@ -232,6 +232,7 @@ function serializeAppointment(appointment) {
     patient: serializeUserSlim(appointment.patient),
     dentist: serializeDentistWithProfile(appointment.dentist, appointment.dentistProfile),
     clinicBranch: serializeBranch(appointment.clinicBranch),
+    healthForm: serializePreSessionHealthForm(appointment.preSessionHealthForm),
     statusHistory: appointment.statusHistory ? serializeHistory(appointment.statusHistory) : undefined,
     fee: appointment.fee ? Number(appointment.fee) : (appointment.dentistProfile?.consultationFee ? Number(appointment.dentistProfile.consultationFee) : (appointment.dentist?.dentistProfile?.[0]?.consultationFee ? Number(appointment.dentist.dentistProfile[0].consultationFee) : 0)),
     payment: latestPayment ? {
@@ -1836,56 +1837,10 @@ router.get(
         where.AND = andFilters;
       }
 
-      // --- AUTO-MARK OVERDUE ---
-      // Appointments yang jadwalnya sudah lewat, masih scheduled/confirmed, dan belum dibayar
-      // akan otomatis diubah statusnya menjadi 'overdue' + dicatat di AppointmentStatusHistory
-      const now = new Date();
-      try {
-        const overdueAppointments = await prisma.appointment.findMany({
-          where: {
-            status: { in: ACTIVE_APPOINTMENT_STATUSES },
-            startsAt: { lt: now },
-            NOT: {
-              paymentIntents: {
-                some: { status: 'succeeded' }
-              }
-            }
-          },
-          select: { id: true, status: true }
-        });
-
-        if (overdueAppointments.length > 0) {
-          for (const apt of overdueAppointments) {
-            try {
-              await prisma.$transaction(async (tx) => {
-                await tx.appointment.update({
-                  where: { id: apt.id },
-                  data: { status: 'overdue' }
-                });
-                await recordStatusChange(tx, {
-                  appointmentId: apt.id,
-                  previousStatus: apt.status,
-                  newStatus: 'overdue',
-                  changedBy: null,
-                  changedByRole: 'system',
-                  reason: 'Auto-marked overdue: past scheduled time with no successful payment',
-                  notes: null,
-                  metadata: { trigger: 'auto_overdue_check' }
-                });
-              });
-            } catch (txErr) {
-              console.error(`[Appointments GET] ⚠️ Failed to mark appointment ${apt.id} as overdue:`, txErr.message);
-            }
-          }
-          console.log(`[Appointments GET] ✅ Auto-marked ${overdueAppointments.length} appointment(s) as overdue with status history`);
-        }
-      } catch (overdueErr) {
-        console.error('[Appointments GET] ⚠️ Failed to auto-mark overdue:', overdueErr.message);
-      }
-
       const appointments = await prisma.appointment.findMany({
         where,
         include: {
+          preSessionHealthForm: true,
           patient: {
             select: {
               id: true,

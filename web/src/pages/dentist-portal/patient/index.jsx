@@ -4,7 +4,9 @@ import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { createDentistPatient, createPatientEmrRecord, getDentistPatients, getPatientDetails, uploadPatientEmrConsent } from '../../../services/dentistPortalService';
+import { cancelAppointment, updateAppointmentStatus } from '../../../services/appointmentService';
 import { parseIndonesianAnalysis } from '../../../utils/indonesianAnalysisParser';
 import { cleanMarkdownFormatting, normalizeAIExplanation } from '../../../utils/textFormatting';
 import { stripDiagnosisIntro, deriveSummaryFromNarrative, normalizeAIText } from '../../../utils/aiTextHelpers';
@@ -23,6 +25,13 @@ import EnhancedHeader from './components/EnhancedHeader.jsx';
 import ClinicalIcon from './components/ClinicalIcon.jsx';
 
 const MIN_LOADING_MS = 500;
+const PATIENT_REALTIME_EVENTS = [
+  'notification:new',
+  'appointment:updated',
+  'payment:status_updated',
+  'billing:invoice_updated',
+  'clinic:billing_updated'
+];
 
 const summarizePatients = (patientList, base = {}) => ({
   ...base,
@@ -52,6 +61,7 @@ const PatientManagement = () => {
     withAiResults: 0
   });
   const { t } = useLanguage();
+  const { toast } = useToast();
   const { socket } = useNotifications();
   const patientDetailsCacheRef = useRef(new Map());
   const selectRequestIdRef = useRef(0);
@@ -552,16 +562,47 @@ const PatientManagement = () => {
         handlePatientSelect(selectedPatient);
       }
     };
-    socket.on('notification:new', handleRealtimeUpdate);
+    PATIENT_REALTIME_EVENTS.forEach(eventName => socket.on(eventName, handleRealtimeUpdate));
     return () => {
-      socket.off('notification:new', handleRealtimeUpdate);
+      PATIENT_REALTIME_EVENTS.forEach(eventName => socket.off(eventName, handleRealtimeUpdate));
     };
   }, [socket, fetchPatients, selectedPatient, handlePatientSelect]);
 
-  // Handler stubs
-  const handleScheduleNew = () => {};
-  const handleUpdateAppointment = (appointmentId, newStatus) => {};
-  const handleCancelAppointment = (appointmentId) => {};
+  const refreshSelectedPatient = useCallback(async () => {
+    patientDetailsCacheRef.current.clear();
+    await fetchPatients();
+    if (selectedPatient?.id && !selectedPatient.localOnly) {
+      await handlePatientSelect(selectedPatient);
+    }
+  }, [fetchPatients, handlePatientSelect, selectedPatient]);
+
+  const handleUpdateAppointment = async (appointmentId, newStatus) => {
+    const actionByStatus = {
+      confirmed: 'confirm',
+      'in-progress': 'start',
+      completed: 'complete',
+      'no-show': 'no-show'
+    };
+    const action = actionByStatus[newStatus] || newStatus;
+    try {
+      await updateAppointmentStatus(appointmentId, action);
+      await refreshSelectedPatient();
+      toast.success('Status appointment berhasil diperbarui.');
+    } catch (actionError) {
+      toast.error(actionError.response?.data?.error || 'Gagal memperbarui appointment.');
+    }
+  };
+
+  const handleCancelAppointment = async (appointmentId) => {
+    if (!window.confirm('Batalkan appointment ini?')) return;
+    try {
+      await cancelAppointment(appointmentId, { reason: 'Cancelled by dentist' });
+      await refreshSelectedPatient();
+      toast.success('Appointment dibatalkan.');
+    } catch (actionError) {
+      toast.error(actionError.response?.data?.error || 'Gagal membatalkan appointment.');
+    }
+  };
   const handleCreateInvoice = (invoice) => {
     if (selectedPatient && invoice) {
       setSelectedPatient(prev => ({
@@ -803,7 +844,6 @@ const PatientManagement = () => {
                     {activeTab === 'appointments' && (
                       <PatientAppointment
                         patient={selectedPatient}
-                        onScheduleNew={handleScheduleNew}
                         onUpdateAppointment={handleUpdateAppointment}
                         onCancelAppointment={handleCancelAppointment}
                       />

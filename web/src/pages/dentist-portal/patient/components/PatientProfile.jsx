@@ -14,6 +14,20 @@ const calculateAge = (birthDate, fallbackAge, unknownLabel) => {
   return age;
 };
 
+const formatAddress = (address) => {
+  if (!address) return '—';
+  if (typeof address === 'string') return address || '—';
+  return [
+    address.street || address.streetAddress || address.line1,
+    address.line2,
+    address.city,
+    address.province,
+    address.postalCode
+  ].filter(Boolean).join(', ') || '—';
+};
+
+const displayValue = (value) => value === null || value === undefined || value === '' ? '—' : value;
+
 const PatientProfile = ({ patient, onClose }) => {
   const { t, language } = useLanguage();
   const locale = language === 'id' ? 'id-ID' : 'en-US';
@@ -177,9 +191,9 @@ const PatientProfile = ({ patient, onClose }) => {
 
           <div className="space-y-5">
             {[
-              { label: contactLabels.fields?.phone, value: patient.phone },
-              { label: contactLabels.fields?.email, value: patient.email },
-              { label: contactLabels.fields?.address, value: patient.address || t('dentistPatient.common.notProvided'), fullWidth: true },
+              { label: contactLabels.fields?.phone, value: displayValue(patient.phone) },
+              { label: contactLabels.fields?.email, value: displayValue(patient.email) },
+              { label: contactLabels.fields?.address, value: formatAddress(patient.address), fullWidth: true },
               { label: contactLabels.fields?.preferredContact, value: patient.preferredContact || contactLabels.defaults?.preferredContact || t('dentistPatient.profile.contact.defaultPreferred') },
               { label: contactLabels.fields?.occupation, value: patient.occupation || t('dentistPatient.common.notProvided') }
             ].map((item, idx) => (
@@ -190,6 +204,59 @@ const PatientProfile = ({ patient, onClose }) => {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <section className="rounded-2xl border border-primary/10 bg-surface p-8 shadow-sm">
+          <h3 className="mb-6 flex items-center gap-2 text-lg font-bold text-primary">
+            <ClinicalIcon name="billing-ledger" size="sm" />
+            Profil Administratif Pasien
+          </h3>
+          <div className="space-y-4">
+            {[
+              ['Penyedia asuransi', patient.insurance?.provider || patient.insuranceProvider],
+              ['Nomor polis', patient.insurance?.number || patient.insuranceNumber],
+              ['ID anggota', patient.insurance?.memberId || patient.insuranceMemberId],
+              ['Bahasa pilihan', patient.preferredLanguage],
+              ['Kontak darurat', patient.emergencyContact?.name],
+              ['Telepon darurat', patient.emergencyContact?.phone || patient.emergencyContact?.number],
+              ['Hubungan', patient.emergencyContact?.relationship]
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-4">
+                <span className="text-sm font-medium text-muted">{label}</span>
+                <span className="text-right text-sm font-semibold text-primary">{displayValue(value)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-8 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20">
+          <h3 className="mb-6 flex items-center gap-2 text-lg font-bold text-blue-950 dark:text-blue-100">
+            <ClinicalIcon name="emr-record" size="sm" />
+            Pre-Session Health Form
+          </h3>
+          {patient.latestHealthForm ? (
+            <div className="space-y-4">
+              {[
+                ['Gejala', patient.latestHealthForm.symptoms],
+                ['Skala nyeri', patient.latestHealthForm.painLevel],
+                ['Alergi', patient.latestHealthForm.allergies],
+                ['Obat', patient.latestHealthForm.medications],
+                ['Catatan', patient.latestHealthForm.notes],
+                ['Dikirim', patient.latestHealthForm.submittedAt ? formatDate(patient.latestHealthForm.submittedAt) : null]
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-4">
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">{label}</span>
+                  <span className="text-right text-sm font-semibold text-blue-950 dark:text-blue-100">{displayValue(value)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-blue-300 p-6 text-center text-sm text-blue-700 dark:border-blue-800 dark:text-blue-300">
+              Belum ada formulir kesehatan yang dikirim.
+            </div>
+          )}
+        </section>
       </div>
 
       {/* Medical Summary */}

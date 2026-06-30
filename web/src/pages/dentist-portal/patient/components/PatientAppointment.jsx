@@ -3,7 +3,7 @@ import Button from '../../../../components/ui/Button';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
-import axios from 'axios';
+import { authHttp } from '../../../../utils/httpClient';
 import ClinicalIcon from './ClinicalIcon';
 
 // Inject animation keyframes
@@ -43,27 +43,9 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
   }
 
   const rawAppointments = patient.appointments || [];
+  const canScheduleNew = typeof onScheduleNew === 'function';
 
-  const mappedAppointments = React.useMemo(() => {
-    return rawAppointments.map(apt => {
-      const startIso = apt.startsAt || apt.starts_at || apt.date;
-      if (!startIso) return apt;
-
-      const startsAtDate = new Date(startIso);
-      const now = new Date();
-      const isPast24h = (now - startsAtDate) > (24 * 60 * 60 * 1000);
-
-      let status = apt.status;
-      if (isPast24h && !['cancelled', 'rejected', 'no-show', 'completed'].includes(status)) {
-        status = 'completed';
-      }
-
-      return {
-        ...apt,
-        status
-      };
-    });
-  }, [rawAppointments]);
+  const mappedAppointments = rawAppointments;
 
   const filteredAppointments = mappedAppointments.filter(appointment => {
     if (filterStatus === 'all') return true;
@@ -129,18 +111,10 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
   const handleSendReminder = async (appointment) => {
     try {
       setSendingReminder(true);
-      const token = localStorage.getItem('token');
-
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/v1/notifications/send-appointment-reminder`,
-        {
-          appointmentId: appointment.id,
-          patientId: appointment.patientId || patient.id
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const response = await authHttp.post('/notifications/send-appointment-reminder', {
+        appointmentId: appointment.id,
+        patientId: appointment.patientId || patient.id
+      });
 
       if (response.data.success) {
         toast.success('Reminder sent successfully!');
@@ -214,7 +188,12 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
             <h2 className="text-2xl font-bold text-primary tracking-tight">{t('dentistPatient.appointments.title')}</h2>
             <p className="text-secondary mt-1">Manage patient visits and history</p>
           </div>
-          <Button onClick={() => onScheduleNew && onScheduleNew()} className="shadow-lg shadow-accent/20">
+          <Button
+            onClick={() => onScheduleNew?.()}
+            disabled={!canScheduleNew}
+            title={!canScheduleNew ? 'Penjadwalan pasien existing segera tersedia' : undefined}
+            className="shadow-lg shadow-accent/20"
+          >
             {t('dentistPatient.appointments.actions.scheduleNew')}
           </Button>
         </div>
@@ -330,7 +309,12 @@ const PatientAppointment = ({ patient, onScheduleNew, onUpdateAppointment, onCan
               <p className="text-secondary max-w-sm mx-auto mb-6">
                 {t('dentistPatient.appointments.empty.noFilterMatches', { status: getStatusLabel(filterStatus) })}
               </p>
-              <Button onClick={() => onScheduleNew && onScheduleNew()} className="shadow-lg shadow-accent/20">
+              <Button
+                onClick={() => onScheduleNew?.()}
+                disabled={!canScheduleNew}
+                title={!canScheduleNew ? 'Penjadwalan pasien existing segera tersedia' : undefined}
+                className="shadow-lg shadow-accent/20"
+              >
                 {t('dentistPatient.appointments.actions.scheduleFirst')}
               </Button>
             </div>

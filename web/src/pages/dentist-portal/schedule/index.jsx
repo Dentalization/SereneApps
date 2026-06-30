@@ -4,10 +4,15 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
+import { useToast } from '../../../contexts/ToastContext';
 import SideBar from '../ui/SideBar';
 import Icon from '../../../components/AppIcon';
 import { getDentistProfileApi } from '../../../services/authService';
-import { fetchAppointments } from '../../../services/appointmentService';
+import {
+  cancelAppointment as cancelAppointmentApi,
+  fetchAppointments,
+  updateAppointmentStatus
+} from '../../../services/appointmentService';
 import { fetchDentistScheduleEntries, persistDentistScheduleEntry } from '../../../services/dentistPortalService';
 
 // Import components
@@ -67,6 +72,7 @@ const DentistSchedule = () => {
   const { isDark } = useTheme();
   const { t, language } = useLanguage();
   const { socket } = useNotifications();
+  const { toast } = useToast();
   const locale = useMemo(() => (language === 'id' ? 'id-ID' : 'en-US'), [language]);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -125,18 +131,8 @@ const DentistSchedule = () => {
     const startIso = appointment.startsAt || appointment.starts_at;
     const endIso = appointment.endsAt || appointment.ends_at;
 
-    // Check if the appointment start time is older than 24 hours
-    const startsAtDate = new Date(startIso);
-    const now = new Date();
-    const isPast24h = (now - startsAtDate) > (24 * 60 * 60 * 1000);
-
-    let displayStatus = mapStatusToDisplay(appointment.status);
-    let rawStatus = appointment.status;
-
-    if (isPast24h && !['cancelled', 'rejected', 'no-show', 'completed'].includes(displayStatus)) {
-      displayStatus = 'completed';
-      rawStatus = 'completed';
-    }
+    const displayStatus = mapStatusToDisplay(appointment.status);
+    const rawStatus = appointment.status;
 
     return {
       id: appointment.id,
@@ -168,6 +164,7 @@ const DentistSchedule = () => {
       risk: appointment.metadata?.risk ?? 0,
       depositRequired: appointment.metadata?.depositRequired ?? false,
       metadata: appointment.metadata || {},
+      healthForm: appointment.healthForm || null,
       tele: appointment.videoRoomRef
         ? { videoRoomUrl: `/dentist-portal/teledentistry?appointmentId=${appointment.id}` }
         : null
@@ -370,12 +367,17 @@ const mapScheduleEntry = useCallback((entry) => {
     setIsDetailDrawerOpen(true);
   };
 
-  const handleConfirm = (appointment) => {
-    setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: 'confirmed' } : x)));
-  };
-
-  const handleReschedule = (appointment) => {
-    setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: 'pending' } : x)));
+  const handleConfirm = async (appointment) => {
+    try {
+      await updateAppointmentStatus(appointment.id, 'confirm');
+      setIsDetailDrawerOpen(false);
+      setSelectedAppointment(null);
+      await loadAppointments();
+      toast.success('Appointment dikonfirmasi.');
+    } catch (error) {
+      console.error('Error confirming appointment:', error);
+      toast.error(error.response?.data?.error || 'Gagal mengonfirmasi appointment.');
+    }
   };
 
   const handleStartVideo = (appointment) => {
@@ -384,28 +386,20 @@ const mapScheduleEntry = useCallback((entry) => {
     }
   };
 
-  const handleRequestPhotos = (appointment) => {
-    console.log('Request remote photos for', appointment.id);
-  };
-
-  const handleStatusChange = (appointment, newStatus) => {
-    setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: newStatus } : x)));
-  };
-
   // Handle appointment cancellation with refresh
   const handleCancelAppointment = useCallback(async (appointment) => {
+    if (!window.confirm('Batalkan appointment ini?')) return;
     try {
-      // Update local state immediately
-      setData((prev) => prev.map((x) => (x.id === appointment.id ? { ...x, status: 'cancelled', rawStatus: 'cancelled' } : x)));
-      // Close the drawer
+      await cancelAppointmentApi(appointment.id, { reason: 'Cancelled by dentist' });
       setIsDetailDrawerOpen(false);
       setSelectedAppointment(null);
-      // Refresh from backend after a short delay to ensure DB is updated
-      setTimeout(() => loadAppointments(), 500);
+      await loadAppointments();
+      toast.success('Appointment dibatalkan.');
     } catch (error) {
       console.error('Error cancelling appointment:', error);
+      toast.error(error.response?.data?.error || 'Gagal membatalkan appointment.');
     }
-  }, [loadAppointments]);
+  }, [loadAppointments, toast]);
 
   // Handle schedule actions from DailyCalendar
   const handleScheduleAction = useCallback(async (action) => {
@@ -657,7 +651,6 @@ const mapScheduleEntry = useCallback((entry) => {
           setSelectedAppointment(null);
         }}
         onConfirm={handleConfirm}
-        onReschedule={handleReschedule}
         onCancel={handleCancelAppointment}
         onStartVideo={handleStartVideo}
       />

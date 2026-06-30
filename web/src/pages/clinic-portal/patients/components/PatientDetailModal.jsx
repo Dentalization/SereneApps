@@ -44,7 +44,13 @@ const formatAddress = (addr) => {
   if (!addr) return null;
   if (typeof addr === 'string') return addr;
   if (typeof addr === 'object') {
-    return [addr.street, addr.city, addr.province, addr.postalCode].filter(Boolean).join(', ') || null;
+    return [
+      addr.street || addr.streetAddress || addr.line1,
+      addr.line2,
+      addr.city,
+      addr.province,
+      addr.postalCode
+    ].filter(Boolean).join(', ') || null;
   }
   return null;
 };
@@ -94,7 +100,9 @@ const InfoRow = ({ icon, label, value }) => (
     </div>
     <div className="min-w-0 flex-1">
       <div className="text-xs text-secondary">{label}</div>
-      <div className="text-sm font-medium text-primary truncate">{value || '-'}</div>
+      <div className="text-sm font-medium text-primary truncate">
+        {value === null || value === undefined || value === '' ? '—' : value}
+      </div>
     </div>
   </div>
 );
@@ -278,7 +286,10 @@ const OverviewTab = ({ patient }) => (
         <InfoRow icon="Phone" label="Telepon" value={patient.phone} />
         <InfoRow icon="MapPin" label="Alamat" value={formatAddress(patient.address)} />
         <InfoRow icon="Calendar" label="Tanggal Lahir" value={fmt(patient.dateOfBirth)} />
-        <InfoRow icon="Shield" label="Asuransi" value={patient.insuranceProvider} />
+        <InfoRow icon="Shield" label="Penyedia Asuransi" value={patient.insuranceProvider} />
+        <InfoRow icon="FileKey" label="Nomor Polis" value={patient.insuranceNumber} />
+        <InfoRow icon="BadgeCheck" label="ID Anggota" value={patient.insuranceMemberId} />
+        <InfoRow icon="Languages" label="Bahasa Pilihan" value={patient.preferredLanguage} />
       </div>
     </div>
 
@@ -305,12 +316,37 @@ const OverviewTab = ({ patient }) => (
         <InfoRow icon="Stethoscope" label="Perawatan Terakhir" value={patient.medicalRecord?.lastTreatment} />
       </div>
 
-      {/* Emergency contact */}
-      {patient.emergencyContact && (
-        <div className="mt-4 pt-4 border-t border-primary/10">
-          <h4 className="text-xs font-medium text-secondary mb-2 uppercase tracking-wider">Kontak Darurat</h4>
-          <InfoRow icon="Phone" label={patient.emergencyContact.name || 'Kontak'}
-            value={patient.emergencyContact.phone || patient.emergencyContact.number || '-'} />
+      <div className="mt-4 border-t border-primary/10 pt-4">
+        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-secondary">Kontak Darurat</h4>
+        <InfoRow icon="UserRound" label="Nama" value={patient.emergencyContact?.name} />
+        <InfoRow
+          icon="Phone"
+          label="Telepon"
+          value={patient.emergencyContact?.phone || patient.emergencyContact?.number}
+        />
+        <InfoRow icon="UsersRound" label="Hubungan" value={patient.emergencyContact?.relationship} />
+      </div>
+    </div>
+
+    <div className="lg:col-span-2 rounded-xl border border-primary/10 bg-surface/50 p-5">
+      <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/10">
+          <Icon name="ClipboardHeart" size={13} className="text-blue-500" />
+        </div>
+        Pre-Session Health Form Terbaru
+      </h3>
+      {patient.latestHealthForm ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <InfoRow icon="Activity" label="Gejala" value={patient.latestHealthForm.symptoms} />
+          <InfoRow icon="Gauge" label="Skala Nyeri" value={patient.latestHealthForm.painLevel ?? '—'} />
+          <InfoRow icon="ShieldAlert" label="Alergi" value={patient.latestHealthForm.allergies} />
+          <InfoRow icon="Pill" label="Obat" value={patient.latestHealthForm.medications} />
+          <InfoRow icon="Notebook" label="Catatan" value={patient.latestHealthForm.notes} />
+          <InfoRow icon="Clock" label="Dikirim" value={fmt(patient.latestHealthForm.submittedAt)} />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-primary/15 p-5 text-center text-sm text-secondary">
+          Belum ada formulir kesehatan yang dikirim.
         </div>
       )}
     </div>
@@ -420,6 +456,24 @@ const HistoryTab = ({ appointments = [], canViewTeleSummaries = false, onViewTel
                   </div>
                   {apt.notes && (
                     <p className="mt-1.5 text-xs text-secondary/70 italic">"{apt.notes}"</p>
+                  )}
+                  {apt.healthForm && (
+                    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="inline-flex items-center gap-1.5 font-semibold">
+                          <Icon name="ClipboardHeart" size={13} />
+                          Pre-session health form
+                        </span>
+                        <span>{fmt(apt.healthForm.submittedAt)}</span>
+                      </div>
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        <span>Gejala: {apt.healthForm.symptoms || '-'}</span>
+                        <span>Skala nyeri: {apt.healthForm.painLevel ?? '-'}</span>
+                        <span>Alergi: {apt.healthForm.allergies || '-'}</span>
+                        <span>Obat: {apt.healthForm.medications || '-'}</span>
+                      </div>
+                      {apt.healthForm.notes && <p className="mt-2">Catatan: {apt.healthForm.notes}</p>}
+                    </div>
                   )}
                   {canViewTeleSummaries && isVirtualAppointment(apt) && (
                     <button
