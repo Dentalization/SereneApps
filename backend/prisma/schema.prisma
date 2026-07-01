@@ -397,6 +397,7 @@ model SpecialistCase {
   status              String   @default("draft") @db.VarChar(32)
   title               String
   summary             String?
+  completionSummary   String?  @map("completion_summary")
   completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
   archivedAt          DateTime? @map("archived_at") @db.Timestamptz(6)
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

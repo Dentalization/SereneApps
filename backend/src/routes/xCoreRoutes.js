@@ -4,9 +4,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-// Force enable benchmark mode for benchmark runs
-process.env.XCORE_BENCHMARK_MODE = 'true';
-
 import {
     assignStudyPatient,
     uploadStudy,
@@ -56,8 +53,12 @@ const upload = multer({ storage: storage });
 router.get('/share/:token', getSharedStudy);
 router.get('/share/:token/validate', validateStudyShareToken);
 
-// Benchmark callback (public / unauthenticated for internal python requests)
-router.post('/benchmark/callback', express.json(), benchmarkCallback);
+const benchmarkModeEnabled = process.env.XCORE_BENCHMARK_MODE === 'true';
+
+if (benchmarkModeEnabled) {
+    // Internal benchmark callback. This route does not exist in normal runtime.
+    router.post('/benchmark/callback', express.json(), benchmarkCallback);
+}
 
 // Routes - Protected by Auth
 router.use(authMiddleware);
@@ -84,7 +85,7 @@ router.post('/analyze', analyzeStudy);
 router.get('/storage', getStorageStats);
 router.delete('/studies/:id', deleteStudy);
 
-if (process.env.XCORE_BENCHMARK_MODE === 'true') {
+if (benchmarkModeEnabled) {
     router.delete('/benchmark/studies/:id', deleteBenchmarkStudy);
 }
 

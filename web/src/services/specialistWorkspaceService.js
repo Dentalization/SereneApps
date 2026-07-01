@@ -29,9 +29,17 @@ export async function addSpecialistCaseNote(caseId, content) {
   return data.note;
 }
 
-export async function updateSpecialistCaseStatus(caseId, status) {
+export async function updateSpecialistCaseStatus(caseId, status, completionSummary = null) {
   const { data } = await authHttp.patch(`/specialist-workspace/cases/${caseId}/status`, {
     status,
+    ...(completionSummary ? { completionSummary } : {}),
   });
   return data.case;
+}
+
+export async function getClinicPatientSpecialistCaseSummary(patientId) {
+  const { data } = await authHttp.get(
+    `/specialist-workspace/clinic/patients/${patientId}/case-summary`,
+  );
+  return data.cases || [];
 }
