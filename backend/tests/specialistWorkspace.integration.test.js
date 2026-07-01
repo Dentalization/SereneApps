@@ -263,7 +263,7 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
   const appointment = await createAppointment({ patient, dentist: dentistA, clinic, branch: branchA });
   const imagingStudy = await createImagingStudy({ patient, dentist: dentistA });
   const otherPatient = await createUser('Other Specialist Patient', ['patient']);
-  await createAppointment({
+  const otherAppointment = await createAppointment({
     patient: otherPatient,
     dentist: dentistA,
     clinic,
@@ -370,6 +370,66 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
     assert.equal(created.json.case.caseType, 'radiology');
     assert.equal(created.json.case.xcoreStudyId, imagingStudy.id.toString());
 
+    const duplicate = await httpJson(
+      baseUrl,
+      '/v1/specialist-workspace/cases',
+      tokens.dentistA,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: patient.id.toString(),
+          originAppointmentId: appointment.id.toString(),
+          caseType: 'radiology',
+          title: 'Duplicate radiology case must be rejected',
+        }),
+      },
+    );
+    assert.equal(duplicate.status, 409, JSON.stringify(duplicate.json));
+    assert.equal(duplicate.json.error.code, 'specialist_case_duplicate');
+    assert.equal(duplicate.json.error.existingCaseId, caseId);
+    assert.equal(
+      await prisma.specialistCase.count({
+        where: {
+          dentistId: dentistA.id,
+          patientId: patient.id,
+          originAppointmentId: appointment.id,
+          status: { not: 'archived' },
+        },
+      }),
+      1,
+    );
+
+    const concurrentCreates = await Promise.all([
+      httpJson(baseUrl, '/v1/specialist-workspace/cases', tokens.dentistA, {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: otherPatient.id.toString(),
+          originAppointmentId: otherAppointment.id.toString(),
+          caseType: 'radiology',
+          title: 'Concurrent radiology case A',
+        }),
+      }),
+      httpJson(baseUrl, '/v1/specialist-workspace/cases', tokens.dentistA, {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: otherPatient.id.toString(),
+          originAppointmentId: otherAppointment.id.toString(),
+          caseType: 'radiology',
+          title: 'Concurrent radiology case B',
+        }),
+      }),
+    ]);
+    assert.deepEqual(
+      concurrentCreates.map((response) => response.status).sort(),
+      [201, 409],
+    );
+    const concurrentCreated = concurrentCreates.find((response) => response.status === 201);
+    const concurrentConflict = concurrentCreates.find((response) => response.status === 409);
+    assert.equal(
+      concurrentConflict.json.error.existingCaseId,
+      concurrentCreated.json.case.id,
+    );
+
     const createdEvents = await prisma.specialistCaseTimelineEvent.findMany({
       where: { specialistCaseId: BigInt(caseId) },
     });
@@ -450,12 +510,15 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
       'caseType',
       'hasXcoreEvidence',
       'id',
-      'originAppointmentId',
+      'safeLabel',
       'status',
-      'title',
       'updatedAt',
     ]);
-    assert.doesNotMatch(JSON.stringify(summary.json), /note|radiolucency|findings|rawAi/i);
+    assert.equal(summary.json.cases[0].safeLabel, 'Radiology specialist case');
+    assert.doesNotMatch(
+      JSON.stringify(summary.json),
+      /Radiology review - tooth 36|note|radiolucency|findings|rawAi/i,
+    );
 
     const crossBranchSummary = await httpJson(
       baseUrl,
@@ -473,15 +536,46 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
     assert.equal(invalidTransition.status, 409, JSON.stringify(invalidTransition.json));
 
     for (const status of ['active', 'completed', 'archived']) {
+      if (status === 'completed') {
+        const missingCompletionSummary = await httpJson(
+          baseUrl,
+          `/v1/specialist-workspace/cases/${caseId}/status`,
+          tokens.dentistA,
+          { method: 'PATCH', body: JSON.stringify({ status }) },
+        );
+        assert.equal(
+          missingCompletionSummary.status,
+          400,
+          JSON.stringify(missingCompletionSummary.json),
+        );
+        assert.equal(
+          missingCompletionSummary.json.error.code,
+          'completion_summary_required',
+        );
+      }
       const transition = await httpJson(
         baseUrl,
         `/v1/specialist-workspace/cases/${caseId}/status`,
         tokens.dentistA,
-        { method: 'PATCH', body: JSON.stringify({ status }) },
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status,
+            ...(status === 'completed'
+              ? { completionSummary: 'Dentist-approved radiology completion summary.' }
+              : {}),
+          }),
+        },
       );
       assert.equal(transition.status, 200, JSON.stringify(transition.json));
       assert.equal(transition.json.case.status, status);
-      if (status === 'completed') assert.ok(transition.json.case.completedAt);
+      if (status === 'completed') {
+        assert.ok(transition.json.case.completedAt);
+        assert.equal(
+          transition.json.case.completionSummary,
+          'Dentist-approved radiology completion summary.',
+        );
+      }
       if (status === 'archived') assert.ok(transition.json.case.archivedAt);
 
       if (status === 'completed') {

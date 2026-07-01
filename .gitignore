@@ -43,6 +43,7 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260701010000_add_specialist_workspace/
 !backend/prisma/migrations/20260701020000_add_specialist_xcore_study_reference/
 !backend/prisma/migrations/20260701030000_add_imaging_study_patient_assignments/
+!backend/prisma/migrations/20260702000000_add_specialist_case_completion_summary/
 
 # Mobile specific
 mobile/.expo/

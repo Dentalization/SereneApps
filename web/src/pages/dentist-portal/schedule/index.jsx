@@ -409,12 +409,10 @@ const mapScheduleEntry = useCallback((entry) => {
     } catch (error) {
       toast.error(
         error.response?.data?.error?.message
-        || 'Gagal membuka Specialist Case.',
+        || 'Tidak dapat memeriksa Specialist Case. Coba lagi sebelum membuat case baru.',
       );
       setIsDetailDrawerOpen(false);
       setSelectedAppointment(null);
-      // Deliberate fail-open: lookup is convenience only; create authorization remains server-side.
-      setSpecialistCaseAppointment(appointment);
     }
   }, [navigate, toast]);
 

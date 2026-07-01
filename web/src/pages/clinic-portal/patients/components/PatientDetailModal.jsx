@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { fetchClinicTeledentistrySummary } from '../../../../services/clinicTeledentistryService';
 import { canViewSummaries, getClinicRole } from '../../../../utils/clinicRoles';
 import { resolveMediaUrl } from '../../../../utils/media';
+import { getClinicPatientSpecialistCaseSummary } from '../../../../services/specialistWorkspaceService';
 
 if (typeof document !== 'undefined' && !document.getElementById('modal-animations')) {
   const style = document.createElement('style');
@@ -112,6 +113,11 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
   const { user } = useAuth();
   const [tab, setTab] = useState(initialTab);
   const [summaryState, setSummaryState] = useState({ open: false, loading: false, error: '', data: null });
+  const [specialistCasesState, setSpecialistCasesState] = useState({
+    loading: false,
+    error: '',
+    cases: [],
+  });
   const clinicRole = getClinicRole(user);
   const canViewTeleSummaries = canViewSummaries(clinicRole);
 
@@ -119,6 +125,33 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
   React.useEffect(() => {
     if (isOpen) setTab(initialTab);
   }, [isOpen, initialTab]);
+
+  React.useEffect(() => {
+    if (!isOpen || !patient?.id) {
+      setSpecialistCasesState({ loading: false, error: '', cases: [] });
+      return undefined;
+    }
+    let cancelled = false;
+    setSpecialistCasesState({ loading: true, error: '', cases: [] });
+    getClinicPatientSpecialistCaseSummary(patient.id)
+      .then((cases) => {
+        if (!cancelled) {
+          setSpecialistCasesState({ loading: false, error: '', cases });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSpecialistCasesState({
+            loading: false,
+            error: 'Ringkasan Specialist Case belum dapat dimuat.',
+            cases: [],
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, patient?.id]);
 
   if (!isOpen || !patient) return null;
 
@@ -249,7 +282,12 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
 
           {/* ─── Tab content ─── */}
           <div className="flex-1 overflow-y-auto p-6">
-            {tab === 'overview' && <OverviewTab patient={patient} />}
+            {tab === 'overview' && (
+              <OverviewTab
+                patient={patient}
+                specialistCasesState={specialistCasesState}
+              />
+            )}
             {tab === 'history' && (
               <HistoryTab
                 appointments={patientAppointments}
@@ -270,7 +308,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
 };
 
 /* ═══ OVERVIEW TAB ═══════════════════════════════════════════════════ */
-const OverviewTab = ({ patient }) => (
+const OverviewTab = ({ patient, specialistCasesState }) => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
     {/* Personal info card */}
     <div className="rounded-xl border border-primary/10 bg-surface/50 p-5">
@@ -347,6 +385,59 @@ const OverviewTab = ({ patient }) => (
       ) : (
         <div className="rounded-lg border border-dashed border-primary/15 p-5 text-center text-sm text-secondary">
           Belum ada formulir kesehatan yang dikirim.
+        </div>
+      )}
+    </div>
+
+    <div className="lg:col-span-2 rounded-xl border border-primary/10 bg-surface/50 p-5">
+      <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-500/10">
+          <Icon name="ScanLine" size={13} className="text-violet-500" />
+        </div>
+        Specialist Cases
+      </h3>
+      {specialistCasesState.loading && (
+        <div className="flex items-center gap-2 text-sm text-secondary">
+          <Icon name="Loader2" size={14} className="animate-spin" />
+          Memuat ringkasan operasional…
+        </div>
+      )}
+      {!specialistCasesState.loading && specialistCasesState.error && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          {specialistCasesState.error}
+        </div>
+      )}
+      {!specialistCasesState.loading
+        && !specialistCasesState.error
+        && specialistCasesState.cases.length === 0 && (
+          <div className="rounded-lg border border-dashed border-primary/15 p-4 text-sm text-secondary">
+            Belum ada Specialist Case untuk pasien ini.
+          </div>
+      )}
+      {!specialistCasesState.loading && specialistCasesState.cases.length > 0 && (
+        <div className="space-y-2">
+          {specialistCasesState.cases.map((caseRecord) => (
+            <div
+              key={caseRecord.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/10 bg-surface p-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-primary">{caseRecord.safeLabel}</p>
+                <p className="mt-1 text-xs text-secondary">
+                  Updated {fmt(caseRecord.updatedAt)}
+                  {caseRecord.hasXcoreEvidence ? ' · X-Core linked' : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold capitalize text-violet-700">
+                  {caseRecord.caseType}
+                </span>
+                <span className="rounded-full bg-primary/5 px-3 py-1 text-xs font-semibold capitalize text-secondary">
+                  {caseRecord.status}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

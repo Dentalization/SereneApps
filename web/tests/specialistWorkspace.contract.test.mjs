@@ -112,7 +112,7 @@ test('create-case modal reuses dentist patient search and submits the fixed radi
   assert.match(xcoreGallery, /setSelectedStudyDetails\(matchingStudy\)/);
 });
 
-test('appointment context is human-readable, unambiguous, exact-filtered, and fail-open', () => {
+test('appointment context is human-readable, exact-filtered, and fails closed on lookup errors', () => {
   const modal = readSource(
     'src/pages/dentist-portal/specialist-workspace/CreateSpecialistCaseModal.jsx'
   );
@@ -129,8 +129,11 @@ test('appointment context is human-readable, unambiguous, exact-filtered, and fa
   assert.match(schedulePage, /originAppointmentId:\s*appointment\.id/);
   assert.doesNotMatch(schedulePage, /existingCases\.find/);
   assert.match(schedulePage, /setSpecialistCaseAppointment\(appointment\)/);
-  assert.match(schedulePage, /deliberate fail-open|fail-open/i);
+  assert.doesNotMatch(schedulePage, /deliberate fail-open|fail-open/i);
+  assert.match(schedulePage, /Tidak dapat memeriksa Specialist Case/);
   assert.match(schedulePage, /appointmentSummary=/);
+  assert.match(modal, /existingCaseId/);
+  assert.match(modal, /response\?\.status === 409/);
 });
 
 test('X-Core requires patient assignment on upload and supports owner reassignment', () => {
@@ -176,6 +179,9 @@ test('case detail follows note, safety, confirmation, and case-type display rule
   assert.match(page, /bg-red-50/);
   assert.match(page, /medicalContext/);
   assert.match(page, /insurance\?\.provider/);
+  assert.match(page, /completionSummary/);
+  assert.match(page, /Raw working notes tidak disalin ke EMR/);
+  assert.match(page, /status === 'completed' \? completionSummary\.trim\(\)/);
 });
 
 test('clinic and admin portals do not render Specialist Case clinical notes', () => {
@@ -186,4 +192,11 @@ test('clinic and admin portals do not render Specialist Case clinical notes', ()
     const source = readTreeSource(relativePath);
     assert.doesNotMatch(source, /SpecialistCaseNote|specialistCase\.notes/);
   }
+  const clinicPatientDetail = readSource(
+    'src/pages/clinic-portal/patients/components/PatientDetailModal.jsx'
+  );
+  assert.match(clinicPatientDetail, /getClinicPatientSpecialistCaseSummary/);
+  assert.match(clinicPatientDetail, /caseRecord\.safeLabel/);
+  assert.match(clinicPatientDetail, /caseRecord\.hasXcoreEvidence/);
+  assert.doesNotMatch(clinicPatientDetail, /caseRecord\.title|caseRecord\.completionSummary/);
 });

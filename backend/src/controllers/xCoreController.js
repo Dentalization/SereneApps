@@ -1615,6 +1615,9 @@ export const deleteBenchmarkStudy = async (req, res) => {
 
 export const benchmarkCallback = async (req, res) => {
     try {
+        if (process.env.XCORE_BENCHMARK_MODE !== 'true') {
+            return res.status(403).json({ error: 'Benchmark mode is not enabled' });
+        }
         const { runId, eventType, details } = req.body;
         if (!runId || !eventType) {
             return res.status(400).json({ error: 'runId and eventType are required' });

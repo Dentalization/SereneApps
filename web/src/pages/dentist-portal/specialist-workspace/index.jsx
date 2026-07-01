@@ -70,6 +70,7 @@ const SpecialistWorkspace = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [noteContent, setNoteContent] = useState('');
+  const [completionSummary, setCompletionSummary] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
@@ -89,6 +90,12 @@ const SpecialistWorkspace = () => {
   useEffect(() => {
     loadCase();
   }, [loadCase]);
+
+  useEffect(() => {
+    if (caseRecord?.id) {
+      setCompletionSummary(caseRecord.completionSummary || '');
+    }
+  }, [caseRecord?.id, caseRecord?.completionSummary]);
 
   const patient = caseRecord?.patient;
   const appointment = caseRecord?.appointment;
@@ -120,7 +127,11 @@ const SpecialistWorkspace = () => {
     if (changingStatus) return;
     setChangingStatus(true);
     try {
-      await updateSpecialistCaseStatus(caseId, status);
+      await updateSpecialistCaseStatus(
+        caseId,
+        status,
+        status === 'completed' ? completionSummary.trim() : null,
+      );
       await loadCase();
       toast.success(`Case diperbarui menjadi ${statusLabels[status]}.`);
       return true;
@@ -194,7 +205,10 @@ const SpecialistWorkspace = () => {
                   <button
                     type="button"
                     onClick={() => handleStatus(nextStatus)}
-                    disabled={changingStatus}
+                    disabled={
+                      changingStatus
+                      || (nextStatus === 'completed' && !completionSummary.trim())
+                    }
                     className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                   >
                     {nextStatus === 'active' && 'Mark Active'}
@@ -280,6 +294,36 @@ const SpecialistWorkspace = () => {
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-secondary">
                   {caseRecord.summary || 'Belum ada ringkasan case.'}
                 </p>
+                {caseRecord.status === 'active' && (
+                  <div className="mt-5 border-t border-primary/10 pt-5">
+                    <label
+                      htmlFor="specialist-completion-summary"
+                      className="text-sm font-semibold text-primary"
+                    >
+                      Completion summary
+                    </label>
+                    <p className="mt-1 text-xs text-secondary">
+                      Ringkasan yang disetujui dentist. Raw working notes tidak disalin ke EMR.
+                    </p>
+                    <textarea
+                      id="specialist-completion-summary"
+                      value={completionSummary}
+                      onChange={(event) => setCompletionSummary(event.target.value)}
+                      maxLength={4000}
+                      rows={4}
+                      placeholder="Tuliskan hasil review dan keputusan klinis akhir…"
+                      className="mt-3 w-full rounded-2xl border border-primary/15 bg-surface-elevated p-4 text-sm text-primary outline-none focus:border-accent"
+                    />
+                  </div>
+                )}
+                {caseRecord.completionSummary && caseRecord.status !== 'active' && (
+                  <div className="mt-5 border-t border-primary/10 pt-5">
+                    <p className="text-sm font-semibold text-primary">Completion summary</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-secondary">
+                      {caseRecord.completionSummary}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-3xl border border-primary/10 bg-surface p-6 shadow-theme-sm">

@@ -63,6 +63,7 @@ function serializeCaseSummary(caseRecord) {
     status: caseRecord.status,
     title: caseRecord.title,
     summary: caseRecord.summary || null,
+    completionSummary: caseRecord.completionSummary || null,
     completedAt: caseRecord.completedAt || null,
     archivedAt: caseRecord.archivedAt || null,
     createdAt: caseRecord.createdAt,
@@ -355,6 +356,9 @@ function sendWorkspaceError(res, error) {
     error: {
       code,
       message: status >= 500 ? 'Specialist Workspace request failed.' : error.message,
+      ...(error?.existingCaseId
+        ? { existingCaseId: asId(error.existingCaseId) }
+        : {}),
     },
   });
 }
@@ -494,6 +498,30 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
       const clinicProfileId =
         sourceAppointment.ownerClinicId || sourceAppointment.clinicBranch?.clinicProfileId || null;
       const created = await prismaClient.$transaction(async (tx) => {
+        if (authorization.appointment) {
+          await tx.$executeRaw`
+            SELECT pg_advisory_xact_lock(${authorization.appointment.id})
+          `;
+          const existingCase = await tx.specialistCase.findFirst({
+            where: {
+              dentistId: authorization.dentistId,
+              patientId: authorization.patientId,
+              caseType,
+              originAppointmentId: authorization.appointment.id,
+              status: { not: 'archived' },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+          if (existingCase) {
+            const duplicateError = specialistWorkspaceError(
+              409,
+              'specialist_case_duplicate',
+              'An active Specialist Case already exists for this appointment.',
+            );
+            duplicateError.existingCaseId = existingCase.id;
+            throw duplicateError;
+          }
+        }
         const specialistCase = await tx.specialistCase.create({
           data: {
             patientId: authorization.patientId,
@@ -694,9 +722,13 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
         if (!SPECIALIST_CASE_STATUS_TRANSITIONS[specialistCase.status]?.includes(nextStatus)) {
           throw specialistWorkspaceError(409, 'invalid_specialist_case_transition');
         }
+        const completionSummary = nextStatus === 'completed'
+          ? textValue(req.body?.completionSummary, 'completion_summary', {
+              required: true,
+              maxLength: 4_000,
+            })
+          : null;
         const now = new Date();
-        // TODO(specialist-workspace-phase-2): publish a dentist-approved completion
-        // summary to the official EMR without copying working notes into EMR records.
         const changed = await tx.specialistCase.updateMany({
           where: {
             id: caseId,
@@ -704,7 +736,9 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
           },
           data: {
             status: nextStatus,
-            ...(nextStatus === 'completed' ? { completedAt: now } : {}),
+            ...(nextStatus === 'completed'
+              ? { completedAt: now, completionSummary }
+              : {}),
             ...(nextStatus === 'archived' ? { archivedAt: now } : {}),
           },
         });
@@ -767,9 +801,10 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
           id: asId(caseRecord.id),
           caseType: caseRecord.caseType,
           status: caseRecord.status,
-          title: caseRecord.title,
+          safeLabel: caseRecord.caseType === 'radiology'
+            ? 'Radiology specialist case'
+            : 'Specialist case',
           updatedAt: caseRecord.updatedAt,
-          originAppointmentId: asId(caseRecord.originAppointmentId),
           hasXcoreEvidence: Boolean(
             caseRecord.xcoreStudyId || caseRecord.xcoreVerifiedCaseId,
           ),

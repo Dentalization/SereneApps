@@ -118,6 +118,12 @@ const CreateSpecialistCaseModal = ({
       onClose?.();
       navigate(`/dentist-portal/specialist-workspace/${created.id}`);
     } catch (requestError) {
+      const existingCaseId = requestError.response?.data?.error?.existingCaseId;
+      if (requestError.response?.status === 409 && existingCaseId) {
+        onClose?.();
+        navigate(`/dentist-portal/specialist-workspace/${existingCaseId}`);
+        return;
+      }
       setError(
         requestError.response?.data?.error?.message
         || 'Gagal membuat Specialist Case.',
