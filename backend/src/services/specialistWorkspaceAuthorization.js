@@ -1,4 +1,4 @@
-export const SPECIALIST_CASE_TYPES = Object.freeze(['radiology']);
+export const SPECIALIST_CASE_TYPES = Object.freeze(['radiology', 'endodontic']);
 export const SPECIALIST_CASE_STATUSES = Object.freeze(['draft', 'active', 'completed', 'archived']);
 
 const CLINIC_SUMMARY_TOKEN_ROLES = new Set([

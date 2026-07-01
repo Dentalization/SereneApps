@@ -22,7 +22,9 @@ const SideBar = () => {
   const { toggleTheme, isDark, isTransitioning } = useTheme();
   const { t, language, changeLanguage } = useLanguage();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
@@ -47,6 +49,15 @@ const SideBar = () => {
     });
     return () => cancelAnimationFrame(frame);
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const collapseForMobile = (event) => {
+      if (event.matches) setIsCollapsed(true);
+    };
+    mobileQuery.addEventListener('change', collapseForMobile);
+    return () => mobileQuery.removeEventListener('change', collapseForMobile);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -98,6 +109,7 @@ const SideBar = () => {
       { id: 'ai-analysis', label: t('sidebar.aiInsights'), icon: 'Brain', path: '/dentist-portal/ai-analysis', description: 'AI Clinical Decision Support' },
       { id: 'x-core', label: 'X-Core', icon: 'Cpu', path: '/dentist-portal/x-core', description: 'Core System & Utilities' },
       { id: 'specialist-workspace', label: 'Specialist Workspace', icon: 'FolderHeart', path: '/dentist-portal/specialist-workspace', description: 'Radiology-linked clinical cases' },
+      { id: 'endo-core', label: 'Endo-Core', icon: 'Activity', path: '/dentist-portal/endo-core', description: 'Endodontic case workspace' },
       { id: 'appointments', label: t('sidebar.schedule'), icon: 'Calendar', path: '/dentist-portal/appointments', description: 'Schedule Management' },
       { id: 'reports', label: t('sidebar.reports'), icon: 'BarChart3', path: '/dentist-portal/reports', description: 'Reports & Statistics' },
     ],

@@ -20,6 +20,8 @@ import {
   requireXCoreStudyReadAccess,
   sameBigInt,
 } from '../services/xCoreAccessPolicyService.js';
+import { ENDO_FDI_TEETH } from '../services/endoCorePolicy.js';
+import { createEndoCoreRouter } from './endoCore.js';
 
 const prisma = new PrismaClient();
 const CLINIC_SUMMARY_ROLES = [
@@ -235,6 +237,9 @@ async function loadXcoreStudyPreview(
 // verified_cases is owned by the separately migrated Verified Case/X-Core
 // repository and has no Prisma model. Keep this dentist-scoped, parameterized
 // cross-system read here until that storage contract is formally unified.
+// NOTE: radiology/general specialist cases link to 'verified_cases' via xcoreVerifiedCaseId.
+// This represents a completed/verified radiology analysis workflow from X-Core.
+// It differs from endoCore's direct linkage to raw imaging studies ('imagingStudy' via xcoreStudyId).
 async function loadXcorePreview(
   db,
   { referenceId, patientId, dentistId, strict = false },
@@ -376,6 +381,8 @@ function asyncRoute(handler) {
 export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) {
   const router = express.Router();
 
+  router.use('/endo', createEndoCoreRouter({ prismaClient }));
+
   router.get(
     '/xcore/studies',
     authenticateToken,
@@ -478,6 +485,20 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
         );
       }
       if (xcoreStudyId) {
+        const duplicateStudyCase = await prismaClient.specialistCase.findFirst({
+          where: {
+            xcoreStudyId,
+            status: { not: 'archived' },
+          },
+        });
+        if (duplicateStudyCase) {
+          throw specialistWorkspaceError(
+            409,
+            'xcore_study_duplicate_case',
+            'A Specialist Case has already been created for this X-Core study.',
+          );
+        }
+
         await loadXcoreStudyPreview(prismaClient, {
           studyId: xcoreStudyId,
           patientId: authorization.patientId,
@@ -714,13 +735,35 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
       const dentistId = specialistWorkspaceId(req.user.id, 'user_id');
 
       const updated = await prismaClient.$transaction(async (tx) => {
-        const specialistCase = await tx.specialistCase.findUnique({ where: { id: caseId } });
+        const specialistCase = await tx.specialistCase.findUnique({
+          where: { id: caseId },
+          include: { endoCaseDetail: true },
+        });
         if (!specialistCase) {
           throw specialistWorkspaceError(404, 'specialist_case_not_found');
         }
         assertCanEditSpecialistCase(req.user, specialistCase);
         if (!SPECIALIST_CASE_STATUS_TRANSITIONS[specialistCase.status]?.includes(nextStatus)) {
           throw specialistWorkspaceError(409, 'invalid_specialist_case_transition');
+        }
+        if (specialistCase.caseType === 'endodontic' && nextStatus === 'active') {
+          const detail = specialistCase.endoCaseDetail;
+          if (
+            !detail
+            || !ENDO_FDI_TEETH.includes(detail.toothNumber)
+            || !String(detail.chiefComplaint || '').trim()
+          ) {
+            throw specialistWorkspaceError(400, 'endo_activation_requirements_missing');
+          }
+        }
+        if (specialistCase.caseType === 'endodontic' && nextStatus === 'completed') {
+          const detail = specialistCase.endoCaseDetail;
+          if (
+            !String(detail?.pulpDiagnosis || '').trim()
+            || !String(detail?.periapicalDiagnosis || '').trim()
+          ) {
+            throw specialistWorkspaceError(400, 'endo_completion_diagnosis_required');
+          }
         }
         const completionSummary = nextStatus === 'completed'
           ? textValue(req.body?.completionSummary, 'completion_summary', {
@@ -803,7 +846,9 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
           status: caseRecord.status,
           safeLabel: caseRecord.caseType === 'radiology'
             ? 'Radiology specialist case'
-            : 'Specialist case',
+            : caseRecord.caseType === 'endodontic'
+              ? 'Endodontic specialist case'
+              : 'Specialist case',
           updatedAt: caseRecord.updatedAt,
           hasXcoreEvidence: Boolean(
             caseRecord.xcoreStudyId || caseRecord.xcoreVerifiedCaseId,

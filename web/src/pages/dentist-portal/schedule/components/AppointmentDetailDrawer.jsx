@@ -20,7 +20,7 @@ if (typeof document !== 'undefined' && !document.getElementById('modal-animation
   document.head.appendChild(style);
 }
 
-const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onCancel, onStartVideo, onOpenSpecialistCase }) => {
+const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onCancel, onStartVideo, onOpenSpecialistCase, onOpenEndoCase }) => {
   // HAPUS semua state/ref scroll manual. Kita serahkan sepenuhnya pada CSS.
   
   if (!isOpen || !appointment) return null;
@@ -225,13 +225,22 @@ const AppointmentDetailDrawer = ({ appointment, isOpen, onClose, onConfirm, onCa
               <h3 className="text-lg font-semibold text-primary">{t('dentistSchedule.detail.actions.title')}</h3>
               <div className="flex flex-wrap gap-3">
                 {appointment.patient?.id && !String(appointment.id).startsWith('schedule-') && (
-                  <ActionButton
-                    onClick={() => onOpenSpecialistCase(appointment)}
-                    variant="secondary"
-                    icon="FolderHeart"
-                  >
-                    Open Specialist Case
-                  </ActionButton>
+                  <>
+                    <ActionButton
+                      onClick={() => onOpenSpecialistCase(appointment)}
+                      variant="secondary"
+                      icon="FolderHeart"
+                    >
+                      Open Specialist Case
+                    </ActionButton>
+                    <ActionButton
+                      onClick={() => onOpenEndoCase(appointment)}
+                      variant="secondary"
+                      icon="Activity"
+                    >
+                      Open Endo Case
+                    </ActionButton>
+                  </>
                 )}
                 {/* Pending Actions */}
                 {appointment.status === 'pending' && (

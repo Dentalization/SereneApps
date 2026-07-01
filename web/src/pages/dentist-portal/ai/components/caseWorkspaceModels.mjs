@@ -36,10 +36,10 @@ function previewFromSession(session = {}) {
   return session.last_message_preview || session.metadata?.last_message_preview || session.preview || '';
 }
 
-function normalizeCaseItem(caseRecord = {}) {
+function normalizeCaseItem(caseRecord = {}, fallbackUpdatedAt = new Date().toISOString()) {
   const status = caseRecord.status || 'draft';
   const patientLabel = caseRecord.patient_name || caseRecord.patient_code || caseRecord.patient_id || '';
-  const updatedAt = caseRecord.updated_at || caseRecord.created_at || new Date().toISOString();
+  const updatedAt = caseRecord.updated_at || caseRecord.created_at || fallbackUpdatedAt;
   const findingLabels = Array.isArray(caseRecord.finding_labels) ? caseRecord.finding_labels : [];
 
   return {
@@ -64,8 +64,12 @@ function normalizeCaseItem(caseRecord = {}) {
   };
 }
 
-function normalizeSessionItem(session = {}, linkedCaseIds = new Set()) {
-  const updatedAt = session.updated_at || session.created_at || new Date().toISOString();
+function normalizeSessionItem(
+  session = {},
+  linkedCaseIds = new Set(),
+  fallbackUpdatedAt = new Date().toISOString(),
+) {
+  const updatedAt = session.updated_at || session.created_at || fallbackUpdatedAt;
   return {
     type: 'chat',
     id: session.id,
@@ -91,12 +95,13 @@ function normalizeSessionItem(session = {}, linkedCaseIds = new Set()) {
 }
 
 export function buildClinicalHistoryItems({ sessions = [], cases = [] } = {}) {
+  const fallbackUpdatedAt = new Date().toISOString();
   const linkedSessionIds = new Set(cases.map((caseRecord) => caseRecord.session_id).filter(Boolean));
-  const caseItems = cases.map(normalizeCaseItem);
+  const caseItems = cases.map((caseRecord) => normalizeCaseItem(caseRecord, fallbackUpdatedAt));
   const caseSessionIds = new Set(caseItems.map((item) => item.sessionId).filter(Boolean));
   const chatItems = sessions
     .filter((session) => !caseSessionIds.has(session.id))
-    .map((session) => normalizeSessionItem(session, linkedSessionIds));
+    .map((session) => normalizeSessionItem(session, linkedSessionIds, fallbackUpdatedAt));
 
   return [...caseItems, ...chatItems].sort((a, b) => toDateValue(b.updatedAt) - toDateValue(a.updatedAt));
 }

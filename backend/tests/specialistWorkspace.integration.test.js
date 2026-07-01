@@ -370,6 +370,25 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
     assert.equal(created.json.case.caseType, 'radiology');
     assert.equal(created.json.case.xcoreStudyId, imagingStudy.id.toString());
 
+    // Guard check: creating duplicate case for same xcoreStudyId must be rejected
+    const duplicateStudy = await httpJson(
+      baseUrl,
+      '/v1/specialist-workspace/cases',
+      tokens.dentistA,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: patient.id.toString(),
+          originAppointmentId: appointment.id.toString(),
+          caseType: 'radiology',
+          xcoreStudyId: imagingStudy.id.toString(),
+          title: 'Duplicate study case must be rejected',
+        }),
+      },
+    );
+    assert.equal(duplicateStudy.status, 409, JSON.stringify(duplicateStudy.json));
+    assert.equal(duplicateStudy.json.error.code, 'xcore_study_duplicate_case');
+
     const duplicate = await httpJson(
       baseUrl,
       '/v1/specialist-workspace/cases',
@@ -619,5 +638,322 @@ test('Specialist Workspace enforces dentist lifecycle, clinic summary, and admin
     assert.ok(analytics.json.totalCases >= 1);
     assert.ok(analytics.json.archivedCount >= 1);
     assert.doesNotMatch(JSON.stringify(analytics.json), /patientId|patientName|dentistName|note|radiolucency/i);
+  });
+});
+
+test('Endo-Core MVP enforces FDI, duplicates, ownership, workflow, lifecycle, and PHI boundaries', async () => {
+  const clinic = await createClinic('Endo Core Clinic');
+  const branch = await createBranch(clinic, 'Endo Core Branch');
+  const patient = await createUser('Endo Core Patient', ['patient']);
+  const unrelatedPatient = await createUser('Endo Unrelated Patient', ['patient']);
+  const dentist = await createUser('Endo Core Dentist', ['dentist']);
+  const unrelatedDentist = await createUser('Endo Other Dentist', ['dentist']);
+  const frontOffice = await createUser('Endo Front Office', ['front_office']);
+  const admin = await createUser('Endo Admin', ['admin']);
+  await addStaff(dentist, clinic, 'dentist', branch.id);
+  await addStaff(unrelatedDentist, clinic, 'dentist', branch.id);
+  await addStaff(frontOffice, clinic, 'front_office', branch.id);
+  const appointment = await createAppointment({ patient, dentist, clinic, branch });
+  const study = await createImagingStudy({ patient, dentist });
+  const tokens = {
+    dentist: signAccess({ id: dentist.id.toString(), roles: dentist.roles }),
+    unrelatedDentist: signAccess({ id: unrelatedDentist.id.toString(), roles: unrelatedDentist.roles }),
+    frontOffice: signAccess({ id: frontOffice.id.toString(), roles: frontOffice.roles }),
+    admin: signAccess({ id: admin.id.toString(), roles: admin.roles }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const invalidTooth = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        title: 'Invalid tooth',
+        toothNumber: '99',
+        chiefComplaint: 'Pain',
+      }),
+    });
+    assert.equal(invalidTooth.status, 400);
+    assert.equal(invalidTooth.json.error.code, 'invalid_endo_tooth_number');
+
+    const missingComplaint = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        title: 'Missing complaint',
+        toothNumber: '36',
+      }),
+    });
+    assert.equal(missingComplaint.status, 400);
+    assert.equal(missingComplaint.json.error.code, 'chief_complaint_required');
+
+    const unrelated = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.unrelatedDentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        title: 'Forbidden',
+        toothNumber: '36',
+        chiefComplaint: 'Pain',
+      }),
+    });
+    assert.equal(unrelated.status, 403);
+
+    const created = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        originAppointmentId: appointment.id.toString(),
+        xcoreStudyId: study.id.toString(),
+        title: 'Endodontic case - tooth 36',
+        toothNumber: '36',
+        odontogramPosition: '36-M',
+        odontogramCodeAtCreation: 'CARIES',
+        chiefComplaint: 'Nyeri berdenyut gigi 36 sejak 3 hari',
+      }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const caseId = created.json.case.id;
+    assert.equal(created.json.case.caseType, 'endodontic');
+    assert.equal(created.json.case.endo.toothNumber, '36');
+
+    const duplicateTooth = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        title: 'Duplicate tooth',
+        toothNumber: '36',
+        chiefComplaint: 'Pain',
+      }),
+    });
+    assert.equal(duplicateTooth.status, 409);
+    assert.equal(duplicateTooth.json.error.code, 'endo_tooth_duplicate_case');
+    assert.equal(duplicateTooth.json.error.existingCaseId, caseId);
+
+    const duplicateStudy = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        xcoreStudyId: study.id.toString(),
+        title: 'Duplicate evidence',
+        toothNumber: '35',
+        chiefComplaint: 'Pain',
+      }),
+    });
+    assert.equal(duplicateStudy.status, 409);
+    assert.equal(duplicateStudy.json.error.existingCaseId, caseId);
+
+    const detail = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}`, tokens.dentist);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.json.case.patient.name, patient.name);
+    assert.equal(detail.json.case.xcore.referenceId, study.id.toString());
+    for (const token of [tokens.unrelatedDentist, tokens.frontOffice, tokens.admin]) {
+      const denied = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}`, token);
+      assert.equal(denied.status, 403);
+    }
+
+    const badTest = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/diagnostic-tests`, tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({ testType: 'ept', result: 'positive' }),
+    });
+    assert.equal(badTest.status, 400);
+    const diagnostic = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/diagnostic-tests`, tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({ testType: 'cold', result: 'positive lingering', notes: 'Over 10 seconds' }),
+    });
+    assert.equal(diagnostic.status, 201);
+    const diagnosticUpdate = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/diagnostic-tests/${diagnostic.json.test.id}`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ result: 'positive lingering confirmed' }),
+    });
+    assert.equal(diagnosticUpdate.status, 200);
+
+    const badStage = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/treatment-stages`, tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({ stageType: 'surgery', status: 'completed' }),
+    });
+    assert.equal(badStage.status, 400);
+    const badStatus = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/treatment-stages`, tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({ stageType: 'assessment', status: 'done' }),
+    });
+    assert.equal(badStatus.status, 400);
+    const stage = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/treatment-stages`, tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        stageType: 'assessment',
+        status: 'completed',
+        appointmentId: appointment.id.toString(),
+        notes: 'Assessment documented',
+      }),
+    });
+    assert.equal(stage.status, 201);
+    const stageUpdate = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/treatment-stages/${stage.json.stage.id}`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    assert.equal(stageUpdate.status, 200);
+
+    const active = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'active' }),
+    });
+    assert.equal(active.status, 200);
+
+    const missingDiagnosis = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed', completionSummary: 'Summary' }),
+    });
+    assert.equal(missingDiagnosis.status, 400);
+    assert.equal(missingDiagnosis.json.error.code, 'endo_completion_diagnosis_required');
+
+    const pulpDiagnosis = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        pulpDiagnosis: 'Symptomatic irreversible pulpitis',
+      }),
+    });
+    assert.equal(pulpDiagnosis.status, 200);
+
+    const missingPeriapicalDiagnosis = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed', completionSummary: 'Summary' }),
+    });
+    assert.equal(missingPeriapicalDiagnosis.status, 400);
+    assert.equal(missingPeriapicalDiagnosis.json.error.code, 'endo_completion_diagnosis_required');
+
+    const diagnosis = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        periapicalDiagnosis: 'Symptomatic apical periodontitis',
+        difficultyLevel: 'moderate',
+      }),
+    });
+    assert.equal(diagnosis.status, 200);
+
+    const missingSummary = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    assert.equal(missingSummary.status, 400);
+    assert.equal(missingSummary.json.error.code, 'completion_summary_required');
+
+    const completed = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed', completionSummary: 'RCT documentation completed by dentist.' }),
+    });
+    assert.equal(completed.status, 200);
+
+    for (const suffix of ['diagnostic-tests', 'treatment-stages']) {
+      const blocked = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}/${suffix}`, tokens.dentist, {
+        method: 'POST',
+        body: JSON.stringify(suffix === 'diagnostic-tests'
+          ? { testType: 'cold' }
+          : { stageType: 'follow_up' }),
+      });
+      assert.equal(blocked.status, 409);
+    }
+
+    const detailAfterWorkflow = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}`,
+      tokens.dentist,
+    );
+    assert.equal(detailAfterWorkflow.status, 200);
+    const endoTimelineEvents = detailAfterWorkflow.json.case.timelineEvents.map(
+      (event) => event.eventType,
+    );
+    assert.ok(endoTimelineEvents.includes('endo_diagnostic_test_added'));
+    assert.ok(endoTimelineEvents.includes('endo_diagnostic_test_updated'));
+    assert.ok(endoTimelineEvents.includes('endo_treatment_stage_added'));
+    assert.ok(endoTimelineEvents.includes('endo_treatment_stage_updated'));
+
+    const clinicSummary = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/clinic/patients/${patient.id}/case-summary`,
+      tokens.frontOffice,
+    );
+    assert.equal(clinicSummary.status, 200);
+    const serializedSummary = JSON.stringify(clinicSummary.json);
+    assert.match(serializedSummary, /Endodontic specialist case/);
+    assert.doesNotMatch(serializedSummary, /36|pulp|periapical|diagnostic|Assessment documented|completionSummary/i);
+
+    const analytics = await httpJson(baseUrl, '/v1/specialist-workspace/admin/analytics', tokens.admin);
+    assert.equal(analytics.status, 200);
+    assert.doesNotMatch(JSON.stringify(analytics.json), /tooth|diagnosis|patientId|patientName/i);
+
+    const archived = await httpJson(baseUrl, `/v1/specialist-workspace/cases/${caseId}/status`, tokens.dentist, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'archived' }),
+    });
+    assert.equal(archived.status, 200);
+    const replacement = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        title: 'Replacement Endo case',
+        toothNumber: '36',
+        chiefComplaint: 'Reassessment after archived case',
+      }),
+    });
+    assert.equal(replacement.status, 201, JSON.stringify(replacement.json));
+
+    const concurrentToothPayload = JSON.stringify({
+      patientId: patient.id.toString(),
+      title: 'Concurrent tooth case',
+      toothNumber: '33',
+      chiefComplaint: 'Concurrent duplicate prevention',
+    });
+    const concurrentToothCreates = await Promise.all([
+      httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+        method: 'POST',
+        body: concurrentToothPayload,
+      }),
+      httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+        method: 'POST',
+        body: concurrentToothPayload,
+      }),
+    ]);
+    assert.deepEqual(
+      concurrentToothCreates.map((response) => response.status).sort(),
+      [201, 409],
+    );
+
+    const concurrentXcoreCreates = await Promise.all(
+      ['34', '35'].map((toothNumber) => httpJson(
+        baseUrl,
+        '/v1/specialist-workspace/endo/cases',
+        tokens.dentist,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: patient.id.toString(),
+            xcoreStudyId: study.id.toString(),
+            title: `Concurrent X-Core case ${toothNumber}`,
+            toothNumber,
+            chiefComplaint: 'Concurrent X-Core duplicate prevention',
+          }),
+        },
+      )),
+    );
+    assert.deepEqual(
+      concurrentXcoreCreates.map((response) => response.status).sort(),
+      [201, 409],
+    );
+
+    const incompleteCase = await prisma.specialistCase.create({
+      data: {
+        patientId: unrelatedPatient.id,
+        dentistId: dentist.id,
+        caseType: 'endodontic',
+        title: 'Incomplete raw Endo case',
+      },
+    });
+    const activationBlocked = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/cases/${incompleteCase.id}/status`,
+      tokens.dentist,
+      { method: 'PATCH', body: JSON.stringify({ status: 'active' }) },
+    );
+    assert.equal(activationBlocked.status, 400);
+    assert.equal(activationBlocked.json.error.code, 'endo_activation_requirements_missing');
   });
 });
