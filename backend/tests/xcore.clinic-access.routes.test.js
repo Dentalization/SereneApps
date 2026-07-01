@@ -6,11 +6,13 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const {
+  assignStudyPatient,
   createStudyShare,
   getClinicStudies,
   getEligibleStudyShareDentists,
   getStudies,
   getStudyAnnotations,
+  uploadStudy,
 } = await import('../src/controllers/xCoreController.js');
 const { analyzeStudy } = await import('../src/controllers/xCoreAIController.js');
 const { streamSlice } = await import('../src/controllers/xCoreStreamController.js');
@@ -29,6 +31,7 @@ function createApp() {
   app.get('/v1/x-core/studies/:id/annotations', getStudyAnnotations);
   app.get('/v1/x-core/studies/:id/share/eligible-dentists', getEligibleStudyShareDentists);
   app.post('/v1/x-core/studies/:id/share', createStudyShare);
+  app.patch('/v1/x-core/studies/:id/patient', assignStudyPatient);
   app.get('/v1/x-core/stream-slice/:studyId/:viewType/:index', streamSlice);
   app.post('/v1/x-core/analyze', analyzeStudy);
   return app;
@@ -106,6 +109,14 @@ async function cleanupFixtures() {
   const userIds = users.map((user) => user.id);
 
   if (userIds.length > 0) {
+    await prisma.specialistCase.deleteMany({
+      where: {
+        OR: [
+          { patientId: { in: userIds } },
+          { dentistId: { in: userIds } },
+        ],
+      },
+    }).catch(() => {});
     await ignoreMissingTable(prisma.$executeRaw`
       DELETE FROM study_dentist_shares
       WHERE owner_dentist_id IN (${Prisma.join(userIds)})
@@ -310,6 +321,34 @@ after(async () => {
   await prisma.$disconnect();
 });
 
+test('clinical X-Core upload rejects missing patient assignment before parsing files', async () => {
+  let statusCode = 200;
+  let payload = null;
+  const response = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      payload = body;
+      return this;
+    },
+  };
+
+  await uploadStudy(
+    {
+      files: [{ path: '/tmp/nonexistent-xcore-upload', size: 1 }],
+      body: {},
+      headers: {},
+      user: { id: '1' },
+    },
+    response,
+  );
+
+  assert.equal(statusCode, 400);
+  assert.equal(payload.code, 'patient_id_required');
+});
+
 test('clinic X-Core studies are visible only to active authorized clinical roles in the same clinic', async () => {
   const fixture = await createFixtureGraph();
 
@@ -412,5 +451,102 @@ test('dentist sharing is limited to active dentists in the same clinic and grant
     const recipientStudy = recipientStudies.json.find((study) => study.id === fixture.sameClinicStudy.id.toString());
     assert.ok(recipientStudy);
     assert.equal(recipientStudy.xcoreAccessScope, 'shared_with_me');
+  });
+});
+
+test('study owner can assign an appointment-linked patient with audit history and case integrity guards', async () => {
+  const fixture = await createFixtureGraph();
+  const linkedPatient = await createUser('XCore Linked Patient', ['patient']);
+  const unrelatedPatient = await createUser('XCore Unrelated Patient', ['patient']);
+  const startsAt = new Date('2026-06-01T09:00:00.000Z');
+  await prisma.appointment.create({
+    data: {
+      dentistId: fixture.ownerDentist.id,
+      patientId: linkedPatient.id,
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000),
+      status: 'completed',
+      reason: 'X-Core assignment authorization',
+    },
+  });
+  await prisma.appointment.create({
+    data: {
+      dentistId: fixture.ownerDentist.id,
+      patientId: fixture.patient.id,
+      startsAt: new Date('2026-05-01T09:00:00.000Z'),
+      endsAt: new Date('2026-05-01T09:30:00.000Z'),
+      status: 'completed',
+      reason: 'Existing X-Core patient relationship',
+    },
+  });
+
+  await withServer(async (baseUrl) => {
+    authUserId = fixture.ownerDentist.id;
+    const deniedPatient = await httpJson(
+      baseUrl,
+      `/v1/x-core/studies/${fixture.sameClinicStudy.id}/patient`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ patientId: unrelatedPatient.id.toString() }),
+      },
+    );
+    assert.equal(deniedPatient.status, 403, JSON.stringify(deniedPatient.json));
+
+    authUserId = fixture.recipientDentist.id;
+    const deniedNonOwner = await httpJson(
+      baseUrl,
+      `/v1/x-core/studies/${fixture.sameClinicStudy.id}/patient`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ patientId: linkedPatient.id.toString() }),
+      },
+    );
+    assert.equal(deniedNonOwner.status, 403, JSON.stringify(deniedNonOwner.json));
+
+    authUserId = fixture.ownerDentist.id;
+    const assigned = await httpJson(
+      baseUrl,
+      `/v1/x-core/studies/${fixture.sameClinicStudy.id}/patient`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ patientId: linkedPatient.id.toString() }),
+      },
+    );
+    assert.equal(assigned.status, 200, JSON.stringify(assigned.json));
+    assert.equal(assigned.json.study.patientId, linkedPatient.id.toString());
+    assert.equal(assigned.json.study.patient.name, linkedPatient.name);
+
+    const storedStudy = await prisma.imagingStudy.findUnique({
+      where: { id: fixture.sameClinicStudy.id },
+    });
+    assert.equal(storedStudy.patientId, linkedPatient.id);
+
+    const history = await prisma.imagingStudyPatientAssignment.findMany({
+      where: { studyId: fixture.sameClinicStudy.id },
+    });
+    assert.equal(history.length, 1);
+    assert.equal(history[0].previousPatientId, fixture.patient.id);
+    assert.equal(history[0].patientId, linkedPatient.id);
+    assert.equal(history[0].assignedByDentistId, fixture.ownerDentist.id);
+    assert.equal(history[0].source, 'manual');
+
+    await prisma.specialistCase.create({
+      data: {
+        patientId: linkedPatient.id,
+        dentistId: fixture.ownerDentist.id,
+        xcoreStudyId: fixture.sameClinicStudy.id,
+        title: 'Linked radiology review',
+      },
+    });
+    const linkedCaseConflict = await httpJson(
+      baseUrl,
+      `/v1/x-core/studies/${fixture.sameClinicStudy.id}/patient`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ patientId: fixture.patient.id.toString() }),
+      },
+    );
+    assert.equal(linkedCaseConflict.status, 409, JSON.stringify(linkedCaseConflict.json));
+    assert.equal(linkedCaseConflict.json.code, 'study_linked_to_specialist_case');
   });
 });

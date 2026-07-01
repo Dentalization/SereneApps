@@ -44,6 +44,7 @@ import aiAnalysisRouter from './routes/ai-analysis.js';
 import emrRouter from './routes/emr.js';
 import xCoreRouter from './routes/xCoreRoutes.js';
 import verifiedCasesRouter, { assertVerifiedCaseWorkspaceRuntimeMode } from './routes/verified-cases.js';
+import specialistWorkspaceRouter from './routes/specialistWorkspace.js';
 import webhooksRouter from './routes/webhooks.js';
 import { verify } from './utils/tokens.js';
 import {
@@ -209,11 +210,11 @@ app.use('/py-api', async (req, res) => {
       headers,
       redirect: 'manual',
       signal: upstreamController.signal,
+      compress: false, // Prevents node-fetch from decompressing automatically, preserving header alignment
     };
 
-    // api.dentalization.id uses an incomplete SSL certificate chain.
-    // Use node-fetch with a custom https.Agent only for DeepDental cloud calls.
-    const fetchFn = isDeepDental ? nodeFetch : fetch;
+    // Use node-fetch for all proxy requests to ensure consistent header and body alignment
+    const fetchFn = nodeFetch;
     if (isDeepDental) {
       init.agent = deepDentalHttpsAgent;
     }
@@ -226,18 +227,25 @@ app.use('/py-api', async (req, res) => {
         }
       } else if (req.headers['content-length'] || req.headers['transfer-encoding']) {
         init.body = req;
-        // duplex:'half' is only required by the built-in undici fetch, not node-fetch
-        if (!isDeepDental) {
-          init.duplex = 'half';
-        }
       }
     }
 
     const upstream = await fetchFn(targetUrl, init);
 
     res.status(upstream.status);
+    const HOP_BY_HOP_HEADERS = new Set([
+      'connection',
+      'keep-alive',
+      'proxy-authenticate',
+      'proxy-authorization',
+      'te',
+      'trailers',
+      'transfer-encoding',
+      'upgrade'
+    ]);
+
     upstream.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'transfer-encoding') return;
+      if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) return;
       res.setHeader(key, value);
     });
 
@@ -324,6 +332,7 @@ app.use(`${prefix}/dentist`, dentistServicesRouter); // Dentist portal services
 app.use(`${prefix}/dentist-portal`, dentistPortalRouter); // Dentist portal patient management
 app.use(`${prefix}/ai-analysis`, aiAnalysisRouter); // AI dental analysis results
 app.use(`${prefix}`, verifiedCasesRouter); // Verified Case Workspace clinical workflow
+app.use(`${prefix}/specialist-workspace`, specialistWorkspaceRouter);
 app.use(`${prefix}/emr`, emrRouter);
 app.use(`${prefix}/clinics`, clinicsRouter);
 app.use(`${prefix}/dentists`, dentistsRouter);

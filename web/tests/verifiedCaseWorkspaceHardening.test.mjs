@@ -33,11 +33,13 @@ test('workspace analysis does not depend on pending browser File objects after r
 test('patient linkage uses confirmation modal instead of window.prompt', () => {
   const page = read('web/src/pages/dentist-portal/ai/index.jsx');
   const modal = read('web/src/pages/dentist-portal/ai/components/PatientLinkModal.jsx');
+  const patientSearch = read('web/src/pages/dentist-portal/components/PatientSearchPicker.jsx');
 
   assert.doesNotMatch(page, /window\.prompt/);
   assert.match(page, /PatientLinkModal/);
   assert.match(modal, /Konfirmasi tautan/);
-  assert.match(modal, /Cari nama, kode, telepon, atau email/);
+  assert.match(modal, /PatientSearchPicker/);
+  assert.match(patientSearch, /Cari nama, kode, telepon, atau email/);
 });
 
 test('Verified Case Workspace exposes mobile tabs for teledentistry devices', () => {

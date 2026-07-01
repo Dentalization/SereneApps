@@ -65,6 +65,13 @@ model User {
   ownershipLogsActed                                             OwnershipCorrectionLog[]     @relation("CorrectionActor")
   compensationEntries                                            DentistCompensationEntry[]  @relation("DentistCompensation")
   ownedSettlements                                               PaymentSettlement[]          @relation("SettlementOwnerDentist")
+  specialistCasesAsPatient                                       SpecialistCase[]              @relation("SpecialistCasePatient")
+  specialistCasesAsDentist                                       SpecialistCase[]              @relation("SpecialistCaseDentist")
+  specialistCaseNotes                                            SpecialistCaseNote[]          @relation("SpecialistCaseNoteAuthor")
+  specialistCaseTimelineEvents                                   SpecialistCaseTimelineEvent[] @relation("SpecialistCaseTimelineActor")
+  previousImagingStudyAssignments                                ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPreviousPatient")
+  imagingStudyAssignments                                        ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPatient")
+  performedImagingStudyAssignments                               ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentDentist")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -186,6 +193,7 @@ model ClinicProfile {
   ownedSettlements           PaymentSettlement[]          @relation("SettlementOwnerClinic")
   compensationEntries        DentistCompensationEntry[]  @relation("ClinicCompensation")
   treatmentPlans             TreatmentPlan[]             @relation("ClinicTreatmentPlans")
+  specialistCases            SpecialistCase[]
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
   @@index([nibNumber], map: "idx_clinic_profiles_nib")
@@ -228,6 +236,7 @@ model ClinicBranch {
   clinicStaff         ClinicStaff[]
   invoices            Invoice[]
   paymentIntents      PaymentIntent[]
+  specialistCases     SpecialistCase[]
 
   @@unique([clinicProfileId, branchCode])
   @@index([clinicProfileId], map: "idx_clinic_branches_clinic_id")
@@ -329,6 +338,7 @@ model Appointment {
   communicationParticipants AppointmentCommunicationParticipant[]
   followUpTasks      AppointmentFollowUpTask[]
   preSessionHealthForm AppointmentPreSessionHealthForm?
+  specialistCases     SpecialistCase[]
 
   @@index([dentistId, startsAt], map: "idx_appointments_dentist_time")
   @@index([patientId, startsAt], map: "idx_appointments_patient_time")
@@ -372,6 +382,74 @@ model AppointmentStatusHistory {
   @@index([appointmentId, createdAt(sort: Desc)], map: "idx_appointment_status_history_appt")
   @@index([changedBy], map: "idx_appointment_status_history_user")
   @@map("appointment_status_history")
+}
+
+model SpecialistCase {
+  id                  BigInt   @id @default(autoincrement())
+  patientId           BigInt   @map("patient_id")
+  dentistId           BigInt   @map("dentist_id")
+  clinicProfileId     BigInt?  @map("clinic_profile_id")
+  clinicBranchId      BigInt?  @map("clinic_branch_id")
+  originAppointmentId BigInt?  @map("origin_appointment_id")
+  xcoreStudyId        BigInt?  @map("xcore_study_id")
+  xcoreVerifiedCaseId String?  @map("xcore_verified_case_id") @db.VarChar(64)
+  caseType            String   @default("radiology") @map("case_type") @db.VarChar(32)
+  status              String   @default("draft") @db.VarChar(32)
+  title               String
+  summary             String?
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
+  archivedAt          DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient             User     @relation("SpecialistCasePatient", fields: [patientId], references: [id], onUpdate: NoAction)
+  dentist             User     @relation("SpecialistCaseDentist", fields: [dentistId], references: [id], onUpdate: NoAction)
+  clinicProfile       ClinicProfile? @relation(fields: [clinicProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  clinicBranch        ClinicBranch? @relation(fields: [clinicBranchId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  originAppointment   Appointment? @relation(fields: [originAppointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  xcoreStudy          ImagingStudy? @relation(fields: [xcoreStudyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  notes               SpecialistCaseNote[]
+  timelineEvents      SpecialistCaseTimelineEvent[]
+
+  @@index([patientId], map: "idx_specialist_cases_patient")
+  @@index([dentistId], map: "idx_specialist_cases_dentist")
+  @@index([clinicProfileId], map: "idx_specialist_cases_clinic")
+  @@index([clinicBranchId], map: "idx_specialist_cases_branch")
+  @@index([originAppointmentId], map: "idx_specialist_cases_appointment")
+  @@index([xcoreStudyId], map: "idx_specialist_cases_xcore_study")
+  @@index([caseType, status], map: "idx_specialist_cases_type_status")
+  @@map("specialist_cases")
+}
+
+model SpecialistCaseNote {
+  id               BigInt   @id @default(autoincrement())
+  specialistCaseId BigInt   @map("specialist_case_id")
+  authorDentistId  BigInt   @map("author_dentist_id")
+  content          String
+  isAmendment      Boolean  @default(false) @map("is_amendment")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  specialistCase   SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  authorDentist    User @relation("SpecialistCaseNoteAuthor", fields: [authorDentistId], references: [id], onUpdate: NoAction)
+
+  @@index([specialistCaseId], map: "idx_specialist_case_notes_case")
+  @@index([authorDentistId], map: "idx_specialist_case_notes_author")
+  @@map("specialist_case_notes")
+}
+
+model SpecialistCaseTimelineEvent {
+  id               BigInt   @id @default(autoincrement())
+  specialistCaseId BigInt   @map("specialist_case_id")
+  eventType        String   @map("event_type") @db.VarChar(64)
+  actorUserId      BigInt?  @map("actor_user_id")
+  actorRole        String?  @map("actor_role") @db.VarChar(32)
+  metadata         Json?    @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  specialistCase   SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  actorUser        User? @relation("SpecialistCaseTimelineActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([specialistCaseId, createdAt(sort: Desc)], map: "idx_specialist_case_timeline_case_created")
+  @@index([eventType], map: "idx_specialist_case_timeline_event")
+  @@map("specialist_case_timeline_events")
 }
 
 model SecurityEvent {
@@ -1197,12 +1275,33 @@ model ImagingStudy {
   dentistShares StudyDentistShare[]
   annotations  StudyAnnotation[]
   annotationSnapshots AnnotationSnapshot[]
+  specialistCases SpecialistCase[]
+  patientAssignments ImagingStudyPatientAssignment[]
   dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
   patient      User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId], map: "idx_imaging_studies_patient")
   @@index([studyDate], map: "idx_imaging_studies_date")
   @@map("imaging_studies")
+}
+
+model ImagingStudyPatientAssignment {
+  id                  BigInt       @id @default(autoincrement())
+  studyId             BigInt       @map("study_id")
+  previousPatientId   BigInt?      @map("previous_patient_id")
+  patientId           BigInt       @map("patient_id")
+  assignedByDentistId BigInt       @map("assigned_by_dentist_id")
+  source              String       @db.VarChar(24)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  study               ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  previousPatient     User?        @relation("ImagingStudyAssignmentPreviousPatient", fields: [previousPatientId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  patient             User         @relation("ImagingStudyAssignmentPatient", fields: [patientId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  assignedByDentist   User         @relation("ImagingStudyAssignmentDentist", fields: [assignedByDentistId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([studyId, createdAt(sort: Desc)], map: "idx_imaging_study_patient_assignments_study")
+  @@index([patientId], map: "idx_imaging_study_patient_assignments_patient")
+  @@index([assignedByDentistId], map: "idx_imaging_study_patient_assignments_dentist")
+  @@map("imaging_study_patient_assignments")
 }
 
 model StudyShare {

@@ -23,6 +23,7 @@ import PatientProfile from './components/PatientProfile';
 import PatientTreatmentPlan from './components/PatientTreatmentPlan';
 import EnhancedHeader from './components/EnhancedHeader.jsx';
 import ClinicalIcon from './components/ClinicalIcon.jsx';
+import SpecialistCasesPanel from './components/SpecialistCasesPanel.jsx';
 
 const MIN_LOADING_MS = 500;
 const PATIENT_REALTIME_EVENTS = [
@@ -81,19 +82,19 @@ const PatientManagement = () => {
       return 0;
     };
 
-      const getShortSummary = (r, normalized) => {
-        const candidate = normalized?.summary || deriveSummaryFromNarrative(
-          [r.summary, r.overallAssessment, r.description, r.details]
-            .filter((x) => typeof x === 'string' && x.trim())
-            .join(' ')
-        );
+    const getShortSummary = (r, normalized) => {
+      const candidate = normalized?.summary || deriveSummaryFromNarrative(
+        [r.summary, r.overallAssessment, r.description, r.details]
+          .filter((x) => typeof x === 'string' && x.trim())
+          .join(' ')
+      );
 
-        if (!candidate) return 'Analisis dental';
+      if (!candidate) return 'Analisis dental';
 
-        const sanitized = stripDiagnosisIntro(cleanMarkdownFormatting(candidate));
-        const clipped = sanitized.length > 220 ? `${sanitized.slice(0, 220).trim()}...` : sanitized;
-        return clipped;
-      };
+      const sanitized = stripDiagnosisIntro(cleanMarkdownFormatting(candidate));
+      const clipped = sanitized.length > 220 ? `${sanitized.slice(0, 220).trim()}...` : sanitized;
+      return clipped;
+    };
 
     return (results || []).map((r) => {
       const normalized = normalizeAIExplanation(r);
@@ -136,20 +137,20 @@ const PatientManagement = () => {
 
       const probabilitySafe = probability > 0 ? probability : null;
 
-        const detailCandidates = [
-          normalized?.explanation,
-          r.details,
-          r.analysis,
-          r.findings,
-          r.overallAssessment,
-          r.summary,
-        ]
-          .filter((x) => typeof x === 'string' && x.trim())
-          .map((item) => cleanMarkdownFormatting(item));
-        const detailSource = detailCandidates.join('\n\n');
-        const fullDetails = detailSource ? stripDiagnosisIntro(detailSource) : null;
+      const detailCandidates = [
+        normalized?.explanation,
+        r.details,
+        r.analysis,
+        r.findings,
+        r.overallAssessment,
+        r.summary,
+      ]
+        .filter((x) => typeof x === 'string' && x.trim())
+        .map((item) => cleanMarkdownFormatting(item));
+      const detailSource = detailCandidates.join('\n\n');
+      const fullDetails = detailSource ? stripDiagnosisIntro(detailSource) : null;
 
-        const summarySections = Array.isArray(normalized?.sections) ? normalized.sections : [];
+      const summarySections = Array.isArray(normalized?.sections) ? normalized.sections : [];
 
       sanitizedSummary = summaryCandidate;
       let diagnosis = [];
@@ -255,7 +256,7 @@ const PatientManagement = () => {
           }));
         }
       }
-      
+
       let recommendations = [];
       if (Array.isArray(r.recommendations) && r.recommendations.length > 0) {
         recommendations = r.recommendations.map((rec, idx) => {
@@ -303,17 +304,17 @@ const PatientManagement = () => {
           urgency: 'normal'
         }));
       }
-      
+
       const images = Array.isArray(r.images) && r.images.length > 0
         ? r.images
         : [
-            ...(r.imageUrl
-              ? [{ url: r.imageUrl, type: 'original', description: 'Gambar asli' }]
-              : []),
-            ...(r.annotatedImageUrl
-              ? [{ url: r.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' }]
-              : []),
-          ];
+          ...(r.imageUrl
+            ? [{ url: r.imageUrl, type: 'original', description: 'Gambar asli' }]
+            : []),
+          ...(r.annotatedImageUrl
+            ? [{ url: r.annotatedImageUrl, type: 'annotated', description: 'Hasil anotasi AI' }]
+            : []),
+        ];
 
       return {
         id: r.id?.toString?.() || r.id,
@@ -357,7 +358,7 @@ const PatientManagement = () => {
     const medicalHistory = {
       allergies: Array.isArray(medicalDetails.allergies) ? medicalDetails.allergies : [],
       conditions: Array.isArray(medicalDetails.conditions) ? medicalDetails.conditions :
-                 Array.isArray(medicalDetails.chronicConditions) ? medicalDetails.chronicConditions : [],
+        Array.isArray(medicalDetails.chronicConditions) ? medicalDetails.chronicConditions : [],
       medications: Array.isArray(medicalDetails.medications) ? medicalDetails.medications : [],
       surgeries: Array.isArray(medicalDetails.surgeries) ? medicalDetails.surgeries : [],
       familyHistory: typeof medicalDetails.familyHistory === 'object' && medicalDetails.familyHistory !== null
@@ -444,19 +445,19 @@ const PatientManagement = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = {};
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (filterStatus && filterStatus !== 'all') params.status = filterStatus;
       params.sortBy = 'createdAt';
       params.sortOrder = 'desc';
-      
+
       const response = await getDentistPatients(params);
-      
+
       const transformedPatients = (response.patients || []).map(normalizeDirectoryPatient);
 
       const combinedPatients = transformedPatients;
-      
+
       setPatients(combinedPatients);
       setSummary(summarizePatients(combinedPatients, response.summary || {}));
     } catch (err) {
@@ -632,9 +633,9 @@ const PatientManagement = () => {
       }));
     }
   };
-  const handleSendStatement = () => {};
-  const handleSendMessage = (message) => {};
-  const handleScheduleCall = () => {};
+  const handleSendStatement = () => {
+    toast.info('Fitur kirim laporan tagihan akan segera hadir.');
+  };
   const handleUpdateHistory = (updatedHistory) => {
     setSelectedPatient(prev => prev ? ({
       ...prev,
@@ -706,7 +707,7 @@ const PatientManagement = () => {
       billing: mergeInvoiceIntoBilling(prev.billing, updatedPlan.invoice),
     }));
   };
-  const handleCompleteTreatment = (treatmentId) => {};
+  const handleCompleteTreatment = (treatmentId) => { };
 
   if (loading) {
     return (
@@ -803,6 +804,7 @@ const PatientManagement = () => {
                         { id: 'medical-history', label: t('dentistPatient.tabs.medicalHistory'), icon: 'emr-record' },
                         { id: 'treatment-plan', label: t('dentistPatient.tabs.treatmentPlan'), icon: 'treatment-plan' },
                         { id: 'billing', label: t('dentistPatient.tabs.billing'), icon: 'billing-ledger' },
+                        { id: 'specialist-cases', label: 'Specialist Cases', icon: 'clinical-summary' },
                         { id: 'communication', label: t('dentistPatient.tabs.communication'), icon: 'communication' }
                       ].map((tab) => {
                         const isActive = activeTab === tab.id;
@@ -810,11 +812,10 @@ const PatientManagement = () => {
                           <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-semibold text-sm transition-all whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
-                              isActive
+                            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-semibold text-sm transition-all whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${isActive
                                 ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md shadow-slate-900/20 dark:shadow-slate-200/10 scale-[1.02]'
                                 : 'bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                            }`}
+                              }`}
                           >
                             <ClinicalIcon
                               name={tab.icon}
@@ -831,8 +832,8 @@ const PatientManagement = () => {
                   {/* Tab Content */}
                   <div className="min-h-[500px]">
                     {activeTab === 'profile' && (
-                      <PatientProfile 
-                        patient={selectedPatient} 
+                      <PatientProfile
+                        patient={selectedPatient}
                         onClose={() => setSelectedPatient(null)}
                       />
                     )}
@@ -876,11 +877,13 @@ const PatientManagement = () => {
                       />
                     )}
 
+                    {activeTab === 'specialist-cases' && (
+                      <SpecialistCasesPanel patient={selectedPatient} />
+                    )}
+
                     {activeTab === 'communication' && (
                       <PatientCommunication
                         patient={selectedPatient}
-                        onSendMessage={handleSendMessage}
-                        onScheduleCall={handleScheduleCall}
                       />
                     )}
                   </div>

@@ -7,6 +7,7 @@ import useConversionSocket from '../hooks/useConversionSocket';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import { useToast } from '../../../../contexts/ToastContext';
 import { useAuth } from '../../../../contexts/AuthContext';
+import AssignStudyPatientModal from './AssignStudyPatientModal';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
     const results = [];
@@ -179,6 +180,7 @@ const Gallery = ({
     cachedStudies,
     onStudiesLoaded,
     onCompareSelected,
+    initialStudyId = null,
     studiesEndpoint = '/api/v1/x-core/studies',
     readOnly = false,
     allowUpload = true,
@@ -196,6 +198,7 @@ const Gallery = ({
     const [fetchingSeries, setFetchingSeries] = useState(false);
     const [error, setError] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [patientAssignTarget, setPatientAssignTarget] = useState(null);
     const [shareTarget, setShareTarget] = useState(null);
     const [shareLoading, setShareLoading] = useState(false);
     const [shareError, setShareError] = useState(null);
@@ -213,11 +216,22 @@ const Gallery = ({
     }, [selectedStudyDetails, studiesWithSeries]);
     const scrollRef = useRef(null);
     const onStudiesLoadedRef = useRef(onStudiesLoaded);
+    const openedInitialStudyIdRef = useRef(null);
     const { latestEvent, connectionStatus } = useConversionSocket();
 
     useEffect(() => {
         onStudiesLoadedRef.current = onStudiesLoaded;
     }, [onStudiesLoaded]);
+
+    useEffect(() => {
+        if (!initialStudyId || openedInitialStudyIdRef.current === String(initialStudyId)) return;
+        const matchingStudy = studiesWithSeries.find(
+            (study) => String(getStudyKey(study)) === String(initialStudyId),
+        );
+        if (!matchingStudy) return;
+        setSelectedStudyDetails(matchingStudy);
+        openedInitialStudyIdRef.current = String(initialStudyId);
+    }, [initialStudyId, studiesWithSeries]);
 
     useEffect(() => {
         return () => {
@@ -740,6 +754,31 @@ const Gallery = ({
         && study?.xcoreAccessScope !== 'shared_with_me'
     );
 
+    const handlePatientAssigned = (assignedStudy) => {
+        const targetStudyId = String(assignedStudy.id);
+        const applyAssignment = (study) => {
+            if (String(study.id) !== targetStudyId) return study;
+            return {
+                ...study,
+                patientId: assignedStudy.patientId,
+                realPatientId: assignedStudy.patientId,
+                patient: assignedStudy.patient,
+                patientName: assignedStudy.patient?.name || 'Unknown patient',
+                patientIdDisplay: `P-${assignedStudy.patientId}`,
+            };
+        };
+
+        setStudies((current) => current.map(applyAssignment));
+        setStudiesWithSeries((current) => {
+            const next = current.map(applyAssignment);
+            if (onStudiesLoadedRef.current) onStudiesLoadedRef.current(next);
+            return next;
+        });
+        setSelectedStudyDetails((current) => current ? applyAssignment(current) : current);
+        setPatientAssignTarget(null);
+        toast.success('X-Core study assigned to the selected patient.');
+    };
+
     const fetchEligibleShareDentists = async (study) => {
         try {
             setShareLoading(true);
@@ -906,6 +945,15 @@ const Gallery = ({
                         </div>
 
                         <div className="flex gap-2.5 shrink-0 self-end sm:self-center">
+                            {canManageStudy(selectedStudy) && (
+                                <button
+                                    onClick={() => setPatientAssignTarget(selectedStudy)}
+                                    className="flex items-center gap-1.5 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-2.5 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-500/20"
+                                >
+                                    <AppIcon name="UserRoundPen" size={14} />
+                                    <span>Change Patient</span>
+                                </button>
+                            )}
                             {allowShare && canManageStudy(selectedStudy) && (
                                 <button
                                     onClick={() => openShareModal(selectedStudy)}
@@ -1858,6 +1906,12 @@ const Gallery = ({
                     </div>
                 </ModalPortal>
             )}
+
+            <AssignStudyPatientModal
+                study={patientAssignTarget}
+                onClose={() => setPatientAssignTarget(null)}
+                onAssigned={handlePatientAssigned}
+            />
         </div>
     );
 };

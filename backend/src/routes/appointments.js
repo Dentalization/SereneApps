@@ -390,6 +390,18 @@ async function authorizeAppointmentStatusUpdate({ appointment, userId, roles }) 
   return STATUS_TRANSITION_ROLES.staff;
 }
 
+async function authorizeAppointmentCancellation({ appointment, userId, roles }) {
+  if (roles.includes('patient')) {
+    if (appointment.patientId === userId) {
+      return STATUS_TRANSITION_ROLES.patient;
+    }
+    if (!roles.includes('dentist') && !roles.some(isClinicRole)) {
+      throw makeRouteError(403, 'forbidden', 'Anda hanya dapat membatalkan janji temu Anda sendiri.');
+    }
+  }
+  return authorizeAppointmentStatusUpdate({ appointment, userId, roles });
+}
+
 function metadataWithStatusStamp(metadata, status, userId) {
   const next = metadata && typeof metadata === 'object' ? { ...metadata } : {};
   next.lastOperationalStatus = status;
@@ -1036,12 +1048,14 @@ router.patch(
 router.patch(
   '/:appointmentId/cancel',
   authenticateToken,
-  requireRoles(['patient']),
+  requireRoles(['patient', 'dentist', 'clinic_admin', 'clinic_staff', 'clinic_manager', 'owner', 'manager', 'front_office', 'nurse', 'cashier', 'staff']),
   async (req, res) => {
     try {
       const { appointmentId } = req.params;
       const appointmentBigInt = toBigInt(appointmentId, 'appointmentId');
       const { reason } = req.body || {};
+      const userId = toBigInt(req.user.id, 'userId');
+      const roles = req.user.roles || [];
 
       const appointment = await prisma.appointment.findUnique({
         where: { id: appointmentBigInt },
@@ -1089,24 +1103,25 @@ router.patch(
         return sendError(res, 404, 'appointment_not_found', 'Janji temu tidak ditemukan atau sudah dihapus.');
       }
 
-      const userId = toBigInt(req.user.id, 'userId');
-      if (appointment.patientId !== userId) {
-        return sendError(res, 403, 'forbidden', 'Anda tidak diizinkan membatalkan janji temu ini.');
-      }
+      const changedByRole = await authorizeAppointmentCancellation({ appointment, userId, roles });
 
       if (!PATIENT_MANAGEABLE_STATUSES.includes(appointment.status)) {
         return sendError(res, 409, 'cannot_cancel_status', 'Janji temu dalam status ini tidak dapat dibatalkan.');
       }
 
       const now = new Date();
-      const timeUntilAppointment = appointment.startsAt.getTime() - now.getTime();
-      if (timeUntilAppointment < millisecondsFromHours(appointmentConfig.cancelCutoffHours)) {
-        return sendError(res, 400, 'cancel_window_elapsed', 'Pembatalan hanya diperbolehkan hingga beberapa jam sebelum janji.');
+      if (changedByRole === STATUS_TRANSITION_ROLES.patient) {
+        const timeUntilAppointment = appointment.startsAt.getTime() - now.getTime();
+        if (timeUntilAppointment < millisecondsFromHours(appointmentConfig.cancelCutoffHours)) {
+          return sendError(res, 400, 'cancel_window_elapsed', 'Pembatalan hanya diperbolehkan hingga beberapa jam sebelum janji.');
+        }
       }
 
       const latestIntent = appointment.paymentIntents?.[0];
       const cancellationFee =
-        appointmentConfig.cancellationFeePercent > 0 && latestIntent?.amount
+        changedByRole === STATUS_TRANSITION_ROLES.patient
+        && appointmentConfig.cancellationFeePercent > 0
+        && latestIntent?.amount
           ? Math.round((latestIntent.amount * appointmentConfig.cancellationFeePercent) / 100)
           : null;
 
@@ -1122,7 +1137,8 @@ router.patch(
             metadata: {
               ...(appointment.metadata && typeof appointment.metadata === 'object' ? appointment.metadata : {}),
               cancelledAt: now,
-              cancelledBy: userId.toString()
+              cancelledBy: userId.toString(),
+              cancelledByRole: changedByRole
             }
           }
         });
@@ -1132,11 +1148,12 @@ router.patch(
           previousStatus: appointment.status,
           newStatus: 'cancelled',
           changedBy: userId,
-          changedByRole: STATUS_TRANSITION_ROLES.patient,
-          reason: 'patient_cancelled',
+          changedByRole,
+          reason: `${changedByRole}_cancelled`,
           metadata: {
             cancellationFee,
-            reason: reason || null
+            reason: reason || null,
+            cancelledByRole: changedByRole
           }
         });
       });
@@ -1180,7 +1197,9 @@ router.patch(
         payload: {
           cancellationReason: reason || null,
           cancelledAt: now,
-          cancellationFee
+          cancellationFee,
+          cancelledBy: userId.toString(),
+          cancelledByRole: changedByRole
         }
       }).catch((error) => {
         console.error('Failed to emit cancellation event:', error);
@@ -1189,6 +1208,9 @@ router.patch(
       return res.json({ appointment: serializeAppointment(fullAppointment) });
     } catch (error) {
       console.error('Error cancelling appointment:', error);
+      if (error.status) {
+        return sendError(res, error.status, error.code || 'cancel_forbidden', error.message);
+      }
       return sendError(res, 500, 'cancel_failed', 'Terjadi kesalahan saat membatalkan janji temu.');
     }
   }

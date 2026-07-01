@@ -1,65 +1,6 @@
 import { randomUUID } from 'crypto';
 import { query } from '../db.js';
 
-let schemaReadyPromise = null;
-const ensureSchema = async () => {
-  if (schemaReadyPromise) return schemaReadyPromise;
-  schemaReadyPromise = (async () => {
-    await query(`
-      CREATE OR REPLACE FUNCTION update_updated_at_column()
-      RETURNS TRIGGER AS $$
-      BEGIN
-        IF NEW IS NULL THEN
-          RETURN NEW;
-        END IF;
-        NEW.updated_at = now();
-        RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql
-    `);
-    await query(`
-      CREATE TABLE IF NOT EXISTS dentist_emr_records (
-        id VARCHAR(64) PRIMARY KEY,
-        dentist_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        patient_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
-    await query(`
-      ALTER TABLE dentist_emr_records
-        ADD COLUMN IF NOT EXISTS patient_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    `);
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_dentist_emr_records_dentist
-      ON dentist_emr_records (dentist_id, updated_at DESC)
-    `);
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_dentist_emr_records_patient
-      ON dentist_emr_records (patient_user_id)
-    `);
-    await query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_trigger WHERE tgname = 'update_dentist_emr_records_updated_at'
-        ) THEN
-          CREATE TRIGGER update_dentist_emr_records_updated_at
-          BEFORE UPDATE ON dentist_emr_records
-          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-        END IF;
-      END $$;
-    `);
-  })().catch((error) => {
-    schemaReadyPromise = null;
-    throw error;
-  });
-  return schemaReadyPromise;
-};
-
 const ensureObject = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
@@ -269,7 +210,6 @@ const toBigIntOrNull = (value) => {
 };
 
 export const listEmrRecordsForDentist = async (dentistId) => {
-  await ensureSchema();
   const dentistBigInt = toBigIntOrNull(dentistId);
   if (!dentistBigInt) {
     throw new Error('dentistId is required');
@@ -284,7 +224,6 @@ export const listEmrRecordsForDentist = async (dentistId) => {
 };
 
 export const getEmrRecordForDentist = async (dentistId, recordId) => {
-  await ensureSchema();
   const dentistBigInt = toBigIntOrNull(dentistId);
   if (!dentistBigInt) {
     throw new Error('dentistId is required');
@@ -300,7 +239,6 @@ export const getEmrRecordForDentist = async (dentistId, recordId) => {
 };
 
 export const listEmrRecordsForPatient = async (patientUserId) => {
-  await ensureSchema();
   const patientBigInt = toBigIntOrNull(patientUserId);
   if (!patientBigInt) {
     throw new Error('patientUserId is required');
@@ -315,7 +253,6 @@ export const listEmrRecordsForPatient = async (patientUserId) => {
 };
 
 export const listEmrRecordsForPatientForDentist = async (patientUserId, dentistId) => {
-  await ensureSchema();
   const patientBigInt = toBigIntOrNull(patientUserId);
   const dentistBigInt = toBigIntOrNull(dentistId);
   if (!patientBigInt || !dentistBigInt) {
@@ -336,7 +273,6 @@ export const updateEmrConsentDocumentForDentist = async ({
   recordId,
   document,
 }) => {
-  await ensureSchema();
   const dentistBigInt = toBigIntOrNull(dentistId);
   const patientBigInt = toBigIntOrNull(patientUserId);
   if (!dentistBigInt || !patientBigInt || !recordId) {
@@ -429,7 +365,6 @@ export const createEmrRecordForDentist = async ({
   patientUserId = null,
   payload,
 }) => {
-  await ensureSchema();
   const dentistBigInt = toBigIntOrNull(dentistId);
   if (!dentistBigInt) {
     throw new Error('dentistId is required');

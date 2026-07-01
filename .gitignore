@@ -38,7 +38,11 @@ out/
 # Backend specific
 backend/uploads/
 backend/prisma/dev.db
-backend/prisma/migrations/
+backend/prisma/migrations/*
+!backend/prisma/migrations/20260701000000_add_dentist_emr_records/
+!backend/prisma/migrations/20260701010000_add_specialist_workspace/
+!backend/prisma/migrations/20260701020000_add_specialist_xcore_study_reference/
+!backend/prisma/migrations/20260701030000_add_imaging_study_patient_assignments/
 
 # Mobile specific
 mobile/.expo/

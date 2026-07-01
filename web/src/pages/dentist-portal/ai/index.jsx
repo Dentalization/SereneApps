@@ -18,6 +18,7 @@ import ClinicalHistorySidebar from './components/ClinicalHistorySidebar';
 import VerifiedCaseWorkspace from './components/VerifiedCaseWorkspace';
 import PatientLinkModal from './components/PatientLinkModal';
 import ToothScanLoader from '../ui/ToothScanLoader';
+import CreateSpecialistCaseModal from '../specialist-workspace/CreateSpecialistCaseModal';
 
 // ── Boot Screen ─────────────────────────────────────
 
@@ -114,6 +115,8 @@ const AIAnalysisPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [patientLinkOpen, setPatientLinkOpen] = useState(false);
+  const [linkPatientForSpecialistCase, setLinkPatientForSpecialistCase] = useState(false);
+  const [specialistCaseContext, setSpecialistCaseContext] = useState(null);
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -145,10 +148,45 @@ const AIAnalysisPage = () => {
   const handleRefreshCase = useCallback(async () => {
     if (caseWorkspace.caseRecord?.id) await loadCaseWorkspace(caseWorkspace.caseRecord.id);
   }, [caseWorkspace.caseRecord?.id, loadCaseWorkspace]);
-  const handleLinkPatient = useCallback(() => setPatientLinkOpen(true), []);
+  const handleLinkPatient = useCallback(() => {
+    setLinkPatientForSpecialistCase(false);
+    setPatientLinkOpen(true);
+  }, []);
+  const handleCreateSpecialistCase = useCallback(() => {
+    const xcoreCase = caseWorkspace.caseRecord;
+    if (!xcoreCase?.id || !['verified', 'exported'].includes(xcoreCase.status)) return;
+    if (!xcoreCase.patient_id) {
+      setLinkPatientForSpecialistCase(true);
+      setPatientLinkOpen(true);
+      return;
+    }
+    setSpecialistCaseContext({
+      patientId: xcoreCase.patient_id,
+      patientName: xcoreCase.patient_name || '',
+      xcoreVerifiedCaseId: xcoreCase.id,
+      xcoreSummary: {
+        title: xcoreCase.title,
+        status: xcoreCase.status,
+      },
+    });
+  }, [caseWorkspace.caseRecord]);
   const handleConfirmPatientLink = useCallback(async (patient) => {
+    const shouldCreateSpecialistCase = linkPatientForSpecialistCase;
     await linkWorkspacePatient(patient);
-  }, [linkWorkspacePatient]);
+    if (shouldCreateSpecialistCase) {
+      const xcoreCase = caseWorkspace.caseRecord;
+      setSpecialistCaseContext({
+        patientId: patient.patient_id,
+        patientName: patient.patient_name || '',
+        xcoreVerifiedCaseId: xcoreCase.id,
+        xcoreSummary: {
+          title: xcoreCase.title,
+          status: xcoreCase.status,
+        },
+      });
+      setLinkPatientForSpecialistCase(false);
+    }
+  }, [caseWorkspace.caseRecord, linkPatientForSpecialistCase, linkWorkspacePatient]);
 
   if (isBootstrapping) return <BootScreen label={t('ai.deepDental.booting', { fallbackText: 'Menginisialisasi Serene AI...' })} />;
 
@@ -156,7 +194,7 @@ const AIAnalysisPage = () => {
 
   return (
     <div className="min-h-screen flex bg-surface-elevated theme-transition">
-      <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+      <div className="w-[var(--sidebar-width,20rem)] flex-shrink-0">
         <SideBar />
       </div>
 
@@ -279,7 +317,7 @@ const AIAnalysisPage = () => {
         <div className="flex-1 flex min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
             {/* --- SCROLLABLE MESSAGES --- */}
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 pb-0" style={{ scrollbarWidth: 'none' }}>
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 pb-0 [scrollbar-width:none]">
               <div className="max-w-3xl mx-auto space-y-6 pb-4">
                 {messages.length === 0 ? (
                   <EmptyState labels={{
@@ -347,6 +385,7 @@ const AIAnalysisPage = () => {
             timeline={caseWorkspace.timeline}
             isLoading={caseWorkspace.isLoading}
             onCreateCase={handleCreateCase}
+            onCreateSpecialistCase={handleCreateSpecialistCase}
             onRefresh={handleRefreshCase}
             onUploadImages={uploadWorkspaceImages}
             onRemoveImage={removeWorkspaceImage}
@@ -367,8 +406,19 @@ const AIAnalysisPage = () => {
 
       <PatientLinkModal
         isOpen={patientLinkOpen}
-        onClose={() => setPatientLinkOpen(false)}
+        onClose={() => {
+          setPatientLinkOpen(false);
+          setLinkPatientForSpecialistCase(false);
+        }}
         onConfirm={handleConfirmPatientLink}
+      />
+      <CreateSpecialistCaseModal
+        isOpen={Boolean(specialistCaseContext)}
+        onClose={() => setSpecialistCaseContext(null)}
+        patientId={specialistCaseContext?.patientId || null}
+        patientName={specialistCaseContext?.patientName || ''}
+        xcoreVerifiedCaseId={specialistCaseContext?.xcoreVerifiedCaseId || null}
+        xcoreSummary={specialistCaseContext?.xcoreSummary || null}
       />
 
       {/* Lightbox Overlay */}

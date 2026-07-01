@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 process.env.XCORE_BENCHMARK_MODE = 'true';
 
 import {
+    assignStudyPatient,
     uploadStudy,
     getStudies,
     getClinicStudies,
@@ -29,7 +30,7 @@ import {
 import { streamSlice } from '../controllers/xCoreStreamController.js';
 import { analyzeStudy } from '../controllers/xCoreAIController.js';
 
-import { authMiddleware } from '../middleware/clinicAuth.js';
+import { authMiddleware, requireRoles } from '../middleware/clinicAuth.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -61,11 +62,17 @@ router.post('/benchmark/callback', express.json(), benchmarkCallback);
 // Routes - Protected by Auth
 router.use(authMiddleware);
 
-router.post('/upload', upload.array('files'), uploadStudy);
+router.post('/upload', requireRoles(['dentist']), upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);
 router.get('/clinic/studies', getClinicStudies);
 router.get('/studies/:id/share/eligible-dentists', getEligibleStudyShareDentists);
 router.post('/studies/:id/share', createStudyShare);
+router.patch(
+    '/studies/:id/patient',
+    requireRoles(['dentist']),
+    express.json(),
+    assignStudyPatient,
+);
 router.get('/studies/:id/annotations', getStudyAnnotations);
 router.post('/studies/:id/annotations', express.json({ limit: '2mb' }), saveStudyAnnotations);
 router.post('/studies/:id/annotations/review', express.json({ limit: '1mb' }), reviewStudyAnnotations);

@@ -14,6 +14,7 @@ import {
   updateAppointmentStatus
 } from '../../../services/appointmentService';
 import { fetchDentistScheduleEntries, persistDentistScheduleEntry } from '../../../services/dentistPortalService';
+import { listSpecialistCases } from '../../../services/specialistWorkspaceService';
 
 // Import components
 import DailyCalendar from './components/DailyCalendar';
@@ -23,6 +24,7 @@ import ScheduleFilters from './components/ScheduleFilters';
 import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
 import ScheduleStats from './components/ScheduleStats';
 import ScheduleSkeleton from './components/ScheduleSkeleton';
+import CreateSpecialistCaseModal from '../specialist-workspace/CreateSpecialistCaseModal';
 
 const SCHEDULE_REALTIME_EVENTS = [
   'notification:new',
@@ -288,6 +290,7 @@ const mapScheduleEntry = useCallback((entry) => {
   }, [data]);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
+  const [specialistCaseAppointment, setSpecialistCaseAppointment] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -386,6 +389,35 @@ const mapScheduleEntry = useCallback((entry) => {
     }
   };
 
+  const handleOpenSpecialistCase = useCallback(async (appointment) => {
+    if (!appointment?.patient?.id || String(appointment.id).startsWith('schedule-')) return;
+    try {
+      const existingCases = await listSpecialistCases({
+        originAppointmentId: appointment.id,
+        caseType: 'radiology',
+      });
+      const [existing] = existingCases.filter(
+        (caseRecord) => caseRecord.status !== 'archived',
+      );
+      setIsDetailDrawerOpen(false);
+      setSelectedAppointment(null);
+      if (existing) {
+        navigate(`/dentist-portal/specialist-workspace/${existing.id}`);
+        return;
+      }
+      setSpecialistCaseAppointment(appointment);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.error?.message
+        || 'Gagal membuka Specialist Case.',
+      );
+      setIsDetailDrawerOpen(false);
+      setSelectedAppointment(null);
+      // Deliberate fail-open: lookup is convenience only; create authorization remains server-side.
+      setSpecialistCaseAppointment(appointment);
+    }
+  }, [navigate, toast]);
+
   // Handle appointment cancellation with refresh
   const handleCancelAppointment = useCallback(async (appointment) => {
     if (!window.confirm('Batalkan appointment ini?')) return;
@@ -470,10 +502,7 @@ const mapScheduleEntry = useCallback((entry) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-elevated flex theme-transition dentist-skeleton">
-        <div
-          className="flex-shrink-0"
-          style={{ width: 'var(--sidebar-width, 20rem)' }}
-        >
+        <div className="w-[var(--sidebar-width,20rem)] flex-shrink-0">
           <SideBar />
         </div>
         <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">
@@ -485,10 +514,7 @@ const mapScheduleEntry = useCallback((entry) => {
 
   return (
     <div className="min-h-screen bg-surface-elevated flex theme-transition">
-      <div
-        className="flex-shrink-0"
-        style={{ width: 'var(--sidebar-width, 20rem)' }}
-      >
+      <div className="w-[var(--sidebar-width,20rem)] flex-shrink-0">
         <SideBar />
       </div>
       <main className="flex-1 min-w-0 overflow-y-auto bg-surface-elevated theme-transition">
@@ -653,6 +679,20 @@ const mapScheduleEntry = useCallback((entry) => {
         onConfirm={handleConfirm}
         onCancel={handleCancelAppointment}
         onStartVideo={handleStartVideo}
+        onOpenSpecialistCase={handleOpenSpecialistCase}
+      />
+      <CreateSpecialistCaseModal
+        isOpen={Boolean(specialistCaseAppointment)}
+        onClose={() => setSpecialistCaseAppointment(null)}
+        patientId={specialistCaseAppointment?.patient?.id || null}
+        patientName={specialistCaseAppointment?.patient?.name || ''}
+        appointmentId={specialistCaseAppointment?.id || null}
+        appointmentSummary={specialistCaseAppointment
+          ? {
+              startsAt: specialistCaseAppointment.start,
+              reason: specialistCaseAppointment.reason,
+            }
+          : null}
       />
     </div>
   );
