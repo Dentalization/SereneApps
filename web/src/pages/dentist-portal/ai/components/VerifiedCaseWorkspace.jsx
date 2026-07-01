@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrainCircuit, BriefcaseMedical, ChevronLeft, ChevronRight, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { BrainCircuit, BriefcaseMedical, ChevronLeft, ChevronRight, FolderHeart, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import AuditTrailPanel from './AuditTrailPanel.jsx';
 import CaseExportPanel from './CaseExportPanel.jsx';
@@ -8,8 +8,16 @@ import MultiImageUploader from './MultiImageUploader.jsx';
 import PatientTimelinePanel from './PatientTimelinePanel.jsx';
 import { getCaseStatusMeta } from './caseWorkspaceModels.mjs';
 
-function WorkspaceHeader({ caseRecord, isLoading, onRefresh, onCreateCase, t }) {
+function WorkspaceHeader({
+  caseRecord,
+  isLoading,
+  onRefresh,
+  onCreateCase,
+  onCreateSpecialistCase,
+  t,
+}) {
   const meta = getCaseStatusMeta(caseRecord?.status);
+  const canCreateSpecialistCase = ['verified', 'exported'].includes(caseRecord?.status);
   return (
     <div className="mb-4 rounded-2xl border border-border/40 bg-surface p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -33,6 +41,17 @@ function WorkspaceHeader({ caseRecord, isLoading, onRefresh, onCreateCase, t }) 
             <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300">
               {meta.label}
             </span>
+          )}
+          {canCreateSpecialistCase && (
+            <button
+              type="button"
+              onClick={onCreateSpecialistCase}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300"
+            >
+              <FolderHeart className="h-4 w-4" />
+              Create Specialist Case
+            </button>
           )}
           <button
             type="button"
@@ -62,6 +81,7 @@ export default function VerifiedCaseWorkspace({
   timeline = [],
   isLoading = false,
   onCreateCase,
+  onCreateSpecialistCase,
   onRefresh,
   onUploadImages,
   onRemoveImage,
@@ -183,6 +203,7 @@ export default function VerifiedCaseWorkspace({
             isLoading={isLoading}
             onRefresh={onRefresh}
             onCreateCase={onCreateCase}
+            onCreateSpecialistCase={onCreateSpecialistCase}
             t={t}
           />
 

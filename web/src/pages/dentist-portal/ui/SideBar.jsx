@@ -97,6 +97,7 @@ const SideBar = () => {
       { id: 'consultations', label: t('sidebar.teledentistry'), icon: 'Video', path: '/dentist-portal/teledentistry', description: 'Teledentistry Sessions' },
       { id: 'ai-analysis', label: t('sidebar.aiInsights'), icon: 'Brain', path: '/dentist-portal/ai-analysis', description: 'AI Clinical Decision Support' },
       { id: 'x-core', label: 'X-Core', icon: 'Cpu', path: '/dentist-portal/x-core', description: 'Core System & Utilities' },
+      { id: 'specialist-workspace', label: 'Specialist Workspace', icon: 'FolderHeart', path: '/dentist-portal/specialist-workspace', description: 'Radiology-linked clinical cases' },
       { id: 'appointments', label: t('sidebar.schedule'), icon: 'Calendar', path: '/dentist-portal/appointments', description: 'Schedule Management' },
       { id: 'reports', label: t('sidebar.reports'), icon: 'BarChart3', path: '/dentist-portal/reports', description: 'Reports & Statistics' },
     ],

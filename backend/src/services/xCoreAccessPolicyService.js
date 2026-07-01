@@ -94,6 +94,42 @@ export async function activeDentistClinicIds(userId, { prismaClient = prisma } =
   return [];
 }
 
+export async function requireDentistPatientRelationship({
+  dentistId,
+  patientId,
+  prismaClient = prisma,
+}) {
+  const parsedDentistId = toBigIntId(dentistId, 'dentistId');
+  const parsedPatientId = toBigIntId(patientId, 'patientId');
+  const [patient, appointment] = await Promise.all([
+    prismaClient.user.findFirst({
+      where: {
+        id: parsedPatientId,
+        roles: { has: 'patient' },
+      },
+      select: { id: true, name: true, email: true, phone_number: true },
+    }),
+    prismaClient.appointment.findFirst({
+      where: {
+        dentistId: parsedDentistId,
+        patientId: parsedPatientId,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!patient || !appointment) {
+    throw accessError(403, 'Patient must have an appointment relationship with this dentist');
+  }
+
+  return {
+    dentistId: parsedDentistId,
+    patientId: parsedPatientId,
+    patient,
+    appointmentId: appointment.id,
+  };
+}
+
 export function clinicStudyScopeWhere(clinicProfileId) {
   return {
     OR: [

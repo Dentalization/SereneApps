@@ -14,6 +14,7 @@ import {
     getClinicXCoreContext,
     handleAccessError,
     requireEligibleShareRecipient,
+    requireDentistPatientRelationship,
     requireXCoreStudyOwner,
     requireXCoreStudyReadAccess,
     serializeEligibleDentist,
@@ -48,6 +49,16 @@ function parseBigIntId(value) {
         return BigInt(value);
     } catch {
         return null;
+    }
+}
+
+function removeUploadedTempFiles(files = []) {
+    for (const file of files) {
+        try {
+            if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        } catch (error) {
+            console.warn('[X-Core] Failed to remove rejected temp upload:', error.message);
+        }
     }
 }
 
@@ -234,12 +245,28 @@ export const uploadStudy = async (req, res) => {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
         }
+        const authenticatedDentistId = parseBigIntId(req.user?.id);
+        if (!authenticatedDentistId) {
+            removeUploadedTempFiles(req.files);
+            return res.status(401).json({ error: 'Authentication required' });
+        }
 
         const runId = req.headers['x-benchmark-run-id'];
         const caseId = req.headers['x-benchmark-case-id'];
         const iteration = req.headers['x-benchmark-iteration'];
 
-        const patientId = req.body.patientId ? BigInt(req.body.patientId) : null;
+        const patientId = req.body.patientId ? parseBigIntId(req.body.patientId) : null;
+        if (req.body.patientId && !patientId) {
+            removeUploadedTempFiles(req.files);
+            return res.status(400).json({ error: 'Invalid patientId', code: 'invalid_patient_id' });
+        }
+        if (!patientId) {
+            removeUploadedTempFiles(req.files);
+            return res.status(400).json({
+                error: 'Select a patient before uploading an X-Core study',
+                code: 'patient_id_required',
+            });
+        }
 
         // 0. Calculate Upload Size
         const uploadSize = req.files.reduce((acc, file) => acc + BigInt(file.size), 0n);
@@ -255,11 +282,10 @@ export const uploadStudy = async (req, res) => {
 
         // 1. Check Storage Quota (if user is authenticated)
         let dentistProfile = null;
-        let userId = null;
+        let userId = authenticatedDentistId;
         let uploadClinicId = null;
 
         if (req.user) {
-            userId = BigInt(req.user.id);
             console.log(`[X-Core] Uploading for user: ${userId}`);
             console.log(`[X-Core] Received originalFolderName: ${req.body.originalFolderName}`);
 
@@ -294,6 +320,17 @@ export const uploadStudy = async (req, res) => {
                         details: `Upload size: ${(Number(uploadSize) / (1024 * 1024)).toFixed(2)}MB. Remaining: ${(Number(limit - currentUsage) / (1024 * 1024)).toFixed(2)}MB`
                     });
                 }
+            }
+
+            try {
+                await requireDentistPatientRelationship({
+                    dentistId: userId,
+                    patientId,
+                    prismaClient: prisma,
+                });
+            } catch (error) {
+                removeUploadedTempFiles(req.files);
+                return handleAccessError(res, error);
             }
         }
 
@@ -343,30 +380,7 @@ export const uploadStudy = async (req, res) => {
 
         // Create Database Records
         const result = await prisma.$transaction(async (tx) => {
-            // Find a valid patientId
-            let targetPatientId = patientId;
-            if (targetPatientId) {
-                const patientExists = await tx.user.findUnique({
-                    where: { id: targetPatientId },
-                    select: { id: true }
-                });
-                if (!patientExists) {
-                    targetPatientId = null;
-                }
-            }
-
-            if (!targetPatientId) {
-                // Find the first user with 'patient' role
-                const fallbackPatient = await tx.user.findFirst({
-                    where: { roles: { has: 'patient' } },
-                    select: { id: true }
-                });
-                if (fallbackPatient) {
-                    targetPatientId = fallbackPatient.id;
-                } else {
-                    targetPatientId = 1n;
-                }
-            }
+            const targetPatientId = patientId;
 
             let studyMetadata = parseResult.metadata || {};
             if (runId) {
@@ -394,6 +408,18 @@ export const uploadStudy = async (req, res) => {
                     clinicId: uploadClinicId || undefined
                 }
             });
+
+            if (userId) {
+                await tx.imagingStudyPatientAssignment.create({
+                    data: {
+                        studyId: study.id,
+                        previousPatientId: null,
+                        patientId: targetPatientId,
+                        assignedByDentistId: userId,
+                        source: 'upload',
+                    },
+                });
+            }
 
             // 2. Create Series
             for (const s of parseResult.series) {
@@ -1137,6 +1163,91 @@ export const getStorageStats = async (req, res) => {
     } catch (error) {
         console.error('Storage Stats Error:', error);
         res.status(500).json({ error: 'Failed to fetch storage stats' });
+    }
+};
+
+export const assignStudyPatient = async (req, res) => {
+    try {
+        const patientId = parseBigIntId(req.body?.patientId);
+        if (!patientId) {
+            return res.status(400).json({
+                error: 'patientId is required',
+                code: 'patient_id_required',
+            });
+        }
+
+        const ownerAccess = await requireXCoreStudyOwner({
+            studyId: req.params.id,
+            user: req.user,
+            prismaClient: prisma,
+        });
+        const relationship = await requireDentistPatientRelationship({
+            dentistId: ownerAccess.userId,
+            patientId,
+            prismaClient: prisma,
+        });
+
+        if (ownerAccess.study.patientId === patientId) {
+            return res.json({
+                study: serializeJson({
+                    id: ownerAccess.study.id,
+                    patientId,
+                    patient: relationship.patient,
+                }),
+                changed: false,
+            });
+        }
+
+        const linkedCase = await prisma.specialistCase.findFirst({
+            where: {
+                xcoreStudyId: ownerAccess.study.id,
+                patientId: { not: patientId },
+            },
+            select: { id: true },
+        });
+        if (linkedCase) {
+            return res.status(409).json({
+                error: 'This study is already linked to a Specialist Case for another patient',
+                code: 'study_linked_to_specialist_case',
+            });
+        }
+
+        const updated = await prisma.$transaction(async (tx) => {
+            const study = await tx.imagingStudy.update({
+                where: { id: ownerAccess.study.id },
+                data: { patientId },
+                select: {
+                    id: true,
+                    patientId: true,
+                    patient: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            phone_number: true,
+                        },
+                    },
+                },
+            });
+            await tx.imagingStudyPatientAssignment.create({
+                data: {
+                    studyId: ownerAccess.study.id,
+                    previousPatientId: ownerAccess.study.patientId,
+                    patientId,
+                    assignedByDentistId: ownerAccess.userId,
+                    source: 'manual',
+                },
+            });
+            return study;
+        });
+
+        return res.json({
+            study: serializeJson(updated),
+            changed: true,
+        });
+    } catch (error) {
+        console.error('[X-Core] Assign study patient failed:', error.message);
+        return handleAccessError(res, error);
     }
 };
 

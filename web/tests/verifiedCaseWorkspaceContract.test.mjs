@@ -79,13 +79,15 @@ test('backend route registers case, image, finding, audit, export, timeline, and
 test('patient linking is scoped to the authenticated dentist patient relationship', () => {
   const route = readRepoFile('backend/src/routes/verified-cases.js');
   const modal = readRepoFile('web/src/pages/dentist-portal/ai/components/PatientLinkModal.jsx');
+  const patientSearch = readRepoFile('web/src/pages/dentist-portal/components/PatientSearchPicker.jsx');
 
   assert.match(route, /verifyDentistPatientAccess/);
   assert.match(route, /patient_access_denied/);
   assert.match(route, /FROM appointments/);
   assert.match(route, /dentist_id = \$1/);
   assert.match(route, /patient_id = \$2/);
-  assert.match(modal, /sortBy: 'lastVisit'/);
-  assert.match(modal, /limit: 20/);
-  assert.match(modal, /Daftar ini hanya menampilkan pasien/);
+  assert.match(modal, /PatientSearchPicker/);
+  assert.match(patientSearch, /sortBy: 'lastVisit'/);
+  assert.match(patientSearch, /limit: 20/);
+  assert.match(patientSearch, /Daftar ini hanya menampilkan pasien/);
 });

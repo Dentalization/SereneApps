@@ -84,6 +84,12 @@ async function run() {
 
     const { apiBaseUrl, pythonServiceUrl, repeatRuns, case: testCase } = config;
     const { dentistEmail, dentistPassword, folderPath, caseId } = testCase;
+    const patientId = process.env.XCORE_BENCHMARK_PATIENT_ID || testCase.patientId;
+    if (!patientId) {
+        throw new Error(
+            'X-Core benchmark requires XCORE_BENCHMARK_PATIENT_ID for a patient linked to the benchmark dentist.',
+        );
+    }
 
     console.log(`[Benchmark] Starting repeated-run prototype benchmark using representative study folder...`);
     console.log(`[Benchmark] Configured Backend: ${apiBaseUrl}`);
@@ -171,6 +177,7 @@ async function run() {
             // 1. Upload files
             console.log(`[Benchmark] Uploading representative CBCT folder...`);
             const uploadForm = new FormData();
+            uploadForm.append('patientId', String(patientId));
             for (const file of files) {
                 // Add stream
                 uploadForm.append('files', fs.createReadStream(file.absolutePath), {

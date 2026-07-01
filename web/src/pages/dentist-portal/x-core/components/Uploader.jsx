@@ -1,7 +1,9 @@
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import AppIcon from '../../../../components/AppIcon';
+import ModalPortal from '../../../../components/ui/ModalPortal';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import { useToast } from '../../../../contexts/ToastContext';
+import PatientSearchPicker from '../../components/PatientSearchPicker';
 
 const Uploader = ({ onClose, onUploadComplete }) => {
     const toast = useToast();
@@ -9,6 +11,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [selectedPatient, setSelectedPatient] = useState(null);
     const fileInputRef = useRef(null);
 
     // Handlers for Drag & Drop
@@ -61,7 +64,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
     };
 
     const uploadFiles = async () => {
-        if (files.length === 0) return;
+        if (files.length === 0 || !selectedPatient?.id) return;
         setUploading(true);
         setProgress(0);
 
@@ -82,7 +85,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
 
         console.log("Uploading with originalFolderName:", folderName);
         formData.append('originalFolderName', folderName);
-        // formData.append('patientId', '123'); 
+        formData.append('patientId', selectedPatient.id);
 
         try {
             const token = getAccessToken();
@@ -103,6 +106,12 @@ const Uploader = ({ onClose, onUploadComplete }) => {
             };
 
             xhr.onload = () => {
+                let responsePayload = null;
+                try {
+                    responsePayload = JSON.parse(xhr.responseText);
+                } catch (_) {
+                    responsePayload = null;
+                }
                 if (xhr.status === 200) {
                     // Success Transition
                     setProgress(100);
@@ -110,13 +119,17 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                         onUploadComplete();
                         onClose(); // Close after short delay
                     }, 1500);
-                } else if (xhr.status === 401 || xhr.status === 403) {
+                } else if (xhr.status === 401) {
                     toast.error('Your session has expired. Please log in again.');
                     setUploading(false);
                     return;
                 } else {
                     console.error('Upload failed with status:', xhr.status);
-                    toast.error(`Upload failed. The server encountered an error (Status: ${xhr.status}). Please try again.`);
+                    toast.error(
+                        responsePayload?.error?.message
+                        || responsePayload?.error
+                        || `Upload failed (Status: ${xhr.status}). Please try again.`
+                    );
                     setUploading(false);
                 }
             };
@@ -152,6 +165,21 @@ const Uploader = ({ onClose, onUploadComplete }) => {
 
                     {/* Content */}
                     <div className="p-6 flex-1 overflow-y-auto space-y-6">
+                        {!uploading && (
+                            <section className="rounded-2xl border border-primary/10 bg-surface p-4">
+                                <div className="mb-3">
+                                    <h3 className="font-semibold text-primary">Assign to patient</h3>
+                                    <p className="mt-1 text-xs text-secondary">
+                                        Wajib dipilih. Hanya pasien yang pernah memiliki appointment dengan Anda.
+                                    </p>
+                                </div>
+                                <PatientSearchPicker
+                                    selectedPatient={selectedPatient}
+                                    onSelect={setSelectedPatient}
+                                />
+                            </section>
+                        )}
+
                         {!uploading ? (
                             <div
                                 className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200 ${dragActive ? 'border-accent bg-accent/5' : 'border-primary/20 hover:border-accent/50'
@@ -260,7 +288,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                             </button>
                             <button
                                 onClick={uploadFiles}
-                                disabled={files.length === 0}
+                                disabled={files.length === 0 || !selectedPatient?.id}
                                 className="px-6 py-2.5 bg-accent text-white rounded-xl hover:bg-accent-hover transition font-medium shadow-lg shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Start Upload

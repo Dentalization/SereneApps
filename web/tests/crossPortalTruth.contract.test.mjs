@@ -24,6 +24,9 @@ test('patient actions are implemented and realtime refresh listens to domain eve
   assert.doesNotMatch(source, /const handleScheduleNew = \(\) => \{\};/);
   assert.doesNotMatch(source, /const handleUpdateAppointment = .*=> \{\};/);
   assert.doesNotMatch(source, /const handleCancelAppointment = .*=> \{\};/);
+  assert.doesNotMatch(source, /const handleSendStatement = .*=> \{\};/);
+  assert.doesNotMatch(source, /handleSendMessage|handleScheduleCall/);
+  assert.match(source, /toast\.info\('Fitur kirim laporan tagihan akan segera hadir\.'\)/);
   for (const eventName of [
     'appointment:updated',
     'payment:status_updated',

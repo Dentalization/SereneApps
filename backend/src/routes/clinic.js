@@ -1826,6 +1826,29 @@ const CLINIC_STAFF_ASSIGNABLE_ROLES = new Set([
   'dentist',
   'staff'
 ]);
+const CLINIC_PATIENT_TOKEN_ROLES = [
+  'owner',
+  'clinic_owner',
+  'manager',
+  'clinic_manager',
+  'clinic_admin',
+  'clinic_staff',
+  'front_office',
+  'nurse',
+  'staff'
+];
+const CLINIC_PATIENT_STAFF_ROLES = new Set([
+  'owner',
+  'clinic_owner',
+  'manager',
+  'clinic_manager',
+  'admin',
+  'clinic_admin',
+  'clinic_staff',
+  'front_office',
+  'nurse',
+  'staff'
+]);
 
 function staffManagementError(status, message) {
   const error = new Error(message);
@@ -2516,7 +2539,7 @@ router.delete('/staff/:userId', authenticateToken, requireRoles(CLINIC_STAFF_MAN
 // CLINIC PATIENTS ENDPOINT
 // =====================
 // Get all patients who have had appointments with dentists in this clinic
-router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner', 'manager', 'clinic_staff']), async (req, res) => {
+router.get('/patients', authenticateToken, requireRoles(CLINIC_PATIENT_TOKEN_ROLES), async (req, res) => {
   try {
     const user = req.user;
     const userId = BigInt(user.id);
@@ -2524,14 +2547,23 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
     // 1. Find the clinic for this user
     const staffRecord = await prisma.clinicStaff.findFirst({
       where: { userId, isActive: true },
-      select: { clinicProfileId: true }
+      select: {
+        clinicProfileId: true,
+        role: true,
+        assignedBranchId: true
+      }
     });
 
     if (!staffRecord) {
       return res.status(403).json({ error: 'Access denied - not associated with any clinic' });
     }
+    if (!CLINIC_PATIENT_STAFF_ROLES.has(staffRecord.role)) {
+      return res.status(403).json({ error: 'Access denied - clinic role cannot view patient records' });
+    }
 
     const clinicId = staffRecord.clinicProfileId;
+    const isClinicOwner = ['owner', 'clinic_owner'].includes(staffRecord.role);
+    const assignedBranchScope = !isClinicOwner ? staffRecord.assignedBranchId : null;
 
     // 2. Get all staff (dentists) in this clinic
     const clinicStaffList = await prisma.clinicStaff.findMany({
@@ -2558,6 +2590,7 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
     const appointments = await prisma.appointment.findMany({
       where: {
         dentistId: { in: dentistUserIds },
+        ...(assignedBranchScope ? { clinicBranchId: assignedBranchScope } : {}),
         OR: [
           { ownerClinicId: clinicId },
           { clinicBranch: { clinicProfileId: clinicId } }
@@ -2764,11 +2797,14 @@ router.get('/patients', authenticateToken, requireRoles(['owner', 'clinic_owner'
     });
 
     // 6. Build dentist list for the frontend
-    const dentists = dentistStaff.map(s => ({
-      id: s.userId.toString(),
-      name: s.user.name,
-      role: s.role
-    }));
+    const visibleDentistIds = new Set(appointments.map(appointment => appointment.dentistId.toString()));
+    const dentists = dentistStaff
+      .filter(staff => !assignedBranchScope || visibleDentistIds.has(staff.userId.toString()))
+      .map(s => ({
+        id: s.userId.toString(),
+        name: s.user.name,
+        role: s.role
+      }));
 
     console.log(`📋 Clinic patients: ${patients.length} patients, ${serializedAppointments.length} appointments, ${dentists.length} dentists`);
 

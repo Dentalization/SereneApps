@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AppIcon from '../../../components/AppIcon';
 import SideBar from '../ui/SideBar';
 import Gallery from './components/Gallery';
@@ -15,6 +16,8 @@ const XCore = ({
     studiesEndpoint = portal === 'clinic' ? '/api/v1/x-core/clinic/studies' : '/api/v1/x-core/studies',
     allowUpload = !readOnly,
 }) => {
+    const [searchParams] = useSearchParams();
+    const requestedStudyId = searchParams.get('studyId');
     const [showUploader, setShowUploader] = useState(false);
     const [activeStudy, setActiveStudy] = useState(null);
     const [comparisonStudies, setComparisonStudies] = useState(null);
@@ -127,6 +130,7 @@ const XCore = ({
                                 }}
                                 cachedStudies={studiesCache}
                                 onStudiesLoaded={setStudiesCache}
+                                initialStudyId={requestedStudyId}
                                 studiesEndpoint={studiesEndpoint}
                                 readOnly={readOnly}
                                 allowUpload={allowUpload}

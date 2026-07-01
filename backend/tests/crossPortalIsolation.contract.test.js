@@ -29,6 +29,17 @@ test('dentist patient detail scopes clinical and financial records to the dentis
   assert.match(emrSource, /WHERE r\.patient_user_id = \$1 AND r\.dentist_id = \$2/);
 });
 
+test('dentist EMR schema is migration-owned rather than created in request handlers', () => {
+  const emrSource = readSource('src/services/emrRecords.js');
+  const migrationSource = readSource(
+    'prisma/migrations/20260701000000_add_dentist_emr_records/migration.sql'
+  );
+
+  assert.doesNotMatch(emrSource, /CREATE TABLE|ALTER TABLE|CREATE TRIGGER|ensureSchema/);
+  assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS dentist_emr_records/);
+  assert.match(migrationSource, /CREATE TRIGGER update_dentist_emr_records_updated_at/);
+});
+
 test('dentist patient GET routes do not mutate appointment status', () => {
   const source = readSource('src/routes/dentist-portal.js');
   const appointmentSource = readSource('src/routes/appointments.js');
