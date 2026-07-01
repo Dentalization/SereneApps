@@ -24,6 +24,7 @@ import AIAnalysis from './pages/dentist-portal/ai';
 import XCore from './pages/dentist-portal/x-core';
 import SpecialistWorkspace from './pages/dentist-portal/specialist-workspace';
 import SpecialistCaseDirectory from './pages/dentist-portal/specialist-workspace/CaseDirectory';
+import EndoCore from './pages/dentist-portal/Endo-Core/Index';
 import SharedStudyView from './pages/dentist-portal/x-core/SharedStudyView';
 import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';
@@ -104,6 +105,8 @@ const Routes = () => {
             <Route path="/dentist-portal/x-core" element={<XCore />} />
             <Route path="/dentist-portal/specialist-workspace" element={<SpecialistCaseDirectory />} />
             <Route path="/dentist-portal/specialist-workspace/:caseId" element={<SpecialistWorkspace />} />
+            <Route path="/dentist-portal/endo-core" element={<EndoCore />} />
+            <Route path="/dentist-portal/endo-core/:caseId" element={<EndoCore />} />
             <Route path="/dentist-portal/practice/services" element={<DentistPracticeServices />} />
             <Route path="/dentist-portal/practice/availability" element={<DentistPracticeAvailability />} />
             <Route path="/dentist-portal/practice/earnings" element={<DentistPracticeEarnings />} />

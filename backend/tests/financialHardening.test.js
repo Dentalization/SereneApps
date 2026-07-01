@@ -381,37 +381,33 @@ test('financial hardening: cross-clinic and cross-dentist revenue isolation', as
     }
   });
 
-  let createdClinic = false;
-  let clinicProfile = await prisma.clinicProfile.findFirst();
-  if (!clinicProfile) {
-    clinicProfile = await prisma.clinicProfile.create({
-      data: {
-        userId: dentistA.id,
-        legalName: `Test Clinic ${suffix}`,
-        facilityType: 'clinic',
-        streetAddress: 'Jalan Test',
-        city: 'Jakarta',
-        province: 'DKI Jakarta',
-        postalCode: '12345',
-        phone: '0812345678',
-        email: `clinic_${suffix}@test.com`,
-        operatingHours: {},
-        ownerName: 'Owner Test',
-        ownerPosition: 'Director',
-        ownerEmail: `owner_${suffix}@test.com`,
-        ownerWhatsapp: '0812345678',
-        ownerNik: `NIK-${suffix}`,
-        ktpFilePath: 'dummy',
-        nibNumber: `NIB-${suffix}`,
-        nibFilePath: 'dummy',
-        npwpNumber: `NPWP-${suffix}`,
-        npwpFilePath: 'dummy',
-        operationalLicenseFilePath: 'dummy',
-        status: 'approved'
-      }
-    });
-    createdClinic = true;
-  }
+  const clinicProfile = await prisma.clinicProfile.create({
+    data: {
+      userId: dentistA.id,
+      legalName: `Test Clinic ${suffix}`,
+      facilityType: 'clinic',
+      streetAddress: 'Jalan Test',
+      city: 'Jakarta',
+      province: 'DKI Jakarta',
+      postalCode: '12345',
+      phone: '0812345678',
+      email: `clinic_${suffix}@test.com`,
+      operatingHours: {},
+      ownerName: 'Owner Test',
+      ownerPosition: 'Director',
+      ownerEmail: `owner_${suffix}@test.com`,
+      ownerWhatsapp: '0812345678',
+      ownerNik: `NIK-${suffix}`,
+      ktpFilePath: 'dummy',
+      nibNumber: `NIB-${suffix}`,
+      nibFilePath: 'dummy',
+      npwpNumber: `NPWP-${suffix}`,
+      npwpFilePath: 'dummy',
+      operationalLicenseFilePath: 'dummy',
+      status: 'approved'
+    }
+  });
+  const createdClinic = true;
 
   // Dentist A has settled independent payment
   const appA = await prisma.appointment.create({

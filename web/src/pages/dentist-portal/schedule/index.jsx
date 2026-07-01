@@ -416,6 +416,19 @@ const mapScheduleEntry = useCallback((entry) => {
     }
   }, [navigate, toast]);
 
+  const handleOpenEndoCase = useCallback((appointment) => {
+    if (!appointment?.patient?.id || String(appointment.id).startsWith('schedule-')) return;
+    const params = new URLSearchParams({
+      patientId: String(appointment.patient.id),
+      appointmentId: String(appointment.id),
+    });
+    setIsDetailDrawerOpen(false);
+    setSelectedAppointment(null);
+    navigate(`/dentist-portal/endo-core?${params.toString()}`, {
+      state: { patientName: appointment.patient.name || '' },
+    });
+  }, [navigate]);
+
   // Handle appointment cancellation with refresh
   const handleCancelAppointment = useCallback(async (appointment) => {
     if (!window.confirm('Batalkan appointment ini?')) return;
@@ -678,6 +691,7 @@ const mapScheduleEntry = useCallback((entry) => {
         onCancel={handleCancelAppointment}
         onStartVideo={handleStartVideo}
         onOpenSpecialistCase={handleOpenSpecialistCase}
+        onOpenEndoCase={handleOpenEndoCase}
       />
       <CreateSpecialistCaseModal
         isOpen={Boolean(specialistCaseAppointment)}

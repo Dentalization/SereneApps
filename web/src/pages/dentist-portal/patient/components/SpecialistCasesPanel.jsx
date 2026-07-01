@@ -56,14 +56,32 @@ const SpecialistCasesPanel = ({ patient }) => {
             Working case untuk review radiologi. EMR dan X-Core tetap menjadi sumber terpisah.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateModalOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
-        >
-          <Icon name="Plus" size={16} />
-          Create Specialist Case
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams({
+                patientId: String(patient.id),
+                ...(appointment?.id ? { appointmentId: String(appointment.id) } : {}),
+              });
+              navigate(`/dentist-portal/endo-core?${params.toString()}`, {
+                state: { patientName: patient.name || '' },
+              });
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/20"
+          >
+            <Icon name="Activity" size={16} />
+            Create Endo Case
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+          >
+            <Icon name="Plus" size={16} />
+            Create Specialist Case
+          </button>
+        </div>
       </div>
 
       {loading && (

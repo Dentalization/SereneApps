@@ -5,6 +5,7 @@ process.env.TWILIO_ACCOUNT_SID = 'AC00000000000000000000000000000000';
 process.env.TWILIO_API_KEY_SID = 'SK00000000000000000000000000000000';
 process.env.TWILIO_API_KEY_SECRET = 'test-api-key-secret';
 process.env.TWILIO_CONVERSATIONS_SERVICE_SID = 'IS00000000000000000000000000000000';
+process.env.TWILIO_MOCK_MODE = 'false';
 
 const { __testables } = await import('../src/services/communications.js');
 

@@ -339,6 +339,7 @@ model Appointment {
   followUpTasks      AppointmentFollowUpTask[]
   preSessionHealthForm AppointmentPreSessionHealthForm?
   specialistCases     SpecialistCase[]
+  endoTreatmentStages EndoTreatmentStage[]
 
   @@index([dentistId, startsAt], map: "idx_appointments_dentist_time")
   @@index([patientId, startsAt], map: "idx_appointments_patient_time")
@@ -410,6 +411,7 @@ model SpecialistCase {
   xcoreStudy          ImagingStudy? @relation(fields: [xcoreStudyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   notes               SpecialistCaseNote[]
   timelineEvents      SpecialistCaseTimelineEvent[]
+  endoCaseDetail      EndoCaseDetail?
 
   @@index([patientId], map: "idx_specialist_cases_patient")
   @@index([dentistId], map: "idx_specialist_cases_dentist")
@@ -419,6 +421,76 @@ model SpecialistCase {
   @@index([xcoreStudyId], map: "idx_specialist_cases_xcore_study")
   @@index([caseType, status], map: "idx_specialist_cases_type_status")
   @@map("specialist_cases")
+}
+
+model EndoCaseDetail {
+  id                       BigInt   @id @default(autoincrement())
+  specialistCaseId         BigInt   @unique @map("specialist_case_id")
+  toothNumber              String   @map("tooth_number") @db.VarChar(2)
+  odontogramPosition       String?  @map("odontogram_position") @db.VarChar(16)
+  odontogramCodeAtCreation String?  @map("odontogram_code_at_creation") @db.VarChar(32)
+  chiefComplaint           String   @map("chief_complaint")
+  pulpDiagnosis            String?  @map("pulp_diagnosis")
+  periapicalDiagnosis      String?  @map("periapical_diagnosis")
+  swelling                 Boolean  @default(false)
+  sinusTract               Boolean  @default(false) @map("sinus_tract")
+  spontaneousPain          Boolean? @map("spontaneous_pain")
+  lingeringPain            Boolean? @map("lingering_pain")
+  thermalSensitivity       Boolean? @map("thermal_sensitivity")
+  bitingPain               Boolean? @map("biting_pain")
+  difficultyLevel          String?  @map("difficulty_level") @db.VarChar(32)
+  difficultyFactors        Json?    @default("[]") @map("difficulty_factors")
+  previousEndoTreatment    Boolean  @default(false) @map("previous_endo_treatment")
+  retreatmentReason        String?  @map("retreatment_reason")
+  restorabilityStatus      String?  @map("restorability_status") @db.VarChar(64)
+  finalRestorationStatus   String?  @map("final_restoration_status") @db.VarChar(64)
+  traumaHistory            String?  @map("trauma_history")
+  periodontalConcern       String?  @map("periodontal_concern")
+  cbctConsidered           Boolean  @default(false) @map("cbct_considered")
+  cbctReason               String?  @map("cbct_reason")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  specialistCase           SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  diagnosticTests          EndoDiagnosticTest[]
+  treatmentStages          EndoTreatmentStage[]
+
+  @@index([toothNumber], map: "idx_endo_case_details_tooth")
+  @@map("endo_case_details")
+}
+
+model EndoDiagnosticTest {
+  id               BigInt   @id @default(autoincrement())
+  endoCaseDetailId BigInt   @map("endo_case_detail_id")
+  testType         String   @map("test_type") @db.VarChar(32)
+  result           String?  @db.VarChar(128)
+  notes            String?
+  performedAt      DateTime? @map("performed_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endoCaseDetail   EndoCaseDetail @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([endoCaseDetailId], map: "idx_endo_diagnostic_tests_case")
+  @@index([testType], map: "idx_endo_diagnostic_tests_type")
+  @@map("endo_diagnostic_tests")
+}
+
+model EndoTreatmentStage {
+  id               BigInt   @id @default(autoincrement())
+  endoCaseDetailId BigInt   @map("endo_case_detail_id")
+  stageType        String   @map("stage_type") @db.VarChar(64)
+  status           String   @default("planned") @db.VarChar(32)
+  performedAt      DateTime? @map("performed_at") @db.Timestamptz(6)
+  appointmentId    BigInt?  @map("appointment_id")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endoCaseDetail   EndoCaseDetail @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appointment      Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([endoCaseDetailId], map: "idx_endo_treatment_stages_case")
+  @@index([stageType], map: "idx_endo_treatment_stages_type")
+  @@index([appointmentId], map: "idx_endo_treatment_stages_appointment")
+  @@map("endo_treatment_stages")
 }
 
 model SpecialistCaseNote {
