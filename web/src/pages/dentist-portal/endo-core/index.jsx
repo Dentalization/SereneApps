@@ -1,15 +1,15 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
 import SideBar from '../ui/SideBar';
-import EndoCaseDirectory from './Components/EndoCaseDirectory';
-import EndoCaseDetail from './Components/EndoCaseDetail';
+import EndoCaseDirectory from './components/EndoCaseDirectory';
+import EndoCaseDetail from './components/EndoCaseDetail';
 
 const EndoCore = () => {
   const { caseId } = useParams();
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden theme-transition bg-background">
       <SideBar />
-      <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto scroll-smooth custom-scrollbar bg-background">
         {caseId ? <EndoCaseDetail caseId={caseId} /> : <EndoCaseDirectory />}
       </main>
     </div>

@@ -24,7 +24,7 @@ import AIAnalysis from './pages/dentist-portal/ai';
 import XCore from './pages/dentist-portal/x-core';
 import SpecialistWorkspace from './pages/dentist-portal/specialist-workspace';
 import SpecialistCaseDirectory from './pages/dentist-portal/specialist-workspace/CaseDirectory';
-import EndoCore from './pages/dentist-portal/Endo-Core/Index';
+import EndoCore from './pages/dentist-portal/endo-core';
 import SharedStudyView from './pages/dentist-portal/x-core/SharedStudyView';
 import DentistPracticeServices from './pages/dentist-portal/practice/MyServices';
 import DentistPracticeAvailability from './pages/dentist-portal/practice/Availability';

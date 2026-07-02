@@ -7,7 +7,7 @@ const readSource = (path) => readFileSync(new URL(`../${path}`, import.meta.url)
 test('Endo-Core routes, sidebar entry, and exact page tree are registered', () => {
   const routes = readSource('src/Routes.jsx');
   const sidebar = readSource('src/pages/dentist-portal/ui/SideBar.jsx');
-  const index = readSource('src/pages/dentist-portal/Endo-Core/Index.jsx');
+  const index = readSource('src/pages/dentist-portal/endo-core/index.jsx');
   const requiredComponents = [
     'EndoCaseDirectory',
     'CreateEndoCaseModal',
@@ -18,19 +18,19 @@ test('Endo-Core routes, sidebar entry, and exact page tree are registered', () =
     'EndoXCoreEvidence',
   ];
 
-  assert.match(routes, /pages\/dentist-portal\/Endo-Core\/Index/);
+  assert.match(routes, /pages\/dentist-portal\/endo-core/);
   assert.match(routes, /path="\/dentist-portal\/endo-core"/);
   assert.match(routes, /path="\/dentist-portal\/endo-core\/:caseId"/);
   assert.match(sidebar, /label:\s*'Endo-Core'/);
   assert.match(sidebar, /path:\s*'\/dentist-portal\/endo-core'/);
   assert.match(index, /useParams/);
   for (const component of requiredComponents) {
-    readSource(`src/pages/dentist-portal/Endo-Core/Components/${component}.jsx`);
+    readSource(`src/pages/dentist-portal/endo-core/components/${component}.jsx`);
   }
 });
 
 test('Endo create flow requires patient, FDI tooth, title, and chief complaint', () => {
-  const modal = readSource('src/pages/dentist-portal/Endo-Core/Components/CreateEndoCaseModal.jsx');
+  const modal = readSource('src/pages/dentist-portal/endo-core/components/CreateEndoCaseModal.jsx');
   const service = readSource('src/services/endoCoreService.js');
 
   assert.match(modal, /!patient\?\.id\s*\|\|\s*!form\.toothNumber/);
@@ -42,8 +42,8 @@ test('Endo create flow requires patient, FDI tooth, title, and chief complaint',
 });
 
 test('Endo tooth picker imports the shared permanent FDI rows and never mutates EMR', () => {
-  const picker = readSource('src/pages/dentist-portal/Endo-Core/Components/EndoOdontogramPicker.jsx');
-  const modal = readSource('src/pages/dentist-portal/Endo-Core/Components/CreateEndoCaseModal.jsx');
+  const picker = readSource('src/pages/dentist-portal/endo-core/components/EndoOdontogramPicker.jsx');
+  const modal = readSource('src/pages/dentist-portal/endo-core/components/CreateEndoCaseModal.jsx');
 
   assert.match(picker, /import\s+\{\s*PERMANENT_TEETH_ROWS\s*\}\s+from\s+'..\/..\/patient-emr\/odontogramConfig'/);
   assert.match(picker, /PERMANENT_TEETH_ROWS\.map/);
@@ -53,10 +53,10 @@ test('Endo tooth picker imports the shared permanent FDI rows and never mutates 
 });
 
 test('Endo UI exposes documentation controls without autonomous diagnosis language', () => {
-  const detail = readSource('src/pages/dentist-portal/Endo-Core/Components/EndoCaseDetail.jsx');
-  const diagnostics = readSource('src/pages/dentist-portal/Endo-Core/Components/EndoDiagnosticTests.jsx');
-  const stages = readSource('src/pages/dentist-portal/Endo-Core/Components/EndoTreatmentTimeline.jsx');
-  const evidence = readSource('src/pages/dentist-portal/Endo-Core/Components/EndoXCoreEvidence.jsx');
+  const detail = readSource('src/pages/dentist-portal/endo-core/components/EndoCaseDetail.jsx');
+  const diagnostics = readSource('src/pages/dentist-portal/endo-core/components/EndoDiagnosticTests.jsx');
+  const stages = readSource('src/pages/dentist-portal/endo-core/components/EndoTreatmentTimeline.jsx');
+  const evidence = readSource('src/pages/dentist-portal/endo-core/components/EndoXCoreEvidence.jsx');
 
   assert.match(detail, /Endo-Core structures endodontic documentation\. It does not diagnose, prescribe, or replace dentist judgment\./);
   assert.match(detail, /Working notes are never copied automatically/);

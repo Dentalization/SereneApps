@@ -500,6 +500,7 @@ test('financial hardening: cross-clinic and cross-dentist revenue isolation', as
     // 3. Check isolation bounds for Clinic C
     const clinicIntents = await prisma.paymentIntent.findMany({
       where: {
+        id: { in: [intentA.id, intentB.id, intentClinic.id] },
         ownerType: 'clinic',
         ownerClinicId: clinicProfile.id,
         status: 'settled'
