@@ -5,7 +5,7 @@ import ModalPortal from '../../../../components/ui/ModalPortal';
 import PatientSearchPicker from '../../components/PatientSearchPicker';
 import { getPatientEmrRecords } from '../../../../services/dentistPortalService';
 import { createEndoCase } from '../../../../services/endoCoreService';
-import { listPatientXcoreStudies } from '../../../../services/specialistWorkspaceService';
+import { listPatientXcoreStudies, listSpecialistCases } from '../../../../services/specialistWorkspaceService';
 import { useToast } from '../../../../contexts/ToastContext';
 import EndoOdontogramPicker from './EndoOdontogramPicker';
 
@@ -40,6 +40,10 @@ const CreateEndoCaseModal = ({
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
 
+  const [existingCases, setExistingCases] = useState([]);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+  const [showExistingOnly, setShowExistingOnly] = useState(false);
+
   useEffect(() => {
     if (!isOpen) return;
     setPatient(patientId ? { id: patientId, name: patientName || `Patient #${patientId}` } : null);
@@ -49,6 +53,8 @@ const CreateEndoCaseModal = ({
     setContextError('');
     setError('');
     setCreating(false);
+    setExistingCases([]);
+    setShowExistingOnly(false);
   }, [isOpen, patientId, patientName, appointmentId]);
 
   useEffect(() => {
@@ -78,6 +84,30 @@ const CreateEndoCaseModal = ({
     });
     return () => { active = false; };
   }, [isOpen, patient?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !patient?.id) return undefined;
+    let active = true;
+    setLoadingExisting(true);
+    listSpecialistCases({ patientId: patient.id, caseType: 'endodontic' })
+      .then((res) => {
+        if (!active) return;
+        const activeCases = (res || []).filter((c) => c.status !== 'archived');
+        setExistingCases(activeCases);
+        if (activeCases.length > 0 && appointmentId) {
+          setShowExistingOnly(true);
+        } else {
+          setShowExistingOnly(false);
+        }
+      })
+      .catch(() => {
+        if (active) setExistingCases([]);
+      })
+      .finally(() => {
+        if (active) setLoadingExisting(false);
+      });
+    return () => { active = false; };
+  }, [isOpen, patient?.id, appointmentId]);
 
   if (!isOpen) return null;
 
@@ -119,7 +149,10 @@ const CreateEndoCaseModal = ({
     } catch (requestError) {
       const apiError = requestError.response?.data?.error;
       if (requestError.response?.status === 409 && apiError?.existingCaseId) {
-        toast?.info?.('An active Endo-Core case already exists for this tooth — opening it.');
+        const msg = apiError.code === 'endo_xcore_duplicate_case'
+          ? 'An active Endo-Core case already exists for this X-Core study — opening it.'
+          : 'An active Endo-Core case already exists for this tooth — opening it.';
+        toast?.info?.(msg);
         onClose?.();
         navigate(`/dentist-portal/endo-core/${apiError.existingCaseId}`);
         return;
@@ -145,71 +178,129 @@ const CreateEndoCaseModal = ({
           </div>
 
           <div className="space-y-5 p-6">
-            {patientId ? (
-              <div className="rounded-2xl border border-primary/10 bg-surface-elevated p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Patient</p>
-                <p className="mt-1 font-semibold text-primary">{patient?.name}</p>
+            {showExistingOnly ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-primary/10 bg-surface-elevated p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Patient</p>
+                  <p className="mt-1 font-semibold text-primary">{patient?.name}</p>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-primary">
+                    This patient already has active Endo-Core cases. Would you like to open one?
+                  </p>
+                  {loadingExisting ? (
+                    <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+                      <Icon name="Loader2" size={16} className="animate-spin" />
+                      Checking for existing cases…
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {existingCases.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex items-center justify-between gap-4 rounded-2xl border border-primary/10 bg-surface-elevated p-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-primary">{c.title}</p>
+                            <p className="mt-1 text-xs text-secondary">
+                              Tooth FDI {c.toothNumber || '—'} · diperbarui {new Date(c.updatedAt).toLocaleDateString('id-ID')}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose?.();
+                              navigate(`/dentist-portal/endo-core/${c.id}`);
+                            }}
+                            className="rounded-xl bg-accent px-4 py-2 text-xs font-bold text-white hover:bg-accent/90"
+                          >
+                            Open Case
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
-              <div>
-                <p className="mb-2 text-sm font-semibold text-primary">Pilih pasien *</p>
-                <PatientSearchPicker selectedPatient={patient} onSelect={setPatient} />
-              </div>
-            )}
-
-            {patient?.id && (
               <>
-                {contextLoading && <p className="text-xs text-secondary">Memuat konteks EMR dan X-Core…</p>}
-                {contextError && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{contextError}</p>}
-                <EndoOdontogramPicker value={form.toothNumber} onChange={handleTooth} odontogramMarks={marks} disabled={creating} />
+                {patientId ? (
+                  <div className="rounded-2xl border border-primary/10 bg-surface-elevated p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Patient</p>
+                    <p className="mt-1 font-semibold text-primary">{patient?.name}</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-sm font-semibold text-primary">Pilih pasien *</p>
+                    <PatientSearchPicker selectedPatient={patient} onSelect={setPatient} />
+                  </div>
+                )}
+
+                {patient?.id && (
+                  <>
+                    {contextLoading && <p className="text-xs text-secondary">Memuat konteks EMR dan X-Core…</p>}
+                    {contextError && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{contextError}</p>}
+                    <EndoOdontogramPicker value={form.toothNumber} onChange={handleTooth} odontogramMarks={marks} disabled={creating} />
+                  </>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="text-sm font-semibold text-primary">
+                    Case title *
+                    <input value={form.title} onChange={(event) => setValue('title', event.target.value)} maxLength={240} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
+                  </label>
+                  <label className="text-sm font-semibold text-primary">
+                    X-Core study (optional)
+                    <select value={form.xcoreStudyId} onChange={(event) => setValue('xcoreStudyId', event.target.value)} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent">
+                      <option value="">No linked imaging</option>
+                      {studies.map((study) => (
+                        <option key={study.id} value={study.id}>{study.modality} · {study.description || `Study #${study.id}`}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="block text-sm font-semibold text-primary">
+                  Chief complaint *
+                  <textarea value={form.chiefComplaint} onChange={(event) => setValue('chiefComplaint', event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    ['swelling', 'Swelling'],
+                    ['sinusTract', 'Sinus tract'],
+                    ['previousEndoTreatment', 'Previous endo treatment'],
+                  ].map(([field, label]) => (
+                    <label key={field} className="flex items-center gap-2 rounded-xl border border-primary/10 bg-surface-elevated p-3 text-sm font-medium text-primary">
+                      <input type="checkbox" checked={form[field]} onChange={(event) => setValue(field, event.target.checked)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {form.previousEndoTreatment && (
+                  <label className="block text-sm font-semibold text-primary">
+                    Retreatment reason
+                    <textarea value={form.retreatmentReason} onChange={(event) => setValue('retreatmentReason', event.target.value)} rows={2} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
+                  </label>
+                )}
+                {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
               </>
             )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-semibold text-primary">
-                Case title *
-                <input value={form.title} onChange={(event) => setValue('title', event.target.value)} maxLength={240} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
-              </label>
-              <label className="text-sm font-semibold text-primary">
-                X-Core study (optional)
-                <select value={form.xcoreStudyId} onChange={(event) => setValue('xcoreStudyId', event.target.value)} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent">
-                  <option value="">No linked imaging</option>
-                  {studies.map((study) => (
-                    <option key={study.id} value={study.id}>{study.modality} · {study.description || `Study #${study.id}`}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="block text-sm font-semibold text-primary">
-              Chief complaint *
-              <textarea value={form.chiefComplaint} onChange={(event) => setValue('chiefComplaint', event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                ['swelling', 'Swelling'],
-                ['sinusTract', 'Sinus tract'],
-                ['previousEndoTreatment', 'Previous endo treatment'],
-              ].map(([field, label]) => (
-                <label key={field} className="flex items-center gap-2 rounded-xl border border-primary/10 bg-surface-elevated p-3 text-sm font-medium text-primary">
-                  <input type="checkbox" checked={form[field]} onChange={(event) => setValue(field, event.target.checked)} />
-                  {label}
-                </label>
-              ))}
-            </div>
-            {form.previousEndoTreatment && (
-              <label className="block text-sm font-semibold text-primary">
-                Retreatment reason
-                <textarea value={form.retreatmentReason} onChange={(event) => setValue('retreatmentReason', event.target.value)} rows={2} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-4 py-3 font-normal outline-none focus:border-accent" />
-              </label>
-            )}
-            {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
           </div>
           <div className="sticky bottom-0 flex justify-end gap-3 border-t border-primary/10 bg-surface px-6 py-4">
-            <button type="button" onClick={onClose} disabled={creating} className="rounded-xl border border-primary/15 px-4 py-2.5 text-sm font-semibold text-secondary">Batal</button>
-            <button type="button" onClick={handleSubmit} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-              {creating && <Icon name="Loader2" size={16} className="animate-spin" />}
-              Create Endo Case
-            </button>
+            {showExistingOnly ? (
+              <>
+                <button type="button" onClick={onClose} className="rounded-xl border border-primary/15 px-4 py-2.5 text-sm font-semibold text-secondary">Batal</button>
+                <button type="button" onClick={() => setShowExistingOnly(false)} className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white">Create a New Case</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={onClose} disabled={creating} className="rounded-xl border border-primary/15 px-4 py-2.5 text-sm font-semibold text-secondary">Batal</button>
+                <button type="button" onClick={handleSubmit} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                  {creating && <Icon name="Loader2" size={16} className="animate-spin" />}
+                  Create Endo Case
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -77,6 +77,9 @@ function serializeCaseSummary(caseRecord) {
       name: caseRecord.patient.name || null,
     };
   }
+  if (caseRecord.endoCaseDetail) {
+    summary.toothNumber = caseRecord.endoCaseDetail.toothNumber;
+  }
   return summary;
 }
 
@@ -626,6 +629,11 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
             select: {
               id: true,
               name: true,
+            },
+          },
+          endoCaseDetail: {
+            select: {
+              toothNumber: true,
             },
           },
         },

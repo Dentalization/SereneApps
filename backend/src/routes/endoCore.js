@@ -240,10 +240,29 @@ export function createEndoCoreRouter({ prismaClient }) {
             ...(xcoreStudyId ? [{ xcoreStudyId }] : []),
           ],
         },
-        select: { id: true },
+        select: {
+          id: true,
+          xcoreStudyId: true,
+          endoCaseDetail: {
+            select: { toothNumber: true }
+          }
+        },
       });
       if (duplicate) {
-        const error = specialistWorkspaceError(409, 'endo_tooth_duplicate_case', 'An active Endo-Core case already exists for this tooth.');
+        const isToothMatch = duplicate.endoCaseDetail?.toothNumber === toothNumber;
+        const isStudyMatch = xcoreStudyId && sameBigInt(duplicate.xcoreStudyId, xcoreStudyId);
+        
+        let code = 'endo_tooth_duplicate_case';
+        let msg = 'An active Endo-Core case already exists for this tooth.';
+        if (isToothMatch) {
+          code = 'endo_tooth_duplicate_case';
+          msg = 'An active Endo-Core case already exists for this tooth.';
+        } else if (isStudyMatch) {
+          code = 'endo_xcore_duplicate_case';
+          msg = 'An active Endo-Core case already exists for this X-Core study.';
+        }
+        
+        const error = specialistWorkspaceError(409, code, msg);
         error.existingCaseId = duplicate.id;
         throw error;
       }

@@ -739,6 +739,7 @@ test('Endo-Core MVP enforces FDI, duplicates, ownership, workflow, lifecycle, an
       }),
     });
     assert.equal(duplicateStudy.status, 409);
+    assert.equal(duplicateStudy.json.error.code, 'endo_xcore_duplicate_case');
     assert.equal(duplicateStudy.json.error.existingCaseId, caseId);
 
     const detail = await httpJson(baseUrl, `/v1/specialist-workspace/endo/cases/${caseId}`, tokens.dentist);
