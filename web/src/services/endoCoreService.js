@@ -51,3 +51,40 @@ export async function updateEndoTreatmentStage(caseId, stageId, payload) {
   );
   return data.stage;
 }
+
+export async function getEndoDifficultyAssessment(caseId) {
+  const { data } = await authHttp.get(
+    `/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+  );
+  return data.difficultyAssessment;
+}
+
+export async function saveEndoDifficultyAssessment(caseId, payload) {
+  const { data } = await authHttp.put(
+    `/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+    payload,
+  );
+  return data.difficultyAssessment;
+}
+
+export async function listEndoRadiographEvidence(caseId) {
+  const { data } = await authHttp.get(
+    `/specialist-workspace/endo/cases/${caseId}/radiograph-evidence`,
+  );
+  return data.slots || [];
+}
+
+export async function upsertEndoRadiographEvidence(caseId, evidenceType, payload) {
+  const { data } = await authHttp.put(
+    `/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/${evidenceType}`,
+    payload,
+  );
+  return data.slot;
+}
+
+export async function unlinkEndoRadiographEvidence(caseId, evidenceType) {
+  const { data } = await authHttp.delete(
+    `/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/${evidenceType}`,
+  );
+  return data.unlinked;
+}

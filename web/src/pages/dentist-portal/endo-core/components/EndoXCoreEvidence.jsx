@@ -62,6 +62,10 @@ const EndoXCoreEvidence = ({ evidence, caseId, patientId, editable, onChanged, o
       <h2 className="flex items-center gap-2 text-lg font-bold text-primary">
         <Icon name="ScanLine" size={18} /> X-Core Evidence
       </h2>
+      <p className="mt-2 text-sm text-secondary">
+        Use this as the primary case-level X-Core reference: the single study most relevant
+        to the overall case. Use Radiograph Evidence Slots for workflow-stage-specific studies.
+      </p>
 
       {showPicker ? (
         <div className="mt-4 space-y-3">

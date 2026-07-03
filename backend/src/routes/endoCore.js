@@ -8,8 +8,10 @@ import {
 import { requireXCoreStudyReadAccess, sameBigInt } from '../services/xCoreAccessPolicyService.js';
 import {
   ENDO_DIAGNOSTIC_TEST_TYPES,
+  ENDO_DIFFICULTY_FACTOR_GROUPS,
   ENDO_DIFFICULTY_LEVELS,
   ENDO_FDI_TEETH,
+  ENDO_RADIOGRAPH_EVIDENCE_TYPES,
   ENDO_STAGE_STATUSES,
   ENDO_TREATMENT_STAGE_TYPES,
   parseOptionalDate,
@@ -69,6 +71,8 @@ const caseInclude = {
     include: {
       diagnosticTests: { orderBy: [{ performedAt: 'desc' }, { createdAt: 'desc' }] },
       treatmentStages: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+      difficultyAssessment: true,
+      radiographEvidence: { orderBy: [{ evidenceType: 'asc' }, { id: 'asc' }] },
     },
   },
   notes: {
@@ -98,20 +102,120 @@ function baseSummary(record) {
 }
 function serializeEndo(detail) {
   if (!detail) return null;
+  const {
+    diagnosticTests = [],
+    treatmentStages = [],
+    difficultyAssessment: _difficultyAssessment,
+    radiographEvidence: _radiographEvidence,
+    ...base
+  } = detail;
   return {
-    ...detail,
+    ...base,
     id: asId(detail.id),
     specialistCaseId: asId(detail.specialistCaseId),
-    diagnosticTests: (detail.diagnosticTests || []).map((test) => ({
+    diagnosticTests: diagnosticTests.map((test) => ({
       ...test, id: asId(test.id), endoCaseDetailId: asId(test.endoCaseDetailId),
     })),
-    treatmentStages: (detail.treatmentStages || []).map((stage) => ({
+    treatmentStages: treatmentStages.map((stage) => ({
       ...stage,
       id: asId(stage.id),
       endoCaseDetailId: asId(stage.endoCaseDetailId),
       appointmentId: asId(stage.appointmentId),
     })),
   };
+}
+function emptyDifficultyAssessment(endoCaseDetailId) {
+  return {
+    id: null,
+    endoCaseDetailId: asId(endoCaseDetailId),
+    patientConsiderations: [],
+    diagnosticConsiderations: [],
+    radiographicConsiderations: [],
+    toothMorphologyFactors: [],
+    canalMorphologyFactors: [],
+    previousTreatmentFactors: [],
+    perioEndoFactors: [],
+    traumaResorptionFactors: [],
+    dentistSelectedDifficulty: null,
+    referralConsidered: false,
+    referralReason: null,
+    notes: null,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+function serializeDifficultyAssessment(assessment, endoCaseDetailId) {
+  if (!assessment) return emptyDifficultyAssessment(endoCaseDetailId);
+  return {
+    ...assessment,
+    id: asId(assessment.id),
+    endoCaseDetailId: asId(assessment.endoCaseDetailId),
+    patientConsiderations: assessment.patientConsiderations || [],
+    diagnosticConsiderations: assessment.diagnosticConsiderations || [],
+    radiographicConsiderations: assessment.radiographicConsiderations || [],
+    toothMorphologyFactors: assessment.toothMorphologyFactors || [],
+    canalMorphologyFactors: assessment.canalMorphologyFactors || [],
+    previousTreatmentFactors: assessment.previousTreatmentFactors || [],
+    perioEndoFactors: assessment.perioEndoFactors || [],
+    traumaResorptionFactors: assessment.traumaResorptionFactors || [],
+  };
+}
+function validateDifficultyFactors(payload, field) {
+  const value = payload?.[field] ?? [];
+  const allowed = ENDO_DIFFICULTY_FACTOR_GROUPS[field];
+  if (
+    !Array.isArray(value)
+    || value.some((factor) => typeof factor !== 'string' || !allowed.includes(factor))
+  ) {
+    throw specialistWorkspaceError(
+      400,
+      `invalid_${field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}`,
+      `Invalid ${field}.`,
+    );
+  }
+  return [...new Set(value)];
+}
+function previewFromStudy(study) {
+  return {
+    referenceId: asId(study.id),
+    modality: study.modality,
+    description: study.description || null,
+    status: study.status,
+    studyDate: study.studyDate,
+    openPath: `/dentist-portal/x-core?studyId=${study.id}`,
+  };
+}
+async function serializeRadiographEvidenceSlots(db, record, evidenceRecords, user) {
+  const recordsByType = new Map(
+    (evidenceRecords || []).map((evidence) => [evidence.evidenceType, evidence]),
+  );
+  return Promise.all(ENDO_RADIOGRAPH_EVIDENCE_TYPES.map(async (evidenceType) => {
+    const evidence = recordsByType.get(evidenceType);
+    if (!evidence) return { evidenceType, linked: false };
+    let xcore = { referenceId: asId(evidence.xcoreStudyId), available: false };
+    try {
+      const access = await requireXCoreStudyReadAccess({
+        studyId: evidence.xcoreStudyId,
+        user,
+        prismaClient: db,
+      });
+      if (sameBigInt(access.study.patientId, record.patientId)) {
+        xcore = { ...previewFromStudy(access.study), available: true };
+      }
+    } catch {
+      // Keep the slot unlinkable without exposing study details after access is revoked.
+    }
+    return {
+      evidenceType,
+      linked: true,
+      id: asId(evidence.id),
+      xcoreStudyId: asId(evidence.xcoreStudyId),
+      treatmentStageId: asId(evidence.treatmentStageId),
+      notes: evidence.notes || null,
+      linkedAt: evidence.linkedAt,
+      xcore,
+    };
+  }));
 }
 function serializePatient(patient) {
   return {
@@ -188,6 +292,17 @@ async function validateAppointment(db, appointmentId, record) {
   });
   if (!appointment) throw specialistWorkspaceError(403, 'endo_appointment_scope_denied');
   return id;
+}
+async function lockEditableEndoCase(tx, record) {
+  const rows = await tx.$queryRaw`
+    SELECT status
+    FROM specialist_cases
+    WHERE id = ${record.id}
+    FOR UPDATE
+  `;
+  if (!rows[0] || !['draft', 'active'].includes(rows[0].status)) {
+    throw specialistWorkspaceError(409, 'endo_case_not_editable');
+  }
 }
 
 export function createEndoCoreRouter({ prismaClient }) {
@@ -330,11 +445,23 @@ export function createEndoCoreRouter({ prismaClient }) {
       where: { id: specialistCase.id },
       include: caseInclude,
     });
+    const difficultyAssessment = serializeDifficultyAssessment(
+      record.endoCaseDetail.difficultyAssessment,
+      record.endoCaseDetail.id,
+    );
+    const radiographEvidenceSlots = await serializeRadiographEvidenceSlots(
+      prismaClient,
+      record,
+      record.endoCaseDetail.radiographEvidence,
+      req.user,
+    );
     res.json({ case: {
       ...baseSummary(record),
       patient: serializePatient(record.patient),
       appointment: serializeAppointment(record.originAppointment),
       endo: serializeEndo(record.endoCaseDetail),
+      difficultyAssessment,
+      radiographEvidenceSlots,
       xcore: await xcorePreview(prismaClient, record, req.user),
       notes: record.notes.map((note) => ({
         id: asId(note.id), content: note.content, authorName: note.authorDentist?.name || null,
@@ -345,6 +472,248 @@ export function createEndoCoreRouter({ prismaClient }) {
       })),
     } });
   }));
+
+  router.get('/cases/:caseId/difficulty-assessment', route(async (req, res) => {
+    const record = await requireEndoCase(prismaClient, req.user, req.params.caseId);
+    const assessment = await prismaClient.endoDifficultyAssessment.findUnique({
+      where: { endoCaseDetailId: record.endoCaseDetail.id },
+    });
+    res.json({
+      difficultyAssessment: serializeDifficultyAssessment(
+        assessment,
+        record.endoCaseDetail.id,
+      ),
+    });
+  }));
+
+  router.put('/cases/:caseId/difficulty-assessment', route(async (req, res) => {
+    const record = await requireEndoCase(
+      prismaClient,
+      req.user,
+      req.params.caseId,
+      { editable: true },
+    );
+    const dentistSelectedDifficulty = (
+      req.body?.dentistSelectedDifficulty === undefined
+      || req.body?.dentistSelectedDifficulty === null
+      || req.body?.dentistSelectedDifficulty === ''
+    )
+      ? null
+      : requireAllowed(
+          req.body.dentistSelectedDifficulty,
+          ENDO_DIFFICULTY_LEVELS,
+          'invalid_endo_difficulty_level',
+        );
+    if (
+      req.body?.referralConsidered !== undefined
+      && typeof req.body.referralConsidered !== 'boolean'
+    ) {
+      throw specialistWorkspaceError(400, 'invalid_referral_considered');
+    }
+    const data = {};
+    for (const field of Object.keys(ENDO_DIFFICULTY_FACTOR_GROUPS)) {
+      data[field] = validateDifficultyFactors(req.body, field);
+    }
+    Object.assign(data, {
+      dentistSelectedDifficulty,
+      referralConsidered: req.body?.referralConsidered === true,
+      referralReason: req.body?.referralConsidered === true
+        ? cleanText(req.body?.referralReason, 'referral_reason', { max: 4_000 })
+        : null,
+      notes: cleanText(req.body?.notes, 'notes', { max: 10_000 }),
+    });
+    const assessment = await prismaClient.$transaction(async (tx) => {
+      await lockEditableEndoCase(tx, record);
+      const saved = await tx.endoDifficultyAssessment.upsert({
+        where: { endoCaseDetailId: record.endoCaseDetail.id },
+        create: { endoCaseDetailId: record.endoCaseDetail.id, ...data },
+        update: data,
+      });
+      await tx.endoCaseDetail.update({
+        where: { id: record.endoCaseDetail.id },
+        data: { difficultyLevel: dentistSelectedDifficulty },
+      });
+      await tx.specialistCase.update({
+        where: { id: record.id },
+        data: { updatedAt: new Date() },
+      });
+      await timeline(
+        tx,
+        record.id,
+        record.dentistId,
+        'endo_difficulty_assessment_updated',
+        { dentistSelectedDifficulty, referralConsidered: data.referralConsidered },
+      );
+      return saved;
+    });
+    res.json({
+      difficultyAssessment: serializeDifficultyAssessment(
+        assessment,
+        record.endoCaseDetail.id,
+      ),
+    });
+  }));
+
+  router.get('/cases/:caseId/radiograph-evidence', route(async (req, res) => {
+    const record = await requireEndoCase(prismaClient, req.user, req.params.caseId);
+    const evidence = await prismaClient.endoRadiographEvidence.findMany({
+      where: { endoCaseDetailId: record.endoCaseDetail.id },
+      orderBy: [{ evidenceType: 'asc' }, { id: 'asc' }],
+    });
+    res.json({
+      slots: await serializeRadiographEvidenceSlots(
+        prismaClient,
+        record,
+        evidence,
+        req.user,
+      ),
+    });
+  }));
+
+  router.put(
+    '/cases/:caseId/radiograph-evidence/:evidenceType',
+    route(async (req, res) => {
+      const record = await requireEndoCase(
+        prismaClient,
+        req.user,
+        req.params.caseId,
+        { editable: true },
+      );
+      const evidenceType = requireAllowed(
+        req.params.evidenceType,
+        ENDO_RADIOGRAPH_EVIDENCE_TYPES,
+        'invalid_endo_radiograph_evidence_type',
+      );
+      const xcoreStudyId = specialistWorkspaceId(
+        req.body?.xcoreStudyId,
+        'xcore_study_id',
+      );
+      const access = await requireXCoreStudyReadAccess({
+        studyId: xcoreStudyId,
+        user: req.user,
+        prismaClient,
+      });
+      if (!sameBigInt(access.study.patientId, record.patientId)) {
+        throw specialistWorkspaceError(
+          403,
+          'xcore_study_patient_mismatch',
+          'The selected X-Core study does not belong to this patient.',
+        );
+      }
+      let treatmentStageId = null;
+      if (req.body?.treatmentStageId) {
+        treatmentStageId = specialistWorkspaceId(
+          req.body.treatmentStageId,
+          'treatment_stage_id',
+        );
+        const stage = await prismaClient.endoTreatmentStage.findFirst({
+          where: {
+            id: treatmentStageId,
+            endoCaseDetailId: record.endoCaseDetail.id,
+          },
+          select: { id: true },
+        });
+        if (!stage) {
+          throw specialistWorkspaceError(
+            403,
+            'endo_treatment_stage_scope_denied',
+            'The selected treatment stage does not belong to this Endo case.',
+          );
+        }
+      }
+      const notes = cleanText(req.body?.notes, 'notes', { max: 10_000 });
+      const evidence = await prismaClient.$transaction(async (tx) => {
+        await lockEditableEndoCase(tx, record);
+        const saved = await tx.endoRadiographEvidence.upsert({
+          where: {
+            endoCaseDetailId_evidenceType: {
+              endoCaseDetailId: record.endoCaseDetail.id,
+              evidenceType,
+            },
+          },
+          create: {
+            endoCaseDetailId: record.endoCaseDetail.id,
+            evidenceType,
+            xcoreStudyId,
+            treatmentStageId,
+            notes,
+          },
+          update: {
+            xcoreStudyId,
+            treatmentStageId,
+            notes,
+            linkedAt: new Date(),
+          },
+        });
+        await tx.specialistCase.update({
+          where: { id: record.id },
+          data: { updatedAt: new Date() },
+        });
+        await timeline(
+          tx,
+          record.id,
+          record.dentistId,
+          'endo_radiograph_evidence_linked',
+          {
+            evidenceType,
+            xcoreStudyId: asId(xcoreStudyId),
+            ...(treatmentStageId
+              ? { treatmentStageId: asId(treatmentStageId) }
+              : {}),
+          },
+        );
+        return saved;
+      });
+      const [slot] = await serializeRadiographEvidenceSlots(
+        prismaClient,
+        record,
+        [evidence],
+        req.user,
+      ).then((slots) => slots.filter((item) => item.evidenceType === evidenceType));
+      res.json({ slot });
+    }),
+  );
+
+  router.delete(
+    '/cases/:caseId/radiograph-evidence/:evidenceType',
+    route(async (req, res) => {
+      const record = await requireEndoCase(
+        prismaClient,
+        req.user,
+        req.params.caseId,
+        { editable: true },
+      );
+      const evidenceType = requireAllowed(
+        req.params.evidenceType,
+        ENDO_RADIOGRAPH_EVIDENCE_TYPES,
+        'invalid_endo_radiograph_evidence_type',
+      );
+      const unlinked = await prismaClient.$transaction(async (tx) => {
+        await lockEditableEndoCase(tx, record);
+        const removed = await tx.endoRadiographEvidence.deleteMany({
+          where: {
+            endoCaseDetailId: record.endoCaseDetail.id,
+            evidenceType,
+          },
+        });
+        if (removed.count > 0) {
+          await tx.specialistCase.update({
+            where: { id: record.id },
+            data: { updatedAt: new Date() },
+          });
+          await timeline(
+            tx,
+            record.id,
+            record.dentistId,
+            'endo_radiograph_evidence_unlinked',
+            { evidenceType },
+          );
+        }
+        return removed.count > 0;
+      });
+      res.json({ unlinked });
+    }),
+  );
 
   router.patch('/cases/:caseId', route(async (req, res) => {
     const record = await requireEndoCase(prismaClient, req.user, req.params.caseId, { editable: true });

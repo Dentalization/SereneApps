@@ -13,62 +13,62 @@ datasource db {
 }
 
 model User {
-  id                                                             BigInt                     @id @default(autoincrement())
+  id                                                             BigInt                          @id @default(autoincrement())
   name                                                           String
-  email                                                          String                     @unique
+  email                                                          String                          @unique
   password_hash                                                  String
-  roles                                                          String[]                   @default([])
-  createdAt                                                      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  roles                                                          String[]                        @default([])
+  createdAt                                                      DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
   phone_number                                                   String?
   about                                                          String?
   avatar_url                                                     String?
   clinic_id                                                      BigInt?
-  lastLoginAt                                                    DateTime?                  @map("last_login_at") @db.Timestamptz(6)
+  lastLoginAt                                                    DateTime?                       @map("last_login_at") @db.Timestamptz(6)
   aiAnalysisResults                                              AIAnalysisResult[]
   aiChatMessages                                                 AIChatMessage[]
   appointmentStatusHistory                                       AppointmentStatusHistory[]
-  dentistAppointments                                            Appointment[]              @relation("DentistAppointments")
-  patientAppointments                                            Appointment[]              @relation("PatientAppointments")
+  dentistAppointments                                            Appointment[]                   @relation("DentistAppointments")
+  patientAppointments                                            Appointment[]                   @relation("PatientAppointments")
   chatMessages                                                   ChatMessage[]
   chatRoomMemberships                                            ChatRoomMember[]
   clinicProfile                                                  ClinicProfile[]
   clinicStaff                                                    ClinicStaff?
-  dentist_emr_records_dentist_emr_records_dentist_idTousers      dentist_emr_records[]      @relation("dentist_emr_records_dentist_idTousers")
-  dentist_emr_records_dentist_emr_records_patient_user_idTousers dentist_emr_records[]      @relation("dentist_emr_records_patient_user_idTousers")
+  dentist_emr_records_dentist_emr_records_dentist_idTousers      dentist_emr_records[]           @relation("dentist_emr_records_dentist_idTousers")
+  dentist_emr_records_dentist_emr_records_patient_user_idTousers dentist_emr_records[]           @relation("dentist_emr_records_patient_user_idTousers")
   dentistProfile                                                 DentistProfile[]
   scheduleEntries                                                DentistScheduleEntry[]
-  dentistStudies                                                 ImagingStudy[]             @relation("DentistStudies")
-  patientStudies                                                 ImagingStudy[]             @relation("PatientStudies")
+  dentistStudies                                                 ImagingStudy[]                  @relation("DentistStudies")
+  patientStudies                                                 ImagingStudy[]                  @relation("PatientStudies")
   notificationDevices                                            NotificationDevice[]
   notificationJobs                                               NotificationJob[]
   notificationPreferences                                        NotificationPreference[]
   notifications                                                  Notification[]
   patientProfile                                                 PatientProfile?
   paymentIntents                                                 PaymentIntent[]
-  ownedPaymentIntents                                            PaymentIntent[]              @relation("PaymentIntentOwnerDentist")
-  financialLedgerEntries                                         FinancialLedgerEntry[]       @relation("FinancialLedgerDentist")
-  ownedInvoices                                                  Invoice[]                   @relation("InvoiceOwnerDentist")
+  ownedPaymentIntents                                            PaymentIntent[]                 @relation("PaymentIntentOwnerDentist")
+  financialLedgerEntries                                         FinancialLedgerEntry[]          @relation("FinancialLedgerDentist")
+  ownedInvoices                                                  Invoice[]                       @relation("InvoiceOwnerDentist")
   invoices                                                       Invoice[]
   refreshTokens                                                  RefreshToken[]
   user_devices                                                   UserDevice[]
-  createdTreatmentPlans                                          TreatmentPlan[]            @relation("DentistTreatmentPlans")
-  patientTreatmentPlans                                          TreatmentPlan[]            @relation("PatientTreatmentPlans")
-  createdStudyAnnotations                                        StudyAnnotation[]          @relation("StudyAnnotationCreator")
-  reviewedStudyAnnotations                                       StudyAnnotation[]          @relation("StudyAnnotationReviewer")
-  createdAnnotationSnapshots                                     AnnotationSnapshot[]       @relation("AnnotationSnapshotCreator")
-  ownedStudyDentistShares                                        StudyDentistShare[]        @relation("StudyDentistShareOwner")
-  receivedStudyDentistShares                                     StudyDentistShare[]        @relation("StudyDentistShareRecipient")
-  createdStudyDentistShares                                      StudyDentistShare[]        @relation("StudyDentistShareCreator")
-  actedRefunds                                                   Refund[]                   @relation("RefundActor")
-  financialAuditLogs                                             FinancialAuditLog[]        @relation("FinancialAuditActor")
-  ownershipRequestsRequested                                     OwnershipCorrectionRequest[] @relation("CorrectionRequester")
-  ownershipLogsActed                                             OwnershipCorrectionLog[]     @relation("CorrectionActor")
-  compensationEntries                                            DentistCompensationEntry[]  @relation("DentistCompensation")
-  ownedSettlements                                               PaymentSettlement[]          @relation("SettlementOwnerDentist")
-  specialistCasesAsPatient                                       SpecialistCase[]              @relation("SpecialistCasePatient")
-  specialistCasesAsDentist                                       SpecialistCase[]              @relation("SpecialistCaseDentist")
-  specialistCaseNotes                                            SpecialistCaseNote[]          @relation("SpecialistCaseNoteAuthor")
-  specialistCaseTimelineEvents                                   SpecialistCaseTimelineEvent[] @relation("SpecialistCaseTimelineActor")
+  createdTreatmentPlans                                          TreatmentPlan[]                 @relation("DentistTreatmentPlans")
+  patientTreatmentPlans                                          TreatmentPlan[]                 @relation("PatientTreatmentPlans")
+  createdStudyAnnotations                                        StudyAnnotation[]               @relation("StudyAnnotationCreator")
+  reviewedStudyAnnotations                                       StudyAnnotation[]               @relation("StudyAnnotationReviewer")
+  createdAnnotationSnapshots                                     AnnotationSnapshot[]            @relation("AnnotationSnapshotCreator")
+  ownedStudyDentistShares                                        StudyDentistShare[]             @relation("StudyDentistShareOwner")
+  receivedStudyDentistShares                                     StudyDentistShare[]             @relation("StudyDentistShareRecipient")
+  createdStudyDentistShares                                      StudyDentistShare[]             @relation("StudyDentistShareCreator")
+  actedRefunds                                                   Refund[]                        @relation("RefundActor")
+  financialAuditLogs                                             FinancialAuditLog[]             @relation("FinancialAuditActor")
+  ownershipRequestsRequested                                     OwnershipCorrectionRequest[]    @relation("CorrectionRequester")
+  ownershipLogsActed                                             OwnershipCorrectionLog[]        @relation("CorrectionActor")
+  compensationEntries                                            DentistCompensationEntry[]      @relation("DentistCompensation")
+  ownedSettlements                                               PaymentSettlement[]             @relation("SettlementOwnerDentist")
+  specialistCasesAsPatient                                       SpecialistCase[]                @relation("SpecialistCasePatient")
+  specialistCasesAsDentist                                       SpecialistCase[]                @relation("SpecialistCaseDentist")
+  specialistCaseNotes                                            SpecialistCaseNote[]            @relation("SpecialistCaseNoteAuthor")
+  specialistCaseTimelineEvents                                   SpecialistCaseTimelineEvent[]   @relation("SpecialistCaseTimelineActor")
   previousImagingStudyAssignments                                ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPreviousPatient")
   imagingStudyAssignments                                        ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPatient")
   performedImagingStudyAssignments                               ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentDentist")
@@ -145,54 +145,54 @@ model DentistProfile {
 }
 
 model ClinicProfile {
-  id                         BigInt         @id @default(autoincrement())
-  userId                     BigInt         @map("user_id")
-  legalName                  String         @map("legal_name") @db.VarChar
-  brandName                  String?        @map("brand_name") @db.VarChar
-  facilityType               String         @map("facility_type") @db.VarChar
-  streetAddress              String         @map("street_address") @db.VarChar
-  city                       String         @db.VarChar
-  province                   String         @db.VarChar
-  postalCode                 String         @map("postal_code") @db.VarChar
-  phone                      String         @db.VarChar
-  email                      String         @db.VarChar
-  timezone                   String         @default("Asia/Jakarta") @db.VarChar
-  operatingHours             Json           @map("operating_hours")
-  ownerName                  String         @map("owner_name") @db.VarChar
-  ownerPosition              String         @map("owner_position") @db.VarChar
-  ownerEmail                 String         @map("owner_email") @db.VarChar
-  ownerWhatsapp              String         @map("owner_whatsapp") @db.VarChar
-  ownerNik                   String         @unique @map("owner_nik") @db.VarChar
-  ktpFilePath                String         @map("ktp_file_path") @db.VarChar
-  ktpSelfieFilePath          String?        @map("ktp_selfie_file_path") @db.VarChar
-  nibNumber                  String         @unique @map("nib_number") @db.VarChar
-  nibFilePath                String         @map("nib_file_path") @db.VarChar
-  npwpNumber                 String         @unique @map("npwp_number") @db.VarChar
-  npwpFilePath               String         @map("npwp_file_path") @db.VarChar
-  operationalLicenseFilePath String         @map("operational_license_file_path") @db.VarChar
-  additionalLicenseFilePaths String[]       @default([]) @map("additional_license_file_paths")
-  termsAccepted              Boolean        @default(false) @map("terms_accepted")
-  privacyAccepted            Boolean        @default(false) @map("privacy_accepted")
-  dataProtectionContact      String?        @map("data_protection_contact") @db.VarChar
-  isVerified                 Boolean        @default(false) @map("is_verified")
-  verificationDate           DateTime?      @map("verification_date") @db.Timestamptz(6)
-  verificationNotes          String?        @map("verification_notes")
-  status                     String         @default("pending") @db.VarChar
-  createdAt                  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                  DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  latitude                   Decimal?       @db.Decimal(10, 8)
-  longitude                  Decimal?       @db.Decimal(11, 8)
+  id                         BigInt                     @id @default(autoincrement())
+  userId                     BigInt                     @map("user_id")
+  legalName                  String                     @map("legal_name") @db.VarChar
+  brandName                  String?                    @map("brand_name") @db.VarChar
+  facilityType               String                     @map("facility_type") @db.VarChar
+  streetAddress              String                     @map("street_address") @db.VarChar
+  city                       String                     @db.VarChar
+  province                   String                     @db.VarChar
+  postalCode                 String                     @map("postal_code") @db.VarChar
+  phone                      String                     @db.VarChar
+  email                      String                     @db.VarChar
+  timezone                   String                     @default("Asia/Jakarta") @db.VarChar
+  operatingHours             Json                       @map("operating_hours")
+  ownerName                  String                     @map("owner_name") @db.VarChar
+  ownerPosition              String                     @map("owner_position") @db.VarChar
+  ownerEmail                 String                     @map("owner_email") @db.VarChar
+  ownerWhatsapp              String                     @map("owner_whatsapp") @db.VarChar
+  ownerNik                   String                     @unique @map("owner_nik") @db.VarChar
+  ktpFilePath                String                     @map("ktp_file_path") @db.VarChar
+  ktpSelfieFilePath          String?                    @map("ktp_selfie_file_path") @db.VarChar
+  nibNumber                  String                     @unique @map("nib_number") @db.VarChar
+  nibFilePath                String                     @map("nib_file_path") @db.VarChar
+  npwpNumber                 String                     @unique @map("npwp_number") @db.VarChar
+  npwpFilePath               String                     @map("npwp_file_path") @db.VarChar
+  operationalLicenseFilePath String                     @map("operational_license_file_path") @db.VarChar
+  additionalLicenseFilePaths String[]                   @default([]) @map("additional_license_file_paths")
+  termsAccepted              Boolean                    @default(false) @map("terms_accepted")
+  privacyAccepted            Boolean                    @default(false) @map("privacy_accepted")
+  dataProtectionContact      String?                    @map("data_protection_contact") @db.VarChar
+  isVerified                 Boolean                    @default(false) @map("is_verified")
+  verificationDate           DateTime?                  @map("verification_date") @db.Timestamptz(6)
+  verificationNotes          String?                    @map("verification_notes")
+  status                     String                     @default("pending") @db.VarChar
+  createdAt                  DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  latitude                   Decimal?                   @db.Decimal(10, 8)
+  longitude                  Decimal?                   @db.Decimal(11, 8)
   district                   String?
   branches                   ClinicBranch[]
-  user                       User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user                       User                       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   staff                      ClinicStaff[]
-  ownedPaymentIntents        PaymentIntent[]     @relation("PaymentIntentOwnerClinic")
-  financialLedgerEntries     FinancialLedgerEntry[] @relation("FinancialLedgerClinic")
-  invoices                   Invoice[]          @relation("InvoiceOwnerClinic")
+  ownedPaymentIntents        PaymentIntent[]            @relation("PaymentIntentOwnerClinic")
+  financialLedgerEntries     FinancialLedgerEntry[]     @relation("FinancialLedgerClinic")
+  invoices                   Invoice[]                  @relation("InvoiceOwnerClinic")
   ownedAppointments          Appointment[]
-  ownedSettlements           PaymentSettlement[]          @relation("SettlementOwnerClinic")
-  compensationEntries        DentistCompensationEntry[]  @relation("ClinicCompensation")
-  treatmentPlans             TreatmentPlan[]             @relation("ClinicTreatmentPlans")
+  ownedSettlements           PaymentSettlement[]        @relation("SettlementOwnerClinic")
+  compensationEntries        DentistCompensationEntry[] @relation("ClinicCompensation")
+  treatmentPlans             TreatmentPlan[]            @relation("ClinicTreatmentPlans")
   specialistCases            SpecialistCase[]
 
   @@index([userId], map: "idx_clinic_profiles_user_id")
@@ -274,16 +274,16 @@ model ClinicStaff {
 }
 
 model PatientProfile {
-  id                BigInt    @id @default(autoincrement())
-  userId            BigInt    @unique @map("user_id")
-  dateOfBirth       DateTime? @map("date_of_birth") @db.Date
+  id                BigInt          @id @default(autoincrement())
+  userId            BigInt          @unique @map("user_id")
+  dateOfBirth       DateTime?       @map("date_of_birth") @db.Date
   gender            String?
-  insuranceProvider String?   @map("insurance_provider")
-  insuranceNumber   String?   @map("insurance_number")
-  insuranceMemberId String?   @map("insurance_member_id")
-  emergencyContact  Json?     @map("emergency_contact")
+  insuranceProvider String?         @map("insurance_provider")
+  insuranceNumber   String?         @map("insurance_number")
+  insuranceMemberId String?         @map("insurance_member_id")
+  emergencyContact  Json?           @map("emergency_contact")
   address           Json?
-  medicalDetails    Json?     @map("medical_details")
+  medicalDetails    Json?           @map("medical_details")
   preferredLanguage String          @default("id") @map("preferred_language")
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -296,50 +296,50 @@ model PatientProfile {
 }
 
 model Appointment {
-  id                 BigInt                     @id @default(autoincrement())
-  dentistId          BigInt                     @map("dentist_id")
-  patientId          BigInt                     @map("patient_id")
-  clinicBranchId     BigInt?                    @map("clinic_branch_id")
+  id                        BigInt                                @id @default(autoincrement())
+  dentistId                 BigInt                                @map("dentist_id")
+  patientId                 BigInt                                @map("patient_id")
+  clinicBranchId            BigInt?                               @map("clinic_branch_id")
   /// Financial transaction owner: "clinic" or "dentist" (independent dentist).
-  ownerType          String                     @default("dentist") @map("owner_type") @db.VarChar(24)
-  ownerClinicId      BigInt?                    @map("owner_clinic_id")
-  startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
-  endsAt             DateTime                   @map("ends_at") @db.Timestamptz(6)
-  status             String                     @default("scheduled") @db.VarChar
-  reason             String?
-  notes              String?
-  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  chatRoomRef        String?                    @map("chat_room_ref")
-  videoRoomRef       String?                    @map("video_room_ref")
-  video_room_sid     String?
-  commStatus         String                     @default("pending") @map("comm_status") @db.VarChar
-  cancellationReason String?                    @map("cancellation_reason") @db.VarChar
-  cancellationFee    Int?                       @map("cancellation_fee")
-  rescheduledFromId  BigInt?                    @map("rescheduled_from_id")
-  metadata           Json?                      @default("{}")
-  consultationType   String?                    @default("onsite") @map("consultation_type") @db.VarChar
-  statusHistory      AppointmentStatusHistory[]
-  clinicBranch       ClinicBranch?              @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
-  ownerClinic        ClinicProfile?             @relation(fields: [ownerClinicId], references: [id], onUpdate: NoAction)
-  dentist            User                       @relation("DentistAppointments", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  patient            User                       @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  rescheduledFrom    Appointment?               @relation("AppointmentRescheduleChain", fields: [rescheduledFromId], references: [id], onUpdate: NoAction)
-  rescheduledTo      Appointment[]              @relation("AppointmentRescheduleChain")
-  chatRoom           ChatRoom?
-  paymentIntents     PaymentIntent[]            @relation("AppointmentPaymentIntents")
-  invoices           Invoice[]                  @relation("AppointmentInvoices")
-  treatmentPlans     TreatmentPlan[]            @relation("AppointmentTreatmentPlans")
-  financialEntries   FinancialLedgerEntry[]
-  videoSessions      VideoSession[]
-  communicationEvents CommunicationEvent[]
-  compensationEntries DentistCompensationEntry[]
-  clinicalSummary    AppointmentClinicalSummary?
+  ownerType                 String                                @default("dentist") @map("owner_type") @db.VarChar(24)
+  ownerClinicId             BigInt?                               @map("owner_clinic_id")
+  startsAt                  DateTime                              @map("starts_at") @db.Timestamptz(6)
+  endsAt                    DateTime                              @map("ends_at") @db.Timestamptz(6)
+  status                    String                                @default("scheduled") @db.VarChar
+  reason                    String?
+  notes                     String?
+  createdAt                 DateTime                              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  chatRoomRef               String?                               @map("chat_room_ref")
+  videoRoomRef              String?                               @map("video_room_ref")
+  video_room_sid            String?
+  commStatus                String                                @default("pending") @map("comm_status") @db.VarChar
+  cancellationReason        String?                               @map("cancellation_reason") @db.VarChar
+  cancellationFee           Int?                                  @map("cancellation_fee")
+  rescheduledFromId         BigInt?                               @map("rescheduled_from_id")
+  metadata                  Json?                                 @default("{}")
+  consultationType          String?                               @default("onsite") @map("consultation_type") @db.VarChar
+  statusHistory             AppointmentStatusHistory[]
+  clinicBranch              ClinicBranch?                         @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
+  ownerClinic               ClinicProfile?                        @relation(fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  dentist                   User                                  @relation("DentistAppointments", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patient                   User                                  @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rescheduledFrom           Appointment?                          @relation("AppointmentRescheduleChain", fields: [rescheduledFromId], references: [id], onUpdate: NoAction)
+  rescheduledTo             Appointment[]                         @relation("AppointmentRescheduleChain")
+  chatRoom                  ChatRoom?
+  paymentIntents            PaymentIntent[]                       @relation("AppointmentPaymentIntents")
+  invoices                  Invoice[]                             @relation("AppointmentInvoices")
+  treatmentPlans            TreatmentPlan[]                       @relation("AppointmentTreatmentPlans")
+  financialEntries          FinancialLedgerEntry[]
+  videoSessions             VideoSession[]
+  communicationEvents       CommunicationEvent[]
+  compensationEntries       DentistCompensationEntry[]
+  clinicalSummary           AppointmentClinicalSummary?
   communicationParticipants AppointmentCommunicationParticipant[]
-  followUpTasks      AppointmentFollowUpTask[]
-  preSessionHealthForm AppointmentPreSessionHealthForm?
-  specialistCases     SpecialistCase[]
-  endoTreatmentStages EndoTreatmentStage[]
+  followUpTasks             AppointmentFollowUpTask[]
+  preSessionHealthForm      AppointmentPreSessionHealthForm?
+  specialistCases           SpecialistCase[]
+  endoTreatmentStages       EndoTreatmentStage[]
 
   @@index([dentistId, startsAt], map: "idx_appointments_dentist_time")
   @@index([patientId, startsAt], map: "idx_appointments_patient_time")
@@ -350,16 +350,16 @@ model Appointment {
 
 model AppointmentPreSessionHealthForm {
   id            BigInt      @id @default(autoincrement())
-  appointmentId BigInt     @unique @map("appointment_id")
-  patientId     BigInt     @map("patient_id")
+  appointmentId BigInt      @unique @map("appointment_id")
+  patientId     BigInt      @map("patient_id")
   symptoms      String?
-  painLevel     Int?       @map("pain_level")
+  painLevel     Int?        @map("pain_level")
   allergies     String?
   medications   String?
   notes         String?
-  answers       Json?      @default("{}")
-  submittedAt   DateTime   @default(now()) @map("submitted_at") @db.Timestamptz(6)
-  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  answers       Json?       @default("{}")
+  submittedAt   DateTime    @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([patientId, submittedAt], map: "idx_pre_session_health_forms_patient_submitted")
@@ -386,29 +386,29 @@ model AppointmentStatusHistory {
 }
 
 model SpecialistCase {
-  id                  BigInt   @id @default(autoincrement())
-  patientId           BigInt   @map("patient_id")
-  dentistId           BigInt   @map("dentist_id")
-  clinicProfileId     BigInt?  @map("clinic_profile_id")
-  clinicBranchId      BigInt?  @map("clinic_branch_id")
-  originAppointmentId BigInt?  @map("origin_appointment_id")
-  xcoreStudyId        BigInt?  @map("xcore_study_id")
-  xcoreVerifiedCaseId String?  @map("xcore_verified_case_id") @db.VarChar(64)
-  caseType            String   @default("radiology") @map("case_type") @db.VarChar(32)
-  status              String   @default("draft") @db.VarChar(32)
+  id                  BigInt                        @id @default(autoincrement())
+  patientId           BigInt                        @map("patient_id")
+  dentistId           BigInt                        @map("dentist_id")
+  clinicProfileId     BigInt?                       @map("clinic_profile_id")
+  clinicBranchId      BigInt?                       @map("clinic_branch_id")
+  originAppointmentId BigInt?                       @map("origin_appointment_id")
+  xcoreStudyId        BigInt?                       @map("xcore_study_id")
+  xcoreVerifiedCaseId String?                       @map("xcore_verified_case_id") @db.VarChar(64)
+  caseType            String                        @default("radiology") @map("case_type") @db.VarChar(32)
+  status              String                        @default("draft") @db.VarChar(32)
   title               String
   summary             String?
-  completionSummary   String?  @map("completion_summary")
-  completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
-  archivedAt          DateTime? @map("archived_at") @db.Timestamptz(6)
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  patient             User     @relation("SpecialistCasePatient", fields: [patientId], references: [id], onUpdate: NoAction)
-  dentist             User     @relation("SpecialistCaseDentist", fields: [dentistId], references: [id], onUpdate: NoAction)
-  clinicProfile       ClinicProfile? @relation(fields: [clinicProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  clinicBranch        ClinicBranch? @relation(fields: [clinicBranchId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  originAppointment   Appointment? @relation(fields: [originAppointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  xcoreStudy          ImagingStudy? @relation(fields: [xcoreStudyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  completionSummary   String?                       @map("completion_summary")
+  completedAt         DateTime?                     @map("completed_at") @db.Timestamptz(6)
+  archivedAt          DateTime?                     @map("archived_at") @db.Timestamptz(6)
+  createdAt           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient             User                          @relation("SpecialistCasePatient", fields: [patientId], references: [id], onUpdate: NoAction)
+  dentist             User                          @relation("SpecialistCaseDentist", fields: [dentistId], references: [id], onUpdate: NoAction)
+  clinicProfile       ClinicProfile?                @relation(fields: [clinicProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  clinicBranch        ClinicBranch?                 @relation(fields: [clinicBranchId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  originAppointment   Appointment?                  @relation(fields: [originAppointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  xcoreStudy          ImagingStudy?                 @relation(fields: [xcoreStudyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   notes               SpecialistCaseNote[]
   timelineEvents      SpecialistCaseTimelineEvent[]
   endoCaseDetail      EndoCaseDetail?
@@ -424,49 +424,51 @@ model SpecialistCase {
 }
 
 model EndoCaseDetail {
-  id                       BigInt   @id @default(autoincrement())
-  specialistCaseId         BigInt   @unique @map("specialist_case_id")
-  toothNumber              String   @map("tooth_number") @db.VarChar(2)
-  odontogramPosition       String?  @map("odontogram_position") @db.VarChar(16)
-  odontogramCodeAtCreation String?  @map("odontogram_code_at_creation") @db.VarChar(32)
-  chiefComplaint           String   @map("chief_complaint")
-  pulpDiagnosis            String?  @map("pulp_diagnosis")
-  periapicalDiagnosis      String?  @map("periapical_diagnosis")
-  swelling                 Boolean  @default(false)
-  sinusTract               Boolean  @default(false) @map("sinus_tract")
-  spontaneousPain          Boolean? @map("spontaneous_pain")
-  lingeringPain            Boolean? @map("lingering_pain")
-  thermalSensitivity       Boolean? @map("thermal_sensitivity")
-  bitingPain               Boolean? @map("biting_pain")
-  difficultyLevel          String?  @map("difficulty_level") @db.VarChar(32)
-  difficultyFactors        Json?    @default("[]") @map("difficulty_factors")
-  previousEndoTreatment    Boolean  @default(false) @map("previous_endo_treatment")
-  retreatmentReason        String?  @map("retreatment_reason")
-  restorabilityStatus      String?  @map("restorability_status") @db.VarChar(64)
-  finalRestorationStatus   String?  @map("final_restoration_status") @db.VarChar(64)
-  traumaHistory            String?  @map("trauma_history")
-  periodontalConcern       String?  @map("periodontal_concern")
-  cbctConsidered           Boolean  @default(false) @map("cbct_considered")
-  cbctReason               String?  @map("cbct_reason")
-  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  specialistCase           SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       BigInt                    @id @default(autoincrement())
+  specialistCaseId         BigInt                    @unique @map("specialist_case_id")
+  toothNumber              String                    @map("tooth_number") @db.VarChar(2)
+  odontogramPosition       String?                   @map("odontogram_position") @db.VarChar(16)
+  odontogramCodeAtCreation String?                   @map("odontogram_code_at_creation") @db.VarChar(32)
+  chiefComplaint           String                    @map("chief_complaint")
+  pulpDiagnosis            String?                   @map("pulp_diagnosis")
+  periapicalDiagnosis      String?                   @map("periapical_diagnosis")
+  swelling                 Boolean                   @default(false)
+  sinusTract               Boolean                   @default(false) @map("sinus_tract")
+  spontaneousPain          Boolean?                  @map("spontaneous_pain")
+  lingeringPain            Boolean?                  @map("lingering_pain")
+  thermalSensitivity       Boolean?                  @map("thermal_sensitivity")
+  bitingPain               Boolean?                  @map("biting_pain")
+  difficultyLevel          String?                   @map("difficulty_level") @db.VarChar(32)
+  difficultyFactors        Json?                     @default("[]") @map("difficulty_factors")
+  previousEndoTreatment    Boolean                   @default(false) @map("previous_endo_treatment")
+  retreatmentReason        String?                   @map("retreatment_reason")
+  restorabilityStatus      String?                   @map("restorability_status") @db.VarChar(64)
+  finalRestorationStatus   String?                   @map("final_restoration_status") @db.VarChar(64)
+  traumaHistory            String?                   @map("trauma_history")
+  periodontalConcern       String?                   @map("periodontal_concern")
+  cbctConsidered           Boolean                   @default(false) @map("cbct_considered")
+  cbctReason               String?                   @map("cbct_reason")
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  specialistCase           SpecialistCase            @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   diagnosticTests          EndoDiagnosticTest[]
   treatmentStages          EndoTreatmentStage[]
+  difficultyAssessment     EndoDifficultyAssessment?
+  radiographEvidence       EndoRadiographEvidence[]
 
   @@index([toothNumber], map: "idx_endo_case_details_tooth")
   @@map("endo_case_details")
 }
 
 model EndoDiagnosticTest {
-  id               BigInt   @id @default(autoincrement())
-  endoCaseDetailId BigInt   @map("endo_case_detail_id")
-  testType         String   @map("test_type") @db.VarChar(32)
-  result           String?  @db.VarChar(128)
+  id               BigInt         @id @default(autoincrement())
+  endoCaseDetailId BigInt         @map("endo_case_detail_id")
+  testType         String         @map("test_type") @db.VarChar(32)
+  result           String?        @db.VarChar(128)
   notes            String?
-  performedAt      DateTime? @map("performed_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  performedAt      DateTime?      @map("performed_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   endoCaseDetail   EndoCaseDetail @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([endoCaseDetailId], map: "idx_endo_diagnostic_tests_case")
@@ -475,17 +477,18 @@ model EndoDiagnosticTest {
 }
 
 model EndoTreatmentStage {
-  id               BigInt   @id @default(autoincrement())
-  endoCaseDetailId BigInt   @map("endo_case_detail_id")
-  stageType        String   @map("stage_type") @db.VarChar(64)
-  status           String   @default("planned") @db.VarChar(32)
-  performedAt      DateTime? @map("performed_at") @db.Timestamptz(6)
-  appointmentId    BigInt?  @map("appointment_id")
-  notes            String?
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  endoCaseDetail   EndoCaseDetail @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  appointment      Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                 BigInt                   @id @default(autoincrement())
+  endoCaseDetailId   BigInt                   @map("endo_case_detail_id")
+  stageType          String                   @map("stage_type") @db.VarChar(64)
+  status             String                   @default("planned") @db.VarChar(32)
+  performedAt        DateTime?                @map("performed_at") @db.Timestamptz(6)
+  appointmentId      BigInt?                  @map("appointment_id")
+  notes              String?
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endoCaseDetail     EndoCaseDetail           @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appointment        Appointment?             @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  radiographEvidence EndoRadiographEvidence[]
 
   @@index([endoCaseDetailId], map: "idx_endo_treatment_stages_case")
   @@index([stageType], map: "idx_endo_treatment_stages_type")
@@ -493,16 +496,59 @@ model EndoTreatmentStage {
   @@map("endo_treatment_stages")
 }
 
+model EndoDifficultyAssessment {
+  id                         BigInt         @id @default(autoincrement())
+  endoCaseDetailId           BigInt         @unique @map("endo_case_detail_id")
+  patientConsiderations      Json?          @default("[]") @map("patient_considerations")
+  diagnosticConsiderations   Json?          @default("[]") @map("diagnostic_considerations")
+  radiographicConsiderations Json?          @default("[]") @map("radiographic_considerations")
+  toothMorphologyFactors     Json?          @default("[]") @map("tooth_morphology_factors")
+  canalMorphologyFactors     Json?          @default("[]") @map("canal_morphology_factors")
+  previousTreatmentFactors   Json?          @default("[]") @map("previous_treatment_factors")
+  perioEndoFactors           Json?          @default("[]") @map("perio_endo_factors")
+  traumaResorptionFactors    Json?          @default("[]") @map("trauma_resorption_factors")
+  dentistSelectedDifficulty  String?        @map("dentist_selected_difficulty") @db.VarChar(32)
+  referralConsidered         Boolean        @default(false) @map("referral_considered")
+  referralReason             String?        @map("referral_reason")
+  notes                      String?
+  createdAt                  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endoCaseDetail             EndoCaseDetail @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("endo_difficulty_assessments")
+}
+
+model EndoRadiographEvidence {
+  id               BigInt              @id @default(autoincrement())
+  endoCaseDetailId BigInt              @map("endo_case_detail_id")
+  evidenceType     String              @map("evidence_type") @db.VarChar(64)
+  xcoreStudyId     BigInt              @map("xcore_study_id")
+  treatmentStageId BigInt?             @map("treatment_stage_id")
+  notes            String?
+  linkedAt         DateTime            @default(now()) @map("linked_at") @db.Timestamptz(6)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endoCaseDetail   EndoCaseDetail      @relation(fields: [endoCaseDetailId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  xcoreStudy       ImagingStudy        @relation(fields: [xcoreStudyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  treatmentStage   EndoTreatmentStage? @relation(fields: [treatmentStageId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([endoCaseDetailId, evidenceType], map: "uq_endo_radiograph_evidence_slot")
+  @@index([endoCaseDetailId], map: "idx_endo_radiograph_evidence_case")
+  @@index([xcoreStudyId], map: "idx_endo_radiograph_evidence_xcore_study")
+  @@index([evidenceType], map: "idx_endo_radiograph_evidence_type")
+  @@map("endo_radiograph_evidence")
+}
+
 model SpecialistCaseNote {
-  id               BigInt   @id @default(autoincrement())
-  specialistCaseId BigInt   @map("specialist_case_id")
-  authorDentistId  BigInt   @map("author_dentist_id")
+  id               BigInt         @id @default(autoincrement())
+  specialistCaseId BigInt         @map("specialist_case_id")
+  authorDentistId  BigInt         @map("author_dentist_id")
   content          String
-  isAmendment      Boolean  @default(false) @map("is_amendment")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isAmendment      Boolean        @default(false) @map("is_amendment")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   specialistCase   SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  authorDentist    User @relation("SpecialistCaseNoteAuthor", fields: [authorDentistId], references: [id], onUpdate: NoAction)
+  authorDentist    User           @relation("SpecialistCaseNoteAuthor", fields: [authorDentistId], references: [id], onUpdate: NoAction)
 
   @@index([specialistCaseId], map: "idx_specialist_case_notes_case")
   @@index([authorDentistId], map: "idx_specialist_case_notes_author")
@@ -510,15 +556,15 @@ model SpecialistCaseNote {
 }
 
 model SpecialistCaseTimelineEvent {
-  id               BigInt   @id @default(autoincrement())
-  specialistCaseId BigInt   @map("specialist_case_id")
-  eventType        String   @map("event_type") @db.VarChar(64)
-  actorUserId      BigInt?  @map("actor_user_id")
-  actorRole        String?  @map("actor_role") @db.VarChar(32)
-  metadata         Json?    @default("{}")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id               BigInt         @id @default(autoincrement())
+  specialistCaseId BigInt         @map("specialist_case_id")
+  eventType        String         @map("event_type") @db.VarChar(64)
+  actorUserId      BigInt?        @map("actor_user_id")
+  actorRole        String?        @map("actor_role") @db.VarChar(32)
+  metadata         Json?          @default("{}")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   specialistCase   SpecialistCase @relation(fields: [specialistCaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  actorUser        User? @relation("SpecialistCaseTimelineActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  actorUser        User?          @relation("SpecialistCaseTimelineActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([specialistCaseId, createdAt(sort: Desc)], map: "idx_specialist_case_timeline_case_created")
   @@index([eventType], map: "idx_specialist_case_timeline_event")
@@ -615,47 +661,47 @@ model ClinicCampaignMetric {
 }
 
 model PaymentIntent {
-  id                BigInt          @id @default(autoincrement())
-  appointmentId     BigInt          @map("appointment_id")
-  activeAppointmentId BigInt?       @map("active_appointment_id")
-  patientId         BigInt          @map("patient_id")
-  clinicBranchId    BigInt?         @map("clinic_branch_id")
+  id                     BigInt                       @id @default(autoincrement())
+  appointmentId          BigInt                       @map("appointment_id")
+  activeAppointmentId    BigInt?                      @map("active_appointment_id")
+  patientId              BigInt                       @map("patient_id")
+  clinicBranchId         BigInt?                      @map("clinic_branch_id")
   /// Financial transaction owner: "clinic" or "dentist" (independent dentist).
-  ownerType         String          @default("dentist") @map("owner_type") @db.VarChar(24)
-  ownerClinicId     BigInt?         @map("owner_clinic_id")
-  ownerDentistId    BigInt?         @map("owner_dentist_id")
-  amount            Int
-  currency          String          @default("IDR") @db.VarChar
-  status            String          @default("pending") @db.VarChar
-  provider          String?         @db.VarChar
-  idempotencyKey    String?         @unique(map: "uniq_payment_intents_idempotency_key") @map("idempotency_key") @db.VarChar(180)
-  providerOrderId   String?         @unique(map: "uniq_payment_intents_provider_order_id") @map("provider_order_id") @db.VarChar(191)
-  providerPaymentId String?         @unique(map: "uniq_payment_intents_provider_payment_id") @map("provider_payment_id") @db.VarChar
-  metadata          Json?           @default("{}")
-  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  redirectUrl       String?         @map("redirect_url")
-  expiresAt         DateTime?       @map("expires_at") @db.Timestamptz(6)
-  providerResponse  Json?           @default("{}") @map("provider_response")
-  reconciliationStatus String       @default("pending") @map("reconciliation_status") @db.VarChar(32)
-  reconciliationAttempts Int        @default(0) @map("reconciliation_attempts")
-  reconciliationError String?       @map("reconciliation_error") @db.VarChar(255)
-  lastReconciledAt  DateTime?       @map("last_reconciled_at") @db.Timestamptz(6)
-  callbackVerifiedAt DateTime?      @map("callback_verified_at") @db.Timestamptz(6)
-  appointment       Appointment     @relation("AppointmentPaymentIntents", fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  clinicBranch      ClinicBranch?   @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
-  patient           User            @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  ownerClinic       ClinicProfile?  @relation("PaymentIntentOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
-  ownerDentist      User?           @relation("PaymentIntentOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
-  ledgerEntries     PaymentLedger[]
-  financialEntries  FinancialLedgerEntry[]
-  invoices          Invoice[]       @relation("PaymentIntentInvoices")
-  paymentSnapshot   PaymentSnapshot?
-  refunds           Refund[]
-  ownershipRequests OwnershipCorrectionRequest[]
-  ownershipLogs     OwnershipCorrectionLog[]
-  settlements       PaymentSettlement[]
-  compensationEntries DentistCompensationEntry[]
+  ownerType              String                       @default("dentist") @map("owner_type") @db.VarChar(24)
+  ownerClinicId          BigInt?                      @map("owner_clinic_id")
+  ownerDentistId         BigInt?                      @map("owner_dentist_id")
+  amount                 Int
+  currency               String                       @default("IDR") @db.VarChar
+  status                 String                       @default("pending") @db.VarChar
+  provider               String?                      @db.VarChar
+  idempotencyKey         String?                      @unique(map: "uniq_payment_intents_idempotency_key") @map("idempotency_key") @db.VarChar(180)
+  providerOrderId        String?                      @unique(map: "uniq_payment_intents_provider_order_id") @map("provider_order_id") @db.VarChar(191)
+  providerPaymentId      String?                      @unique(map: "uniq_payment_intents_provider_payment_id") @map("provider_payment_id") @db.VarChar
+  metadata               Json?                        @default("{}")
+  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  redirectUrl            String?                      @map("redirect_url")
+  expiresAt              DateTime?                    @map("expires_at") @db.Timestamptz(6)
+  providerResponse       Json?                        @default("{}") @map("provider_response")
+  reconciliationStatus   String                       @default("pending") @map("reconciliation_status") @db.VarChar(32)
+  reconciliationAttempts Int                          @default(0) @map("reconciliation_attempts")
+  reconciliationError    String?                      @map("reconciliation_error") @db.VarChar(255)
+  lastReconciledAt       DateTime?                    @map("last_reconciled_at") @db.Timestamptz(6)
+  callbackVerifiedAt     DateTime?                    @map("callback_verified_at") @db.Timestamptz(6)
+  appointment            Appointment                  @relation("AppointmentPaymentIntents", fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clinicBranch           ClinicBranch?                @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
+  patient                User                         @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ownerClinic            ClinicProfile?               @relation("PaymentIntentOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist           User?                        @relation("PaymentIntentOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+  ledgerEntries          PaymentLedger[]
+  financialEntries       FinancialLedgerEntry[]
+  invoices               Invoice[]                    @relation("PaymentIntentInvoices")
+  paymentSnapshot        PaymentSnapshot?
+  refunds                Refund[]
+  ownershipRequests      OwnershipCorrectionRequest[]
+  ownershipLogs          OwnershipCorrectionLog[]
+  settlements            PaymentSettlement[]
+  compensationEntries    DentistCompensationEntry[]
 
   @@unique([activeAppointmentId], map: "uniq_payment_intents_active_appointment")
   @@index([appointmentId], map: "idx_payment_intents_appointment")
@@ -686,23 +732,23 @@ model PaymentLedger {
 }
 
 model FinancialLedgerEntry {
-  id              BigInt        @id @default(autoincrement())
-  paymentIntentId BigInt?       @map("payment_intent_id")
-  appointmentId   BigInt?       @map("appointment_id")
+  id              BigInt         @id @default(autoincrement())
+  paymentIntentId BigInt?        @map("payment_intent_id")
+  appointmentId   BigInt?        @map("appointment_id")
   /// Financial transaction owner: "clinic" or "dentist" (independent dentist).
-  ownerType       String        @map("owner_type") @db.VarChar(24)
-  ownerClinicId   BigInt?       @map("owner_clinic_id")
-  ownerDentistId  BigInt?       @map("owner_dentist_id")
-  entryType       String        @map("entry_type") @db.VarChar(32)
-  status          String        @db.VarChar(32)
-  direction       String        @db.VarChar(16)
+  ownerType       String         @map("owner_type") @db.VarChar(24)
+  ownerClinicId   BigInt?        @map("owner_clinic_id")
+  ownerDentistId  BigInt?        @map("owner_dentist_id")
+  entryType       String         @map("entry_type") @db.VarChar(32)
+  status          String         @db.VarChar(32)
+  direction       String         @db.VarChar(16)
   amount          Int
-  currency        String        @default("IDR") @db.VarChar(8)
-  source          String?       @db.VarChar(32)
-  metadata        Json?         @default("{}")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  currency        String         @default("IDR") @db.VarChar(8)
+  source          String?        @db.VarChar(32)
+  metadata        Json?          @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   paymentIntent   PaymentIntent? @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  appointment     Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  appointment     Appointment?   @relation(fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   ownerClinic     ClinicProfile? @relation("FinancialLedgerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
   ownerDentist    User?          @relation("FinancialLedgerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
 
@@ -713,48 +759,48 @@ model FinancialLedgerEntry {
 }
 
 model Invoice {
-  id              BigInt        @id @default(autoincrement())
-  appointmentId   BigInt?       @map("appointment_id")
-  paymentIntentId BigInt?       @map("payment_intent_id")
-  treatmentPlanId BigInt?       @map("treatment_plan_id")
-  patientId       BigInt        @map("patient_id")
-  clinicBranchId  BigInt?       @map("clinic_branch_id")
+  id              BigInt            @id @default(autoincrement())
+  appointmentId   BigInt?           @map("appointment_id")
+  paymentIntentId BigInt?           @map("payment_intent_id")
+  treatmentPlanId BigInt?           @map("treatment_plan_id")
+  patientId       BigInt            @map("patient_id")
+  clinicBranchId  BigInt?           @map("clinic_branch_id")
   /// Financial transaction owner: "clinic" or "dentist" (independent dentist).
-  ownerType       String        @map("owner_type") @db.VarChar(24)
-  ownerClinicId   BigInt?       @map("owner_clinic_id")
-  ownerDentistId  BigInt?       @map("owner_dentist_id")
-  reference       String?       @unique(map: "uniq_invoices_reference") @db.VarChar(64)
-  status          String        @default("issued") @db.VarChar(24)
+  ownerType       String            @map("owner_type") @db.VarChar(24)
+  ownerClinicId   BigInt?           @map("owner_clinic_id")
+  ownerDentistId  BigInt?           @map("owner_dentist_id")
+  reference       String?           @unique(map: "uniq_invoices_reference") @db.VarChar(64)
+  status          String            @default("issued") @db.VarChar(24)
   subtotal        Int
-  tax             Int           @default(0)
-  discount        Int           @default(0)
+  tax             Int               @default(0)
+  discount        Int               @default(0)
   total           Int
-  platformFee     Int           @default(0) @map("platform_fee")
-  clinicShare     Int           @default(0) @map("clinic_share")
-  dentistShare    Int           @default(0) @map("dentist_share")
-  grandTotal      Int           @default(0) @map("grand_total")
-  currency        String        @default("IDR") @db.VarChar(8)
-  issuedAt        DateTime?     @map("issued_at") @db.Timestamptz(6)
-  dueAt           DateTime?     @map("due_at") @db.Timestamptz(6)
-  approvedAt      DateTime?     @map("approved_at") @db.Timestamptz(6)
-  paidAt          DateTime?     @map("paid_at") @db.Timestamptz(6)
-  issuerType      String?       @map("issuer_type") @db.VarChar(24)
-  issuerName      String?       @map("issuer_name") @db.VarChar(120)
-  issuerEmail     String?       @map("issuer_email") @db.VarChar(120)
-  issuerPhone     String?       @map("issuer_phone") @db.VarChar(32)
-  issuerAddress   String?       @map("issuer_address") @db.VarChar(255)
-  issuerTaxId     String?       @map("issuer_tax_id") @db.VarChar(64)
-  issuerSnapshot  Json?         @default("{}") @map("issuer_snapshot")
-  metadata        Json?         @default("{}")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  appointment     Appointment?  @relation("AppointmentInvoices", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  clinicBranch    ClinicBranch? @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
-  paymentIntent   PaymentIntent? @relation("PaymentIntentInvoices", fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  treatmentPlan   TreatmentPlan? @relation("TreatmentPlanInvoices", fields: [treatmentPlanId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  patient         User          @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  ownerClinic     ClinicProfile? @relation("InvoiceOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
-  ownerDentist    User?          @relation("InvoiceOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+  platformFee     Int               @default(0) @map("platform_fee")
+  clinicShare     Int               @default(0) @map("clinic_share")
+  dentistShare    Int               @default(0) @map("dentist_share")
+  grandTotal      Int               @default(0) @map("grand_total")
+  currency        String            @default("IDR") @db.VarChar(8)
+  issuedAt        DateTime?         @map("issued_at") @db.Timestamptz(6)
+  dueAt           DateTime?         @map("due_at") @db.Timestamptz(6)
+  approvedAt      DateTime?         @map("approved_at") @db.Timestamptz(6)
+  paidAt          DateTime?         @map("paid_at") @db.Timestamptz(6)
+  issuerType      String?           @map("issuer_type") @db.VarChar(24)
+  issuerName      String?           @map("issuer_name") @db.VarChar(120)
+  issuerEmail     String?           @map("issuer_email") @db.VarChar(120)
+  issuerPhone     String?           @map("issuer_phone") @db.VarChar(32)
+  issuerAddress   String?           @map("issuer_address") @db.VarChar(255)
+  issuerTaxId     String?           @map("issuer_tax_id") @db.VarChar(64)
+  issuerSnapshot  Json?             @default("{}") @map("issuer_snapshot")
+  metadata        Json?             @default("{}")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment     Appointment?      @relation("AppointmentInvoices", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  clinicBranch    ClinicBranch?     @relation(fields: [clinicBranchId], references: [id], onUpdate: NoAction)
+  paymentIntent   PaymentIntent?    @relation("PaymentIntentInvoices", fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  treatmentPlan   TreatmentPlan?    @relation("TreatmentPlanInvoices", fields: [treatmentPlanId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  patient         User              @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ownerClinic     ClinicProfile?    @relation("InvoiceOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist    User?             @relation("InvoiceOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
   items           InvoiceLineItem[]
   paymentSnapshot PaymentSnapshot?
 
@@ -782,42 +828,42 @@ model InvoiceLineItem {
 }
 
 model ChatRoom {
-  id                        BigInt           @id @default(autoincrement())
-  appointmentId             BigInt           @unique @map("appointment_id")
-  channelName               String           @map("channel_name")
-  twilio_conversation_sid   String?          @unique
-  createdAt                 DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  messages                  ChatMessage[]
-  members                   ChatRoomMember[]
-  appointment               Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                      BigInt           @id @default(autoincrement())
+  appointmentId           BigInt           @unique @map("appointment_id")
+  channelName             String           @map("channel_name")
+  twilio_conversation_sid String?          @unique
+  createdAt               DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  messages                ChatMessage[]
+  members                 ChatRoomMember[]
+  appointment             Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("chat_rooms")
 }
 
 model ChatMessage {
-  id          BigInt   @id @default(autoincrement())
-  chatRoomId  BigInt   @map("chat_room_id")
-  senderId    BigInt?  @map("sender_id")
-  senderCommunicationParticipantId String? @map("sender_communication_participant_id") @db.Uuid
-  message     String
-  messageType      String   @default("text") @map("message_type") @db.VarChar
-  twilioMessageSid String?  @unique @map("twilio_message_sid") @db.VarChar(255)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  fileUrl          String?  @map("file_url")
-  fileName         String?  @map("file_name")
-  mimeType         String?  @map("mime_type") @db.VarChar(120)
-  fileSizeBytes    BigInt?  @map("file_size_bytes")
-  mediaRetentionUntil DateTime? @map("media_retention_until") @db.Timestamptz(6)
-  storageProvider  String?  @map("storage_provider") @db.VarChar(32)
-  storageBucket    String?  @map("storage_bucket") @db.VarChar(191)
-  storageObjectKey String?  @map("storage_object_key") @db.VarChar(512)
-  mediaDeletedAt   DateTime? @map("media_deleted_at") @db.Timestamptz(6)
-  mediaScanStatus  String?  @map("media_scan_status") @db.VarChar(32)
-  mediaTombstoneReason String? @map("media_tombstone_reason") @db.VarChar(120)
-  metadata         Json?    @default("{}")
-  chatRoom    ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sender      User?    @relation(fields: [senderId], references: [id], onUpdate: NoAction)
-  senderCommunicationParticipant AppointmentCommunicationParticipant? @relation(fields: [senderCommunicationParticipantId], references: [id], onUpdate: NoAction)
+  id                               BigInt                               @id @default(autoincrement())
+  chatRoomId                       BigInt                               @map("chat_room_id")
+  senderId                         BigInt?                              @map("sender_id")
+  senderCommunicationParticipantId String?                              @map("sender_communication_participant_id") @db.Uuid
+  message                          String
+  messageType                      String                               @default("text") @map("message_type") @db.VarChar
+  twilioMessageSid                 String?                              @unique @map("twilio_message_sid") @db.VarChar(255)
+  createdAt                        DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  fileUrl                          String?                              @map("file_url")
+  fileName                         String?                              @map("file_name")
+  mimeType                         String?                              @map("mime_type") @db.VarChar(120)
+  fileSizeBytes                    BigInt?                              @map("file_size_bytes")
+  mediaRetentionUntil              DateTime?                            @map("media_retention_until") @db.Timestamptz(6)
+  storageProvider                  String?                              @map("storage_provider") @db.VarChar(32)
+  storageBucket                    String?                              @map("storage_bucket") @db.VarChar(191)
+  storageObjectKey                 String?                              @map("storage_object_key") @db.VarChar(512)
+  mediaDeletedAt                   DateTime?                            @map("media_deleted_at") @db.Timestamptz(6)
+  mediaScanStatus                  String?                              @map("media_scan_status") @db.VarChar(32)
+  mediaTombstoneReason             String?                              @map("media_tombstone_reason") @db.VarChar(120)
+  metadata                         Json?                                @default("{}")
+  chatRoom                         ChatRoom                             @relation(fields: [chatRoomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sender                           User?                                @relation(fields: [senderId], references: [id], onUpdate: NoAction)
+  senderCommunicationParticipant   AppointmentCommunicationParticipant? @relation(fields: [senderCommunicationParticipantId], references: [id], onUpdate: NoAction)
 
   @@index([chatRoomId, createdAt(sort: Desc)], map: "idx_chat_messages_room_created_at")
   @@index([senderId, createdAt(sort: Desc)], map: "idx_chat_messages_sender")
@@ -997,11 +1043,11 @@ model WebhookReceipt {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  providerEventId       String?   @map("provider_event_id") @db.VarChar(191)
-  providerTransactionId String?   @map("provider_transaction_id") @db.VarChar(191)
-  orderId               String?   @map("order_id") @db.VarChar(191)
-  processingStatus      String?   @map("processing_status") @db.VarChar(32)
-  retryCount            Int       @default(0) @map("retry_count")
+  providerEventId       String? @map("provider_event_id") @db.VarChar(191)
+  providerTransactionId String? @map("provider_transaction_id") @db.VarChar(191)
+  orderId               String? @map("order_id") @db.VarChar(191)
+  processingStatus      String? @map("processing_status") @db.VarChar(32)
+  retryCount            Int     @default(0) @map("retry_count")
 
   @@unique([provider, deliveryKey], map: "uniq_webhook_receipts_provider_delivery")
   @@index([status, nextAttemptAt], map: "idx_webhook_receipts_status_next_attempt")
@@ -1032,29 +1078,29 @@ model CommunicationEvent {
 }
 
 model AppointmentClinicalSummary {
-  id                String      @id @default(uuid()) @db.Uuid
-  appointmentId     BigInt      @unique @map("appointment_id")
-  dentistId         BigInt      @map("dentist_id")
-  patientId         BigInt      @map("patient_id")
-  status            String      @default("draft") @db.VarChar(32)
-  chiefComplaint    String?     @map("chief_complaint")
-  subjectiveNotes   String?     @map("subjective_notes")
-  objectiveFindings String?     @map("objective_findings")
-  assessment        String?
-  plan              String?
-  diagnosisCodes    Json?       @default("[]") @map("diagnosis_codes")
-  recommendations   Json?       @default("[]")
-  followUpNeeded    Boolean     @default(false) @map("follow_up_needed")
-  followUpAt        DateTime?   @map("follow_up_at") @db.Timestamptz(6)
-  attachments       Json?       @default("[]")
-  finalizedAt       DateTime?   @map("finalized_at") @db.Timestamptz(6)
-  amendedAt         DateTime?   @map("amended_at") @db.Timestamptz(6)
-  patientAcknowledgedAt DateTime? @map("patient_acknowledged_at") @db.Timestamptz(6)
-  patientAcknowledgedById BigInt? @map("patient_acknowledged_by_id")
-  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  followUpTasks     AppointmentFollowUpTask[]
+  id                      String                    @id @default(uuid()) @db.Uuid
+  appointmentId           BigInt                    @unique @map("appointment_id")
+  dentistId               BigInt                    @map("dentist_id")
+  patientId               BigInt                    @map("patient_id")
+  status                  String                    @default("draft") @db.VarChar(32)
+  chiefComplaint          String?                   @map("chief_complaint")
+  subjectiveNotes         String?                   @map("subjective_notes")
+  objectiveFindings       String?                   @map("objective_findings")
+  assessment              String?
+  plan                    String?
+  diagnosisCodes          Json?                     @default("[]") @map("diagnosis_codes")
+  recommendations         Json?                     @default("[]")
+  followUpNeeded          Boolean                   @default(false) @map("follow_up_needed")
+  followUpAt              DateTime?                 @map("follow_up_at") @db.Timestamptz(6)
+  attachments             Json?                     @default("[]")
+  finalizedAt             DateTime?                 @map("finalized_at") @db.Timestamptz(6)
+  amendedAt               DateTime?                 @map("amended_at") @db.Timestamptz(6)
+  patientAcknowledgedAt   DateTime?                 @map("patient_acknowledged_at") @db.Timestamptz(6)
+  patientAcknowledgedById BigInt?                   @map("patient_acknowledged_by_id")
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment             Appointment               @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  followUpTasks           AppointmentFollowUpTask[]
 
   @@index([dentistId, status], map: "idx_clinical_summaries_dentist_status")
   @@index([patientId, status], map: "idx_clinical_summaries_patient_status")
@@ -1062,20 +1108,20 @@ model AppointmentClinicalSummary {
 }
 
 model AppointmentFollowUpTask {
-  id            String      @id @default(uuid()) @db.Uuid
-  appointmentId BigInt     @map("appointment_id")
-  summaryId     String?    @map("summary_id") @db.Uuid
-  dentistId     BigInt     @map("dentist_id")
-  patientId     BigInt     @map("patient_id")
-  title         String     @db.VarChar(180)
+  id            String                      @id @default(uuid()) @db.Uuid
+  appointmentId BigInt                      @map("appointment_id")
+  summaryId     String?                     @map("summary_id") @db.Uuid
+  dentistId     BigInt                      @map("dentist_id")
+  patientId     BigInt                      @map("patient_id")
+  title         String                      @db.VarChar(180)
   notes         String?
-  status        String     @default("open") @db.VarChar(32)
-  dueAt         DateTime?  @map("due_at") @db.Timestamptz(6)
-  completedAt   DateTime?  @map("completed_at") @db.Timestamptz(6)
-  metadata      Json?      @default("{}")
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  status        String                      @default("open") @db.VarChar(32)
+  dueAt         DateTime?                   @map("due_at") @db.Timestamptz(6)
+  completedAt   DateTime?                   @map("completed_at") @db.Timestamptz(6)
+  metadata      Json?                       @default("{}")
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment   Appointment                 @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   summary       AppointmentClinicalSummary? @relation(fields: [summaryId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([appointmentId, status], map: "idx_follow_up_tasks_appointment_status")
@@ -1085,29 +1131,29 @@ model AppointmentFollowUpTask {
 }
 
 model AppointmentCommunicationParticipant {
-  id             String      @id @default(uuid()) @db.Uuid
-  appointmentId  BigInt      @map("appointment_id")
-  userId         BigInt?     @map("user_id")
-  displayName    String      @map("display_name") @db.VarChar(160)
-  email          String?     @db.VarChar(191)
-  phone          String?     @db.VarChar(40)
-  role           String      @db.VarChar(32)
-  status         String      @default("invited") @db.VarChar(32)
-  inviteTokenHash String?    @unique @map("invite_token_hash") @db.VarChar(128)
-  invitedById    BigInt?     @map("invited_by_id")
-  invitedAt      DateTime?   @map("invited_at") @db.Timestamptz(6)
-  verifiedAt     DateTime?   @map("verified_at") @db.Timestamptz(6)
-  joinedAt       DateTime?   @map("joined_at") @db.Timestamptz(6)
-  lastInviteSentAt DateTime? @map("last_invite_sent_at") @db.Timestamptz(6)
-  revokedAt      DateTime?   @map("revoked_at") @db.Timestamptz(6)
-  kickedAt       DateTime?   @map("kicked_at") @db.Timestamptz(6)
-  removedById    BigInt?     @map("removed_by_id")
-  accessRegeneratedAt DateTime? @map("access_regenerated_at") @db.Timestamptz(6)
-  expiresAt      DateTime?   @map("expires_at") @db.Timestamptz(6)
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  chatMessages   ChatMessage[]
+  id                  String        @id @default(uuid()) @db.Uuid
+  appointmentId       BigInt        @map("appointment_id")
+  userId              BigInt?       @map("user_id")
+  displayName         String        @map("display_name") @db.VarChar(160)
+  email               String?       @db.VarChar(191)
+  phone               String?       @db.VarChar(40)
+  role                String        @db.VarChar(32)
+  status              String        @default("invited") @db.VarChar(32)
+  inviteTokenHash     String?       @unique @map("invite_token_hash") @db.VarChar(128)
+  invitedById         BigInt?       @map("invited_by_id")
+  invitedAt           DateTime?     @map("invited_at") @db.Timestamptz(6)
+  verifiedAt          DateTime?     @map("verified_at") @db.Timestamptz(6)
+  joinedAt            DateTime?     @map("joined_at") @db.Timestamptz(6)
+  lastInviteSentAt    DateTime?     @map("last_invite_sent_at") @db.Timestamptz(6)
+  revokedAt           DateTime?     @map("revoked_at") @db.Timestamptz(6)
+  kickedAt            DateTime?     @map("kicked_at") @db.Timestamptz(6)
+  removedById         BigInt?       @map("removed_by_id")
+  accessRegeneratedAt DateTime?     @map("access_regenerated_at") @db.Timestamptz(6)
+  expiresAt           DateTime?     @map("expires_at") @db.Timestamptz(6)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointment         Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  chatMessages        ChatMessage[]
 
   @@index([appointmentId, role, status], map: "idx_comm_participants_appointment_role_status")
   @@index([userId, status], map: "idx_comm_participants_user_status")
@@ -1275,14 +1321,14 @@ model clinic_services {
 }
 
 model dentist_emr_records {
-  id                                               String   @id @db.VarChar(64)
+  id                                               String          @id @db.VarChar(64)
   dentist_id                                       BigInt
   patient_user_id                                  BigInt?
-  payload                                          Json     @default("{}")
-  created_at                                       DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                                       DateTime @default(now()) @db.Timestamptz(6)
-  users_dentist_emr_records_dentist_idTousers      User     @relation("dentist_emr_records_dentist_idTousers", fields: [dentist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users_dentist_emr_records_patient_user_idTousers User?    @relation("dentist_emr_records_patient_user_idTousers", fields: [patient_user_id], references: [id], onUpdate: NoAction)
+  payload                                          Json            @default("{}")
+  created_at                                       DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime        @default(now()) @db.Timestamptz(6)
+  users_dentist_emr_records_dentist_idTousers      User            @relation("dentist_emr_records_dentist_idTousers", fields: [dentist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_dentist_emr_records_patient_user_idTousers User?           @relation("dentist_emr_records_patient_user_idTousers", fields: [patient_user_id], references: [id], onUpdate: NoAction)
   treatmentPlans                                   TreatmentPlan[] @relation("TreatmentPlanMedicalRecord")
 
   @@index([dentist_id, updated_at(sort: Desc)], map: "idx_dentist_emr_records_dentist")
@@ -1329,29 +1375,30 @@ model service_dentist_assignments {
 }
 
 model ImagingStudy {
-  id           BigInt          @id @default(autoincrement())
-  patientId    BigInt          @map("patient_id")
-  dentistId    BigInt?         @map("dentist_id")
-  clinicId     BigInt?         @map("clinic_id")
-  studyDate    DateTime        @map("study_date") @db.Date
-  description  String?
-  modality     String          @db.VarChar(50)
-  folderName   String          @map("folder_name")
-  status       String          @default("uploading")
-  metadata     Json?           @default("{}")
-  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sizeInBytes  BigInt          @default(0) @map("size_in_bytes")
-  originalName String?         @map("original_name")
-  series       ImagingSeries[]
-  shares       StudyShare[]
-  dentistShares StudyDentistShare[]
-  annotations  StudyAnnotation[]
-  annotationSnapshots AnnotationSnapshot[]
-  specialistCases SpecialistCase[]
-  patientAssignments ImagingStudyPatientAssignment[]
-  dentist      User?           @relation("DentistStudies", fields: [dentistId], references: [id])
-  patient      User            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
+  id                     BigInt                          @id @default(autoincrement())
+  patientId              BigInt                          @map("patient_id")
+  dentistId              BigInt?                         @map("dentist_id")
+  clinicId               BigInt?                         @map("clinic_id")
+  studyDate              DateTime                        @map("study_date") @db.Date
+  description            String?
+  modality               String                          @db.VarChar(50)
+  folderName             String                          @map("folder_name")
+  status                 String                          @default("uploading")
+  metadata               Json?                           @default("{}")
+  createdAt              DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sizeInBytes            BigInt                          @default(0) @map("size_in_bytes")
+  originalName           String?                         @map("original_name")
+  series                 ImagingSeries[]
+  shares                 StudyShare[]
+  dentistShares          StudyDentistShare[]
+  annotations            StudyAnnotation[]
+  annotationSnapshots    AnnotationSnapshot[]
+  specialistCases        SpecialistCase[]
+  patientAssignments     ImagingStudyPatientAssignment[]
+  endoRadiographEvidence EndoRadiographEvidence[]
+  dentist                User?                           @relation("DentistStudies", fields: [dentistId], references: [id])
+  patient                User                            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId], map: "idx_imaging_studies_patient")
   @@index([studyDate], map: "idx_imaging_studies_date")
@@ -1411,28 +1458,28 @@ model StudyDentistShare {
 }
 
 model StudyAnnotation {
-  id          String       @id @default(cuid())
-  studyId     BigInt       @map("study_id")
-  seriesUid   String       @map("series_uid")
-  viewerType  String       @map("viewer_type")
-  sliceAxis   String?      @map("slice_axis")
-  sliceIndex  Int?         @map("slice_index")
-  type        String
-  coordinates Json
-  label       String?
-  color       String?
-  metadata    Json?        @default("{}")
-  reviewStatus String       @default("draft") @map("review_status")
-  reviewedBy   BigInt?      @map("reviewed_by")
-  reviewedAt   DateTime?    @map("reviewed_at") @db.Timestamptz(6)
-  reviewerComment String?   @map("reviewer_comment")
-  confidenceScore Float     @default(0.7) @map("confidence_score")
-  createdBy   BigInt       @map("created_by")
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  study       ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
-  creator     User         @relation("StudyAnnotationCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  reviewer    User?        @relation("StudyAnnotationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  id              String       @id @default(cuid())
+  studyId         BigInt       @map("study_id")
+  seriesUid       String       @map("series_uid")
+  viewerType      String       @map("viewer_type")
+  sliceAxis       String?      @map("slice_axis")
+  sliceIndex      Int?         @map("slice_index")
+  type            String
+  coordinates     Json
+  label           String?
+  color           String?
+  metadata        Json?        @default("{}")
+  reviewStatus    String       @default("draft") @map("review_status")
+  reviewedBy      BigInt?      @map("reviewed_by")
+  reviewedAt      DateTime?    @map("reviewed_at") @db.Timestamptz(6)
+  reviewerComment String?      @map("reviewer_comment")
+  confidenceScore Float        @default(0.7) @map("confidence_score")
+  createdBy       BigInt       @map("created_by")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  study           ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  creator         User         @relation("StudyAnnotationCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  reviewer        User?        @relation("StudyAnnotationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
 
   @@index([studyId, seriesUid, viewerType], map: "idx_study_annotations_scope")
   @@index([studyId, seriesUid, viewerType, sliceAxis, sliceIndex], map: "idx_study_annotations_slice")
@@ -1443,16 +1490,16 @@ model StudyAnnotation {
 }
 
 model AnnotationSnapshot {
-  id          String       @id @default(cuid())
-  studyId     BigInt       @map("study_id")
-  seriesUid   String       @map("series_uid")
-  snapshotAt  DateTime     @default(now()) @map("snapshot_at") @db.Timestamptz(6)
-  createdBy   BigInt       @map("created_by")
-  note        String?
-  annotations Json
+  id           String       @id @default(cuid())
+  studyId      BigInt       @map("study_id")
+  seriesUid    String       @map("series_uid")
+  snapshotAt   DateTime     @default(now()) @map("snapshot_at") @db.Timestamptz(6)
+  createdBy    BigInt       @map("created_by")
+  note         String?
+  annotations  Json
   featureState Json         @default("{}") @map("feature_state")
-  study       ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
-  creator     User         @relation("AnnotationSnapshotCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  study        ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  creator      User         @relation("AnnotationSnapshotCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([studyId, seriesUid, snapshotAt], map: "idx_annotation_snapshots_scope")
   @@index([createdBy], map: "idx_annotation_snapshots_created_by")
@@ -1516,43 +1563,43 @@ model DentistScheduleEntry {
 }
 
 model TreatmentPlan {
-  id                  BigInt          @id @default(autoincrement())
-  patientId           BigInt          @map("patient_id")
-  dentistId           BigInt          @map("dentist_id")
-  clinicId            BigInt?         @map("clinic_id")
-  appointmentId       BigInt?         @map("appointment_id")
-  consultationSessionId BigInt?       @map("consultation_session_id")
-  medicalRecordId     String?         @map("medical_record_id") @db.VarChar(64)
-  aiAnalysisResultId  BigInt?         @map("ai_analysis_result_id")
-  title               String          @db.VarChar(255)
-  description         String?
-  diagnosisSummary    String?         @map("diagnosis_summary")
-  clinicalNotes       String?         @map("clinical_notes")
-  patientFriendlySummary String?      @map("patient_friendly_summary")
-  priority            String          @default("medium") @db.VarChar(20)
-  status              String          @default("pending") @db.VarChar(30)
-  progress            Int             @default(0)
-  estimatedCost       Int             @default(0) @map("estimated_cost")
-  actualCost          Int             @default(0) @map("actual_cost")
-  currency            String          @default("IDR") @db.VarChar(8)
-  targetCompletion    DateTime?       @map("target_completion") @db.Date
-  validUntil          DateTime?       @map("valid_until") @db.Timestamptz(6)
-  sentAt              DateTime?       @map("sent_at") @db.Timestamptz(6)
-  approvedAt          DateTime?       @map("approved_at") @db.Timestamptz(6)
-  completedAt         DateTime?       @map("completed_at") @db.Timestamptz(6)
-  notes               String?
-  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  patient             User             @relation("PatientTreatmentPlans", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  dentist             User             @relation("DentistTreatmentPlans", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  clinic              ClinicProfile?   @relation("ClinicTreatmentPlans", fields: [clinicId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  appointment         Appointment?      @relation("AppointmentTreatmentPlans", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  consultationSession VideoSession?     @relation("TreatmentPlanConsultationSession", fields: [consultationSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  medicalRecord       dentist_emr_records? @relation("TreatmentPlanMedicalRecord", fields: [medicalRecordId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  aiAnalysisResult    AIAnalysisResult? @relation("TreatmentPlanAIAnalysisResult", fields: [aiAnalysisResultId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  patientProfile      PatientProfile?  @relation("PatientProfileTreatmentPlans", fields: [patientId], references: [userId], map: "treatment_plans_patient_profile_fkey")
-  items               TreatmentItem[]
-  invoices            Invoice[]        @relation("TreatmentPlanInvoices")
+  id                     BigInt               @id @default(autoincrement())
+  patientId              BigInt               @map("patient_id")
+  dentistId              BigInt               @map("dentist_id")
+  clinicId               BigInt?              @map("clinic_id")
+  appointmentId          BigInt?              @map("appointment_id")
+  consultationSessionId  BigInt?              @map("consultation_session_id")
+  medicalRecordId        String?              @map("medical_record_id") @db.VarChar(64)
+  aiAnalysisResultId     BigInt?              @map("ai_analysis_result_id")
+  title                  String               @db.VarChar(255)
+  description            String?
+  diagnosisSummary       String?              @map("diagnosis_summary")
+  clinicalNotes          String?              @map("clinical_notes")
+  patientFriendlySummary String?              @map("patient_friendly_summary")
+  priority               String               @default("medium") @db.VarChar(20)
+  status                 String               @default("pending") @db.VarChar(30)
+  progress               Int                  @default(0)
+  estimatedCost          Int                  @default(0) @map("estimated_cost")
+  actualCost             Int                  @default(0) @map("actual_cost")
+  currency               String               @default("IDR") @db.VarChar(8)
+  targetCompletion       DateTime?            @map("target_completion") @db.Date
+  validUntil             DateTime?            @map("valid_until") @db.Timestamptz(6)
+  sentAt                 DateTime?            @map("sent_at") @db.Timestamptz(6)
+  approvedAt             DateTime?            @map("approved_at") @db.Timestamptz(6)
+  completedAt            DateTime?            @map("completed_at") @db.Timestamptz(6)
+  notes                  String?
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient                User                 @relation("PatientTreatmentPlans", fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dentist                User                 @relation("DentistTreatmentPlans", fields: [dentistId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clinic                 ClinicProfile?       @relation("ClinicTreatmentPlans", fields: [clinicId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  appointment            Appointment?         @relation("AppointmentTreatmentPlans", fields: [appointmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  consultationSession    VideoSession?        @relation("TreatmentPlanConsultationSession", fields: [consultationSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  medicalRecord          dentist_emr_records? @relation("TreatmentPlanMedicalRecord", fields: [medicalRecordId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  aiAnalysisResult       AIAnalysisResult?    @relation("TreatmentPlanAIAnalysisResult", fields: [aiAnalysisResultId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  patientProfile         PatientProfile?      @relation("PatientProfileTreatmentPlans", fields: [patientId], references: [userId], map: "treatment_plans_patient_profile_fkey")
+  items                  TreatmentItem[]
+  invoices               Invoice[]            @relation("TreatmentPlanInvoices")
 
   @@index([patientId, createdAt(sort: Desc)], map: "idx_treatment_plans_patient")
   @@index([dentistId], map: "idx_treatment_plans_dentist")
@@ -1563,32 +1610,32 @@ model TreatmentPlan {
 }
 
 model TreatmentItem {
-  id              BigInt        @id @default(autoincrement())
-  treatmentPlanId BigInt        @map("treatment_plan_id")
-  name            String        @db.VarChar(255)
-  toothNumber     String?       @map("tooth_number") @db.VarChar(16)
-  areaLabel       String?       @map("area_label") @db.VarChar(80)
-  procedureCode   String?       @map("procedure_code") @db.VarChar(64)
-  procedureName   String?       @map("procedure_name") @db.VarChar(255)
-  category        String?       @db.VarChar(100)
-  description     String?
-  clinicalReason  String?       @map("clinical_reason")
-  priority        String?       @db.VarChar(20)
-  cost            Int           @default(0)
-  estimatedCost   Int?          @map("estimated_cost")
-  actualCost      Int           @default(0) @map("actual_cost")
-  estimatedDurationMinutes Int? @map("estimated_duration_minutes")
-  phase           String?       @db.VarChar(80)
-  status          String        @default("pending") @db.VarChar(30)
-  scheduledDate   DateTime?     @map("scheduled_date") @db.Date
-  completedDate   DateTime?     @map("completed_date") @db.Date
-  notes           String?
-  resultNotes     String?       @map("result_notes")
-  imageUrl        String?       @map("image_url")
-  sortOrder       Int           @default(0) @map("sort_order")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       BigInt        @id @default(autoincrement())
+  treatmentPlanId          BigInt        @map("treatment_plan_id")
+  name                     String        @db.VarChar(255)
+  toothNumber              String?       @map("tooth_number") @db.VarChar(16)
+  areaLabel                String?       @map("area_label") @db.VarChar(80)
+  procedureCode            String?       @map("procedure_code") @db.VarChar(64)
+  procedureName            String?       @map("procedure_name") @db.VarChar(255)
+  category                 String?       @db.VarChar(100)
+  description              String?
+  clinicalReason           String?       @map("clinical_reason")
+  priority                 String?       @db.VarChar(20)
+  cost                     Int           @default(0)
+  estimatedCost            Int?          @map("estimated_cost")
+  actualCost               Int           @default(0) @map("actual_cost")
+  estimatedDurationMinutes Int?          @map("estimated_duration_minutes")
+  phase                    String?       @db.VarChar(80)
+  status                   String        @default("pending") @db.VarChar(30)
+  scheduledDate            DateTime?     @map("scheduled_date") @db.Date
+  completedDate            DateTime?     @map("completed_date") @db.Date
+  notes                    String?
+  resultNotes              String?       @map("result_notes")
+  imageUrl                 String?       @map("image_url")
+  sortOrder                Int           @default(0) @map("sort_order")
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  treatmentPlan            TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([treatmentPlanId], map: "idx_treatment_items_plan")
   @@index([status], map: "idx_treatment_items_status")
@@ -1611,146 +1658,146 @@ model AIChatMessage {
 }
 
 model VideoSession {
-  id            BigInt   @id @default(autoincrement())
-  appointmentId BigInt
-  userId        BigInt
-  actorRole     String   @default("participant") @map("actor_role") @db.VarChar(32)
-  joinedAt      DateTime @default(now())
-  leftAt        DateTime?
+  id              BigInt          @id @default(autoincrement())
+  appointmentId   BigInt
+  userId          BigInt
+  actorRole       String          @default("participant") @map("actor_role") @db.VarChar(32)
+  joinedAt        DateTime        @default(now())
+  leftAt          DateTime?
   durationSeconds Int?
-  appointment   Appointment @relation(fields: [appointmentId], references: [id])
-  treatmentPlans TreatmentPlan[] @relation("TreatmentPlanConsultationSession")
+  appointment     Appointment     @relation(fields: [appointmentId], references: [id])
+  treatmentPlans  TreatmentPlan[] @relation("TreatmentPlanConsultationSession")
 
   @@map("video_sessions")
 }
 
 model PaymentSnapshot {
-  id                  BigInt        @id @default(autoincrement())
-  paymentIntentId     BigInt        @unique @map("payment_intent_id")
-  invoiceId           BigInt?       @unique @map("invoice_id")
-  consultationFee     Int           @map("consultation_fee")
+  id                  BigInt   @id @default(autoincrement())
+  paymentIntentId     BigInt   @unique @map("payment_intent_id")
+  invoiceId           BigInt?  @unique @map("invoice_id")
+  consultationFee     Int      @map("consultation_fee")
   subtotal            Int
   tax                 Int
   discount            Int
-  platformFee         Int           @map("platform_fee")
-  clinicShare         Int           @map("clinic_share")
-  dentistShare        Int           @map("dentist_share")
-  finalPaidAmount     Int           @map("final_paid_amount")
-  paymentMethod       String        @map("payment_method") @db.VarChar(50)
-  settlementTimestamp DateTime      @map("settlement_timestamp") @db.Timestamptz(6)
-  currency            String        @default("IDR") @db.VarChar(8)
-  pricingVersion      String        @map("pricing_version") @db.VarChar(24)
-  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  platformFee         Int      @map("platform_fee")
+  clinicShare         Int      @map("clinic_share")
+  dentistShare        Int      @map("dentist_share")
+  finalPaidAmount     Int      @map("final_paid_amount")
+  paymentMethod       String   @map("payment_method") @db.VarChar(50)
+  settlementTimestamp DateTime @map("settlement_timestamp") @db.Timestamptz(6)
+  currency            String   @default("IDR") @db.VarChar(8)
+  pricingVersion      String   @map("pricing_version") @db.VarChar(24)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  paymentIntent       PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  invoice             Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  paymentIntent PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  invoice       Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@map("payment_snapshots")
 }
 
 model Refund {
-  id                       BigInt        @id @default(autoincrement())
-  paymentIntentId          BigInt        @map("payment_intent_id")
-  refundAmount             Int           @map("refund_amount")
-  refundReason             String        @map("refund_reason")
-  refundStatus             String        @map("refund_status") @db.VarChar(32) // pending, approved, rejected, refunded
-  refundRequestedAt        DateTime      @default(now()) @map("refund_requested_at") @db.Timestamptz(6)
-  refundedAt               DateTime?     @map("refunded_at") @db.Timestamptz(6)
-  refundActorId            BigInt?       @map("refund_actor_id")
-  providerRefundReference  String?       @map("provider_refund_reference") @db.VarChar(191)
-  internalNotes            String?       @map("internal_notes")
-  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                      BigInt    @id @default(autoincrement())
+  paymentIntentId         BigInt    @map("payment_intent_id")
+  refundAmount            Int       @map("refund_amount")
+  refundReason            String    @map("refund_reason")
+  refundStatus            String    @map("refund_status") @db.VarChar(32) // pending, approved, rejected, refunded
+  refundRequestedAt       DateTime  @default(now()) @map("refund_requested_at") @db.Timestamptz(6)
+  refundedAt              DateTime? @map("refunded_at") @db.Timestamptz(6)
+  refundActorId           BigInt?   @map("refund_actor_id")
+  providerRefundReference String?   @map("provider_refund_reference") @db.VarChar(191)
+  internalNotes           String?   @map("internal_notes")
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  paymentIntent            PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  refundActor              User?         @relation("RefundActor", fields: [refundActorId], references: [id], onDelete: SetNull)
+  paymentIntent PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  refundActor   User?         @relation("RefundActor", fields: [refundActorId], references: [id], onDelete: SetNull)
 
   @@map("refunds")
 }
 
 model FinancialAuditLog {
-  id            BigInt    @id @default(autoincrement())
-  actorId       BigInt?   @map("actor_id")
-  actorRole     String?   @map("actor_role") @db.VarChar(32)
-  entityType    String    @map("entity_type") @db.VarChar(64)
-  entityId      String    @map("entity_id") @db.VarChar(64)
-  action        String    @db.VarChar(64)
-  metadata      Json?     @default("{}")
-  ipAddress     String?   @map("ip_address") @db.VarChar(45)
-  timestamp     DateTime  @default(now()) @map("timestamp") @db.Timestamptz(6)
+  id         BigInt   @id @default(autoincrement())
+  actorId    BigInt?  @map("actor_id")
+  actorRole  String?  @map("actor_role") @db.VarChar(32)
+  entityType String   @map("entity_type") @db.VarChar(64)
+  entityId   String   @map("entity_id") @db.VarChar(64)
+  action     String   @db.VarChar(64)
+  metadata   Json?    @default("{}")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  timestamp  DateTime @default(now()) @map("timestamp") @db.Timestamptz(6)
 
-  actor         User?     @relation("FinancialAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor User? @relation("FinancialAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@map("financial_audit_logs")
 }
 
 model OwnershipCorrectionRequest {
-  id                    BigInt                 @id @default(autoincrement())
-  paymentIntentId       BigInt                 @map("payment_intent_id")
-  requestedBy           BigInt                 @map("requested_by")
-  status                String                 @default("pending") @db.VarChar(24) // pending, approved, rejected
-  oldOwnerType          String                 @map("old_owner_type") @db.VarChar(24)
-  oldOwnerClinicId      BigInt?                @map("old_owner_clinic_id")
-  oldOwnerDentistId     BigInt?                @map("old_owner_dentist_id")
-  newOwnerType          String                 @map("new_owner_type") @db.VarChar(24)
-  newOwnerClinicId      BigInt?                @map("new_owner_clinic_id")
-  newOwnerDentistId     BigInt?                @map("new_owner_dentist_id")
-  reason                String                 @db.VarChar(255)
-  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  
-  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  requester             User                   @relation("CorrectionRequester", fields: [requestedBy], references: [id])
-  logs                  OwnershipCorrectionLog[]
+  id                BigInt   @id @default(autoincrement())
+  paymentIntentId   BigInt   @map("payment_intent_id")
+  requestedBy       BigInt   @map("requested_by")
+  status            String   @default("pending") @db.VarChar(24) // pending, approved, rejected
+  oldOwnerType      String   @map("old_owner_type") @db.VarChar(24)
+  oldOwnerClinicId  BigInt?  @map("old_owner_clinic_id")
+  oldOwnerDentistId BigInt?  @map("old_owner_dentist_id")
+  newOwnerType      String   @map("new_owner_type") @db.VarChar(24)
+  newOwnerClinicId  BigInt?  @map("new_owner_clinic_id")
+  newOwnerDentistId BigInt?  @map("new_owner_dentist_id")
+  reason            String   @db.VarChar(255)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  paymentIntent PaymentIntent            @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  requester     User                     @relation("CorrectionRequester", fields: [requestedBy], references: [id])
+  logs          OwnershipCorrectionLog[]
 
   @@map("ownership_correction_requests")
 }
 
 model OwnershipCorrectionLog {
-  id                    BigInt                 @id @default(autoincrement())
-  paymentIntentId       BigInt                 @map("payment_intent_id")
-  requestId             BigInt?                @map("request_id")
-  correctedBy           BigInt                 @map("corrected_by")
-  oldOwnerType          String                 @map("old_owner_type") @db.VarChar(24)
-  oldOwnerClinicId      BigInt?                @map("old_owner_clinic_id")
-  oldOwnerDentistId     BigInt?                @map("old_owner_dentist_id")
-  newOwnerType          String                 @map("new_owner_type") @db.VarChar(24)
-  newOwnerClinicId      BigInt?                @map("new_owner_clinic_id")
-  newOwnerDentistId     BigInt?                @map("new_owner_dentist_id")
-  reason                String                 @db.VarChar(255)
-  timestamp             DateTime               @default(now()) @db.Timestamptz(6)
+  id                BigInt   @id @default(autoincrement())
+  paymentIntentId   BigInt   @map("payment_intent_id")
+  requestId         BigInt?  @map("request_id")
+  correctedBy       BigInt   @map("corrected_by")
+  oldOwnerType      String   @map("old_owner_type") @db.VarChar(24)
+  oldOwnerClinicId  BigInt?  @map("old_owner_clinic_id")
+  oldOwnerDentistId BigInt?  @map("old_owner_dentist_id")
+  newOwnerType      String   @map("new_owner_type") @db.VarChar(24)
+  newOwnerClinicId  BigInt?  @map("new_owner_clinic_id")
+  newOwnerDentistId BigInt?  @map("new_owner_dentist_id")
+  reason            String   @db.VarChar(255)
+  timestamp         DateTime @default(now()) @db.Timestamptz(6)
 
-  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  request               OwnershipCorrectionRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
-  actor                 User                   @relation("CorrectionActor", fields: [correctedBy], references: [id])
+  paymentIntent PaymentIntent               @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  request       OwnershipCorrectionRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  actor         User                        @relation("CorrectionActor", fields: [correctedBy], references: [id])
 
   @@map("ownership_correction_logs")
 }
 
 model PaymentSettlement {
-  id                    BigInt                 @id @default(autoincrement())
-  paymentIntentId       BigInt                 @map("payment_intent_id")
-  ownerType             String                 @map("owner_type") @db.VarChar(24)
-  ownerClinicId         BigInt?                @map("owner_clinic_id")
-  ownerDentistId        BigInt?                @map("owner_dentist_id")
-  grossAmount           Int                    @map("gross_amount")
-  platformFee           Int                    @map("platform_fee")
-  clinicShare           Int                    @default(0) @map("clinic_share")
-  dentistShare          Int                    @default(0) @map("dentist_share")
-  netAmount             Int                    @map("net_amount")
-  currency              String                 @default("IDR") @db.VarChar(8)
-  settlementStatus      String                 @map("settlement_status") @db.VarChar(32) // pending, processing, settled, failed, refunded, partially_refunded, chargeback
-  providerReference     String?                @map("provider_reference") @db.VarChar(191)
-  settledAt             DateTime?              @map("settled_at") @db.Timestamptz(6)
-  payoutStatus          String                 @default("unpaid") @map("payout_status") @db.VarChar(32) // unpaid, processing, paid
-  payoutAt              DateTime?              @map("payout_at") @db.Timestamptz(6)
-  settlementReference   String?                @map("settlement_reference") @db.VarChar(191)
-  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  BigInt    @id @default(autoincrement())
+  paymentIntentId     BigInt    @map("payment_intent_id")
+  ownerType           String    @map("owner_type") @db.VarChar(24)
+  ownerClinicId       BigInt?   @map("owner_clinic_id")
+  ownerDentistId      BigInt?   @map("owner_dentist_id")
+  grossAmount         Int       @map("gross_amount")
+  platformFee         Int       @map("platform_fee")
+  clinicShare         Int       @default(0) @map("clinic_share")
+  dentistShare        Int       @default(0) @map("dentist_share")
+  netAmount           Int       @map("net_amount")
+  currency            String    @default("IDR") @db.VarChar(8)
+  settlementStatus    String    @map("settlement_status") @db.VarChar(32) // pending, processing, settled, failed, refunded, partially_refunded, chargeback
+  providerReference   String?   @map("provider_reference") @db.VarChar(191)
+  settledAt           DateTime? @map("settled_at") @db.Timestamptz(6)
+  payoutStatus        String    @default("unpaid") @map("payout_status") @db.VarChar(32) // unpaid, processing, paid
+  payoutAt            DateTime? @map("payout_at") @db.Timestamptz(6)
+  settlementReference String?   @map("settlement_reference") @db.VarChar(191)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  paymentIntent         PaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  ownerClinic           ClinicProfile?         @relation("SettlementOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
-  ownerDentist          User?                  @relation("SettlementOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
+  paymentIntent PaymentIntent  @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  ownerClinic   ClinicProfile? @relation("SettlementOwnerClinic", fields: [ownerClinicId], references: [id], onUpdate: NoAction)
+  ownerDentist  User?          @relation("SettlementOwnerDentist", fields: [ownerDentistId], references: [id], onUpdate: NoAction)
 
   @@index([ownerType, ownerClinicId], map: "idx_settlements_clinic")
   @@index([ownerType, ownerDentistId], map: "idx_settlements_dentist")
@@ -1758,22 +1805,22 @@ model PaymentSettlement {
 }
 
 model DentistCompensationEntry {
-  id                    BigInt                 @id @default(autoincrement())
-  appointmentId         BigInt?                @map("appointment_id")
-  paymentIntentId       BigInt?                @map("payment_intent_id")
-  dentistId             BigInt                 @map("dentist_id")
-  clinicId              BigInt                 @map("clinic_id")
-  entryType             String                 @map("entry_type") @db.VarChar(32) // ACCRUAL, COMMISSION, ADJUSTMENT, PAYOUT
-  amount                Int
-  status                String                 @default("accrued") @db.VarChar(32) // accrued, approved, paid, cancelled
-  metadata              Json?                  @default("{}")
-  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              BigInt   @id @default(autoincrement())
+  appointmentId   BigInt?  @map("appointment_id")
+  paymentIntentId BigInt?  @map("payment_intent_id")
+  dentistId       BigInt   @map("dentist_id")
+  clinicId        BigInt   @map("clinic_id")
+  entryType       String   @map("entry_type") @db.VarChar(32) // ACCRUAL, COMMISSION, ADJUSTMENT, PAYOUT
+  amount          Int
+  status          String   @default("accrued") @db.VarChar(32) // accrued, approved, paid, cancelled
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  appointment           Appointment?           @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  paymentIntent         PaymentIntent?         @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull)
-  dentist               User                   @relation("DentistCompensation", fields: [dentistId], references: [id], onDelete: Cascade)
-  clinic                ClinicProfile          @relation("ClinicCompensation", fields: [clinicId], references: [id], onDelete: Cascade)
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  paymentIntent PaymentIntent? @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull)
+  dentist       User           @relation("DentistCompensation", fields: [dentistId], references: [id], onDelete: Cascade)
+  clinic        ClinicProfile  @relation("ClinicCompensation", fields: [clinicId], references: [id], onDelete: Cascade)
 
   @@index([dentistId, status], map: "idx_compensation_dentist_status")
   @@index([clinicId, status], map: "idx_compensation_clinic_status")
@@ -1781,25 +1828,25 @@ model DentistCompensationEntry {
 }
 
 model WebhookProcessingLog {
-  id                    BigInt                 @id @default(autoincrement())
-  provider              String                 @db.VarChar(32)
-  eventId               String                 @map("event_id") @db.VarChar(191)
-  payloadHash           String                 @unique @map("payload_hash") @db.VarChar(128)
-  receivedAt            DateTime               @default(now()) @map("received_at") @db.Timestamptz(6)
+  id          BigInt   @id @default(autoincrement())
+  provider    String   @db.VarChar(32)
+  eventId     String   @map("event_id") @db.VarChar(191)
+  payloadHash String   @unique @map("payload_hash") @db.VarChar(128)
+  receivedAt  DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
 
   @@unique([provider, eventId], map: "uniq_webhook_provider_event")
   @@map("webhook_processing_logs")
 }
 
 model AvailableBalance {
-  id                 BigInt   @id @default(autoincrement())
-  ownerType          String   @map("owner_type") @db.VarChar(24) // clinic, dentist
-  ownerClinicId      BigInt?  @unique @map("owner_clinic_id")
-  ownerDentistId     BigInt?  @unique @map("owner_dentist_id")
-  availableAmount    Int      @default(0) @map("available_amount")
-  pendingAmount      Int      @default(0) @map("pending_amount")
-  currency           String   @default("IDR") @db.VarChar(8)
-  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              BigInt   @id @default(autoincrement())
+  ownerType       String   @map("owner_type") @db.VarChar(24) // clinic, dentist
+  ownerClinicId   BigInt?  @unique @map("owner_clinic_id")
+  ownerDentistId  BigInt?  @unique @map("owner_dentist_id")
+  availableAmount Int      @default(0) @map("available_amount")
+  pendingAmount   Int      @default(0) @map("pending_amount")
+  currency        String   @default("IDR") @db.VarChar(8)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([ownerType, ownerClinicId], map: "idx_balances_clinic")
   @@index([ownerType, ownerDentistId], map: "idx_balances_dentist")
