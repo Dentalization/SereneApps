@@ -45,6 +45,7 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260701030000_add_imaging_study_patient_assignments/
 !backend/prisma/migrations/20260702000000_add_specialist_case_completion_summary/
 !backend/prisma/migrations/20260702010000_add_endo_core_mvp/
+!backend/prisma/migrations/20260702030000_add_endo_difficulty_radiograph_evidence/
 
 # Mobile specific
 mobile/.expo/

@@ -16,6 +16,8 @@ test('Endo-Core routes, sidebar entry, and exact page tree are registered', () =
     'EndoTreatmentTimeline',
     'EndoOdontogramPicker',
     'EndoXCoreEvidence',
+    'EndoDifficultyAssessment',
+    'EndoRadiographEvidenceSlots',
   ];
 
   assert.match(routes, /pages\/dentist-portal\/endo-core/);
@@ -29,6 +31,38 @@ test('Endo-Core routes, sidebar entry, and exact page tree are registered', () =
   }
 });
 
+test('Endo detail renders structured dentist-authored difficulty and radiograph evidence slots', () => {
+  const detail = readSource('src/pages/dentist-portal/endo-core/components/EndoCaseDetail.jsx');
+  const difficulty = readSource(
+    'src/pages/dentist-portal/endo-core/components/EndoDifficultyAssessment.jsx',
+  );
+  const evidenceSlots = readSource(
+    'src/pages/dentist-portal/endo-core/components/EndoRadiographEvidenceSlots.jsx',
+  );
+  const service = readSource('src/services/endoCoreService.js');
+
+  assert.match(detail, /import EndoDifficultyAssessment/);
+  assert.match(detail, /import EndoRadiographEvidenceSlots/);
+  assert.match(detail, /<EndoDifficultyAssessment/);
+  assert.match(detail, /<EndoRadiographEvidenceSlots/);
+  assert.match(difficulty, /Dentist-selected difficulty/);
+  assert.match(difficulty, /final difficulty level is selected by the dentist/i);
+  assert.doesNotMatch(
+    difficulty,
+    /AI diagnosis|automatic diagnosis|system recommendation|automatic referral/i,
+  );
+  for (const label of ['Preoperative', 'Working length', 'Master cone', 'Obturation', 'Follow-up', 'CBCT']) {
+    assert.match(evidenceSlots, new RegExp(label));
+  }
+  assert.match(evidenceSlots, /X-Core remains the source of truth/);
+  assert.match(service, /getEndoDifficultyAssessment/);
+  assert.match(service, /saveEndoDifficultyAssessment/);
+  assert.match(service, /listEndoRadiographEvidence/);
+  assert.match(service, /upsertEndoRadiographEvidence/);
+  assert.match(service, /unlinkEndoRadiographEvidence/);
+  assert.doesNotMatch(service, /\bfetch\s*\(/);
+});
+
 test('Endo create flow requires patient, FDI tooth, title, and chief complaint', () => {
   const modal = readSource('src/pages/dentist-portal/endo-core/components/CreateEndoCaseModal.jsx');
   const service = readSource('src/services/endoCoreService.js');
@@ -39,6 +73,55 @@ test('Endo create flow requires patient, FDI tooth, title, and chief complaint',
   assert.match(modal, /dentist-portal\/endo-core\/\$\{apiError\.existingCaseId\}/);
   assert.match(service, /authHttp\.post\('\/specialist-workspace\/endo\/cases'/);
   assert.doesNotMatch(service, /\bfetch\s*\(/);
+});
+
+test('existing Endo case picker uses the scoped Endo summary and real tooth number', () => {
+  const modal = readSource('src/pages/dentist-portal/endo-core/components/CreateEndoCaseModal.jsx');
+
+  assert.match(modal, /listEndoCases\(\{\s*patientId:\s*patient\.id\s*\}\)/);
+  assert.match(modal, /c\.endo\?\.toothNumber/);
+  assert.doesNotMatch(modal, /listSpecialistCases/);
+});
+
+test('difficulty assessment derives overlapping clinical context from case details', () => {
+  const detail = readSource('src/pages/dentist-portal/endo-core/components/EndoCaseDetail.jsx');
+  const difficulty = readSource(
+    'src/pages/dentist-portal/endo-core/components/EndoDifficultyAssessment.jsx',
+  );
+
+  assert.match(detail, /caseDetails=\{record\.endo\}/);
+  assert.match(difficulty, /From case details/);
+  for (const field of [
+    'swelling',
+    'sinusTract',
+    'previousEndoTreatment',
+    'cbctConsidered',
+    'traumaHistory',
+    'periodontalConcern',
+  ]) {
+    assert.match(difficulty, new RegExp(`caseDetails\\?\\.${field}`));
+  }
+  for (const duplicateFactor of [
+    'emergency_pain_or_swelling',
+    'previous_rct',
+    'cbct_considered',
+    'trauma_history',
+    'suspected_perio_endo_lesion',
+  ]) {
+    assert.doesNotMatch(difficulty, new RegExp(`['"]${duplicateFactor}['"]`));
+  }
+});
+
+test('case-level and workflow-stage X-Core references explain their distinct purpose', () => {
+  const caseEvidence = readSource(
+    'src/pages/dentist-portal/endo-core/components/EndoXCoreEvidence.jsx',
+  );
+  const evidenceSlots = readSource(
+    'src/pages/dentist-portal/endo-core/components/EndoRadiographEvidenceSlots.jsx',
+  );
+
+  assert.match(caseEvidence, /primary case-level X-Core reference/i);
+  assert.match(evidenceSlots, /workflow-stage-specific X-Core references/i);
 });
 
 test('Endo tooth picker imports the shared permanent FDI rows and never mutates EMR', () => {
@@ -89,6 +172,6 @@ test('clinic patient detail renders only the safe specialist summary contract', 
   assert.match(clinicPatientDetail, /caseRecord\.hasXcoreEvidence/);
   assert.doesNotMatch(
     clinicPatientDetail,
-    /caseRecord\.(toothNumber|pulpDiagnosis|periapicalDiagnosis|diagnosticTests|treatmentStages|completionSummary|difficultyFactors)/,
+    /caseRecord\.(toothNumber|pulpDiagnosis|periapicalDiagnosis|diagnosticTests|treatmentStages|completionSummary|difficultyFactors|difficultyAssessment|radiographEvidenceSlots)/,
   );
 });

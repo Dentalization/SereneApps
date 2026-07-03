@@ -958,3 +958,464 @@ test('Endo-Core MVP enforces FDI, duplicates, ownership, workflow, lifecycle, an
     assert.equal(activationBlocked.json.error.code, 'endo_activation_requirements_missing');
   });
 });
+
+test('Endo difficulty assessment and radiograph evidence slots enforce clinical and PHI boundaries', async () => {
+  const clinic = await createClinic('Endo Evidence Clinic');
+  const branch = await createBranch(clinic, 'Endo Evidence Branch');
+  const patient = await createUser('Endo Evidence Patient', ['patient']);
+  const otherPatient = await createUser('Endo Evidence Other Patient', ['patient']);
+  const dentist = await createUser('Endo Evidence Dentist', ['dentist']);
+  const unrelatedDentist = await createUser('Endo Evidence Other Dentist', ['dentist']);
+  const frontOffice = await createUser('Endo Evidence Front Office', ['front_office']);
+  const admin = await createUser('Endo Evidence Admin', ['admin']);
+  await addStaff(dentist, clinic, 'dentist', branch.id);
+  await addStaff(unrelatedDentist, clinic, 'dentist', branch.id);
+  await addStaff(frontOffice, clinic, 'front_office', branch.id);
+  const appointment = await createAppointment({ patient, dentist, clinic, branch });
+  const otherAppointment = await createAppointment({
+    patient: otherPatient,
+    dentist,
+    clinic,
+    branch,
+    startsAt: new Date('2026-07-05T10:00:00.000Z'),
+  });
+  const firstStudy = await createImagingStudy({ patient, dentist });
+  const replacementStudy = await createImagingStudy({ patient, dentist });
+  const otherPatientStudy = await createImagingStudy({ patient: otherPatient, dentist });
+  const tokens = {
+    dentist: signAccess({ id: dentist.id.toString(), roles: dentist.roles }),
+    unrelatedDentist: signAccess({ id: unrelatedDentist.id.toString(), roles: unrelatedDentist.roles }),
+    frontOffice: signAccess({ id: frontOffice.id.toString(), roles: frontOffice.roles }),
+    admin: signAccess({ id: admin.id.toString(), roles: admin.roles }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const created = await httpJson(baseUrl, '/v1/specialist-workspace/endo/cases', tokens.dentist, {
+      method: 'POST',
+      body: JSON.stringify({
+        patientId: patient.id.toString(),
+        originAppointmentId: appointment.id.toString(),
+        title: 'Difficulty and evidence case',
+        toothNumber: '46',
+        chiefComplaint: 'Persistent pain',
+      }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const caseId = created.json.case.id;
+
+    const emptyAssessment = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+    );
+    assert.equal(emptyAssessment.status, 200);
+    assert.equal(emptyAssessment.json.difficultyAssessment.id, null);
+    assert.deepEqual(emptyAssessment.json.difficultyAssessment.patientConsiderations, []);
+
+    const invalidDifficulty = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ dentistSelectedDifficulty: 'extreme' }),
+      },
+    );
+    assert.equal(invalidDifficulty.status, 400);
+    assert.equal(invalidDifficulty.json.error.code, 'invalid_endo_difficulty_level');
+
+    const invalidFactor = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ canalMorphologyFactors: ['invented_factor'] }),
+      },
+    );
+    assert.equal(invalidFactor.status, 400);
+    assert.equal(invalidFactor.json.error.code, 'invalid_canal_morphology_factors');
+
+    const savedAssessment = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          patientConsiderations: ['limited_mouth_opening'],
+          diagnosticConsiderations: ['unclear_pain_origin'],
+          radiographicConsiderations: ['cbct_considered'],
+          toothMorphologyFactors: ['limited_isolation'],
+          canalMorphologyFactors: ['calcified_canal'],
+          previousTreatmentFactors: ['previous_rct'],
+          perioEndoFactors: [],
+          traumaResorptionFactors: ['external_resorption'],
+          dentistSelectedDifficulty: 'moderate',
+          referralConsidered: true,
+          referralReason: 'Complex retreatment risk; needs specialist review.',
+          notes: 'Dentist-authored assessment.',
+        }),
+      },
+    );
+    assert.equal(savedAssessment.status, 200, JSON.stringify(savedAssessment.json));
+    assert.equal(
+      savedAssessment.json.difficultyAssessment.dentistSelectedDifficulty,
+      'moderate',
+    );
+    assert.deepEqual(
+      savedAssessment.json.difficultyAssessment.canalMorphologyFactors,
+      ['calcified_canal'],
+    );
+    assert.equal(
+      (
+        await prisma.endoCaseDetail.findUnique({
+          where: { id: BigInt(created.json.case.endo.id) },
+          select: { difficultyLevel: true },
+        })
+      ).difficultyLevel,
+      'moderate',
+    );
+
+    for (const token of [tokens.unrelatedDentist, tokens.frontOffice, tokens.admin]) {
+      const deniedRead = await httpJson(
+        baseUrl,
+        `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+        token,
+      );
+      assert.equal(deniedRead.status, 403);
+      const deniedWrite = await httpJson(
+        baseUrl,
+        `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+        token,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ dentistSelectedDifficulty: 'low' }),
+        },
+      );
+      assert.equal(deniedWrite.status, 403);
+    }
+
+    const emptySlots = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence`,
+      tokens.dentist,
+    );
+    assert.equal(emptySlots.status, 200);
+    assert.equal(emptySlots.json.slots.length, 6);
+    assert.ok(emptySlots.json.slots.every((slot) => slot.linked === false));
+
+    const unrelatedLink = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.unrelatedDentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ xcoreStudyId: firstStudy.id.toString() }),
+      },
+    );
+    assert.equal(unrelatedLink.status, 403);
+
+    const invalidEvidenceType = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/postoperative`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ xcoreStudyId: firstStudy.id.toString() }),
+      },
+    );
+    assert.equal(invalidEvidenceType.status, 400);
+    assert.equal(invalidEvidenceType.json.error.code, 'invalid_endo_radiograph_evidence_type');
+
+    const patientMismatch = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ xcoreStudyId: otherPatientStudy.id.toString() }),
+      },
+    );
+    assert.equal(patientMismatch.status, 403);
+    assert.equal(patientMismatch.json.error.code, 'xcore_study_patient_mismatch');
+
+    const stage = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/treatment-stages`,
+      tokens.dentist,
+      {
+        method: 'POST',
+        body: JSON.stringify({ stageType: 'assessment', status: 'completed' }),
+      },
+    );
+    assert.equal(stage.status, 201);
+
+    const otherCase = await httpJson(
+      baseUrl,
+      '/v1/specialist-workspace/endo/cases',
+      tokens.dentist,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: otherPatient.id.toString(),
+          originAppointmentId: otherAppointment.id.toString(),
+          title: 'Other Endo evidence case',
+          toothNumber: '47',
+          chiefComplaint: 'Other patient pain',
+        }),
+      },
+    );
+    assert.equal(otherCase.status, 201);
+    const otherStage = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${otherCase.json.case.id}/treatment-stages`,
+      tokens.dentist,
+      {
+        method: 'POST',
+        body: JSON.stringify({ stageType: 'assessment' }),
+      },
+    );
+    assert.equal(otherStage.status, 201);
+
+    const wrongStage = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          xcoreStudyId: firstStudy.id.toString(),
+          treatmentStageId: otherStage.json.stage.id,
+        }),
+      },
+    );
+    assert.equal(wrongStage.status, 403);
+    assert.equal(wrongStage.json.error.code, 'endo_treatment_stage_scope_denied');
+
+    const linked = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          xcoreStudyId: firstStudy.id.toString(),
+          treatmentStageId: stage.json.stage.id,
+          notes: 'Preoperative evidence.',
+        }),
+      },
+    );
+    assert.equal(linked.status, 200, JSON.stringify(linked.json));
+    assert.equal(linked.json.slot.linked, true);
+    assert.equal(linked.json.slot.xcore.referenceId, firstStudy.id.toString());
+
+    const replaced = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          xcoreStudyId: replacementStudy.id.toString(),
+          notes: 'Replacement preoperative evidence.',
+        }),
+      },
+    );
+    assert.equal(replaced.status, 200);
+    assert.equal(replaced.json.slot.xcore.referenceId, replacementStudy.id.toString());
+    assert.doesNotMatch(
+      JSON.stringify(replaced.json.slot),
+      /imageUrl|findings|annotations|series|dicom|metadata/i,
+    );
+    assert.equal(
+      await prisma.endoRadiographEvidence.count({
+        where: {
+          endoCaseDetailId: BigInt(created.json.case.endo.id),
+          evidenceType: 'preoperative',
+        },
+      }),
+      1,
+    );
+
+    for (const token of [tokens.unrelatedDentist, tokens.frontOffice, tokens.admin]) {
+      const denied = await httpJson(
+        baseUrl,
+        `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence`,
+        token,
+      );
+      assert.equal(denied.status, 403);
+    }
+
+    const detail = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}`,
+      tokens.dentist,
+    );
+    assert.equal(detail.status, 200);
+    assert.equal(detail.json.case.difficultyAssessment.dentistSelectedDifficulty, 'moderate');
+    assert.equal(detail.json.case.radiographEvidenceSlots.length, 6);
+    assert.equal(
+      detail.json.case.radiographEvidenceSlots.find(
+        (slot) => slot.evidenceType === 'preoperative',
+      ).xcore.referenceId,
+      replacementStudy.id.toString(),
+    );
+
+    const unlinked = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/preoperative`,
+      tokens.dentist,
+      { method: 'DELETE' },
+    );
+    assert.equal(unlinked.status, 200);
+    assert.equal(unlinked.json.unlinked, true);
+    assert.equal(
+      await prisma.endoRadiographEvidence.count({
+        where: { endoCaseDetailId: BigInt(created.json.case.endo.id) },
+      }),
+      0,
+    );
+    assert.ok(await prisma.imagingStudy.findUnique({ where: { id: replacementStudy.id } }));
+
+    const timeline = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}`,
+      tokens.dentist,
+    );
+    const eventTypes = timeline.json.case.timelineEvents.map((event) => event.eventType);
+    assert.ok(eventTypes.includes('endo_difficulty_assessment_updated'));
+    assert.ok(eventTypes.includes('endo_radiograph_evidence_linked'));
+    assert.ok(eventTypes.includes('endo_radiograph_evidence_unlinked'));
+
+    const clinicSummary = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/clinic/patients/${patient.id}/case-summary`,
+      tokens.frontOffice,
+    );
+    assert.equal(clinicSummary.status, 200);
+    assert.doesNotMatch(
+      JSON.stringify(clinicSummary.json),
+      /difficultyAssessment|patientConsiderations|radiographEvidence|calcified_canal|external_resorption/i,
+    );
+    const analytics = await httpJson(
+      baseUrl,
+      '/v1/specialist-workspace/admin/analytics',
+      tokens.admin,
+    );
+    assert.equal(analytics.status, 200);
+    assert.doesNotMatch(
+      JSON.stringify(analytics.json),
+      /difficultyAssessment|radiographEvidence|calcified_canal|patientId|patientName/i,
+    );
+
+    const invalidConstraintCase = await prisma.specialistCase.create({
+      data: {
+        patientId: patient.id,
+        dentistId: dentist.id,
+        caseType: 'endodontic',
+        title: 'Constraint test Endo case',
+        endoCaseDetail: {
+          create: { toothNumber: '45', chiefComplaint: 'Constraint test' },
+        },
+      },
+      include: { endoCaseDetail: true },
+    });
+    await assert.rejects(
+      prisma.endoDifficultyAssessment.create({
+        data: {
+          endoCaseDetailId: invalidConstraintCase.endoCaseDetail.id,
+          dentistSelectedDifficulty: 'extreme',
+        },
+      }),
+    );
+    await assert.rejects(
+      prisma.endoRadiographEvidence.create({
+        data: {
+          endoCaseDetailId: invalidConstraintCase.endoCaseDetail.id,
+          evidenceType: 'postoperative',
+          xcoreStudyId: firstStudy.id,
+        },
+      }),
+    );
+
+    const active = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/cases/${caseId}/status`,
+      tokens.dentist,
+      { method: 'PATCH', body: JSON.stringify({ status: 'active' }) },
+    );
+    assert.equal(active.status, 200);
+    const diagnoses = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}`,
+      tokens.dentist,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          pulpDiagnosis: 'Pulp diagnosis',
+          periapicalDiagnosis: 'Periapical diagnosis',
+        }),
+      },
+    );
+    assert.equal(diagnoses.status, 200);
+    const completed = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/cases/${caseId}/status`,
+      tokens.dentist,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'completed',
+          completionSummary: 'Dentist-authored summary.',
+        }),
+      },
+    );
+    assert.equal(completed.status, 200);
+
+    const blockedAssessment = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ dentistSelectedDifficulty: 'high' }),
+      },
+    );
+    assert.equal(blockedAssessment.status, 409);
+    const blockedEvidence = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/cbct`,
+      tokens.dentist,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ xcoreStudyId: firstStudy.id.toString() }),
+      },
+    );
+    assert.equal(blockedEvidence.status, 409);
+    const blockedUnlink = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence/cbct`,
+      tokens.dentist,
+      { method: 'DELETE' },
+    );
+    assert.equal(blockedUnlink.status, 409);
+    const completedAssessmentRead = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/difficulty-assessment`,
+      tokens.dentist,
+    );
+    assert.equal(completedAssessmentRead.status, 200);
+    assert.equal(
+      completedAssessmentRead.json.difficultyAssessment.dentistSelectedDifficulty,
+      'moderate',
+    );
+    const completedEvidenceRead = await httpJson(
+      baseUrl,
+      `/v1/specialist-workspace/endo/cases/${caseId}/radiograph-evidence`,
+      tokens.dentist,
+    );
+    assert.equal(completedEvidenceRead.status, 200);
+    assert.equal(completedEvidenceRead.json.slots.length, 6);
+  });
+});

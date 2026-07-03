@@ -10,6 +10,8 @@ import {
   updateSpecialistCaseStatus,
 } from '../../../../services/specialistWorkspaceService';
 import EndoDiagnosticTests from './EndoDiagnosticTests';
+import EndoDifficultyAssessment from './EndoDifficultyAssessment';
+import EndoRadiographEvidenceSlots from './EndoRadiographEvidenceSlots';
 import EndoTreatmentTimeline from './EndoTreatmentTimeline';
 import EndoXCoreEvidence from './EndoXCoreEvidence';
 
@@ -24,8 +26,6 @@ const fieldsFrom = (detail = {}) => ({
   chiefComplaint: detail.chiefComplaint || '',
   pulpDiagnosis: detail.pulpDiagnosis || '',
   periapicalDiagnosis: detail.periapicalDiagnosis || '',
-  difficultyLevel: detail.difficultyLevel || '',
-  difficultyFactors: Array.isArray(detail.difficultyFactors) ? detail.difficultyFactors.join(', ') : '',
   restorabilityStatus: detail.restorabilityStatus || '',
   finalRestorationStatus: detail.finalRestorationStatus || '',
   retreatmentReason: detail.retreatmentReason || '',
@@ -84,11 +84,7 @@ const EndoCaseDetail = ({ caseId }) => {
     setSaving(true);
     setNotice('');
     try {
-      await updateEndoCase(caseId, {
-        ...form,
-        difficultyLevel: form.difficultyLevel || null,
-        difficultyFactors: form.difficultyFactors.split(',').map((value) => value.trim()).filter(Boolean),
-      });
+      await updateEndoCase(caseId, form);
       await load();
       setNotice('Endodontic case detail tersimpan.');
     } catch (requestError) {
@@ -216,7 +212,6 @@ const EndoCaseDetail = ({ caseId }) => {
                 ['chiefComplaint', 'Chief complaint'],
                 ['pulpDiagnosis', 'Pulp diagnosis'],
                 ['periapicalDiagnosis', 'Periapical diagnosis'],
-                ['difficultyFactors', 'Difficulty factors (comma separated)'],
                 ['restorabilityStatus', 'Restorability status'],
                 ['finalRestorationStatus', 'Final restoration status'],
                 ['retreatmentReason', 'Retreatment reason'],
@@ -229,13 +224,6 @@ const EndoCaseDetail = ({ caseId }) => {
                   <textarea value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} disabled={!editable} rows={field === 'chiefComplaint' ? 3 : 2} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-3 py-2.5 font-normal text-primary disabled:opacity-70" />
                 </label>
               ))}
-              <label className="text-sm font-semibold text-primary">
-                Difficulty level
-                <select value={form.difficultyLevel} onChange={(event) => setForm({ ...form, difficultyLevel: event.target.value })} disabled={!editable} className="mt-2 w-full rounded-xl border border-primary/15 bg-surface-elevated px-3 py-2.5 font-normal text-primary disabled:opacity-70">
-                  <option value="">Not selected</option>
-                  <option value="low">Low</option><option value="moderate">Moderate</option><option value="high">High</option>
-                </select>
-              </label>
               <div className="grid gap-2 sm:grid-cols-2 md:col-span-2">
                 {[
                   ['swelling', 'Swelling'], ['sinusTract', 'Sinus tract'],
@@ -276,6 +264,14 @@ const EndoCaseDetail = ({ caseId }) => {
             </div>
           </section>
 
+          <EndoDifficultyAssessment
+            caseId={caseId}
+            assessment={record.difficultyAssessment}
+            caseDetails={record.endo}
+            editable={editable}
+            onChanged={load}
+            onError={setError}
+          />
           <EndoDiagnosticTests caseId={caseId} tests={record.endo?.diagnosticTests} editable={editable} onChanged={load} onError={setError} />
           <EndoTreatmentTimeline caseId={caseId} stages={record.endo?.treatmentStages} editable={editable} onChanged={load} onError={setError} patientId={record.patientId} />
 
@@ -296,6 +292,15 @@ const EndoCaseDetail = ({ caseId }) => {
         </div>
 
         <aside className="space-y-5">
+          <EndoRadiographEvidenceSlots
+            caseId={caseId}
+            patientId={record.patientId}
+            slots={record.radiographEvidenceSlots}
+            treatmentStages={record.endo?.treatmentStages}
+            editable={editable}
+            onChanged={load}
+            onError={setError}
+          />
           <EndoXCoreEvidence
             evidence={record.xcore}
             caseId={caseId}

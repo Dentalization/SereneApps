@@ -4,8 +4,8 @@ import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
 import PatientSearchPicker from '../../components/PatientSearchPicker';
 import { getPatientEmrRecords } from '../../../../services/dentistPortalService';
-import { createEndoCase } from '../../../../services/endoCoreService';
-import { listPatientXcoreStudies, listSpecialistCases } from '../../../../services/specialistWorkspaceService';
+import { createEndoCase, listEndoCases } from '../../../../services/endoCoreService';
+import { listPatientXcoreStudies } from '../../../../services/specialistWorkspaceService';
 import { useToast } from '../../../../contexts/ToastContext';
 import EndoOdontogramPicker from './EndoOdontogramPicker';
 
@@ -89,7 +89,7 @@ const CreateEndoCaseModal = ({
     if (!isOpen || !patient?.id) return undefined;
     let active = true;
     setLoadingExisting(true);
-    listSpecialistCases({ patientId: patient.id, caseType: 'endodontic' })
+    listEndoCases({ patientId: patient.id })
       .then((res) => {
         if (!active) return;
         const activeCases = (res || []).filter((c) => c.status !== 'archived');
@@ -204,7 +204,7 @@ const CreateEndoCaseModal = ({
                           <div className="min-w-0">
                             <p className="font-semibold text-primary">{c.title}</p>
                             <p className="mt-1 text-xs text-secondary">
-                              Tooth FDI {c.toothNumber || '—'} · diperbarui {new Date(c.updatedAt).toLocaleDateString('id-ID')}
+                              Tooth FDI {c.endo?.toothNumber || '—'} · diperbarui {new Date(c.updatedAt).toLocaleDateString('id-ID')}
                             </p>
                           </div>
                           <button

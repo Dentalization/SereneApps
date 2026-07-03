@@ -17,6 +17,76 @@ export const ENDO_STAGE_STATUSES = Object.freeze([
   'planned', 'in_progress', 'completed', 'skipped',
 ]);
 export const ENDO_DIFFICULTY_LEVELS = Object.freeze(['low', 'moderate', 'high']);
+export const ENDO_DIFFICULTY_FACTOR_GROUPS = Object.freeze({
+  patientConsiderations: Object.freeze([
+    'medical_complexity',
+    'anesthesia_difficulty',
+    'limited_mouth_opening',
+    'gag_reflex',
+    'patient_cooperation_concern',
+    'emergency_pain_or_swelling',
+  ]),
+  diagnosticConsiderations: Object.freeze([
+    'unclear_pain_origin',
+    'referred_pain_possible',
+    'chronic_orofacial_pain_history',
+    'multiple_teeth_possible',
+    'conflicting_test_results',
+  ]),
+  radiographicConsiderations: Object.freeze([
+    'difficult_to_interpret',
+    'limited_radiographic_visibility',
+    'suspected_extra_canal',
+    'cbct_considered',
+    'proximity_to_vital_structure',
+  ]),
+  toothMorphologyFactors: Object.freeze([
+    'crown_morphology_complex',
+    'tilted_or_rotated_tooth',
+    'limited_isolation',
+    'deep_restoration',
+    'cracked_tooth_concern',
+  ]),
+  canalMorphologyFactors: Object.freeze([
+    'curved_canal',
+    'calcified_canal',
+    'canal_not_visible',
+    'c_shaped_canal',
+    'open_apex',
+    'long_root',
+    'root_anomaly',
+  ]),
+  previousTreatmentFactors: Object.freeze([
+    'previous_rct',
+    'suspected_missed_canal',
+    'poor_obturation',
+    'coronal_leakage',
+    'post_core_obstruction',
+    'separated_instrument',
+    'ledge_or_perforation_history',
+  ]),
+  perioEndoFactors: Object.freeze([
+    'deep_periodontal_pocket',
+    'furcation_involvement',
+    'suspected_perio_endo_lesion',
+    'mobility_concern',
+  ]),
+  traumaResorptionFactors: Object.freeze([
+    'trauma_history',
+    'internal_resorption',
+    'external_resorption',
+    'root_fracture_concern',
+    'immature_open_apex',
+  ]),
+});
+export const ENDO_RADIOGRAPH_EVIDENCE_TYPES = Object.freeze([
+  'preoperative',
+  'working_length',
+  'master_cone',
+  'obturation',
+  'follow_up',
+  'cbct',
+]);
 
 export function requireAllowed(value, allowed, code, message = code) {
   if (!allowed.includes(value)) throw specialistWorkspaceError(400, code, message);
@@ -55,4 +125,3 @@ export async function requireEndoCase(
   }
   return specialistCase;
 }
-
