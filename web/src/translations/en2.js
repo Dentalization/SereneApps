@@ -2039,6 +2039,17 @@ export default {
       timeline: {
         title: 'Medical History Timeline',
         empty: 'Medical timeline feature coming soon'
+      },
+      xcore: {
+        title: 'X-Core Imaging',
+        description: 'Radiographic studies linked to this patient and accessible to you.',
+        openGallery: 'Open X-Core Gallery',
+        openStudy: 'Open Study',
+        study: 'X-Core study',
+        series: 'series',
+        unknownModality: 'Imaging',
+        emptyTitle: 'No X-Core studies linked',
+        emptyDescription: 'Studies uploaded to Gallery appear here after they are explicitly assigned to this patient.'
       }
     },
     profile: {

@@ -1,19 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import Icon from '../../../../components/AppIcon';
+import { listTreatmentTypes, scopeClinicPatientData } from '../clinicPatientDataModel.mjs';
+import { buildClinicPatientReport } from '../patientReportModel.mjs';
 
-const formatDateSafe = (dateString, locale, options) => {
-  if (!dateString) return '-';
-  const d = new Date(dateString);
-  if (isNaN(d.getTime())) return '-';
-  try {
-    return d.toLocaleDateString(locale, options);
-  } catch (e) {
-    return '-';
-  }
+const downloadReport = (report) => {
+  const blob = new Blob([report.content], { type: report.mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = report.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 };
 
+const formatCurrency = (amount) => new Intl.NumberFormat('id-ID', {
+  style: 'currency', currency: 'IDR', maximumFractionDigits: 0
+}).format(Number(amount) || 0);
 
 const PatientReports = ({
   patients = [],
@@ -26,11 +32,8 @@ const PatientReports = ({
   const locale = language === 'id' ? 'id-ID' : 'en-US';
   const [selectedReportType, setSelectedReportType] = useState('patientList');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [filters, setFilters] = useState({
-    patientType: 'all',
-    treatmentType: 'all'
-  });
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [filters, setFilters] = useState({ patientType: 'all', treatmentType: 'all' });
+  const [generatedReports, setGeneratedReports] = useState([]);
 
   const reportTypes = [
     { key: 'patientList', label: t('patients.reports.types.patientList'), icon: 'Users' },
@@ -40,364 +43,191 @@ const PatientReports = ({
     { key: 'dentistPerformance', label: 'Performa Dokter', icon: 'BarChart2' },
   ];
 
-  // ── Compute revenue state ────────────────────────────────────────────────
-  const totalRevenue = useMemo(
-    () => patients.reduce((sum, p) => sum + (p.totalRevenue || 0), 0),
-    [patients]
-  );
+  const dateBounds = useMemo(() => ({
+    start: dateRange.start ? new Date(`${dateRange.start}T00:00:00`) : null,
+    end: dateRange.end ? new Date(`${dateRange.end}T23:59:59.999`) : null,
+  }), [dateRange]);
+  const hasInvalidDateRange = Boolean(dateBounds.start && dateBounds.end && dateBounds.start > dateBounds.end);
+  const effectiveDateBounds = hasInvalidDateRange ? { start: null, end: null } : dateBounds;
 
-  const handleGenerateReport = async () => {
-    setIsGenerating(true);
+  const treatmentTypes = useMemo(() => listTreatmentTypes(allAppointments), [allAppointments]);
+  const scoped = useMemo(() => scopeClinicPatientData({
+    patients,
+    appointments: allAppointments,
+    selectedDentist,
+    patientType: filters.patientType,
+    treatmentType: filters.treatmentType,
+    ...effectiveDateBounds,
+  }), [allAppointments, effectiveDateBounds, filters, patients, selectedDentist]);
 
-    // Simulate report generation
-    await new Promise(resolve => setTimeout(resolve, 2000));
+  const totalRevenue = useMemo(() => scoped.appointments
+    .filter((appointment) => appointment.isPaid)
+    .reduce((sum, appointment) => sum + (Number(appointment.fee) || 0), 0), [scoped.appointments]);
 
-    console.log('Generating report:', {
+  const handleGenerateReport = () => {
+    if (hasInvalidDateRange) {
+      toast.error('Tanggal mulai tidak boleh melewati tanggal akhir.');
+      return;
+    }
+    const generatedAt = new Date();
+    const report = buildClinicPatientReport({
       type: selectedReportType,
-      dateRange,
-      filters,
-      patients: patients.length,
+      patients,
+      appointments: allAppointments,
+      doctors,
       selectedDentist,
+      patientType: filters.patientType,
+      treatmentType: filters.treatmentType,
+      ...effectiveDateBounds,
+      generatedAt,
     });
-
-    setIsGenerating(false);
-    toast.success(t('patients.reports.generationSuccess'));
+    downloadReport(report);
+    setGeneratedReports((current) => [{ ...report, generatedAt }, ...current].slice(0, 5));
+    toast.success(`Laporan berhasil diunduh (${report.rowCount} baris data).`);
   };
 
-  const ReportPreview = () => {
-    switch (selectedReportType) {
-      case 'patientList':
-        return (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.patientList.title')}</h4>
-            <div className="bg-surface rounded-lg p-4">
-              <div className="grid grid-cols-5 gap-4 text-sm font-medium text-text-secondary mb-2">
-                <div>{t('patients.registry.table.name')}</div>
-                <div>{t('patients.registry.table.age')}</div>
-                <div>Dokter</div>
-                <div>{t('patients.registry.table.status')}</div>
-                <div>{t('patients.registry.table.lastVisit')}</div>
-              </div>
-              {patients.slice(0, 5).map(patient => (
-                <div key={patient.id} className="grid grid-cols-5 gap-4 text-sm text-text-primary py-2 border-b border-border/30 last:border-b-0">
-                  <div>{patient.name}</div>
-                  <div>{patient.age}</div>
-                  <div className="text-text-secondary">{patient.doctorName}</div>
-                  <div>{t(`patients.registry.status.${patient.status}`)}</div>
-                  <div>{formatDateSafe(patient.lastVisit, locale)}</div>
-                </div>
+  const treatmentCounts = useMemo(() => {
+    const counts = new Map();
+    scoped.appointments.forEach((appointment) => {
+      const key = appointment.treatment || appointment.reason || 'Tidak tercatat';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [scoped.appointments]);
+
+  const renderPreview = () => {
+    if (selectedReportType === 'patientList') {
+      return (
+        <div className="overflow-x-auto rounded-xl border border-primary/10">
+          <table className="w-full min-w-[680px] text-sm">
+            <thead className="bg-surface text-left text-xs uppercase tracking-wider text-secondary">
+              <tr><th className="px-4 py-3">Pasien</th><th className="px-4 py-3">Usia</th><th className="px-4 py-3">Dokter Perawatan</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Kunjungan</th></tr>
+            </thead>
+            <tbody className="divide-y divide-primary/10">
+              {scoped.patients.slice(0, 5).map((patient) => (
+                <tr key={patient.id}>
+                  <td className="px-4 py-3 font-medium text-primary">{patient.name || 'Tanpa nama'}</td>
+                  <td className="px-4 py-3 text-secondary">{patient.age ?? '—'}</td>
+                  <td className="px-4 py-3 text-secondary">{patient.doctorName || '—'}</td>
+                  <td className="px-4 py-3 capitalize text-secondary">{patient.status || '—'}</td>
+                  <td className="px-4 py-3 text-secondary">{patient.totalVisits ?? 0}</td>
+                </tr>
               ))}
-              {patients.length > 5 && (
-                <div className="text-center text-text-secondary text-sm py-2">
-                  {t('patients.reports.preview.patientList.more', { count: patients.length - 5 })}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 'visitSummary':
-        return (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.visitSummary.title')}</h4>
-            <div className="bg-surface rounded-lg p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <div className="text-2xl font-bold text-text-primary">
-                    {patients.reduce((sum, p) => sum + p.totalVisits, 0)}
-                  </div>
-                  <div className="text-text-secondary">{t('patients.reports.preview.visitSummary.totalVisits')}</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-text-primary">
-                    {patients.length ? Math.round(patients.reduce((sum, p) => sum + p.totalVisits, 0) / patients.length) : 0}
-                  </div>
-                  <div className="text-text-secondary">{t('patients.reports.preview.visitSummary.avgVisits')}</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-emerald-600">
-                    Rp {(totalRevenue / 1000000).toFixed(1)}M
-                  </div>
-                  <div className="text-text-secondary">Total Revenue</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-orange-600">
-                    {allAppointments.filter(a => a.status === 'overdue').length}
-                  </div>
-                  <div className="text-text-secondary">Overdue</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'treatmentReport':
-        return (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.treatmentReport.title')}</h4>
-            <div className="bg-surface rounded-lg p-4">
-              <div className="space-y-2">
-                {(() => {
-                  // Build treatment distribution from actual appointment data
-                  const treatmentCounts = {};
-                  allAppointments.forEach(apt => {
-                    treatmentCounts[apt.treatment] = (treatmentCounts[apt.treatment] || 0) + 1;
-                  });
-                  const total = allAppointments.length;
-                  const sorted = Object.entries(treatmentCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-                  return sorted.map(([treatment, count]) => (
-                    <div key={treatment} className="flex justify-between items-center">
-                      <span className="text-sm text-text-primary">{treatment}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 bg-surface-elevated rounded-full h-2">
-                          <div className="bg-accent rounded-full h-2" style={{ width: `${(count / total) * 100}%` }} />
-                        </div>
-                        <span className="font-medium text-sm w-12 text-right">{total ? ((count / total) * 100).toFixed(0) : 0}%</span>
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'demographic':
-        return (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-text-primary">{t('patients.reports.preview.demographic.title')}</h4>
-            <div className="bg-surface rounded-lg p-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-text-secondary mb-2">{t('patients.reports.preview.demographic.genderDistribution')}</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span>{t('patients.common.gender.male')}</span>
-                      <span>{patients.filter(p => p.gender === 'M').length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>{t('patients.common.gender.female')}</span>
-                      <span>{patients.filter(p => p.gender === 'F').length}</span>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-text-secondary mb-2">{t('patients.reports.preview.demographic.averageAge')}</div>
-                  <div className="text-xl font-bold text-text-primary">
-                    {patients.length
-                      ? t('patients.common.labels.years', {
-                        count: Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length)
-                      })
-                      : t('patients.common.labels.years', { count: 0 })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      // ── Dentist Performance Report ────────────────────────────────────────
-      case 'dentistPerformance':
-        return (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-text-primary">Performa Dokter</h4>
-            <div className="bg-surface rounded-lg p-4">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/30">
-                      <th className="text-left py-2 text-text-secondary font-medium">Dokter</th>
-                      <th className="text-left py-2 text-text-secondary font-medium">Pasien</th>
-                      <th className="text-left py-2 text-text-secondary font-medium">Appointment</th>
-                      <th className="text-left py-2 text-text-secondary font-medium">Revenue</th>
-                      <th className="text-left py-2 text-text-secondary font-medium">Overdue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {doctors.map(doc => {
-                      const docPatients = patients.filter(p => p.doctorId === doc.id);
-                      const docApts = allAppointments.filter(a => (a.dentistId || a.doctorId) === doc.id);
-                      const docRevenue = docApts.filter(a => a.isPaid).reduce((s, a) => s + a.fee, 0);
-                      const docOverdue = docApts.filter(a => a.status === 'overdue').length;
-                      return (
-                        <tr key={doc.id} className="border-b border-border/20">
-                          <td className="py-2 text-text-primary font-medium">{doc.name}</td>
-                          <td className="py-2 text-text-primary">{docPatients.length}</td>
-                          <td className="py-2 text-text-primary">{docApts.length}</td>
-                          <td className="py-2 text-emerald-600 font-medium">Rp {(docRevenue / 1000000).toFixed(1)}M</td>
-                          <td className="py-2">
-                            {docOverdue > 0 ? (
-                              <span className="text-orange-600 font-medium">{docOverdue}</span>
-                            ) : (
-                              <span className="text-text-secondary">0</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
+            </tbody>
+          </table>
+        </div>
+      );
     }
+
+    if (selectedReportType === 'treatmentReport') {
+      return treatmentCounts.length ? (
+        <div className="space-y-3">
+          {treatmentCounts.map(([treatment, count]) => (
+            <div key={treatment} className="flex items-center justify-between gap-4 rounded-xl bg-surface px-4 py-3">
+              <span className="truncate text-sm font-medium text-primary">{treatment}</span>
+              <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent">{count} appointment</span>
+            </div>
+          ))}
+        </div>
+      ) : <p className="py-8 text-center text-sm text-secondary">Tidak ada treatment pada cakupan filter ini.</p>;
+    }
+
+    if (selectedReportType === 'dentistPerformance') {
+      return (
+        <div className="space-y-3">
+          {doctors.filter((doctor) => selectedDentist === 'all' || String(doctor.id) === String(selectedDentist)).map((doctor) => {
+            const appointments = scoped.appointments.filter((appointment) => String(appointment.dentistId) === String(doctor.id));
+            const revenue = appointments.filter((appointment) => appointment.isPaid)
+              .reduce((sum, appointment) => sum + (Number(appointment.fee) || 0), 0);
+            return (
+              <div key={doctor.id} className="grid grid-cols-3 gap-3 rounded-xl bg-surface px-4 py-3 text-sm">
+                <span className="font-medium text-primary">{doctor.name}</span>
+                <span className="text-center text-secondary">{appointments.length} appointment</span>
+                <span className="text-right font-semibold text-emerald-600">{formatCurrency(revenue)}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="rounded-xl bg-surface p-4"><p className="text-2xl font-bold text-primary">{scoped.patients.length}</p><p className="text-xs text-secondary">Pasien</p></div>
+        <div className="rounded-xl bg-surface p-4"><p className="text-2xl font-bold text-primary">{scoped.appointments.length}</p><p className="text-xs text-secondary">Appointment</p></div>
+        <div className="rounded-xl bg-surface p-4"><p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalRevenue)}</p><p className="text-xs text-secondary">Revenue Dibayar</p></div>
+        <div className="rounded-xl bg-surface p-4"><p className="text-2xl font-bold text-primary">{new Set(scoped.appointments.map((item) => item.dentistId)).size}</p><p className="text-xs text-secondary">Dokter</p></div>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-6">
-      {/* Report Configuration */}
-      <div className="bg-surface-elevated rounded-xl p-6 border border-border/50">
-        <h3 className="text-lg font-semibold text-text-primary mb-6">
-          {t('patients.reports.title')}
-        </h3>
+      <section className="rounded-2xl border border-primary/15 bg-surface-elevated p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-primary">{t('patients.reports.title')}</h3>
+          <p className="mt-1 text-sm text-secondary">Semua filter di bawah diterapkan pada preview dan file CSV yang diunduh.</p>
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Report Type Selection */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-primary">
-              {t('patients.reports.reportType')}
-            </label>
-            <div className="grid grid-cols-1 gap-2">
-              {reportTypes.map((type) => (
-                <button
-                  key={type.key}
-                  onClick={() => setSelectedReportType(type.key)}
-                  className={`flex items-center p-3 rounded-lg text-left transition-all duration-200 ${selectedReportType === type.key
-                    ? 'bg-primary text-white'
-                    : 'bg-surface border border-border/50 text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
-                    }`}
-                >
-                  <Icon name={type.icon} className="w-5 h-5 mr-3" />
-                  {type.label}
-                </button>
-              ))}
-            </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-primary">{t('patients.reports.reportType')}</label>
+            {reportTypes.map((type) => (
+              <button key={type.key} type="button" onClick={() => setSelectedReportType(type.key)}
+                className={`flex w-full items-center rounded-xl p-3 text-left transition ${selectedReportType === type.key ? 'bg-accent text-white shadow-sm' : 'border border-primary/15 bg-surface text-secondary hover:text-primary'}`}>
+                <Icon name={type.icon} className="mr-3 h-5 w-5" />{type.label}
+              </button>
+            ))}
           </div>
 
-          {/* Filters */}
           <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-primary">
-              {t('patients.reports.filters.dateRange')}
-            </label>
+            <label className="block text-sm font-medium text-primary">{t('patients.reports.filters.dateRange')}</label>
             <div className="grid grid-cols-2 gap-3">
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="px-3 py-2 bg-surface border border-border/50 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="px-3 py-2 bg-surface border border-border/50 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
+              <input aria-label="Tanggal mulai laporan" type="date" value={dateRange.start} onChange={(event) => setDateRange((current) => ({ ...current, start: event.target.value }))} className="rounded-lg border border-primary/20 bg-surface px-3 py-2 text-primary" />
+              <input aria-label="Tanggal akhir laporan" type="date" value={dateRange.end} onChange={(event) => setDateRange((current) => ({ ...current, end: event.target.value }))} className="rounded-lg border border-primary/20 bg-surface px-3 py-2 text-primary" />
             </div>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-text-primary">
-                {t('patients.reports.filters.patientType')}
-              </label>
-              <select
-                value={filters.patientType}
-                onChange={(e) => setFilters({ ...filters, patientType: e.target.value })}
-                className="w-full px-3 py-2 bg-surface border border-border/50 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="all">{t('patients.reports.filters.patientTypes.all')}</option>
-                <option value="active">{t('patients.reports.filters.patientTypes.active')}</option>
-                <option value="inactive">{t('patients.reports.filters.patientTypes.inactive')}</option>
-                <option value="vip">{t('patients.reports.filters.patientTypes.vip')}</option>
-              </select>
-
-              <label className="block text-sm font-medium text-text-primary">
-                {t('patients.reports.filters.treatmentType')}
-              </label>
-              <select
-                value={filters.treatmentType}
-                onChange={(e) => setFilters({ ...filters, treatmentType: e.target.value })}
-                className="w-full px-3 py-2 bg-surface border border-border/50 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="all">{t('patients.reports.filters.treatmentTypes.all')}</option>
-                <option value="cleaning">{t('patients.reports.filters.treatmentTypes.cleaning')}</option>
-                <option value="filling">{t('patients.reports.filters.treatmentTypes.filling')}</option>
-                <option value="root-canal">{t('patients.reports.filters.treatmentTypes.rootCanal')}</option>
-                <option value="extraction">{t('patients.reports.filters.treatmentTypes.extraction')}</option>
-              </select>
-            </div>
+            <label className="block text-sm font-medium text-primary">{t('patients.reports.filters.patientType')}</label>
+            <select value={filters.patientType} onChange={(event) => setFilters((current) => ({ ...current, patientType: event.target.value }))} className="w-full rounded-lg border border-primary/20 bg-surface px-3 py-2 text-primary">
+              <option value="all">Semua status</option><option value="new">Baru</option><option value="active">Aktif</option><option value="inactive">Tidak aktif</option>
+            </select>
+            <label className="block text-sm font-medium text-primary">{t('patients.reports.filters.treatmentType')}</label>
+            <select value={filters.treatmentType} onChange={(event) => setFilters((current) => ({ ...current, treatmentType: event.target.value }))} className="w-full rounded-lg border border-primary/20 bg-surface px-3 py-2 text-primary">
+              <option value="all">Semua treatment</option>
+              {treatmentTypes.map((type) => <option key={type} value={type.toLowerCase()}>{type}</option>)}
+            </select>
           </div>
         </div>
 
-        {/* Generate Button */}
-        <div className="mt-6 pt-6 border-t border-border/50">
-          <button
-            onClick={handleGenerateReport}
-            disabled={isGenerating}
-            className="flex items-center px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            {isGenerating ? (
-              <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                {t('patients.reports.generating')}
-              </>
-            ) : (
-              <>
-                <Icon name="Download" className="w-4 h-4 mr-2" />
-                {t('patients.reports.generate')}
-              </>
-            )}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-primary/10 pt-6">
+          <p className="text-sm text-secondary">Cakupan saat ini: <strong className="text-primary">{scoped.patients.length} pasien</strong> dan <strong className="text-primary">{scoped.appointments.length} appointment</strong>.</p>
+          <button type="button" onClick={handleGenerateReport} className="inline-flex min-h-11 items-center rounded-xl bg-accent px-5 py-2.5 font-semibold text-white transition hover:bg-accent-hover">
+            <Icon name="Download" className="mr-2 h-4 w-4" />Unduh CSV
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* Report Preview */}
-      <div className="bg-surface-elevated rounded-xl p-6 border border-border/50">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-text-primary">
-            {t('patients.reports.preview.title')}
-          </h3>
-          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
-            {selectedDentist === 'all' ? 'Semua Dokter' : doctors.find(d => d.id === selectedDentist)?.name}
-          </span>
+      <section className="rounded-2xl border border-primary/15 bg-surface-elevated p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-primary">{t('patients.reports.preview.title')}</h3>
+          <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">{selectedDentist === 'all' ? 'Semua Dokter' : doctors.find((doctor) => String(doctor.id) === String(selectedDentist))?.name}</span>
         </div>
-        <ReportPreview />
-      </div>
+        {scoped.patients.length || scoped.appointments.length ? renderPreview() : <p className="py-10 text-center text-sm text-secondary">Tidak ada data untuk kombinasi filter ini.</p>}
+      </section>
 
-      {/* Recent Reports */}
-      <div className="bg-surface-elevated rounded-xl p-6 border border-border/50">
-        <h3 className="text-lg font-semibold text-text-primary mb-4">
-          {t('patients.reports.recent.title')}
-        </h3>
-        <div className="space-y-3">
-          {[
-            { name: `Patient List - ${new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date().toISOString().split('T')[0], type: 'PDF', size: '2.3 MB' },
-            { name: `Visit Summary - ${new Date(Date.now() - 30 * 86400000).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0], type: 'Excel', size: '1.8 MB' },
-            { name: 'Dentist Performance Report - Q4', date: new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0], type: 'PDF', size: '4.2 MB' },
-            { name: `Treatment Report - ${new Date(Date.now() - 90 * 86400000).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}`, date: new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0], type: 'PDF', size: '3.1 MB' },
-          ].map((report, index) => (
-            <div key={index} className="flex items-center justify-between p-4 bg-surface rounded-lg">
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center mr-3">
-                  <Icon name="FileText" className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium text-text-primary">{report.name}</div>
-                  <div className="text-sm text-text-secondary">
-                    {report.type} • {report.size} • {formatDateSafe(report.date, locale)}
-                  </div>
-                </div>
+      <section className="rounded-2xl border border-primary/15 bg-surface-elevated p-6">
+        <h3 className="text-lg font-semibold text-primary">Dibuat pada sesi ini</h3>
+        <p className="mt-1 text-sm text-secondary">Daftar ini hanya berisi laporan yang benar-benar Anda buat, bukan contoh data.</p>
+        {generatedReports.length ? (
+          <div className="mt-4 space-y-3">
+            {generatedReports.map((report, index) => (
+              <div key={`${report.generatedAt.toISOString()}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface p-4">
+                <div><p className="font-medium text-primary">{report.filename}</p><p className="text-xs text-secondary">{report.rowCount} baris • {report.generatedAt.toLocaleString(locale)}</p></div>
+                <button type="button" onClick={() => downloadReport(report)} className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10"><Icon name="Download" className="mr-2 h-4 w-4" />Unduh lagi</button>
               </div>
-              <button className="flex items-center px-3 py-2 text-primary hover:bg-primary/10 rounded-lg transition-colors duration-200">
-                <Icon name="Download" className="w-4 h-4 mr-1" />
-                {t('common.download')}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        ) : <div className="mt-4 rounded-xl border border-dashed border-primary/15 px-5 py-8 text-center text-sm text-secondary">Belum ada laporan yang dibuat pada sesi ini.</div>}
+      </section>
     </div>
   );
 };

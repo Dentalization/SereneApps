@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { validateAnnotationPayload } from '../utils/xCoreAnnotationValidation.js';
+import { emitPortalInvalidation } from '../services/portalCollaboration.js';
 import {
     activeDentistClinicIds,
     clinicStudyScopeWhere,
@@ -260,14 +261,6 @@ export const uploadStudy = async (req, res) => {
             removeUploadedTempFiles(req.files);
             return res.status(400).json({ error: 'Invalid patientId', code: 'invalid_patient_id' });
         }
-        if (!patientId) {
-            removeUploadedTempFiles(req.files);
-            return res.status(400).json({
-                error: 'Select a patient before uploading an X-Core study',
-                code: 'patient_id_required',
-            });
-        }
-
         // 0. Calculate Upload Size
         const uploadSize = req.files.reduce((acc, file) => acc + BigInt(file.size), 0n);
 
@@ -322,15 +315,17 @@ export const uploadStudy = async (req, res) => {
                 }
             }
 
-            try {
-                await requireDentistPatientRelationship({
-                    dentistId: userId,
-                    patientId,
-                    prismaClient: prisma,
-                });
-            } catch (error) {
-                removeUploadedTempFiles(req.files);
-                return handleAccessError(res, error);
+            if (patientId) {
+                try {
+                    await requireDentistPatientRelationship({
+                        dentistId: userId,
+                        patientId,
+                        prismaClient: prisma,
+                    });
+                } catch (error) {
+                    removeUploadedTempFiles(req.files);
+                    return handleAccessError(res, error);
+                }
             }
         }
 
@@ -409,7 +404,7 @@ export const uploadStudy = async (req, res) => {
                 }
             });
 
-            if (userId) {
+            if (userId && targetPatientId) {
                 await tx.imagingStudyPatientAssignment.create({
                     data: {
                         studyId: study.id,
@@ -456,6 +451,17 @@ export const uploadStudy = async (req, res) => {
 
         // Handle BigInt serialization
         const response = serializeJson(result);
+
+        emitPortalInvalidation({
+            io: req.app?.get?.('io'),
+            eventName: 'xcore:study_updated',
+            entity: 'imaging_study',
+            entityId: result.id,
+            action: 'created',
+            patientId: result.patientId,
+            dentistId: result.dentistId,
+            clinicProfileId: result.clinicId,
+        });
 
         // Trigger background VTI conversion (fire-and-forget)
         // This pre-computes the 3D .vti file so it's ready when user opens the viewer
@@ -1241,6 +1247,19 @@ export const assignStudyPatient = async (req, res) => {
             return study;
         });
 
+        const invalidation = {
+            io: req.app?.get?.('io'),
+            eventName: 'xcore:study_updated',
+            entity: 'imaging_study',
+            entityId: ownerAccess.study.id,
+            action: 'patient_assigned',
+            dentistId: ownerAccess.userId,
+        };
+        emitPortalInvalidation({ ...invalidation, patientId });
+        if (ownerAccess.study.patientId && ownerAccess.study.patientId !== patientId) {
+            emitPortalInvalidation({ ...invalidation, patientId: ownerAccess.study.patientId });
+        }
+
         return res.json({
             study: serializeJson(updated),
             changed: true,
@@ -1337,6 +1356,17 @@ export const deleteStudy = async (req, res) => {
                 console.log(`[X-Core] Folder already removed: ${studyDir}`);
             }
         }
+
+        emitPortalInvalidation({
+            io: req.app?.get?.('io'),
+            eventName: 'xcore:study_updated',
+            entity: 'imaging_study',
+            entityId: studyId,
+            action: 'deleted',
+            patientId: study.patientId,
+            dentistId: study.dentistId,
+            clinicProfileId: study.clinicId,
+        });
 
         res.json({ message: 'Study deleted successfully' });
 

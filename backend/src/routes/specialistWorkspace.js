@@ -22,6 +22,7 @@ import {
 } from '../services/xCoreAccessPolicyService.js';
 import { ENDO_FDI_TEETH } from '../services/endoCorePolicy.js';
 import { createEndoCoreRouter } from './endoCore.js';
+import { emitPortalInvalidation } from '../services/portalCollaboration.js';
 
 const prisma = new PrismaClient();
 const CLINIC_SUMMARY_ROLES = [
@@ -38,6 +39,22 @@ const CLINIC_SUMMARY_ROLES = [
 
 function asId(value) {
   return value === null || value === undefined ? null : value.toString();
+}
+
+function emitSpecialistCaseInvalidation(req, caseRecord, action, { xcore = false } = {}) {
+  if (!caseRecord) return;
+  const common = {
+    io: req.app?.get?.('io'),
+    entity: 'specialist_case',
+    entityId: caseRecord.id,
+    action,
+    status: caseRecord.status,
+    patientId: caseRecord.patientId,
+    dentistId: caseRecord.dentistId,
+    clinicProfileId: caseRecord.clinicProfileId,
+  };
+  emitPortalInvalidation({ ...common, eventName: 'specialist:case_updated' });
+  if (xcore) emitPortalInvalidation({ ...common, eventName: 'xcore:case_updated' });
 }
 
 function textValue(value, fieldName, { required = false, maxLength = 10_000 } = {}) {
@@ -590,6 +607,10 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
         return specialistCase;
       });
 
+      emitSpecialistCaseInvalidation(req, created, 'created', {
+        xcore: Boolean(created.xcoreStudyId || created.xcoreVerifiedCaseId),
+      });
+
       res.status(201).json({ case: serializeCaseSummary(created) });
     }),
   );
@@ -726,6 +747,7 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
         });
         return createdNote;
       });
+      emitSpecialistCaseInvalidation(req, specialistCase, 'note_added');
       res.status(201).json({ note: serializeNote(note) });
     }),
   );
@@ -821,6 +843,7 @@ export function createSpecialistWorkspaceRouter({ prismaClient = prisma } = {}) 
         }
         return tx.specialistCase.findUnique({ where: { id: caseId } });
       });
+      emitSpecialistCaseInvalidation(req, updated, 'status_updated');
       res.json({ case: serializeCaseSummary(updated) });
     }),
   );

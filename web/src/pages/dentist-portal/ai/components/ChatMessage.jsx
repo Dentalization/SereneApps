@@ -111,6 +111,40 @@ function SuggestedQuestions({ questions, onSelect }) {
   );
 }
 
+function UserHistoryImage({ image, onImageClick }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [image?.url]);
+
+  if (image?.url && !failed) {
+    return (
+      <button
+        type="button"
+        onClick={() => onImageClick?.(image.url)}
+        className="block rounded-xl overflow-hidden border border-primary max-w-xs ml-auto"
+        aria-label={`Buka ${image.name || 'gambar dental'} ukuran penuh`}
+      >
+        <img
+          src={image.url}
+          alt={image.name || 'Gambar dental'}
+          className="w-full"
+          onError={() => setFailed(true)}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-accent/30 max-w-xs ml-auto bg-accent/10 px-3 py-2 flex items-center gap-2">
+      <Camera className="w-4 h-4 text-accent/60" />
+      <span className="text-xs text-accent/70 italic">
+        {image?.artifactStatus === 'unavailable' || failed
+          ? 'Gambar riwayat tidak tersedia di storage'
+          : 'Gambar dental telah diunggah'}
+      </span>
+    </div>
+  );
+}
+
 export default function ChatMessage({
   message,
   onImageClick,
@@ -275,17 +309,7 @@ export default function ChatMessage({
     return (
       <motion.div variants={messageVariants} initial="hidden" animate="visible" transition={{ duration: 0.35 }} className="flex gap-3 px-4 py-2 justify-end">
         <div className="max-w-[78%] space-y-2 sm:max-w-[70%]">
-          {image?.url && (
-            <div className="rounded-xl overflow-hidden border border-primary max-w-xs ml-auto">
-              <img src={image.url} alt={image.name} className="w-full" />
-            </div>
-          )}
-          {image && !image.url && (
-            <div className="rounded-xl border border-accent/30 max-w-xs ml-auto bg-accent/10 px-3 py-2 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-accent/60" />
-              <span className="text-xs text-accent/70 italic">Gambar dental telah diunggah</span>
-            </div>
-          )}
+          {image && <UserHistoryImage image={image} onImageClick={onImageClick} />}
           {displayContent && (
             <div className="rounded-2xl rounded-tr-md bg-accent px-4 py-3 text-white shadow-sm">
               <p className="text-sm leading-relaxed">{displayContent}</p>

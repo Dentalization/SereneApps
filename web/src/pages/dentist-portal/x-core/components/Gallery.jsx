@@ -32,6 +32,10 @@ function getStudyKey(study) {
     return study.folderName || study.id;
 }
 
+function hasAssignedPatient(study) {
+    return study?.patientId !== null && study?.patientId !== undefined;
+}
+
 function getSeriesLoadErrorMessage(error) {
     const message = error?.message || '';
     if (
@@ -314,24 +318,26 @@ const Gallery = ({
                 const text = await response.text();
                 try {
                     const data = JSON.parse(text);
-                    const formattedStudies = data.map(study => ({
-                        ...study, // Preserve original fields
-                        // View-specific fields
-                        // Logic: Use DICOM Patient Name -> Original Folder Name -> Patient Name (DB)
-                        patientName: study.metadata?.PatientName
-                            ? study.metadata.PatientName.replace(/\^/g, ' ').trim()
-                            : (study.originalName && study.originalName !== study.folderName && study.originalName !== 'Upload'
-                                ? study.originalName
-                                : (study.patient?.name || 'Unknown')),
-
-                        realPatientId: study.patientId, // Keep for reference
-                        // Handle numeric IDs gracefully, maybe show DICOM ID if available
-                        patientIdDisplay: study.metadata?.PatientID || `P-${study.patientId}`,
-
-                        originalName: study.originalName || study.folderName || 'Unknown',
-                        dateDisplay: study.studyDate ? new Date(study.studyDate).toISOString().split('T')[0] : 'N/A',
-                        statusDisplay: (study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1)
-                    }));
+                    const formattedStudies = data.map(study => {
+                        const patientAssigned = study.patientId !== null && study.patientId !== undefined;
+                        return {
+                            ...study,
+                            patientAssigned,
+                            // Use the DICOM label or folder name as the study title until a patient is assigned.
+                            patientName: study.metadata?.PatientName
+                                ? study.metadata.PatientName.replace(/\^/g, ' ').trim()
+                                : (study.originalName && study.originalName !== study.folderName && study.originalName !== 'Upload'
+                                    ? study.originalName
+                                    : (study.patient?.name || 'Unassigned study')),
+                            realPatientId: study.patientId,
+                            patientIdDisplay: patientAssigned
+                                ? (study.metadata?.PatientID || `P-${study.patientId}`)
+                                : 'Not linked to patient',
+                            originalName: study.originalName || study.folderName || 'Unknown',
+                            dateDisplay: study.studyDate ? new Date(study.studyDate).toISOString().split('T')[0] : 'N/A',
+                            statusDisplay: (study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1)
+                        };
+                    });
                     setStudies(formattedStudies);
 
                     // Fetch series information for each study
@@ -647,7 +653,7 @@ const Gallery = ({
                 `/volume/${getStudyKey(card.study)}`,
                 buildStudyAssetParams(card.study, { series_uid: card.series_uid })
             );
-            fetch(vtiUrl, { method: 'HEAD' }).catch(() => {});
+            fetch(vtiUrl, { method: 'HEAD' }).catch(() => { });
         });
     }, [readyVtiPrefetchKey]);
 
@@ -704,7 +710,7 @@ const Gallery = ({
         return {
             icon: 'FolderOpen',
             title: 'No studies found',
-            description: 'Get started by uploading a patient\'s DICOM study or J. Morita dataset folder to the secure X-Core storage.'
+            description: 'Upload a DICOM study or J. Morita dataset folder to your secure X-Core Gallery. Patient assignment can be completed later.'
         };
     })();
 
@@ -763,6 +769,7 @@ const Gallery = ({
                 patientId: assignedStudy.patientId,
                 realPatientId: assignedStudy.patientId,
                 patient: assignedStudy.patient,
+                patientAssigned: true,
                 patientName: assignedStudy.patient?.name || 'Unknown patient',
                 patientIdDisplay: `P-${assignedStudy.patientId}`,
             };
@@ -899,11 +906,11 @@ const Gallery = ({
                                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Informasi Pasien</span>
                                             <div className="text-xs text-secondary space-y-1">
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Tgl Lahir:</span> 
+                                                    <span className="font-semibold text-primary">Tgl Lahir:</span>
                                                     <span>{selectedStudy.metadata.PatientBirthDate ? selectedStudy.metadata.PatientBirthDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '—'}</span>
                                                 </p>
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Jenis Kelamin:</span> 
+                                                    <span className="font-semibold text-primary">Jenis Kelamin:</span>
                                                     <span>{selectedStudy.metadata.PatientSex === 'M' ? 'Laki-laki (M)' : selectedStudy.metadata.PatientSex === 'F' ? 'Perempuan (F)' : selectedStudy.metadata.PatientSex || '—'}</span>
                                                 </p>
                                             </div>
@@ -914,11 +921,11 @@ const Gallery = ({
                                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Detail Pemindaian</span>
                                             <div className="text-xs text-secondary space-y-1">
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Deskripsi:</span> 
+                                                    <span className="font-semibold text-primary">Deskripsi:</span>
                                                     <span className="truncate" title={selectedStudy.metadata.StudyDescription}>{selectedStudy.metadata.StudyDescription || '—'}</span>
                                                 </p>
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Total Seri:</span> 
+                                                    <span className="font-semibold text-primary">Total Seri:</span>
                                                     <span>{selectedStudy.series?.length || 0} scans</span>
                                                 </p>
                                             </div>
@@ -929,11 +936,11 @@ const Gallery = ({
                                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Informasi Perangkat</span>
                                             <div className="text-xs text-secondary space-y-1">
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Produsen:</span> 
+                                                    <span className="font-semibold text-primary">Produsen:</span>
                                                     <span className="truncate text-accent font-medium" title={selectedStudy.metadata.Manufacturer}>{selectedStudy.metadata.Manufacturer || '—'}</span>
                                                 </p>
                                                 <p className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-primary">Model Alat:</span> 
+                                                    <span className="font-semibold text-primary">Model Alat:</span>
                                                     <span className="truncate" title={selectedStudy.metadata.ManufacturerModelName}>{selectedStudy.metadata.ManufacturerModelName || '—'}</span>
                                                 </p>
                                             </div>
@@ -951,7 +958,7 @@ const Gallery = ({
                                     className="flex items-center gap-1.5 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-2.5 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-500/20"
                                 >
                                     <AppIcon name="UserRoundPen" size={14} />
-                                    <span>Change Patient</span>
+                                    <span>{hasAssignedPatient(selectedStudy) ? 'Change Patient' : 'Assign Patient'}</span>
                                 </button>
                             )}
                             {allowShare && canManageStudy(selectedStudy) && (
@@ -980,7 +987,7 @@ const Gallery = ({
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
                                 <AppIcon name="FolderOpen" size={14} />
-                                <span>Hasil Pemindaian Pasien ({selectedStudy.series?.length || 0})</span>
+                                <span>{hasAssignedPatient(selectedStudy) ? 'Hasil Pemindaian Pasien' : 'Study Scans'} ({selectedStudy.series?.length || 0})</span>
                             </h3>
                         </div>
 
@@ -993,8 +1000,8 @@ const Gallery = ({
                                 const is3D = series.type === '3D Volume' || series.classification === '3D';
 
                                 return (
-                                    <div 
-                                        key={series.series_uid} 
+                                    <div
+                                        key={series.series_uid}
                                         className={`group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden flex flex-col justify-between transition hover:shadow-theme-lg hover:border-primary/20 ${isReady ? 'cursor-pointer' : ''}`}
                                         onClick={() => {
                                             if (isReady) {
@@ -1006,10 +1013,10 @@ const Gallery = ({
                                             {/* Thumbnail / Scan cover */}
                                             <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
                                                 {isReady ? (
-                                                    <img 
-                                                        src={thumbnailUrl} 
-                                                        alt={series.title} 
-                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102" 
+                                                    <img
+                                                        src={thumbnailUrl}
+                                                        alt={series.title}
+                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
                                                     />
                                                 ) : (
                                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -1075,7 +1082,7 @@ const Gallery = ({
                                                             {series.conversionProgress > 0 && <span>{series.conversionProgress}%</span>}
                                                         </div>
                                                         <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
-                                                            <div 
+                                                            <div
                                                                 className="h-full bg-accent transition-all duration-300"
                                                                 style={{ width: `${series.conversionProgress || 5}%` }}
                                                             />
@@ -1115,629 +1122,655 @@ const Gallery = ({
                 <>
                     {/* Header Actions */}
                     <div className="flex flex-col sm:flex-row justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <AppIcon name="Search" size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                    <input
-                        type="text"
-                        placeholder="Search details..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-primary/20 bg-surface focus:ring-2 focus:ring-accent outline-none"
-                    />
-                </div>
-                <div className="flex gap-2">
-                    {connectionStatus === 'connected' && (
-                        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
-                            Live
+                        <div className="relative flex-1 max-w-md">
+                            <AppIcon name="Search" size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                            <input
+                                type="text"
+                                placeholder="Search details..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 rounded-xl border border-primary/20 bg-surface focus:ring-2 focus:ring-accent outline-none"
+                            />
                         </div>
-                    )}
-                    <button
-                        onClick={() => setViewMode('grid')}
-                        className={`p-2 rounded-lg border ${viewMode === 'grid' ? 'bg-accent/10 border-accent text-accent' : 'border-primary/20 text-muted'}`}
-                    >
-                        <AppIcon name="LayoutGrid" size={20} />
-                    </button>
-                    <button
-                        onClick={() => setViewMode('list')}
-                        className={`p-2 rounded-lg border ${viewMode === 'list' ? 'bg-accent/10 border-accent text-accent' : 'border-primary/20 text-muted'}`}
-                    >
-                        <AppIcon name="List" size={20} />
-                    </button>
-                    <button
-                        onClick={() => {
-                            setCompareMode((current) => !current);
-                            setSelectedCompareIds([]);
-                        }}
-                        className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${compareMode ? 'border-cyan-500 bg-cyan-500/10 text-cyan-600' : 'border-primary/20 text-muted hover:text-primary'}`}
-                    >
-                        <AppIcon name="Columns2" size={18} />
-                        <span>Compare</span>
-                    </button>
-                    {compareMode && selectedCompareCards.length === 2 && (
-                        <button
-                            onClick={handleCompareSelected}
-                            className="flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500"
-                        >
-                            <AppIcon name="GitCompare" size={18} />
-                            <span>Compare Selected</span>
-                        </button>
-                    )}
-                    {allowUpload && (
-                        <button
-                            onClick={onUploadClick}
-                            className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-sm"
-                        >
-                            <AppIcon name="UploadCloud" size={20} />
-                            <span>New Scan</span>
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {loading || fetchingSeries ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {Array.from({
-                        length: studies && studies.length > 0
-                            ? studies.length
-                            : cachedStudies && cachedStudies.length > 0
-                                ? cachedStudies.length
-                                : 3
-                    }).map((_, idx) => (
-                        <div key={idx} className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden animate-pulse">
-                            {/* Cover placeholder with overlay badges */}
-                            <div className="aspect-video bg-slate-900 relative overflow-hidden flex items-center justify-center">
-                                <AppIcon name="FolderOpen" size={48} className="text-slate-800 dark:text-slate-700" />
-                                
-                                {/* Modality tags placeholder */}
-                                <div className="absolute top-2 left-2 flex gap-1.5">
-                                    <div className="w-16 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
+                        <div className="flex gap-2">
+                            {connectionStatus === 'connected' && (
+                                <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600">
+                                    <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+                                    Live
                                 </div>
-
-                                {/* Access badge placeholder */}
-                                <div className="absolute top-2 right-2">
-                                    <div className="w-14 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
-                                </div>
-
-                                {/* Scan count badge placeholder */}
-                                <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400/50 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
-                                    <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
-                                    <div className="w-8 h-2.5 bg-cyan-400/20 rounded" />
-                                </span>
-
-                                {/* Folder size badge placeholder */}
-                                <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white/50 text-[10px] rounded backdrop-blur-sm font-medium">
-                                    <div className="w-12 h-2.5 bg-white/20 rounded" />
-                                </span>
-                            </div>
-                            
-                            {/* Info placeholder */}
-                            <div className="p-4 space-y-2">
-                                <div className="flex justify-between items-start">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
-                                        <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-1/3 mt-1.5" />
-                                        <div className="h-2 bg-slate-200/60 dark:bg-slate-700/60 rounded w-2/3 mt-1.5" />
-                                    </div>
-                                    <AppIcon name="ChevronRight" size={16} className="text-slate-300 dark:text-slate-700 mt-0.5" />
-                                </div>
-                                
-                                <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
-                                    <div className="h-2.5 bg-slate-200/70 dark:bg-slate-700/70 rounded w-16" />
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-12" />
-                                        <div className="p-1 rounded text-slate-300 dark:text-slate-700">
-                                            <AppIcon name="Share2" size={14} />
-                                        </div>
-                                        <div className="p-1 rounded text-slate-300 dark:text-slate-700">
-                                            <AppIcon name="Trash2" size={14} />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            )}
+                            <button
+                                onClick={() => setViewMode('grid')}
+                                className={`p-2 rounded-lg border ${viewMode === 'grid' ? 'bg-accent/10 border-accent text-accent' : 'border-primary/20 text-muted'}`}
+                            >
+                                <AppIcon name="LayoutGrid" size={20} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-2 rounded-lg border ${viewMode === 'list' ? 'bg-accent/10 border-accent text-accent' : 'border-primary/20 text-muted'}`}
+                            >
+                                <AppIcon name="List" size={20} />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setCompareMode((current) => !current);
+                                    setSelectedCompareIds([]);
+                                }}
+                                className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${compareMode ? 'border-cyan-500 bg-cyan-500/10 text-cyan-600' : 'border-primary/20 text-muted hover:text-primary'}`}
+                            >
+                                <AppIcon name="Columns2" size={18} />
+                                <span>Compare</span>
+                            </button>
+                            {compareMode && selectedCompareCards.length === 2 && (
+                                <button
+                                    onClick={handleCompareSelected}
+                                    className="flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500"
+                                >
+                                    <AppIcon name="GitCompare" size={18} />
+                                    <span>Compare Selected</span>
+                                </button>
+                            )}
+                            {allowUpload && (
+                                <button
+                                    onClick={onUploadClick}
+                                    className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-sm"
+                                >
+                                    <AppIcon name="UploadCloud" size={20} />
+                                    <span>New Scan</span>
+                                </button>
+                            )}
                         </div>
-                    ))}
-                </div>
-            ) : error ? (
-                <div className="flex justify-center py-20">
-                    <div className="flex flex-col items-center gap-4 text-red-500 bg-red-50 p-6 rounded-xl border border-red-100">
-                        <AppIcon name="AlertCircle" size={40} />
-                        <p className="font-medium">Failed to load studies</p>
-                        <p className="text-sm opacity-80 max-w-md text-center">{error}</p>
-                        <button
-                            onClick={handleRetrySeriesLoad}
-                            className="text-xs underline hover:text-red-700 mt-2"
-                        >
-                            Retry
-                        </button>
                     </div>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {serviceErrorStudies.length > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                                <div className="flex items-center gap-2">
-                                    <AppIcon name="AlertCircle" size={18} className="text-red-500" />
-                                    <span className="font-semibold text-red-700 text-sm">
-                                        {serviceErrorStudies.length} study {serviceErrorStudies.length === 1 ? 'preview' : 'previews'} unavailable
-                                    </span>
-                                    <span className="text-xs text-red-500">— The imaging service could not be reached or returned an error.</span>
+
+                    {loading || fetchingSeries ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            {Array.from({
+                                length: studies && studies.length > 0
+                                    ? studies.length
+                                    : cachedStudies && cachedStudies.length > 0
+                                        ? cachedStudies.length
+                                        : 3
+                            }).map((_, idx) => (
+                                <div key={idx} className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden animate-pulse">
+                                    {/* Cover placeholder with overlay badges */}
+                                    <div className="aspect-video bg-slate-900 relative overflow-hidden flex items-center justify-center">
+                                        <AppIcon name="FolderOpen" size={48} className="text-slate-800 dark:text-slate-700" />
+
+                                        {/* Modality tags placeholder */}
+                                        <div className="absolute top-2 left-2 flex gap-1.5">
+                                            <div className="w-16 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
+                                        </div>
+
+                                        {/* Access badge placeholder */}
+                                        <div className="absolute top-2 right-2">
+                                            <div className="w-14 h-4 bg-slate-800 dark:bg-slate-700 rounded" />
+                                        </div>
+
+                                        {/* Scan count badge placeholder */}
+                                        <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400/50 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
+                                            <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
+                                            <div className="w-8 h-2.5 bg-cyan-400/20 rounded" />
+                                        </span>
+
+                                        {/* Folder size badge placeholder */}
+                                        <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white/50 text-[10px] rounded backdrop-blur-sm font-medium">
+                                            <div className="w-12 h-2.5 bg-white/20 rounded" />
+                                        </span>
+                                    </div>
+
+                                    {/* Info placeholder */}
+                                    <div className="p-4 space-y-2">
+                                        <div className="flex justify-between items-start">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+                                                <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-1/3 mt-1.5" />
+                                                <div className="h-2 bg-slate-200/60 dark:bg-slate-700/60 rounded w-2/3 mt-1.5" />
+                                            </div>
+                                            <AppIcon name="ChevronRight" size={16} className="text-slate-300 dark:text-slate-700 mt-0.5" />
+                                        </div>
+
+                                        <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
+                                            <div className="h-2.5 bg-slate-200/70 dark:bg-slate-700/70 rounded w-16" />
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded w-12" />
+                                                <div className="p-1 rounded text-slate-300 dark:text-slate-700">
+                                                    <AppIcon name="Share2" size={14} />
+                                                </div>
+                                                <div className="p-1 rounded text-slate-300 dark:text-slate-700">
+                                                    <AppIcon name="Trash2" size={14} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                            ))}
+                        </div>
+                    ) : error ? (
+                        <div className="flex justify-center py-20">
+                            <div className="flex flex-col items-center gap-4 text-red-500 bg-red-50 p-6 rounded-xl border border-red-100">
+                                <AppIcon name="AlertCircle" size={40} />
+                                <p className="font-medium">Failed to load studies</p>
+                                <p className="text-sm opacity-80 max-w-md text-center">{error}</p>
                                 <button
                                     onClick={handleRetrySeriesLoad}
-                                    className="text-xs font-medium text-red-600 underline hover:text-red-700"
+                                    className="text-xs underline hover:text-red-700 mt-2"
                                 >
                                     Retry
                                 </button>
                             </div>
-                            <div className="space-y-2">
-                                {serviceErrorStudies.map(study => (
-                                    <div key={study.id} className="bg-white rounded-lg px-4 py-3 border border-red-100">
-                                        <div className="flex items-start gap-3">
-                                            <AppIcon name="AlertCircle" size={16} className="text-red-400 mt-0.5" />
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                    <span className="text-sm font-medium text-primary">{study.patientName}</span>
-                                                    <span className="text-xs text-secondary">{study.patientIdDisplay}</span>
-                                                    <span className="text-xs text-red-500">({study.folderName})</span>
-                                                </div>
-                                                <p className="text-xs text-red-500 mt-1">{study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
                         </div>
-                    )}
-
-                    {/* Orphan Studies Warning — DB records with missing files */}
-                    {orphanStudies.length > 0 && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <AppIcon name="AlertTriangle" size={18} className="text-amber-500" />
-                                <span className="font-semibold text-amber-700 text-sm">
-                                    {orphanStudies.length} orphan {orphanStudies.length === 1 ? 'study' : 'studies'} found
-                                </span>
-                                <span className="text-xs text-amber-500">— No scan files found on disk. Delete record to free storage.</span>
-                            </div>
-                            <div className="space-y-2">
-                                {orphanStudies.map(study => (
-                                    <div key={study.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-amber-100">
-                                        <div className="flex items-center gap-3">
-                                            <AppIcon name="FileWarning" size={16} className="text-amber-400" />
-                                            <div>
-                                                <span className="text-sm font-medium text-primary">{study.patientName}</span>
-                                                <span className="text-xs text-secondary ml-2">{study.patientIdDisplay}</span>
-                                                <span className="text-xs text-amber-500 ml-2">({study.folderName})</span>
-                                            </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {serviceErrorStudies.length > 0 && (
+                                <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <AppIcon name="AlertCircle" size={18} className="text-red-500" />
+                                            <span className="font-semibold text-red-700 text-sm">
+                                                {serviceErrorStudies.length} study {serviceErrorStudies.length === 1 ? 'preview' : 'previews'} unavailable
+                                            </span>
+                                            <span className="text-xs text-red-500">— The imaging service could not be reached or returned an error.</span>
                                         </div>
-                                        {allowDelete && canManageStudy(study) && (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(study); }}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition"
-                                            >
-                                                <AppIcon name="Trash2" size={14} />
-                                                Delete Record
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {viewMode === 'grid' ? (
-                        compareMode ? (
-                            // Series Grid (For Comparison Mode)
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                {seriesCards.length === 0 ? (
-                                    <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
-                                        <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
-                                            <AppIcon name={emptyState.icon} size={40} className="text-accent" />
-                                        </div>
-                                        <h3 className="text-xl font-semibold text-primary mb-2">
-                                            {emptyState.title}
-                                        </h3>
-                                        <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
-                                            {emptyState.description}
-                                        </p>
-                                    </div>
-                                ) : seriesCards.map(card => {
-                                    const isReady = card.status === 'ready';
-                                    const isConverting = card.status === 'converting' || card.status === 'pending';
-                                    const isCompareSelected = selectedCompareIds.includes(card.id);
-
-                                    return (
-                                        <div
-                                            key={card.id}
-                                            onClick={() => {
-                                                if (!isReady) return;
-                                                toggleCompareSelection(card);
-                                            }}
-                                            className={`group relative bg-surface-elevated rounded-2xl border overflow-hidden transition ${isCompareSelected ? 'border-cyan-500 ring-2 ring-cyan-500/20' : 'border-primary/10'} ${isReady
-                                                ? 'hover:shadow-theme-lg cursor-pointer'
-                                                : 'opacity-75 cursor-not-allowed'
-                                                }`}
+                                        <button
+                                            onClick={handleRetrySeriesLoad}
+                                            className="text-xs font-medium text-red-600 underline hover:text-red-700"
                                         >
-                                            <div className="absolute right-3 top-3 z-20 rounded-xl border border-white/20 bg-black/65 p-2 backdrop-blur">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isCompareSelected}
-                                                    readOnly
-                                                    className="h-4 w-4 accent-cyan-500"
-                                                    aria-label="Select for comparison"
-                                                />
-                                            </div>
-                                            {/* Series Thumbnail */}
-                                            <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                                {isReady ? (
-                                                    <>
-                                                        <img
-                                                            src={card.thumbnailUrl}
-                                                            alt={card.title}
-                                                            className="w-full h-full object-cover"
-                                                            onError={(e) => {
-                                                                e.target.style.display = 'none';
-                                                                e.target.nextSibling.style.display = 'flex';
-                                                            }}
-                                                        />
-                                                        <div className="absolute inset-0 items-center justify-center hidden">
-                                                            <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
+                                            Retry
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {serviceErrorStudies.map(study => (
+                                            <div key={study.id} className="bg-white rounded-lg px-4 py-3 border border-red-100">
+                                                <div className="flex items-start gap-3">
+                                                    <AppIcon name="AlertCircle" size={16} className="text-red-400 mt-0.5" />
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                            <span className="text-sm font-medium text-primary">{study.patientName}</span>
+                                                            <span className="text-xs text-secondary">{study.patientIdDisplay}</span>
+                                                            <span className="text-xs text-red-500">({study.folderName})</span>
                                                         </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center px-6">
-                                                        <div className="flex flex-col items-center gap-3 w-full">
-                                                            <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
-                                                            <div className="w-full space-y-1.5">
-                                                                <div className="flex justify-between text-[10px] text-white font-medium uppercase tracking-wider">
-                                                                    <span>{card.conversionStage?.replace('_', ' ') || (card.status === 'converting' ? 'Processing' : 'Queued')}</span>
-                                                                    {card.conversionProgress > 0 && <span>{card.conversionProgress}%</span>}
+                                                        <p className="text-xs text-red-500 mt-1">{study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Orphan Studies Warning — DB records with missing files */}
+                            {orphanStudies.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <AppIcon name="AlertTriangle" size={18} className="text-amber-500" />
+                                        <span className="font-semibold text-amber-700 text-sm">
+                                            {orphanStudies.length} orphan {orphanStudies.length === 1 ? 'study' : 'studies'} found
+                                        </span>
+                                        <span className="text-xs text-amber-500">— No scan files found on disk. Delete record to free storage.</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {orphanStudies.map(study => (
+                                            <div key={study.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-amber-100">
+                                                <div className="flex items-center gap-3">
+                                                    <AppIcon name="FileWarning" size={16} className="text-amber-400" />
+                                                    <div>
+                                                        <span className="text-sm font-medium text-primary">{study.patientName}</span>
+                                                        <span className="text-xs text-secondary ml-2">{study.patientIdDisplay}</span>
+                                                        <span className="text-xs text-amber-500 ml-2">({study.folderName})</span>
+                                                    </div>
+                                                </div>
+                                                {allowDelete && canManageStudy(study) && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(study); }}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition"
+                                                    >
+                                                        <AppIcon name="Trash2" size={14} />
+                                                        Delete Record
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {viewMode === 'grid' ? (
+                                compareMode ? (
+                                    // Series Grid (For Comparison Mode)
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                        {seriesCards.length === 0 ? (
+                                            <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
+                                                <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
+                                                    <AppIcon name={emptyState.icon} size={40} className="text-accent" />
+                                                </div>
+                                                <h3 className="text-xl font-semibold text-primary mb-2">
+                                                    {emptyState.title}
+                                                </h3>
+                                                <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
+                                                    {emptyState.description}
+                                                </p>
+                                            </div>
+                                        ) : seriesCards.map(card => {
+                                            const isReady = card.status === 'ready';
+                                            const isConverting = card.status === 'converting' || card.status === 'pending';
+                                            const isCompareSelected = selectedCompareIds.includes(card.id);
+
+                                            return (
+                                                <div
+                                                    key={card.id}
+                                                    onClick={() => {
+                                                        if (!isReady) return;
+                                                        toggleCompareSelection(card);
+                                                    }}
+                                                    className={`group relative bg-surface-elevated rounded-2xl border overflow-hidden transition ${isCompareSelected ? 'border-cyan-500 ring-2 ring-cyan-500/20' : 'border-primary/10'} ${isReady
+                                                        ? 'hover:shadow-theme-lg cursor-pointer'
+                                                        : 'opacity-75 cursor-not-allowed'
+                                                        }`}
+                                                >
+                                                    <div className="absolute right-3 top-3 z-20 rounded-xl border border-white/20 bg-black/65 p-2 backdrop-blur">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isCompareSelected}
+                                                            readOnly
+                                                            className="h-4 w-4 accent-cyan-500"
+                                                            aria-label="Select for comparison"
+                                                        />
+                                                    </div>
+                                                    {/* Series Thumbnail */}
+                                                    <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
+                                                        {isReady ? (
+                                                            <>
+                                                                <img
+                                                                    src={card.thumbnailUrl}
+                                                                    alt={card.title}
+                                                                    className="w-full h-full object-cover"
+                                                                    onError={(e) => {
+                                                                        e.target.style.display = 'none';
+                                                                        e.target.nextSibling.style.display = 'flex';
+                                                                    }}
+                                                                />
+                                                                <div className="absolute inset-0 items-center justify-center hidden">
+                                                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
                                                                 </div>
-                                                                <div className="h-1 w-full bg-white/20 rounded-full overflow-hidden">
-                                                                    <div 
-                                                                        className="h-full bg-accent transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]"
-                                                                        style={{ width: `${card.conversionProgress || 5}%` }}
-                                                                    />
+                                                            </>
+                                                        ) : (
+                                                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center px-6">
+                                                                <div className="flex flex-col items-center gap-3 w-full">
+                                                                    <AppIcon name="Loader2" size={24} className="text-accent animate-spin" />
+                                                                    <div className="w-full space-y-1.5">
+                                                                        <div className="flex justify-between text-[10px] text-white font-medium uppercase tracking-wider">
+                                                                            <span>{card.conversionStage?.replace('_', ' ') || (card.status === 'converting' ? 'Processing' : 'Queued')}</span>
+                                                                            {card.conversionProgress > 0 && <span>{card.conversionProgress}%</span>}
+                                                                        </div>
+                                                                        <div className="h-1 w-full bg-white/20 rounded-full overflow-hidden">
+                                                                            <div
+                                                                                className="h-full bg-accent transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]"
+                                                                                style={{ width: `${card.conversionProgress || 5}%` }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                        )}
 
-                                                {/* Type Badge */}
-                                                <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
-                                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
-                                                    {card.type}
-                                                </span>
-
-                                                {/* Modality Badge */}
-                                                <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
-                                                    {card.modality}
-                                                </span>
-
-                                                {card.num_slices > 1 && (
-                                                    <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
-                                                        {card.num_slices} slices
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <div className="p-4 space-y-2">
-                                                <div className="flex justify-between items-start">
-                                                    <div>
-                                                        <h3 className="font-semibold text-primary">{card.patientName}</h3>
-                                                        <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
-                                                        <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            // Patient Study Grid (Default Gallery Mode)
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                {healthyStudies.length === 0 ? (
-                                    <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
-                                        <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
-                                            <AppIcon name={emptyState.icon} size={40} className="text-accent" />
-                                        </div>
-                                        <h3 className="text-xl font-semibold text-primary mb-2">
-                                            {emptyState.title}
-                                        </h3>
-                                        <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
-                                            {emptyState.description}
-                                        </p>
-                                        {!searchQuery && allowUpload && (
-                                            <button
-                                                onClick={onUploadClick}
-                                                className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-lg shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5"
-                                            >
-                                                <AppIcon name="UploadCloud" size={20} />
-                                                <span>Upload First Study</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : healthyStudies.map(study => {
-                                    const studyModalities = getStudyModalities(study);
-                                    const thumbnailUrl = getStudyThumbnail(study);
-                                    const folderSize = formatBytes(study.sizeInBytes);
-                                    const isConverting = hasIncompleteSeries(study);
-
-                                    return (
-                                        <div
-                                            key={study.id}
-                                            onClick={() => {
-                                                setSelectedStudyDetails(study);
-                                            }}
-                                            className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden transition hover:shadow-theme-lg cursor-pointer"
-                                        >
-                                            {/* Study Cover Image */}
-                                            <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                                {thumbnailUrl ? (
-                                                    <img
-                                                        src={thumbnailUrl}
-                                                        alt={study.patientName}
-                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
-                                                    />
-                                                ) : (
-                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                                        <AppIcon name="FolderOpen" size={48} className="text-gray-700" />
-                                                    </div>
-                                                )}
-
-                                                {/* Modalities badges list */}
-                                                <div className="absolute top-2 left-2 flex flex-wrap gap-1.5 z-10">
-                                                    {studyModalities.map(mod => (
-                                                        <span 
-                                                            key={mod} 
-                                                            className={`px-2 py-0.5 text-[10px] font-semibold rounded backdrop-blur-sm text-white ${getModalityBadgeClass(mod)}`}
-                                                        >
-                                                            {mod}
+                                                        {/* Type Badge */}
+                                                        <span className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm flex items-center gap-1">
+                                                            <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={12} />
+                                                            {card.type}
                                                         </span>
-                                                    ))}
-                                                </div>
 
-                                                {/* Access Badge */}
-                                                <div className="absolute top-2 right-2 z-10">
-                                                    {renderAccessBadge(study.xcoreAccessScope)}
-                                                </div>
-
-                                                {/* Series / Scan Count Badge */}
-                                                <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
-                                                    <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
-                                                    <span>{study.series?.length || 0} Scan</span>
-                                                </span>
-
-                                                {/* Folder Size Badge */}
-                                                <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white text-[10px] rounded backdrop-blur-sm font-medium">
-                                                    {folderSize}
-                                                </span>
-                                            </div>
-
-                                            <div className="p-4 space-y-2">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="min-w-0 flex-1">
-                                                        <h3 className="font-semibold text-primary truncate group-hover:text-accent transition-colors">{study.patientName}</h3>
-                                                        <p className="text-xs text-secondary mt-0.5">{study.patientIdDisplay}</p>
-                                                        <p className="text-[11px] text-muted truncate mt-1">Folder: {study.originalName}</p>
-                                                        {study.metadata?.InstitutionName && (
-                                                            <p className="text-[10px] text-secondary flex items-center gap-1 mt-1 font-medium truncate">
-                                                                <AppIcon name="Hospital" size={10} className="text-muted shrink-0" />
-                                                                <span className="truncate">{study.metadata.InstitutionName}</span>
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                    <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1 mt-0.5" />
-                                                </div>
-
-                                                
-                                                <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
-                                                    <span>{study.dateDisplay}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={
-                                                            isConverting
-                                                                ? 'text-blue-500 font-medium'
-                                                                : study.statusDisplay === 'Analyzed'
-                                                                    ? 'text-emerald-500 font-medium'
-                                                                    : 'text-amber-500'
-                                                        }>
-                                                            {isConverting ? 'Processing' : study.statusDisplay}
+                                                        {/* Modality Badge */}
+                                                        <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs rounded-md backdrop-blur-sm">
+                                                            {card.modality}
                                                         </span>
-                                                        {allowShare && canManageStudy(study) && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    openShareModal(study);
-                                                                }}
-                                                                className="p-1 hover:bg-emerald-50 hover:text-emerald-600 rounded transition text-muted"
-                                                                title="Share Study"
-                                                            >
-                                                                <AppIcon name="Share2" size={14} />
-                                                            </button>
-                                                        )}
-                                                        {allowDelete && canManageStudy(study) && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(study); }}
-                                                                className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
-                                                                title="Delete Study"
-                                                            >
-                                                                <AppIcon name="Trash2" size={14} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )
-                    ) : (
-                        compareMode ? (
-                            // Series List Table (For Comparison Mode)
-                            <div className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-surface border-b border-primary/10">
-                                        <tr>
-                                            <th className="px-6 py-4 font-medium text-secondary">Status</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Patient</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Series</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Type</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Modality</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Slices</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Access</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Date</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-primary/5">
-                                        {seriesCards.map(card => {
-                                            const isCompareSelected = selectedCompareIds.includes(card.id);
-                                            return (
-                                            <tr key={card.id} className="hover:bg-primary/5 transition">
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                                                        }`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                                                        {card.statusDisplay}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 font-medium text-primary">{card.patientName}</td>
-                                                <td className="px-6 py-4 text-cyan-600 font-medium text-xs">{card.title}</td>
-                                                <td className="px-6 py-4">
-                                                    <span className="flex items-center gap-1 text-xs">
-                                                        <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={14} className="text-accent" />
-                                                        {card.type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="px-2 py-1 rounded bg-secondary/10 text-secondary text-xs">{card.modality}</span>
-                                                </td>
-                                                <td className="px-6 py-4 text-secondary">{card.num_slices}</td>
-                                                <td className="px-6 py-4">
-                                                    {renderAccessBadge(card.study?.xcoreAccessScope)}
-                                                </td>
-                                                <td className="px-6 py-4 text-secondary">{card.dateDisplay}</td>
-                                                <td className="px-6 py-4">
-                                                    <button
-                                                        onClick={() => toggleCompareSelection(card)}
-                                                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${isCompareSelected ? 'bg-cyan-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-cyan-50 hover:text-cyan-600'}`}
-                                                    >
-                                                        <AppIcon name={isCompareSelected ? 'CheckSquare' : 'Square'} size={16} />
-                                                        Select
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                            );
-                                        })}
-                                    </tbody>
 
-                                </table>
-                            </div>
-                        ) : (
-                            // Patient Study Table (Default Gallery Mode)
-                            <div className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-surface border-b border-primary/10">
-                                        <tr>
-                                            <th className="px-6 py-4 font-medium text-secondary">Status</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Patient</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Modality</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Folder Size</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Scans</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Access</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Date</th>
-                                            <th className="px-6 py-4 font-medium text-secondary">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-primary/5">
-                                        {healthyStudies.map(study => {
-                                            const studyModalities = getStudyModalities(study);
-                                            const folderSize = formatBytes(study.sizeInBytes);
-                                            
-                                            return (
-                                            <tr 
-                                                key={study.id} 
-                                                className="hover:bg-primary/5 transition cursor-pointer"
-                                                onClick={() => setSelectedStudyDetails(study)}
-                                            >
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                                                        }`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                                                        {study.statusDisplay}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 font-medium text-primary">
-                                                    <div>
-                                                        <span className="text-sm font-semibold">{study.patientName}</span>
-                                                        <span className="text-xs text-secondary block">{study.patientIdDisplay}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex gap-1">
-                                                        {studyModalities.map(mod => (
-                                                            <span key={mod} className={`px-2 py-0.5 rounded text-[10px] font-semibold text-white ${getModalityBadgeClass(mod)}`}>{mod}</span>
-                                                        ))}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-secondary">{folderSize}</td>
-                                                <td className="px-6 py-4 text-secondary">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-medium">{study.series?.length || 0} scans</span>
-                                                        {study.metadata?.InstitutionName && (
-                                                            <span className="text-[10px] text-muted flex items-center gap-0.5 mt-0.5 max-w-[150px] truncate" title={study.metadata.InstitutionName}>
-                                                                <AppIcon name="Hospital" size={8} />
-                                                                <span className="truncate">{study.metadata.InstitutionName}</span>
+                                                        {card.num_slices > 1 && (
+                                                            <span className="absolute bottom-2 right-2 px-2 py-1 bg-cyan-500/80 text-white text-xs rounded-md backdrop-blur-sm font-medium">
+                                                                {card.num_slices} slices
                                                             </span>
                                                         )}
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {renderAccessBadge(study.xcoreAccessScope)}
-                                                </td>
-                                                <td className="px-6 py-4 text-secondary">{study.dateDisplay}</td>
-                                                <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                                                    <button
-                                                        onClick={() => setSelectedStudyDetails(study)}
-                                                        className="p-1.5 hover:bg-accent/10 rounded text-accent transition"
-                                                        title="Open Folder Details"
-                                                    >
-                                                        <AppIcon name="FolderOpen" size={18} />
-                                                    </button>
-                                                    {allowShare && canManageStudy(study) && (
-                                                        <button
-                                                            onClick={() => openShareModal(study)}
-                                                            className="ml-2 p-1.5 hover:bg-emerald-50 hover:text-emerald-600 rounded text-muted transition"
-                                                            title="Share Study"
-                                                        >
-                                                            <AppIcon name="Share2" size={18} />
-                                                        </button>
-                                                    )}
-                                                    {allowDelete && canManageStudy(study) && (
-                                                        <button
-                                                            onClick={() => setDeleteTarget(study)}
-                                                            className="ml-2 p-1.5 hover:bg-red-50 hover:text-red-500 rounded text-muted transition"
-                                                            title="Delete Study"
-                                                        >
-                                                            <AppIcon name="Trash2" size={18} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
+
+                                                    <div className="p-4 space-y-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <h3 className="font-semibold text-primary">{card.patientName}</h3>
+                                                                <p className="text-xs text-cyan-500 font-medium">{card.title}</p>
+                                                                <p className="text-xs text-secondary">{card.patientIdDisplay}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             );
                                         })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )
+                                    </div>
+                                ) : (
+                                    // Patient Study Grid (Default Gallery Mode)
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                        {healthyStudies.length === 0 ? (
+                                            <div className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-3xl border-2 border-dashed border-primary/10 bg-surface/50">
+                                                <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-accent/5">
+                                                    <AppIcon name={emptyState.icon} size={40} className="text-accent" />
+                                                </div>
+                                                <h3 className="text-xl font-semibold text-primary mb-2">
+                                                    {emptyState.title}
+                                                </h3>
+                                                <p className="text-secondary max-w-sm mb-8 text-sm leading-relaxed">
+                                                    {emptyState.description}
+                                                </p>
+                                                {!searchQuery && allowUpload && (
+                                                    <button
+                                                        onClick={onUploadClick}
+                                                        className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-xl hover:bg-accent-hover transition shadow-lg shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5"
+                                                    >
+                                                        <AppIcon name="UploadCloud" size={20} />
+                                                        <span>Upload First Study</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : healthyStudies.map(study => {
+                                            const studyModalities = getStudyModalities(study);
+                                            const thumbnailUrl = getStudyThumbnail(study);
+                                            const folderSize = formatBytes(study.sizeInBytes);
+                                            const isConverting = hasIncompleteSeries(study);
+
+                                            return (
+                                                <div
+                                                    key={study.id}
+                                                    onClick={() => {
+                                                        setSelectedStudyDetails(study);
+                                                    }}
+                                                    className="group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden transition hover:shadow-theme-lg cursor-pointer"
+                                                >
+                                                    {/* Study Cover Image */}
+                                                    <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
+                                                        {thumbnailUrl ? (
+                                                            <img
+                                                                src={thumbnailUrl}
+                                                                alt={study.patientName}
+                                                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
+                                                            />
+                                                        ) : (
+                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                                <AppIcon name="FolderOpen" size={48} className="text-gray-700" />
+                                                            </div>
+                                                        )}
+
+                                                        {/* Modalities badges list */}
+                                                        <div className="absolute top-2 left-2 flex flex-wrap gap-1.5 z-10">
+                                                            {studyModalities.map(mod => (
+                                                                <span
+                                                                    key={mod}
+                                                                    className={`px-2 py-0.5 text-[10px] font-semibold rounded backdrop-blur-sm text-white ${getModalityBadgeClass(mod)}`}
+                                                                >
+                                                                    {mod}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* Access Badge */}
+                                                        <div className="absolute top-2 right-2 z-10">
+                                                            {renderAccessBadge(study.xcoreAccessScope)}
+                                                        </div>
+
+                                                        {/* Series / Scan Count Badge */}
+                                                        <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/55 text-cyan-400 text-[10px] rounded backdrop-blur-sm font-semibold flex items-center gap-1">
+                                                            <AppIcon name="Layers" size={10} className="stroke-[2.5]" />
+                                                            <span>{study.series?.length || 0} Scan</span>
+                                                        </span>
+
+                                                        {/* Folder Size Badge */}
+                                                        <span className="absolute bottom-2 right-2 px-2 py-1 bg-black/55 text-white text-[10px] rounded backdrop-blur-sm font-medium">
+                                                            {folderSize}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="p-4 space-y-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="font-semibold text-primary truncate group-hover:text-accent transition-colors">{study.patientName}</h3>
+                                                                <p className="text-xs text-secondary mt-0.5">{study.patientIdDisplay}</p>
+                                                                <p className="text-[11px] text-muted truncate mt-1">Folder: {study.originalName}</p>
+                                                                {study.metadata?.InstitutionName && (
+                                                                    <p className="text-[10px] text-secondary flex items-center gap-1 mt-1 font-medium truncate">
+                                                                        <AppIcon name="Hospital" size={10} className="text-muted shrink-0" />
+                                                                        <span className="truncate">{study.metadata.InstitutionName}</span>
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            <AppIcon name="ChevronRight" size={16} className="text-muted group-hover:text-accent transition-transform group-hover:translate-x-1 mt-0.5" />
+                                                        </div>
+
+
+                                                        <div className="pt-2 border-t border-primary/10 flex justify-between items-center text-xs text-secondary">
+                                                            <span>{study.dateDisplay}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={
+                                                                    isConverting
+                                                                        ? 'text-blue-500 font-medium'
+                                                                        : study.statusDisplay === 'Analyzed'
+                                                                            ? 'text-emerald-500 font-medium'
+                                                                            : 'text-amber-500'
+                                                                }>
+                                                                    {isConverting ? 'Processing' : study.statusDisplay}
+                                                                </span>
+                                                                {canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setPatientAssignTarget(study);
+                                                                        }}
+                                                                        className={hasAssignedPatient(study)
+                                                                            ? 'rounded p-1 text-muted transition hover:bg-blue-50 hover:text-blue-600'
+                                                                            : 'inline-flex items-center gap-1 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2 py-1 font-semibold text-blue-700 transition hover:bg-blue-500/20'}
+                                                                        title={hasAssignedPatient(study) ? 'Change Patient' : 'Assign Patient'}
+                                                                        aria-label={hasAssignedPatient(study) ? 'Change patient assignment' : 'Assign study to patient'}
+                                                                    >
+                                                                        <AppIcon name="UserRoundPen" size={14} />
+                                                                        {!hasAssignedPatient(study) && <span>Assign</span>}
+                                                                    </button>
+                                                                )}
+                                                                {allowShare && canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openShareModal(study);
+                                                                        }}
+                                                                        className="p-1 hover:bg-emerald-50 hover:text-emerald-600 rounded transition text-muted"
+                                                                        title="Share Study"
+                                                                    >
+                                                                        <AppIcon name="Share2" size={14} />
+                                                                    </button>
+                                                                )}
+                                                                {allowDelete && canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(study); }}
+                                                                        className="p-1 hover:bg-red-50 hover:text-red-500 rounded transition text-muted"
+                                                                        title="Delete Study"
+                                                                    >
+                                                                        <AppIcon name="Trash2" size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )
+                            ) : (
+                                compareMode ? (
+                                    // Series List Table (For Comparison Mode)
+                                    <div className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-surface border-b border-primary/10">
+                                                <tr>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Status</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Patient</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Series</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Type</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Modality</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Slices</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Access</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Date</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-primary/5">
+                                                {seriesCards.map(card => {
+                                                    const isCompareSelected = selectedCompareIds.includes(card.id);
+                                                    return (
+                                                        <tr key={card.id} className="hover:bg-primary/5 transition">
+                                                            <td className="px-6 py-4">
+                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
+                                                                    }`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${card.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                                                                    {card.statusDisplay}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-medium text-primary">{card.patientName}</td>
+                                                            <td className="px-6 py-4 text-cyan-600 font-medium text-xs">{card.title}</td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="flex items-center gap-1 text-xs">
+                                                                    <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={14} className="text-accent" />
+                                                                    {card.type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="px-2 py-1 rounded bg-secondary/10 text-secondary text-xs">{card.modality}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-secondary">{card.num_slices}</td>
+                                                            <td className="px-6 py-4">
+                                                                {renderAccessBadge(card.study?.xcoreAccessScope)}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-secondary">{card.dateDisplay}</td>
+                                                            <td className="px-6 py-4">
+                                                                <button
+                                                                    onClick={() => toggleCompareSelection(card)}
+                                                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${isCompareSelected ? 'bg-cyan-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-cyan-50 hover:text-cyan-600'}`}
+                                                                >
+                                                                    <AppIcon name={isCompareSelected ? 'CheckSquare' : 'Square'} size={16} />
+                                                                    Select
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+
+                                        </table>
+                                    </div>
+                                ) : (
+                                    // Patient Study Table (Default Gallery Mode)
+                                    <div className="bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-surface border-b border-primary/10">
+                                                <tr>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Status</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Patient</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Modality</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Folder Size</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Scans</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Access</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Date</th>
+                                                    <th className="px-6 py-4 font-medium text-secondary">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-primary/5">
+                                                {healthyStudies.map(study => {
+                                                    const studyModalities = getStudyModalities(study);
+                                                    const folderSize = formatBytes(study.sizeInBytes);
+
+                                                    return (
+                                                        <tr
+                                                            key={study.id}
+                                                            className="hover:bg-primary/5 transition cursor-pointer"
+                                                            onClick={() => setSelectedStudyDetails(study)}
+                                                        >
+                                                            <td className="px-6 py-4">
+                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
+                                                                    }`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${study.statusDisplay === 'Analyzed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                                                                    {study.statusDisplay}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-medium text-primary">
+                                                                <div>
+                                                                    <span className="text-sm font-semibold">{study.patientName}</span>
+                                                                    <span className="text-xs text-secondary block">{study.patientIdDisplay}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex gap-1">
+                                                                    {studyModalities.map(mod => (
+                                                                        <span key={mod} className={`px-2 py-0.5 rounded text-[10px] font-semibold text-white ${getModalityBadgeClass(mod)}`}>{mod}</span>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-secondary">{folderSize}</td>
+                                                            <td className="px-6 py-4 text-secondary">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-medium">{study.series?.length || 0} scans</span>
+                                                                    {study.metadata?.InstitutionName && (
+                                                                        <span className="text-[10px] text-muted flex items-center gap-0.5 mt-0.5 max-w-[150px] truncate" title={study.metadata.InstitutionName}>
+                                                                            <AppIcon name="Hospital" size={8} />
+                                                                            <span className="truncate">{study.metadata.InstitutionName}</span>
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {renderAccessBadge(study.xcoreAccessScope)}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-secondary">{study.dateDisplay}</td>
+                                                            <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                                                                <button
+                                                                    onClick={() => setSelectedStudyDetails(study)}
+                                                                    className="p-1.5 hover:bg-accent/10 rounded text-accent transition"
+                                                                    title="Open Folder Details"
+                                                                >
+                                                                    <AppIcon name="FolderOpen" size={18} />
+                                                                </button>
+                                                                {canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={() => setPatientAssignTarget(study)}
+                                                                        className="ml-2 p-1.5 hover:bg-blue-50 hover:text-blue-600 rounded text-muted transition"
+                                                                        title={hasAssignedPatient(study) ? 'Change Patient' : 'Assign Patient'}
+                                                                        aria-label={hasAssignedPatient(study) ? 'Change patient assignment' : 'Assign study to patient'}
+                                                                    >
+                                                                        <AppIcon name="UserRoundPen" size={18} />
+                                                                    </button>
+                                                                )}
+                                                                {allowShare && canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={() => openShareModal(study)}
+                                                                        className="ml-2 p-1.5 hover:bg-emerald-50 hover:text-emerald-600 rounded text-muted transition"
+                                                                        title="Share Study"
+                                                                    >
+                                                                        <AppIcon name="Share2" size={18} />
+                                                                    </button>
+                                                                )}
+                                                                {allowDelete && canManageStudy(study) && (
+                                                                    <button
+                                                                        onClick={() => setDeleteTarget(study)}
+                                                                        className="ml-2 p-1.5 hover:bg-red-50 hover:text-red-500 rounded text-muted transition"
+                                                                        title="Delete Study"
+                                                                    >
+                                                                        <AppIcon name="Trash2" size={18} />
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )
+                            )}
+                        </div>
                     )}
-                </div>
-            )}
 
                 </>
             )}
@@ -1801,11 +1834,10 @@ const Gallery = ({
                                             setShareError(null);
                                             setShareResult(null);
                                         }}
-                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
-                                            shareType === 'clinic'
-                                                ? 'bg-white text-gray-900 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-900'
-                                        }`}
+                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${shareType === 'clinic'
+                                            ? 'bg-white text-gray-900 shadow-sm'
+                                            : 'text-gray-500 hover:text-gray-900'
+                                            }`}
                                     >
                                         Clinic Dentist
                                     </button>
@@ -1816,11 +1848,10 @@ const Gallery = ({
                                             setShareError(null);
                                             setShareResult(null);
                                         }}
-                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
-                                            shareType === 'email'
-                                                ? 'bg-white text-gray-900 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-900'
-                                        }`}
+                                        className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${shareType === 'email'
+                                            ? 'bg-white text-gray-900 shadow-sm'
+                                            : 'text-gray-500 hover:text-gray-900'
+                                            }`}
                                     >
                                         Independent Dentist (by Email)
                                     </button>

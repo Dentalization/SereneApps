@@ -30,15 +30,19 @@ const requireDentistProfile = async (req, res, next) => {
 
     const profile = rows[0];
     const { rows: staffRows } = await pool.query(
-      `SELECT clinic_profile_id, assigned_branch_id
-       FROM clinic_staff
-       WHERE user_id = $1 AND role = 'dentist' AND is_active = true
+      `SELECT cs.clinic_profile_id, cs.assigned_branch_id, cb.branch_name
+       FROM clinic_staff cs
+       LEFT JOIN clinic_branches cb
+         ON cb.id = cs.assigned_branch_id
+        AND cb.clinic_profile_id = cs.clinic_profile_id
+        AND cb.is_active = true
+       WHERE cs.user_id = $1 AND cs.is_active = true
        LIMIT 1`,
       [userId]
     );
 
     const staffRecord = staffRows[0] || null;
-    const clinicProfileId = profile.clinic_id || staffRecord?.clinic_profile_id || null;
+    const clinicProfileId = staffRecord?.clinic_profile_id || null;
     const isClinicDentist = Boolean(clinicProfileId);
 
     req.userId = userId;
@@ -64,7 +68,10 @@ const resolveClinicContext = async (req) => {
     const { rows: staffRows } = await pool.query(
       `SELECT cs.*, cb.branch_name
        FROM clinic_staff cs
-       LEFT JOIN clinic_branches cb ON cb.id = cs.assigned_branch_id
+       LEFT JOIN clinic_branches cb
+         ON cb.id = cs.assigned_branch_id
+        AND cb.clinic_profile_id = cs.clinic_profile_id
+        AND cb.is_active = true
        WHERE cs.user_id = $1 AND cs.role = 'dentist' AND cs.is_active = true
        LIMIT 1`,
       [req.userId]
@@ -77,14 +84,14 @@ const resolveClinicContext = async (req) => {
     return null;
   }
 
-  let branchId = staff.assigned_branch_id;
+  let branchId = staff.branch_name ? staff.assigned_branch_id : null;
   let branchName = staff.branch_name || null;
 
   if (!branchId) {
     const { rows: branchRows } = await pool.query(
       `SELECT id, branch_name
        FROM clinic_branches
-       WHERE clinic_profile_id = $1
+       WHERE clinic_profile_id = $1 AND is_active = true
        ORDER BY is_main_branch DESC, created_at ASC
        LIMIT 1`,
       [staff.clinic_profile_id]

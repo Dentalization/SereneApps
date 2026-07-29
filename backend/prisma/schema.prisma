@@ -1376,7 +1376,7 @@ model service_dentist_assignments {
 
 model ImagingStudy {
   id                     BigInt                          @id @default(autoincrement())
-  patientId              BigInt                          @map("patient_id")
+  patientId              BigInt?                         @map("patient_id")
   dentistId              BigInt?                         @map("dentist_id")
   clinicId               BigInt?                         @map("clinic_id")
   studyDate              DateTime                        @map("study_date") @db.Date
@@ -1398,7 +1398,7 @@ model ImagingStudy {
   patientAssignments     ImagingStudyPatientAssignment[]
   endoRadiographEvidence EndoRadiographEvidence[]
   dentist                User?                           @relation("DentistStudies", fields: [dentistId], references: [id])
-  patient                User                            @relation("PatientStudies", fields: [patientId], references: [id], onDelete: Cascade)
+  patient                User?                           @relation("PatientStudies", fields: [patientId], references: [id], onDelete: SetNull)
 
   @@index([patientId], map: "idx_imaging_studies_patient")
   @@index([studyDate], map: "idx_imaging_studies_date")

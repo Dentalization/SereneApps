@@ -1,34 +1,33 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import ClinicSideBar from './SideBar-Clinic';
-import { useAuth } from '../../../contexts/AuthContext';
-import { getClinicNotificationsForRoles } from './clinicNotificationsData';
+import { useNotifications } from '../../../contexts/NotificationContext';
 
 const CATEGORY_META = {
-  schedule: {
+  appointments: {
     label: 'Schedule & Queue',
     icon: 'CalendarClock',
     accent: 'text-sky-600 dark:text-sky-300',
     badge: 'bg-sky-500/10 text-sky-600 dark:text-sky-200',
     border: 'border-sky-200/70 dark:border-sky-500/30 bg-sky-500/5',
   },
-  patient: {
+  clinical: {
     label: 'Patients',
     icon: 'UserRound',
     accent: 'text-emerald-600 dark:text-emerald-300',
     badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-200',
     border: 'border-emerald-200/70 dark:border-emerald-500/30 bg-emerald-500/5',
   },
-  billing: {
+  business: {
     label: 'Billing & Insurance',
     icon: 'Receipt',
     accent: 'text-amber-600 dark:text-amber-300',
     badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-200',
     border: 'border-amber-200/70 dark:border-amber-500/30 bg-amber-500/5',
   },
-  operations: {
+  teledentistry: {
     label: 'Operations',
     icon: 'Boxes',
     accent: 'text-indigo-600 dark:text-indigo-300',
@@ -53,55 +52,11 @@ const CATEGORY_META = {
 
 const FILTERS = [
   { id: 'all', labelKey: 'notifications.filters.all' },
-  { id: 'schedule', labelKey: 'notifications.filters.schedule' },
-  { id: 'patient', labelKey: 'notifications.filters.patient' },
-  { id: 'billing', labelKey: 'notifications.filters.billing' },
-  { id: 'operations', labelKey: 'notifications.filters.operations' },
-  { id: 'marketing', labelKey: 'notifications.filters.marketing' },
-];
-
-const CLINIC_INSIGHTS = [
-  {
-    id: 'queue',
-    title: 'Current queue load',
-    value: '12 waiting',
-    trend: 'Avg wait 18m',
-    icon: 'Activity',
-    tone: 'text-sky-500',
-  },
-  {
-    id: 'billing',
-    title: 'Billing follow-ups',
-    value: '5 claims',
-    trend: 'Rp 22.4M pending',
-    icon: 'FileText',
-    tone: 'text-amber-500',
-  },
-  {
-    id: 'inventory',
-    title: 'Inventory low stock',
-    value: '3 items',
-    trend: 'Sterilization packs lead time 2d',
-    icon: 'Layers',
-    tone: 'text-indigo-500',
-  },
-];
-
-const CLINIC_ALERTS = [
-  {
-    id: 'alert-1',
-    title: 'Sterilization cassette B idle',
-    detail: 'Overdue 34 minutes • 6 kits pending',
-    owner: 'Nurse Kevin',
-    impact: 'Ops & Compliance',
-  },
-  {
-    id: 'alert-2',
-    title: 'Front office understaffed at 17.00 slot',
-    detail: '2 staff absent • 24 patients scheduled',
-    owner: 'Clinic Admin',
-    impact: 'Queue Experience',
-  },
+  { id: 'appointments', labelKey: 'notifications.filters.schedule' },
+  { id: 'clinical', labelKey: 'notifications.filters.patient' },
+  { id: 'business', labelKey: 'notifications.filters.billing' },
+  { id: 'teledentistry', labelKey: 'notifications.filters.operations' },
+  { id: 'default', labelKey: 'notifications.filters.marketing' },
 ];
 
 const CLINIC_ACTIONS = [
@@ -134,33 +89,14 @@ const CLINIC_ACTIONS = [
 const NotificationScreenClinic = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { user } = useAuth();
-
-  const userRoles = useMemo(() => {
-    const roles = new Set(user?.roles || []);
-    if (roles.has('clinic_owner')) roles.add('owner');
-    if (roles.has('clinic_admin')) roles.add('manager');
-    if (!roles.size && user?.role) roles.add(user.role);
-    if (!roles.size) roles.add('staff');
-    return roles;
-  }, [user?.roles, user?.role]);
-
-  const resolvedRoles = useMemo(() => Array.from(userRoles), [userRoles]);
-  const isManagerial = useMemo(
-    () => resolvedRoles.includes('owner') || resolvedRoles.includes('manager'),
-    [resolvedRoles]
-  );
-  const roleNotifications = useMemo(
-    () => getClinicNotificationsForRoles(resolvedRoles, { includeAll: isManagerial }),
-    [resolvedRoles, isManagerial]
-  );
-
   const [filter, setFilter] = useState('all');
-  const [items, setItems] = useState(roleNotifications);
-
-  useEffect(() => {
-    setItems(roleNotifications);
-  }, [roleNotifications]);
+  const {
+    notifications: items,
+    unreadCount,
+    loading,
+    markAsRead: handleMarkRead,
+    markAllAsRead: handleMarkAllRead
+  } = useNotifications();
 
   const filtered = useMemo(() => {
     if (filter === 'all') return items;
@@ -175,7 +111,37 @@ const NotificationScreenClinic = () => {
     }, {});
   }, [filtered]);
 
-  const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
+  const clinicInsights = useMemo(() => [
+    {
+      id: 'today-schedule',
+      title: 'Schedule updates',
+      value: `${items.filter((item) => item.category === 'appointments').length} updates`,
+      trend: `${items.filter((item) => item.category === 'appointments' && !item.read).length} unread`,
+      icon: 'CalendarClock',
+      tone: 'text-sky-500'
+    },
+    {
+      id: 'clinical-work',
+      title: 'Clinical updates',
+      value: `${items.filter((item) => item.category === 'clinical').length} updates`,
+      trend: `${items.filter((item) => item.category === 'clinical' && !item.read).length} unread`,
+      icon: 'ClipboardPulse',
+      tone: 'text-emerald-500'
+    },
+    {
+      id: 'billing-work',
+      title: 'Billing updates',
+      value: `${items.filter((item) => item.category === 'business').length} updates`,
+      trend: `${items.filter((item) => item.category === 'business' && !item.read).length} unread`,
+      icon: 'Wallet',
+      tone: 'text-amber-500'
+    }
+  ], [items]);
+
+  const priorityAlerts = useMemo(
+    () => items.filter((item) => item.severity === 'high' && !item.read).slice(0, 5),
+    [items]
+  );
 
   const getFilterCount = (filterId) => {
     if (filterId === 'all') return items.length;
@@ -191,13 +157,18 @@ const NotificationScreenClinic = () => {
     navigate(action.href);
   };
 
-  const handleMarkRead = (id) => {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, read: true } : item)));
-  };
-
-  const handleMarkAllRead = () => {
-    setItems((prev) => prev.map((item) => ({ ...item, read: true })));
-  };
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-background theme-transition">
+        <div className="flex-shrink-0" style={{ width: 'var(--sidebar-width, 20rem)' }}>
+          <ClinicSideBar />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background theme-transition">
@@ -296,7 +267,7 @@ const NotificationScreenClinic = () => {
             <p className="text-xs text-secondary/70">{t('notifications.clinic.stats.opsLabel')}</p>
             <div className="flex items-end justify-between mt-2">
               <span className="text-3xl font-semibold text-amber-500">
-                {items.filter((item) => item.category === 'operations').length}
+                {items.filter((item) => item.category === 'business').length}
               </span>
               <span className="text-xs text-secondary">{t('notifications.clinic.stats.opsMeta')}</span>
             </div>
@@ -375,7 +346,7 @@ const NotificationScreenClinic = () => {
                               )}
                             </div>
                             <div className="flex flex-wrap gap-3 pt-1">
-                              {item.actions?.map((action) => (
+                              {(item.actionsByPortal?.clinic || item.actions)?.map((action) => (
                                 <button
                                   key={action.label}
                                   onClick={() => handleAction(action)}
@@ -422,7 +393,7 @@ const NotificationScreenClinic = () => {
                 <Icon name="LineChart" size={16} className="text-secondary" />
               </div>
               <div className="mt-4 space-y-4">
-                {CLINIC_INSIGHTS.map((insight) => (
+                {clinicInsights.map((insight) => (
                   <div key={insight.id} className="rounded-2xl border border-border/30 bg-background/40 p-4">
                     <div className="flex items-start justify-between">
                       <div>
@@ -449,22 +420,18 @@ const NotificationScreenClinic = () => {
                 <Icon name="AlarmClock" size={16} className="text-rose-500" />
               </div>
               <div className="mt-4 space-y-4">
-                {CLINIC_ALERTS.map((item) => (
+                {priorityAlerts.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-rose-200/40 bg-background/50 p-4 dark:bg-surface/60">
                     <p className="text-sm font-semibold text-primary">{item.title}</p>
-                    <p className="text-xs text-secondary mt-1">{item.detail}</p>
-                    <div className="mt-2 flex items-center justify-between text-xs text-secondary">
-                      <span className="inline-flex items-center gap-1">
-                        <Icon name="UserCircle2" size={12} />
-                        {item.owner}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Icon name="ArrowRight" size={12} />
-                        {item.impact}
-                      </span>
-                    </div>
+                    <p className="text-xs text-secondary mt-1">{item.description}</p>
+                    <p className="mt-2 text-xs text-secondary">{item.timestamp}</p>
                   </div>
                 ))}
+                {!priorityAlerts.length && (
+                  <p className="rounded-2xl border border-dashed border-border/40 p-4 text-sm text-secondary">
+                    Tidak ada alert prioritas yang belum dibaca.
+                  </p>
+                )}
               </div>
             </section>
 

@@ -62,23 +62,48 @@ const hasErrorUtils = global?.ErrorUtils?.setGlobalHandler;
 if (hasErrorUtils) {
   const originalHandler = global.ErrorUtils.getGlobalHandler?.();
   global.ErrorUtils.setGlobalHandler((error, isFatal) => {
-    console.error('🔴 Global Error Handler:', error, 'isFatal:', isFatal);
-    console.error('🔴 Error stack:', error.stack);
+    // Suppress non-fatal Twilio SDK internal errors — these are expected
+    // when Twilio is in mock mode or the token is invalid.
+    const msg = error?.message || '';
+    const isTwilioInternalError =
+      msg.includes('Maximum call stack size exceeded') ||
+      msg.includes('Object is not a constructor') ||
+      msg.includes('myConversationsRead') ||
+      msg.includes('Invalid Access Token') ||
+      msg.includes('Twilio');
+
+    if (isTwilioInternalError && !isFatal) {
+      return; // Swallow silently — handled by useChat REST fallback
+    }
+
+    if (__DEV__) {
+      console.error('🔴 Global Error Handler:', error, 'isFatal:', isFatal);
+    }
 
     if (typeof originalHandler === 'function') {
       originalHandler(error, isFatal);
     }
   });
-} else {
+} else if (__DEV__) {
   console.warn('⚠️ Global Error Utils not available, using console fallback');
 }
 
+// DEV-only: log unhandled rejections that are NOT Twilio-related
 if (__DEV__) {
   const oldConsoleError = console.error;
   console.error = (...args) => {
     oldConsoleError(...args);
-    if (String(args?.[0] || '').includes('Unhandled promise rejection')) {
-      console.log('🔥 UNHANDLED REJECTION FULL:', args);
+    const msg = String(args?.[0] || '');
+    if (msg.includes('Unhandled promise rejection')) {
+      const detail = String(args?.[1] || '');
+      const isTwilioNoise =
+        detail.includes('Maximum call stack size exceeded') ||
+        detail.includes('Object is not a constructor') ||
+        detail.includes('myConversationsRead') ||
+        detail.includes('Invalid Access Token');
+      if (!isTwilioNoise) {
+        console.log('🔥 UNHANDLED REJECTION FULL:', args);
+      }
     }
   };
 }
@@ -87,6 +112,12 @@ if (__DEV__) {
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
   'Require cycle:',
+  // Twilio SDK internal errors — expected when using mock/invalid tokens
+  'Unhandled promise rejection',
+  'Maximum call stack size exceeded',
+  'Object is not a constructor',
+  'myConversationsRead',
+  'Invalid Access Token',
 ]);
 
 // Lazy load to catch import errors

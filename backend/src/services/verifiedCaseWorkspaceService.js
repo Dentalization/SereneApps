@@ -30,6 +30,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   'image_retake_requested',
   'image_analysis_started',
   'image_analysis_completed',
+  'image_analysis_snapshot',
   'ai_finding_created',
   'finding_confirmed',
   'finding_rejected',
@@ -1035,7 +1036,17 @@ export function createVerifiedCaseWorkspaceService({
       if (latestQuality.can_continue_analysis !== true) throw createClinicalError('image_quality_blocks_analysis');
       if (!aiAdapter?.analyzeImage) throw createClinicalError('ai_analysis_adapter_required');
 
-      await recordAudit({ caseId, actor, eventType: 'image_analysis_started', after: { image_id: imageId } });
+      await recordAudit({
+        caseId,
+        actor,
+        eventType: 'image_analysis_started',
+        after: {
+          image_id: imageId,
+          // Keep the original clinician prompt with the durable case artifact so
+          // the complete image-analysis turn can be reconstructed in chat history.
+          context: typeof context === 'string' ? context : null,
+        },
+      });
       const imageBuffer = await storage.getObjectBuffer(image.storage_ref);
       const aiResult = await aiAdapter.analyzeImage({ imageBuffer, image, context });
       let annotatedRef = image.annotated_image_ref || null;
@@ -1106,6 +1117,15 @@ export function createVerifiedCaseWorkspaceService({
       const responseVisualFindings = sanitizeRawAiResult({
         ...persistedRawAiResult,
         ...(aiResult.normalized_findings || {}),
+      });
+      await recordAudit({
+        caseId,
+        actor,
+        eventType: 'image_analysis_snapshot',
+        after: {
+          image_id: imageId,
+          visual_findings: responseVisualFindings,
+        },
       });
       return {
         image: {

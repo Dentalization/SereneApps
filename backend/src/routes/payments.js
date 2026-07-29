@@ -18,6 +18,7 @@ import paymentStatusRouter from './payments/status.js';
 import { generateInvoicePDF } from '../services/payments/pdfGenerator.js';
 import { processRefund } from '../services/payments/refundService.js';
 import { recordFinancialAuditLog } from '../services/audit/auditLogger.js';
+import { emitPortalInvalidation } from '../services/portalCollaboration.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -112,7 +113,8 @@ router.post(
         where: { id: appointmentId },
         include: {
           patient: { select: { id: true, name: true, email: true, phone_number: true } },
-          dentist: { select: { id: true, name: true } }
+          dentist: { select: { id: true, name: true } },
+          clinicBranch: { select: { clinicProfileId: true } }
         }
       });
 
@@ -246,16 +248,25 @@ router.post(
           return createdIntent;
         });
 
-        // Trigger real-time notifications via event emitters or websockets if global io/sockets is defined.
-        if (req.app && req.app.get('io')) {
-          const io = req.app.get('io');
-          io.emit('notification:new', {
-            type: 'PAYMENT_SUCCESS',
-            paymentIntentId: simulatedIntent.id.toString(),
-            appointmentId: appointmentId.toString(),
-            message: `Pembayaran simulasi untuk appointment #${appointmentId} berhasil.`
-          });
-        }
+        const collaborationAudience = {
+          io: req.app?.get?.('io'),
+          entity: 'payment_intent',
+          entityId: simulatedIntent.id,
+          status: simulatedIntent.status,
+          patientId: appointment.patientId,
+          dentistId: appointment.dentistId,
+          clinicProfileId: appointment.ownerClinicId
+            || appointment.clinicBranch?.clinicProfileId
+            || null,
+        };
+        emitPortalInvalidation({
+          ...collaborationAudience,
+          eventName: 'payment:status_updated',
+        });
+        emitPortalInvalidation({
+          ...collaborationAudience,
+          eventName: 'billing:invoice_updated',
+        });
 
         return res.status(201).json({
           paymentIntent: serializePaymentIntent(simulatedIntent),

@@ -52,7 +52,10 @@ const ClinicDirectory = () => {
           {error && <div className="text-red-600">{error}</div>}
 
           {!loading && !error && (
-            <ClinicTable clinics={clinics} onView={(id) => navigate(`/admin/clinic-management/${id}`)} />
+            <ClinicTable
+              clinics={clinics}
+              onView={(clinic) => navigate(`/admin/clinic-management/${clinic.id}`, { state: { clinic } })}
+            />
           )}
         </div>
       </div>

@@ -45,7 +45,7 @@ const StaffDirectory = ({
         
         return searchMatch && roleMatch && statusMatch;
       } catch (error) {
-        console.warn('Error filtering staff member:', member, error);
+        console.warn('Error filtering staff member:', error);
         return false;
       }
     });

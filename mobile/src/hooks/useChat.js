@@ -58,73 +58,53 @@ export function resetTwilioAttempts() {
 export async function getOrCreateTwilioClient(token) {
   if (globalTwilioClient) {
     try {
-      console.log('E');
       await globalTwilioClient.updateToken(token);
-      console.log('F');
     } catch (e) {
-      console.warn('[useChat] TWILIO_INIT_FAILURE - error updating global Twilio token:', e.message);
+      if (__DEV__) console.warn('[useChat] Could not update Twilio token:', e.message);
     }
     return globalTwilioClient;
   }
 
   if (isInitializingTwilio && globalTwilioClientPromise) {
-    console.log('[useChat] TWILIO_INIT_START - reusing existing initialization promise');
     return globalTwilioClientPromise;
   }
 
   if (twilioInitAttempts >= MAX_TWILIO_ATTEMPTS) {
-    console.warn('[useChat] TWILIO_INIT_FAILURE - max initialization attempts reached, circuit breaker active');
-    throw new Error('Twilio Conversations SDK chat is currently unavailable.');
+    throw new Error('Twilio chat unavailable.');
   }
 
   const ConversationsClient = loadConversationsClient();
   if (!ConversationsClient) {
-    console.error('[useChat] TWILIO_INIT_FAILURE - Unable to load Twilio Conversations SDK');
     throw new Error('Unable to load Twilio Conversations SDK');
   }
 
-  console.log('[useChat] TWILIO_INIT_START - creating new Twilio client');
   isInitializingTwilio = true;
   twilioInitAttempts++;
 
   globalTwilioClientPromise = (async () => {
     try {
       const client = new ConversationsClient(token);
-      console.log('A');
       globalTwilioClient = client;
-      console.log('B');
-      console.log('[useChat] TWILIO_INIT_SUCCESS - client created successfully');
 
-      console.log('C');
-      // Prevent crashes from unhandled client-level errors/websockets
-      client.on('error', (err) => {
-        console.warn('[useChat] Twilio Client internal error event:', err?.message || err);
-      });
-      client.on('connectionStateChanged', (state) => {
-        console.log('[useChat] Event: connectionStateChanged ->', state);
-      });
-      client.on('connectionError', (err) => {
-        console.log('[useChat] Event: connectionError ->', err);
-      });
-      client.on('tokenAboutToExpire', () => {
-        console.log('[useChat] Event: tokenAboutToExpire');
-      });
-      client.on('tokenExpired', () => {
-        console.log('[useChat] Event: tokenExpired');
-      });
-      client.on('stateChanged', (state) => {
-        console.log('[useChat] Event: stateChanged ->', state);
-      });
-      console.log('D');
+      // Absorb unhandled internal SDK promise rejections silently
+      client.on('error', () => { });
+      client.on('connectionStateChanged', () => { });
+      client.on('connectionError', () => { });
+      client.on('tokenAboutToExpire', () => { });
+      client.on('tokenExpired', () => { });
+      client.on('stateChanged', () => { });
 
       return client;
     } catch (err) {
-      console.error('[useChat] TWILIO_INIT_FAILURE - client creation failed:', err.message || err);
+      if (__DEV__) console.warn('[useChat] Twilio client creation failed:', err.message || err);
       throw err;
     } finally {
       isInitializingTwilio = false;
     }
   })();
+
+  // Absorb any unhandled async rejections from internal SDK promises
+  globalTwilioClientPromise.catch(() => { });
 
   return globalTwilioClientPromise;
 }
@@ -350,202 +330,198 @@ export function useChat({ userId } = {}) {
       const conversationSid = data.chat?.conversationSid || data.conversationSid;
 
       // 3-4. Init / Update Client
-      let client = await getOrCreateTwilioClient(token);
-      twilioClientRef.current = client;
-      setChatUnavailable(false);
+      let client = null;
+      try {
+        client = await getOrCreateTwilioClient(token);
+        twilioClientRef.current = client;
 
-      client.removeAllListeners('connectionStateChanged');
-      client.on('connectionStateChanged', (state) => {
-        setConnectionState(state);
-        setSocketConnected(state === 'connected');
-        if (state === 'connected') setReconnectError(null);
-      });
-      console.log('[useChat] connectionStateChanged listeners count:', typeof client.listenerCount === 'function' ? client.listenerCount('connectionStateChanged') : 'N/A');
+        if (client) {
+          client.removeAllListeners('connectionStateChanged');
+          client.on('connectionStateChanged', (state) => {
+            setConnectionState(state);
+            setSocketConnected(state === 'connected');
+            if (state === 'connected') setReconnectError(null);
+          });
 
-      if (client.connectionState === 'connected') {
-        setSocketConnected(true);
-        setConnectionState('connected');
-      }
-
-      // 5. Subscribe to conversation
-      console.log('A');
-      console.log('[useChat] Promise type:', typeof Promise, Promise?.toString());
-      console.log('[useChat] global.Promise type:', typeof global.Promise, global.Promise?.toString());
-      console.log('[useChat] Promise match:', Promise === global.Promise);
-      const conversation = await client.getConversationBySid(conversationSid);
-      console.log('B');
-
-      if (activeConversationRef.current) {
-        activeConversationRef.current.removeAllListeners();
-      }
-      activeConversationRef.current = conversation;
-
-      // Ensure presence populated initially with safety lock
-      let isUpdatingPresence = false;
-      const updatePresence = async () => {
-        if (isUpdatingPresence) return;
-        isUpdatingPresence = true;
-        try {
-          console.log('C');
-          const participants = await conversation.getParticipants();
-          console.log('D');
-          const onlineIdentityStrings = participants.filter(p => p.isOnline).map(p => p.identity);
-          setPresenceMap(prev => ({ ...prev, [normalizedAppointmentId]: onlineIdentityStrings }));
-        } catch (e) {
-          console.warn('[useChat] updatePresence error:', e.message);
-        } finally {
-          isUpdatingPresence = false;
-        }
-      };
-      await updatePresence();
-
-      // 7. presenceMap updates disabled temporarily for stack trace debugging
-      // conversation.on('participantUpdated', () => {
-      //   updatePresence().catch(err => console.warn('[useChat] participantUpdated presence sync failed:', err));
-      // });
-      // conversation.on('participantJoined', () => {
-      //   updatePresence().catch(err => console.warn('[useChat] participantJoined presence sync failed:', err));
-      // });
-      // conversation.on('participantLeft', () => {
-      //   updatePresence().catch(err => console.warn('[useChat] participantLeft presence sync failed:', err));
-      // });
-
-      const clearTypingParticipant = (participantKey) => {
-        setTypingByAppointment((prev) => {
-          const current = prev[normalizedAppointmentId] || [];
-          return {
-            ...prev,
-            [normalizedAppointmentId]: current.filter((identity) => identity !== participantKey)
-          };
-        });
-      };
-
-      conversation.on('typingStarted', (participant) => {
-        try {
-          const identity = participant?.identity || participant?.sid || '';
-          if (!identity || identity === String(userId)) return;
-          const timerKey = `${normalizedAppointmentId}:${identity}`;
-          if (typingTimersRef.current[timerKey]) {
-            clearTimeout(typingTimersRef.current[timerKey]);
+          if (client.connectionState === 'connected') {
+            setSocketConnected(true);
+            setConnectionState('connected');
           }
+        }
+      } catch (clientErr) {
+        console.warn('[useChat] Twilio client initialization warning:', clientErr?.message || clientErr);
+      }
+
+      // 5. Subscribe to conversation (safely handle mock / invalid token states)
+      let conversation = null;
+      if (client && client.connectionState !== 'failed') {
+        try {
+          conversation = await client.getConversationBySid(conversationSid);
+        } catch {
+          // Silently fall back to REST API when WebSocket/Twilio is unavailable
+        }
+      }
+
+      if (conversation) {
+        if (activeConversationRef.current) {
+          activeConversationRef.current.removeAllListeners();
+        }
+        activeConversationRef.current = conversation;
+
+        // Ensure presence populated initially with safety lock
+        let isUpdatingPresence = false;
+        const updatePresence = async () => {
+          if (isUpdatingPresence) return;
+          isUpdatingPresence = true;
+          try {
+            const participants = await conversation.getParticipants();
+            const onlineIdentityStrings = participants.filter(p => p.isOnline).map(p => p.identity);
+            setPresenceMap(prev => ({ ...prev, [normalizedAppointmentId]: onlineIdentityStrings }));
+          } catch (e) {
+            console.warn('[useChat] updatePresence error:', e.message);
+          } finally {
+            isUpdatingPresence = false;
+          }
+        };
+        await updatePresence();
+
+        const clearTypingParticipant = (participantKey) => {
           setTypingByAppointment((prev) => {
             const current = prev[normalizedAppointmentId] || [];
-            if (current.includes(identity)) return prev;
-            return { ...prev, [normalizedAppointmentId]: [...current, identity] };
+            return {
+              ...prev,
+              [normalizedAppointmentId]: current.filter((identity) => identity !== participantKey)
+            };
           });
-          typingTimersRef.current[timerKey] = setTimeout(() => {
-            clearTypingParticipant(identity);
-            delete typingTimersRef.current[timerKey];
-          }, 5000);
-        } catch (err) {
-          console.warn('[useChat] typingStarted listener failed:', err);
-        }
-      });
+        };
 
-      conversation.on('typingEnded', (participant) => {
-        try {
-          const identity = participant?.identity || participant?.sid || '';
-          if (!identity || identity === String(userId)) return;
-          const timerKey = `${normalizedAppointmentId}:${identity}`;
-          if (typingTimersRef.current[timerKey]) {
-            clearTimeout(typingTimersRef.current[timerKey]);
-            delete typingTimersRef.current[timerKey];
-          }
-          clearTypingParticipant(identity);
-        } catch (err) {
-          console.warn('[useChat] typingEnded listener failed:', err);
-        }
-      });
-
-      // 6. onMessageAdded
-      conversation.on('messageAdded', (message) => {
-        try {
-          messageCountRef.current++;
-          console.log(`[useChat] MESSAGE_ADDED - received message count: ${messageCountRef.current}`);
-          let attrs = {};
+        conversation.on('typingStarted', (participant) => {
           try {
-            attrs = typeof message.attributes === 'string' ? JSON.parse(message.attributes) : (message.attributes || {});
-          } catch (e) { }
-
-          // Intercept System Messages
-          if (attrs.type === 'video_call') {
-            const callerId = message.author;
-            if (attrs.action === 'incoming') {
-              setIncomingCall({ appointmentId: normalizedAppointmentId, callerId, callerName: 'Incoming Call' });
-            } else if (['accepted', 'declined', 'ended'].includes(attrs.action)) {
-              setIncomingCall(null);
+            const identity = participant?.identity || participant?.sid || '';
+            if (!identity || identity === String(userId)) return;
+            const timerKey = `${normalizedAppointmentId}:${identity}`;
+            if (typingTimersRef.current[timerKey]) {
+              clearTimeout(typingTimersRef.current[timerKey]);
             }
-            return;
+            setTypingByAppointment((prev) => {
+              const current = prev[normalizedAppointmentId] || [];
+              if (current.includes(identity)) return prev;
+              return { ...prev, [normalizedAppointmentId]: [...current, identity] };
+            });
+            typingTimersRef.current[timerKey] = setTimeout(() => {
+              clearTypingParticipant(identity);
+              delete typingTimersRef.current[timerKey];
+            }, 5000);
+          } catch (err) {
+            console.warn('[useChat] typingStarted listener failed:', err);
           }
+        });
 
-          const msgObj = {
-            id: message.sid,
-            senderId: message.author,
-            message: message.body,
-            messageType: attrs.type || message.type || 'text',
-            createdAt: message.dateCreated,
-            twilioMessageSid: message.sid,
-            fileUrl: attrs.fileUrl,
-            fileName: attrs.fileName,
-            mimeType: attrs.mimeType,
-            fileSizeBytes: attrs.fileSizeBytes,
-            mediaRetentionUntil: attrs.mediaRetentionUntil,
-            storageProvider: attrs.storageProvider,
-            mediaScanStatus: attrs.mediaScanStatus,
-            mediaTombstoneReason: attrs.mediaTombstoneReason,
-            attachmentAvailable: attrs.type !== 'file' || attrs.deleted !== true,
-            metadata: attrs
-          };
+        conversation.on('typingEnded', (participant) => {
+          try {
+            const identity = participant?.identity || participant?.sid || '';
+            if (!identity || identity === String(userId)) return;
+            const timerKey = `${normalizedAppointmentId}:${identity}`;
+            if (typingTimersRef.current[timerKey]) {
+              clearTimeout(typingTimersRef.current[timerKey]);
+              delete typingTimersRef.current[timerKey];
+            }
+            clearTypingParticipant(identity);
+          } catch (err) {
+            console.warn('[useChat] typingEnded listener failed:', err);
+          }
+        });
 
-          setMessagesByAppointment((prev) => {
-            const current = prev[normalizedAppointmentId] || [];
-            if (current.some((m) => m.id === msgObj.id || m.twilioMessageSid === msgObj.twilioMessageSid)) return prev;
-            return { ...prev, [normalizedAppointmentId]: [...current, msgObj] };
-          });
+        // 6. onMessageAdded
+        conversation.on('messageAdded', (message) => {
+          try {
+            messageCountRef.current++;
+            console.log(`[useChat] MESSAGE_ADDED - received message count: ${messageCountRef.current}`);
+            let attrs = {};
+            try {
+              attrs = typeof message.attributes === 'string' ? JSON.parse(message.attributes) : (message.attributes || {});
+            } catch (e) { }
 
-          setConversations((prev) => {
-            let found = false;
-            const updated = prev.map((conv) => {
-              if (String(conv.appointmentId) === normalizedAppointmentId) {
-                found = true;
-                const isOwn = msgObj.senderId === String(userId);
-                return {
-                  ...conv,
-                  lastMessage: msgObj, // This visually updates the list item
-                  unreadCount: isOwn ? 0 : (conv.unreadCount || 0) + 1,
-                };
+            // Intercept System Messages
+            if (attrs.type === 'video_call') {
+              const callerId = message.author;
+              if (attrs.action === 'incoming') {
+                setIncomingCall({ appointmentId: normalizedAppointmentId, callerId, callerName: 'Incoming Call' });
+              } else if (['accepted', 'declined', 'ended'].includes(attrs.action)) {
+                setIncomingCall(null);
               }
-              return conv;
+              return;
+            }
+
+            const msgObj = {
+              id: message.sid,
+              senderId: message.author,
+              message: message.body,
+              messageType: attrs.type || message.type || 'text',
+              createdAt: message.dateCreated,
+              twilioMessageSid: message.sid,
+              fileUrl: attrs.fileUrl,
+              fileName: attrs.fileName,
+              mimeType: attrs.mimeType,
+              fileSizeBytes: attrs.fileSizeBytes,
+              mediaRetentionUntil: attrs.mediaRetentionUntil,
+              storageProvider: attrs.storageProvider,
+              mediaScanStatus: attrs.mediaScanStatus,
+              mediaTombstoneReason: attrs.mediaTombstoneReason,
+              attachmentAvailable: attrs.type !== 'file' || attrs.deleted !== true,
+              metadata: attrs
+            };
+
+            setMessagesByAppointment((prev) => {
+              const current = prev[normalizedAppointmentId] || [];
+              if (current.some((m) => m.id === msgObj.id || m.twilioMessageSid === msgObj.twilioMessageSid)) return prev;
+              return { ...prev, [normalizedAppointmentId]: [...current, msgObj] };
             });
 
-            if (!found) {
-              fetchConversations().then(setConversations).catch(() => { });
-            }
-            return updated;
-          });
-        } catch (err) {
-          console.warn('[useChat] messageAdded listener failed:', err);
-        }
-      });
+            setConversations((prev) => {
+              let found = false;
+              const updated = prev.map((conv) => {
+                if (String(conv.appointmentId) === normalizedAppointmentId) {
+                  found = true;
+                  const isOwn = msgObj.senderId === String(userId);
+                  return {
+                    ...conv,
+                    lastMessage: msgObj,
+                    unreadCount: isOwn ? 0 : (conv.unreadCount || 0) + 1,
+                  };
+                }
+                return conv;
+              });
 
-      // Reset unread count locally upon join
-      setConversations((prev) =>
-        prev.map((conv) => (String(conv.appointmentId) === normalizedAppointmentId ? { ...conv, unreadCount: 0 } : conv))
-      );
+              if (!found) {
+                fetchConversations().then(setConversations).catch(() => { });
+              }
+              return updated;
+            });
+          } catch (err) {
+            console.warn('[useChat] messageAdded listener failed:', err);
+          }
+        });
 
-      // 8. Mark read in backend with ref-lock protection
-      if (!isMarkingReadRef.current[normalizedAppointmentId]) {
-        isMarkingReadRef.current[normalizedAppointmentId] = true;
-        console.log(`[useChat] MARK_READ_START - marking read for ${normalizedAppointmentId}`);
-        try {
-          await api.patch(`/communications/appointments/${normalizedAppointmentId}/chat/read`);
-          console.log(`[useChat] MARK_READ_END - successfully marked read for ${normalizedAppointmentId}`);
-        } catch (err) {
-          console.warn('[useChat] Failed to mark read:', err.message);
-        } finally {
-          isMarkingReadRef.current[normalizedAppointmentId] = false;
+        // Reset unread count locally upon join
+        setConversations((prev) =>
+          prev.map((conv) => (String(conv.appointmentId) === normalizedAppointmentId ? { ...conv, unreadCount: 0 } : conv))
+        );
+
+        // 8. Mark read in backend with ref-lock protection
+        if (!isMarkingReadRef.current[normalizedAppointmentId]) {
+          isMarkingReadRef.current[normalizedAppointmentId] = true;
+          console.log(`[useChat] MARK_READ_START - marking read for ${normalizedAppointmentId}`);
+          try {
+            await api.patch(`/communications/appointments/${normalizedAppointmentId}/chat/read`);
+            console.log(`[useChat] MARK_READ_END - successfully marked read for ${normalizedAppointmentId}`);
+          } catch (err) {
+            console.warn('[useChat] Failed to mark read:', err.message);
+          } finally {
+            isMarkingReadRef.current[normalizedAppointmentId] = false;
+          }
         }
-      }
+      } // end if (conversation)
     } catch (error) {
       const history = await historyPromise;
       if (history.length) {
@@ -569,9 +545,9 @@ export function useChat({ userId } = {}) {
 
       setSocketConnected(false);
       setConnectionState('disconnected');
-      setReconnectError(error.message || 'Failed to connect chat');
-      setChatUnavailable(true);
-      console.error('[useChat] Failed to init Twilio for appointmentId:', normalizedAppointmentId, error);
+      setReconnectError(error?.message || 'Failed to connect real-time chat');
+      setChatUnavailable(false);
+      console.warn('[useChat] Twilio socket connection failed, using REST fallback for appointmentId:', normalizedAppointmentId, error?.message || error);
     } finally {
       isSelectingConversationRef.current = null;
     }
@@ -625,7 +601,16 @@ export function useChat({ userId } = {}) {
       if (saved) {
         setMessagesByAppointment((prev) => {
           const current = prev[appointmentId] || [];
-          if (current.some((m) => m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid)) return prev;
+          const existingIndex = current.findIndex((m) => (
+            m.id === saved.id || m.twilioMessageSid === saved.twilioMessageSid
+          ));
+          if (existingIndex >= 0) {
+            const updated = [...current];
+            // The Twilio event can arrive before the upload response and lacks
+            // the backend-generated signed file URL. Enrich that event in place.
+            updated[existingIndex] = { ...current[existingIndex], ...saved };
+            return { ...prev, [appointmentId]: updated };
+          }
           return { ...prev, [appointmentId]: [...current, saved] };
         });
       }

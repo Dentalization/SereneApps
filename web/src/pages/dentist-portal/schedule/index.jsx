@@ -25,15 +25,13 @@ import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
 import ScheduleStats from './components/ScheduleStats';
 import ScheduleSkeleton from './components/ScheduleSkeleton';
 import CreateSpecialistCaseModal from '../specialist-workspace/CreateSpecialistCaseModal';
-
-const SCHEDULE_REALTIME_EVENTS = [
-  'notification:new',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated',
-  'dashboard:metrics_updated',
-  'clinic:billing_updated'
-];
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
+import {
+  getPortalAppointmentTimeRange,
+  normalizePortalAppointmentChannel,
+  normalizePortalAppointmentStatus
+} from '../../../collaboration/appointmentCollaborationModel.mjs';
 
 const channelPill = {
   clinic: { bg: 'bg-slate-100 dark:bg-slate-800/60', text: 'text-slate-700 dark:text-slate-300', icon: 'Building2' },
@@ -110,30 +108,11 @@ const DentistSchedule = () => {
     'reschedule-requested': { label: t('dentistSchedule.status.rescheduleRequested'), badgeBg: 'bg-purple-100 dark:bg-purple-900/30', badgeText: 'text-purple-700 dark:text-purple-300' },
   };
 
-  const mapStatusToDisplay = useCallback((status) => {
-    switch (status) {
-      case 'scheduled':
-      case 'rescheduled':
-        return 'pending';
-      case 'confirmed':
-        return 'confirmed';
-      case 'cancelled':
-        return 'cancelled';
-      case 'completed':
-        return 'completed';
-      default:
-        return status;
-    }
-  }, []);
-
   const mapAppointment = useCallback((appointment) => {
     if (!appointment) return null;
-    const rawChannel = appointment.consultationType || appointment.metadata?.channel || (appointment.videoRoomRef ? 'virtual' : 'onsite');
-    const channel = rawChannel === 'virtual' || rawChannel === 'tele' ? 'tele' : 'clinic';
-    const startIso = appointment.startsAt || appointment.starts_at;
-    const endIso = appointment.endsAt || appointment.ends_at;
-
-    const displayStatus = mapStatusToDisplay(appointment.status);
+    const channel = normalizePortalAppointmentChannel(appointment);
+    const { start: startIso, end: endIso } = getPortalAppointmentTimeRange(appointment);
+    const displayStatus = normalizePortalAppointmentStatus(appointment.status);
     const rawStatus = appointment.status;
 
     return {
@@ -171,7 +150,7 @@ const DentistSchedule = () => {
         ? { videoRoomUrl: `/dentist-portal/teledentistry?appointmentId=${appointment.id}` }
         : null
     };
-  }, [mapStatusToDisplay, t, user?.name]);
+  }, [t, user?.name]);
 
 const mapScheduleEntry = useCallback((entry) => {
   if (!entry) return null;
@@ -292,28 +271,21 @@ const mapScheduleEntry = useCallback((entry) => {
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
   const [specialistCaseAppointment, setSpecialistCaseAppointment] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    const loadProfile = async () => {
-      try {
-        const profile = await getDentistProfileApi();
-        if (active) {
-          setDentistProfile(profile);
-        }
-      } catch (error) {
-        console.error('Error loading dentist profile:', error);
-        if (active) {
-          setDentistProfile({
-            clinicWorkingHours: DEFAULT_CLINIC_WORKING_HOURS
-          });
-        }
-      }
-    };
-    loadProfile();
-    return () => {
-      active = false;
-    };
+  const loadDentistProfile = useCallback(async () => {
+    try {
+      const profile = await getDentistProfileApi();
+      setDentistProfile(profile);
+      return profile;
+    } catch (error) {
+      console.error('Error loading dentist profile:', error);
+      setDentistProfile({ clinicWorkingHours: DEFAULT_CLINIC_WORKING_HOURS });
+      return null;
+    }
   }, []);
+
+  useEffect(() => {
+    loadDentistProfile();
+  }, [loadDentistProfile]);
 
   useEffect(() => {
     loadStartRef.current = Date.now();
@@ -333,17 +305,15 @@ const mapScheduleEntry = useCallback((entry) => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Real-time update: refreshing schedule due to notification:', data);
-      loadAppointments();
-    };
-    SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, loadAppointments]);
+  const refreshScheduleCollaborationData = useCallback(async () => {
+    await Promise.all([loadAppointments(), loadDentistProfile()]);
+  }, [loadAppointments, loadDentistProfile]);
+
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.SCHEDULE,
+    refresh: refreshScheduleCollaborationData
+  });
 
   const filtered = useMemo(() => {
     return data.filter((a) => {

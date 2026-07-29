@@ -109,9 +109,12 @@ const en = {
     select: 'Select...',
     selectPlaceholder: 'Select an option',
     statuses: {
+      active: 'Active',
+      inactive: 'Inactive',
       pending: 'Pending',
       verified: 'Verified',
       rejected: 'Rejected',
+      suspended: 'Suspended',
       unknown: 'Unknown'
     },
     toast: {
@@ -136,13 +139,37 @@ const en = {
     },
     clinic: {
       table: {
+        caption: 'Clinic directory',
         clinic: 'Clinic',
         owner: 'Owner',
         status: 'Status',
         branches: 'Branches',
         created: 'Created',
         actions: 'Actions',
-        view: 'View'
+        view: 'View',
+        empty: 'No clinics available',
+        unnamedClinic: 'Unnamed clinic'
+      },
+      branches: {
+        listLabel: 'Clinic branches',
+        unnamed: 'Unnamed branch',
+        virtual: 'Unassigned',
+        unassignedHint: 'Staff without a branch assignment',
+        staffCount: 'Staff'
+      },
+      staff: {
+        listLabel: 'Clinic staff',
+        unnamed: 'Unnamed staff member',
+        viewDetails: 'Details',
+        hideDetails: 'Hide',
+        assignedBranch: 'Assigned branch',
+        specialization: 'Specialization',
+        license: 'License',
+        licenseExpiry: 'License expiry',
+        department: 'Department',
+        emailAction: 'Email staff member',
+        professionalVerified: 'Professional verified',
+        professionalPending: 'Professional pending'
       }
     },
     loader: {
@@ -376,9 +403,12 @@ const id = {
     select: 'Pilih...',
     selectPlaceholder: 'Pilih opsi',
     statuses: {
+      active: 'Aktif',
+      inactive: 'Tidak aktif',
       pending: 'Menunggu',
       verified: 'Terverifikasi',
       rejected: 'Ditolak',
+      suspended: 'Ditangguhkan',
       unknown: 'Tidak diketahui'
     },
     toast: {
@@ -403,13 +433,37 @@ const id = {
     },
     clinic: {
       table: {
+        caption: 'Direktori klinik',
         clinic: 'Klinik',
         owner: 'Pemilik',
         status: 'Status',
         branches: 'Cabang',
         created: 'Dibuat',
         actions: 'Aksi',
-        view: 'Lihat'
+        view: 'Lihat',
+        empty: 'Belum ada klinik tersedia',
+        unnamedClinic: 'Klinik tanpa nama'
+      },
+      branches: {
+        listLabel: 'Cabang klinik',
+        unnamed: 'Cabang tanpa nama',
+        virtual: 'Belum ditugaskan',
+        unassignedHint: 'Staff tanpa penugasan cabang',
+        staffCount: 'Staff'
+      },
+      staff: {
+        listLabel: 'Staff klinik',
+        unnamed: 'Anggota staff tanpa nama',
+        viewDetails: 'Detail',
+        hideDetails: 'Sembunyikan',
+        assignedBranch: 'Cabang penugasan',
+        specialization: 'Spesialisasi',
+        license: 'Lisensi',
+        licenseExpiry: 'Masa berlaku lisensi',
+        department: 'Departemen',
+        emailAction: 'Kirim email ke staff',
+        professionalVerified: 'Profesional terverifikasi',
+        professionalPending: 'Verifikasi profesional tertunda'
       }
     },
     loader: {

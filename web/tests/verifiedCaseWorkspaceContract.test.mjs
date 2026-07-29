@@ -48,6 +48,8 @@ test('Verified Case Workspace client exposes the required clinical endpoints wit
 
   assert.doesNotMatch(client, /VITE_DEEPDENTAL_API_KEY|VITE_SERENE_AI_API_KEY|X-API-Key/i);
   assert.match(client, /resolveWorkspaceArtifactUrl/);
+  assert.match(client, /fetchArtifactBlob/);
+  assert.match(client, /responseType: 'blob'/);
   assert.ok(client.includes("http?.defaults?.baseURL"));
 });
 

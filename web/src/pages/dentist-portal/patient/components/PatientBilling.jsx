@@ -31,23 +31,41 @@ const formatCurrency = (amount) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
 };
 
+const DEFAULT_BILLING = Object.freeze({
+  totalBalance: 0,
+  paidAmount: 0,
+  pendingAmount: 0,
+  invoices: [],
+  paymentHistory: [],
+  insuranceInfo: null,
+});
+
 // ==== Component ====
-const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendStatement }) => {
+const PatientBilling = ({ patient, onCreateInvoice, onSendStatement }) => {
   const { t } = useLanguage();
   const [selectedTab, setSelectedTab] = useState('overview');
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceFilterStatus, setInvoiceFilterStatus] = useState('all');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  // New Invoice Form State
-  const [newInvoiceDesc, setNewInvoiceDesc] = useState('');
-  const [newInvoiceAmount, setNewInvoiceAmount] = useState('');
-  const [newInvoiceDueDate, setNewInvoiceDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14); // 2 weeks out by default
-    return d.toISOString().split('T')[0];
-  });
-  const [newInvoiceTreatments, setNewInvoiceTreatments] = useState('');
+  const billingData = useMemo(() => {
+    const billing = patient?.billing || {};
+    return {
+      ...DEFAULT_BILLING,
+      ...billing,
+      invoices: Array.isArray(billing.invoices) ? billing.invoices : DEFAULT_BILLING.invoices,
+      paymentHistory: Array.isArray(billing.paymentHistory) ? billing.paymentHistory : DEFAULT_BILLING.paymentHistory,
+      insuranceInfo: billing.insuranceInfo ?? DEFAULT_BILLING.insuranceInfo,
+    };
+  }, [patient]);
+  const filteredInvoices = useMemo(() => {
+    return billingData.invoices.filter((invoice) => {
+      const matchesSearch =
+        String(invoice.id || '').toLowerCase().includes(invoiceSearch.toLowerCase()) ||
+        String(invoice.description || '').toLowerCase().includes(invoiceSearch.toLowerCase());
+      const matchesStatus = invoiceFilterStatus === 'all' ||
+        String(invoice.status || '').toLowerCase() === invoiceFilterStatus.toLowerCase();
+      return matchesSearch && matchesStatus;
+    });
+  }, [billingData.invoices, invoiceFilterStatus, invoiceSearch]);
 
   // Hooks must be called unconditionally (OK)
   if (!t || typeof t !== 'function') {
@@ -72,73 +90,6 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
     );
   }
 
-  // Default, then merge with patient.billing (defensive)
-  const defaultBilling = {
-    totalBalance: 0,
-    paidAmount: 0,
-    pendingAmount: 0,
-    invoices: [],
-    paymentHistory: [],
-    insuranceInfo: null,
-  };
-
-  const billingData = useMemo(() => {
-    const b = patient?.billing || {};
-    return {
-      ...defaultBilling,
-      ...b,
-      invoices: Array.isArray(b.invoices) ? b.invoices : defaultBilling.invoices,
-      paymentHistory: Array.isArray(b.paymentHistory) ? b.paymentHistory : defaultBilling.paymentHistory,
-      insuranceInfo: b.insuranceInfo ?? defaultBilling.insuranceInfo,
-    };
-  }, [patient]);
-
-  // Handle invoice submission
-  const handleSubmitInvoice = (e) => {
-    e.preventDefault();
-    if (!newInvoiceDesc || !newInvoiceAmount) return;
-
-    const invoiceId = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
-    const freshInvoice = {
-      id: invoiceId,
-      invoiceId,
-      description: newInvoiceDesc,
-      amount: parseFloat(newInvoiceAmount),
-      grandTotal: parseFloat(newInvoiceAmount),
-      total: parseFloat(newInvoiceAmount),
-      status: 'pending',
-      paymentStatus: 'pending',
-      date: new Date().toISOString().split('T')[0],
-      dueDate: newInvoiceDueDate,
-      treatments: newInvoiceTreatments
-        ? newInvoiceTreatments.split(',').map((t) => t.trim()).filter(Boolean)
-        : [],
-    };
-
-    if (onCreateInvoice) {
-      onCreateInvoice(freshInvoice);
-    }
-
-    // Reset Form
-    setNewInvoiceDesc('');
-    setNewInvoiceAmount('');
-    setNewInvoiceTreatments('');
-    setShowCreateModal(false);
-  };
-
-  // Filtered Invoices
-  const filteredInvoices = useMemo(() => {
-    return (billingData.invoices || []).filter((invoice) => {
-      const matchesSearch =
-        (invoice.id || '').toLowerCase().includes(invoiceSearch.toLowerCase()) ||
-        (invoice.description || '').toLowerCase().includes(invoiceSearch.toLowerCase());
-      const matchesStatus =
-        invoiceFilterStatus === 'all' ||
-        (invoice.status || '').toLowerCase() === invoiceFilterStatus.toLowerCase();
-      return matchesSearch && matchesStatus;
-    });
-  }, [billingData.invoices, invoiceSearch, invoiceFilterStatus]);
-
   // Helpers that use t (OK to define inside component)
   const getInvoiceStatusLabel = (status) => {
     const key = (status || 'unknown').toLowerCase() || 'unknown';
@@ -159,13 +110,13 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      {/* Simulation Banner Notice */}
-      <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3">
+      {/* Billing source notice */}
+      <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-2xl p-4 flex items-start gap-3">
         <ClinicalIcon name="insurance-shield" size="sm" />
         <div>
-          <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-0.5">Simulasi Pembayaran</h4>
-          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-            Transaksi ini digunakan untuk pengujian sistem (Payment Simulation Mode) dan tidak melibatkan dana riil.
+          <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase tracking-wider mb-0.5">Tagihan Terintegrasi</h4>
+          <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+            Invoice dibuat saat treatment plan dikirim. Status pembayaran di bawah berasal dari billing dan payment gateway, bukan perubahan lokal.
           </p>
         </div>
       </div>
@@ -177,8 +128,8 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dentistPatient.billing.title')}</h2>
             <p className="text-slate-500 dark:text-slate-400 mt-1">Financial overview and history</p>
           </div>
-          <Button onClick={() => setShowCreateModal(true)} className="shadow-lg shadow-blue-500/20">
-            {t('dentistPatient.billing.actions.createInvoice')}
+          <Button onClick={() => onCreateInvoice?.()} className="shadow-lg shadow-blue-500/20">
+            Buat dari Treatment Plan
           </Button>
         </div>
 
@@ -321,7 +272,7 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
                   <div className="flex flex-col items-end gap-3 min-w-[200px]">
                     <p className="text-3xl font-bold text-amber-700 dark:text-amber-300">{formatCurrency(billingData.pendingAmount)}</p>
                     <Button size="sm" onClick={() => onSendStatement?.()} className="w-full bg-amber-600 hover:bg-amber-700 border-transparent text-white shadow-amber-500/20">
-                      {t('dentistPatient.billing.actions.sendStatement')}
+                      Download Statement
                     </Button>
                   </div>
                 </div>
@@ -441,20 +392,9 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
 
                       <div className="flex flex-col items-end gap-3 lg:border-l lg:border-slate-50 dark:lg:border-slate-800 lg:pl-6">
                         <p className="text-2xl font-bold text-slate-800 dark:text-white">{formatCurrency(invoice.amount)}</p>
-                        <div className="flex items-center gap-2 w-full lg:w-auto">
-                          <Button variant="outline" size="sm" className="flex-1 lg:flex-none bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">
-                            {t('dentistPatient.billing.actions.view')}
-                          </Button>
-                          {(invoice.status || '').toLowerCase() === 'pending' && (
-                            <Button
-                              size="sm"
-                              onClick={() => onPaymentReceived?.(invoice.id)}
-                              className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20"
-                            >
-                              {t('dentistPatient.billing.actions.markPaid')}
-                            </Button>
-                          )}
-                        </div>
+                        <p className="max-w-[220px] text-right text-xs leading-relaxed text-slate-400 dark:text-slate-500">
+                          Status pembayaran diperbarui otomatis dari billing flow.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -533,95 +473,13 @@ const PatientBilling = ({ patient, onCreateInvoice, onPaymentReceived, onSendSta
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-2">No Claims Found</h4>
                 <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto">{t('dentistPatient.billing.insuranceClaims.empty')}</p>
                 <div className="mt-6">
-                  <Button variant="outline" className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-                    File New Claim
-                  </Button>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Pengajuan klaim dilakukan melalui sistem provider asuransi yang terverifikasi.</p>
                 </div>
               </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Create Invoice Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowCreateModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Create New Invoice</h3>
-
-            <form onSubmit={handleSubmitInvoice} className="space-y-5">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Description *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Scaling and deep root canal treatment"
-                  value={newInvoiceDesc}
-                  onChange={(e) => setNewInvoiceDesc(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Amount (IDR) *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    placeholder="e.g. 750000"
-                    value={newInvoiceAmount}
-                    onChange={(e) => setNewInvoiceAmount(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Due Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={newInvoiceDueDate}
-                    onChange={(e) => setNewInvoiceDueDate(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Treatments (Comma-separated)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Consultation, Tooth Cleaning, Root Canal"
-                  value={newInvoiceTreatments}
-                  onChange={(e) => setNewInvoiceTreatments(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowCreateModal(false)}
-                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-850"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 text-white">
-                  Create Invoice
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -664,7 +522,6 @@ PatientBilling.propTypes = {
     }),
   }),
   onCreateInvoice: PropTypes.func,
-  onPaymentReceived: PropTypes.func,
   onSendStatement: PropTypes.func,
 };
 

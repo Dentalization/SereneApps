@@ -1,7 +1,7 @@
 /**
  * VisualFindingsCard — Theme-aware HUD card for dental AI analysis results.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Eye, Shield, AlertTriangle, CheckCircle, XCircle,
@@ -128,6 +128,13 @@ export default function VisualFindingsCard({
   const [expanded, setExpanded] = useState(true);
   const [showAllDetections, setShowAllDetections] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
+  const annotatedBase64Src = buildAnnotatedImageDataUrl(findings);
+  const preferredAnnotatedSrc = findings?.annotated_image_signed_url || annotatedBase64Src;
+  const [annotatedImageSrc, setAnnotatedImageSrc] = useState(preferredAnnotatedSrc);
+
+  useEffect(() => {
+    setAnnotatedImageSrc(preferredAnnotatedSrc);
+  }, [preferredAnnotatedSrc]);
 
   const handleReview = useCallback(async (status) => {
     if (isReviewing) return;
@@ -149,8 +156,7 @@ export default function VisualFindingsCard({
   const clinicalFindings = findings.findings || [];
   const recommendations = findings.recommendations || [];
   const visibleDetections = showAllDetections ? detections : detections.slice(0, 6);
-  const hasAnnotated = !!findings.annotated_image_base64 || !!findings.annotated_image_signed_url;
-  const annotatedImageSrc = findings.annotated_image_signed_url || buildAnnotatedImageDataUrl(findings);
+  const hasAnnotated = Boolean(annotatedImageSrc);
   const reviewStatus = review?.status || 'pending_clinician_review';
 
   return (
@@ -228,6 +234,13 @@ export default function VisualFindingsCard({
                     src={annotatedImageSrc}
                     alt="AI-annotated dental scan"
                     className="w-full rounded-xl"
+                    onError={() => {
+                      if (annotatedBase64Src && annotatedImageSrc !== annotatedBase64Src) {
+                        setAnnotatedImageSrc(annotatedBase64Src);
+                      } else {
+                        setAnnotatedImageSrc('');
+                      }
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <button
@@ -243,6 +256,12 @@ export default function VisualFindingsCard({
                     <span className="text-[10px] font-medium text-accent uppercase tracking-wider">AI Enhanced</span>
                   </div>
                 </motion.div>
+              )}
+
+              {!hasAnnotated && findings.annotated_image_status === 'unavailable' && (
+                <div className="rounded-xl border border-primary bg-surface px-3 py-3 text-xs text-muted">
+                  Gambar anotasi riwayat tidak tersedia di storage. Temuan klinis tetap ditampilkan.
+                </div>
               )}
 
               {/* Pathology Detections */}

@@ -15,15 +15,13 @@ import AppointmentDetailDrawer from './components/AppointmentDetailDrawer';
 import { fetchAppointments, updateAppointmentStatus } from '../../../services/appointmentService';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import ClinicService from '../../../services/clinicService';
-
-const CLINIC_SCHEDULE_REALTIME_EVENTS = [
-  'notification:new',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated',
-  'dashboard:metrics_updated',
-  'clinic:billing_updated'
-];
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
+import {
+  getPortalAppointmentTimeRange,
+  normalizePortalAppointmentChannel,
+  normalizePortalAppointmentStatus
+} from '../../../collaboration/appointmentCollaborationModel.mjs';
 
 const SchedulePage = () => {
   const { t } = useLanguage();
@@ -81,24 +79,15 @@ const SchedulePage = () => {
 
 
 
-  const normalizeStatus = useCallback((status) => {
-    switch (status) {
-      case 'scheduled':
-      case 'rescheduled':
-        return 'pending';
-      default:
-        return status;
-    }
-  }, []);
-
   const mapApiAppointment = useCallback((appointment) => {
     if (!appointment) return null;
-    const start = new Date(appointment.startsAt || appointment.starts_at);
-    const end = new Date(appointment.endsAt || appointment.ends_at);
+    const timeRange = getPortalAppointmentTimeRange(appointment);
+    const start = new Date(timeRange.start);
+    const end = new Date(timeRange.end);
     return {
       id: appointment.id,
-      status: normalizeStatus(appointment.status),
-      channel: appointment.metadata?.channel || (appointment.videoRoomRef ? 'tele' : 'clinic'),
+      status: normalizePortalAppointmentStatus(appointment.status),
+      channel: normalizePortalAppointmentChannel(appointment),
       type: appointment.metadata?.type || appointment.reason || t('clinic.schedule.appointmentTypes.generalConsultation'),
       start,
       end,
@@ -132,7 +121,7 @@ const SchedulePage = () => {
         ? { videoRoomUrl: `/clinic-portal/teledentistry?appointmentId=${appointment.id}` }
         : null
     };
-  }, [normalizeStatus, t]);
+  }, [t]);
 
   const loadSchedule = useCallback(async () => {
     setRefreshing(true);
@@ -229,22 +218,14 @@ const SchedulePage = () => {
     return () => clearInterval(interval);
   }, [loadSchedule]);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Real-time update: refreshing clinic schedule:', data);
-      loadSchedule();
-    };
-    CLINIC_SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      CLINIC_SCHEDULE_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, loadSchedule]);
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.SCHEDULE,
+    refresh: loadSchedule
+  });
 
   // Handle appointment actions
   const handleAppointmentAction = async (action, appointment) => {
-    console.log('Appointment action:', action, appointment);
-
     switch (action) {
       case 'confirm':
       case 'checkin':
@@ -264,7 +245,6 @@ const SchedulePage = () => {
         }
         break;
       case 'cancel':
-        console.log('Cancel action is not wired from clinic schedule drawer yet.');
         break;
       case 'viewPatient':
         if (appointment.patient?.id) {
@@ -272,7 +252,7 @@ const SchedulePage = () => {
         }
         break;
       default:
-        console.log('Unknown action:', action);
+        break;
     }
 
     if (action !== 'viewPatient') {
@@ -282,7 +262,6 @@ const SchedulePage = () => {
 
   // Handle appointment click
   const handleAppointmentClick = (appointment) => {
-    console.log('Appointment clicked:', appointment);
     setSelectedAppointment(appointment);
     setShowAppointmentDrawer(true);
   };

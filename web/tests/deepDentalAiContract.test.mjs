@@ -23,6 +23,68 @@ import {
   buildJournalReferenceQuestion,
   buildPriorImageContext,
 } from '../src/pages/dentist-portal/ai/components/dentalConversationContext.mjs';
+import {
+  mergeWorkspaceArtifactsIntoHistory,
+  sortChatHistoryOldestFirst,
+} from '../src/pages/dentist-portal/ai/components/chatHistoryModels.mjs';
+import { hydrateWorkspaceImageArtifacts } from '../src/pages/dentist-portal/ai/components/workspaceArtifactHydration.mjs';
+import { resolveWorkspaceArtifactUrl } from '../src/pages/dentist-portal/ai/components/workspaceArtifactUrls.mjs';
+
+test('legacy case-storage paths are repaired to the active API prefix', () => {
+  assert.equal(
+    resolveWorkspaceArtifactUrl(
+      '/api/v1/case-storage/legacy-token',
+      'http://localhost:4000/v1'
+    ),
+    'http://localhost:4000/v1/case-storage/legacy-token'
+  );
+  assert.equal(
+    resolveWorkspaceArtifactUrl(
+      'https://artifacts.example.test/case-storage/external-token',
+      'http://localhost:4000/v1'
+    ),
+    'https://artifacts.example.test/case-storage/external-token'
+  );
+});
+
+test('history artifacts are fetched immediately and converted to non-expiring blob URLs', async () => {
+  const fetched = [];
+  const hydrated = await hydrateWorkspaceImageArtifacts({
+    images: [{
+      id: 'image-1',
+      signed_url: 'http://api.test/v1/case-storage/original-token',
+      signed_url_request: '/v1/case-storage/original-token',
+      annotated_image_signed_url: 'http://api.test/v1/case-storage/annotated-token',
+      annotated_image_signed_url_request: '/v1/case-storage/annotated-token',
+    }],
+    fetchArtifactBlob: async (url) => {
+      fetched.push(url);
+      return new Blob([url]);
+    },
+    createObjectUrl: (blob) => `blob:test-${blob.size}`,
+  });
+
+  assert.deepEqual(fetched, [
+    '/v1/case-storage/original-token',
+    '/v1/case-storage/annotated-token',
+  ]);
+  assert.match(hydrated[0].signed_url, /^blob:test-/);
+  assert.match(hydrated[0].annotated_image_signed_url, /^blob:test-/);
+  assert.equal(hydrated[0].original_artifact_status, 'ready');
+  assert.equal(hydrated[0].annotated_image_artifact_status, 'ready');
+});
+
+test('unavailable history artifacts are marked without leaving broken signed URLs', async () => {
+  const hydrated = await hydrateWorkspaceImageArtifacts({
+    images: [{ id: 'image-1', signed_url: '/v1/case-storage/expired' }],
+    fetchArtifactBlob: async () => { throw new Error('404'); },
+    createObjectUrl: () => 'blob:should-not-be-used',
+  });
+
+  assert.equal(hydrated[0].signed_url, null);
+  assert.equal(hydrated[0].original_artifact_status, 'unavailable');
+  assert.equal(hydrated[0].annotated_image_artifact_status, 'missing');
+});
 
 test('DeepDental config defaults to the local proxy and never to production cloud', () => {
   const config = resolveDeepDentalConfig({});
@@ -76,7 +138,7 @@ test('visual findings normalization records schema drift instead of hiding it', 
   ]);
 });
 
-test('DeepDental client follows the documented session messages path', async () => {
+test('DeepDental client follows the documented session messages path with explicit full-history pagination', async () => {
   const calls = [];
   const client = createDeepDentalClient({
     config: {
@@ -96,9 +158,188 @@ test('DeepDental client follows the documented session messages path', async () 
 
   await client.loadMessages('session-1');
 
-  assert.equal(calls[0].url, 'https://deepdental.test/api/v1/sessions/session-1/messages');
+  assert.equal(calls[0].url, 'https://deepdental.test/api/v1/sessions/session-1/messages?page=1&per_page=100');
   assert.equal(calls[0].init.headers.Authorization, 'Bearer jwt-token');
   assert.equal('analyzeFromDetections' in client, false);
+});
+
+test('DeepDental client loads every session and message page instead of stopping at page one', async () => {
+  const calls = [];
+  const client = createDeepDentalClient({
+    config: {
+      baseUrl: 'https://deepdental.test/api/v1',
+      isConfigured: true,
+    },
+    retries: 0,
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      const page = Number(parsed.searchParams.get('page') || 1);
+      const isMessages = parsed.pathname.endsWith('/messages');
+      const total = isMessages ? 205 : 102;
+      const start = (page - 1) * 100;
+      const length = Math.max(0, Math.min(100, total - start));
+      const records = Array.from({ length }, (_, index) => ({
+        id: `${isMessages ? 'message' : 'session'}-${start + index + 1}`,
+        created_at: new Date(start + index + 1).toISOString(),
+      }));
+      calls.push(parsed.pathname + parsed.search);
+      return new Response(JSON.stringify({
+        [isMessages ? 'messages' : 'sessions']: records,
+        page,
+        per_page: 100,
+        total,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  const [messages, sessionsPayload] = await Promise.all([
+    client.loadMessages('session-1'),
+    client.fetchSessions(),
+  ]);
+
+  assert.equal(messages.length, 205);
+  assert.equal(messages[0].id, 'message-1');
+  assert.equal(messages.at(-1).id, 'message-205');
+  assert.equal(sessionsPayload.sessions.length, 102);
+  assert.ok(calls.includes('/api/v1/sessions/session-1/messages?page=3&per_page=100'));
+  assert.ok(calls.includes('/api/v1/sessions?page=2&per_page=100'));
+});
+
+test('DeepDental client continues bare-array history pages until the server returns empty', async () => {
+  const requestedPages = [];
+  const client = createDeepDentalClient({
+    config: { baseUrl: 'https://deepdental.test/api/v1', isConfigured: true },
+    retries: 0,
+    fetchImpl: async (url) => {
+      const page = Number(new URL(url).searchParams.get('page') || 1);
+      requestedPages.push(page);
+      const pageRecords = {
+        1: [{ id: 'message-1' }, { id: 'message-2' }],
+        2: [{ id: 'message-3' }],
+        3: [],
+      }[page] || [];
+      return new Response(JSON.stringify(pageRecords), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  const messages = await client.loadMessages('session-1');
+
+  assert.deepEqual(messages.map((message) => message.id), ['message-1', 'message-2', 'message-3']);
+  assert.deepEqual(requestedPages, [1, 2, 3]);
+});
+
+test('chat history is sorted oldest first and reconstructs missing workspace image turns', () => {
+  const messages = [
+    { id: 'assistant-later', type: 'ai', content: 'Jawaban lanjutan', timestamp: '2026-07-20T10:04:00.000Z' },
+    { id: 'user-first', type: 'user', content: 'Keluhan awal', timestamp: '2026-07-20T10:00:00.000Z' },
+  ];
+  const workspace = {
+    caseRecord: { id: 'case-1', created_at: '2026-07-20T10:01:00.000Z' },
+    images: [{
+      id: 'image-1',
+      file_name: 'intraoral.jpg',
+      signed_url: '/v1/case-storage/original-token',
+      annotated_image_signed_url: '/v1/case-storage/annotated-token',
+      annotated_image_mime_type: 'image/png',
+      quality_status: 'acceptable',
+      created_at: '2026-07-20T10:01:00.000Z',
+      updated_at: '2026-07-20T10:02:00.000Z',
+    }],
+    findings: [{
+      id: 'finding-1',
+      image_id: 'image-1',
+      label: 'caries',
+      tooth_or_region: 'FDI 46',
+      notes: 'Lesi oklusal perlu korelasi klinis.',
+      severity: 'moderate',
+      confidence: 0.81,
+      raw_ai_result: { concern_level: 'moderate', recommendations: ['Lakukan pemeriksaan klinis.'] },
+    }],
+    auditEvents: [
+      {
+        event_type: 'image_analysis_started',
+        after_json: { image_id: 'image-1', context: 'Tolong analisis lesi pada gigi 46.' },
+      },
+      {
+        event_type: 'image_analysis_snapshot',
+        after_json: {
+          image_id: 'image-1',
+          visual_findings: {
+            concern_level: 'high',
+            recommendations: ['Snapshot recommendation.'],
+            limitations: 'Snapshot limitation.',
+          },
+        },
+      },
+    ],
+  };
+
+  const hydrated = mergeWorkspaceArtifactsIntoHistory({
+    messages,
+    workspace,
+    authBaseUrl: 'http://localhost:4000/v1',
+  });
+
+  assert.deepEqual(hydrated.map((message) => message.id), [
+    'user-first',
+    'workspace-user-image-1',
+    'workspace-ai-image-1',
+    'assistant-later',
+  ]);
+  assert.equal(hydrated[1].content, 'Tolong analisis lesi pada gigi 46.');
+  assert.equal(hydrated[1].image.url, 'http://localhost:4000/v1/case-storage/original-token');
+  assert.equal(
+    hydrated[2].visualFindings.annotated_image_signed_url,
+    'http://localhost:4000/v1/case-storage/annotated-token'
+  );
+  assert.equal(hydrated[2].visualFindings.findings[0].description, 'Lesi oklusal perlu korelasi klinis.');
+  assert.equal(hydrated[2].visualFindings.limitations, 'Snapshot limitation.');
+});
+
+test('workspace hydration enriches an existing image turn without duplicating it', () => {
+  const existing = sortChatHistoryOldestFirst([
+    {
+      id: 'assistant-image',
+      type: 'ai',
+      content: 'Analisis lama',
+      timestamp: '2026-07-20T10:01:00.000Z',
+      visualFindings: { findings: [{ description: 'Existing finding.' }] },
+    },
+    {
+      id: 'user-image',
+      type: 'user',
+      content: 'Analisis gambar ini',
+      timestamp: '2026-07-20T10:00:00.000Z',
+      image: { name: 'scan.jpg', url: null },
+    },
+  ]);
+  const hydrated = mergeWorkspaceArtifactsIntoHistory({
+    messages: existing,
+    workspace: {
+      images: [{
+        id: 'image-1',
+        file_name: 'scan.jpg',
+        signed_url: '/v1/case-storage/original-fresh',
+        annotated_image_signed_url: '/v1/case-storage/annotated-fresh',
+        created_at: '2026-07-20T10:00:00.000Z',
+      }],
+      findings: [],
+    },
+    authBaseUrl: 'http://localhost:4000/v1',
+  });
+
+  assert.equal(hydrated.length, 2);
+  assert.equal(hydrated[0].image.url, 'http://localhost:4000/v1/case-storage/original-fresh');
+  assert.equal(
+    hydrated[1].visualFindings.annotated_image_signed_url,
+    'http://localhost:4000/v1/case-storage/annotated-fresh'
+  );
 });
 
 test('quality coach blocks unsupported and oversized image files before analysis', () => {

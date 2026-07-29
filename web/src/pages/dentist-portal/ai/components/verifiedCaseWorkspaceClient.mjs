@@ -1,4 +1,7 @@
 import { authHttp } from '../../../../utils/httpClient.js';
+import { resolveWorkspaceArtifactUrl } from './workspaceArtifactUrls.mjs';
+
+export { resolveWorkspaceArtifactUrl } from './workspaceArtifactUrls.mjs';
 
 export const VERIFIED_CASE_ENDPOINTS = Object.freeze({
   cases: '/cases',
@@ -25,22 +28,13 @@ function unwrapData(response) {
   return response?.data || response || {};
 }
 
-export function resolveWorkspaceArtifactUrl(value, baseUrl = '') {
-  if (!value || typeof value !== 'string') return value || null;
-  if (/^(?:https?:|blob:|data:)/i.test(value)) return value;
-  try {
-    const configured = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
-    const origin = new URL(configured, typeof window !== 'undefined' ? window.location.origin : 'http://localhost').origin;
-    return new URL(value, `${origin}/`).toString();
-  } catch {
-    return value;
-  }
-}
-
 function normalizeImageArtifacts(payload, baseUrl) {
   const data = unwrapData(payload);
   const normalizeImage = (image) => ({
     ...image,
+    signed_url_request: image?.signed_url_request || image?.signed_url || null,
+    annotated_image_signed_url_request:
+      image?.annotated_image_signed_url_request || image?.annotated_image_signed_url || null,
     signed_url: resolveWorkspaceArtifactUrl(image?.signed_url, baseUrl),
     annotated_image_signed_url: resolveWorkspaceArtifactUrl(image?.annotated_image_signed_url, baseUrl),
   });
@@ -70,6 +64,10 @@ export function createVerifiedCaseWorkspaceClient({ http = authHttp } = {}) {
         onUploadProgress,
       }).then(normalize);
     },
+    fetchArtifactBlob: (artifactUrl) => http.get(
+      resolveWorkspaceArtifactUrl(artifactUrl, http?.defaults?.baseURL || ''),
+      { responseType: 'blob' }
+    ).then((response) => response?.data),
     listImages: (caseId) => http.get(VERIFIED_CASE_ENDPOINTS.caseImages(caseId)).then(normalize),
     removeImage: (caseId, imageId, body = {}) => http.delete(VERIFIED_CASE_ENDPOINTS.caseImage(caseId, imageId), { data: body }).then(unwrapData),
     runQualityCheck: (caseId, imageId, metrics = {}) => http.post(VERIFIED_CASE_ENDPOINTS.qualityCheck(caseId, imageId), { metrics }).then(normalize),

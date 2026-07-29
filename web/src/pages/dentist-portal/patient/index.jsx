@@ -5,11 +5,13 @@ import Icon from '../../../components/AppIcon';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { useToast } from '../../../contexts/ToastContext';
-import { createDentistPatient, createPatientEmrRecord, getDentistPatients, getPatientDetails, uploadPatientEmrConsent } from '../../../services/dentistPortalService';
+import { createDentistPatient, createPatientEmrRecord, getDentistPatients, getPatientDetails, updatePatientMedicalHistory, uploadPatientEmrConsent } from '../../../services/dentistPortalService';
 import { cancelAppointment, updateAppointmentStatus } from '../../../services/appointmentService';
 import { parseIndonesianAnalysis } from '../../../utils/indonesianAnalysisParser';
 import { cleanMarkdownFormatting, normalizeAIExplanation } from '../../../utils/textFormatting';
 import { stripDiagnosisIntro, deriveSummaryFromNarrative, normalizeAIText } from '../../../utils/aiTextHelpers';
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 
 // Components
 import AddPatient from './components/AddPatient';
@@ -26,13 +28,6 @@ import ClinicalIcon from './components/ClinicalIcon.jsx';
 import SpecialistCasesPanel from './components/SpecialistCasesPanel.jsx';
 
 const MIN_LOADING_MS = 500;
-const PATIENT_REALTIME_EVENTS = [
-  'notification:new',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated',
-  'clinic:billing_updated'
-];
 
 const summarizePatients = (patientList, base = {}) => ({
   ...base,
@@ -386,6 +381,7 @@ const PatientManagement = () => {
     appointments: Array.isArray(patient.appointments) ? patient.appointments : [],
     aiResults: Array.isArray(patient.aiResults) ? patient.aiResults : [],
     emrRecords: Array.isArray(patient.emrRecords) ? patient.emrRecords : [],
+    xCoreStudies: Array.isArray(patient.xCoreStudies) ? patient.xCoreStudies : [],
     treatmentPlans: Array.isArray(patient.treatmentPlans) ? patient.treatmentPlans : [],
     billing: patient.billing || { totalBalance: 0, paidAmount: 0, pendingAmount: 0 },
     isLoadingDetails
@@ -411,6 +407,7 @@ const PatientManagement = () => {
       appointments: normalizedAppointments,
       aiResults: transformAIResults(fullPatient.aiResults || []),
       emrRecords: Array.isArray(fullPatient.emrRecords) ? fullPatient.emrRecords : [],
+      xCoreStudies: Array.isArray(fullPatient.xCoreStudies) ? fullPatient.xCoreStudies : [],
       isLoadingDetails: false
     };
   }, [buildEmptyMedicalHistory, normalizeMedicalHistory, transformAIResults]);
@@ -553,21 +550,19 @@ const PatientManagement = () => {
     });
   }, [patients, selectedPatient, handlePatientSelect]);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Patient portal socket notification: reloading patients & selected detail...');
-      patientDetailsCacheRef.current.clear();
-      fetchPatients();
-      if (selectedPatient?.id && !selectedPatient.localOnly) {
-        handlePatientSelect(selectedPatient);
-      }
-    };
-    PATIENT_REALTIME_EVENTS.forEach(eventName => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      PATIENT_REALTIME_EVENTS.forEach(eventName => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, fetchPatients, selectedPatient, handlePatientSelect]);
+  const refreshPatientCollaborationData = useCallback(async () => {
+    patientDetailsCacheRef.current.clear();
+    await fetchPatients();
+    if (selectedPatient?.id && !selectedPatient.localOnly) {
+      await handlePatientSelect(selectedPatient);
+    }
+  }, [fetchPatients, handlePatientSelect, selectedPatient]);
+
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.PATIENTS,
+    refresh: refreshPatientCollaborationData
+  });
 
   const refreshSelectedPatient = useCallback(async () => {
     patientDetailsCacheRef.current.clear();
@@ -604,43 +599,48 @@ const PatientManagement = () => {
       toast.error(actionError.response?.data?.error || 'Gagal membatalkan appointment.');
     }
   };
-  const handleCreateInvoice = (invoice) => {
-    if (selectedPatient && invoice) {
-      setSelectedPatient(prev => ({
-        ...prev,
-        billing: mergeInvoiceIntoBilling(prev.billing, invoice)
-      }));
-    }
-  };
-  const handlePaymentReceived = (invoiceId) => {
-    if (selectedPatient) {
-      const invoices = Array.isArray(selectedPatient.billing?.invoices) ? selectedPatient.billing.invoices : [];
-      const updatedInvoices = invoices.map(inv => {
-        if (inv.id === invoiceId) {
-          return {
-            ...inv,
-            status: 'paid',
-            paymentStatus: 'paid',
-            paymentDate: new Date().toISOString().split('T')[0]
-          };
-        }
-        return inv;
-      });
-      const updatedBilling = mergeInvoiceIntoBilling({ ...selectedPatient.billing, invoices: updatedInvoices }, null);
-      setSelectedPatient(prev => ({
-        ...prev,
-        billing: updatedBilling
-      }));
-    }
-  };
+  const handleCreateInvoice = () => setActiveTab('treatment-plan');
   const handleSendStatement = () => {
-    toast.info('Fitur kirim laporan tagihan akan segera hadir.');
+    if (!selectedPatient) return;
+    const invoices = Array.isArray(selectedPatient.billing?.invoices) ? selectedPatient.billing.invoices : [];
+    const headers = ['invoice', 'status', 'issuedAt', 'paidAt', 'currency', 'amount'];
+    const escapeCsv = (value) => {
+      const text = value === null || value === undefined ? '' : String(value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const rows = invoices.length
+      ? invoices.map((invoice) => ({
+          invoice: invoice.reference || invoice.invoiceId || invoice.id,
+          status: invoice.paymentStatus || invoice.status || '',
+          issuedAt: invoice.issuedAt || invoice.createdAt || '',
+          paidAt: invoice.paidAt || '',
+          currency: invoice.currency || 'IDR',
+          amount: invoice.grandTotal ?? invoice.total ?? invoice.amount ?? 0,
+        }))
+      : [{ invoice: 'No invoices', status: '', issuedAt: '', paidAt: '', currency: 'IDR', amount: 0 }];
+    const content = `\uFEFF${headers.join(',')}\r\n${rows.map((row) => headers.map((key) => escapeCsv(row[key])).join(',')).join('\r\n')}`;
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `billing-statement-${selectedPatient.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Billing statement berhasil diunduh.');
   };
-  const handleUpdateHistory = (updatedHistory) => {
+  const handleUpdateHistory = async (updatedHistory) => {
+    if (!selectedPatient?.id) throw new Error('No patient selected');
+    const medicalDetails = await updatePatientMedicalHistory(selectedPatient.id, updatedHistory);
+    const normalizedHistory = normalizeMedicalHistory(medicalDetails) || updatedHistory;
     setSelectedPatient(prev => prev ? ({
       ...prev,
-      medicalHistory: updatedHistory
+      medicalDetails,
+      medicalHistory: normalizedHistory
     }) : prev);
+    toast.success('Riwayat medis berhasil disimpan dan dibagikan ke portal klinik.');
+    return normalizedHistory;
   };
   const handleCreateEmr = async (recordPayload) => {
     if (!selectedPatient?.id) {
@@ -872,7 +872,6 @@ const PatientManagement = () => {
                       <PatientBilling
                         patient={selectedPatient}
                         onCreateInvoice={handleCreateInvoice}
-                        onPaymentReceived={handlePaymentReceived}
                         onSendStatement={handleSendStatement}
                       />
                     )}

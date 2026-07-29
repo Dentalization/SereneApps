@@ -168,46 +168,17 @@ const ClinicMultiCalendar = ({
 
   // Filter appointments by selected doctors and date
   const filteredAppointments = useMemo(() => {
-    console.log('Filtering appointments:', {
-      totalAppointments: appointments.length,
-      displayDates: displayDates.map(d => d.toDateString()),
-      viewMode,
-      selectedDoctors
-    });
-    
     const filtered = appointments.filter(apt => {
       const aptDate = new Date(apt.start);
-      console.log('Checking appointment:', {
-        id: apt.id,
-        aptStart: apt.start,
-        aptDate: aptDate.toDateString(),
-        aptDateObj: aptDate
-      });
-      
-      const isInDateRange = displayDates.some(date => {
-        const match = isSameDay(date, aptDate);
-        if (match) {
-          console.log('Date match found:', date.toDateString(), '===', aptDate.toDateString());
-        }
-        return match;
-      });
+      const isInDateRange = displayDates.some(date => isSameDay(date, aptDate));
       
       const isDoctorSelected = selectedDoctors.length === 0 || 
         selectedDoctors.some(doctorId => apt.provider?.id === doctorId);
       
-      console.log('Appointment filter result:', {
-        id: apt.id,
-        isInDateRange,
-        isDoctorSelected,
-        included: isInDateRange && isDoctorSelected
-      });
-      
       return isInDateRange && isDoctorSelected;
     });
-    
-    console.log('Filtered appointments:', filtered.length, 'out of', appointments.length);
     return filtered;
-  }, [appointments, displayDates, selectedDoctors, viewMode]);
+  }, [appointments, displayDates, selectedDoctors]);
 
   // Group appointments by date and doctor
   const appointmentsByDateDoctor = useMemo(() => {

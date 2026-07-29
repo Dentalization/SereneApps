@@ -1,4 +1,5 @@
 import httpClient from '../utils/httpClient';
+import { publishPortalInvalidation } from '../collaboration/portalCollaboration.mjs';
 
 class ClinicService {
   // Create clinic profile (Admin only)
@@ -82,6 +83,8 @@ class ClinicService {
       },
     });
 
+    publishPortalInvalidation('clinic:profile_updated', { source: 'clinic-service:update-profile' });
+
     return response.data;
   }
 
@@ -108,16 +111,19 @@ class ClinicService {
 
   async createBranch(branchData) {
     const response = await httpClient.post('/clinic/branches', branchData);
+    publishPortalInvalidation('clinic:branches_updated', { source: 'clinic-service:create-branch' });
     return response.data;
   }
 
   async updateBranch(branchId, branchData) {
     const response = await httpClient.put(`/clinic/branches/${branchId}`, branchData);
+    publishPortalInvalidation('clinic:branches_updated', { source: 'clinic-service:update-branch' });
     return response.data;
   }
 
   async deleteBranch(branchId) {
     const response = await httpClient.delete(`/clinic/branches/${branchId}`);
+    publishPortalInvalidation('clinic:branches_updated', { source: 'clinic-service:delete-branch' });
     return response.data;
   }
 
@@ -261,47 +267,6 @@ class ClinicService {
     return colorMap[status] || 'gray';
   }
 
-  // Generate dummy data for testing
-  generateSampleData() {
-    return {
-      legalName: 'PT Klinik Gigi Sehat Bersama',
-      brandName: 'Dental Care Plus',
-      facilityType: 'klinik_gigi',
-      streetAddress: 'Jl. Kesehatan No. 123',
-      city: 'Jakarta Selatan',
-      province: 'DKI Jakarta',
-      postalCode: '12345',
-      phone: '021-12345678',
-      email: 'info@dentalcareplus.com',
-      timezone: 'Asia/Jakarta',
-      operatingHours: this.generateOperatingHours(),
-      ownerName: 'Dr. Ahmad Setiawan',
-      ownerPosition: 'owner',
-      ownerEmail: 'ahmad@dentalcareplus.com',
-      ownerWhatsapp: '081234567890',
-      ownerNik: '3201234567890123',
-      nibNumber: '1234567890123456',
-      npwpNumber: '12.345.678.9-012.000',
-      termsAccepted: true,
-      privacyAccepted: true,
-      dataProtectionContact: 'dpo@dentalcareplus.com',
-      branches: [
-        {
-          branchName: 'Cabang Utama',
-          branchCode: 'MAIN',
-          isMainBranch: true,
-          streetAddress: 'Jl. Kesehatan No. 123',
-          city: 'Jakarta Selatan',
-          province: 'DKI Jakarta',
-          postalCode: '12345',
-          phone: '021-12345678',
-          treatmentRoomsCount: 5,
-          hasSterlization: true,
-          hasRadiography: true
-        }
-      ]
-    };
-  }
 }
 
 export default new ClinicService();

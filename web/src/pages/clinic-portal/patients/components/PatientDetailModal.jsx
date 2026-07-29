@@ -127,6 +127,15 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
   }, [isOpen, initialTab]);
 
   React.useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  React.useEffect(() => {
     if (!isOpen || !patient?.id) {
       setSpecialistCasesState({ loading: false, error: '', cases: [] });
       return undefined;
@@ -164,7 +173,12 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
       return (isNaN(dateB.getTime()) ? 0 : dateB) - (isNaN(dateA.getTime()) ? 0 : dateA);
     });
 
-  const upcomingApts = patientAppointments.filter(a => a && (a.status === 'scheduled' || a.status === 'confirmed'));
+  const now = new Date();
+  const upcomingApts = patientAppointments.filter((appointment) => {
+    if (!appointment || !['scheduled', 'confirmed', 'in-progress'].includes(appointment.status)) return false;
+    const startsAt = new Date(appointment.startsAt || appointment.date);
+    return !Number.isNaN(startsAt.getTime()) && startsAt >= now;
+  });
   const completedApts = patientAppointments.filter(a => a && a.status === 'completed');
   const totalRevenue = patientAppointments.filter(a => a && a.isPaid).reduce((s, a) => s + (a.fee || 0), 0);
 
@@ -189,6 +203,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
         className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4"
         onClick={onClose}
         style={{ animation: 'backdropFadeIn 0.2s ease-out' }}
+        role="presentation"
       >
         <div
           className="relative w-full max-w-5xl max-h-[92vh] rounded-2xl overflow-hidden flex flex-col"
@@ -198,6 +213,9 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
             animation: 'modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
           onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clinic-patient-detail-title"
         >
           {/* ─── Top card: avatar + quick stats ─── */}
           <div className="relative overflow-hidden">
@@ -210,6 +228,7 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
               <button
                 onClick={onClose}
                 className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                aria-label="Tutup detail pasien"
               >
                 <Icon name="X" size={16} className="text-primary" />
               </button>
@@ -239,12 +258,12 @@ const PatientDetailModal = ({ patient, isOpen, onClose, allAppointments = [], in
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold text-primary">{patient.name}</h2>
+                  <h2 id="clinic-patient-detail-title" className="text-xl font-bold text-primary">{patient.name}</h2>
                   <div className="flex flex-wrap items-center gap-3 mt-1">
                     {patient.gender && (
                       <span className="inline-flex items-center gap-1 text-xs text-secondary">
                         <Icon name="User" size={12} />
-                        {patient.gender === 'M' ? 'Laki-laki' : 'Perempuan'}
+                        {patient.gender === 'M' ? 'Laki-laki' : patient.gender === 'F' ? 'Perempuan' : 'Tidak diketahui'}
                       </span>
                     )}
                     {patient.age && (
@@ -589,19 +608,22 @@ const ClinicTeleSummaryModal = ({ state, onClose }) => {
   if (!state.open) return null;
   const summary = state.data?.summary;
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose} role="presentation">
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-primary/15 bg-surface-elevated p-5 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clinic-tele-summary-title"
       >
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-primary">Ringkasan Teledentistry</h3>
+            <h3 id="clinic-tele-summary-title" className="text-lg font-semibold text-primary">Ringkasan Teledentistry</h3>
             <p className="text-sm text-secondary">
               Appointment #{state.data?.appointment?.id || '-'}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-muted hover:bg-primary/10">
+          <button onClick={onClose} className="rounded-lg p-2 text-muted hover:bg-primary/10" aria-label="Tutup ringkasan teledentistry">
             <Icon name="X" size={18} />
           </button>
         </div>

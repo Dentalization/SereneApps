@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { resolvePaymentOwner, normalizeFinancialOwnerType } from './payments/ownership.js';
+import { emitPortalInvalidation } from './portalCollaboration.js';
 
 const prisma = new PrismaClient();
 
@@ -913,16 +914,23 @@ export async function deleteTreatmentPlanItem({ db, dentistId, treatmentPlanId, 
 
 export function emitTreatmentPlanRealtime({ io, eventType, treatmentPlan, invoice = null }) {
   if (!io || !treatmentPlan) return;
-  const payload = {
-    eventType,
-    treatmentPlan,
-    invoice,
-    dashboardRefresh: true,
-    emittedAt: new Date().toISOString()
-  };
-  if (treatmentPlan.patientId) io.to(`user:${treatmentPlan.patientId}`).emit(eventType, payload);
-  if (treatmentPlan.dentistId) io.to(`user:${treatmentPlan.dentistId}`).emit(eventType, payload);
-  if (treatmentPlan.clinicId) io.to(`clinic:${treatmentPlan.clinicId}`).emit(eventType, payload);
-  if (treatmentPlan.patientId) io.to(`user:${treatmentPlan.patientId}`).emit('dashboard:metrics_updated', payload);
-  if (treatmentPlan.dentistId) io.to(`user:${treatmentPlan.dentistId}`).emit('dashboard:metrics_updated', payload);
+  emitPortalInvalidation({
+    io,
+    eventName: eventType,
+    entity: 'treatment_plan',
+    entityId: treatmentPlan.id,
+    status: treatmentPlan.status || null,
+    hasInvoice: Boolean(invoice || treatmentPlan.invoice),
+    patientId: treatmentPlan.patientId,
+    dentistId: treatmentPlan.dentistId,
+    clinicProfileId: treatmentPlan.clinicId,
+  });
+  emitPortalInvalidation({
+    io,
+    eventName: 'dashboard:metrics_updated',
+    entity: 'treatment_plan',
+    entityId: treatmentPlan.id,
+    patientId: treatmentPlan.patientId,
+    dentistId: treatmentPlan.dentistId,
+  });
 }

@@ -10,6 +10,8 @@ import StaffSummary from './components/StaffSummary';
 import ChangeBranchModal from './components/ChangeBranchModal';
 import { staffService } from '../../../services/staffService';
 import clinicService from '../../../services/clinicService';
+import { registerApi } from '../../../services/authService';
+import { publishPortalInvalidation } from '../../../collaboration/portalCollaboration.mjs';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -231,7 +233,6 @@ const StaffManagement = () => {
 
   // Fetch staff data with proper error handling - FORCE REAL DATA ONLY
   const fetchStaff = async () => {
-    console.log('🔄 Fetching REAL staff data from API...');
     loadStartRef.current = Date.now();
     setLoading(true);
     setError(null);
@@ -246,66 +247,9 @@ const StaffManagement = () => {
     setShowTokenExpiredModal(false);
 
     try {
-      // Direct API call - using real backend with cache busting
-      const cacheBuster = `?_t=${Date.now()}`;
-      const response = await fetch(`http://localhost:4000/v1/clinic/staff${cacheBuster}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
-
-      console.log('🔍 API Response Status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API Error Response:', errorText);
-        
-        if (response.status === 401 || response.status === 403) {
-          console.warn('🔐 Authentication failed, showing token expired modal');
-          setShowTokenExpiredModal(true);
-          return;
-        }
-        
-        setError(t('clinic.staff.errors.loadFailed'));
-        return;
-      }
-
-      const result = await response.json();
-      console.log('🔍 API Response Data:', result);
-      console.log('📊 Staff count:', result?.staff?.length || 0);
-
-      if (result && (result.message || result.staff)) {
-        const rawStaffData = result.staff || result.data || [];
-        console.log('👥 Raw staff data:', rawStaffData);
-        console.log('✅ REAL Staff data fetched successfully:', rawStaffData.length, 'members');
-        console.log('📋 Staff list:', rawStaffData.map(s => `${s.name} (${s.role})`));
-        
-        // Debug: Check each staff member's details
-        rawStaffData.forEach((staff, index) => {
-          console.log(`👤 Staff ${index + 1}:`, {
-            id: staff.id,
-            name: staff.name,
-            email: staff.email,
-            role: staff.role,
-            position: staff.position,
-            department: staff.department,
-            registrationType: staff.registrationType,
-            userId: staff.userId
-          });
-        });
-        
-        // Check for dentist roles specifically
-        const dentistMembers = rawStaffData.filter(staff => 
-          staff.role === 'dentist' || 
-          staff.position?.toLowerCase().includes('dentist') ||
-          staff.department?.toLowerCase().includes('medical')
-        );
-        console.log('🦷 Dentist members found:', dentistMembers.length, dentistMembers);
-      
+      const result = await staffService.getStaff();
+      if (result.success) {
+        const rawStaffData = result.data?.staff || [];
         // Transform the data to ensure compatibility with modals
         const staffData = rawStaffData.map(staff => {
           const normalized = normalizeStaff(staff);
@@ -331,26 +275,16 @@ const StaffManagement = () => {
             lastLogin: normalized.lastLogin || null,
           };
         });
-        
-        console.log('🔧 Transformed staff data:', staffData[0]); // Log first item to see structure
-        console.log('📈 Setting staff state with', staffData.length, 'members');
         setStaff(staffData);
-        if (result && result.stats) {
-          console.log('📈 Setting backendStats state:', result.stats);
-          setBackendStats(result.stats);
-        } else {
-          setBackendStats(null);
-        }
-        console.log('✅ Staff state updated successfully');
-        
-        // Clear any previous fallback notice
+        setBackendStats(result.data?.stats || null);
       } else {
-        console.error('❌ No staff data in response:', result);
+        if (result.statusCode === 401 || result.statusCode === 403) {
+          setShowTokenExpiredModal(true);
+          return;
+        }
         setError(t('clinic.staff.errors.loadFailed'));
       }
-
-    } catch (error) {
-      console.error('❌ Network error fetching staff:', error);
+    } catch {
       setError(t('clinic.staff.errors.loadFailed'));
     } finally {
       finishLoading();
@@ -359,7 +293,6 @@ const StaffManagement = () => {
 
   // Fetch branches data for multi-branch staff management
   const fetchBranches = async () => {
-    console.log('🏢 Fetching branches data...');
     setBranchesLoading(true);
 
     const token = getAccessToken();
@@ -371,17 +304,12 @@ const StaffManagement = () => {
 
     try {
       const branchesData = await clinicService.getBranches();
-      console.log('🏢 Branches API response:', branchesData);
-      
       if (branchesData && branchesData.branches) {
-        console.log('✅ Branches loaded:', branchesData.branches.length, 'branches');
         setBranches(branchesData.branches);
       } else {
-        console.warn('⚠️ No branches found in API response');
         setBranches([]);
       }
-    } catch (error) {
-      console.error('❌ Error fetching branches:', error);
+    } catch {
       // Don't show error for branches as it's not critical
       setBranches([]);
     } finally {
@@ -392,13 +320,11 @@ const StaffManagement = () => {
   // Fetch clinic data for clinic information
   const fetchClinic = async () => {
     try {
-      console.log('🏥 Fetching clinic data...');
       setClinicLoading(true);
       
       const response = await clinicService.getClinicProfile();
       
       if (response?.profile) {
-        console.log('✅ Clinic data fetched successfully:', response.profile);
         const profile = response.profile;
 
         const normalizedClinic = {
@@ -415,11 +341,9 @@ const StaffManagement = () => {
 
         setClinic(normalizedClinic);
       } else {
-        console.warn('⚠️ No clinic data received');
         setClinic(null);
       }
-    } catch (error) {
-      console.error('❌ Error fetching clinic:', error);
+    } catch {
       setClinic(null);
     } finally {
       setClinicLoading(false);
@@ -429,24 +353,20 @@ const StaffManagement = () => {
   // Handle staff branch assignment change - opens modal
   const handleChangeBranch = (staffMember) => {
     if (!staffMember) {
-      console.warn('⚠️ handleChangeBranch called with invalid staff member:', staffMember);
       return;
     }
-    console.log('🔄 Opening change branch modal for:', staffMember.name);
     setChangeBranchError(null);
     setChangeBranchModal(staffMember);
   };
 
   // Handle branch change submission from modal
   const handleChangeBranchSubmit = async (staffId, newBranchId) => {
-    console.log('🔄 Changing branch for staff:', staffId, 'to branch:', newBranchId);
     setChangeBranchLoading(true);
     setChangeBranchError(null);
     
     try {
       // Use the staffService method
       const result = await staffService.changeBranch(staffId, newBranchId);
-      console.log('✅ API Response:', result);
 
       if (result.success) {
         // Update staff data locally with the returned data
@@ -489,14 +409,11 @@ const StaffManagement = () => {
           message: t('clinic.staff.notifications.branchChanged', { branchName })
         });
 
-        console.log('✅ Staff branch updated successfully');
         setChangeBranchModal(null); // Close modal on success
       } else {
-        console.error('❌ Error from API:', result.error);
         setChangeBranchError(result.error || t('clinic.staff.errors.branchChangeFailed'));
       }
-    } catch (error) {
-      console.error('❌ Error updating staff branch:', error);
+    } catch {
       setChangeBranchError(t('clinic.staff.errors.branchChangeFailed'));
     } finally {
       setChangeBranchLoading(false);
@@ -508,15 +425,6 @@ const StaffManagement = () => {
     fetchBranches();
     fetchClinic();
   }, []);
-
-  // Debug modal states
-  useEffect(() => {
-    console.log('🔍 Modal States Changed:', { 
-      viewProfileModal: !!viewProfileModal, 
-      editRoleModal: !!editRoleModal, 
-      removeModal: !!removeModal 
-    });
-  }, [viewProfileModal, editRoleModal, removeModal]);
 
   // Escape key handler for modals
   useEffect(() => {
@@ -553,8 +461,6 @@ const StaffManagement = () => {
 
   // Handlers for the buttons that are actually showing in the browser
   const handleViewProfile = (staffMember) => {
-    console.log('🔍 View Profile clicked for:', staffMember);
-    console.log('🔍 Current viewProfileModal state:', viewProfileModal);
     try {
       setProfileError(null);
       setProfileLoading(false);
@@ -587,16 +493,12 @@ const StaffManagement = () => {
       setIsEditingProfile(false);
       setSelectedPermissions(safeStaffMember.permissions || []);
       setViewProfileModal(safeStaffMember);
-      console.log('✅ Profile modal state set to:', safeStaffMember);
     } catch (error) {
-      console.error('❌ Error setting profile modal:', error);
       setError('Failed to open profile modal: ' + error.message);
     }
   };
 
   const handleEditRole = (staffMember) => {
-    console.log('✏️ Edit Role clicked for:', staffMember);
-    console.log('✏️ Current editRoleModal state:', editRoleModal);
     try {
       setRoleError(null);
       setRoleLoading(false);
@@ -616,46 +518,34 @@ const StaffManagement = () => {
         status: safeStaffMember.status || 'active'
       });
       setEditRoleModal(safeStaffMember);
-      console.log('✅ Edit role modal state set to:', safeStaffMember);
     } catch (error) {
-      console.error('❌ Error setting edit role modal:', error);
       setError('Failed to open edit role modal: ' + error.message);
     }
   };
 
   const handleRemoveStaff = (staffMember) => {
-    console.log('🗑️ Remove clicked for:', staffMember);
-    console.log('🗑️ Available fields in staffMember:', Object.keys(staffMember || {}));
-    console.log('🗑️ staffMember.id:', staffMember?.id);
-    console.log('🗑️ staffMember.userId:', staffMember?.userId);
-    console.log('🗑️ Current removeModal state:', removeModal);
     try {
       setRemoveError(null);
       setRemoveLoading(false);
       setRemoveModal(staffMember);
-      console.log('✅ Remove modal state set to:', staffMember);
-    } catch (error) {
-      console.error('❌ Error setting remove modal:', error);
+    } catch {
       setError('Failed to open remove modal');
     }
   };
 
   const handleInviteStaff = () => {
-    console.log('👥 Invite Staff clicked');
     setInviteError(null);
     setInviteLoading(false);
     setInviteModal(true);
   };
 
   const handleAddDentist = () => {
-    console.log('🦷 Add Dentist clicked');
     setAddDentistError(null);
     setAddDentistLoading(false);
     setAddDentistModal(true);
   };
 
   const handleInviteSubmit = async (formData) => {
-    console.log('📨 Invite form submitted:', formData);
     setInviteLoading(true);
     setInviteError(null);
 
@@ -669,50 +559,25 @@ const StaffManagement = () => {
       assignedBranchId: formData.assignedBranchId || formData.branchId,
       permissions: []
     };
-    
-    console.log('📦 Payload being sent:', payload);
 
     try {
-      const response = await fetch('http://localhost:4000/v1/clinic/staff', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAccessToken()}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        console.log('✅ Staff invited successfully:', result);
-        
-        // Refresh staff list
+      const result = await staffService.addStaff(payload);
+      if (result.success) {
         await fetchStaff();
-        
-        // Show success notice
         setNotice(`Staff ${formData.name} berhasil ditambahkan`);
-        
-        // Close modal
         setInviteModal(false);
       } else {
-        console.error('❌ Error inviting staff:', result);
-        if (response.status === 401) {
+        if (result.statusCode === 401 || result.statusCode === 403) {
           setShowTokenExpiredModal(true);
-        } else if (response.status === 400 && result.errorCode === 'ALREADY_ASSIGNED') {
-          // User already assigned to a clinic
+        } else if (result.statusCode === 400 && result.errorCode === 'ALREADY_ASSIGNED') {
           setInviteError(result.details || 'Email sudah terdaftar dan ditugaskan ke klinik lain. Setiap staff hanya bisa bekerja di satu klinik.');
-        } else if (response.status === 409) {
-          // Email duplicate or other conflict
+        } else if (result.statusCode === 409) {
           setInviteError(result.details || 'Email sudah terdaftar. Silakan gunakan email lain.');
         } else {
-          // Generic error with details if available
-          const errorMessage = result.details || result.error || 'Failed to invite staff member';
-          setInviteError(errorMessage);
+          setInviteError(result.details || result.error || 'Failed to invite staff member');
         }
       }
-    } catch (error) {
-      console.error('❌ Error inviting staff:', error);
+    } catch {
       setInviteError('Failed to invite staff member');
     } finally {
       setInviteLoading(false);
@@ -720,14 +585,6 @@ const StaffManagement = () => {
   };
 
   const handleAddDentistSubmit = async (formData) => {
-    console.log('🦷 Add dentist form submitted:', formData);
-    
-    // Log all formData entries for debugging
-    console.log('📝 FormData entries:');
-    for (let [key, value] of formData.entries()) {
-      console.log(`  ${key}:`, typeof value === 'object' ? '[File]' : value);
-    }
-    
     setAddDentistLoading(true);
     setAddDentistError(null);
 
@@ -738,98 +595,33 @@ const StaffManagement = () => {
       }
       if (clinic?.id && !formData.has('clinicId')) {
         formData.append('clinicId', clinic.id.toString());
-        console.log('🏥 Added clinicId to registration:', clinic.id);
       }
       if (formData.get('selectedBranch') && !formData.has('branchId')) {
         formData.append('branchId', formData.get('selectedBranch'));
-        console.log('🏢 Added branchId to registration:', formData.get('selectedBranch'));
       }
-      
-      console.log('📝 Updated FormData entries with clinic context:');
-      for (let [key, value] of formData.entries()) {
-        console.log(`  ${key}:`, typeof value === 'object' ? '[File]' : value);
-      }
-
-      // Use the same register endpoint but with dentist role
-      console.log('🚀 Sending registration request to:', 'http://localhost:4000/v1/auth/register');
-      const response = await fetch('http://localhost:4000/v1/auth/register', {
-        method: 'POST',
-        body: formData, // FormData object with all required fields and files
-        headers: {
-          'Authorization': `Bearer ${getAccessToken()}`
-        }
-      });
-
-      console.log('📡 Registration response status:', response.status);
-      console.log('📡 Registration response headers:', response.headers);
-
-      const result = await response.json();
-      console.log('📦 Registration response data:', result);
-
-      if (response.ok) {
-        console.log('✅ Dentist registered successfully:', result);
-        console.log('ℹ️ Note: Dentist should already be added to clinic_staff by auth endpoint');
-        
-        // Close modal immediately
-        setAddDentistModal(false);
-        
-        // Show success message
-        setNotice('Dentist berhasil ditambahkan ke staff clinic!');
-        
-        // Refresh staff list to include new dentist - the auth endpoint already added them to clinic_staff
-        setTimeout(async () => {
-          try {
-            console.log('🔄 Refreshing staff list to show new dentist...');
-            await fetchStaff();
-            console.log('✅ Staff list refreshed successfully');
-          } catch (error) {
-            console.error('❌ Error refreshing staff list:', error);
-            // Try again after a short delay
-            setTimeout(() => {
-              console.log('🔄 Retrying staff list refresh...');
-              fetchStaff();
-            }, 1500);
-          }
-        }, 800);
-      } else {
-        console.error('❌ Error adding dentist:', result);
-        console.error('❌ Response status:', response.status);
-        console.error('❌ Response headers:', Object.fromEntries(response.headers.entries()));
-        
-        if (response.status === 401) {
-          setShowTokenExpiredModal(true);
-        } else if (response.status === 409) {
-          // Email already registered
-          const errorDetails = result.details || 'Email sudah terdaftar. Silakan gunakan email lain.';
-          console.error('❌ DUPLICATE EMAIL - User already exists');
-          setAddDentistError(errorDetails);
-        } else {
-          // Try to give more specific error message based on error code
-          let errorMessage = result.error || result.message || `Registration failed with status ${response.status}`;
-          
-          // Add user-friendly details if available
-          if (result.details) {
-            errorMessage = result.details;
-          } else if (result.errorCode === 'DUPLICATE_EMAIL') {
-            errorMessage = 'Email sudah terdaftar. Silakan gunakan email yang berbeda atau login dengan akun yang sudah ada.';
-          } else if (result.errorCode === 'DUPLICATE_LICENSE') {
-            errorMessage = 'Nomor lisensi atau registrasi sudah terdaftar di sistem kami.';
-          }
-          
-          console.error('❌ Setting error message:', errorMessage);
-          setAddDentistError(errorMessage);
-        }
-      }
+      await registerApi(formData);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'clinic-staff:register-dentist' });
+      setAddDentistModal(false);
+      setNotice('Dentist berhasil ditambahkan ke staff clinic!');
+      await fetchStaff();
     } catch (error) {
-      console.error('❌ Error adding dentist:', error);
-      console.error('❌ Error stack:', error.stack);
-      setAddDentistError('Failed to add dentist. Please check your connection and try again.');
+      const status = error?.response?.status;
+      const errorData = error?.response?.data || {};
+      if (status === 401 || status === 403) {
+        setShowTokenExpiredModal(true);
+      } else if (status === 409 || errorData.errorCode === 'DUPLICATE_EMAIL') {
+        setAddDentistError(errorData.details || 'Email sudah terdaftar. Silakan gunakan email lain.');
+      } else if (errorData.errorCode === 'DUPLICATE_LICENSE') {
+        setAddDentistError('Nomor lisensi atau registrasi sudah terdaftar di sistem kami.');
+      } else {
+        setAddDentistError(errorData.details || errorData.message || 'Failed to add dentist. Please check your connection and try again.');
+      }
     } finally {
       setAddDentistLoading(false);
     }
   };
 
-    // Modal action handlers - these will be called when forms are submitted
+  // Modal action handlers - these will be called when forms are submitted
   const handleProfileUpdate = async (updates) => {
     if (!viewProfileModal) return;
 
@@ -837,23 +629,7 @@ const StaffManagement = () => {
     setProfileError(null);
     setProfileSuccess(null);
 
-    // ALWAYS USE REAL API - NO DEV MODE SHORTCUTS
-    console.log('🚫 Bypassing dev mode - always using real API for data persistence');
-
     try {
-      console.log('🔄 Updating staff profile:', { 
-        staffId: viewProfileModal.id, 
-        updates,
-        selectedPermissions,
-        currentData: {
-          name: viewProfileModal.name,
-          email: viewProfileModal.email,
-          phone: viewProfileModal.phone,
-          position: viewProfileModal.position,
-          department: viewProfileModal.department
-        }
-      });
-
       const payload = {
         name: updates.name ?? viewProfileModal.name,
         email: updates.email ?? viewProfileModal.email,
@@ -862,22 +638,11 @@ const StaffManagement = () => {
         department: updates.department ?? '',
         permissions: selectedPermissions
       };
-      
-      console.log('📤 Sending payload to backend:', payload);
-      console.log('🔗 API Endpoint:', `http://localhost:4000/v1/clinic/staff/${viewProfileModal.id}`);
-      console.log('🎫 Using Token:', getAccessToken() ? 'Token available' : 'NO TOKEN');
-
-      console.log('📡 API Payload being sent:', payload);
       const result = await staffService.updateStaff(viewProfileModal.id, payload);
-      console.log('📡 API Response received:', result);
 
       if (result.success) {
         const updatedStaff = result.data?.staff || result.data?.data || result.data || {};
-        console.log('✅ Update successful, merging data:', updatedStaff);
-        
         const finalUpdate = { ...payload, ...updatedStaff, permissions: selectedPermissions };
-        console.log('🔧 Final merged data:', finalUpdate);
-        
         setStaff((prev) =>
           prev.map((member) =>
             member.id === viewProfileModal.id
@@ -897,88 +662,17 @@ const StaffManagement = () => {
         const successMessage = `Profile ${viewProfileModal.name} berhasil diperbarui pada ${timestamp}`;
         setProfileSuccess(successMessage);
         setNotice(successMessage);
-        
-        // Reset editing mode setelah berhasil save
         setIsEditingProfile(false);
-        
-        // Force refresh data dari server untuk memastikan sinkronisasi
-        console.log('🔄 Force refreshing data from server to ensure sync...');
-        setTimeout(async () => {
-          await fetchStaff();
-          console.log('✅ Data refreshed from server');
-        }, 500);
+        await fetchStaff();
       } else {
-        console.error('❌ Profile update failed:', result.error);
         if (result.statusCode === 401 || result.statusCode === 403) {
           setShowTokenExpiredModal(true);
         } else {
           setProfileError(result.error || t('clinic.staff.errors.profileUpdateFailed'));
         }
       }
-    } catch (error) {
-      console.error('❌ Error updating profile via staffService:', error);
-      
-        // Fallback: Direct API call
-        try {
-          console.log('🔄 Attempting direct API call as fallback...', payload);
-          const token = getAccessToken();
-          const response = await fetch(`http://localhost:4000/v1/clinic/staff/${viewProfileModal.id}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          });
-          
-          console.log('📡 Direct API Response status:', response.status);
-        const directResult = await response.json();
-        console.log('📡 Direct API Response Data:', directResult);
-        
-        if (response.ok && (directResult.success || directResult.message)) {
-          console.log('✅ Direct API update successful');
-          const updatedData = directResult.data?.staff || directResult.staff || payload;
-          const finalUpdate = { ...payload, ...updatedData };
-          
-          // Update local state
-          setStaff((prev) =>
-            prev.map((member) =>
-              member.id === viewProfileModal.id
-                ? { ...member, ...finalUpdate }
-                : member
-            )
-          );
-          
-          setViewProfileModal((prev) => (prev ? { ...prev, ...finalUpdate } : prev));
-          setProfileForm({
-            name: finalUpdate.name || '',
-            email: finalUpdate.email || '',
-            phone: finalUpdate.phone || '',
-            position: finalUpdate.position || '',
-            department: finalUpdate.department || ''
-          });
-          
-          const timestamp = new Date().toLocaleString(language === 'id' ? 'id-ID' : 'en-US');
-          const successMessage = `Profile ${viewProfileModal.name} berhasil diperbarui pada ${timestamp}`;
-          setProfileSuccess(successMessage);
-          setNotice(successMessage);
-          
-          // Reset editing mode setelah berhasil save
-          setIsEditingProfile(false);
-          
-          // Force refresh data to ensure sync
-          setTimeout(async () => {
-            console.log('🔄 Force refreshing data from server...');
-            await fetchStaff();
-            console.log('✅ Data refreshed from server successfully');
-          }, 500);
-        } else {
-          throw new Error(directResult.error || 'Direct API call failed');
-        }
-      } catch (directError) {
-        console.error('❌ Direct API call also failed:', directError);
-        setProfileError('Gagal menyimpan perubahan. Pastikan koneksi internet dan coba lagi.');
-      }
+    } catch {
+      setProfileError('Gagal menyimpan perubahan. Pastikan koneksi internet dan coba lagi.');
     } finally {
       setProfileLoading(false);
     }
@@ -993,12 +687,7 @@ const StaffManagement = () => {
 
     const targetUserId = editRoleModal.userId || editRoleModal.id;
 
-    // ALWAYS USE REAL API - NO DEV MODE SHORTCUTS
-    console.log('🚫 Bypassing dev mode - always using real API for role updates');
-
     try {
-      console.log('🔄 Updating staff role:', { staffId: editRoleModal.id, updates });
-
       const result = await staffService.updateStaffRole(targetUserId, {
         role: updates.role,
         status: updates.status
@@ -1028,15 +717,13 @@ const StaffManagement = () => {
         setRoleSuccess(successMessage);
         setNotice(successMessage);
       } else {
-        console.error('❌ Role update failed:', result.error);
         if (result.statusCode === 401 || result.statusCode === 403) {
           setShowTokenExpiredModal(true);
         } else {
           setRoleError(result.error || t('clinic.staff.errors.roleUpdateFailed'));
         }
       }
-    } catch (error) {
-      console.error('❌ Error updating role:', error);
+    } catch {
       setRoleError(t('clinic.staff.errors.roleUpdateFailed'));
     } finally {
       setRoleLoading(false);
@@ -1047,41 +734,22 @@ const StaffManagement = () => {
     setRemoveLoading(true);
     setRemoveError(null);
 
-    // ALWAYS USE REAL API - NO DEV MODE SHORTCUTS
-    console.log('🚫 Bypassing dev mode - always using real API for staff removal');
-
     try {
-      console.log('🔄 Removing staff member:', userId);
-      
-      // Call API endpoint untuk hapus staff
-      const response = await fetch(`http://localhost:4000/v1/clinic/staff/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${getAccessToken()}`
-        }
-      });
-
-      const result = await response.json();
-
-      if (response.ok && (result.success || result.message)) {
-        console.log('✅ Staff removal successful');
-        // Update local state
+      const result = await staffService.removeStaffMember(userId);
+      if (result.success) {
         setStaff(prev => prev.filter(member => (member.userId || member.id) !== userId));
-        const removedStaffName = result.removedStaff?.name || removeModal?.name || 'Staff';
+        const removedStaffName = result.data?.removedStaff?.name || removeModal?.name || 'Staff';
         setNotice(t('clinic.staff.notifications.removeSuccess', { name: removedStaffName }));
         closeRemoveModal();
-        // Refresh data untuk memastikan sinkronisasi
         await fetchStaff();
       } else {
-        console.error('❌ Staff removal failed:', result.error);
-        if (response.status === 401) {
+        if (result.statusCode === 401 || result.statusCode === 403) {
           setShowTokenExpiredModal(true);
         } else {
           setRemoveError(result.error || t('clinic.staff.errors.removeFailed'));
         }
       }
-    } catch (error) {
-      console.error('❌ Error removing staff:', error);
+    } catch {
       setRemoveError(t('clinic.staff.errors.removeFailed'));
     } finally {
       setRemoveLoading(false);
@@ -2106,11 +1774,7 @@ const StaffManagement = () => {
         error={removeError}
         onClose={closeRemoveModal}
         onConfirm={() => {
-          console.log('🚀 onConfirm called with removeModal:', removeModal);
-          console.log('🚀 removeModal.userId:', removeModal?.userId);
-          console.log('🚀 removeModal.id:', removeModal?.id);
           const targetUserId = removeModal?.userId || removeModal?.id;
-          console.log('🚀 Final targetUserId to be removed:', targetUserId);
           removeModal && handleStaffRemoval(targetUserId);
         }}
       />

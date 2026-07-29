@@ -153,50 +153,6 @@ const DENTIST_NOTIFICATIONS = [
   },
 ];
 
-const DENTIST_INSIGHTS = [
-  {
-    id: 'today-schedule',
-    title: 'Schedule hari ini',
-    value: '8 kunjungan',
-    trend: '2 reschedule pagi ini',
-    icon: 'CalendarClock',
-    tone: 'text-sky-500',
-  },
-  {
-    id: 'clinical-tasks',
-    title: 'Tugas klinis',
-    value: '3 pending',
-    trend: 'Lab & AI follow-up',
-    icon: 'FlaskConical',
-    tone: 'text-emerald-500',
-  },
-  {
-    id: 'finance',
-    title: 'Payout minggu ini',
-    value: 'Rp 18.2M',
-    trend: '+12% vs minggu lalu',
-    icon: 'Wallet',
-    tone: 'text-amber-500',
-  },
-];
-
-const DENTIST_ALERTS = [
-  {
-    id: 'alert-1',
-    title: 'AI follow-up needed',
-    detail: '2 scans belum diverifikasi manual',
-    owner: 'drg. Maya',
-    impact: 'Clinical safety',
-  },
-  {
-    id: 'alert-2',
-    title: 'Consent renewals pending',
-    detail: '4 pasien aligner harus tanda tangan ulang',
-    owner: 'Front office',
-    impact: 'Compliance',
-  },
-];
-
 const DENTIST_ACTIONS = [
   {
     id: 'da-1',
@@ -330,6 +286,38 @@ const NotificationScreenDentist = () => {
       return acc;
     }, {});
   }, [filtered]);
+
+  const dentistInsights = useMemo(() => [
+    {
+      id: 'today-schedule',
+      title: 'Schedule updates',
+      value: `${items.filter((item) => item.category === 'appointments').length} updates`,
+      trend: `${items.filter((item) => item.category === 'appointments' && !item.read).length} unread`,
+      icon: 'CalendarClock',
+      tone: 'text-sky-500'
+    },
+    {
+      id: 'clinical-work',
+      title: 'Clinical updates',
+      value: `${items.filter((item) => item.category === 'clinical').length} updates`,
+      trend: `${items.filter((item) => item.category === 'clinical' && !item.read).length} unread`,
+      icon: 'ClipboardPulse',
+      tone: 'text-emerald-500'
+    },
+    {
+      id: 'business-work',
+      title: 'Business updates',
+      value: `${items.filter((item) => item.category === 'business').length} updates`,
+      trend: `${items.filter((item) => item.category === 'business' && !item.read).length} unread`,
+      icon: 'Wallet',
+      tone: 'text-amber-500'
+    }
+  ], [items]);
+
+  const priorityAlerts = useMemo(
+    () => items.filter((item) => item.severity === 'high' && !item.read).slice(0, 5),
+    [items]
+  );
 
   const getFilterCount = (filterId) => {
     if (filterId === 'all') return items.length;
@@ -527,7 +515,7 @@ const NotificationScreenDentist = () => {
                                 )}
                               </div>
                               <div className="flex flex-wrap gap-3 pt-1">
-                                {item.actions?.map((action) => (
+                              {(item.actionsByPortal?.dentist || item.actions)?.map((action) => (
                                   <button
                                     key={action.label}
                                     onClick={() => handleAction(action)}
@@ -574,7 +562,7 @@ const NotificationScreenDentist = () => {
                   <Icon name="LineChart" size={16} className="text-secondary" />
                 </div>
                 <div className="mt-4 space-y-4">
-                  {DENTIST_INSIGHTS.map((insight) => (
+                  {dentistInsights.map((insight) => (
                     <div key={insight.id} className="rounded-2xl border border-border/30 bg-background/40 p-4">
                       <div className="flex items-start justify-between">
                         <div>
@@ -601,22 +589,18 @@ const NotificationScreenDentist = () => {
                   <Icon name="Target" size={16} className="text-rose-500" />
                 </div>
                 <div className="mt-4 space-y-4">
-                  {DENTIST_ALERTS.map((item) => (
+                  {priorityAlerts.map((item) => (
                     <div key={item.id} className="rounded-2xl border border-rose-200/40 bg-background/50 p-4 dark:bg-surface/60">
                       <p className="text-sm font-semibold text-primary">{item.title}</p>
-                      <p className="text-xs text-secondary mt-1">{item.detail}</p>
-                      <div className="mt-2 flex items-center justify-between text-xs text-secondary">
-                        <span className="inline-flex items-center gap-1">
-                          <Icon name="User2" size={12} />
-                          {item.owner}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Icon name="ArrowRight" size={12} />
-                          {item.impact}
-                        </span>
-                      </div>
+                      <p className="text-xs text-secondary mt-1">{item.description}</p>
+                      <p className="mt-2 text-xs text-secondary">{item.timestamp}</p>
                     </div>
                   ))}
+                  {!priorityAlerts.length && (
+                    <p className="rounded-2xl border border-dashed border-border/40 p-4 text-sm text-secondary">
+                      Tidak ada alert prioritas yang belum dibaca.
+                    </p>
+                  )}
                 </div>
               </section>
 

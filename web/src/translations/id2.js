@@ -2039,6 +2039,17 @@ export default {
       timeline: {
         title: 'Linimasa Riwayat Medis',
         empty: 'Fitur linimasa medis akan segera hadir'
+      },
+      xcore: {
+        title: 'Pencitraan X-Core',
+        description: 'Studi radiografi yang ditautkan ke pasien ini dan dapat Anda akses.',
+        openGallery: 'Buka Galeri X-Core',
+        openStudy: 'Buka Studi',
+        study: 'Studi X-Core',
+        series: 'seri',
+        unknownModality: 'Pencitraan',
+        emptyTitle: 'Belum ada studi X-Core tertaut',
+        emptyDescription: 'Studi yang diunggah ke Galeri akan tampil di sini setelah ditautkan secara eksplisit ke pasien ini.'
       }
     },
     profile: {

@@ -15,17 +15,20 @@ import httpClient from '../../../utils/httpClient';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNotifications } from '../../../contexts/NotificationContext';
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 import { formToBranchPayload, normalizeBranch } from './branchData.mjs';
 
 const BranchManagement = () => {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
   const { user, logout } = useAuth();
+  const { socket } = useNotifications();
   
   // Check if user has access (owner or manager only) - improved detection
   const hasAccess = useMemo(() => {
     if (!user) {
-      console.log('🔍 Branch Access Check: No user data yet');
       return false;
     }
 
@@ -46,20 +49,7 @@ const BranchManagement = () => {
       managerRoles.has(detectedRole) ||
       normalizedRoles.some((role) => managerRoles.has(role));
 
-    const finalAccess = hasOwnerAccess || hasManagerAccess;
-
-    console.log('🔍 Branch Access Check:', {
-      user,
-      role: user?.role,
-      roles: user?.roles,
-      detectedRole,
-      normalizedRoles,
-      hasOwnerAccess,
-      hasManagerAccess,
-      finalAccess,
-    });
-
-    return finalAccess;
+    return hasOwnerAccess || hasManagerAccess;
   }, [user]);
 
   const [branches, setBranches] = useState([]);
@@ -136,7 +126,6 @@ const BranchManagement = () => {
 
   // Fetch branches data - using centralized clinic service
   const fetchBranches = useCallback(async () => {
-    console.log('🏢 Fetching branches data via clinicService...');
     loadStartRef.current = Date.now();
     setLoading(true);
     setError(null);
@@ -156,9 +145,6 @@ const BranchManagement = () => {
         .map((branch) => normalizeBranch(branch, owner))
         .filter(Boolean);
 
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('🏢 Branches API response:', branchList.length);
-      }
       setOwnerInfo(owner);
       setBranches(branchList);
     } catch (error) {
@@ -180,7 +166,6 @@ const BranchManagement = () => {
 
   // Fetch revenue data for all branches
   const fetchRevenueData = useCallback(async () => {
-    console.log('💰 Fetching real revenue data from API...');
     setRevenueLoading(true);
     
     try {
@@ -227,10 +212,15 @@ const BranchManagement = () => {
     }
   }, [branches, fetchRevenueData]);
 
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.BRANCHES,
+    refresh: fetchBranches,
+    enabled: hasAccess
+  });
+
   // Handle add branch
   const handleAddBranch = async (formData) => {
-    console.log('➕ Adding new branch:', formData);
-    console.log('🔢 Treatment Rooms value:', formData.treatmentRooms, typeof formData.treatmentRooms);
     setAddLoading(true);
     setAddError(null);
 
@@ -249,11 +239,8 @@ const BranchManagement = () => {
         hasRadiography: Boolean(formData.facilities?.includes('X-Ray Machine')),
       };
 
-      console.log('📤 Sending branch data:', branchData);
-
       // API call to add branch
       const result = await clinicService.createBranch(branchData);
-      console.log('✅ Branch added successfully:', result);
       const createdBranch = normalizeBranch(result?.branch || result, ownerInfo);
       
       setAddBranchModal(false);

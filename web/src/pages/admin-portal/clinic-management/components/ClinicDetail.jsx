@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import AdminSideBar from '../../ui/sidebar-admin';
 import { authHttp } from '../../../../utils/httpClient';
 import AppIcon from '../../../../components/AppIcon';
+import BranchList from '../../../../components/clinic/BranchList';
 import StaffList from '../../../../components/clinic/StaffList';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import ModalPortal from '../../../../components/ui/ModalPortal';
@@ -610,76 +611,14 @@ const ClinicDetail = () => {
                       </p>
                     </div>
                   </div>
-                  {branchList.length ? (
-                    <div className="space-y-3">
-                      {branchList.map((branch) => {
-                        const branchId = branch.id?.toString?.() ?? branch.id ?? branch.branchName;
-                        const isSelected = selectedBranchId === branchId;
-                        const staffCount = staffByBranch[branchId]?.length || 0;
-                        const isVirtual = branch.isVirtual || branchId === 'unassigned';
-                        return (
-                          <button
-                            key={branchId}
-                            onClick={() => setSelectedBranchId(branchId)}
-                            className={`w-full text-left rounded-2xl border px-4 py-4 transition ${
-                              isSelected
-                                ? 'border-primary/60 bg-primary/5 shadow-sm'
-                                : 'border-border/40 bg-muted/10 hover:border-primary/40 hover:bg-primary/5'
-                            }`}
-                          >
-                            <div className="flex flex-col gap-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-semibold text-primary">
-                                    {branch.branchName || t('admin.clinicDetail.unnamedBranchLabel')}
-                                  </p>
-                                  {branch.isMainBranch && (
-                                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
-                                      {t('admin.clinicDetail.mainBadge')}
-                                    </span>
-                                  )}
-                                  {isVirtual && (
-                                    <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold text-secondary">
-                                      {t('admin.clinicDetail.virtualBadge')}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                                  <AppIcon name="Users" size={12} />
-                                  {t('admin.clinicDetail.staffCountLabel', { count: staffCount })}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-xs text-secondary">
-                                {isVirtual ? (
-                                  <span>{t('admin.clinicDetail.unassignedStaffHint')}</span>
-                                ) : (
-                                  <>
-                                    {branch.city && <span>{branch.city}{branch.province ? `, ${branch.province}` : ''}</span>}
-                                    {branch.streetAddress && <span className="truncate">{branch.streetAddress}</span>}
-                                  </>
-                                )}
-                                {!isVirtual && branch.treatmentRoomsCount ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-secondary">
-                                    <AppIcon name="DoorOpen" size={12} />
-                                    {t('admin.clinicDetail.roomCountLabel', { count: branch.treatmentRoomsCount })}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {!isVirtual && branch.branchCode && (
-                                <p className="text-[11px] uppercase tracking-wide text-secondary">
-                                  {t('admin.clinicDetail.branchCodeLabel', { code: branch.branchCode })}
-                                </p>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/10 p-6 text-center text-sm text-secondary">
-                      {t('admin.clinicDetail.noBranchesEmpty')}
-                    </div>
-                  )}
+                  <BranchList
+                    branches={branchList}
+                    selectedBranchId={selectedBranchId === ALL_STAFF_ID ? null : selectedBranchId}
+                    onSelect={(branch) => {
+                      const branchId = branch.id?.toString?.() ?? branch.id ?? branch.branchName;
+                      setSelectedBranchId(String(branchId));
+                    }}
+                  />
                 </div>
 
                 <div className="rounded-3xl border border-border/40 bg-surface p-6 shadow-sm space-y-4">

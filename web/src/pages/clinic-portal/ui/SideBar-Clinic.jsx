@@ -23,7 +23,9 @@ const ClinicSideBar = () => {
   const { toggleTheme, isDark, isTransitioning } = useTheme();
   const { t, language, changeLanguage } = useLanguage();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeTeleSessionCount, setActiveTeleSessionCount] = useState(0);
@@ -46,6 +48,15 @@ const ClinicSideBar = () => {
     });
     return () => cancelAnimationFrame(frame);
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const collapseForMobile = (event) => {
+      if (event.matches) setIsCollapsed(true);
+    };
+    mobileQuery.addEventListener('change', collapseForMobile);
+    return () => mobileQuery.removeEventListener('change', collapseForMobile);
+  }, []);
 
   const formatNameWithTitle = (name, title) => {
     if (!name) return title || 'User Name';
