@@ -18,15 +18,8 @@ import { useNotifications } from '../../../contexts/NotificationContext';
 import { fetchAppointments } from '../../../services/appointmentService';
 import { getDentistProfileApi } from '../../../services/authService';
 import { buildDentistDashboardMetrics } from './dashboardMetrics.mjs';
-
-const DENTIST_DASHBOARD_REALTIME_EVENTS = [
-  'notification:new',
-  'dashboard:metrics_updated',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated',
-  'clinic:billing_updated'
-];
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 
 const GAP_PX = 24;                 // gap-6
 const DEFAULT_CARD_WIDTH = 320;    // w-[320px]
@@ -335,25 +328,19 @@ const DentistHome = () => {
     };
   }, [loadDashboardData]);
 
-  // ===== Socket Event listener for real-time updates
-  useEffect(() => {
-    if (!socket) return;
-    
-    const handleRealtimeUpdate = () => {
-      console.log('🔄 Dashboard refreshed due to real-time socket event');
-      loadDashboardData();
+  const refreshDashboardCollaborationData = useCallback(async () => {
+    const [, continuity] = await Promise.all([
+      loadDashboardData(),
       getDentistDashboardContinuity()
-        .then((data) => {
-          setContinuityData(data || { treatmentPlans: [], metrics: null });
-        })
-        .catch((err) => console.warn(err));
-    };
+    ]);
+    setContinuityData(continuity || { treatmentPlans: [], metrics: null });
+  }, [loadDashboardData]);
 
-    DENTIST_DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      DENTIST_DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, loadDashboardData]);
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.DASHBOARD,
+    refresh: refreshDashboardCollaborationData
+  });
 
   // ===== After load -> park at the middle cluster on index 0
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { shouldSuppressToastMessage } from '../../../contexts/ToastContext';
 import { Link } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
@@ -8,44 +8,57 @@ import {
   getDentistServicesContext,
   getClinicDentistServices,
 } from '../../../services/dentistPortalService';
+import { useNotifications } from '../../../contexts/NotificationContext';
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 
 const ClinicServices = () => {
+  const { socket } = useNotifications();
   const [context, setContext] = useState(null);
   const [services, setServices] = useState({ general: [], specialist: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [contextError, setContextError] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const ctx = await getDentistServicesContext();
-        setContext(ctx);
-        if (ctx.dentistType === 'clinic') {
-          const clinicData = await getClinicDentistServices();
-          setServices({
-            general: clinicData.general || [],
-            specialist: clinicData.specialist || [],
-            clinic: clinicData.clinic,
-          });
-        }
-        setContextError(false);
-      } catch (err) {
-        console.error('Failed to load clinic services', err);
-        setContextError(true);
-        if (!shouldSuppressToastMessage(err?.message || 'Failed to load clinic services')) {
-          setError('Failed to load assigned services');
-        } else {
-          setError('');
-        }
-      } finally {
-        setLoading(false);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const ctx = await getDentistServicesContext();
+      setContext(ctx);
+      if (ctx.dentistType === 'clinic') {
+        const clinicData = await getClinicDentistServices();
+        setServices({
+          general: clinicData.general || [],
+          specialist: clinicData.specialist || [],
+          clinic: clinicData.clinic,
+        });
+      } else {
+        setServices({ general: [], specialist: [], clinic: null });
       }
-    };
-
-    fetchData();
+      setContextError(false);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load clinic services', err);
+      setContextError(true);
+      if (!shouldSuppressToastMessage(err?.message || 'Failed to load clinic services')) {
+        setError('Failed to load assigned services');
+      } else {
+        setError('');
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.STAFF,
+    refresh: fetchData
+  });
 
   if (loading) {
     return (

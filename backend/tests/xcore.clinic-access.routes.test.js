@@ -321,7 +321,7 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-test('clinical X-Core upload rejects missing patient assignment before parsing files', async () => {
+test('clinical X-Core upload rejects an invalid patient assignment before parsing files', async () => {
   let statusCode = 200;
   let payload = null;
   const response = {
@@ -338,7 +338,7 @@ test('clinical X-Core upload rejects missing patient assignment before parsing f
   await uploadStudy(
     {
       files: [{ path: '/tmp/nonexistent-xcore-upload', size: 1 }],
-      body: {},
+      body: { patientId: 'not-a-patient-id' },
       headers: {},
       user: { id: '1' },
     },
@@ -346,7 +346,7 @@ test('clinical X-Core upload rejects missing patient assignment before parsing f
   );
 
   assert.equal(statusCode, 400);
-  assert.equal(payload.code, 'patient_id_required');
+  assert.equal(payload.code, 'invalid_patient_id');
 });
 
 test('clinic X-Core studies are visible only to active authorized clinical roles in the same clinic', async () => {

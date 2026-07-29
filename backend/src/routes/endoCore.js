@@ -18,8 +18,23 @@ import {
   requireAllowed,
   requireEndoCase,
 } from '../services/endoCorePolicy.js';
+import { emitPortalInvalidation } from '../services/portalCollaboration.js';
 
 const asId = (value) => value === null || value === undefined ? null : value.toString();
+const emitEndoInvalidation = (req, record, action, { xcore = false } = {}) => {
+  const common = {
+    io: req.app?.get?.('io'),
+    entity: 'specialist_case',
+    entityId: record.id,
+    action,
+    status: record.status,
+    patientId: record.patientId,
+    dentistId: record.dentistId,
+    clinicProfileId: record.clinicProfileId,
+  };
+  emitPortalInvalidation({ ...common, eventName: 'specialist:case_updated' });
+  if (xcore) emitPortalInvalidation({ ...common, eventName: 'xcore:case_updated' });
+};
 const cleanText = (value, name, { required = false, max = 10_000 } = {}) => {
   const text = value === null || value === undefined ? '' : String(value).trim();
   if (required && !text) throw specialistWorkspaceError(400, `${name}_required`, `${name} is required.`);
@@ -413,6 +428,7 @@ export function createEndoCoreRouter({ prismaClient }) {
       if (xcoreStudyId) await timeline(tx, specialistCase.id, authorization.dentistId, 'xcore_result_linked', { source: 'study', referenceId: asId(xcoreStudyId) });
       return specialistCase;
     });
+    emitEndoInvalidation(req, created, 'created', { xcore: Boolean(created.xcoreStudyId) });
     res.status(201).json({ case: { ...baseSummary(created), endo: serializeEndo(created.endoCaseDetail) } });
   }));
 
@@ -546,6 +562,7 @@ export function createEndoCoreRouter({ prismaClient }) {
       );
       return saved;
     });
+    emitEndoInvalidation(req, record, 'difficulty_assessment_updated');
     res.json({
       difficultyAssessment: serializeDifficultyAssessment(
         assessment,
@@ -670,6 +687,7 @@ export function createEndoCoreRouter({ prismaClient }) {
         [evidence],
         req.user,
       ).then((slots) => slots.filter((item) => item.evidenceType === evidenceType));
+      emitEndoInvalidation(req, record, 'radiograph_evidence_linked', { xcore: true });
       res.json({ slot });
     }),
   );
@@ -711,6 +729,7 @@ export function createEndoCoreRouter({ prismaClient }) {
         }
         return removed.count > 0;
       });
+      if (unlinked) emitEndoInvalidation(req, record, 'radiograph_evidence_unlinked', { xcore: true });
       res.json({ unlinked });
     }),
   );
@@ -762,6 +781,9 @@ export function createEndoCoreRouter({ prismaClient }) {
 
       return detail;
     });
+    emitEndoInvalidation(req, { ...record, xcoreStudyId }, 'details_updated', {
+      xcore: xcoreStudyId !== undefined,
+    });
     res.json({ endo: serializeEndo(updated) });
   }));
 
@@ -776,9 +798,11 @@ export function createEndoCoreRouter({ prismaClient }) {
         notes: cleanText(req.body?.notes, 'notes'),
         performedAt: parseOptionalDate(req.body?.performedAt, 'performed_at'),
       } });
+      await tx.specialistCase.update({ where: { id: record.id }, data: { updatedAt: new Date() } });
       await timeline(tx, record.id, record.dentistId, 'endo_diagnostic_test_added', { testId: asId(created.id), testType });
       return created;
     });
+    emitEndoInvalidation(req, record, 'diagnostic_test_added');
     res.status(201).json({ test: serializeEndo({ diagnosticTests: [test], treatmentStages: [] }).diagnosticTests[0] });
   }));
 
@@ -794,9 +818,11 @@ export function createEndoCoreRouter({ prismaClient }) {
     if (req.body?.performedAt !== undefined) data.performedAt = parseOptionalDate(req.body.performedAt, 'performed_at');
     const updated = await prismaClient.$transaction(async (tx) => {
       const changed = await tx.endoDiagnosticTest.update({ where: { id: testId }, data });
+      await tx.specialistCase.update({ where: { id: record.id }, data: { updatedAt: new Date() } });
       await timeline(tx, record.id, record.dentistId, 'endo_diagnostic_test_updated', { testId: asId(testId) });
       return changed;
     });
+    emitEndoInvalidation(req, record, 'diagnostic_test_updated');
     res.json({ test: { ...updated, id: asId(updated.id), endoCaseDetailId: asId(updated.endoCaseDetailId) } });
   }));
 
@@ -811,9 +837,11 @@ export function createEndoCoreRouter({ prismaClient }) {
         notes: cleanText(req.body?.notes, 'notes'),
         performedAt: parseOptionalDate(req.body?.performedAt, 'performed_at'),
       } });
+      await tx.specialistCase.update({ where: { id: record.id }, data: { updatedAt: new Date() } });
       await timeline(tx, record.id, record.dentistId, 'endo_treatment_stage_added', { stageId: asId(created.id), stageType });
       return created;
     });
+    emitEndoInvalidation(req, record, 'treatment_stage_added');
     res.status(201).json({ stage: { ...stage, id: asId(stage.id), endoCaseDetailId: asId(stage.endoCaseDetailId), appointmentId: asId(stage.appointmentId) } });
   }));
 
@@ -830,9 +858,11 @@ export function createEndoCoreRouter({ prismaClient }) {
     if (req.body?.appointmentId !== undefined) data.appointmentId = await validateAppointment(prismaClient, req.body.appointmentId, record);
     const updated = await prismaClient.$transaction(async (tx) => {
       const changed = await tx.endoTreatmentStage.update({ where: { id: stageId }, data });
+      await tx.specialistCase.update({ where: { id: record.id }, data: { updatedAt: new Date() } });
       await timeline(tx, record.id, record.dentistId, 'endo_treatment_stage_updated', { stageId: asId(stageId) });
       return changed;
     });
+    emitEndoInvalidation(req, record, 'treatment_stage_updated');
     res.json({ stage: { ...updated, id: asId(updated.id), endoCaseDetailId: asId(updated.endoCaseDetailId), appointmentId: asId(updated.appointmentId) } });
   }));
 

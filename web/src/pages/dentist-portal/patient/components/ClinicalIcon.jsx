@@ -47,6 +47,7 @@ const iconMap = {
   'treatment-cost': { icon: 'CircleDollarSign', tone: 'indigo' },
   'treatment-plan': { icon: 'ClipboardList', tone: 'blue' },
   'treatment-progress': { icon: 'ListChecks', tone: 'amber' },
+  'xcore-imaging': { icon: 'ScanLine', tone: 'cyan' },
 };
 
 const toneClasses = {

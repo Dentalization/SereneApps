@@ -125,33 +125,20 @@ const AddDentistModal = ({
   // Populate clinic data when clinic prop changes
   useEffect(() => {
     if (clinic && !clinicLoading) {
-      console.log('🏥 Setting initial clinic data:', clinic);
       setClinicName(clinic.name || '');
       setClinicAddress(clinic.address || '');
     }
   }, [clinic, clinicLoading]);
 
-  // Debug branches data when modal opens
   useEffect(() => {
     if (isOpen) {
-      console.log('🏢 AddDentistModal opened with branches:', branches);
-      console.log('🏢 Branches length:', branches?.length || 0);
-      console.log('🏢 Clinic loading:', clinicLoading);
-      console.log('🏢 Clinic data:', clinic);
-      
-      if (branches && branches.length > 0) {
-        console.log('🏢 First branch sample:', JSON.stringify(branches[0], null, 2));
-      }
-      
       // Auto-select first branch if only one branch is available
       if (branches && branches.length === 1 && !selectedBranch) {
-        console.log('🏢 Auto-selecting single available branch:', branches[0]);
         setSelectedBranch(branches[0].id.toString());
       }
       
       // Ensure clinic name is set when modal opens, even if no branch selected
       if (clinic && !selectedBranch && !clinicName) {
-        console.log('🏢 Modal opened - setting initial clinic name from clinic data');
         setClinicName(clinic.name || '');
         setClinicAddress(clinic.address || '');
       }
@@ -162,84 +149,41 @@ const AddDentistModal = ({
   useEffect(() => {
     if (selectedBranch && branches && branches.length > 0) {
       const branch = branches.find(b => b.id.toString() === selectedBranch.toString());
-      console.log('🏢 Selected branch full data:', JSON.stringify(branch, null, 2));
-      
-      // Also log all available field keys for debugging
-      if (branch) {
-        console.log('🏢 Available branch fields:', Object.keys(branch));
-        if (branch.clinic) {
-          console.log('🏢 Available branch.clinic fields:', Object.keys(branch.clinic));
-        }
-        if (branch.clinicProfile) {
-          console.log('🏢 Available branch.clinicProfile fields:', Object.keys(branch.clinicProfile));
-        }
-      }
       
       if (branch) {
         // Clinic name should come from branchName as per database structure
         let branchClinicName = '';
         
-        // Debug all possible clinic name sources
-        console.log('🏢 Clinic name sources check:');
-        console.log('  - branch.branchName:', branch.branchName);
-        console.log('  - branch.name:', branch.name);
-        console.log('  - branch.clinicProfile?.name:', branch.clinicProfile?.name);
-        console.log('  - branch.clinic?.name:', branch.clinic?.name);
-        console.log('  - branch.clinicName:', branch.clinicName);
-        console.log('  - clinic?.name:', clinic?.name);
-        
         // Priority: branchName first, then other fallbacks
         if (branch.branchName) {
           branchClinicName = branch.branchName;
-          console.log('🏢 Using branch.branchName as clinic name:', branchClinicName);
         } else if (branch.name) {
           branchClinicName = branch.name;
-          console.log('🏢 Using branch.name as clinic name:', branchClinicName);
         } else if (branch.clinicProfile?.name) {
           branchClinicName = branch.clinicProfile.name;
-          console.log('🏢 Using clinicProfile.name as fallback:', branchClinicName);
         } else if (branch.clinic?.name) {
           branchClinicName = branch.clinic.name;
-          console.log('🏢 Using branch.clinic.name as fallback:', branchClinicName);
         } else if (clinic?.name) {
           // Use the main clinic name as last fallback
           branchClinicName = clinic.name;
-          console.log('🏢 Using main clinic.name as fallback:', branchClinicName);
         }
         
         // Try multiple possible field names for address
         let branchAddress = '';
         
-        console.log('🏢 Address sources check:');
-        console.log('  - branch.streetAddress:', branch.streetAddress);
-        console.log('  - branch.address:', branch.address);
-        console.log('  - branch.fullAddress:', branch.fullAddress);
-        console.log('  - branch.clinicProfile?.address:', branch.clinicProfile?.address);
-        console.log('  - branch.clinic?.address:', branch.clinic?.address);
-        console.log('  - clinic?.address:', clinic?.address);
-        
         if (branch.streetAddress) {
           branchAddress = branch.streetAddress;
-          console.log('🏢 Using branch.streetAddress:', branchAddress);
         } else if (branch.address) {
           branchAddress = branch.address;
-          console.log('🏢 Using branch.address:', branchAddress);
         } else if (branch.fullAddress) {
           branchAddress = branch.fullAddress;
-          console.log('🏢 Using branch.fullAddress:', branchAddress);
         } else if (branch.clinicProfile?.address) {
           branchAddress = branch.clinicProfile.address;
-          console.log('🏢 Using clinicProfile.address:', branchAddress);
         } else if (branch.clinic?.address) {
           branchAddress = branch.clinic.address;
-          console.log('🏢 Using branch.clinic.address:', branchAddress);
         } else if (clinic?.address) {
           branchAddress = clinic.address;
-          console.log('🏢 Using fallback clinic.address:', branchAddress);
         }
-        
-        console.log('🏢 Final clinic name:', branchClinicName);
-        console.log('🏢 Final clinic address:', branchAddress);
         
         setClinicName(branchClinicName);
         setClinicAddress(branchAddress);
@@ -250,7 +194,6 @@ const AddDentistModal = ({
       }
     } else if (!selectedBranch && clinic) {
       // Reset to main clinic data when no branch selected
-      console.log('🏢 Resetting to main clinic data:', clinic?.name, clinic?.address);
       setClinicName(clinic.name || '');
       setClinicAddress(clinic.address || '');
     }

@@ -4,6 +4,20 @@ import path from 'path';
 
 const DEFAULT_SIGNED_URL_TTL_MS = 15 * 60 * 1000;
 
+export function resolveVerifiedCaseStoragePublicBaseUrl({
+  apiVersion = process.env.API_VERSION || 'v1',
+  configuredBaseUrl = process.env.VERIFIED_CASE_IMAGE_PUBLIC_BASE_URL || '',
+} = {}) {
+  const version = String(apiVersion || 'v1').replace(/^\/+|\/+$/g, '') || 'v1';
+  const configured = String(configuredBaseUrl || '').trim().replace(/\/+$/, '');
+
+  // Relative artifact URLs are served by the router mounted at /<API_VERSION>.
+  // Keeping a second independently configurable relative prefix allowed the
+  // generated URL to drift to /api/v1 while the route was mounted at /v1.
+  if (!/^https?:\/\//i.test(configured)) return `/${version}/case-storage`;
+  return configured;
+}
+
 function safeName(name = 'image') {
   return String(name).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'image';
 }
@@ -110,7 +124,7 @@ export function createMemoryImageStorageAdapter({
 
 export function createLocalImageStorageAdapter({
   rootDir = process.env.VERIFIED_CASE_IMAGE_STORAGE_DIR || path.resolve(process.cwd(), 'uploads', 'verified-cases'),
-  publicBaseUrl = process.env.VERIFIED_CASE_IMAGE_PUBLIC_BASE_URL || `/${process.env.API_VERSION || 'v1'}/case-storage`,
+  publicBaseUrl = resolveVerifiedCaseStoragePublicBaseUrl(),
   signingSecret = process.env.VERIFIED_CASE_STORAGE_SIGNING_SECRET || process.env.JWT_SECRET,
   signedUrlTtlMs = Number(process.env.VERIFIED_CASE_SIGNED_URL_TTL_MS || DEFAULT_SIGNED_URL_TTL_MS),
 } = {}) {

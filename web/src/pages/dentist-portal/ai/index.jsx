@@ -120,6 +120,7 @@ const AIAnalysisPage = () => {
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const openingHistoryTokenRef = useRef(0);
 
   // P1-B: Only auto-scroll if user is already near the bottom
   // Prevents forcing scroll while reviewing older messages
@@ -134,6 +135,7 @@ const AIAnalysisPage = () => {
   
   // Auto-scroll: only scroll to bottom if user is already near the bottom
   useEffect(() => { 
+    if (openingHistoryTokenRef.current) return;
     if (isNearBottom() && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -142,7 +144,18 @@ const AIAnalysisPage = () => {
   const handleSend = useCallback((text, imageFile) => { sendMessage(text, imageFile); }, [sendMessage]);
   const handleSuggestedQuestion = useCallback((q) => { sendMessage(q); }, [sendMessage]);
   const handleNewSession = useCallback(async () => { await startNewSession(); setSidebarOpen(false); }, [startNewSession]);
-  const handleSelectHistory = useCallback(async (item) => { await loadClinicalHistoryItem(item); setSidebarOpen(false); }, [loadClinicalHistoryItem]);
+  const handleSelectHistory = useCallback(async (item) => {
+    const openingToken = openingHistoryTokenRef.current + 1;
+    openingHistoryTokenRef.current = openingToken;
+    try {
+      await loadClinicalHistoryItem(item);
+      if (openingHistoryTokenRef.current !== openingToken) return;
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+      setSidebarOpen(false);
+    } finally {
+      if (openingHistoryTokenRef.current === openingToken) openingHistoryTokenRef.current = 0;
+    }
+  }, [loadClinicalHistoryItem]);
   const handleArchiveHistory = useCallback(async (item) => { await archiveWorkspaceCase(item); }, [archiveWorkspaceCase]);
   const handleCreateCase = useCallback(async () => { await createWorkspaceCase({ title: currentSessionTitle || 'Verified dental case' }); }, [createWorkspaceCase, currentSessionTitle]);
   const handleRefreshCase = useCallback(async () => {

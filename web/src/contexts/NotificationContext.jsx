@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { getAccessToken } from '../utils/auth/tokenStorage';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
+import { collectUserRoles, getClinicRole } from '../utils/clinicRoles';
 import {
   getNotifications as apiGetNotifications,
   markNotificationAsRead as apiMarkNotificationAsRead,
@@ -51,6 +52,8 @@ function getCategory(type) {
   if (t === 'chat_invite') return 'teledentistry';
   if (t.startsWith('treatment_plan_')) return 'clinical';
   if (t.startsWith('ai_')) return 'clinical';
+  if (t.startsWith('payment_') || t.startsWith('billing_') || t.startsWith('invoice_')) return 'business';
+  if (t.startsWith('security_') || t.startsWith('auth_')) return 'compliance';
   return 'default';
 }
 
@@ -81,17 +84,33 @@ function getSeverity(type) {
   }
 }
 
-function getActions(type, data) {
+function getActions(type, data, portal) {
+  const clinicPortal = portal === 'clinic';
   switch (type) {
     case 'appointment_confirmed':
+    case 'appointment_cancelled':
     case 'appointment_rescheduled':
     case 'appointment_reminder':
-      return [{ label: 'Review Jadwal', href: `/dentist-portal/schedule` }];
+    case 'appointment_payment_failed':
+      return [{
+        label: 'Review Jadwal',
+        href: clinicPortal ? '/clinic-portal/schedule' : '/dentist-portal/schedule'
+      }];
     case 'chat_invite':
-      return [{ label: 'Buka Konsultasi', href: `/dentist-portal/teledentistry` }];
+      return [{
+        label: 'Buka Konsultasi',
+        href: clinicPortal ? '/clinic-portal/teledentistry' : '/dentist-portal/teledentistry'
+      }];
     case 'treatment_plan_sent':
     case 'treatment_plan_approved':
     case 'treatment_plan_rejected':
+      if (clinicPortal) {
+        const patientId = data?.patient?.id;
+        const query = patientId
+          ? `?patientId=${encodeURIComponent(patientId)}&tab=history`
+          : '';
+        return [{ label: 'Tinjau Treatment', href: `/clinic-portal/patients${query}` }];
+      }
       if (data?.patient?.id) {
         return [{ label: 'Tinjau Treatment', href: `/dentist-portal/patient-emr/${data.patient.id}` }];
       }
@@ -101,8 +120,12 @@ function getActions(type, data) {
   }
 }
 
-function mapDatabaseNotification(dbNotif) {
+function mapDatabaseNotification(dbNotif, portal) {
   const { timeframe, timestamp } = parseNotificationTime(dbNotif.created_at);
+  const actionsByPortal = {
+    clinic: getActions(dbNotif.type, dbNotif.data, 'clinic'),
+    dentist: getActions(dbNotif.type, dbNotif.data, 'dentist')
+  };
   return {
     id: dbNotif.id,
     category: getCategory(dbNotif.type),
@@ -114,7 +137,8 @@ function mapDatabaseNotification(dbNotif) {
     meta: dbNotif.data?.clinicName || dbNotif.data?.startsAt ? 
       `${dbNotif.data?.clinicName || ''} ${dbNotif.data?.startsAt ? '• ' + new Date(dbNotif.data.startsAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}`.trim() : null,
     severity: getSeverity(dbNotif.type),
-    actions: getActions(dbNotif.type, dbNotif.data),
+    actions: actionsByPortal[portal],
+    actionsByPortal,
     read: dbNotif.is_read,
     rawCreatedAt: dbNotif.created_at
   };
@@ -126,13 +150,17 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState(null);
+  const notificationPortal = useMemo(() => {
+    const roles = collectUserRoles(user);
+    return getClinicRole(user) && !roles.includes('dentist') ? 'clinic' : 'dentist';
+  }, [user]);
 
   const fetchNotifications = useCallback(async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
       const res = await apiGetNotifications({ limit: 100 });
       if (res && res.success && res.data?.notifications) {
-        const mapped = res.data.notifications.map(mapDatabaseNotification);
+        const mapped = res.data.notifications.map((item) => mapDatabaseNotification(item, notificationPortal));
         setNotifications(mapped);
       }
     } catch (err) {
@@ -140,7 +168,7 @@ export const NotificationProvider = ({ children }) => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [notificationPortal]);
 
   // Fetch initial on mount / user change
   useEffect(() => {
@@ -184,9 +212,7 @@ export const NotificationProvider = ({ children }) => {
     });
 
     newSocket.on('notification:new', (newNotif) => {
-      console.log('🔔 Received new realtime notification:', newNotif);
-      
-      const mapped = mapDatabaseNotification(newNotif);
+      const mapped = mapDatabaseNotification(newNotif, notificationPortal);
       setNotifications((prev) => {
         // Prevent duplicate addition
         if (prev.some((n) => n.id === mapped.id)) return prev;
@@ -206,7 +232,7 @@ export const NotificationProvider = ({ children }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [user, toast]);
+  }, [notificationPortal, user, toast]);
 
   const markAsRead = useCallback(async (id) => {
     try {

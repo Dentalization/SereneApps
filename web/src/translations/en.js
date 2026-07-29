@@ -2184,6 +2184,7 @@ export default {
       },
       status: {
         active: 'Active',
+        new: 'New',
         inactive: 'Inactive',
         vip: 'VIP'
       },

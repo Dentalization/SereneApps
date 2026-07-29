@@ -2145,6 +2145,7 @@ export default {
       },
       status: {
         active: 'Aktif',
+        new: 'Baru',
         inactive: 'Tidak Aktif',
         vip: 'VIP'
       },

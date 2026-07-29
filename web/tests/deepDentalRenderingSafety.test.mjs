@@ -20,6 +20,23 @@ test('DeepDental annotated images are rendered through mime-aware helpers', () =
 
   assert.equal(source.includes('data:image/jpeg;base64,'), false);
   assert.match(source, /buildAnnotatedImageDataUrl/);
+  assert.match(source, /onError/);
+  assert.match(source, /annotatedBase64Src/);
+});
+
+test('DeepDental history images never remain as broken browser image elements', () => {
+  const source = read('web/src/pages/dentist-portal/ai/components/ChatMessage.jsx');
+
+  assert.match(source, /UserHistoryImage/);
+  assert.match(source, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.match(source, /Gambar riwayat tidak tersedia di storage/);
+});
+
+test('opening clinical history keeps the viewport at the first loaded message', () => {
+  const source = read('web/src/pages/dentist-portal/ai/index.jsx');
+
+  assert.match(source, /openingHistoryTokenRef/);
+  assert.match(source, /scrollContainerRef\.current\.scrollTop = 0/);
 });
 
 test('DeepDental frontend source does not reference browser-exposed AI API key env vars', () => {

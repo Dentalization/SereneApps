@@ -20,12 +20,82 @@ import {
 } from '../schemas/auth.schema.js';
 import { APIError } from '../utils/error-codes.js';
 import { normalizePatientPhone } from '../services/patients/patientIdentityResolver.js';
+import { emitPortalInvalidation } from '../services/portalCollaboration.js';
+import { resolveDentistClinicContext } from '../services/dentistClinicContextService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+function registrationAccessError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function removeRegistrationUploads(req) {
+  Object.values(req.files || {}).flat().forEach((file) => {
+    try {
+      if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    } catch {
+      // The upload is best-effort cleanup; never replace the authorization error.
+    }
+  });
+}
+
+async function authorizeClinicDentistRegistration(req, clinicId, branchId) {
+  if (!clinicId) throw registrationAccessError(400, 'Clinic assignment requires a clinic ID');
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) throw registrationAccessError(401, 'Clinic staff registration requires authentication');
+
+  let actor;
+  try {
+    actor = verify(token);
+  } catch {
+    throw registrationAccessError(403, 'Invalid or expired access token');
+  }
+
+  if (!actor?.sub) throw registrationAccessError(403, 'Invalid access token');
+  let clinicProfileId;
+  let requesterUserId;
+  let assignedBranchId = null;
+  try {
+    clinicProfileId = BigInt(clinicId);
+    requesterUserId = BigInt(actor.sub);
+    assignedBranchId = branchId ? BigInt(branchId) : null;
+  } catch {
+    throw registrationAccessError(400, 'Invalid clinic or branch ID');
+  }
+  const requester = await prisma.clinicStaff.findFirst({
+    where: {
+      userId: requesterUserId,
+      clinicProfileId,
+      isActive: true,
+      role: { in: ['owner', 'manager', 'admin'] }
+    },
+    select: { id: true }
+  });
+  if (!requester) {
+    throw registrationAccessError(403, 'Only an active clinic owner or manager can add a dentist');
+  }
+
+  if (branchId) {
+    const branch = await prisma.clinicBranch.findFirst({
+      where: {
+        id: assignedBranchId,
+        clinicProfileId,
+        isActive: true
+      },
+      select: { id: true }
+    });
+    if (!branch) throw registrationAccessError(400, 'Branch does not belong to the selected clinic');
+  }
+
+  return { clinicProfileId };
+}
 
 function ensureCorrelationId(req, res) {
   const correlationId = req.get('X-Correlation-Id') || req.get('X-Request-Id') || randomUUID();
@@ -272,22 +342,14 @@ router.post('/patient/register', async (req, res) => {
     }
 
     // Check if email already exists - CRITICAL SECURITY CHECK
-    console.log('🔍 [PATIENT REGISTRATION] Checking if email already exists:', normalizedEmail);
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
-      console.error('❌ [PATIENT REGISTRATION] BLOCKED - Email already registered!');
-      console.error('❌ Attempted email:', normalizedEmail);
-      console.error('❌ Existing user ID:', existing.id);
-      console.error('❌ Existing user roles:', existing.roles);
-      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
       return res.status(409).json({ 
         message: 'Email already registered',
         error: 'DUPLICATE_EMAIL',
         details: 'Email ini sudah terdaftar. Silakan gunakan email lain atau login dengan akun yang sudah ada.'
       });
     }
-    console.log('✅ [PATIENT REGISTRATION] Email is available:', normalizedEmail);
-
     const client = await getClient();
     let transactionStarted = false;
 
@@ -472,15 +534,7 @@ router.post('/register', upload.fields([
   { name: 'ijazahFiles', maxCount: 5 },
   { name: 'certificationFiles', maxCount: 10 }
 ]), async (req, res) => {
-  console.log('\n=== REGISTRATION REQUEST RECEIVED ===');
-  console.log('Request body keys:', Object.keys(req.body));
-  console.log('Request files:', Object.keys(req.files || {}));
-  console.log('Full request body:', req.body);
-  console.log('=====================================\n');
-  
   try {
-    console.log('Starting registration process...');
-    
     const { 
       // Personal Information
       name, email, password, phoneNumber, about,
@@ -502,14 +556,15 @@ router.post('/register', upload.fields([
       // Registration Type (for clinic staff assignment)
       registrationType, clinicId, branchId
     } = req.body || {};
-    
-    console.log('\n=== EXTRACTED FIELDS ===');
-    console.log('Personal:', { name, email, phoneNumber, about });
-    console.log('Professional:', { title, licenseNumber, licenseIssuingBody, licenseExpiryDate, registrationNumber, primarySpecialization, educationQualification, yearsOfExperienceRaw });
-    console.log('Clinic:', { clinicName, clinicAddress, clinicWorkingHours });
-    console.log('Optional:', { consultationFee, acceptsInsurance, acceptsBPJS, emergencyAvailability });
-    console.log('Registration:', { registrationType, clinicId, branchId });
-    console.log('========================\n');
+
+    if (registrationType === 'clinic-staff') {
+      try {
+        await authorizeClinicDentistRegistration(req, clinicId, branchId);
+      } catch (accessError) {
+        removeRegistrationUploads(req);
+        return res.status(accessError.status || 403).json({ message: accessError.message });
+      }
+    }
 
     // Convert yearsOfExperience to number
     const yearsOfExperience = parseInt(yearsOfExperienceRaw) || 0;
@@ -526,68 +581,43 @@ router.post('/register', upload.fields([
     let consultationTypes = [];
     let servicesOffered = [];
     
-    console.log('Raw consultationTypes from FormData:', req.body.consultationTypes);
-    console.log('Raw servicesOffered from FormData:', req.body.servicesOffered);
-    
     // Try to parse JSON strings first (new format from frontend)
     try {
       if (req.body.consultationTypes) {
         consultationTypes = JSON.parse(req.body.consultationTypes);
-        console.log('Parsed consultationTypes (JSON):', consultationTypes);
       }
     } catch (e) {
-      console.log('Failed to parse consultationTypes as JSON, trying manual parsing');
       // Fallback to manual parsing for backward compatibility
       for (const key in req.body) {
         if (key.startsWith('consultationTypes[')) {
           consultationTypes.push(req.body[key]);
         }
       }
-      console.log('Parsed consultationTypes (manual):', consultationTypes);
     }
     
     try {
       if (req.body.servicesOffered) {
         servicesOffered = JSON.parse(req.body.servicesOffered);
-        console.log('Parsed servicesOffered (JSON):', servicesOffered);
       }
     } catch (e) {
-      console.log('Failed to parse servicesOffered as JSON, trying manual parsing');
       // Fallback to manual parsing for backward compatibility
       for (const key in req.body) {
         if (key.startsWith('servicesOffered[')) {
           servicesOffered.push(req.body[key]);
         }
       }
-      console.log('Parsed servicesOffered (manual):', servicesOffered);
     }
-    
-    console.log('Final parsed arrays:', { consultationTypes, servicesOffered });
 
     // Get uploaded files
-    console.log('\n=== FILES EXTRACTION DEBUG ===');
-    console.log('req.files exists:', !!req.files);
-    console.log('req.files keys:', Object.keys(req.files || {}));
-    console.log('req.files full object:', req.files);
-    
     const files = req.files || {};
-    console.log('files object after assignment:', files);
-    
     const sipFile = files.sipFile?.[0];
-    console.log('sipFile extraction result:', sipFile);
-    
     const strFile = files.strFile?.[0];
-    console.log('strFile extraction result:', strFile);
-    
     const ijazahFiles = files.ijazahFiles || [];
-    console.log('ijazahFiles extraction result:', ijazahFiles);
-    
     const certificationFiles = files.certificationFiles || [];
-    console.log('certificationFiles extraction result:', certificationFiles);
-    console.log('===============================\n');
 
     // Validate required fields
     if (!name || !email || !password) {
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: 'Missing basic user fields' });
     }
 
@@ -599,219 +629,85 @@ router.post('/register', upload.fields([
       consultationTypes, servicesOffered
     };
     
-    console.log('Validating professional fields for dentist...');
-    console.log('Required professional fields:', Object.keys(requiredProfessionalFields));
-    console.log('Available fields in req.body:', Object.keys(req.body));
-    
-    const missingProfessionalFields = [];
-    
-    if (!title) {
-      console.log('Field "title": MISSING (value:', title, ')');
-      missingProfessionalFields.push('title');
-    } else {
-      console.log('Field "title": PRESENT (value:', title, ')');
-    }
-    
-    if (!licenseNumber) {
-      console.log('Field "licenseNumber": MISSING (value:', licenseNumber, ')');
-      missingProfessionalFields.push('licenseNumber');
-    } else {
-      console.log('Field "licenseNumber": PRESENT (value:', licenseNumber, ')');
-    }
-    
-    if (!licenseIssuingBody) {
-      console.log('Field "licenseIssuingBody": MISSING (value:', licenseIssuingBody, ')');
-      missingProfessionalFields.push('licenseIssuingBody');
-    } else {
-      console.log('Field "licenseIssuingBody": PRESENT (value:', licenseIssuingBody, ')');
-    }
-    
-    if (!licenseExpiryDate) {
-      console.log('Field "licenseExpiryDate": MISSING (value:', licenseExpiryDate, ')');
-      missingProfessionalFields.push('licenseExpiryDate');
-    } else {
-      console.log('Field "licenseExpiryDate": PRESENT (value:', licenseExpiryDate, ')');
-    }
-    
-    if (!registrationNumber) {
-      console.log('Field "registrationNumber": MISSING (value:', registrationNumber, ')');
-      missingProfessionalFields.push('registrationNumber');
-    } else {
-      console.log('Field "registrationNumber": PRESENT (value:', registrationNumber, ')');
-    }
-    
-    if (!primarySpecialization) {
-      console.log('Field "primarySpecialization": MISSING (value:', primarySpecialization, ')');
-      missingProfessionalFields.push('primarySpecialization');
-    } else {
-      console.log('Field "primarySpecialization": PRESENT (value:', primarySpecialization, ')');
-    }
-    
-    if (!educationQualification) {
-      console.log('Field "educationQualification": MISSING (value:', educationQualification, ')');
-      missingProfessionalFields.push('educationQualification');
-    } else {
-      console.log('Field "educationQualification": PRESENT (value:', educationQualification, ')');
-    }
-    
-    if (yearsOfExperience === undefined || yearsOfExperience === null) {
-      console.log('Field "yearsOfExperience": MISSING (value:', yearsOfExperience, ')');
-      missingProfessionalFields.push('yearsOfExperience');
-    } else {
-      console.log('Field "yearsOfExperience": PRESENT (value:', yearsOfExperience, ')');
-    }
-    
-    if (!clinicName) {
-      console.log('Field "clinicName": MISSING (value:', clinicName, ')');
-      missingProfessionalFields.push('clinicName');
-    } else {
-      console.log('Field "clinicName": PRESENT (value:', clinicName, ')');
-    }
-    
-    if (!clinicAddress) {
-      console.log('Field "clinicAddress": MISSING (value:', clinicAddress, ')');
-      missingProfessionalFields.push('clinicAddress');
-    } else {
-      console.log('Field "clinicAddress": PRESENT (value:', clinicAddress, ')');
-    }
-    
-    if (!clinicWorkingHours) {
-      console.log('Field "clinicWorkingHours": MISSING (value:', clinicWorkingHours, ')');
-      missingProfessionalFields.push('clinicWorkingHours');
-    } else {
-      console.log('Field "clinicWorkingHours": PRESENT (value:', clinicWorkingHours, ')');
-    }
-    
-    if (!consultationTypes?.length) {
-      console.log('Field "consultationTypes": MISSING or EMPTY (value:', consultationTypes, ')');
-      missingProfessionalFields.push('consultationTypes');
-    } else {
-      console.log('Field "consultationTypes": PRESENT (value:', consultationTypes, ')');
-    }
-    
-    if (!servicesOffered?.length) {
-      console.log('Field "servicesOffered": MISSING or EMPTY (value:', servicesOffered, ')');
-      missingProfessionalFields.push('servicesOffered');
-    } else {
-      console.log('Field "servicesOffered": PRESENT (value:', servicesOffered, ')');
-    }
-    
+    const missingProfessionalFields = Object.entries(requiredProfessionalFields)
+      .filter(([, value]) => value === undefined || value === null || value === ''
+        || (Array.isArray(value) && value.length === 0))
+      .map(([field]) => field);
+
     if (missingProfessionalFields.length > 0) {
-      console.log('Missing professional fields:', missingProfessionalFields);
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: `Missing required professional fields: ${missingProfessionalFields.join(', ')}` });
     }
-    
-    console.log('All professional fields validation passed!');
 
     // Validate required documents
     if (!sipFile) {
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: 'SIP document is required' });
     }
     if (!strFile) {
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: 'STR document is required' });
     }
     if (!ijazahFiles || ijazahFiles.length === 0) {
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: 'At least one diploma document is required' });
     }
 
     // Validate data types and ranges
     if (yearsOfExperience < 0 || yearsOfExperience > 60) {
+      removeRegistrationUploads(req);
       return res.status(400).json({ message: 'Years of experience must be between 0-60' });
     }
 
     // Check if user already exists - CRITICAL SECURITY CHECK
-    console.log('🔍 Checking if email already exists:', email);
     const existing = await findUserByEmail(email);
     if (existing) {
-      console.error('❌ REGISTRATION BLOCKED - Email already registered!');
-      console.error('❌ Attempted email:', email);
-      console.error('❌ Existing user ID:', existing.id);
-      console.error('❌ Existing user roles:', existing.roles);
-      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
+      removeRegistrationUploads(req);
       return res.status(409).json({ 
         message: 'Email already registered',
         error: 'DUPLICATE_EMAIL',
         details: 'This email is already associated with an account. Please use a different email or login with existing credentials.'
       });
     }
-    console.log('✅ Email is available:', email);
-
     // Check if license number or registration number already exists
-    console.log('🔍 Checking if license/registration number already exists...');
     const existingLicense = await query(
       'SELECT id FROM dentist_profiles WHERE license_number = $1 OR registration_number = $2',
       [licenseNumber, registrationNumber]
     );
     if (existingLicense.rows.length > 0) {
-      console.error('❌ REGISTRATION BLOCKED - License/Registration number already exists!');
-      console.error('❌ Attempted license number:', licenseNumber);
-      console.error('❌ Attempted registration number:', registrationNumber);
-      console.error('❌ Registration attempt from IP:', req.ip || req.connection.remoteAddress);
+      removeRegistrationUploads(req);
       return res.status(409).json({ 
         message: 'License number or registration number already exists',
         error: 'DUPLICATE_LICENSE',
         details: 'A dentist profile with this license or registration number already exists in our system.'
       });
     }
-    console.log('✅ License and registration numbers are available');
-
-    // Start transaction
-    console.log('Starting database transaction...');
-    await query('BEGIN');
-    console.log('Database transaction started successfully');
-
-    let transactionCommitted = false; // Track if we've committed the transaction
+    const client = await getClient();
+    let transactionStarted = false;
+    let clinicInvalidation = null;
     try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+
       // Create user
-      console.log('Creating user in database...');
-      console.log('User data:', { name, email, phoneNumber, about });
-      
       const hash = await bcrypt.hash(password, 10);
       const roles = ['dentist'];
-      const userResult = await query(
+      const userResult = await client.query(
         'INSERT INTO users(name, email, password_hash, roles, phone_number, about) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, roles',
         [name, email, hash, roles, phoneNumber, about]
       );
       const user = userResult.rows[0];
-      
-      console.log('User created successfully:', { id: user.id, email: user.email, roles: user.roles });
 
       // Create dentist profile with document paths
-      console.log('Creating dentist profile...');
-      console.log('Profile data:', {
-        user_id: user.id,
-        title, licenseNumber, licenseIssuingBody, licenseExpiryDate,
-        registrationNumber, primarySpecialization, educationQualification,
-        yearsOfExperience: parseInt(yearsOfExperience),
-        clinicName, clinicAddress,
-        parsedWorkingHours, consultationTypes, servicesOffered,
-        consultationFee: consultationFee ? parseInt(consultationFee) : null,
-        acceptsInsurance: acceptsInsurance === 'true',
-        acceptsBPJS: acceptsBPJS === 'true',
-        emergencyAvailability: emergencyAvailability === 'true'
-      });
-      
-      // Debug file objects before creating paths
-      console.log('\n=== FILE OBJECTS DEBUG ===');
-      console.log('sipFile object:', sipFile);
-      console.log('sipFile filename:', sipFile?.filename);
-      console.log('strFile object:', strFile);
-      console.log('strFile filename:', strFile?.filename);
-      console.log('ijazahFiles array:', ijazahFiles);
-      console.log('ijazahFiles filenames:', ijazahFiles.map(f => f?.filename));
-      console.log('certificationFiles array:', certificationFiles);
-      console.log('certificationFiles filenames:', certificationFiles.map(f => f?.filename));
-      console.log('========================\n');
-      
-      await query(
+      await client.query(
         `INSERT INTO dentist_profiles(
           user_id, title, license_number, license_issuing_body, license_expiry_date,
           registration_number, primary_specialization, education_qualification, years_of_experience,
           clinic_name, clinic_address, clinic_working_hours, consultation_types, services_offered,
           consultation_fee, accepts_insurance, accepts_bpjs, emergency_availability,
-          city, district, province, postal_code, latitude, longitude, dentist_type,
+          city, district, province, postal_code, latitude, longitude, dentist_type, clinic_id,
           sip_file_path, str_file_path, ijazah_file_paths, certification_file_paths
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
         [user.id, title, licenseNumber, licenseIssuingBody, licenseExpiryDate,
           registrationNumber, primarySpecialization, educationQualification, parseInt(yearsOfExperience),
           clinicName, clinicAddress, parsedWorkingHours, consultationTypes, servicesOffered,
@@ -823,7 +719,8 @@ router.post('/register', upload.fields([
           postalCode || null,
           latitude ? parseFloat(latitude) : null,
           longitude ? parseFloat(longitude) : null,
-          'independent', // Default to independent for web registration
+          registrationType === 'clinic-staff' ? 'clinic' : 'independent',
+          registrationType === 'clinic-staff' && clinicId ? BigInt(clinicId) : null,
           sipFile ? `uploads/documents/sip/${sipFile.filename}` : null,
           strFile ? `uploads/documents/str/${strFile.filename}` : null,
           ijazahFiles.map(f => `uploads/documents/ijazah/${f.filename}`),
@@ -831,74 +728,32 @@ router.post('/register', upload.fields([
         ]
       );
       
-      console.log('Dentist profile created successfully!');
-
-      // Commit transaction FIRST - before clinic staff assignment
-      // This is critical because Prisma uses a different connection and needs the user to exist
-      console.log('💾 Committing transaction to save user and dentist profile...');
-      await query('COMMIT');
-      transactionCommitted = true; // Mark as committed
-      console.log('✅ Transaction committed - user and dentist profile saved to database');
-
-      // Handle clinic staff assignment for clinic-staff registration type
-      // This happens AFTER commit so the user.id foreign key exists
-      console.log('🔍 Checking clinic staff assignment conditions...', {
-        registrationType,
-        hasClinicId: !!clinicId,
-        clinicId,
-        branchId,
-        conditionResult: (registrationType === 'clinic-staff' && clinicId)
-      });
-      
+      // Keep user, professional profile, and clinic assignment atomic. A clinic
+      // dentist must never exist without its canonical ClinicStaff relation.
       if (registrationType === 'clinic-staff' && clinicId) {
-        console.log('🏥 Adding dentist to clinic staff...', { registrationType, clinicId, branchId });
-        
-        try {
-          // Convert clinicId and branchId to BigInt if provided
-          const clinicIdBigInt = BigInt(clinicId);
-          const branchIdBigInt = branchId ? BigInt(branchId) : null;
-          
-          // Insert into clinic_staff table using Prisma
-          // User is already committed to database, so foreign key will work
-          const clinicStaffRecord = await prisma.clinicStaff.create({
-            data: {
-              clinicProfileId: clinicIdBigInt,
-              userId: BigInt(user.id),
-              role: 'dentist',
-              isActive: true,
-              hireDate: new Date(),
-              positionTitle: title || 'Dentist',
-              department: 'Medical',
-              assignedBranchId: branchIdBigInt,
-              permissions: {}
-            }
-          });
-          
-          console.log('✅ Dentist successfully added to clinic staff!', { 
-            id: clinicStaffRecord.id.toString(),
-            clinicProfileId: clinicStaffRecord.clinicProfileId.toString(),
-            userId: clinicStaffRecord.userId.toString(),
-            role: clinicStaffRecord.role
-          });
-        } catch (clinicStaffError) {
-          console.error('❌ Error adding dentist to clinic staff:');
-          console.error('Error name:', clinicStaffError.name);
-          console.error('Error message:', clinicStaffError.message);
-          console.error('Error code:', clinicStaffError.code);
-          console.error('Full error:', clinicStaffError);
-          
-          // If clinic staff assignment fails, we should still return success
-          // because the dentist profile was created successfully
-          console.warn('⚠️ Dentist profile created but clinic staff assignment failed');
-          console.warn('⚠️ User will need to be manually assigned to clinic staff');
-        }
-      } else {
-        console.log('ℹ️ Skipping clinic staff assignment - conditions not met:', {
-          registrationType,
-          hasClinicId: !!clinicId,
-          reason: !registrationType ? 'no registrationType' :
-                  registrationType !== 'clinic-staff' ? 'registrationType not clinic-staff' :
-                  !clinicId ? 'no clinicId' : 'unknown'
+        const clinicIdBigInt = BigInt(clinicId);
+        const branchIdBigInt = branchId ? BigInt(branchId) : null;
+        await client.query(
+          `INSERT INTO clinic_staff(
+            clinic_profile_id, user_id, role, is_active, hire_date,
+            position_title, department, assigned_branch_id, permissions
+          ) VALUES ($1, $2, 'dentist', TRUE, CURRENT_DATE, $3, 'Medical', $4, $5::jsonb)`,
+          [clinicIdBigInt, user.id, title || 'Dentist', branchIdBigInt, JSON.stringify({})]
+        );
+        clinicInvalidation = { clinicProfileId: clinicIdBigInt, dentistId: user.id };
+      }
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      if (clinicInvalidation) {
+        emitPortalInvalidation({
+          io: req.app?.get?.('io'),
+          eventName: 'clinic:staff_updated',
+          entity: 'clinic_staff',
+          action: 'created',
+          dentistId: clinicInvalidation.dentistId,
+          clinicProfileId: clinicInvalidation.clinicProfileId,
         });
       }
 
@@ -936,14 +791,8 @@ router.post('/register', upload.fields([
         uploadedFiles 
       });
     } catch (error) {
-      // Only rollback if transaction hasn't been committed yet
-      if (!transactionCommitted) {
-        console.error('❌ Error occurred before commit, rolling back transaction...');
-        await query('ROLLBACK');
-        console.error('✅ Transaction rolled back');
-      } else {
-        console.error('❌ Error occurred after commit, transaction already saved');
-        console.error('❌ User and dentist profile are saved but clinic staff assignment failed');
+      if (transactionStarted) {
+        await client.query('ROLLBACK');
       }
       
       // Clean up uploaded files if transaction fails
@@ -966,6 +815,8 @@ router.post('/register', upload.fields([
       });
       
       throw error;
+    } finally {
+      client.release();
     }
   } catch (e) {
     console.error('Registration error:', e);
@@ -985,9 +836,7 @@ router.post('/login', async (req, res) => {
     if (!ok) return res.status(401).json({ message: 'Password salah. Silakan periksa kembali password Anda.' });
 
     // Check if user is a dentist and if so, verify they are verified
-    console.log('🔍 User roles:', user.roles, 'User ID:', user.id);
     if (user.roles && user.roles.includes('dentist')) {
-      console.log('🦷 User is a dentist, checking verification...');
       const prisma = new PrismaClient();
       try {
         const profile = await prisma.dentistProfile.findFirst({
@@ -995,17 +844,13 @@ router.post('/login', async (req, res) => {
           select: { isVerified: true }
         });
         
-        console.log('🔍 Dentist profile:', profile);
-        
         if (!profile || !profile.isVerified) {
-          console.log('❌ Dentist not verified, blocking login');
           return res.status(403).json({ 
             message: 'Akun Anda belum diverifikasi. Silakan tunggu proses verifikasi dari admin atau hubungi customer service untuk informasi lebih lanjut.',
             code: 'DENTIST_NOT_VERIFIED'
           });
         }
         
-        console.log('✅ Dentist is verified, allowing login');
       } finally {
         await prisma.$disconnect();
       }
@@ -1091,7 +936,7 @@ router.get('/me', async (req, res) => {
           clinic_name, clinic_address, clinic_working_hours, consultation_types, services_offered,
           consultation_fee, accepts_insurance, accepts_bpjs, emergency_availability,
           sip_file_path, str_file_path, ijazah_file_paths, certification_file_paths,
-          is_verified, verification_date
+          is_verified, verification_date, dentist_type, clinic_id
         FROM dentist_profiles 
         WHERE user_id = $1
       `;
@@ -1099,22 +944,37 @@ router.get('/me', async (req, res) => {
       const profile = profileRows[0];
 
       if (profile) {
-        responsePayload.profile = {
+        const clinicContext = await resolveDentistClinicContext({
+          prismaClient: prisma,
+          dentistUserId: user.id
+        });
+        const effectiveProfile = {
           ...profile,
+          dentist_type: clinicContext ? 'clinic' : 'independent',
+          clinic_id: clinicContext?.clinicProfileId || null,
+          ...(clinicContext ? {
+            clinic_name: clinicContext.clinicName,
+            clinic_address: clinicContext.clinicAddress,
+            clinic_working_hours: clinicContext.operatingHours,
+            clinic_context: clinicContext
+          } : {})
+        };
+        responsePayload.profile = {
+          ...effectiveProfile,
           uploadedFiles: {
-            sipFile: profile.sip_file_path ? {
-              path: profile.sip_file_path,
+            sipFile: effectiveProfile.sip_file_path ? {
+              path: effectiveProfile.sip_file_path,
               exists: true
             } : null,
-            strFile: profile.str_file_path ? {
-              path: profile.str_file_path,
+            strFile: effectiveProfile.str_file_path ? {
+              path: effectiveProfile.str_file_path,
               exists: true
             } : null,
-            ijazahFiles: profile.ijazah_file_paths ? profile.ijazah_file_paths.map(path => ({
+            ijazahFiles: effectiveProfile.ijazah_file_paths ? effectiveProfile.ijazah_file_paths.map(path => ({
               path,
               exists: true
             })) : [],
-            certificationFiles: profile.certification_file_paths ? profile.certification_file_paths.map(path => ({
+            certificationFiles: effectiveProfile.certification_file_paths ? effectiveProfile.certification_file_paths.map(path => ({
               path,
               exists: true
             })) : []
@@ -1250,12 +1110,19 @@ router.get('/dentist-profile', authenticateToken, async (req, res) => {
     }
 
     const profile = result.rows[0];
+    const clinicContext = await resolveDentistClinicContext({
+      prismaClient: prisma,
+      dentistUserId: userId
+    });
     
-    // Parse clinic working hours if it's stored as JSON string
+    // Clinic branch hours override the dentist's legacy free-text practice hours.
     let clinicWorkingHours = {};
     try {
-      if (profile.clinic_working_hours) {
-        clinicWorkingHours = JSON.parse(profile.clinic_working_hours);
+      const workingHours = clinicContext?.operatingHours ?? profile.clinic_working_hours;
+      if (workingHours && typeof workingHours === 'string') {
+        clinicWorkingHours = JSON.parse(workingHours);
+      } else if (workingHours && typeof workingHours === 'object') {
+        clinicWorkingHours = workingHours;
       }
     } catch (e) {
       console.error('Error parsing clinic working hours:', e);
@@ -1278,9 +1145,17 @@ router.get('/dentist-profile', authenticateToken, async (req, res) => {
       email: profile.email,
       title: profile.title,
       licenseNumber: profile.license_number,
-      clinicName: profile.clinic_name,
-      clinicAddress: profile.clinic_address,
+      dentistType: clinicContext ? 'clinic' : 'independent',
+      clinicId: clinicContext?.clinicProfileId || null,
+      clinicName: clinicContext?.clinicName || profile.clinic_name,
+      clinicAddress: clinicContext?.clinicAddress || profile.clinic_address,
       clinicWorkingHours: clinicWorkingHours,
+      clinicContext,
+      assignedBranch: clinicContext ? {
+        id: clinicContext.branchId,
+        name: clinicContext.branchName,
+        code: clinicContext.branchCode
+      } : null,
       primarySpecialization: profile.primary_specialization,
       consultationTypes: profile.consultation_types,
       servicesOffered: profile.services_offered,
@@ -1305,8 +1180,6 @@ router.put('/user/profile', async (req, res) => {
 
     const { name, email, phoneNumber, about, profile } = req.body;
     
-    console.log('PUT /user/profile received:', { name, email, phoneNumber, about, profile });
-
     // Start transaction
     await query('BEGIN');
 

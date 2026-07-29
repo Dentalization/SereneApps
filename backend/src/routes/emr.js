@@ -1,12 +1,15 @@
 import express from 'express';
+import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireRoles } from '../utils/tokens.js';
 import {
   listEmrRecordsForDentist,
   createEmrRecordForDentist,
   getEmrRecordForDentist,
 } from '../services/emrRecords.js';
+import { emitClinicalPortalInvalidation } from '../services/portalCollaboration.js';
 
 const router = express.Router();
+const prisma = new PrismaClient();
 
 router.use(authenticateToken);
 router.use(requireRoles(['dentist']));
@@ -42,6 +45,16 @@ router.post('/', async (req, res) => {
     const saved = await createEmrRecordForDentist({
       dentistId: req.user.id,
       payload: req.body,
+    });
+    await emitClinicalPortalInvalidation({
+      prismaClient: prisma,
+      io: req.app?.get?.('io'),
+      eventName: 'emr:updated',
+      entity: 'emr_record',
+      entityId: saved.id,
+      action: 'created',
+      dentistId: saved.dentistId || req.user.id,
+      patientId: saved.patientUserId,
     });
     res.status(201).json(saved);
   } catch (error) {

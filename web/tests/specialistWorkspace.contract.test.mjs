@@ -136,7 +136,7 @@ test('appointment context is human-readable, exact-filtered, and fails closed on
   assert.match(modal, /response\?\.status === 409/);
 });
 
-test('X-Core requires patient assignment on upload and supports owner reassignment', () => {
+test('X-Core accepts Gallery-only uploads and supports later owner assignment', () => {
   const uploader = readSource('src/pages/dentist-portal/x-core/components/Uploader.jsx');
   const gallery = readSource('src/pages/dentist-portal/x-core/components/Gallery.jsx');
   const assignmentModal = readSource(
@@ -146,7 +146,9 @@ test('X-Core requires patient assignment on upload and supports owner reassignme
   assert.match(uploader, /PatientSearchPicker/);
   assert.match(uploader, /formData\.append\('patientId'/);
   assert.match(uploader, /selectedPatient/);
-  assert.match(uploader, /disabled=\{files\.length === 0 \|\| !selectedPatient\?\.id\}/);
+  assert.match(uploader, /if \(selectedPatient\?\.id\)/);
+  assert.match(uploader, /disabled=\{files\.length === 0\}/);
+  assert.match(uploader, />\s*Optional\s*</);
   assert.match(gallery, /Assign Patient|Change Patient/);
   assert.match(assignmentModal, /\/patient/);
   assert.match(assignmentModal, /PatientSearchPicker/);

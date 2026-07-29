@@ -20,32 +20,37 @@ test('dentist UI preserves backend appointment status', () => {
 
 test('patient actions are implemented and realtime refresh listens to domain events', () => {
   const source = readSource('src/pages/dentist-portal/patient/index.jsx');
+  const collaboration = readSource('src/collaboration/portalCollaboration.mjs');
 
   assert.doesNotMatch(source, /const handleScheduleNew = \(\) => \{\};/);
   assert.doesNotMatch(source, /const handleUpdateAppointment = .*=> \{\};/);
   assert.doesNotMatch(source, /const handleCancelAppointment = .*=> \{\};/);
   assert.doesNotMatch(source, /const handleSendStatement = .*=> \{\};/);
   assert.doesNotMatch(source, /handleSendMessage|handleScheduleCall/);
-  assert.match(source, /toast\.info\('Fitur kirim laporan tagihan akan segera hadir\.'\)/);
+  assert.match(source, /billing-statement-/);
+  assert.match(source, /updatePatientMedicalHistory/);
   for (const eventName of [
     'appointment:updated',
     'payment:status_updated',
     'billing:invoice_updated'
   ]) {
-    assert.match(source, new RegExp(`'${eventName}'`));
+    assert.match(collaboration, new RegExp(`'${eventName}'`));
   }
+  assert.match(source, /PORTAL_REFRESH_PROFILES\.PATIENTS/);
 });
 
 test('clinic patient directory listens to the shared appointment and billing events', () => {
   const source = readSource('src/pages/clinic-portal/patients/index.jsx');
+  const collaboration = readSource('src/collaboration/portalCollaboration.mjs');
   for (const eventName of [
     'appointment:updated',
     'payment:status_updated',
     'billing:invoice_updated',
     'clinic:billing_updated'
   ]) {
-    assert.match(source, new RegExp(`'${eventName}'`));
+    assert.match(collaboration, new RegExp(`'${eventName}'`));
   }
+  assert.match(source, /PORTAL_REFRESH_PROFILES\.PATIENTS/);
 });
 
 test('compliance UI does not describe health forms as informed consent', () => {

@@ -9,16 +9,9 @@ import { useNotifications } from '../../../contexts/NotificationContext';
 import { authHttp } from '../../../utils/httpClient';
 import { resolveMediaUrl } from '../../../utils/media';
 import { fetchAppointments } from '../../../services/appointmentService';
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-
-const DASHBOARD_REALTIME_EVENTS = [
-  'notification:new',
-  'clinic:billing_updated',
-  'dashboard:metrics_updated',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated'
-];
 
 const ClinicDashboard = () => {
   const navigate = useNavigate();
@@ -315,17 +308,11 @@ const ClinicDashboard = () => {
     return () => clearInterval(interval);
   }, [loadDashboardData]);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Real-time update: refreshing clinic dashboard due to socket notification:', data);
-      loadDashboardData();
-    };
-    DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      DASHBOARD_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, loadDashboardData]);
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.DASHBOARD,
+    refresh: loadDashboardData
+  });
 
   const quickActions = [
     {

@@ -42,6 +42,7 @@ import PreCallSystemCheckSheet from '../../../components/teledentistry/PreCallSy
 import resolveMediaUrl from '../../../utils/media';
 import {
   acknowledgeAppointmentClinicalSummary,
+  getAppointmentById,
   getAppointmentClinicalSummary,
   getPreSessionHealthForm,
   savePreSessionHealthForm,
@@ -131,6 +132,40 @@ const isValidImageUrl = (url) => {
   if (!url || typeof url !== 'string') return false;
   const t = url.trim();
   return t.startsWith('http://') || t.startsWith('https://');
+};
+
+const IMAGE_ATTACHMENT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+const isImageAttachment = (message) => {
+  if (message?.messageType !== 'file' || message?.attachmentAvailable === false || !isValidImageUrl(message?.fileUrl)) {
+    return false;
+  }
+  if (message?.mimeType?.toLowerCase?.().startsWith('image/')) return true;
+  const fileName = String(message?.fileName || '').split(/[?#]/)[0];
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  return IMAGE_ATTACHMENT_EXTENSIONS.includes(extension);
+};
+
+const ChatAttachmentPreview = ({ msg, isUser }) => {
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  if (loadFailed) {
+    return (
+      <Text style={{ fontSize: 14, lineHeight: 20, color: isUser ? COLORS.white : COLORS.gray900 }}>
+        {`Lampiran: ${msg.fileName || 'Gambar'}`}
+      </Text>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: msg.fileUrl }}
+      style={{ width: 210, height: 158, borderRadius: 12, backgroundColor: COLORS.gray200 }}
+      resizeMode="cover"
+      onError={() => setLoadFailed(true)}
+      accessibilityLabel={`Preview gambar ${msg.fileName || 'lampiran'}`}
+    />
+  );
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -236,6 +271,7 @@ const PatientTeledentistryScreen = () => {
 
   const [systemMessages, setSystemMessages] = useState([]);
   const [sessionStatus, setSessionStatus] = useState(isArchiveSession ? 'ended' : (isSessionReady ? 'active' : 'upcoming'));
+  const [sessionStatusVerification, setSessionStatusVerification] = useState('initial');
   const [callStatus, setCallStatus] = useState('idle');  // 'idle' | 'incoming' | 'active'
   const [clinicalSummaryStatus, setClinicalSummaryStatus] = useState('pending');
   const [clinicalSummary, setClinicalSummary] = useState(null);
@@ -289,6 +325,11 @@ const PatientTeledentistryScreen = () => {
           ? `Lampiran tidak tersedia: ${m.fileName || m.message || 'Attachment'}`
           : `Lampiran: ${m.fileName || m.message || 'Attachment'}`)
         : m.message,
+      messageType: m.messageType,
+      fileUrl: resolveMediaUrl(m.fileUrl),
+      fileName: m.fileName,
+      mimeType: m.mimeType,
+      attachmentAvailable: m.attachmentAvailable,
       timestamp: new Date(m.createdAt),
     }));
     const all = [...systemMessages, ...socketMsgs];
@@ -297,6 +338,8 @@ const PatientTeledentistryScreen = () => {
   }, [chatMessagesFromSocket, systemMessages, currentUser?.id]);
 
   const healthFormSubmitted = healthFormStatus === 'submitted';
+  const isSessionStatusUnverified = sessionStatus === 'ended'
+    && (sessionStatusVerification === 'checking' || sessionStatusVerification === 'error');
 
   // ─── Pre-session health form status. This form is optional. ───────────────
   useEffect(() => {
@@ -343,6 +386,58 @@ const PatientTeledentistryScreen = () => {
     };
   }, []);
 
+  // Route params are only an optimistic mount-time snapshot. Reconcile them
+  // with the current appointment whenever this screen receives focus.
+  useEffect(() => {
+    let disposed = false;
+    let latestRequestId = 0;
+
+    const reconcileSessionStatus = async () => {
+      const requestId = ++latestRequestId;
+      setSessionStatusVerification('checking');
+
+      if (!appointmentId) {
+        setSessionStatusVerification('error');
+        return;
+      }
+
+      try {
+        const result = await getAppointmentById(appointmentId.toString());
+        if (disposed || requestId !== latestRequestId) return;
+
+        const liveAppointment = result?.data;
+        if (!liveAppointment) throw new Error('Appointment status response is empty');
+        const liveStatus = String(liveAppointment?.status || '').toLowerCase();
+        const isLiveSessionEnded = ['completed', 'cancelled', 'no-show'].includes(liveStatus);
+
+        if (isLiveSessionEnded) {
+          setSessionStatus('ended');
+        } else {
+          const liveAppointmentDate = liveAppointment?.startsAt || appointmentDate;
+          const liveStartTime = liveAppointmentDate ? new Date(liveAppointmentDate).getTime() : null;
+          const isLiveSessionReady = liveStartTime === null || Number.isNaN(liveStartTime) || Date.now() >= liveStartTime;
+          setSessionStatus(isLiveSessionReady ? 'active' : 'upcoming');
+        }
+        setSessionStatusVerification('confirmed');
+      } catch (_error) {
+        if (disposed || requestId !== latestRequestId) return;
+        // Do not present a route-param-derived "ended" state as authoritative
+        // when the live appointment could not be checked.
+        setSessionStatusVerification('error');
+      }
+    };
+
+    const unsubscribe = navigation.addListener('focus', reconcileSessionStatus);
+    if (navigation.isFocused?.()) {
+      reconcileSessionStatus();
+    }
+    return () => {
+      disposed = true;
+      latestRequestId += 1;
+      unsubscribe?.();
+    };
+  }, [appointmentDate, appointmentId, navigation]);
+
   // ─── Join chat room. The pre-session health form is optional. ─────────────
   const selectConversationCalledRef = useRef(null);
   const selectConversationRef = useRef(selectConversation);
@@ -383,10 +478,6 @@ const PatientTeledentistryScreen = () => {
 
   // ─── Upcoming → Active transition timer ────────────────────────────────────
   useEffect(() => {
-    if (isArchiveSession) {
-      setSessionStatus('ended');
-      return;
-    }
     if (sessionStatus !== 'upcoming' || !resolvedAppointmentDate) return;
     const now = new Date();
     const msUntilStart = resolvedAppointmentDate.getTime() - now.getTime();
@@ -400,7 +491,7 @@ const PatientTeledentistryScreen = () => {
       addSystemMessage(`Sesi telah dimulai. Silakan tunggu, ${safeDentistName.split(',')[0]} akan segera menghubungi Anda via Video Call.`);
     }, msUntilStart);
     return () => clearTimeout(timer);
-  }, [sessionStatus, resolvedAppointmentDate, safeDentistName, isArchiveSession]);
+  }, [sessionStatus, resolvedAppointmentDate, safeDentistName]);
 
   // ─── Auto-scroll on new message ────────────────────────────────────────────
   useEffect(() => {
@@ -712,6 +803,7 @@ const PatientTeledentistryScreen = () => {
     addSystemMessage(`Video call berakhir. Durasi: ${duration}.`);
   };
 
+  // TODO(Adrian): wire this to a real session-end event once backend exposes one.
   const handleEndSession = () => {
     setSessionStatus('ended');
     setCallStatus('idle');
@@ -989,6 +1081,7 @@ const PatientTeledentistryScreen = () => {
     }
 
     const isUser = msg.role === 'user';
+    const hasImagePreview = isImageAttachment(msg);
     return (
       <View
         key={msg.id}
@@ -1022,7 +1115,7 @@ const PatientTeledentistryScreen = () => {
         )}
         <View
           accessible={true}
-          accessibilityLabel={`Pesan dari ${isUser ? 'Anda' : safeDentistName}: ${msg.text}, dikirim pada ${formatTimestamp(msg.timestamp)}`}
+          accessibilityLabel={`Pesan dari ${isUser ? 'Anda' : safeDentistName}: ${hasImagePreview ? `gambar ${msg.fileName || 'lampiran'}` : msg.text}, dikirim pada ${formatTimestamp(msg.timestamp)}`}
           accessibilityRole="text"
           style={{
             maxWidth: '75%',
@@ -1036,15 +1129,19 @@ const PatientTeledentistryScreen = () => {
             borderColor: COLORS.gray200,
           }}
         >
-          <Text
-            style={{
-              fontSize: 14,
-              lineHeight: 20,
-              color: isUser ? COLORS.white : COLORS.gray900,
-            }}
-          >
-            {msg.text}
-          </Text>
+          {hasImagePreview ? (
+            <ChatAttachmentPreview msg={msg} isUser={isUser} />
+          ) : (
+            <Text
+              style={{
+                fontSize: 14,
+                lineHeight: 20,
+                color: isUser ? COLORS.white : COLORS.gray900,
+              }}
+            >
+              {msg.text}
+            </Text>
+          )}
           <Text
             style={{
               fontSize: 10,
@@ -1230,8 +1327,39 @@ const PatientTeledentistryScreen = () => {
         </View>
       )}
 
+      {/* An ended route snapshot is not authoritative while focus validation is pending/failed. */}
+      {isSessionStatusUnverified && (
+        <View style={{ marginTop: 16, marginBottom: 8, alignItems: 'center' }}>
+          <View
+            style={{
+              backgroundColor: withOpacity(COLORS.warning, 0.15),
+              borderRadius: 16,
+              padding: 20,
+              alignItems: 'center',
+              width: '100%',
+              borderWidth: 1,
+              borderColor: withOpacity(COLORS.warning, 0.3),
+            }}
+          >
+            <MaterialCommunityIcons
+              name={sessionStatusVerification === 'checking' ? 'progress-clock' : 'cloud-alert-outline'}
+              size={24}
+              color={COLORS.warning}
+            />
+            <Text style={{ ...TYPOGRAPHY.bodyLarge, fontWeight: '700', color: COLORS.textPrimary, marginTop: 8 }}>
+              {sessionStatusVerification === 'checking' ? 'Memverifikasi status sesi' : 'Status sesi belum terverifikasi'}
+            </Text>
+            <Text style={{ ...TYPOGRAPHY.caption, color: COLORS.textSecondary, marginTop: 4, textAlign: 'center' }}>
+              {sessionStatusVerification === 'checking'
+                ? 'Mohon tunggu sebelum melanjutkan percakapan.'
+                : 'Buka kembali layar ini saat koneksi tersedia untuk memeriksa status sesi.'}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Ended banner */}
-      {(sessionStatus === 'ended' || isArchiveSession) && (
+      {sessionStatus === 'ended' && !isSessionStatusUnverified && (
         <View style={{ marginTop: 16, marginBottom: 8, alignItems: 'center' }}>
           <View
             style={{
@@ -1291,7 +1419,33 @@ const PatientTeledentistryScreen = () => {
 
   // ──── Input Bar ────────────────────────────────────────────────────────────
   const renderInputBar = () => {
-    if (sessionStatus === 'upcoming' || isArchiveSession) return null;
+    if (sessionStatus === 'upcoming' || (sessionStatusVerification === 'initial' && isArchiveSession)) return null;
+    if (isSessionStatusUnverified) {
+      return (
+        <View style={{
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          backgroundColor: COLORS.surfaceElevated || '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border || COLORS.gray200,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingBottom: Math.max(insets.bottom, 14),
+        }}>
+          {sessionStatusVerification === 'checking' ? (
+            <ActivityIndicator size="small" color={COLORS.warning} />
+          ) : (
+            <MaterialCommunityIcons name="cloud-alert-outline" size={20} color={COLORS.warning} />
+          )}
+          <Text style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginLeft: 8, fontWeight: '600' }}>
+            {sessionStatusVerification === 'checking'
+              ? 'Memeriksa apakah sesi masih aktif...'
+              : 'Status sesi tidak dapat diverifikasi. Coba buka kembali layar ini.'}
+          </Text>
+        </View>
+      );
+    }
     if (chatUnavailable) {
       return (
         <View style={{
@@ -1873,7 +2027,7 @@ const PatientTeledentistryScreen = () => {
 
       {renderHeader()}
 
-      {appointmentId && !socketConnected && !isArchiveSession && sessionStatus !== 'ended' && (
+      {appointmentId && !socketConnected && sessionStatus !== 'ended' && (
         <View style={{ backgroundColor: COLORS.warning, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
           <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.white} style={{ marginRight: 8 }} />
           <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '600' }}>

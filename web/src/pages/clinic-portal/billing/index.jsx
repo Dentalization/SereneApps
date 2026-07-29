@@ -11,15 +11,8 @@ import ClaimsView from './components/ClaimsView';
 import PromosView from './components/PromosView';
 import { authHttp } from '../../../utils/httpClient';
 import ModalPortal from '../../../components/ui/ModalPortal';
-
-const BILLING_REALTIME_EVENTS = [
-  'notification:new',
-  'clinic:billing_updated',
-  'dashboard:metrics_updated',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated'
-];
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
 
 const compactList = (items = []) => (
   [...new Set((items || []).filter(Boolean))].join(', ') || '-'
@@ -133,17 +126,12 @@ const BillingPage = () => {
     };
   }, [fetchBillingData]);
 
-  useEffect(() => {
-    if (!socket || accessDenied) return;
-    const handleRealtimeUpdate = (payload) => {
-      console.log('🔄 Real-time update: refreshing billing data:', payload);
-      fetchBillingData({ silent: true });
-    };
-    BILLING_REALTIME_EVENTS.forEach((eventName) => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      BILLING_REALTIME_EVENTS.forEach((eventName) => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [accessDenied, fetchBillingData, socket]);
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.BILLING,
+    enabled: !accessDenied,
+    refresh: () => fetchBillingData({ silent: true })
+  });
 
   useEffect(() => {
     if (selectedInvoiceId) {

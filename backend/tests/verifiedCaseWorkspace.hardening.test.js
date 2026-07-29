@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVerifiedCaseWorkspaceService } from '../src/services/verifiedCaseWorkspaceService.js';
 import { createMemoryVerifiedCaseWorkspaceRepository } from '../src/repositories/verifiedCaseWorkspaceRepository.js';
-import { createMemoryImageStorageAdapter } from '../src/services/verifiedCaseImageStorage.js';
+import {
+  createMemoryImageStorageAdapter,
+  resolveVerifiedCaseStoragePublicBaseUrl,
+} from '../src/services/verifiedCaseImageStorage.js';
 
 const clinicA = { id: '1001', role: 'dentist', clinicId: 'clinic-a', tenantId: 'tenant-a' };
 const clinicB = { id: '2001', role: 'dentist', clinicId: 'clinic-b', tenantId: 'tenant-b' };
@@ -33,6 +36,21 @@ function imageFile(name = 'scan.jpg', body = 'image-bytes') {
     buffer: Buffer.from(body),
   };
 }
+
+test('relative case-storage URL cannot drift from the mounted API version', () => {
+  assert.equal(resolveVerifiedCaseStoragePublicBaseUrl({
+    apiVersion: 'v1',
+    configuredBaseUrl: '/api/v1/case-storage',
+  }), '/v1/case-storage');
+  assert.equal(resolveVerifiedCaseStoragePublicBaseUrl({
+    apiVersion: 'api/v2',
+    configuredBaseUrl: '',
+  }), '/api/v2/case-storage');
+  assert.equal(resolveVerifiedCaseStoragePublicBaseUrl({
+    apiVersion: 'v1',
+    configuredBaseUrl: 'https://artifacts.example.test/cases',
+  }), 'https://artifacts.example.test/cases');
+});
 
 test('repository-backed cases and uploaded images persist across service instances', async () => {
   const state = {};
@@ -83,10 +101,21 @@ test('server-side analysis requires latest quality check to allow analysis', asy
     metrics: { width: 1200, height: 900, blur: 0.05, brightness: 0.52, contrast: 0.72, dentalRelevance: 0.94, teethVisible: true },
   });
 
-  const analysis = await service.recordImageAnalysis({ caseId: created.id, imageId: image.id, actor: clinicA });
+  const analysis = await service.recordImageAnalysis({
+    caseId: created.id,
+    imageId: image.id,
+    actor: clinicA,
+    context: 'Tolong analisis lesi oklusal pada gigi 36.',
+  });
   assert.equal(analysis.findings[0].status, 'ai_suggested');
   assert.equal(analysis.image.annotated_image_mime_type, 'image/png');
   assert.ok(analysis.image.annotated_image_signed_url);
+  const auditEvents = await service.listAuditEvents(created.id, { actor: clinicA });
+  const analysisStarted = auditEvents.find((event) => event.event_type === 'image_analysis_started');
+  assert.equal(analysisStarted.after_json.context, 'Tolong analisis lesi oklusal pada gigi 36.');
+  const analysisSnapshot = auditEvents.find((event) => event.event_type === 'image_analysis_snapshot');
+  assert.equal(analysisSnapshot.after_json.image_id, image.id);
+  assert.equal(analysisSnapshot.after_json.visual_findings.findings[0].label, 'caries');
 });
 
 test('AI findings normalize string confidence and do not duplicate annotated base64 in database records', async () => {

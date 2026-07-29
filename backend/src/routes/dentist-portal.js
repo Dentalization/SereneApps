@@ -33,6 +33,12 @@ import {
   updateTreatmentPlanItem
 } from '../services/treatmentPlans.js';
 import { resolvePatientSource } from '../services/patientSource.js';
+import { emitClinicalPortalInvalidation } from '../services/portalCollaboration.js';
+import { resolveDentistClinicContext } from '../services/dentistClinicContextService.js';
+import {
+  activeDentistClinicIds,
+  clinicStudyScopeWhereForClinicIds,
+} from '../services/xCoreAccessPolicyService.js';
 import { createDentistAIChatService } from '../services/dentistAIChatService.js';
 import { createLocalImageStorageAdapter } from '../services/verifiedCaseImageStorage.js';
 import {
@@ -207,8 +213,6 @@ async function listLinkedVerifiedCaseResults(patientId, dentistId = null) {
      ORDER BY vc.updated_at DESC`,
     patientId
   );
-
-  console.log(`[listLinkedVerifiedCaseResults] patientId=${patientId} → ${rows.length} case(s) found`);
 
   const storage = createLocalImageStorageAdapter();
 
@@ -412,8 +416,12 @@ function serializeScheduleEntry(entry) {
 
 function serializePatient(user, appointments = [], aiResults = []) {
   const now = new Date();
-  const pastAppointments = appointments.filter(a => new Date(a.startsAt) < now);
-  const futureAppointments = appointments.filter(a => new Date(a.startsAt) >= now);
+  const completedStatuses = new Set(['completed']);
+  const activeStatuses = new Set(['scheduled', 'confirmed', 'in-progress']);
+  const pastAppointments = appointments.filter(a =>
+    new Date(a.startsAt) < now && completedStatuses.has(String(a.status || '').toLowerCase()));
+  const futureAppointments = appointments.filter(a =>
+    new Date(a.startsAt) >= now && activeStatuses.has(String(a.status || '').toLowerCase()));
   const lastVisit = pastAppointments.length > 0 ? pastAppointments.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt))[0] : null;
   const nextAppointment = futureAppointments.length > 0 ? futureAppointments.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0] : null;
   const patientProfile = user.patientProfile || null;
@@ -472,8 +480,12 @@ function serializePatient(user, appointments = [], aiResults = []) {
 function serializePatientBilling(invoices = []) {
   const rows = invoices.map((invoice) => {
     const paymentStatus = invoice.paymentIntent?.status || null;
-    const isPaid = ['paid', 'settled'].includes(paymentStatus) || ['paid', 'settled'].includes(invoice.status);
+    const isPaid = ['succeeded', 'paid', 'settled'].includes(String(paymentStatus || '').toLowerCase()) ||
+      ['succeeded', 'paid', 'settled'].includes(String(invoice.status || '').toLowerCase());
     const total = invoice.grandTotal || invoice.total || 0;
+    const issuedAt = invoice.issuedAt?.toISOString?.() || invoice.createdAt?.toISOString?.() || null;
+    const paidAt = invoice.paidAt?.toISOString?.() || null;
+    const itemDescriptions = (invoice.items || []).map((item) => item.description).filter(Boolean);
     return {
       id: invoice.id.toString(),
       invoiceId: invoice.id.toString(),
@@ -489,13 +501,20 @@ function serializePatientBilling(invoices = []) {
       tax: invoice.tax || 0,
       total,
       grandTotal: total,
+      amount: total,
+      description: itemDescriptions.join(', ') || invoice.reference || 'Treatment invoice',
+      treatments: itemDescriptions,
       currency: invoice.currency || 'IDR',
       status: invoice.status,
       paymentStatus,
       paid: isPaid,
-      issuedAt: invoice.issuedAt?.toISOString?.() || null,
+      issuedAt,
+      date: issuedAt?.split('T')[0] || null,
+      dueAt: invoice.dueAt?.toISOString?.() || null,
+      dueDate: invoice.dueAt?.toISOString?.().split('T')[0] || null,
       approvedAt: invoice.approvedAt?.toISOString?.() || null,
-      paidAt: invoice.paidAt?.toISOString?.() || null,
+      paidAt,
+      paymentDate: paidAt?.split('T')[0] || null,
       createdAt: invoice.createdAt?.toISOString?.() || null,
       items: (invoice.items || []).map((item) => ({
         id: item.id.toString(),
@@ -533,11 +552,80 @@ function serializePatientBilling(invoices = []) {
   };
 }
 
+function serializePatientXCoreStudy(study, dentistId) {
+  const isOwner = study.dentistId === dentistId;
+  return {
+    id: study.id.toString(),
+    patientId: study.patientId?.toString?.() || null,
+    folderName: study.folderName,
+    originalName: study.originalName || null,
+    studyDate: study.studyDate?.toISOString?.().split('T')[0] || null,
+    createdAt: study.createdAt?.toISOString?.() || null,
+    modality: study.modality,
+    description: study.description || null,
+    status: study.status,
+    sizeInBytes: study.sizeInBytes?.toString?.() || '0',
+    seriesCount: study._count?.series || 0,
+    accessScope: isOwner ? 'owner' : 'shared_with_me',
+    ownerDentist: study.dentist
+      ? {
+          id: study.dentist.id.toString(),
+          name: study.dentist.name || null,
+        }
+      : null,
+  };
+}
+
 async function ensureDentistPatientAccess(dentistId, patientId) {
   return prisma.appointment.findFirst({
     where: { dentistId, patientId },
     select: { id: true },
   });
+}
+
+const EDITABLE_MEDICAL_HISTORY_FIELDS = ['allergies', 'conditions', 'medications', 'surgeries'];
+
+function normalizeMedicalHistoryPatch(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    const error = new Error('INVALID_MEDICAL_HISTORY');
+    error.status = 400;
+    throw error;
+  }
+  const normalized = {};
+  for (const field of EDITABLE_MEDICAL_HISTORY_FIELDS) {
+    if (!(field in payload)) continue;
+    if (!Array.isArray(payload[field]) || payload[field].length > 100) {
+      const error = new Error('INVALID_MEDICAL_HISTORY_FIELD');
+      error.status = 400;
+      error.field = field;
+      throw error;
+    }
+    normalized[field] = payload[field].map((item) => {
+      if (typeof item === 'string') {
+        const value = item.trim();
+        if (!value || value.length > 300) {
+          const error = new Error('INVALID_MEDICAL_HISTORY_ITEM');
+          error.status = 400;
+          error.field = field;
+          throw error;
+        }
+        return value;
+      }
+      if (item && typeof item === 'object' && !Array.isArray(item) && JSON.stringify(item).length <= 2000) {
+        return item;
+      }
+      const error = new Error('INVALID_MEDICAL_HISTORY_ITEM');
+      error.status = 400;
+      error.field = field;
+      throw error;
+    });
+  }
+  if (Object.keys(normalized).length === 0) {
+    const error = new Error('EMPTY_MEDICAL_HISTORY_PATCH');
+    error.status = 400;
+    throw error;
+  }
+  return normalized;
 }
 
 // --- Routes ---
@@ -722,27 +810,21 @@ router.post(
 
       const dentistProfile = await prisma.dentistProfile.findFirst({
         where: { userId: dentistId },
-        select: { dentist_type: true, clinic_id: true }
+        select: { id: true }
       });
-      const dentistType = dentistProfile?.dentist_type || 'independent';
-      let resolvedClinicBranchId = null;
-      let resolvedClinicProfileId = null;
+      if (!dentistProfile) {
+        return sendError(res, 403, 'DENTIST_PROFILE_REQUIRED', 'Profil profesional dokter gigi tidak ditemukan.');
+      }
+      const clinicContext = await resolveDentistClinicContext({
+        prismaClient: prisma,
+        dentistUserId: dentistId
+      });
+      const dentistType = clinicContext ? 'clinic' : 'independent';
+      const resolvedClinicBranchId = clinicContext?.branchId ? BigInt(clinicContext.branchId) : null;
+      const resolvedClinicProfileId = clinicContext?.clinicProfileId ? BigInt(clinicContext.clinicProfileId) : null;
 
-      if (dentistType !== 'independent') {
-        if (dentistProfile?.clinic_id) {
-          const branch = await prisma.clinicBranch.findFirst({
-            where: { clinicProfileId: dentistProfile.clinic_id, isActive: true },
-            orderBy: [{ isMainBranch: 'desc' }, { id: 'asc' }],
-            select: { id: true, clinicProfileId: true }
-          });
-          if (branch) {
-            resolvedClinicBranchId = branch.id;
-            resolvedClinicProfileId = branch.clinicProfileId;
-          }
-        }
-        if (!resolvedClinicBranchId) {
-          return sendError(res, 400, 'CLINIC_BRANCH_REQUIRED', 'Cabang klinik diperlukan untuk membuat pasien klinik.');
-        }
+      if (clinicContext && !resolvedClinicBranchId) {
+        return sendError(res, 400, 'CLINIC_BRANCH_REQUIRED', 'Cabang klinik aktif diperlukan untuk membuat pasien klinik.');
       }
 
       const overlappingAppointment = await prisma.appointment.findFirst({
@@ -937,14 +1019,54 @@ router.get(
       }
 
       const patient = appointments[0].patient;
+      const activeXCoreClinicIds = await activeDentistClinicIds(dentistId, { prismaClient: prisma });
+      const sharedXCoreStudyWhere = activeXCoreClinicIds.length
+        ? {
+            AND: [
+              {
+                dentistShares: {
+                  some: {
+                    recipientDentistId: dentistId,
+                    revokedAt: null,
+                  },
+                },
+              },
+              clinicStudyScopeWhereForClinicIds(activeXCoreClinicIds),
+            ],
+          }
+        : null;
 
-      const [aiResults, linkedCaseResults] = await Promise.all([
+      const [aiResults, linkedCaseResults, xCoreStudies] = await Promise.all([
         prisma.aIAnalysisResult.findMany({
           where: { userId: patientId },
           orderBy: { createdAt: 'desc' },
           take: 10
         }),
         listLinkedVerifiedCaseResults(patientId, dentistId),
+        prisma.imagingStudy.findMany({
+          where: {
+            patientId,
+            OR: sharedXCoreStudyWhere
+              ? [{ dentistId }, sharedXCoreStudyWhere]
+              : [{ dentistId }],
+          },
+          select: {
+            id: true,
+            patientId: true,
+            dentistId: true,
+            studyDate: true,
+            description: true,
+            modality: true,
+            folderName: true,
+            originalName: true,
+            status: true,
+            sizeInBytes: true,
+            createdAt: true,
+            dentist: { select: { id: true, name: true } },
+            _count: { select: { series: true } },
+          },
+          orderBy: [{ studyDate: 'desc' }, { createdAt: 'desc' }],
+        }),
       ]);
 
       const patientProfile = await prisma.patientProfile.findUnique({ where: { userId: patientId } });
@@ -1045,12 +1167,78 @@ router.get(
       // Attach serialized treatment plans
       serializedPatient.treatmentPlans = treatmentPlans.map(serializeUnifiedTreatmentPlan);
       serializedPatient.emrRecords = emrRecords;
+      serializedPatient.xCoreStudies = xCoreStudies.map((study) => serializePatientXCoreStudy(study, dentistId));
       serializedPatient.billing = serializePatientBilling(invoices);
 
       return res.json({ patient: serializedPatient });
     } catch (error) {
       console.error('Error fetching patient details:', error);
       return sendError(res, 500, 'fetch_patient_failed', 'Gagal memuat detail pasien.');
+    }
+  }
+);
+
+// PATCH /v1/dentist-portal/patients/:patientId/medical-details
+// Persist the structured medical-history lists shown in Patient Management.
+router.patch(
+  '/patients/:patientId/medical-details',
+  authenticateToken,
+  requireRoles(['dentist']),
+  async (req, res) => {
+    try {
+      const dentistId = toBigInt(req.user.id, 'dentistId');
+      const patientId = toBigInt(req.params.patientId, 'patientId');
+      const hasAccess = await ensureDentistPatientAccess(dentistId, patientId);
+      if (!hasAccess) {
+        return sendError(res, 403, 'ACCESS_DENIED', 'You do not have access to this patient.');
+      }
+
+      const medicalHistory = normalizeMedicalHistoryPatch(req.body?.medicalHistory || req.body);
+      const currentProfile = await prisma.patientProfile.findUnique({
+        where: { userId: patientId },
+        select: { medicalDetails: true },
+      });
+      const currentDetails = currentProfile?.medicalDetails &&
+        typeof currentProfile.medicalDetails === 'object' &&
+        !Array.isArray(currentProfile.medicalDetails)
+        ? currentProfile.medicalDetails
+        : {};
+      const nextMedicalDetails = {
+        ...currentDetails,
+        ...medicalHistory,
+        ...(medicalHistory.conditions ? { chronicConditions: medicalHistory.conditions } : {}),
+        lastClinicalUpdate: {
+          updatedAt: new Date().toISOString(),
+          updatedByDentistId: dentistId.toString(),
+          source: 'dentist_patient_management',
+        },
+      };
+
+      const profile = await prisma.patientProfile.upsert({
+        where: { userId: patientId },
+        create: { userId: patientId, medicalDetails: nextMedicalDetails },
+        update: { medicalDetails: nextMedicalDetails },
+        select: { medicalDetails: true },
+      });
+
+      await emitClinicalPortalInvalidation({
+        prismaClient: prisma,
+        io: req.app?.get?.('io'),
+        eventName: 'patient:updated',
+        entity: 'patient_profile',
+        entityId: patientId,
+        action: 'updated',
+        dentistId,
+        patientId,
+      });
+
+      return res.json({ medicalDetails: profile.medicalDetails });
+    } catch (error) {
+      console.error('Error updating patient medical history:', error);
+      if (error.status === 400) {
+        return sendError(res, 400, error.message, `Data ${error.field || 'medical history'} tidak valid.`);
+      }
+      return sendError(res, 500, 'MEDICAL_HISTORY_UPDATE_FAILED', 'Gagal menyimpan riwayat medis pasien.');
     }
   }
 );
@@ -1275,9 +1463,6 @@ router.get(
         if (aiResults.length > 0) break;
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-
-      const elapsed = Date.now() - startTime;
-      console.log(`[Dentist Poll] Found ${aiResults.length} results for patient ${patientId} after ${elapsed}ms`);
 
       return res.json({
         aiResults: aiResults.map(result => ({
@@ -1654,6 +1839,17 @@ router.post(
         },
       });
 
+      await emitClinicalPortalInvalidation({
+        prismaClient: prisma,
+        io: req.app?.get?.('io'),
+        eventName: 'emr:updated',
+        entity: 'emr_record',
+        entityId: emrRecord.id,
+        action: 'created',
+        dentistId,
+        patientId,
+      });
+
       return res.status(201).json({ emrRecord });
     } catch (error) {
       console.error('Error creating patient EMR record:', error);
@@ -1691,6 +1887,17 @@ router.post(
           mimeType: req.file.mimetype,
           size: req.file.size,
         },
+      });
+
+      await emitClinicalPortalInvalidation({
+        prismaClient: prisma,
+        io: req.app?.get?.('io'),
+        eventName: 'emr:updated',
+        entity: 'emr_record',
+        entityId: emrRecord.id,
+        action: 'consent_updated',
+        dentistId,
+        patientId,
       });
 
       return res.json({ emrRecord });

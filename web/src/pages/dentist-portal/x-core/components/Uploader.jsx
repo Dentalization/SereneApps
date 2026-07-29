@@ -64,7 +64,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
     };
 
     const uploadFiles = async () => {
-        if (files.length === 0 || !selectedPatient?.id) return;
+        if (files.length === 0) return;
         setUploading(true);
         setProgress(0);
 
@@ -85,7 +85,9 @@ const Uploader = ({ onClose, onUploadComplete }) => {
 
         console.log("Uploading with originalFolderName:", folderName);
         formData.append('originalFolderName', folderName);
-        formData.append('patientId', selectedPatient.id);
+        if (selectedPatient?.id) {
+            formData.append('patientId', selectedPatient.id);
+        }
 
         try {
             const token = getAccessToken();
@@ -151,14 +153,20 @@ const Uploader = ({ onClose, onUploadComplete }) => {
     return (
         <ModalPortal>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-                <div className="bg-surface-elevated w-full max-w-2xl rounded-3xl border border-primary/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="xcore-upload-title"
+                    className="bg-surface-elevated w-full max-w-2xl rounded-3xl border border-primary/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     {/* Header */}
                     <div className="p-6 border-b border-primary/10 flex justify-between items-center">
-                        <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                        <h2 id="xcore-upload-title" className="text-xl font-bold text-primary flex items-center gap-2">
                             <AppIcon name="UploadCloud" size={24} className="text-accent" />
                             Upload Study Folder
                         </h2>
-                        <button onClick={onClose} className="p-2 hover:bg-primary/5 rounded-full text-muted">
+                        <button type="button" onClick={onClose} aria-label="Close upload" className="p-2 hover:bg-primary/5 rounded-full text-muted">
                             <AppIcon name="X" size={20} />
                         </button>
                     </div>
@@ -168,9 +176,14 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                         {!uploading && (
                             <section className="rounded-2xl border border-primary/10 bg-surface p-4">
                                 <div className="mb-3">
-                                    <h3 className="font-semibold text-primary">Assign to patient</h3>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h3 className="font-semibold text-primary">Assign to patient</h3>
+                                        <span className="rounded-full border border-primary/10 bg-surface-elevated px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                                            Optional
+                                        </span>
+                                    </div>
                                     <p className="mt-1 text-xs text-secondary">
-                                        Wajib dipilih. Hanya pasien yang pernah memiliki appointment dengan Anda.
+                                        You can upload directly to Gallery and assign a patient later. If selected now, only patients with an appointment relationship are available.
                                     </p>
                                 </div>
                                 <PatientSearchPicker
@@ -204,7 +217,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                                         <AppIcon name="FolderPlus" size={32} />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-primary">Drag & Drop Patient Folder Here</h3>
+                                        <h3 className="text-lg font-semibold text-primary">Drag & Drop Study Folder Here</h3>
                                         <p className="text-secondary text-sm mt-1">Select a folder containing DICOM/SLX files</p>
                                     </div>
                                     <div className="flex items-center gap-3 w-full max-w-xs">
@@ -288,7 +301,7 @@ const Uploader = ({ onClose, onUploadComplete }) => {
                             </button>
                             <button
                                 onClick={uploadFiles}
-                                disabled={files.length === 0 || !selectedPatient?.id}
+                                disabled={files.length === 0}
                                 className="px-6 py-2.5 bg-accent text-white rounded-xl hover:bg-accent-hover transition font-medium shadow-lg shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Start Upload

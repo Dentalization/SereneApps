@@ -46,6 +46,8 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260702000000_add_specialist_case_completion_summary/
 !backend/prisma/migrations/20260702010000_add_endo_core_mvp/
 !backend/prisma/migrations/20260702030000_add_endo_difficulty_radiograph_evidence/
+!backend/prisma/migrations/20260722000000_sync_dentist_clinic_assignment/
+!backend/prisma/migrations/20260724000000_xcore_optional_patient/
 
 # Mobile specific
 mobile/.expo/

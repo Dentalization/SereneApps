@@ -16,6 +16,7 @@ import {
 } from 'chart.js';
 import Icon from '../../../../components/AppIcon';
 import ModalPortal from '../../../../components/ui/ModalPortal';
+import { resolveAnalyticsDateRange, scopeClinicPatientData } from '../clinicPatientDataModel.mjs';
 
 // Register ChartJS components
 ChartJS.register(
@@ -65,7 +66,6 @@ const PatientAnalytics = ({
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth());
   const [showPatientList, setShowPatientList] = React.useState(false);
-  const [filteredPatients, setFilteredPatients] = React.useState([]);
   const [perfMetric, setPerfMetric] = React.useState('all');
   const [perfViewMode, setPerfViewMode] = React.useState('chart');
   const [onlyActiveDocs, setOnlyActiveDocs] = React.useState(true);
@@ -83,9 +83,24 @@ const PatientAnalytics = ({
     [locale]
   );
 
+  const analyticsRange = React.useMemo(() => resolveAnalyticsDateRange({
+    period: selectedPeriod,
+    year: selectedYear,
+    month: selectedMonth,
+  }), [selectedMonth, selectedPeriod, selectedYear]);
+  const analyticsScope = React.useMemo(() => scopeClinicPatientData({
+    patients,
+    appointments: allAppointments,
+    selectedDentist,
+    ...analyticsRange,
+  }), [allAppointments, analyticsRange, patients, selectedDentist]);
+  const analyticsPatients = analyticsScope.patients;
+  const analyticsAppointments = analyticsScope.appointments;
+
   // ── AGE DISTRIBUTION ─────────────────────────────────────────────────────
-  const ageGroups = patients.reduce((acc, patient) => {
-    const age = patient.age;
+  const ageGroups = analyticsPatients.reduce((acc, patient) => {
+    const age = Number(patient.age);
+    if (!Number.isFinite(age) || age < 0) return acc;
     if (age < 18) acc['0-17']++;
     else if (age < 30) acc['18-29']++;
     else if (age < 45) acc['30-44']++;
@@ -118,27 +133,29 @@ const PatientAnalytics = ({
   };
 
   // ── GENDER DISTRIBUTION ──────────────────────────────────────────────────
-  const genderCounts = patients.reduce(
+  const genderCounts = analyticsPatients.reduce(
     (acc, patient) => {
-      const key = patient.gender === 'M' ? 'male' : 'female';
+      const key = patient.gender === 'M' ? 'male' : patient.gender === 'F' ? 'female' : 'unknown';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     },
-    { male: 0, female: 0 }
+    { male: 0, female: 0, unknown: 0 }
   );
 
   const genderDistributionData = {
-    labels: [t('patients.common.gender.male'), t('patients.common.gender.female')],
+    labels: [t('patients.common.gender.male'), t('patients.common.gender.female'), 'Tidak diketahui'],
     datasets: [{
       label: t('patients.analytics.charts.datasets.patients'),
-      data: [genderCounts.male, genderCounts.female],
+      data: [genderCounts.male, genderCounts.female, genderCounts.unknown],
       backgroundColor: [
         'rgba(59, 130, 246, 0.8)',
         'rgba(236, 72, 153, 0.8)',
+        'rgba(148, 163, 184, 0.8)',
       ],
       borderColor: [
         'rgba(59, 130, 246, 1)',
         'rgba(236, 72, 153, 1)',
+        'rgba(148, 163, 184, 1)',
       ],
       borderWidth: 2,
     }]
@@ -147,17 +164,18 @@ const PatientAnalytics = ({
   // ── MONTHLY REVENUE (from actual appointment data) ────────────────────────
   const monthlyRevenue = React.useMemo(() => {
     const revenue = new Array(12).fill(0);
-    allAppointments.forEach(apt => {
+    const chartYear = selectedPeriod === 'custom' ? selectedYear : new Date().getFullYear();
+    analyticsAppointments.forEach(apt => {
       if (apt.isPaid && apt.date) {
         const d = new Date(apt.date);
         const m = d.getMonth();
-        if (!isNaN(m) && m >= 0 && m < 12) {
+        if (!isNaN(m) && d.getFullYear() === chartYear && m >= 0 && m < 12) {
           revenue[m] += (apt.fee || 0);
         }
       }
     });
     return revenue;
-  }, [allAppointments]);
+  }, [analyticsAppointments, selectedPeriod, selectedYear]);
 
   const monthlyRevenueData = {
     labels: monthLabels,
@@ -174,11 +192,11 @@ const PatientAnalytics = ({
   // ── APPOINTMENT STATUS DISTRIBUTION ──────────────────────────────────────
   const statusCounts = React.useMemo(() => {
     const counts = { scheduled: 0, completed: 0, cancelled: 0, overdue: 0, 'no-show': 0 };
-    allAppointments.forEach(apt => {
+    analyticsAppointments.forEach(apt => {
       if (counts[apt.status] !== undefined) counts[apt.status]++;
     });
     return counts;
-  }, [allAppointments]);
+  }, [analyticsAppointments]);
 
   const statusDistributionData = {
     labels: ['Scheduled', 'Completed', 'Cancelled', 'Overdue', 'No-Show'],
@@ -212,16 +230,17 @@ const PatientAnalytics = ({
       };
     });
 
-    patients.forEach(p => {
-      if (perfMap[p.doctorId]) perfMap[p.doctorId].patients++;
-    });
-
-    allAppointments.forEach(a => {
+    const patientIdsByDoctor = new Map(doctors.map((doctor) => [String(doctor.id), new Set()]));
+    analyticsAppointments.forEach(a => {
       const docId = a.dentistId || a.doctorId;
       if (perfMap[docId]) {
         perfMap[docId].appointments++;
         if (a.isPaid) perfMap[docId].revenue += (a.fee || 0);
+        patientIdsByDoctor.get(String(docId))?.add(String(a.patientId));
       }
+    });
+    Object.values(perfMap).forEach((doctor) => {
+      doctor.patients = patientIdsByDoctor.get(String(doctor.id))?.size || 0;
     });
 
     let list = Object.values(perfMap);
@@ -244,7 +263,7 @@ const PatientAnalytics = ({
     });
 
     return list;
-  }, [doctors, patients, allAppointments, onlyActiveDocs, perfMetric]);
+  }, [analyticsAppointments, doctors, onlyActiveDocs, perfMetric]);
 
   const dentistPerformanceData = React.useMemo(() => {
     if (!sortedDoctorPerformance.length) return null;
@@ -370,7 +389,9 @@ const PatientAnalytics = ({
   };
 
   // ── Total Revenue stat
-  const totalRevenue = patients.reduce((sum, p) => sum + (p.totalRevenue || 0), 0);
+  const totalRevenue = analyticsAppointments
+    .filter((appointment) => appointment.isPaid)
+    .reduce((sum, appointment) => sum + (Number(appointment.fee) || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -441,62 +462,10 @@ const PatientAnalytics = ({
         </div>
 
         <button
-          onClick={() => {
-            let filtered = patients;
-            const now = new Date();
-
-            switch (selectedPeriod) {
-              case 'today':
-                filtered = patients.filter(p => {
-                  if (!p.lastVisit) return false;
-                  const visitDate = new Date(p.lastVisit);
-                  if (isNaN(visitDate.getTime())) return false;
-                  return visitDate.toDateString() === now.toDateString();
-                });
-                break;
-              case 'week':
-                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                filtered = patients.filter(p => {
-                  if (!p.lastVisit) return false;
-                  const visitDate = new Date(p.lastVisit);
-                  if (isNaN(visitDate.getTime())) return false;
-                  return visitDate >= weekAgo;
-                });
-                break;
-              case 'month':
-                filtered = patients.filter(p => {
-                  if (!p.lastVisit) return false;
-                  const visitDate = new Date(p.lastVisit);
-                  if (isNaN(visitDate.getTime())) return false;
-                  return visitDate.getMonth() === now.getMonth() && visitDate.getFullYear() === now.getFullYear();
-                });
-                break;
-              case 'year':
-                filtered = patients.filter(p => {
-                  if (!p.lastVisit) return false;
-                  const visitDate = new Date(p.lastVisit);
-                  if (isNaN(visitDate.getTime())) return false;
-                  return visitDate.getFullYear() === now.getFullYear();
-                });
-                break;
-              case 'custom':
-                filtered = patients.filter(p => {
-                  if (!p.lastVisit) return false;
-                  const visitDate = new Date(p.lastVisit);
-                  if (isNaN(visitDate.getTime())) return false;
-                  return visitDate.getFullYear() === selectedYear && visitDate.getMonth() === selectedMonth;
-                });
-                break;
-              default:
-                filtered = patients;
-            }
-
-            setFilteredPatients(filtered);
-            setShowPatientList(true);
-          }}
+          onClick={() => setShowPatientList(true)}
           className="mt-4 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors"
         >
-          {t('patients.analytics.viewPatients')} ({filteredPatients.length})
+          {t('patients.analytics.viewPatients')} ({analyticsPatients.length})
         </button>
       </div>
 
@@ -506,23 +475,28 @@ const PatientAnalytics = ({
           <div
             className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
             onClick={() => setShowPatientList(false)}
+            role="presentation"
           >
             <div
               className="relative w-full max-w-4xl max-h-[80vh] bg-surface-elevated rounded-2xl shadow-2xl p-6 overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="analytics-patient-list-title"
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-primary">{t('patients.analytics.modalTitle')} ({filteredPatients.length})</h2>
+                <h2 id="analytics-patient-list-title" className="text-2xl font-bold text-primary">{t('patients.analytics.modalTitle')} ({analyticsPatients.length})</h2>
                 <button
                   onClick={() => setShowPatientList(false)}
                   className="p-2 hover:bg-surface rounded-lg transition-colors"
+                  aria-label="Tutup daftar pasien"
                 >
                   <Icon name="X" size={20} className="text-secondary" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3">
-                {filteredPatients.map(patient => (
+                {analyticsPatients.map(patient => (
                   <div key={patient.id} className="flex items-center justify-between p-4 bg-surface rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
@@ -535,7 +509,9 @@ const PatientAnalytics = ({
                             age: patient.age,
                             gender: patient.gender === 'M'
                               ? t('patients.common.gender.male')
-                              : t('patients.common.gender.female'),
+                              : patient.gender === 'F'
+                                ? t('patients.common.gender.female')
+                                : 'Tidak diketahui',
                             phone: patient.phone
                           })}
                         </div>
@@ -544,7 +520,7 @@ const PatientAnalytics = ({
                     <div className="text-right">
                       <div className="text-sm font-medium text-primary">{formatDateSafe(patient.lastVisit, locale)}</div>
                       <div className={`text-xs px-2 py-1 rounded-full ${patient.status === 'active' ? 'bg-green-100 text-green-800' :
-                        patient.status === 'vip' ? 'bg-yellow-100 text-yellow-800' :
+                        patient.status === 'new' ? 'bg-blue-100 text-blue-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                         {t(`patients.registry.status.${patient.status}`)}
@@ -561,20 +537,20 @@ const PatientAnalytics = ({
       {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
-          <div className="text-3xl font-bold text-primary">{patients.length}</div>
+          <div className="text-3xl font-bold text-primary">{analyticsPatients.length}</div>
           <div className="text-secondary">{t('patients.analytics.stats.total')}</div>
         </div>
         <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
           <div className="text-3xl font-bold text-green-600">
-            {patients.filter(p => p.status === 'active').length}
+            {analyticsPatients.filter(p => p.status === 'active').length}
           </div>
           <div className="text-secondary">{t('patients.analytics.stats.active')}</div>
         </div>
         <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
           <div className="text-3xl font-bold text-yellow-600">
-            {patients.filter(p => p.status === 'vip').length}
+            {analyticsPatients.filter(p => p.status === 'inactive').length}
           </div>
-          <div className="text-secondary">{t('patients.analytics.stats.vip')}</div>
+          <div className="text-secondary">Perlu Follow-up</div>
         </div>
         <div className="bg-surface-elevated rounded-xl p-6 border border-primary/20">
           <div className="text-3xl font-bold text-emerald-600">
@@ -594,7 +570,7 @@ const PatientAnalytics = ({
           <Doughnut data={genderDistributionData} options={doughnutOptions} />
         </ChartCard>
 
-        <ChartCard title="Revenue Bulanan">
+        <ChartCard title={`Revenue Bulanan ${selectedPeriod === 'custom' ? selectedYear : new Date().getFullYear()}`}>
           <Line data={monthlyRevenueData} options={chartOptions} />
         </ChartCard>
 
@@ -978,8 +954,9 @@ const PatientAnalytics = ({
             </thead>
             <tbody>
               {Object.entries(ageGroups).map(([ageGroup, total]) => {
-                const groupPatients = patients.filter(p => {
-                  const age = p.age;
+                const groupPatients = analyticsPatients.filter(p => {
+                  const age = Number(p.age);
+                  if (!Number.isFinite(age) || age < 0) return false;
                   switch (ageGroup) {
                     case '0-17': return age < 18;
                     case '18-29': return age >= 18 && age < 30;
@@ -991,7 +968,8 @@ const PatientAnalytics = ({
                 });
                 const male = groupPatients.filter(p => p.gender === 'M').length;
                 const female = groupPatients.filter(p => p.gender === 'F').length;
-                const percentage = patients.length ? ((total / patients.length) * 100).toFixed(1) : '0.0';
+                const knownAgePatients = analyticsPatients.filter((patient) => Number.isFinite(Number(patient.age)) && Number(patient.age) >= 0).length;
+                const percentage = knownAgePatients ? ((total / knownAgePatients) * 100).toFixed(1) : '0.0';
 
                 return (
                   <tr key={ageGroup} className="border-b border-primary/10">

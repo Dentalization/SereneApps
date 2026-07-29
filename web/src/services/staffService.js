@@ -1,4 +1,5 @@
 import { authHttp, forceLogout } from '../utils/httpClient';
+import { publishPortalInvalidation } from '../collaboration/portalCollaboration.mjs';
 
 const API_BASE = '/clinic';
 
@@ -6,32 +7,20 @@ export const staffService = {
   // Get all staff for the current clinic
   getStaff: async () => {
     try {
-      console.log('StaffService: Making API call to:', `${API_BASE}/staff`);
       const response = await authHttp.get(`${API_BASE}/staff`);
-      console.log('StaffService: API response:', response);
-      console.log('StaffService: API response data:', response.data);
       
       // Extract staff array from API response
       const staffData = response.data.staff || response.data || [];
-      console.log('StaffService: Extracted staff data:', staffData);
-      
       return {
         success: true,
         data: {
           staff: staffData,
           message: response.data.message,
-          clinicId: response.data.clinicId
+          clinicId: response.data.clinicId,
+          stats: response.data.stats || null
         }
       };
     } catch (error) {
-      console.error('StaffService: Error fetching staff:', error);
-      console.error('StaffService: Error details:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message
-      });
-      
       // Include status code in error message for better error handling
       const statusCode = error.response?.status;
       let errorMessage = error.response?.data?.error || error.message || 'Failed to fetch staff list';
@@ -56,12 +45,12 @@ export const staffService = {
   addStaff: async (staffData) => {
     try {
       const response = await authHttp.post(`${API_BASE}/staff`, staffData);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:add' });
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('Error adding staff:', error);
       // Include status code in error message for better error handling
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to add staff member';
@@ -75,7 +64,9 @@ export const staffService = {
       return {
         success: false,
         error: statusCode ? `Error ${statusCode}: ${errorMessage}` : errorMessage,
-        statusCode: statusCode // Also include status code separately for programmatic handling
+        statusCode: statusCode, // Also include status code separately for programmatic handling
+        errorCode: error.response?.data?.errorCode,
+        details: error.response?.data?.details
       };
     }
   },
@@ -83,20 +74,14 @@ export const staffService = {
   // Update staff member
   updateStaff: async (staffId, updateData) => {
     try {
-      console.log('🔄 StaffService.updateStaff called with:', { staffId, updateData });
       const response = await authHttp.put(`${API_BASE}/staff/${staffId}`, updateData);
-      console.log('✅ StaffService.updateStaff response:', response);
-      console.log('📊 Response data structure:', response.data);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:update' });
       
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('❌ StaffService.updateStaff error:', error);
-      console.error('❌ Error response:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-      
       // Include status code in error message for better error handling
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to update staff member';
@@ -119,12 +104,12 @@ export const staffService = {
   removeStaff: async (staffId) => {
     try {
       const response = await authHttp.delete(`${API_BASE}/staff/${staffId}`);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:remove' });
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('Error removing staff:', error);
       // Include status code in error message for better error handling
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to remove staff member';
@@ -194,7 +179,6 @@ export const staffService = {
         data: response.data.profile
       };
     } catch (error) {
-      console.error('Error fetching staff profile:', error);
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to fetch staff profile';
       
@@ -217,12 +201,12 @@ export const staffService = {
   updateStaffRole: async (userId, updates) => {
     try {
       const response = await authHttp.put(`${API_BASE}/staff/${userId}/role`, updates);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:role' });
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('Error updating staff role:', error);
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to update staff member';
       
@@ -245,12 +229,12 @@ export const staffService = {
   removeStaffMember: async (userId) => {
     try {
       const response = await authHttp.delete(`${API_BASE}/staff/${userId}`);
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:remove' });
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('Error removing staff member:', error);
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to remove staff member';
       
@@ -273,12 +257,12 @@ export const staffService = {
   changeBranch: async (staffId, branchId) => {
     try {
       const response = await authHttp.put(`${API_BASE}/staff/${staffId}`, { branchId });
+      publishPortalInvalidation('clinic:staff_updated', { source: 'staff-service:branch' });
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('Error changing staff branch:', error);
       const statusCode = error.response?.status;
       const errorMessage = error.response?.data?.error || error.message || 'Failed to change staff branch';
       

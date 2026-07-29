@@ -38,6 +38,13 @@ export async function getPatientDetails(patientId) {
   return data.patient;
 }
 
+export async function updatePatientMedicalHistory(patientId, medicalHistory) {
+  const { data } = await authHttp.patch(`/dentist-portal/patients/${patientId}/medical-details`, {
+    medicalHistory,
+  });
+  return data.medicalDetails;
+}
+
 /**
  * Get all AI analysis results for a specific patient
  */

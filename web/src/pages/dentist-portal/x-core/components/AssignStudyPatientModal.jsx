@@ -20,6 +20,7 @@ const AssignStudyPatientModal = ({
     }, [study?.id]);
 
     if (!study) return null;
+    const hasCurrentPatient = study.patientId !== null && study.patientId !== undefined;
 
     const handleAssign = async () => {
         if (!selectedPatient?.id || saving) return;
@@ -58,10 +59,12 @@ const AssignStudyPatientModal = ({
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h3 id="assign-xcore-patient-title" className="text-xl font-bold text-primary">
-                                Change Patient
+                                {hasCurrentPatient ? 'Change Patient' : 'Assign Patient'}
                             </h3>
                             <p className="mt-1 text-sm text-secondary">
-                                Current: {study.patientName || 'Unknown patient'} · {study.patientIdDisplay || study.realPatientId}
+                                {hasCurrentPatient
+                                    ? `Current: ${study.patient?.name || study.patientName || 'Patient'} · ${study.patientIdDisplay || study.realPatientId}`
+                                    : 'This study is currently stored only in Gallery. Select a patient when the clinical linkage is known.'}
                             </p>
                         </div>
                         <button
@@ -104,7 +107,7 @@ const AssignStudyPatientModal = ({
                             className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {saving && <AppIcon name="Loader2" size={15} className="animate-spin" />}
-                            {saving ? 'Saving…' : 'Assign Patient'}
+                            {saving ? 'Saving…' : hasCurrentPatient ? 'Change Patient' : 'Assign Patient'}
                         </button>
                     </div>
                 </div>

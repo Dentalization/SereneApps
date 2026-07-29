@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Icon from '../../../components/AppIcon';
 import ClinicSideBar from '../ui/SideBar-Clinic';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { useTheme } from '../../../contexts/ThemeContext';
-import { useAuth } from '../../../contexts/AuthContext';
 import clinicService from '../../../services/clinicService';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import components
 import PatientDetailModal from './components/PatientDetailModal';
@@ -13,6 +11,13 @@ import PatientAnalytics from './components/PatientAnalytics';
 import PatientReports from './components/PatientReports';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { resolveMediaUrl } from '../../../utils/media';
+import { usePortalRealtimeRefresh } from '../../../hooks/usePortalRealtimeRefresh';
+import { PORTAL_REFRESH_PROFILES } from '../../../collaboration/portalCollaboration.mjs';
+import {
+  getJakartaDateKey,
+  getPatientDentistIds,
+  isActiveAppointment,
+} from './clinicPatientDataModel.mjs';
 
 // ─── APPOINTMENT STATUS BADGE ───────────────────────────────────────────────
 const getStatusColor = (status) => {
@@ -31,7 +36,7 @@ const getStatusColor = (status) => {
 const getPatientStatusColor = (status) => {
   switch (status) {
     case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-    case 'vip': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+    case 'new': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
     case 'inactive': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
     default: return 'bg-gray-100 text-gray-800';
   }
@@ -65,20 +70,13 @@ const StatCard = ({ title, value, icon, iconColor = 'text-accent' }) => (
 );
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
-const CLINIC_PATIENT_REALTIME_EVENTS = [
-  'notification:new',
-  'appointment:updated',
-  'payment:status_updated',
-  'billing:invoice_updated',
-  'clinic:billing_updated'
-];
-
 const PatientsPage = () => {
   const { t, language } = useLanguage();
-  const { isDark } = useTheme();
-  const { user, logout } = useAuth();
   const { socket } = useNotifications();
   const location = useLocation();
+  const navigate = useNavigate();
+  const requestSequence = useRef(0);
+  const hasLoadedOnce = useRef(false);
 
   // This is the CLINIC PORTAL — always clinic context.
   // The logged-in user is the clinic admin/owner.
@@ -103,51 +101,47 @@ const PatientsPage = () => {
   const locale = language === 'id' ? 'id-ID' : 'en-US';
 
   // ── DATA LOADING ─────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    const requestId = ++requestSequence.current;
+    if (!silent && !hasLoadedOnce.current) setLoading(true);
+    if (!silent) setError(null);
 
     try {
       // Fetch patients + appointments + dentists in one call
       const data = await clinicService.getClinicPatients();
 
-      if (data) {
+      if (data && requestId === requestSequence.current) {
         setPatients(data.patients || []);
         setAllAppointments(data.appointments || []);
         setDoctors(data.dentists || []);
-        console.log(`✅ Loaded ${data.patients?.length || 0} patients, ${data.appointments?.length || 0} appointments, ${data.dentists?.length || 0} dentists`);
+        hasLoadedOnce.current = true;
       }
     } catch (err) {
       console.error('❌ Error fetching clinic patients:', err);
+      if (requestId !== requestSequence.current) return;
       if (err.response?.status === 401 || err.response?.status === 403) {
         setError('Sesi Anda telah berakhir. Silakan login kembali.');
-      } else {
+      } else if (!silent || !hasLoadedOnce.current) {
         setError('Gagal memuat data pasien. Silakan coba lagi.');
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(() => {
-      fetchData();
+      fetchData({ silent: true });
     }, 60000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleRealtimeUpdate = (data) => {
-      console.log('🔄 Real-time update: refreshing clinic patients due to notification:', data);
-      fetchData();
-    };
-    CLINIC_PATIENT_REALTIME_EVENTS.forEach(eventName => socket.on(eventName, handleRealtimeUpdate));
-    return () => {
-      CLINIC_PATIENT_REALTIME_EVENTS.forEach(eventName => socket.off(eventName, handleRealtimeUpdate));
-    };
-  }, [socket, fetchData]);
+  usePortalRealtimeRefresh({
+    socket,
+    events: PORTAL_REFRESH_PROFILES.PATIENTS,
+    refresh: () => fetchData({ silent: true })
+  });
 
   // Deep-link to patient history/details based on query parameters
   useEffect(() => {
@@ -156,16 +150,16 @@ const PatientsPage = () => {
     const patientId = params.get('patientId');
     const tab = params.get('tab');
     if (patientId) {
-      const patient = patients.find(p => p.id === patientId);
+      const patient = patients.find(p => String(p.id) === String(patientId));
       if (patient) {
         setModalInitialTab(tab || 'overview');
         setSelectedPatient(patient);
         setShowDetailModal(true);
         // Clear query parameters to prevent modal reopening on navigate/refresh
-        window.history.replaceState(null, '', window.location.pathname);
+        navigate(location.pathname, { replace: true });
       }
     }
-  }, [patients, location.search]);
+  }, [patients, location.pathname, location.search, navigate]);
 
   // ── FILTERED PATIENTS (Registry) ─────────────────────────────────────────
   const filteredPatients = useMemo(() => {
@@ -173,7 +167,7 @@ const PatientsPage = () => {
 
     // Filter by dentist
     if (selectedDentist !== 'all') {
-      filtered = filtered.filter(p => p.doctorId === selectedDentist);
+      filtered = filtered.filter(p => getPatientDentistIds(p).includes(String(selectedDentist)));
     }
 
     // Status filter
@@ -191,7 +185,7 @@ const PatientsPage = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(p =>
-        p.name.toLowerCase().includes(q) ||
+        (p.name || '').toLowerCase().includes(q) ||
         (p.phone || '').includes(searchQuery) ||
         (p.email || '').toLowerCase().includes(q) ||
         (p.doctorName || '').toLowerCase().includes(q)
@@ -232,7 +226,7 @@ const PatientsPage = () => {
       : allAppointments;
 
     const active = filteredPatients.filter(p => p.status === 'active').length;
-    const vip = filteredPatients.filter(p => p.status === 'vip').length;
+    const inactive = filteredPatients.filter(p => p.status === 'inactive').length;
     const now = new Date();
     const newThisMonth = filteredPatients.filter(p => {
       const d = new Date(p.createdAt);
@@ -241,12 +235,12 @@ const PatientsPage = () => {
 
     const totalRevenue = filteredPatients.reduce((sum, p) => sum + (p.totalRevenue || 0), 0);
     const overdueCount = scopedApts.filter(a => a.status === 'overdue').length;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getJakartaDateKey();
     const todayApts = scopedApts.filter(a => a.date === todayStr).length;
-    const upcomingApts = scopedApts.filter(a => a.status === 'scheduled' || a.status === 'confirmed').length;
+    const upcomingApts = scopedApts.filter(a => isActiveAppointment(a)).length;
     const totalDentists = doctors.length;
 
-    return { active, vip, newThisMonth, totalRevenue, overdueCount, todayApts, upcomingApts, totalDentists };
+    return { active, inactive, newThisMonth, totalRevenue, overdueCount, todayApts, upcomingApts, totalDentists };
   }, [filteredPatients, allAppointments, selectedDentist, doctors]);
 
   // ── TABS ─────────────────────────────────────────────────────────────────
@@ -261,11 +255,6 @@ const PatientsPage = () => {
   const handlePatientAction = (action, patient) => {
     switch (action) {
       case 'view':
-        setModalInitialTab('overview');
-        setSelectedPatient(patient);
-        setShowDetailModal(true);
-        break;
-      case 'edit':
         setModalInitialTab('overview');
         setSelectedPatient(patient);
         setShowDetailModal(true);
@@ -291,13 +280,20 @@ const PatientsPage = () => {
       status: p.status, lastVisit: p.lastVisit, totalVisits: p.totalVisits,
       doctor: p.doctorName, totalRevenue: p.totalRevenue,
     }));
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
+    const headers = Object.keys(exportData[0] || { message: '' });
+    const escapeCsv = (value) => {
+      const text = value === null || value === undefined ? '' : String(value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const rows = exportData.length ? exportData : [{ message: 'Tidak ada data untuk filter yang dipilih' }];
+    const dataStr = `\uFEFF${headers.join(',')}\r\n${rows.map(row => headers.map(key => escapeCsv(row[key])).join(',')).join('\r\n')}`;
+    const blob = new Blob([dataStr], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `patients-clinic-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `patients-clinic-${getJakartaDateKey()}.csv`;
     link.click();
+    link.remove();
     URL.revokeObjectURL(url);
   };
 
@@ -379,7 +375,7 @@ const PatientsPage = () => {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <StatCard title="Total Pasien" value={filteredPatients.length} icon="Users" iconColor="text-blue-500" />
                 <StatCard title="Pasien Aktif" value={stats.active} icon="UserCheck" iconColor="text-green-500" />
-                <StatCard title="Pasien VIP" value={stats.vip} icon="Crown" iconColor="text-yellow-500" />
+                <StatCard title="Perlu Follow-up" value={stats.inactive} icon="UserRoundSearch" iconColor="text-amber-500" />
                 <StatCard title="Baru Bulan Ini" value={stats.newThisMonth} icon="Calendar" iconColor="text-indigo-500" />
                 <StatCard
                   title="Revenue"
@@ -393,14 +389,14 @@ const PatientsPage = () => {
               <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   {/* Search */}
-                  <div className="relative">
+                  <div className="relative w-full sm:w-auto">
                     <Icon name="Search" className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary w-4 h-4" />
                     <input
                       type="text"
                       placeholder="Cari pasien atau dokter..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 w-72 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-sm"
+                      className="pl-10 pr-4 py-2 w-full sm:w-72 rounded-lg border border-primary/20 bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-sm"
                     />
                   </div>
                   {/* Status filter */}
@@ -412,7 +408,7 @@ const PatientsPage = () => {
                   >
                     <option value="all">Semua Status</option>
                     <option value="active">Aktif</option>
-                    <option value="vip">VIP</option>
+                    <option value="new">Baru</option>
                     <option value="inactive">Tidak Aktif</option>
                   </select>
 
@@ -512,19 +508,16 @@ const PatientsPage = () => {
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap">
                               <span className={`px-2 py-0.5 text-xs font-medium rounded-full uppercase ${getPatientStatusColor(patient.status)}`}>
-                                {patient.status === 'active' ? 'Aktif' : patient.status === 'vip' ? 'VIP' : 'Tidak Aktif'}
+                                {patient.status === 'active' ? 'Aktif' : patient.status === 'new' ? 'Baru' : 'Tidak Aktif'}
                               </span>
                             </td>
                             <td className="px-5 py-3.5 whitespace-nowrap text-sm">
                               <div className="flex items-center gap-1">
-                                <button onClick={() => handlePatientAction('view', patient)} className="p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Lihat">
+                                <button onClick={() => handlePatientAction('view', patient)} className="p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Lihat" aria-label={`Lihat detail ${patient.name || 'pasien'}`}>
                                   <Icon name="Eye" size={15} />
                                 </button>
-                                <button onClick={() => handlePatientAction('edit', patient)} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Edit">
-                                  <Icon name="Edit" size={15} />
-                                </button>
-                                <button onClick={() => handlePatientAction('schedule', patient)} className="p-1.5 text-green-500 hover:bg-green-500/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Jadwalkan">
-                                  <Icon name="CalendarPlus" size={15} />
+                                <button onClick={() => handlePatientAction('schedule', patient)} className="p-1.5 text-green-500 hover:bg-green-500/10 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95" title="Lihat jadwal pasien" aria-label={`Lihat jadwal ${patient.name || 'pasien'}`}>
+                                  <Icon name="CalendarDays" size={15} />
                                 </button>
                               </div>
                             </td>
@@ -683,6 +676,11 @@ const PatientsPage = () => {
                       <p className="text-sm text-secondary">Tidak ada appointment dengan filter ini</p>
                     </div>
                   )}
+                  {filteredAppointments.length > 30 && (
+                    <div className="px-6 py-4 text-center text-xs text-secondary bg-surface/60">
+                      Menampilkan 30 appointment terbaru dari {filteredAppointments.length}. Gunakan filter status atau dokter untuk mempersempit data.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -755,13 +753,13 @@ const PatientsPage = () => {
                   Clinic Portal • {doctors.length} Dokter
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
                 {/* Quick dentist summary */}
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-3 text-center min-w-[120px]">
+                <div className="min-w-0 rounded-2xl border border-border/40 bg-surface px-3 py-3 text-center sm:min-w-[120px] sm:px-4">
                   <div className="text-xs uppercase tracking-wide text-secondary">Dokter</div>
                   <div className="text-2xl font-bold text-primary">{doctors.length}</div>
                 </div>
-                <div className="rounded-2xl border border-border/40 bg-surface px-4 py-3 text-center min-w-[120px]">
+                <div className="min-w-0 rounded-2xl border border-border/40 bg-surface px-3 py-3 text-center sm:min-w-[120px] sm:px-4">
                   <div className="text-xs uppercase tracking-wide text-secondary">Total Pasien</div>
                   <div className="text-2xl font-bold text-primary">{patients.length.toLocaleString()}</div>
                 </div>

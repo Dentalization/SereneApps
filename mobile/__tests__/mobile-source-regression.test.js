@@ -4,6 +4,34 @@ const path = require('node:path');
 const read = (file) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
 
 describe('mobile appointment and teledentistry source regressions', () => {
+  test('revalidates teledentistry session status on focus before keeping chat archived', () => {
+    const source = read('src/features/appointment/screens/PatientTeledentistryScreen.jsx');
+
+    expect(source).toMatch(/getAppointmentById/);
+    expect(source).toMatch(/navigation\.addListener\(['"]focus['"]/);
+    expect(source).toMatch(/getAppointmentById\(appointmentId\.toString\(\)\)/);
+    expect(source).toMatch(/setSessionStatus\(['"]ended['"]\)/);
+    expect(source).toMatch(/setSessionStatus\(isLiveSessionReady \? ['"]active['"] : ['"]upcoming['"]\)/);
+    expect(source).not.toMatch(/if \(isArchiveSession\)/);
+    expect(source).not.toMatch(/sessionStatus === ['"]ended['"] \|\| isArchiveSession/);
+    expect(source).not.toMatch(/sessionStatus === ['"]upcoming['"] \|\| isArchiveSession/);
+    expect(source).toMatch(/TODO\(Adrian\): wire this to a real session-end event once backend exposes one/);
+  });
+
+  test('preserves and previews image attachments in patient teledentistry chat', () => {
+    const source = read('src/features/appointment/screens/PatientTeledentistryScreen.jsx');
+    const hook = read('src/hooks/useChat.js');
+
+    expect(source).toMatch(/messageType:\s*m\.messageType/);
+    expect(source).toMatch(/fileUrl:\s*resolveMediaUrl\(m\.fileUrl\)/);
+    expect(source).toMatch(/fileName:\s*m\.fileName/);
+    expect(source).toMatch(/mimeType:\s*m\.mimeType/);
+    expect(source).toMatch(/isImageAttachment\(msg\)/);
+    expect(source).toMatch(/source=\{\{\s*uri:\s*msg\.fileUrl\s*\}\}/);
+    expect(source).toMatch(/resizeMode="cover"/);
+    expect(hook).toMatch(/sendAttachmentMessage[\s\S]*existingIndex[\s\S]*\.\.\.saved/);
+  });
+
   test('keeps pre-session health form optional', () => {
     const source = read('src/features/appointment/screens/PatientTeledentistryScreen.jsx');
     const hook = read('src/hooks/useChat.js');
