@@ -45,8 +45,16 @@ python3 analyze.py
 ```
 
 Analyzer menghitung mean, sample standard deviation (`ddof=1`), dan CV% dari
-tiga run. CV < 20% dilabeli **Stabil**. Laporan final tidak sukses jika ada file
-atau metrik yang hilang; gunakan `--allow-incomplete` hanya untuk diagnosis.
+tiga run. CV disajikan sebagai statistik deskriptif tanpa klaim konsistensi.
+Throughput diambil dari `http_reqs.rate`, bukan jumlah iterasi.
+Laporan final tidak sukses jika ada file atau metrik yang hilang; gunakan
+`--allow-incomplete` hanya untuk diagnosis.
+
+Checkout ini belum memuat 15 raw JSON 1–200 VU yang diperlukan untuk
+menghasilkan throughput historis. Karena itu, `summary/summary_report.md`
+menandai throughput arsip sebagai belum tersedia; jangan menghitungnya dari
+`iterations_count`. Pulihkan raw JSON tersebut lalu jalankan analyzer untuk
+menghasilkan tabel throughput yang dapat digunakan di skripsi.
 
 Run tanpa satu pun iterasi VU—contohnya karena backend mati atau `setup()` gagal
 login—ditandai **Tidak valid**. Nilai 0 ms dari kondisi tersebut tidak pernah

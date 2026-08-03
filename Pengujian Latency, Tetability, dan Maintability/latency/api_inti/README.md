@@ -36,7 +36,7 @@ Variabel konfigurasi dan default:
 | `RUNS` | `3` | Tetap n=3 untuk analisis skripsi. |
 | `VUS` | `10` | Virtual user konstan tiap endpoint. |
 | `DURATION` | `3m` | Durasi k6 per endpoint/run. |
-| `COOLDOWN_SECONDS` | `600` | Jeda antar kelompok Run 1, 2, dan 3. |
+| `COOLDOWN_SECONDS` | `600` | Jeda antar Run 1, 2, dan 3 untuk endpoint yang sama. |
 | `BASE_URL` | `http://127.0.0.1:4000` | Origin backend lokal, tanpa path. |
 | `API_PREFIX` | `/v1` | Prefix API. |
 | `FORCE` | `0` | `0` tidak menimpa artefak apa pun; `1` mengizinkan penggantian hasil. |
@@ -100,11 +100,11 @@ python3 analyze_repeated.py \
 
 Analyzer menghasilkan:
 
-- `summary/runs_table.csv`: metrik global per endpoint/run (`http_req_duration` avg/p95, `http_reqs` count/rate, `http_req_failed`, checks, VU maksimum, durasi aktual, status k6, timestamp).
+- `summary/runs_table.csv`: metrik endpoint target per run: custom `Trend` untuk avg/p95, custom `Counter` untuk jumlah/throughput, dan custom `Rate` untuk error. Metrik HTTP global tidak dipakai untuk angka endpoint karena dapat mencakup login/setup/warm-up.
 - `summary/summary_table.csv`: mean, sample SD (`ddof=1`), dan CV untuk avg response time, p95, throughput, serta error rate.
 - `summary/summary_report.md`: tabel Markdown siap ditinjau sebelum dipindahkan ke tabel skripsi.
 
-CV dihitung dengan `SD / mean × 100%`; bila mean = 0, nilainya `N/A`. CV digunakan sebagai statistik deskriptif dan tidak menjadi dasar klaim stabilitas atau reproducibility. Target p95 penelitian adalah < 2000 ms dan diberi status memenuhi hanya bila ketiga run endpoint berada di bawah target; target ini bukan sertifikasi atau standar eksternal. Jika satu saja artefak hilang/tidak valid, statistik endpoint tersebut dibiarkan kosong dan laporan bertuliskan **Data tidak lengkap**, bukan nol.
+CV dihitung dengan `SD / mean × 100%`; bila mean = 0, nilainya `N/A`. CV digunakan sebagai statistik deskriptif dan tidak menjadi dasar klaim konsistensi pengukuran. Target p95 penelitian adalah < 2000 ms dan diberi status memenuhi hanya bila ketiga run endpoint berada di bawah target; target ini bukan sertifikasi atau standar eksternal. Jika satu saja artefak hilang/tidak valid, statistik endpoint tersebut dibiarkan kosong dan laporan bertuliskan **Data tidak lengkap**, bukan nol.
 
 ## Konsistensi data uji
 
