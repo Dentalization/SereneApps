@@ -6,11 +6,15 @@ export const BASE_URL = (__ENV.BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
 export const API_PREFIX = normalizePrefix(__ENV.API_PREFIX || '/v1');
 export const API_URL = `${BASE_URL}${API_PREFIX}`;
 
-export const PATIENT_EMAIL = __ENV.PATIENT_EMAIL || __ENV.TEST_EMAIL || 'adrianhhhalim@gmail.com';
-export const DENTIST_EMAIL = __ENV.DENTIST_EMAIL || 'dentist10.clinic2@dentists.com';
-export const PATIENT_PASSWORD = __ENV.PATIENT_PASSWORD || __ENV.TEST_PASSWORD || 'password123';
-export const DENTIST_PASSWORD = __ENV.DENTIST_PASSWORD || __ENV.TEST_PASSWORD || 'password123';
-export const DENTIST_PROFILE_ID = __ENV.DENTIST_PROFILE_ID || __ENV.DENTIST_ID || '365';
+// Credentials and fixture identifiers must always be supplied through the
+// existing k6 environment variables. Empty values are intentionally allowed
+// here so the runner can fail before it starts a measurement without embedding
+// a real account in source control.
+export const PATIENT_EMAIL = __ENV.PATIENT_EMAIL || __ENV.TEST_EMAIL || '';
+export const DENTIST_EMAIL = __ENV.DENTIST_EMAIL || '';
+export const PATIENT_PASSWORD = __ENV.PATIENT_PASSWORD || __ENV.TEST_PASSWORD || '';
+export const DENTIST_PASSWORD = __ENV.DENTIST_PASSWORD || __ENV.TEST_PASSWORD || '';
+export const DENTIST_PROFILE_ID = __ENV.DENTIST_PROFILE_ID || __ENV.DENTIST_ID || '';
 export const CLINIC_BRANCH_ID = __ENV.CLINIC_BRANCH_ID || '';
 export const FIXTURE_APPOINTMENT_ID = __ENV.APPOINTMENT_ID || '';
 
@@ -56,13 +60,13 @@ export function createConfirmedFixtureAppointment({ patientToken, dentistToken, 
   });
 
   if (createRes.status !== 201) {
-    fail(`Setup gagal: tidak bisa membuat appointment fixture. Status=${createRes.status}, body=${createRes.body}`);
+    fail(`Setup gagal: tidak bisa membuat appointment fixture. Status=${createRes.status}`);
   }
 
   const createBody = safeJson(createRes);
   const appointmentId = nested(createBody, ['appointment', 'id']);
   if (!appointmentId) {
-    fail(`Setup gagal: appointment.id tidak ditemukan. Body=${createRes.body}`);
+    fail('Setup gagal: appointment.id tidak ditemukan.');
   }
 
   const confirmRes = http.patch(`${API_URL}/appointments/${appointmentId}/confirm`, null, {
@@ -75,7 +79,7 @@ export function createConfirmedFixtureAppointment({ patientToken, dentistToken, 
   });
 
   if (confirmRes.status !== 200) {
-    fail(`Setup gagal: tidak bisa confirm appointment fixture ${appointmentId}. Status=${confirmRes.status}, body=${confirmRes.body}`);
+    fail(`Setup gagal: tidak bisa confirm appointment fixture ${appointmentId}. Status=${confirmRes.status}`);
   }
 
   return String(appointmentId);
@@ -100,7 +104,7 @@ export function warmUpCommunicationFixture({ patientToken, appointmentId }) {
   });
 
   if (messageRes.status !== 201) {
-    fail(`Setup gagal: warmup chat message untuk appointment ${appointmentId} gagal. Status=${messageRes.status}, body=${messageRes.body}`);
+    fail(`Setup gagal: warmup chat message untuk appointment ${appointmentId} gagal. Status=${messageRes.status}`);
   }
 
   const listRes = http.get(`${API_URL}/communications/appointments/${appointmentId}/chat/messages?limit=5`, {
@@ -179,4 +183,17 @@ export function nested(value, path) {
     current = current[path[i]];
   }
   return current;
+}
+
+const SENSITIVE_SUMMARY_KEY = /^(setup_?data|access_?token|refresh_?token|token|password|authorization|cookie|headers?)$/i;
+
+/**
+ * Remove volatile credentials before k6 serializes its summary file. Setup
+ * data is only needed while a test is running and must not become a research
+ * artifact.
+ */
+export function sanitizeSummary(summary) {
+  return JSON.parse(JSON.stringify(summary, (key, value) => (
+    SENSITIVE_SUMMARY_KEY.test(key) ? undefined : value
+  )));
 }

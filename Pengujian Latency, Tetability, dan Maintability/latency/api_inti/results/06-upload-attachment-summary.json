@@ -9,35 +9,35 @@
         "id": "5c0f8025f7e0b6654089e5b00e950f1a",
         "groups": [],
         "checks": [
-            {
-              "name": "setup create appointment status 201",
-              "path": "::setup::setup create appointment status 201",
-              "id": "ff63648de4966b1e7d757765e10b0a41",
-              "passes": 1,
-              "fails": 0
-            },
-            {
-              "name": "setup confirm appointment status 200",
-              "path": "::setup::setup confirm appointment status 200",
-              "id": "00b8f929f1b539b84b6293102af0a408",
-              "passes": 1,
-              "fails": 0
-            },
-            {
-              "path": "::setup::setup warmup message status 201",
-              "id": "96aa5b53d911e75a3b6c3387cff7e60c",
-              "passes": 1,
-              "fails": 0,
-              "name": "setup warmup message status 201"
-            },
-            {
-              "passes": 1,
-              "fails": 0,
-              "name": "setup warmup messages list status 200",
-              "path": "::setup::setup warmup messages list status 200",
-              "id": "4bce01378ec16715bbefa4453e67f1d2"
-            }
-          ]
+          {
+            "name": "setup create appointment status 201",
+            "path": "::setup::setup create appointment status 201",
+            "id": "ff63648de4966b1e7d757765e10b0a41",
+            "passes": 1,
+            "fails": 0
+          },
+          {
+            "name": "setup confirm appointment status 200",
+            "path": "::setup::setup confirm appointment status 200",
+            "id": "00b8f929f1b539b84b6293102af0a408",
+            "passes": 1,
+            "fails": 0
+          },
+          {
+            "path": "::setup::setup warmup message status 201",
+            "id": "96aa5b53d911e75a3b6c3387cff7e60c",
+            "passes": 1,
+            "fails": 0,
+            "name": "setup warmup message status 201"
+          },
+          {
+            "passes": 1,
+            "fails": 0,
+            "name": "setup warmup messages list status 200",
+            "path": "::setup::setup warmup messages list status 200",
+            "id": "4bce01378ec16715bbefa4453e67f1d2"
+          }
+        ]
       }
     ],
     "checks": [
@@ -296,9 +296,5 @@
       "type": "trend",
       "contains": "time"
     }
-  },
-  "setup_data": {
-    "appointmentId": "1219",
-    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODUxMDYwLCJleHAiOjE3ODM0NDMwNjB9.zEI2Kb2YDIsxmG-gwOiXaneOBJXe1u-KdKZlqJ9kSbM"
   }
 }
