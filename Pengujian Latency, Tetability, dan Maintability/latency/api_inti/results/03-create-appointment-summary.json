@@ -226,31 +226,25 @@
       "type": "counter"
     }
   },
-  "setup_data": {
-    "clinicBranchId": "",
-    "dentistProfileId": "365",
-    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODUxMDMxLCJleHAiOjE3ODM0NDMwMzF9.KN5iYafPPpR0j5TsCK_ZAqBxDRwB7WZlh_b9daxdjVk",
-    "runSeed": 51031
-  },
   "root_group": {
     "id": "d41d8cd98f00b204e9800998ecf8427e",
     "groups": [],
     "checks": [
-        {
-          "passes": 5,
-          "fails": 0,
-          "name": "create appointment valid response",
-          "path": "::create appointment valid response",
-          "id": "5d8761ccac782eac64fcc55881a9c19c"
-        },
-        {
-          "id": "f6fb38fc49750886ef3c50ab27edfbb2",
-          "passes": 5,
-          "fails": 0,
-          "name": "create appointment under 2s",
-          "path": "::create appointment under 2s"
-        }
-      ],
+      {
+        "passes": 5,
+        "fails": 0,
+        "name": "create appointment valid response",
+        "path": "::create appointment valid response",
+        "id": "5d8761ccac782eac64fcc55881a9c19c"
+      },
+      {
+        "id": "f6fb38fc49750886ef3c50ab27edfbb2",
+        "passes": 5,
+        "fails": 0,
+        "name": "create appointment under 2s",
+        "path": "::create appointment under 2s"
+      }
+    ],
     "name": "",
     "path": ""
   },

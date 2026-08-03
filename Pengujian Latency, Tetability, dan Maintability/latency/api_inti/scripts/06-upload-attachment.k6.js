@@ -13,7 +13,8 @@ import {
   createConfirmedFixtureAppointment,
   warmUpCommunicationFixture,
   authOnlyHeaders,
-  recordResult
+  recordResult,
+  sanitizeSummary
 } from './utils.js';
 
 const SAMPLE_IMAGE_PATH = __ENV.SAMPLE_IMAGE_PATH || '../fixtures/sample-dental.jpg';
@@ -96,6 +97,6 @@ export default function (data) {
 export function handleSummary(data) {
   const summaryFile = __ENV.SUMMARY_FILE || 'tests/latency/results/06-upload-attachment-summary.json';
   return {
-    [summaryFile]: JSON.stringify(data, null, 2),
+    [summaryFile]: JSON.stringify(sanitizeSummary(data), null, 2),
   };
 }

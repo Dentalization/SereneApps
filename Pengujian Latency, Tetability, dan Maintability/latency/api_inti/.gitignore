@@ -1,0 +1,4 @@
+# Generated measurements may contain operational metadata and must be kept local.
+results/repeated/
+summary/
+.env

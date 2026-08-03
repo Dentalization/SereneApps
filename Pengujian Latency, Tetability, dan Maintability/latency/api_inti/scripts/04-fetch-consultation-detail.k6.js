@@ -13,7 +13,8 @@ import {
   createConfirmedFixtureAppointment,
   warmUpCommunicationFixture,
   jsonHeaders,
-  recordResult
+  recordResult,
+  sanitizeSummary
 } from './utils.js';
 
 export const options = {
@@ -86,6 +87,6 @@ export default function (data) {
 export function handleSummary(data) {
   const summaryFile = __ENV.SUMMARY_FILE || 'tests/latency/results/04-fetch-consultation-detail-summary.json';
   return {
-    [summaryFile]: JSON.stringify(data, null, 2),
+    [summaryFile]: JSON.stringify(sanitizeSummary(data), null, 2),
   };
 }

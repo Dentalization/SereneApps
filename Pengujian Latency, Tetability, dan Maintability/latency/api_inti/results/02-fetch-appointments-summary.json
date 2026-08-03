@@ -238,29 +238,26 @@
       }
     }
   },
-  "setup_data": {
-    "patientToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ODMiLCJyb2xlcyI6WyJwYXRpZW50Il0sInRlbmFudElkIjpudWxsLCJjbGluaWNJZCI6bnVsbCwiaWF0IjoxNzgwODUxMDI1LCJleHAiOjE3ODM0NDMwMjV9.TSUb3QD0ox6oKdOWp3ol2XomzdBuQUCjQpGatjmSS_U"
-  },
   "root_group": {
     "name": "",
     "path": "",
     "id": "d41d8cd98f00b204e9800998ecf8427e",
     "groups": [],
     "checks": [
-        {
-          "name": "list appointment status 200",
-          "path": "::list appointment status 200",
-          "id": "f4b3364949af8a08c143e2db07453207",
-          "passes": 5,
-          "fails": 0
-        },
-        {
-          "id": "0d74f7bc5734c444eec362fd7667f606",
-          "passes": 5,
-          "fails": 0,
-          "name": "list appointment under 2s",
-          "path": "::list appointment under 2s"
-        }
-      ]
+      {
+        "name": "list appointment status 200",
+        "path": "::list appointment status 200",
+        "id": "f4b3364949af8a08c143e2db07453207",
+        "passes": 5,
+        "fails": 0
+      },
+      {
+        "id": "0d74f7bc5734c444eec362fd7667f606",
+        "passes": 5,
+        "fails": 0,
+        "name": "list appointment under 2s",
+        "path": "::list appointment under 2s"
+      }
+    ]
   }
 }

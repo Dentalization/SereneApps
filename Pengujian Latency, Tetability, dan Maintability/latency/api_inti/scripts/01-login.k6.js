@@ -1,6 +1,6 @@
 import { check, sleep } from 'k6';
 import { Trend, Rate, Counter } from 'k6/metrics';
-import { API_URL, PATIENT_EMAIL, PATIENT_PASSWORD, login, recordResult } from './utils.js';
+import { API_URL, PATIENT_EMAIL, PATIENT_PASSWORD, login, recordResult, sanitizeSummary } from './utils.js';
 
 export const options = {
   scenarios: {
@@ -38,6 +38,6 @@ export default function () {
 export function handleSummary(data) {
   const summaryFile = __ENV.SUMMARY_FILE || 'tests/latency/results/01-login-summary.json';
   return {
-    [summaryFile]: JSON.stringify(data, null, 2),
+    [summaryFile]: JSON.stringify(sanitizeSummary(data), null, 2),
   };
 }
