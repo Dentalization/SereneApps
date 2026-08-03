@@ -2,7 +2,8 @@
 """Create reproducible n=3 summaries for the SereneApps core API k6 tests.
 
 The program intentionally analyses k6's summary JSON only. It does not pool
-raw request samples: each run contributes one avg/p95/throughput/error value.
+raw request samples: each run contributes one target-endpoint avg/p95/
+throughput/error value from that endpoint's custom k6 metrics.
 """
 
 from __future__ import annotations
@@ -28,15 +29,18 @@ class Endpoint:
     key: str
     label: str
     summary_file: str
+    latency_metric: str
+    failed_metric: str
+    request_metric: str
 
 
 ENDPOINTS = (
-    Endpoint("01-login", "Login pengguna", "01-login-summary.json"),
-    Endpoint("02-appointments", "Daftar appointment", "02-appointment-list-summary.json"),
-    Endpoint("03-create-appointment", "Membuat appointment", "03-appointment-create-summary.json"),
-    Endpoint("04-consultation-detail", "Detail konsultasi", "04-consultation-detail-summary.json"),
-    Endpoint("05-consultation-message", "Pesan konsultasi", "05-consultation-message-summary.json"),
-    Endpoint("06-image-upload", "Unggah citra gigi", "06-image-upload-summary.json"),
+    Endpoint("01-login", "Login pengguna", "01-login-summary.json", "login_response_time", "login_failed", "login_requests"),
+    Endpoint("02-appointments", "Daftar appointment", "02-appointment-list-summary.json", "list_appointment_response_time", "list_appointment_failed", "list_appointment_requests"),
+    Endpoint("03-create-appointment", "Membuat appointment", "03-appointment-create-summary.json", "create_appointment_response_time", "create_appointment_failed", "create_appointment_requests"),
+    Endpoint("04-consultation-detail", "Detail konsultasi", "04-consultation-detail-summary.json", "detail_consultation_response_time", "detail_consultation_failed", "detail_consultation_requests"),
+    Endpoint("05-consultation-message", "Pesan konsultasi", "05-consultation-message-summary.json", "send_message_response_time", "send_message_failed", "send_message_requests"),
+    Endpoint("06-image-upload", "Unggah citra gigi", "06-image-upload-summary.json", "upload_image_response_time", "upload_image_failed", "upload_image_requests"),
 )
 
 
@@ -135,8 +139,8 @@ def read_json(path: Path) -> tuple[dict[str, Any] | None, str]:
     return payload, ""
 
 
-def validate_summary(summary: dict[str, Any]) -> list[str]:
-    """Validate metrics needed for a comparable core-API measurement."""
+def validate_summary(summary: dict[str, Any], endpoint: Endpoint | None) -> list[str]:
+    """Validate target-endpoint metrics; setup traffic is intentionally excluded."""
     errors: list[str] = []
     findings = sensitive_findings(summary)
     if findings:
@@ -144,27 +148,32 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
 
     required_values = (
         ("state.testRunDurationMs", finite_number(nested_value(summary, "state", "testRunDurationMs"))),
-        ("http_req_duration.avg", metric_value(summary, "http_req_duration", "avg")),
-        ("http_req_duration.p(95)", metric_value(summary, "http_req_duration", "p(95)")),
-        ("http_reqs.count", metric_value(summary, "http_reqs", "count")),
-        ("http_reqs.rate", metric_value(summary, "http_reqs", "rate")),
-        ("http_req_failed.rate", metric_value(summary, "http_req_failed", "rate")),
         ("checks.passes", metric_value(summary, "checks", "passes")),
         ("checks.fails", metric_value(summary, "checks", "fails")),
         ("vus_max.max", metric_value(summary, "vus_max", "max")),
         ("iterations.count", metric_value(summary, "iterations", "count")),
     )
+    if endpoint is None:
+        errors.append("nama file tidak dapat dipetakan ke endpoint API inti")
+    else:
+        required_values += (
+            (f"{endpoint.latency_metric}.avg", metric_value(summary, endpoint.latency_metric, "avg")),
+            (f"{endpoint.latency_metric}.p(95)", metric_value(summary, endpoint.latency_metric, "p(95)")),
+            (f"{endpoint.request_metric}.count", metric_value(summary, endpoint.request_metric, "count")),
+            (f"{endpoint.request_metric}.rate", metric_value(summary, endpoint.request_metric, "rate")),
+            (f"{endpoint.failed_metric}.rate", metric_value(summary, endpoint.failed_metric, "rate")),
+        )
     for name, number in required_values:
         if number is None:
             errors.append(f"metrik wajib tidak ada/tidak numerik: {name}")
 
     duration = finite_number(nested_value(summary, "state", "testRunDurationMs"))
-    request_count = metric_value(summary, "http_reqs", "count")
+    request_count = metric_value(summary, endpoint.request_metric, "count") if endpoint else None
     iterations = metric_value(summary, "iterations", "count")
     if duration is not None and duration <= 0:
         errors.append("durasi aktual harus lebih dari nol")
     if request_count is not None and request_count <= 0:
-        errors.append("http_reqs.count harus lebih dari nol")
+        errors.append("counter request endpoint harus lebih dari nol")
     if iterations is not None and iterations <= 0:
         errors.append("iterations.count harus lebih dari nol (kemungkinan hanya setup/VU=0)")
     return errors
@@ -174,7 +183,8 @@ def validate_file(path: Path) -> tuple[bool, str]:
     summary, error = read_json(path)
     if summary is None:
         return False, error
-    errors = validate_summary(summary)
+    endpoint = next((item for item in ENDPOINTS if item.summary_file == path.name), None)
+    errors = validate_summary(summary, endpoint)
     return (not errors), "; ".join(errors)
 
 
@@ -210,7 +220,7 @@ def parse_result(endpoint: Endpoint, run: int, source_file: Path, manifest: dict
     if summary is None:
         result.reason = load_error
         return result
-    errors = validate_summary(summary)
+    errors = validate_summary(summary, endpoint)
     if errors:
         result.reason = "; ".join(errors)
         return result
@@ -222,11 +232,11 @@ def parse_result(endpoint: Endpoint, run: int, source_file: Path, manifest: dict
         result.reason = f"status k6 tidak layak dianalisis: {result.k6_status}"
         return result
 
-    result.avg_ms = metric_value(summary, "http_req_duration", "avg")
-    result.p95_ms = metric_value(summary, "http_req_duration", "p(95)")
-    result.request_count = metric_value(summary, "http_reqs", "count")
-    result.throughput_rps = metric_value(summary, "http_reqs", "rate")
-    result.error_rate = metric_value(summary, "http_req_failed", "rate")
+    result.avg_ms = metric_value(summary, endpoint.latency_metric, "avg")
+    result.p95_ms = metric_value(summary, endpoint.latency_metric, "p(95)")
+    result.request_count = metric_value(summary, endpoint.request_metric, "count")
+    result.throughput_rps = metric_value(summary, endpoint.request_metric, "rate")
+    result.error_rate = metric_value(summary, endpoint.failed_metric, "rate")
     result.checks_pass = metric_value(summary, "checks", "passes")
     result.checks_fail = metric_value(summary, "checks", "fails")
     result.vus_max = metric_value(summary, "vus_max", "max")
@@ -274,13 +284,14 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
         writer.writerows(rows)
 
 
-def write_runs_table(path: Path, results: list[RunResult], vus: str, duration: str) -> None:
+def write_runs_table(path: Path, results: list[RunResult], vus: str, duration: str, results_dir: Path) -> None:
     fields = [
         "endpoint", "run", "vus", "configured_duration", "actual_duration_ms",
         "avg_response_ms", "p95_response_ms", "request_count", "throughput_rps",
         "error_rate_pct", "checks_passed", "checks_failed", "target_p95_status",
         "timestamp", "source_file", "k6_status", "k6_exit_code", "vus_max",
-        "iterations_count", "analysis_status", "reason",
+        "iterations_count", "latency_metric", "request_metric", "failed_metric",
+        "measurement_scope", "analysis_status", "reason",
     ]
     rows: list[dict[str, str]] = []
     for result in results:
@@ -299,11 +310,15 @@ def write_runs_table(path: Path, results: list[RunResult], vus: str, duration: s
             "target_p95_status": target_for_run(result),
             "actual_duration_ms": csv_number(result.actual_duration_ms),
             "timestamp": result.timestamp,
-            "source_file": str(result.source_file),
+            "source_file": str(result.source_file.relative_to(results_dir)),
             "k6_status": result.k6_status,
             "k6_exit_code": result.k6_exit_code,
             "vus_max": csv_number(result.vus_max),
             "iterations_count": csv_number(result.iterations),
+            "latency_metric": result.endpoint.latency_metric,
+            "request_metric": result.endpoint.request_metric,
+            "failed_metric": result.endpoint.failed_metric,
+            "measurement_scope": "endpoint target only (custom k6 metrics)",
             "analysis_status": "valid" if result.valid else "invalid",
             "reason": result.reason,
         })
@@ -444,7 +459,8 @@ def write_report(path: Path, grouped: dict[Endpoint, list[RunResult]], vus: str,
     content = f"""# Hasil Pengujian API Inti — Repeated Measurement
 
 Konfigurasi nominal: {vus} VU, {duration} per endpoint, tiga run per endpoint.
-SD adalah sample standard deviation (`ddof=1`). CV dihitung sebagai SD/mean × 100%; CV ditampilkan `N/A` ketika mean = 0. CV disajikan secara deskriptif dan tidak digunakan untuk mengklaim stabilitas atau reproducibility.
+Avg/p95 memakai custom `Trend`, throughput memakai custom `Counter.rate`, dan error rate memakai custom `Rate` untuk endpoint pada setiap baris. Metrik HTTP global tidak digunakan untuk angka endpoint target karena dapat mencakup setup/warm-up.
+SD adalah sample standard deviation (`ddof=1`). CV dihitung sebagai SD/mean × 100%; CV ditampilkan `N/A` ketika mean = 0. CV disajikan secara deskriptif dan tidak digunakan untuk membuat klaim konsistensi pengukuran.
 
 Target penelitian untuk p95 adalah < {P95_TARGET_MS:.0f} ms dan hanya ditandai memenuhi bila ketiga run endpoint tersebut berada di bawah target. Target ini bukan sertifikasi atau standar eksternal.
 
@@ -452,19 +468,19 @@ Target penelitian untuk p95 adalah < {P95_TARGET_MS:.0f} ms dan hanya ditandai m
 
 {overview_table}
 
-## Rata-rata Response Time (`http_req_duration`, avg, ms)
+## Rata-rata Response Time Endpoint Target (custom Trend, avg, ms)
 
 {avg_table}
 
-## p95 Response Time (`http_req_duration`, ms)
+## p95 Response Time Endpoint Target (custom Trend, ms)
 
 {p95_table}
 
-## Throughput (`http_reqs`, req/s)
+## Throughput Endpoint Target (custom Counter, req/s)
 
 {throughput_table}
 
-## Error Rate (`http_req_failed`, %)
+## Error Rate Endpoint Target (custom Rate, %)
 
 {error_table}
 
@@ -487,7 +503,7 @@ def run_analysis(results_dir: Path, summary_dir: Path, manifest: Path | None, vu
             results.append(result)
             grouped[endpoint].append(result)
 
-    write_runs_table(summary_dir / "runs_table.csv", results, vus, duration)
+    write_runs_table(summary_dir / "runs_table.csv", results, vus, duration, results_dir)
     summary_rows = build_summary_rows(grouped)
     write_csv(summary_dir / "summary_table.csv", SUMMARY_FIELDS, summary_rows)
     write_report(summary_dir / "summary_report.md", grouped, vus, duration)

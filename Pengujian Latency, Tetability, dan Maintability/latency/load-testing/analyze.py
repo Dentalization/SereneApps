@@ -24,7 +24,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_RESULTS_DIR = BASE_DIR / "results"
 DEFAULT_SUMMARY_DIR = BASE_DIR / "summary"
 P95_TARGET_MS = 2_000.0
-STABILITY_CV_THRESHOLD = 20.0
 
 SCENARIOS = (
     ("test_1vu", "1 VU", 1),
@@ -37,6 +36,9 @@ SCENARIOS = (
 METRICS = (
     ("duration_avg_ms", "http_req_duration", "avg"),
     ("duration_p95_ms", "http_req_duration", "p(95)"),
+    # Throughput must come from k6's measured HTTP request rate, not from
+    # iteration counts (one iteration may issue multiple HTTP requests).
+    ("throughput_rps", "http_reqs", "rate"),
     ("failed_rate", "http_req_failed", "rate"),
     # A run is a latency measurement only if at least one VU iteration ran.
     # This prevents a failed setup() from being misreported as a 0 ms result.
@@ -99,7 +101,7 @@ def percentile_nearest_rank(values: list[float], percentile: float) -> float:
 
 
 def extract_from_summary(summary: dict[str, Any]) -> dict[str, float]:
-    """Extract the three required values from a k6 handleSummary JSON object."""
+    """Extract the required metrics, including k6's measured request rate."""
     metrics = summary.get("metrics")
     if not isinstance(metrics, dict):
         return {}
@@ -241,14 +243,6 @@ def valid_measurements(
     return values, validities
 
 
-def stability_status(cv: float | None, validities: list[bool]) -> str:
-    if not all(validities):
-        return execution_status(validities)
-    if cv is None:
-        return "Data tidak lengkap"
-    return "Stabil" if cv < STABILITY_CV_THRESHOLD else "Variabel"
-
-
 def p95_status(values: list[float | None], validities: list[bool]) -> str:
     if not all(validities):
         return execution_status(validities)
@@ -315,14 +309,16 @@ def write_markdown(
             f"> Setiap skenario diuji sebanyak {len(run_numbers)} kali. "
             "SD adalah sample standard deviation (ddof=1); CV = SD/mean × 100%.\n\n"
         )
-        handle.write(f"> Interpretasi stabilitas: CV < {STABILITY_CV_THRESHOLD:.0f}% = stabil dan reproducible.\n")
+        handle.write(
+            "> CV dilaporkan sebagai statistik deskriptif dan tidak digunakan untuk membuat klaim konsistensi pengukuran.\n"
+        )
         handle.write(
             "> Run tanpa iterasi VU (misalnya `setup()` gagal) ditandai **Tidak valid** dan tidak boleh digunakan sebagai data latency.\n\n"
         )
 
         handle.write("## Rata-rata Response Time (`http_req_duration`, avg, ms)\n\n")
         handle.write(
-            f"| Skenario | {run_headers} | Mean (ms) | SD (ms) | CV (%) | Status |\n"
+            f"| Skenario | {run_headers} | Mean (ms) | SD (ms) | CV (%) | Status eksekusi |\n"
         )
         handle.write(f"|{separator}|\n")
         for scenario_key, label, _ in SCENARIOS:
@@ -335,7 +331,7 @@ def write_markdown(
                 f"| {label} | {run_values} | {number_or_na(statistic.mean)} | "
                 f"{number_or_na(statistic.standard_deviation)} | "
                 f"{percent_or_na(statistic.coefficient_of_variation)} | "
-                f"{stability_status(statistic.coefficient_of_variation, validities)} |\n"
+                f"{execution_status(validities)} |\n"
             )
 
         handle.write("\n## p95 Response Time (`http_req_duration`, ms)\n\n")
@@ -353,6 +349,24 @@ def write_markdown(
                 f"| {label} | {run_values} | {number_or_na(statistic.mean)} | "
                 f"{number_or_na(statistic.standard_deviation)} | "
                 f"{percent_or_na(statistic.coefficient_of_variation)} | {p95_status(values, validities)} |\n"
+            )
+
+        handle.write("\n## Throughput (`http_reqs.rate`, req/s)\n\n")
+        handle.write(
+            f"| Skenario | {run_headers} | Mean (req/s) | SD | CV (%) | Status eksekusi |\n"
+        )
+        handle.write(f"|{separator}|\n")
+        for scenario_key, label, _ in SCENARIOS:
+            values, validities = valid_measurements(
+                data[scenario_key], "throughput_rps", run_numbers
+            )
+            statistic = calculate_statistic(values)
+            run_values = " | ".join(number_or_na(value, 2) for value in values)
+            handle.write(
+                f"| {label} | {run_values} | {number_or_na(statistic.mean)} | "
+                f"{number_or_na(statistic.standard_deviation)} | "
+                f"{percent_or_na(statistic.coefficient_of_variation)} | "
+                f"{execution_status(validities)} |\n"
             )
 
         handle.write("\n## Error Rate (`http_req_failed`)\n\n")
@@ -374,8 +388,8 @@ def write_markdown(
 
         handle.write("\n---\n")
         handle.write(
-            "Catatan: CV tidak didefinisikan ketika mean = 0; nilainya ditampilkan sebagai N/A "
-            "agar tidak mengklaim stabilitas yang tidak dapat dihitung. Hasil tidak valid harus diulang.\n"
+            "Catatan: CV tidak didefinisikan ketika mean = 0; nilainya ditampilkan sebagai N/A. "
+            "Hasil tidak valid harus diulang.\n"
         )
 
 

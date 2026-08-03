@@ -17,13 +17,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyze_repeated as analyzer  # noqa: E402
 
 
-def synthetic_summary(avg: float, p95: float, secret: bool = False) -> dict:
+def synthetic_summary(endpoint: analyzer.Endpoint, avg: float, p95: float, secret: bool = False) -> dict:
     summary = {
         "state": {"testRunDurationMs": 180000},
         "metrics": {
-            "http_req_duration": {"values": {"avg": avg, "p(95)": p95, "count": 50}},
-            "http_reqs": {"values": {"count": 50, "rate": 16.67}},
-            "http_req_failed": {"values": {"rate": 0.02}},
+            # Deliberately different global values prove the analyzer takes
+            # only the endpoint-specific k6 metrics below.
+            "http_req_duration": {"values": {"avg": 999.0, "p(95)": 1999.0, "count": 99}},
+            "http_reqs": {"values": {"count": 99, "rate": 33.33}},
+            "http_req_failed": {"values": {"rate": 0.99}},
+            endpoint.latency_metric: {"values": {"avg": avg, "p(95)": p95, "count": 50}},
+            endpoint.request_metric: {"values": {"count": 50, "rate": 16.67}},
+            endpoint.failed_metric: {"values": {"rate": 0.02}},
             "checks": {"values": {"passes": 48, "fails": 2}},
             "vus_max": {"values": {"max": 10}},
             "iterations": {"values": {"count": 30}},
@@ -40,7 +45,7 @@ class RepeatedAnalyzerTest(unittest.TestCase):
             for run, avg, p95 in ((1, 100.0, 150.0), (2, 110.0, 160.0), (3, 120.0, 170.0)):
                 target = root / f"run_{run}" / endpoint.summary_file
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(json.dumps(synthetic_summary(avg, p95)), encoding="utf-8")
+                target.write_text(json.dumps(synthetic_summary(endpoint, avg, p95)), encoding="utf-8")
 
     def test_complete_n3_has_sample_sd_and_cv(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -59,7 +64,11 @@ class RepeatedAnalyzerTest(unittest.TestCase):
                     "error_rate_pct", "checks_passed", "checks_failed", "target_p95_status",
                     "timestamp", "source_file",
                 }.issubset(set(run_reader.fieldnames or [])))
-                self.assertEqual(len(list(run_reader)), 18)
+                run_rows = list(run_reader)
+                self.assertEqual(len(run_rows), 18)
+                self.assertAlmostEqual(float(run_rows[0]["avg_response_ms"]), 100.0, places=6)
+                self.assertAlmostEqual(float(run_rows[0]["throughput_rps"]), 16.67, places=6)
+                self.assertAlmostEqual(float(run_rows[0]["error_rate_pct"]), 2.0, places=6)
             with (summary / "summary_table.csv").open(newline="", encoding="utf-8") as handle:
                 summary_reader = csv.DictReader(handle)
                 self.assertTrue({
@@ -95,8 +104,9 @@ class RepeatedAnalyzerTest(unittest.TestCase):
 
     def test_sensitive_setup_data_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            target = Path(temporary) / "summary.json"
-            target.write_text(json.dumps(synthetic_summary(100, 150, secret=True)), encoding="utf-8")
+            endpoint = analyzer.ENDPOINTS[0]
+            target = Path(temporary) / endpoint.summary_file
+            target.write_text(json.dumps(synthetic_summary(endpoint, 100, 150, secret=True)), encoding="utf-8")
             valid, reason = analyzer.validate_file(target)
             self.assertFalse(valid)
             self.assertIn("data sensitif", reason)

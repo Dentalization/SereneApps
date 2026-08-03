@@ -2,18 +2,18 @@
 
 > Setiap skenario diuji sebanyak 3 kali. SD adalah sample standard deviation (ddof=1); CV = SD/mean × 100%.
 
-> Interpretasi stabilitas: CV < 20% = stabil dan reproducible.
+> CV dilaporkan sebagai statistik deskriptif dan tidak digunakan untuk membuat klaim konsistensi pengukuran.
 > Run tanpa iterasi VU (misalnya `setup()` gagal) ditandai **Tidak valid** dan tidak boleh digunakan sebagai data latency.
 
 ## Rata-rata Response Time (`http_req_duration`, avg, ms)
 
-| Skenario | Run 1 | Run 2 | Run 3 | Mean (ms) | SD (ms) | CV (%) | Status |
+| Skenario | Run 1 | Run 2 | Run 3 | Mean (ms) | SD (ms) | CV (%) | Status eksekusi |
 |---|---|---|---|---|---|---|---|
-| 1 VU | 23.81 | 23.45 | 22.90 | 23.39 | 0.46 | 1.9% | Stabil |
-| 10 VU | 35.79 | 33.79 | 34.04 | 34.54 | 1.09 | 3.1% | Stabil |
-| 50 VU | 179.02 | 170.21 | 171.76 | 173.67 | 4.71 | 2.7% | Stabil |
-| 100 VU | 360.23 | 349.62 | 349.66 | 353.17 | 6.11 | 1.7% | Stabil |
-| 200 VU | 861.14 | 753.29 | 702.26 | 772.23 | 81.12 | 10.5% | Stabil |
+| 1 VU | 23.81 | 23.45 | 22.90 | 23.39 | 0.46 | 1.9% | Valid |
+| 10 VU | 35.79 | 33.79 | 34.04 | 34.54 | 1.09 | 3.1% | Valid |
+| 50 VU | 179.02 | 170.21 | 171.76 | 173.67 | 4.71 | 2.7% | Valid |
+| 100 VU | 360.23 | 349.62 | 349.66 | 353.17 | 6.11 | 1.7% | Valid |
+| 200 VU | 861.14 | 753.29 | 702.26 | 772.23 | 81.12 | 10.5% | Valid |
 
 ## p95 Response Time (`http_req_duration`, ms)
 
@@ -35,5 +35,9 @@
 | 100 VU | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | N/A | Valid |
 | 200 VU | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | N/A | Valid |
 
+## Throughput (`http_reqs.rate`, req/s)
+
+Throughput tidak ditampilkan pada arsip ini karena 15 raw JSON k6 yang menjadi sumber `http_reqs.rate` tidak tersedia di checkout. Nilai tidak boleh diturunkan dari `iterations_count`. Setelah raw JSON dipulihkan, jalankan `python3 analyze.py` untuk menghasilkan tabel throughput per run, mean, dan SD dari metrik k6 yang sebenarnya.
+
 ---
-Catatan: CV tidak didefinisikan ketika mean = 0; nilainya ditampilkan sebagai N/A agar tidak mengklaim stabilitas yang tidak dapat dihitung. Hasil tidak valid harus diulang.
+Catatan: CV tidak didefinisikan ketika mean = 0; nilainya ditampilkan sebagai N/A. Hasil tidak valid harus diulang.
