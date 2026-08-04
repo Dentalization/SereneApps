@@ -8,7 +8,7 @@ export const API_URL = `${BASE_URL}${API_PREFIX}`;
 
 export const PATIENT_EMAIL = __ENV.PATIENT_EMAIL || __ENV.TEST_EMAIL || 'adrianhhhalim@gmail.com';
 export const DENTIST_EMAIL = __ENV.DENTIST_EMAIL || 'dentist10.clinic2@dentists.com';
-export const PATIENT_PASSWORD = __ENV.PATIENT_PASSWORD || __ENV.TEST_PASSWORD || 'password123';
+export const PATIENT_PASSWORD = __ENV.PATIENT_PASSWORD || __ENV.TEST_PASSWORD || 'Password123';
 export const DENTIST_PASSWORD = __ENV.DENTIST_PASSWORD || __ENV.TEST_PASSWORD || 'password123';
 export const DENTIST_PROFILE_ID = __ENV.DENTIST_PROFILE_ID || __ENV.DENTIST_ID || '365';
 export const CLINIC_BRANCH_ID = __ENV.CLINIC_BRANCH_ID || '';

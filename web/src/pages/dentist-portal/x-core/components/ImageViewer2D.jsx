@@ -181,6 +181,8 @@ const ImageViewer2D = ({
     isFullscreen: passedIsFullscreen,
     toggleFullscreen: passedToggleFullscreen,
     comparisonPaneId = null,
+    analysisCaseContext = null,
+    onCaptureForCase = null,
 }) => {
     const { user } = useAuth();
     const containerRef = useRef(null);
@@ -226,6 +228,7 @@ const ImageViewer2D = ({
     const [previewPoint, setPreviewPoint] = useState(null);
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
+    const [caseCaptureState, setCaseCaptureState] = useState('idle');
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
@@ -1037,6 +1040,19 @@ const ImageViewer2D = ({
         document.body.removeChild(link);
     }, [captureCurrentViewDataUrl]);
 
+    const captureForAnalysisCase = useCallback(async () => {
+        const dataUrl = captureCurrentViewDataUrl();
+        if (!dataUrl || !onCaptureForCase) return;
+        setCaseCaptureState('saving');
+        try {
+            await onCaptureForCase(dataUrl);
+            setCaseCaptureState('saved');
+        } catch (error) {
+            console.error('[ImageViewer2D] Case snapshot failed:', error);
+            setCaseCaptureState('error');
+        }
+    }, [captureCurrentViewDataUrl, onCaptureForCase]);
+
     const getMeasurementPoint = useCallback((event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         return {
@@ -1704,6 +1720,18 @@ const ImageViewer2D = ({
                         <button onClick={captureScreenshot} className="rounded-lg bg-slate-800 p-2 text-gray-400 transition hover:bg-slate-700 hover:text-white" title="Save Screenshot">
                             <AppIcon name="Camera" size={15} />
                         </button>
+                        {analysisCaseContext && onCaptureForCase && (
+                            <button
+                                type="button"
+                                onClick={captureForAnalysisCase}
+                                disabled={caseCaptureState === 'saving'}
+                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                                title="Simpan render beranotasi untuk PDF kasus"
+                            >
+                                <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                                <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Tersimpan' : 'Capture kasus'}</span>
+                            </button>
+                        )}
 
                         <Dropdown label="Export" icon="Download" labelClassName="hidden lg:inline">
                             <DropdownItem

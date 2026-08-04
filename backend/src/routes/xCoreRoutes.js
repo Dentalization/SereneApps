@@ -26,6 +26,15 @@ import {
 } from '../controllers/xCoreController.js';
 import { streamSlice } from '../controllers/xCoreStreamController.js';
 import { analyzeStudy } from '../controllers/xCoreAIController.js';
+import {
+    createCase,
+    downloadReport,
+    generateReport,
+    getCase,
+    listCases,
+    saveCaseRender,
+    updateCase,
+} from '../controllers/xCoreAnalysisCaseController.js';
 
 import { authMiddleware, requireRoles } from '../middleware/clinicAuth.js';
 
@@ -82,6 +91,13 @@ router.post('/studies/:id/annotation-snapshots', express.json({ limit: '4mb' }),
 router.delete('/studies/:id/annotation-snapshots/:snapshotId', deleteAnnotationSnapshot);
 router.get('/stream-slice/:studyId/:viewType/:index', streamSlice);
 router.post('/analyze', analyzeStudy);
+router.get('/analysis-cases', listCases);
+router.post('/analysis-cases', express.json({ limit: '4mb' }), createCase);
+router.get('/analysis-cases/:caseId', getCase);
+router.put('/analysis-cases/:caseId', express.json({ limit: '4mb' }), updateCase);
+router.put('/analysis-cases/:caseId/items/:itemId/render', express.json({ limit: '25mb' }), saveCaseRender);
+router.post('/analysis-cases/:caseId/reports', express.json({ limit: '1mb' }), generateReport);
+router.get('/analysis-cases/:caseId/reports/:reportId/pdf', downloadReport);
 router.get('/storage', getStorageStats);
 router.delete('/studies/:id', deleteStudy);
 

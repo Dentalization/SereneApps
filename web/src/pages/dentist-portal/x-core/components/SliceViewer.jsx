@@ -221,6 +221,8 @@ const SliceViewer = ({
     comparisonSyncEnabled = false,
     isFullscreen: passedIsFullscreen,
     toggleFullscreen: passedToggleFullscreen,
+    analysisCaseContext = null,
+    onCaptureForCase = null,
 }) => {
     const { user } = useAuth();
     const wrapperRef = useRef(null);
@@ -293,6 +295,7 @@ const SliceViewer = ({
     const [reviewError, setReviewError] = useState('');
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
+    const [caseCaptureState, setCaseCaptureState] = useState('idle');
     const [reportWarningMessage, setReportWarningMessage] = useState('');
     const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
     const [projectionRefreshTick, setProjectionRefreshTick] = useState(0);
@@ -1847,6 +1850,20 @@ const SliceViewer = ({
         }
     }, [annotations, captureCurrentViewDataUrl, clinicName, metadata]);
 
+    const captureForAnalysisCase = useCallback(async () => {
+        if (!onCaptureForCase) return;
+        setCaseCaptureState('saving');
+        try {
+            const dataUrl = await captureCurrentViewDataUrl();
+            if (!dataUrl) throw new Error('Viewer belum siap untuk dicapture');
+            await onCaptureForCase(dataUrl);
+            setCaseCaptureState('saved');
+        } catch (captureError) {
+            console.error('[SliceViewer] Case snapshot failed:', captureError);
+            setCaseCaptureState('error');
+        }
+    }, [captureCurrentViewDataUrl, onCaptureForCase]);
+
     useEffect(() => {
         const onFullscreenChange = () => {
             setLocalIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
@@ -2701,6 +2718,19 @@ const SliceViewer = ({
                         <AppIcon name="FileText" size={16} />
                         <span>Export Report</span>
                     </button>
+
+                    {analysisCaseContext && onCaptureForCase && (
+                        <button
+                            type="button"
+                            onClick={captureForAnalysisCase}
+                            disabled={caseCaptureState === 'saving'}
+                            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                            title="Simpan render slice beranotasi untuk PDF kasus"
+                        >
+                            <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                            <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Tersimpan' : 'Capture kasus'}</span>
+                        </button>
+                    )}
 
                     {study?.selectedSeriesType === '3D Volume' && (
                         <button

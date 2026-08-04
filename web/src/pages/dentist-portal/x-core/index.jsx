@@ -8,6 +8,8 @@ import Viewer3D from './components/Viewer3D';
 import ComparisonViewer from './components/ComparisonViewer';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getAccessToken } from '../../../utils/auth/tokenStorage';
+import AnalysisCaseWorkspace from '../../../features/x-core-analysis/AnalysisCaseWorkspace';
+import { saveAnalysisRender } from '../../../features/x-core-analysis/api';
 
 const XCore = ({
     portal = 'dentist',
@@ -22,6 +24,8 @@ const XCore = ({
     const [activeStudy, setActiveStudy] = useState(null);
     const [comparisonStudies, setComparisonStudies] = useState(null);
     const [studiesCache, setStudiesCache] = useState(null);
+    const [showAnalysisCases, setShowAnalysisCases] = useState(false);
+    const [analysisContext, setAnalysisContext] = useState(null);
     const showStorageStats = !readOnly;
 
     const handleStudySelect = (study) => {
@@ -94,6 +98,16 @@ const XCore = ({
                             </div>
 
                             <div className="flex gap-6 pt-4">
+                                {!readOnly && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAnalysisCases(true)}
+                                        className="flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
+                                    >
+                                        <AppIcon name="Files" size={16} />
+                                        Analysis Cases
+                                    </button>
+                                )}
                                 {showStorageStats && (
                                     <div className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg border transition-colors ${storageStats.percent > 90 ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                                         <AppIcon name="HardDrive" size={16} className={storageStats.percent > 90 ? "text-red-400" : "text-emerald-400"} />
@@ -145,7 +159,19 @@ const XCore = ({
                     ) : (
                         <div className="h-[calc(100vh-200px)]">
                             <ErrorBoundary onCleanup={() => { window.__volumeCache?.clear?.(); }}>
-                                <Viewer3D study={activeStudy} onBack={() => setActiveStudy(null)} />
+                                <Viewer3D
+                                    study={activeStudy}
+                                    onBack={() => {
+                                        setActiveStudy(null);
+                                        if (analysisContext) setShowAnalysisCases(true);
+                                    }}
+                                    analysisCaseContext={analysisContext}
+                                    onCaptureForCase={analysisContext ? async (dataUrl) => {
+                                        const render = await saveAnalysisRender(analysisContext.caseId, analysisContext.itemId, dataUrl);
+                                        setAnalysisContext((current) => ({ ...current, render }));
+                                        return render;
+                                    } : null}
+                                />
                             </ErrorBoundary>
                         </div>
                     )}
@@ -160,6 +186,23 @@ const XCore = ({
                         setStudiesCache(null);
                         setRefreshTrigger(prev => prev + 1);
                         fetchStorage();
+                    }}
+                />
+            )}
+            {showAnalysisCases && !readOnly && (
+                <AnalysisCaseWorkspace
+                    studies={studiesCache || []}
+                    studiesEndpoint={studiesEndpoint}
+                    onClose={() => setShowAnalysisCases(false)}
+                    onOpenItem={(analysisCase, item, study) => {
+                        if (!study) return;
+                        setAnalysisContext({ caseId: analysisCase.id, itemId: item.id, label: item.title || item.radiograph_type });
+                        setShowAnalysisCases(false);
+                        setActiveStudy({
+                            ...study,
+                            selectedSeriesUid: item.series_uid,
+                            selectedSeriesType: item.viewer_type === '2d' ? '2D Image' : '3D Volume',
+                        });
                     }}
                 />
             )}

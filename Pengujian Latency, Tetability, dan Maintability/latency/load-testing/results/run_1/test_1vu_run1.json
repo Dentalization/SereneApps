@@ -1,0 +1,280 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [
+      {
+        "groups": [],
+        "checks": [
+            {
+              "name": "setup create appointment status 201",
+              "path": "::setup::setup create appointment status 201",
+              "id": "ff63648de4966b1e7d757765e10b0a41",
+              "passes": 1,
+              "fails": 0
+            },
+            {
+              "fails": 0,
+              "name": "setup confirm appointment status 200",
+              "path": "::setup::setup confirm appointment status 200",
+              "id": "00b8f929f1b539b84b6293102af0a408",
+              "passes": 1
+            }
+          ],
+        "name": "setup",
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a"
+      },
+      {
+        "groups": [],
+        "checks": [
+            {
+              "passes": 162,
+              "fails": 0,
+              "name": "login status 200",
+              "path": "::1. Login pengguna::login status 200",
+              "id": "a226603a9536c8d7652f1645b8daedc4"
+            }
+          ],
+        "name": "1. Login pengguna",
+        "path": "::1. Login pengguna",
+        "id": "32ba0ced2dd7be86b69c81642637acdc"
+      },
+      {
+        "id": "217c5cfd1b7036e0f2f1ec1611e35b70",
+        "groups": [],
+        "checks": [
+            {
+              "name": "list appointment status 200",
+              "path": "::2. Ambil daftar appointment::list appointment status 200",
+              "id": "1e08c0552b12b4bbe351a61a3d041122",
+              "passes": 162,
+              "fails": 0
+            }
+          ],
+        "name": "2. Ambil daftar appointment",
+        "path": "::2. Ambil daftar appointment"
+      },
+      {
+        "checks": [
+          {
+            "id": "635424a3b66d30855cebc9f694f39d4a",
+            "passes": 162,
+            "fails": 0,
+            "name": "detail consultation status 200",
+            "path": "::3. Ambil detail konsultasi::detail consultation status 200"
+          }
+        ],
+        "name": "3. Ambil detail konsultasi",
+        "path": "::3. Ambil detail konsultasi",
+        "id": "d95af564ddb9be9c7a8109833fdb6fd8",
+        "groups": []
+      },
+      {
+        "groups": [],
+        "checks": [
+            {
+              "name": "send message status 201",
+              "path": "::4. Kirim pesan konsultasi::send message status 201",
+              "id": "8cba8e29e633462277babeecc0dadeb5",
+              "passes": 162,
+              "fails": 0
+            }
+          ],
+        "name": "4. Kirim pesan konsultasi",
+        "path": "::4. Kirim pesan konsultasi",
+        "id": "87562458f853b8ea4c8fb59100abf779"
+      },
+      {
+        "path": "::5. Unggah citra gigi",
+        "id": "5b8aecf9ec39cfb1d3be0591aed71345",
+        "groups": [],
+        "checks": [
+            {
+              "id": "17e90c762757ddcb3056437f64d3e53d",
+              "passes": 162,
+              "fails": 0,
+              "name": "upload image accepted",
+              "path": "::5. Unggah citra gigi::upload image accepted"
+            }
+          ],
+        "name": "5. Unggah citra gigi"
+      }
+    ],
+    "checks": []
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "p(95)"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 181168.777
+  },
+  "metrics": {
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 23.07223809523806,
+        "p(95)": 90.0596
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "vus": {
+      "values": {
+        "value": 1,
+        "min": 1,
+        "max": 1
+      },
+      "type": "gauge",
+      "contains": "default"
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "passes": 0,
+        "fails": 819,
+        "rate": 0
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 2076683,
+        "rate": 11462.698122646156
+      }
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 0.06409999999999996,
+        "avg": 0.031021978021977984
+      }
+    },
+    "vus_max": {
+      "values": {
+        "value": 1,
+        "min": 1,
+        "max": 1
+      },
+      "type": "gauge",
+      "contains": "default"
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 23.07223809523806,
+        "p(95)": 90.0596
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.0023846153846153843,
+        "p(95)": 0
+      }
+    },
+    "http_req_blocked": {
+      "contains": "time",
+      "values": {
+        "avg": 0.009043956043956023,
+        "p(95)": 0.013
+      },
+      "type": "trend"
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 819,
+        "rate": 4.520646512947427
+      }
+    },
+    "http_req_waiting": {
+      "values": {
+        "avg": 23.002764346764323,
+        "p(95)": 89.9419
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "group_duration": {
+      "values": {
+        "avg": 22.91956866172838,
+        "p(95)": 90.30093124999999
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "p(95)": 0
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.038451770451770326,
+        "p(95)": 0.075
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 812,
+        "fails": 0
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 12526445,
+        "rate": 69142.40526114497
+      }
+    },
+    "iteration_duration": {
+      "contains": "time",
+      "values": {
+        "avg": 1115.6638793641976,
+        "p(95)": 1138.15755
+      },
+      "type": "trend"
+    },
+    "iterations": {
+      "contains": "default",
+      "values": {
+        "count": 162,
+        "rate": 0.8941938157478426
+      },
+      "type": "counter"
+    }
+  }
+}

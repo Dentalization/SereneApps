@@ -72,6 +72,9 @@ model User {
   previousImagingStudyAssignments                                ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPreviousPatient")
   imagingStudyAssignments                                        ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentPatient")
   performedImagingStudyAssignments                               ImagingStudyPatientAssignment[] @relation("ImagingStudyAssignmentDentist")
+  xcoreAnalysisCasesAsPatient                                    XCoreAnalysisCase[]             @relation("XCoreAnalysisCasePatient")
+  xcoreAnalysisCasesCreated                                      XCoreAnalysisCase[]             @relation("XCoreAnalysisCaseCreator")
+  xcoreAnalysisReportsCreated                                    XCoreAnalysisReport[]           @relation("XCoreAnalysisReportCreator")
 
   @@index([clinic_id], map: "idx_users_clinic_id")
   @@index([lastLoginAt], map: "idx_users_last_login_at")
@@ -1397,6 +1400,7 @@ model ImagingStudy {
   specialistCases        SpecialistCase[]
   patientAssignments     ImagingStudyPatientAssignment[]
   endoRadiographEvidence EndoRadiographEvidence[]
+  analysisCaseItems      XCoreAnalysisCaseItem[]
   dentist                User?                           @relation("DentistStudies", fields: [dentistId], references: [id])
   patient                User?                           @relation("PatientStudies", fields: [patientId], references: [id], onDelete: SetNull)
 
@@ -1507,26 +1511,114 @@ model AnnotationSnapshot {
 }
 
 model ImagingSeries {
-  id              BigInt       @id @default(autoincrement())
-  studyId         BigInt       @map("study_id")
-  seriesNumber    Int?         @map("series_number")
-  modality        String       @db.VarChar(50)
-  description     String?
-  bodyPart        String?      @map("body_part")
-  sliceThickness  Float?       @map("slice_thickness")
-  pixelSpacing    Json?        @map("pixel_spacing")
-  kv              Float?
-  ma              Float?
-  exposureTime    Float?       @map("exposure_time")
-  numSlices       Int          @default(0) @map("num_slices")
-  folderPath      String       @map("folder_path")
-  previewImageUrl String?      @map("preview_image_url")
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  aiResults       AIResult[]
-  study           ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  id                BigInt                  @id @default(autoincrement())
+  studyId           BigInt                  @map("study_id")
+  seriesNumber      Int?                    @map("series_number")
+  modality          String                  @db.VarChar(50)
+  description       String?
+  bodyPart          String?                 @map("body_part")
+  sliceThickness    Float?                  @map("slice_thickness")
+  pixelSpacing      Json?                   @map("pixel_spacing")
+  kv                Float?
+  ma                Float?
+  exposureTime      Float?                  @map("exposure_time")
+  numSlices         Int                     @default(0) @map("num_slices")
+  folderPath        String                  @map("folder_path")
+  previewImageUrl   String?                 @map("preview_image_url")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  aiResults         AIResult[]
+  analysisCaseItems XCoreAnalysisCaseItem[]
+  study             ImagingStudy            @relation(fields: [studyId], references: [id], onDelete: Cascade)
 
   @@index([studyId], map: "idx_imaging_series_study")
   @@map("imaging_series")
+}
+
+model XCoreAnalysisCase {
+  id           String                  @id @default(uuid()) @db.Uuid
+  patientId    BigInt                  @map("patient_id")
+  createdBy    BigInt                  @map("created_by")
+  title        String                  @db.VarChar(255)
+  status       String                  @default("DRAFT") @db.VarChar(20)
+  clinicalData Json                    @default("{}") @map("clinical_data")
+  conclusion   String?
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient      User                    @relation("XCoreAnalysisCasePatient", fields: [patientId], references: [id], onDelete: Restrict)
+  creator      User                    @relation("XCoreAnalysisCaseCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items        XCoreAnalysisCaseItem[]
+  reports      XCoreAnalysisReport[]
+
+  @@index([createdBy, updatedAt(sort: Desc)], map: "idx_xcore_analysis_cases_owner")
+  @@index([patientId], map: "idx_xcore_analysis_cases_patient")
+  @@map("xcore_analysis_cases")
+}
+
+model XCoreAnalysisCaseItem {
+  id                String            @id @default(uuid()) @db.Uuid
+  caseId            String            @map("case_id") @db.Uuid
+  studyId           BigInt            @map("study_id")
+  seriesId          BigInt?           @map("series_id")
+  seriesUid         String            @map("series_uid")
+  viewerType        String            @default("2d") @map("viewer_type") @db.VarChar(16)
+  radiographType    String            @map("radiograph_type") @db.VarChar(24)
+  toothNumbers      String[]          @default([]) @map("tooth_numbers") @db.VarChar(3)
+  displayOrder      Int               @map("display_order")
+  title             String?           @db.VarChar(255)
+  findings          String?
+  renderStoragePath String?           @map("render_storage_path")
+  renderChecksum    String?           @map("render_checksum") @db.VarChar(64)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  analysisCase      XCoreAnalysisCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  study             ImagingStudy      @relation(fields: [studyId], references: [id], onDelete: Restrict)
+  series            ImagingSeries?    @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, displayOrder])
+  @@index([caseId, displayOrder], map: "idx_xcore_analysis_case_items_case")
+  @@index([studyId, seriesUid, viewerType], map: "idx_xcore_analysis_case_items_study_scope")
+  @@map("xcore_analysis_case_items")
+}
+
+model XCoreAnalysisReport {
+  id           String                    @id @default(uuid()) @db.Uuid
+  caseId       String                    @map("case_id") @db.Uuid
+  version      Int
+  status       String                    @default("DRAFT") @db.VarChar(16)
+  createdBy    BigInt                    @map("created_by")
+  storagePath  String                    @map("storage_path")
+  checksum     String                    @db.VarChar(64)
+  caseSnapshot Json                      @map("case_snapshot")
+  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  analysisCase XCoreAnalysisCase         @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  creator      User                      @relation("XCoreAnalysisReportCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items        XCoreAnalysisReportItem[]
+
+  @@unique([caseId, version])
+  @@index([caseId, version(sort: Desc)], map: "idx_xcore_analysis_reports_case")
+  @@map("xcore_analysis_reports")
+}
+
+model XCoreAnalysisReportItem {
+  id                  String              @id @default(uuid()) @db.Uuid
+  reportId            String              @map("report_id") @db.Uuid
+  sourceCaseItemId    String              @map("source_case_item_id") @db.Uuid
+  displayOrder        Int                 @map("display_order")
+  radiographType      String              @map("radiograph_type") @db.VarChar(24)
+  toothNumbers        String[]            @default([]) @map("tooth_numbers") @db.VarChar(3)
+  title               String?             @db.VarChar(255)
+  findings            String?
+  studyId             BigInt              @map("study_id")
+  seriesUid           String              @map("series_uid")
+  viewerType          String              @map("viewer_type") @db.VarChar(16)
+  annotationSnapshot  Json                @default("[]") @map("annotation_snapshot")
+  measurementSnapshot Json                @default("[]") @map("measurement_snapshot")
+  renderStoragePath   String              @map("render_storage_path")
+  renderChecksum      String              @map("render_checksum") @db.VarChar(64)
+  report              XCoreAnalysisReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, displayOrder])
+  @@map("xcore_analysis_report_items")
 }
 
 model AIResult {

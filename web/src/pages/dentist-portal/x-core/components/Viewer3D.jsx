@@ -8,7 +8,7 @@ import SeriesSidebar from './SeriesSidebar';
 import LinkedViewer from './LinkedViewer';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
-const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnabled = false }) => {
+const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnabled = false, analysisCaseContext = null, onCaptureForCase = null }) => {
     const [activeStudy, setActiveStudy] = useState(study);
     const { allSeries } = useSeriesList(activeStudy);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
@@ -212,6 +212,8 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
                     comparisonSyncEnabled={comparisonSyncEnabled}
                     isFullscreen={isFullscreen}
                     toggleFullscreen={toggleFullscreen}
+                    analysisCaseContext={analysisCaseContext}
+                    onCaptureForCase={onCaptureForCase}
                 />
             );
         }
@@ -259,6 +261,8 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
                 comparisonSyncEnabled={comparisonSyncEnabled}
                 isFullscreen={isFullscreen}
                 toggleFullscreen={toggleFullscreen}
+                analysisCaseContext={analysisCaseContext}
+                onCaptureForCase={onCaptureForCase}
             />
         );
     };
