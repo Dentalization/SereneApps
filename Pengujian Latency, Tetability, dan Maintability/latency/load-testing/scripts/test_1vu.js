@@ -3,7 +3,7 @@ import {
   handleSummary as baseHandleSummary,
   options as baseOptions,
   setup,
-} from '../../Pengujian Latency, Tetability, dan Maintability/latency/beban_pengguna/scripts/load-by-vu.k6.js';
+} from '../../beban_pengguna/scripts/load-by-vu.k6.js';
 
 // Wrapper configuration only. The HTTP flow and thresholds stay in the shared test.
 export const options = {
