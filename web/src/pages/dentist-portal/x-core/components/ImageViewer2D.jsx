@@ -43,6 +43,7 @@ import {
 } from '../services/xCore2dAiAnalysis.mjs';
 import ShortcutHelpButton from './ShortcutHelpButton';
 import SeriesSidebar from './SeriesSidebar';
+import { buildCanonical2DReportRenders } from '../../../../features/x-core-analysis/canonicalReportRender.mjs';
 
 const MEASUREMENT_COLOR = '#1D9E75';
 const WL_DRAG_SENSITIVITY = 0.005;
@@ -229,6 +230,7 @@ const ImageViewer2D = ({
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
     const [caseCaptureState, setCaseCaptureState] = useState('idle');
+    const [caseCaptureError, setCaseCaptureError] = useState('');
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
@@ -1016,7 +1018,6 @@ const ImageViewer2D = ({
         return canvas.toDataURL('image/png');
     }, [
         annotations,
-        effectivePixelSpacing,
         imageFilter,
         imageLoaded,
         imageSize.height,
@@ -1041,17 +1042,63 @@ const ImageViewer2D = ({
     }, [captureCurrentViewDataUrl]);
 
     const captureForAnalysisCase = useCallback(async () => {
-        const dataUrl = captureCurrentViewDataUrl();
-        if (!dataUrl || !onCaptureForCase) return;
+        if (!onCaptureForCase) return;
         setCaseCaptureState('saving');
+        setCaseCaptureError('');
         try {
-            await onCaptureForCase(dataUrl);
+            await annotationPersistence.flushPendingSave();
+            const reportPixelSpacing = calibrationFactor || (pixelSpacing && pixelSpacing !== 1 ? pixelSpacing : null);
+            const renders = buildCanonical2DReportRenders({
+                image: imgRef.current,
+                sourceWidth: imageSize.width,
+                sourceHeight: imageSize.height,
+                imageFilter,
+                annotations,
+                markerAnnotations: [...annotations, ...measurementClinicalRecords],
+                measurements,
+                findings: analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [],
+                pixelSpacing: reportPixelSpacing,
+                drawAnnotations,
+                drawMeasurements: drawMeasurementOverlay,
+                drawScaleBar,
+                getScaleBar,
+                metadata: {
+                    case_item_id: analysisCaseContext?.itemId,
+                    study_id: study?.id,
+                    series_uid: seriesUid,
+                    window_center: windowCenter,
+                    window_width: windowWidth,
+                    invert: inverted,
+                    rotation: 0,
+                    annotation_revision: annotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
+                },
+            });
+            await onCaptureForCase(renders);
             setCaseCaptureState('saved');
         } catch (error) {
             console.error('[ImageViewer2D] Case snapshot failed:', error);
             setCaseCaptureState('error');
+            setCaseCaptureError(error?.message || 'Gambar laporan gagal disimpan.');
         }
-    }, [captureCurrentViewDataUrl, onCaptureForCase]);
+    }, [
+        analysisCaseContext,
+        annotationPersistence,
+        annotations,
+        calibrationFactor,
+        effectivePixelSpacing,
+        imageFilter,
+        imageSize.height,
+        imageSize.width,
+        inverted,
+        measurements,
+        measurementClinicalRecords,
+        onCaptureForCase,
+        pixelSpacing,
+        seriesUid,
+        study?.id,
+        windowCenter,
+        windowWidth,
+    ]);
 
     const getMeasurementPoint = useCallback((event) => {
         const rect = event.currentTarget.getBoundingClientRect();
@@ -1726,10 +1773,10 @@ const ImageViewer2D = ({
                                 onClick={captureForAnalysisCase}
                                 disabled={caseCaptureState === 'saving'}
                                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
-                                title="Simpan render beranotasi untuk PDF kasus"
+                                title={caseCaptureError || 'Simpan canonical render bersih dan beranotasi untuk PDF kasus'}
                             >
                                 <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                                <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Tersimpan' : 'Capture kasus'}</span>
+                                <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Perbarui Gambar Laporan'}</span>
                             </button>
                         )}
 

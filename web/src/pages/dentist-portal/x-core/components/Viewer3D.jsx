@@ -190,14 +190,16 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
 
     // Determine initial view mode based on series type
     useEffect(() => {
-        if (activeStudy?.selectedSeriesType === '3D Volume') {
+        if (analysisCaseContext && activeStudy?.selectedSeriesType === '3D Volume') {
+            setViewMode('slice'); // Analysis reports use the canonical slice/quad composite pipeline.
+        } else if (activeStudy?.selectedSeriesType === '3D Volume') {
             setViewMode('3d'); // 3D First for volumetric series
         } else if (activeStudy?.selectedSeriesType === '2D Image') {
             setViewMode('2d'); // Dedicated 2D viewer for panoramic/ceph
         } else {
             setViewMode('slice'); // Fallback to slice view
         }
-    }, [activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid]);
+    }, [activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid, analysisCaseContext]);
 
     const renderActiveViewer = () => {
         if (viewMode === '3d' && activeStudy?.selectedSeriesType === '3D Volume') {

@@ -431,5 +431,5 @@ export default function usePersistentAnnotations({
     };
   }, [cancelScheduledLocalWrite, enabled]);
 
-  return { loading, saving, error };
+  return { loading, saving, error, flushPendingSave };
 }

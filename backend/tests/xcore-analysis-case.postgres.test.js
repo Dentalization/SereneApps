@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -12,10 +13,11 @@ import {
   updateAnalysisCase,
 } from '../src/services/xCoreAnalysisCaseService.js';
 import { XCORE_REPORT_ROOT } from '../src/services/xCoreAnalysisReportStorage.js';
+import { buildXCoreExampleFixture } from './fixtures/xcoreExampleFixture.js';
 
 const enabled = process.env.RUN_XCORE_ANALYSIS_DB_TESTS === '1';
 const prisma = new PrismaClient();
-const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const asDataUrl = (buffer) => `data:image/png;base64,${buffer.toString('base64')}`;
 
 test('persists two periapicals plus panoramic and keeps immutable PDF versions', { skip: !enabled }, async () => {
   const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -75,13 +77,65 @@ test('persists two periapicals plus panoramic and keeps immutable PDF versions',
           metadata: { clinical_record_type: 'measurement', value_label: `${item.display_order + 1}.0 mm` }, createdBy: creator.id,
         },
       });
-      await saveAnalysisCaseRender({ caseId: caseRecord.id, itemId: item.id, userId: creator.id, dataUrl: PNG_DATA_URL });
+    }
+
+    caseRecord = await updateAnalysisCase({
+      caseId: caseRecord.id,
+      userId: creator.id,
+      requireStudyAccess: access,
+      payload: {
+        items: caseRecord.items.map((item) => ({
+          ...item,
+          structured_findings: [{
+            id: crypto.randomUUID(), marker_number: 1, annotation_id: `xcase-${item.id}`,
+            tooth_numbers: item.tooth_numbers, region: item.tooth_numbers.length ? `Gigi ${item.tooth_numbers.join(', ')}` : 'Regio panoramik',
+            title: 'Temuan fixture', description: `Temuan terhubung ${item.series_uid}`, display_order: 0,
+          }],
+        })),
+      },
+    });
+    const fixture = await buildXCoreExampleFixture();
+    const annotatedBuffers = [fixture.annotated.pa11, fixture.annotated.pa36, fixture.annotated.pano];
+    const cleanBuffers = [fixture.clean.pa11, fixture.clean.pa36, fixture.clean.pano];
+    for (const [index, item] of caseRecord.items.entries()) {
+      const common = {
+        report_render_version: 2,
+        case_item_id: item.id,
+        study_id: item.study_id,
+        series_uid: item.series_uid,
+        viewer_type: item.viewer_type,
+        source_width: 390,
+        source_height: 620,
+        render_width: 390,
+        render_height: 620,
+        window_center: 0.5,
+        window_width: 1,
+        invert: false,
+        rotation: 0,
+        marker_count: 1,
+        rendered_at: new Date().toISOString(),
+      };
+      await saveAnalysisCaseRender({
+        caseId: caseRecord.id,
+        itemId: item.id,
+        userId: creator.id,
+        renders: {
+          CLEAN: { data_url: asDataUrl(cleanBuffers[index]), metadata: { ...common, render_type: 'CLEAN', marker_count: 0 } },
+          ANNOTATED: { data_url: asDataUrl(annotatedBuffers[index]), metadata: { ...common, render_type: 'ANNOTATED' } },
+        },
+      });
     }
 
     const refreshed = await getAnalysisCase(caseRecord.id, creator.id);
-    assert.equal(refreshed.items.filter((item) => item.render_storage_path).length, 3);
+    assert.equal(refreshed.items.filter((item) => item.render_status.ready).length, 3);
     assert.deepEqual(refreshed.items.map((item) => item.display_order), [0, 1, 2]);
     await assert.rejects(() => getAnalysisCase(caseRecord.id, otherUser.id), (error) => error.status === 403);
+    await assert.rejects(() => saveAnalysisCaseRender({
+      caseId: caseRecord.id, itemId: refreshed.items[0].id, userId: otherUser.id, renders: {},
+    }), (error) => error.status === 403);
+    await assert.rejects(() => saveAnalysisCaseRender({
+      caseId: caseRecord.id, itemId: crypto.randomUUID(), userId: creator.id, renders: {},
+    }), (error) => error.status === 404 && error.code === 'case_item_not_found');
 
     const v1 = await generateAnalysisReport({ caseId: caseRecord.id, userId: creator.id, status: 'DRAFT' });
     const v1File = await getAnalysisReportFile({ caseId: caseRecord.id, reportId: v1.id, userId: creator.id });
@@ -102,11 +156,12 @@ test('persists two periapicals plus panoramic and keeps immutable PDF versions',
 
     const snapshotRows = await prisma.$queryRaw(Prisma.sql`
       SELECT display_order, radiograph_type, tooth_numbers, jsonb_array_length(annotation_snapshot) AS annotation_count,
+        jsonb_array_length(structured_findings) AS finding_count,
         annotation_snapshot->0->>'label' AS annotation_label
       FROM xcore_analysis_report_items WHERE report_id=${v1.id}::uuid ORDER BY display_order
     `);
-    assert.deepEqual(snapshotRows.map((row) => [row.radiograph_type, row.tooth_numbers, row.annotation_count, row.annotation_label]), [
-      ['PERIAPICAL', ['11'], 1, 'measurement-pa-11'], ['PERIAPICAL', ['36'], 1, 'measurement-pa-36'], ['PANORAMIC', [], 1, 'measurement-pano'],
+    assert.deepEqual(snapshotRows.map((row) => [row.radiograph_type, row.tooth_numbers, row.annotation_count, row.finding_count, row.annotation_label]), [
+      ['PERIAPICAL', ['11'], 1, 1, 'measurement-pa-11'], ['PERIAPICAL', ['36'], 1, 1, 'measurement-pa-36'], ['PANORAMIC', [], 1, 1, 'measurement-pano'],
     ]);
   } finally {
     if (caseRecord?.id) {

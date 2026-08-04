@@ -1,0 +1,14 @@
+{
+  "description": "Perceptual golden baseline for the non-clinical X-Core QA fixture at 80 DPI.",
+  "page_count": 5,
+  "orientations": ["portrait", "portrait", "portrait", "landscape", "portrait"],
+  "dhash": [
+    "82a4848080000082",
+    "8679716179b88800",
+    "86f1796961b08802",
+    "0220697171696802",
+    "828038ac80000082"
+  ],
+  "max_hamming_distance": 8,
+  "marker_pages": [2, 3, 4]
+}

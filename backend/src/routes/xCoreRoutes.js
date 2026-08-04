@@ -32,6 +32,7 @@ import {
     generateReport,
     getCase,
     listCases,
+    preflightReport,
     saveCaseRender,
     updateCase,
 } from '../controllers/xCoreAnalysisCaseController.js';
@@ -95,7 +96,8 @@ router.get('/analysis-cases', listCases);
 router.post('/analysis-cases', express.json({ limit: '4mb' }), createCase);
 router.get('/analysis-cases/:caseId', getCase);
 router.put('/analysis-cases/:caseId', express.json({ limit: '4mb' }), updateCase);
-router.put('/analysis-cases/:caseId/items/:itemId/render', express.json({ limit: '25mb' }), saveCaseRender);
+router.put('/analysis-cases/:caseId/items/:itemId/render', express.json({ limit: '40mb' }), saveCaseRender);
+router.get('/analysis-cases/:caseId/reports/preflight', preflightReport);
 router.post('/analysis-cases/:caseId/reports', express.json({ limit: '1mb' }), generateReport);
 router.get('/analysis-cases/:caseId/reports/:reportId/pdf', downloadReport);
 router.get('/storage', getStorageStats);

@@ -4,6 +4,7 @@ import {
   getAnalysisCase,
   getAnalysisReportFile,
   listAnalysisCases,
+  preflightAnalysisReport,
   saveAnalysisCaseRender,
   updateAnalysisCase,
 } from '../services/xCoreAnalysisCaseService.js';
@@ -17,6 +18,7 @@ function respondError(res, error) {
   return res.status(error.status || 500).json({
     error: error.status ? error.message : 'X-Core analysis case operation failed',
     code: error.code || 'xcore_analysis_case_error',
+    ...(error.details ? { details: error.details } : {}),
   });
 }
 
@@ -64,9 +66,20 @@ export async function saveCaseRender(req, res) {
       caseId: req.params.caseId,
       itemId: req.params.itemId,
       userId: req.user.id,
+      renders: req.body?.renders,
       dataUrl: req.body?.render_data_url,
     });
     res.json({ render });
+  } catch (error) { respondError(res, error); }
+}
+
+export async function preflightReport(req, res) {
+  try {
+    const preflight = await preflightAnalysisReport({
+      caseId: req.params.caseId,
+      userId: req.user.id,
+    });
+    res.json({ preflight });
   } catch (error) { respondError(res, error); }
 }
 
@@ -94,4 +107,3 @@ export async function downloadReport(req, res) {
     res.send(report.buffer);
   } catch (error) { respondError(res, error); }
 }
-
