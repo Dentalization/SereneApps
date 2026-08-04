@@ -2,9 +2,52 @@
 
 ## Ringkasan arsitektur
 
-`xcore_analysis_cases` adalah agregat analisis tingkat pasien. Item kasus menunjuk ke `imaging_studies` dan, bila tersedia, `imaging_series`; anotasi dan pengukuran tidak diduplikasi saat kasus diedit karena tetap memakai `study_annotations` dengan scope `study_id + series_uid + viewer_type`.
+`xcore_analysis_cases` tetap menjadi agregat analisis tingkat pasien. Item kasus menunjuk ke `imaging_studies` dan, bila tersedia, `imaging_series`. Anotasi serta pengukuran tidak disalin selama editing: keduanya tetap memakai `study_annotations` dengan scope `study_id + series_uid + viewer_type`.
 
-Saat pengguna menekan **Capture kasus**, viewer merender citra, window/level, anotasi, pengukuran, dan scale bar ke PNG. Backend menyimpan render secara content-addressed. Saat **Generate PDF semua citra** dijalankan, backend membaca kasus dan anotasi tersimpan, membuat snapshot item terurut, menyimpan snapshot relasional pada `xcore_analysis_report_items`, membuat PDF melalui PDFKit, lalu meregistrasikan versi di `xcore_analysis_reports`. Render lama tidak ditimpa sehingga PDF dan snapshot versi lama tetap immutable.
+Peningkatan report render menggunakan tabel `xcore_analysis_case_item_renders` sebagai riwayat immutable render per item:
+
+- `CLEAN`: radiografi dan window/level tanpa overlay laporan.
+- `ANNOTATED`: radiografi yang sama dengan anotasi, pengukuran, scale bar, dan marker bernomor.
+
+Kolom lama `render_storage_path` dan `render_checksum` tetap dipertahankan sebagai pointer kompatibilitas ke render `ANNOTATED` terbaru. Render lama yang belum mempunyai metadata canonical ditampilkan sebagai `LEGACY` dan harus diperbarui sebelum report versi baru dibuat.
+
+## Canonical report render
+
+Viewer tidak lagi mengirim screenshot viewport untuk Analysis Case:
+
+1. Viewer menyimpan anotasi/pengukuran yang masih pending.
+2. Offscreen canvas ditentukan dari dimensi intrinsik radiografi atau dimensi fisik volume.
+3. Mode render selalu `fit image`, mempertahankan aspect ratio, maksimum sisi 2400 piksel, dan tidak memperbesar sumber 2D beresolusi rendah.
+4. `CLEAN` diambil sebelum overlay.
+5. `ANNOTATED` menambahkan overlay existing dan marker berdasarkan `structured_findings[].annotation_id`.
+6. Backend menghitung fingerprint dari item, temuan, dan anotasi tersimpan. Fingerprint ini menjadi sumber status `READY`, `STALE`, `MISSING`, `LEGACY`, atau `INVALID`.
+
+Metadata render menyimpan dimensi sumber/render, viewer type, window center/width, invert, rotasi, slice index/axis, view mode, pixel spacing, waktu render, marker count, dan fingerprint backend.
+
+## Marker dan temuan
+
+`xcore_analysis_case_items.structured_findings` adalah array temuan yang tidak menduplikasi geometry anotasi. Setiap entry menyimpan:
+
+- ID temuan UUID yang stabil.
+- `marker_number`, unik di dalam satu radiografi.
+- `annotation_id` sebagai lokasi marker.
+- `measurement_id` opsional.
+- regio, nomor gigi, judul, uraian, jenis anotasi, dan urutan.
+
+Nomor dapat dimulai kembali dari `1` pada radiografi berikutnya. Backend menolak marker tanpa anotasi pasangan, annotation ID lintas scope, nomor duplikat, uraian kosong, dan marker count render yang tidak cocok.
+
+## Validasi render
+
+Backend mendecode PNG/JPEG dengan Sharp dan memeriksa:
+
+- format aktual sesuai MIME;
+- minimum 256×256, maksimum 40 megapiksel, maksimum 18 MB;
+- ukuran file masuk akal;
+- luminance mean, variance, entropy, fraksi hitam/putih, dan bounding box konten;
+- area kosong viewport tidak mendominasi;
+- scope case/item/study/series/viewer dan pemilik kasus sesuai.
+
+Radiografi dominan gelap tetap diterima apabila mempunyai variance dan entropy yang menunjukkan struktur nyata. Error mempunyai kode spesifik seperti `render_dimensions_too_small`, `render_nearly_uniform`, `render_empty_area_dominant`, `render_scope_mismatch`, atau `render_marker_count_mismatch`.
 
 ## Endpoint
 
@@ -13,12 +56,53 @@ Saat pengguna menekan **Capture kasus**, viewer merender citra, window/level, an
 - `GET /api/v1/x-core/analysis-cases/:caseId`
 - `PUT /api/v1/x-core/analysis-cases/:caseId`
 - `PUT /api/v1/x-core/analysis-cases/:caseId/items/:itemId/render`
+- `GET /api/v1/x-core/analysis-cases/:caseId/reports/preflight`
 - `POST /api/v1/x-core/analysis-cases/:caseId/reports`
 - `GET /api/v1/x-core/analysis-cases/:caseId/reports/:reportId/pdf`
 
-Semua endpoint membutuhkan bearer authentication. Mutasi dan pembacaan kasus dibatasi ke pembuat kasus. Setiap studi diverifikasi melalui policy akses X-Core yang sudah ada dan `patient_id` semua item harus sama dengan pasien kasus.
+Payload render versi 2:
 
-## Menjalankan
+```json
+{
+  "renders": {
+    "CLEAN": { "data_url": "data:image/png;base64,...", "metadata": { "report_render_version": 2 } },
+    "ANNOTATED": { "data_url": "data:image/png;base64,...", "metadata": { "report_render_version": 2, "marker_count": 1 } }
+  }
+}
+```
+
+Endpoint lama dengan `render_data_url` masih diterima, tetapi hasilnya ditandai legacy dan tidak lolos preflight laporan baru.
+
+Semua endpoint membutuhkan bearer authentication. Mutasi dan pembacaan kasus dibatasi ke pembuat kasus. Item harus benar-benar anggota kasus, studi/series diverifikasi melalui policy akses X-Core existing, dan pasien seluruh item harus konsisten.
+
+## PDF dan immutability
+
+PDFKit backend tetap menjadi satu-satunya generator Analysis Case. PDF memakai satu render `ANNOTATED` aktual per radiografi:
+
+- pembuka portrait berisi identitas yang tersedia, konteks klinis, status, versi, dan ringkasan citra;
+- periapikal portrait dengan citra besar;
+- panoramik landscape full-width;
+- bitewing/sefalometrik/other memilih orientasi dari aspect ratio;
+- slice quad memakai landscape composite;
+- marker pada citra dipasangkan dengan daftar temuan bernomor;
+- pengukuran dideduplikasi berdasarkan ID;
+- header, footer, dan `Halaman X dari Y` ditambahkan ke seluruh halaman;
+- label memakai Bahasa Indonesia dan key teknis tidak dirender sebagai label pengguna.
+
+Preflight menolak render missing, legacy, stale, atau invalid. Generate memakai PostgreSQL advisory transaction lock agar dua proses tidak mendaftarkan version number yang sama. Setiap report menyimpan snapshot header, snapshot item relasional, structured findings, annotation/measurement snapshot, metadata render, storage path, dan checksum. Perubahan berikutnya tidak menulis ulang versi lama.
+
+## Alur pengguna
+
+1. Simpan item dan temuan terstruktur di workspace.
+2. Pilih anotasi lokasi untuk setiap marker.
+3. Buka viewer melalui **Perbarui Gambar Laporan**.
+4. Selesaikan anotasi/pengukuran lalu simpan canonical render.
+5. Pastikan semua item berstatus **Siap untuk laporan**.
+6. Pilih **Buat PDF laporan**. UI menjalankan preflight dan menunjukkan item yang perlu diperbarui.
+
+## Migration dan menjalankan aplikasi
+
+Migration tambahan: `backend/migrations/061_enhance_xcore_report_render.sql`.
 
 ```bash
 cd backend
@@ -31,15 +115,14 @@ cd web
 npm start
 ```
 
-Di X-Core, pilih **Analysis Cases**, buat kasus, tambahkan radiografi pasien yang sama, isi metadata/temuan, dan simpan. Buka setiap item, selesaikan anotasi lalu tekan **Capture kasus**. Kembali ke kasus dan pilih **Generate PDF semua citra**.
-
 ## Verifikasi
 
 ```bash
 cd backend
-node --test tests/xcore-analysis-case.test.js
+node --test tests/xcore-analysis-case.test.js tests/xcore-analysis-pdf-visual.test.js
 npx prisma validate --schema prisma/schema.prisma
 node scripts/generate_xcore_analysis_example.js
+pdfinfo artifacts/xcore-analysis-two-pa-one-pano.pdf
 ```
 
 ```bash
@@ -48,5 +131,10 @@ npm test
 npm run build
 ```
 
-Contoh PDF memakai placeholder non-klinis dan disimpan di `backend/artifacts/xcore-analysis-two-pa-one-pano.pdf`.
+Artifact QA non-klinis:
 
+- PDF: `backend/artifacts/xcore-analysis-two-pa-one-pano.pdf`
+- PNG hasil pemeriksaan terbaru: `backend/artifacts/xcore-analysis-report-final-v2-pages/`
+- Golden baseline: `backend/tests/fixtures/xcore-report-golden.json`
+
+Sumber citra adalah aset pengujian repository `web/public/assets/imagesTesting/test4.png` tanpa identitas yang tampak. Dua crop vertikal dipakai hanya untuk menguji layout periapikal dan diberi label fixture QA non-klinis; crop tersebut bukan contoh interpretasi klinis dan tidak boleh dipresentasikan sebagai data produksi.

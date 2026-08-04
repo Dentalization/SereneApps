@@ -7,6 +7,18 @@ export const RADIOGRAPH_TYPES = [
   ['OTHER', 'Lainnya'],
 ];
 
+export const REPORT_RENDER_STATUS = Object.freeze({
+  READY: { label: 'Siap untuk laporan', tone: 'ready' },
+  STALE: { label: 'Perlu diperbarui', tone: 'stale' },
+  MISSING: { label: 'Belum siap', tone: 'missing' },
+  LEGACY: { label: 'Render lama', tone: 'legacy' },
+  INVALID: { label: 'Render tidak valid', tone: 'invalid' },
+});
+
+export function reportRenderStatusPresentation(status) {
+  return REPORT_RENDER_STATUS[String(status || '').toUpperCase()] || REPORT_RENDER_STATUS.MISSING;
+}
+
 export function suggestRadiographType(source = {}) {
   const text = [source.modality, source.description, source.series_description, source.originalName, source.original_name]
     .filter(Boolean).join(' ').toLowerCase();

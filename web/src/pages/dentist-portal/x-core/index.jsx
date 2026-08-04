@@ -166,8 +166,8 @@ const XCore = ({
                                         if (analysisContext) setShowAnalysisCases(true);
                                     }}
                                     analysisCaseContext={analysisContext}
-                                    onCaptureForCase={analysisContext ? async (dataUrl) => {
-                                        const render = await saveAnalysisRender(analysisContext.caseId, analysisContext.itemId, dataUrl);
+                                    onCaptureForCase={analysisContext ? async (renders) => {
+                                        const render = await saveAnalysisRender(analysisContext.caseId, analysisContext.itemId, renders);
                                         setAnalysisContext((current) => ({ ...current, render }));
                                         return render;
                                     } : null}
@@ -196,7 +196,14 @@ const XCore = ({
                     onClose={() => setShowAnalysisCases(false)}
                     onOpenItem={(analysisCase, item, study) => {
                         if (!study) return;
-                        setAnalysisContext({ caseId: analysisCase.id, itemId: item.id, label: item.title || item.radiograph_type });
+                        setAnalysisContext({
+                            caseId: analysisCase.id,
+                            itemId: item.id,
+                            label: item.title || item.radiograph_type,
+                            structuredFindings: item.structured_findings || [],
+                            renderStatus: item.render_status || null,
+                            viewerType: item.viewer_type,
+                        });
                         setShowAnalysisCases(false);
                         setActiveStudy({
                             ...study,

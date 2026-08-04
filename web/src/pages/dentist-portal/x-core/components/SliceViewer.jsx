@@ -54,6 +54,11 @@ import MetadataPanel from './MetadataPanel';
 import ReportExportModal from './ReportExportModal';
 import SeriesSidebar from './SeriesSidebar';
 import ShortcutHelpButton from './ShortcutHelpButton';
+import {
+    canonicalRenderDimensions,
+    drawFindingMarkers,
+    markerPlacements,
+} from '../../../../features/x-core-analysis/canonicalReportRender.mjs';
 
 const AXIS = {
     axial: {
@@ -296,6 +301,7 @@ const SliceViewer = ({
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [exportingReport, setExportingReport] = useState(false);
     const [caseCaptureState, setCaseCaptureState] = useState('idle');
+    const [caseCaptureError, setCaseCaptureError] = useState('');
     const [reportWarningMessage, setReportWarningMessage] = useState('');
     const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
     const [projectionRefreshTick, setProjectionRefreshTick] = useState(0);
@@ -1672,15 +1678,25 @@ const SliceViewer = ({
         const viewerArea = viewerAreaRef.current;
         if (!viewerArea || loading || error) return null;
 
-        const width = viewerArea.clientWidth;
-        const height = viewerArea.clientHeight;
-        if (!width || !height) return null;
+        const viewportWidth = viewerArea.clientWidth;
+        const viewportHeight = viewerArea.clientHeight;
+        if (!viewportWidth || !viewportHeight) return null;
+        const physicalDimensions = quadView
+            ? { width: 4, height: 3 }
+            : axis === 'axial'
+                ? { width: (dimensions?.[0] || 1) * (spacing?.[0] || 1), height: (dimensions?.[1] || 1) * (spacing?.[1] || 1) }
+                : axis === 'coronal'
+                    ? { width: (dimensions?.[0] || 1) * (spacing?.[0] || 1), height: (dimensions?.[2] || 1) * (spacing?.[2] || 1) }
+                    : { width: (dimensions?.[1] || 1) * (spacing?.[1] || 1), height: (dimensions?.[2] || 1) * (spacing?.[2] || 1) };
+        const canonical = canonicalRenderDimensions(physicalDimensions.width * 512, physicalDimensions.height * 512, 2048);
+        const width = canonical.width;
+        const height = canonical.height;
 
         const capturePaneImage = async (paneContext) => {
             if (!paneContext?.renderWindow?.captureImages) return null;
             try {
                 const captures = paneContext.renderWindow.captureImages('image/png', {
-                    scale: Math.max(window.devicePixelRatio || 1, 2),
+                    scale: Math.max(1, Math.min(3, width / Math.max(viewportWidth, 1))),
                 });
                 if (!Array.isArray(captures) || captures.length === 0) return null;
                 const dataUrl = await captures[0];
@@ -1698,15 +1714,14 @@ const SliceViewer = ({
             image.src = dataUrl;
         });
 
-        const scale = Math.max(window.devicePixelRatio || 1, 2);
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(width * scale);
-        canvas.height = Math.round(height * scale);
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
-        ctx.scale(scale, scale);
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
+        let cleanDataUrl = null;
 
         if (quadView) {
             const paneContexts = {
@@ -1750,6 +1765,7 @@ const SliceViewer = ({
             ctx.drawImage(decodedImages[1], paneLayout.coronal.x, paneLayout.coronal.y, paneLayout.coronal.width, paneLayout.coronal.height);
             ctx.drawImage(decodedImages[2], paneLayout.sagittal.x, paneLayout.sagittal.y, paneLayout.sagittal.width, paneLayout.sagittal.height);
             ctx.drawImage(decodedImages[3], paneLayout.volume.x, paneLayout.volume.y, paneLayout.volume.width, paneLayout.volume.height);
+            cleanDataUrl = canvas.toDataURL('image/png');
 
             AXIS_ORDER.forEach((axisName) => {
                 const position = quadCrosshairPositions[axisName];
@@ -1757,8 +1773,8 @@ const SliceViewer = ({
                 if (!pane) return;
                 if (!position) return;
                 const colors = CROSSHAIR_COLORS[axisName];
-                const x = pane.x + position.x;
-                const y = pane.y + position.y;
+                const x = pane.x + ((position.x / Math.max(viewportWidth / 2, 1)) * pane.width);
+                const y = pane.y + ((position.y / Math.max(viewportHeight / 2, 1)) * pane.height);
 
                 ctx.save();
                 ctx.strokeStyle = colors.vertical;
@@ -1808,24 +1824,81 @@ const SliceViewer = ({
                 return null;
             }
 
-            ctx.drawImage(singlePaneImage, 0, 0, width, height);
+            const scaleToFit = Math.min(width / singlePaneImage.naturalWidth, height / singlePaneImage.naturalHeight);
+            const drawWidth = singlePaneImage.naturalWidth * scaleToFit;
+            const drawHeight = singlePaneImage.naturalHeight * scaleToFit;
+            ctx.drawImage(singlePaneImage, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+            cleanDataUrl = canvas.toDataURL('image/png');
             (measurementLabels[axis] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
         }
 
         if (visibleAnnotations.length > 0) {
             drawAnnotations(ctx, visibleAnnotations, width, height);
         }
-
-        return canvas.toDataURL('image/png');
-    }, [axis, error, getPaneContext, loading, measurementLabels, quadCrosshairPositions, quadView, visibleAnnotations]);
+        const findings = analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [];
+        const markerAnnotations = [...annotations, ...measurementClinicalRecords];
+        const placements = markerPlacements(findings, markerAnnotations, width, height, 1);
+        drawFindingMarkers(ctx, placements);
+        const renderedAt = new Date().toISOString();
+        const commonMetadata = {
+            report_render_version: 2,
+            case_item_id: analysisCaseContext?.itemId,
+            study_id: String(study?.id),
+            series_uid: seriesUid,
+            viewer_type: 'slice',
+            source_width: width,
+            source_height: height,
+            render_width: width,
+            render_height: height,
+            window_center: windowCenter,
+            window_width: windowWidth,
+            invert: inverted,
+            rotation: 0,
+            slice_index: sliceIndex,
+            slice_axis: axis,
+            view_mode: quadView ? 'quad' : 'single',
+            pixel_spacing: spacing,
+            rendered_at: renderedAt,
+            annotation_revision: annotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
+        };
+        return {
+            CLEAN: { data_url: cleanDataUrl, metadata: { ...commonMetadata, render_type: 'CLEAN', marker_count: 0 } },
+            ANNOTATED: {
+                data_url: canvas.toDataURL('image/png'),
+                metadata: { ...commonMetadata, render_type: 'ANNOTATED', marker_count: placements.length },
+            },
+            marker_placements: placements,
+        };
+    }, [
+        analysisCaseContext,
+        annotations,
+        axis,
+        dimensions,
+        error,
+        getPaneContext,
+        inverted,
+        loading,
+        measurementClinicalRecords,
+        measurementLabels,
+        quadCrosshairPositions,
+        quadView,
+        seriesUid,
+        sliceIndex,
+        spacing,
+        study?.id,
+        visibleAnnotations,
+        windowCenter,
+        windowWidth,
+    ]);
 
     const handleExportReport = useCallback(async (formValues) => {
         try {
             setExportingReport(true);
             setReportWarningMessage('');
-            const screenshotDataUrl = formValues.includeScreenshot
+            const screenshotRender = formValues.includeScreenshot
                 ? await captureCurrentViewDataUrl()
                 : null;
+            const screenshotDataUrl = screenshotRender?.ANNOTATED?.data_url || null;
 
             exportPdfReport({
                 clinicName,
@@ -1853,16 +1926,19 @@ const SliceViewer = ({
     const captureForAnalysisCase = useCallback(async () => {
         if (!onCaptureForCase) return;
         setCaseCaptureState('saving');
+        setCaseCaptureError('');
         try {
-            const dataUrl = await captureCurrentViewDataUrl();
-            if (!dataUrl) throw new Error('Viewer belum siap untuk dicapture');
-            await onCaptureForCase(dataUrl);
+            await annotationPersistence.flushPendingSave();
+            const renders = await captureCurrentViewDataUrl();
+            if (!renders) throw new Error('Viewer belum siap untuk dirender');
+            await onCaptureForCase(renders);
             setCaseCaptureState('saved');
         } catch (captureError) {
             console.error('[SliceViewer] Case snapshot failed:', captureError);
             setCaseCaptureState('error');
+            setCaseCaptureError(captureError?.message || 'Gambar laporan gagal disimpan.');
         }
-    }, [captureCurrentViewDataUrl, onCaptureForCase]);
+    }, [annotationPersistence, captureCurrentViewDataUrl, onCaptureForCase]);
 
     useEffect(() => {
         const onFullscreenChange = () => {
@@ -2725,10 +2801,10 @@ const SliceViewer = ({
                             onClick={captureForAnalysisCase}
                             disabled={caseCaptureState === 'saving'}
                             className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
-                            title="Simpan render slice beranotasi untuk PDF kasus"
+                            title={caseCaptureError || 'Simpan canonical render slice untuk PDF kasus'}
                         >
                             <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                            <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Tersimpan' : 'Capture kasus'}</span>
+                            <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Perbarui Gambar Laporan'}</span>
                         </button>
                     )}
 
