@@ -1939,6 +1939,28 @@ const SliceViewer = ({
             setCaseCaptureError(captureError?.message || 'Gambar laporan gagal disimpan.');
         }
     }, [annotationPersistence, captureCurrentViewDataUrl, onCaptureForCase]);
+ 
+    useEffect(() => {
+        if (!loading && imageData && analysisCaseContext && onCaptureForCase && caseCaptureState === 'idle') {
+            const timer = setTimeout(() => {
+                captureForAnalysisCase();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [loading, imageData, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
+ 
+    const handleBack = useCallback(async () => {
+        if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
+            try {
+                await captureForAnalysisCase();
+            } catch (err) {
+                console.error('[SliceViewer] Auto-capture on back failed:', err);
+            }
+        }
+        if (typeof onBack === 'function') {
+            onBack();
+        }
+    }, [analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase, onBack]);
 
     useEffect(() => {
         const onFullscreenChange = () => {
@@ -2696,7 +2718,7 @@ const SliceViewer = ({
             <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900/95 p-3 backdrop-blur">
                 <div className="flex items-center gap-3">
                     {showBack && (
-                        <button onClick={onBack} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+                        <button onClick={handleBack} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
                             <AppIcon name="ArrowLeft" size={20} />
                         </button>
                     )}

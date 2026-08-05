@@ -5,6 +5,7 @@ import {
   getAnalysisReportFile,
   listAnalysisCases,
   preflightAnalysisReport,
+  removeAnalysisCase,
   saveAnalysisCaseRender,
   updateAnalysisCase,
 } from '../services/xCoreAnalysisCaseService.js';
@@ -105,5 +106,15 @@ export async function downloadReport(req, res) {
     res.setHeader('Content-Disposition', `inline; filename="xcore-analysis-v${report.version}.pdf"`);
     res.setHeader('ETag', `"${report.checksum}"`);
     res.send(report.buffer);
+  } catch (error) { respondError(res, error); }
+}
+
+export async function deleteCase(req, res) {
+  try {
+    await removeAnalysisCase({
+      caseId: req.params.caseId,
+      userId: req.user.id,
+    });
+    res.status(204).end();
   } catch (error) { respondError(res, error); }
 }

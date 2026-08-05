@@ -3,6 +3,7 @@ import AppIcon from '../../components/AppIcon';
 import { getAccessToken } from '../../utils/auth/tokenStorage';
 import {
   createAnalysisCase,
+  deleteAnalysisCase,
   generateAnalysisReport,
   getAnalysisCase,
   listAnalysisCases,
@@ -17,7 +18,7 @@ const newId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxx
   const random = Math.floor(Math.random() * 16);
   return (character === 'x' ? random : ((random & 0x3) | 0x8)).toString(16);
 });
-const inputClass = 'w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500';
+const inputClass = 'w-full rounded-xl border border-primary bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent theme-transition';
 
 function normalizeOrders(items) {
   return items.map((item, index) => ({ ...item, display_order: index }));
@@ -42,11 +43,17 @@ function serializeCaseItems(items) {
 function sourceOptions(studies) {
   return studies.flatMap((study) => {
     const series = study.series?.length ? study.series : [{ id: null, series_uid: study.selectedSeriesUid || study.id, description: study.description }];
+    // Use patientName (Gallery-formatted) first — falls back to patient.name, then patientIdDisplay, then 'Tanpa pasien'
+    const patientLabel = study.patientName
+      || study.patient?.name
+      || study.patientIdDisplay
+      || 'Tanpa pasien';
+    const studyLabel = study.originalName || study.original_name || study.description || `Studi ${study.id}`;
     return series.map((entry) => ({
       key: `${study.id}:${resolveSeriesUid(entry)}`,
       study,
       series: entry,
-      label: `${study.patient?.name || study.patientName || 'Tanpa pasien'} — ${study.originalName || study.original_name || study.description || `Studi ${study.id}`} / ${entry.series_description || entry.description || `Series ${entry.seriesNumber || entry.id || ''}`}`,
+      label: `${patientLabel} — ${studyLabel} / ${entry.series_description || entry.description || `Series ${entry.seriesNumber || entry.id || ''}`}`,
     }));
   });
 }
@@ -189,82 +196,255 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
     } catch (error) { setMessage(error.message); } finally { setSaving(false); }
   };
 
+  const deleteActiveCase = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus kasus analisis ini beserta seluruh dokumen PDF yang tersimpan?')) {
+      return;
+    }
+    setSaving(true);
+    setMessage('Menghapus kasus...');
+    try {
+      await deleteAnalysisCase(activeCase.id);
+      setActiveCase(null);
+      await refreshCases();
+      setMessage('Kasus analisis berhasil dihapus.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const compatibleSources = sources.filter((entry) => !activeCase || String(entry.study.patientId || entry.study.patient_id || '') === String(activeCase.patient_id));
 
   return (
-    <div className="fixed inset-0 z-[200] flex bg-slate-950/95 text-slate-100 backdrop-blur">
-      <aside className="w-80 shrink-0 border-r border-slate-800 bg-slate-900 p-4">
-        <div className="mb-5 flex items-center justify-between">
-          <div><h2 className="font-semibold">X-Core Analysis Cases</h2><p className="text-xs text-slate-400">Paket analisis multi-citra</p></div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-800"><AppIcon name="X" size={18} /></button>
-        </div>
-        <button onClick={() => setActiveCase(null)} className="mb-4 w-full rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold hover:bg-cyan-500">+ Kasus baru</button>
-        <div className="space-y-2 overflow-y-auto">
-          {cases.map((entry) => (
-            <button key={entry.id} onClick={() => loadCase(entry.id)} className={`w-full rounded-xl border p-3 text-left ${activeCase?.id === entry.id ? 'border-cyan-500 bg-cyan-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
-              <div className="truncate text-sm font-medium">{entry.title}</div>
-              <div className="mt-1 text-xs text-slate-400">{entry.patient_name} • {entry.item_count} citra • {entry.report_count} PDF</div>
+    <div className="dark fixed inset-0 z-[200] flex bg-background text-primary backdrop-blur theme-transition overflow-hidden">
+      <aside className="sticky top-0 h-screen p-4 w-80 shrink-0 flex flex-col theme-transition">
+        <div className="h-full flex flex-col rounded-3xl bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden">
+          <div className="p-4 border-b border-primary theme-transition">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-primary">Analysis Cases</h2>
+                <p className="text-xs text-muted mt-0.5">Paket analisis multi-citra</p>
+              </div>
+              <button onClick={onClose} className="rounded-lg p-2 text-muted hover:text-primary hover:bg-accent-light transition-all duration-200"><AppIcon name="X" size={18} /></button>
+            </div>
+            <button
+              onClick={() => setActiveCase(null)}
+              className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-semibold text-accent-text hover:bg-accent-hover transition-all duration-200 flex items-center justify-center gap-2"
+            >
+              <AppIcon name="Plus" size={16} />
+              Kasus baru
             </button>
-          ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {cases.length === 0 && !loading && (
+              <div className="text-center py-10 text-muted text-xs">Belum ada kasus analisis.</div>
+            )}
+            {cases.map((entry) => (
+              <button
+                key={entry.id}
+                onClick={() => loadCase(entry.id)}
+                className={`w-full rounded-lg border p-3 text-left transition-all duration-200 ${activeCase?.id === entry.id
+                  ? 'border-accent bg-accent-light'
+                  : 'border-primary bg-surface hover:bg-surface-hover hover:border-secondary'
+                  }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="truncate text-sm font-medium leading-tight text-primary">{entry.title}</div>
+                  <CaseStatusBadge status={entry.status} mini />
+                </div>
+                <div className="flex items-center gap-1 text-xs text-muted mt-1">
+                  <AppIcon name="User" size={11} className="shrink-0" />
+                  <span className="truncate">{entry.patient_name}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted mt-1">
+                  <span className="flex items-center gap-1"><AppIcon name="Image" size={11} />{entry.item_count} citra</span>
+                  <span className="flex items-center gap-1"><AppIcon name="FileText" size={11} />{entry.report_count} PDF</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto p-6">
-        {loading ? <div className="flex h-full items-center justify-center"><AppIcon name="Loader2" className="animate-spin text-cyan-400" size={30} /></div> : !activeCase ? (
-          <div className="mx-auto max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <h3 className="text-lg font-semibold">Buat kasus analisis</h3>
-            <p className="mb-5 mt-1 text-sm text-slate-400">Pilih radiografi pertama. Citra berikutnya harus milik pasien yang sama.</p>
-            <SourceFields sources={sources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} />
-            <button disabled={saving} onClick={createCase} className="mt-5 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-50">Buat kasus</button>
-            {message && <p className="mt-4 text-sm text-amber-300">{message}</p>}
+        {loading ? <div className="flex h-full items-center justify-center"><AppIcon name="Loader2" className="animate-spin text-accent" size={30} /></div> : !activeCase ? (
+          <div className="flex flex-col items-center justify-center min-h-[60vh]">
+            <div className="w-full max-w-2xl rounded-2xl border border-primary bg-surface-elevated p-7 shadow-theme-lg theme-transition">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2.5 bg-accent-light rounded-xl border border-accent">
+                  <AppIcon name="Files" size={22} className="text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Buat kasus analisis</h3>
+                  <p className="text-xs text-muted mt-0.5">Pilih radiografi pertama. Citra berikutnya harus milik pasien yang sama.</p>
+                </div>
+              </div>
+              <div className="border-t border-primary pt-5">
+                <SourceFields sources={sources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} />
+                <button
+                  disabled={saving}
+                  onClick={createCase}
+                  className="mt-5 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-text hover:bg-accent-hover transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <AppIcon name="Plus" size={16} />
+                  Buat kasus
+                </button>
+                {message && <p className="mt-4 text-sm text-warning">{message}</p>}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="mx-auto max-w-6xl space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h3 className="text-xl font-semibold">{activeCase.title}</h3><p className="text-xs text-slate-400">{activeCase.patient?.name} • {activeCase.items.length} citra • diperbarui {new Date(activeCase.updated_at).toLocaleString('id-ID')}</p></div>
-              <div className="flex gap-2">
-                <button onClick={save} disabled={saving} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-800">Simpan analisis</button>
-                <button onClick={generate} disabled={saving} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">Buat PDF laporan</button>
+            <div className="rounded-2xl border border-primary bg-surface-elevated p-5 theme-transition">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <h3 className="text-xl font-semibold truncate text-primary">{activeCase.title}</h3>
+                    <CaseStatusBadge status={activeCase.status} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-2">
+                    <div className="flex items-center gap-1.5 text-xs text-muted">
+                      <AppIcon name="User" size={12} className="text-muted shrink-0" />
+                      <span className="font-medium text-secondary">Pasien:</span>
+                      <span className="truncate">{activeCase.patient?.name || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted">
+                      <AppIcon name="Stethoscope" size={12} className="text-muted shrink-0" />
+                      <span className="font-medium text-secondary">Dokter:</span>
+                      <span className="truncate">{activeCase.creator?.name || '—'}</span>
+                    </div>
+                    {activeCase.facility_name && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted sm:col-span-2">
+                        <AppIcon name="Building2" size={12} className="text-muted shrink-0" />
+                        <span className="font-medium text-secondary">Fasilitas:</span>
+                        <span className="truncate">{activeCase.facility_name}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-xs text-muted">
+                      <AppIcon name="Clock" size={12} className="shrink-0" />
+                      <span>Diperbarui: {new Date(activeCase.updated_at).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted">
+                      <AppIcon name="Image" size={12} className="shrink-0" />
+                      <span>{activeCase.items.length} citra • {activeCase.reports?.length || 0} PDF</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={deleteActiveCase}
+                    disabled={saving}
+                    className="rounded-lg border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <AppIcon name="Trash2" size={15} />
+                    Hapus
+                  </button>
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-accent-light hover:text-primary transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <AppIcon name="Save" size={15} />
+                    Simpan
+                  </button>
+                  <button
+                    onClick={generate}
+                    disabled={saving}
+                    className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <AppIcon name="FileDown" size={15} />
+                    Buat PDF
+                  </button>
+                </div>
               </div>
             </div>
-            {message && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{message}</div>}
-            {preflightIssues.length > 0 && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100"><div className="font-semibold">Laporan belum siap</div><ul className="mt-2 list-disc space-y-1 pl-5">{preflightIssues.map((issue) => <li key={`${issue.item_id}-${issue.code}`}>Citra {issue.display_order + 1}: {issue.message}</li>)}</ul></div>}
+            {message && <div className="rounded-xl border border-warning border-opacity-30 bg-warning-light px-4 py-3 text-sm text-warning">{message}</div>}
+            {preflightIssues.length > 0 && (
+              <div className="rounded-xl border border-error border-opacity-30 bg-error-light px-4 py-3 text-sm text-error">
+                <div className="font-semibold">Laporan belum siap</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {preflightIssues.map((issue) => {
+                    const item = activeCase?.items?.find((candidate) => candidate.id === issue.item_id);
+                    const nameLabel = item ? (item.title || caseItemLabel(item, activeCase.items)) : `Citra ${issue.display_order + 1}`;
+                    return (
+                      <li key={`${issue.item_id}-${issue.code}`}>
+                        <strong>{nameLabel}</strong>: {issue.message}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
-            <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-2">
-              <label className="text-xs text-slate-400">Judul kasus<input className={`${inputClass} mt-1`} value={activeCase.title} onChange={(e) => setActiveCase({ ...activeCase, title: e.target.value })} /></label>
-              <label className="text-xs text-slate-400">Keluhan utama<input className={`${inputClass} mt-1`} value={activeCase.clinical_data?.chief_complaint || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, chief_complaint: e.target.value } })} /></label>
-              <label className="text-xs text-slate-400 md:col-span-2">Indikasi klinis<textarea rows={2} className={`${inputClass} mt-1`} value={activeCase.clinical_data?.clinical_indication || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, clinical_indication: e.target.value } })} /></label>
-              <label className="text-xs text-slate-400 md:col-span-2">Data klinis / riwayat<textarea rows={3} className={`${inputClass} mt-1`} value={activeCase.clinical_data?.clinical_notes || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, clinical_notes: e.target.value } })} /></label>
-              <label className="text-xs text-slate-400 md:col-span-2">Kesimpulan<textarea rows={3} className={`${inputClass} mt-1`} value={activeCase.conclusion || ''} onChange={(e) => setActiveCase({ ...activeCase, conclusion: e.target.value })} /></label>
+            <section className="grid gap-4 rounded-2xl border border-primary bg-surface-elevated p-5 md:grid-cols-2 theme-transition">
+              <label className="text-xs text-muted">Judul kasus<input className={`${inputClass} mt-1`} value={activeCase.title} onChange={(e) => setActiveCase({ ...activeCase, title: e.target.value })} /></label>
+              <label className="text-xs text-muted">Keluhan utama<input className={`${inputClass} mt-1`} value={activeCase.clinical_data?.chief_complaint || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, chief_complaint: e.target.value } })} /></label>
+              <label className="text-xs text-muted md:col-span-2">Indikasi klinis<textarea rows={2} className={`${inputClass} mt-1`} value={activeCase.clinical_data?.clinical_indication || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, clinical_indication: e.target.value } })} /></label>
+              <label className="text-xs text-muted md:col-span-2">Data klinis / riwayat<textarea rows={3} className={`${inputClass} mt-1`} value={activeCase.clinical_data?.clinical_notes || ''} onChange={(e) => setActiveCase({ ...activeCase, clinical_data: { ...activeCase.clinical_data, clinical_notes: e.target.value } })} /></label>
+              <label className="text-xs text-muted md:col-span-2">Kesimpulan<textarea rows={3} className={`${inputClass} mt-1`} value={activeCase.conclusion || ''} onChange={(e) => setActiveCase({ ...activeCase, conclusion: e.target.value })} /></label>
             </section>
 
             <section className="space-y-3">
               {activeCase.items.map((item, index) => (
-                <article key={item.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div><div className="font-semibold">{caseItemLabel(item, activeCase.items)}</div><div className="text-xs text-slate-500">{item.study_name || `Study ${item.study_id}`} • Series {item.series_uid}</div></div>
-                    <div className="flex items-center gap-1">
+                <article key={item.id} className="rounded-2xl border border-primary bg-surface-elevated p-4 transition-all duration-200 hover:border-secondary theme-transition">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white">{caseItemLabel(item, activeCase.items)}</div>
+                      <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="flex items-center gap-1">
+                          <AppIcon name="FolderOpen" size={11} />
+                          {item.study_name || `Study ${item.study_id}`}
+                        </span>
+                        {item.study_date && (
+                          <span className="flex items-center gap-1">
+                            <AppIcon name="Calendar" size={11} />
+                            {new Date(item.study_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                        <span className="text-slate-700 font-mono text-[10px] truncate max-w-[120px]" title={item.series_uid}>{item.series_uid.slice(0, 16)}…</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
                       <RenderStatusBadge status={item.render_status} />
-                      <button onClick={() => moveItem(index, -1)} disabled={!index} className="rounded-lg p-2 hover:bg-slate-800 disabled:opacity-30"><AppIcon name="ArrowUp" size={15} /></button>
-                      <button onClick={() => moveItem(index, 1)} disabled={index === activeCase.items.length - 1} className="rounded-lg p-2 hover:bg-slate-800 disabled:opacity-30"><AppIcon name="ArrowDown" size={15} /></button>
-                      <button onClick={() => openItem(item)} disabled={saving} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold disabled:opacity-50">{item.render_status?.ready ? 'Buka viewer' : 'Perbarui Gambar Laporan'}</button>
-                      {activeCase.items.length > 1 && <button onClick={() => setActiveCase({ ...activeCase, items: normalizeOrders(activeCase.items.filter((candidate) => candidate.id !== item.id)) })} className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10"><AppIcon name="Trash2" size={15} /></button>}
+                      <button onClick={() => moveItem(index, -1)} disabled={!index} title="Naikan urutan" className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors"><AppIcon name="ArrowUp" size={14} /></button>
+                      <button onClick={() => moveItem(index, 1)} disabled={index === activeCase.items.length - 1} title="Turunkan urutan" className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors"><AppIcon name="ArrowDown" size={14} /></button>
+                      <button
+                        onClick={() => openItem(item)}
+                        disabled={saving}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 ${item.render_status?.ready
+                          ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                          : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                          }`}
+                      >
+                        <AppIcon name={item.render_status?.ready ? 'Eye' : 'Camera'} size={13} />
+                        {item.render_status?.ready ? 'Buka viewer' : 'Perbarui gambar'}
+                      </button>
+                      {activeCase.items.length > 1 && (
+                        <button
+                          title="Hapus citra ini"
+                          onClick={() => setActiveCase({ ...activeCase, items: normalizeOrders(activeCase.items.filter((candidate) => candidate.id !== item.id)) })}
+                          className="rounded-lg p-1.5 text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+                        >
+                          <AppIcon name="Trash2" size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
                     <label className="text-xs text-slate-400">Jenis<select className={`${inputClass} mt-1`} value={item.radiograph_type} onChange={(e) => patchItem(item.id, { radiograph_type: e.target.value })}>{RADIOGRAPH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     <label className="text-xs text-slate-400">Nomor gigi<input className={`${inputClass} mt-1`} placeholder="11, 12" value={(item.tooth_numbers || []).join(', ')} onChange={(e) => patchItem(item.id, { tooth_numbers: e.target.value.split(/[ ,]+/).filter(Boolean) })} /></label>
                     <label className="text-xs text-slate-400">Judul opsional<input className={`${inputClass} mt-1`} value={item.title || ''} onChange={(e) => patchItem(item.id, { title: e.target.value })} /></label>
-                    {item.findings && <div className="md:col-span-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-200"><div className="font-semibold">Catatan temuan format lama</div><p className="mt-1 whitespace-pre-wrap">{item.findings}</p><p className="mt-2 text-amber-300/70">Catatan ini dipertahankan untuk kompatibilitas. Tambahkan temuan bernomor dan pilih anotasi lokasinya sebelum memperbarui gambar laporan.</p></div>}
+                    {item.findings && <div className="md:col-span-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-200"><div className="font-semibold">Catatan temuan format lama</div><p className="mt-1 whitespace-pre-wrap">{item.findings}</p><p className="mt-2 text-amber-300/70">Catatan ini dipertahankan untuk kompatibilitas. Tambahkan temuan bernomor dan pilih anotasi lokasinya sebelum memperbarui gambar laporan.</p></div>}
                     <div className="md:col-span-3"><FindingEditor item={item} onChange={(structuredFindings) => patchItem(item.id, { structured_findings: structuredFindings })} /></div>
                   </div>
                 </article>
               ))}
             </section>
 
-            {activeCase.status !== 'FINALIZED' && <section className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 p-5"><h4 className="mb-3 font-semibold">Tambahkan citra pasien ini</h4><SourceFields sources={compatibleSources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} /><button onClick={addItem} className="mt-4 rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold">Tambahkan ke kasus</button></section>}
+            {activeCase.status !== 'FINALIZED' && <section className="rounded-2xl border border-dashed border-primary bg-surface p-5 theme-transition"><h4 className="mb-3 font-semibold text-primary">Tambahkan citra pasien ini</h4><SourceFields sources={compatibleSources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} /><button onClick={addItem} className="mt-4 rounded-lg bg-accent-light border border-accent px-4 py-2 text-sm font-semibold text-accent hover:bg-accent hover:text-accent-text transition-all duration-200">Tambahkan ke kasus</button></section>}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h4 className="mb-3 font-semibold">Versi PDF tersimpan</h4>{activeCase.reports.length ? <div className="space-y-2">{activeCase.reports.map((report) => <button key={report.id} onClick={() => openAnalysisReport(activeCase.id, report.id).catch((error) => setMessage(error.message))} className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm hover:border-cyan-600"><span>Versi {report.version} • {report.status}</span><span className="text-xs text-slate-400">{new Date(report.created_at).toLocaleString('id-ID')} • {report.checksum.slice(0, 10)}</span></button>)}</div> : <p className="text-sm text-slate-500">Belum ada PDF.</p>}</section>
+            <section className="rounded-2xl border border-primary bg-surface-elevated p-5 theme-transition"><h4 className="mb-3 font-semibold text-primary">Versi PDF tersimpan</h4>{activeCase.reports.length ? <div className="space-y-2">{activeCase.reports.map((report) => <button key={report.id} onClick={() => openAnalysisReport(activeCase.id, report.id).catch((error) => setMessage(error.message))} className="flex w-full items-center justify-between rounded-xl border border-primary bg-surface px-4 py-3 text-sm hover:border-accent transition-all duration-200"><span className="text-primary">Versi {report.version} • {report.status}</span><span className="text-xs text-muted">{new Date(report.created_at).toLocaleString('id-ID')} • {report.checksum.slice(0, 10)}</span></button>)}</div> : <p className="text-sm text-muted">Belum ada PDF.</p>}</section>
           </div>
         )}
       </main>
@@ -274,14 +454,39 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
 
 function RenderStatusBadge({ status }) {
   const presentation = reportRenderStatusPresentation(status?.status);
-  const classes = {
-    ready: 'bg-emerald-500/15 text-emerald-300',
-    stale: 'bg-orange-500/15 text-orange-300',
-    missing: 'bg-amber-500/15 text-amber-300',
-    legacy: 'bg-violet-500/15 text-violet-300',
-    invalid: 'bg-rose-500/15 text-rose-300',
+  const dotColor = {
+    ready: 'bg-emerald-400',
+    stale: 'bg-orange-400',
+    missing: 'bg-amber-400',
+    legacy: 'bg-violet-400',
+    invalid: 'bg-rose-400',
   }[presentation.tone];
-  return <span title={status?.message} className={`mr-2 rounded-full px-2.5 py-1 text-[10px] font-semibold ${classes}`}>{presentation.label}</span>;
+  const classes = {
+    ready: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25',
+    stale: 'bg-orange-500/15 text-orange-300 border border-orange-500/25',
+    missing: 'bg-amber-500/15 text-amber-300 border border-amber-500/25',
+    legacy: 'bg-violet-500/15 text-violet-300 border border-violet-500/25',
+    invalid: 'bg-rose-500/15 text-rose-300 border border-rose-500/25',
+  }[presentation.tone];
+  return (
+    <span title={status?.message} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${classes}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+      {presentation.label}
+    </span>
+  );
+}
+
+function CaseStatusBadge({ status, mini = false }) {
+  const normalized = String(status || 'DRAFT').toUpperCase();
+  const config = {
+    DRAFT: { label: 'Draft', classes: 'bg-surface-hover text-muted border border-primary' },
+    FINALIZED: { label: 'Final', classes: 'bg-success-light text-success border border-success' },
+  }[normalized] || { label: normalized, classes: 'bg-surface-hover text-muted border border-primary' };
+  return (
+    <span className={`inline-flex items-center rounded-full font-semibold ${mini ? 'px-1.5 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[10px]'} ${config.classes}`}>
+      {config.label}
+    </span>
+  );
 }
 
 function FindingEditor({ item, onChange }) {
@@ -290,12 +495,65 @@ function FindingEditor({ item, onChange }) {
   const [error, setError] = useState('');
   const findings = item.structured_findings || [];
 
+  const extractAnnotationDetails = (annotation) => {
+    if (!annotation) return { title: '', description: '', region: '' };
+    const title = annotation.label ||
+      annotation.metadata?.finding_type ||
+      annotation.metadata?.label ||
+      annotation.metadata?.title ||
+      annotation.metadata?.findingType ||
+      '';
+    const description = annotation.metadata?.clinical_notes ||
+      annotation.metadata?.clinicalNotes ||
+      annotation.metadata?.description ||
+      annotation.metadata?.notes ||
+      annotation.metadata?.comment ||
+      '';
+    let region = '';
+    const tooth = annotation.metadata?.tooth_number ||
+      annotation.metadata?.toothNumber ||
+      annotation.metadata?.tooth ||
+      annotation.metadata?.region ||
+      '';
+    if (tooth) {
+      if (/^\d+$/.test(String(tooth))) {
+        region = `Gigi ${tooth}`;
+      } else {
+        region = String(tooth);
+      }
+    }
+    return { title, description, region };
+  };
+
   useEffect(() => {
     let cancelled = false;
     setLoadingAnnotations(true);
     setError('');
     listAnalysisItemAnnotations(item)
-      .then((rows) => { if (!cancelled) setAnnotations(rows); })
+      .then((rows) => {
+        if (cancelled) return;
+        setAnnotations(rows);
+
+        // Auto-populate findings if they are currently empty and annotations exist
+        if (rows.length > 0 && (!item.structured_findings || item.structured_findings.length === 0)) {
+          const autoFindings = rows.map((annotation, index) => {
+            const details = extractAnnotationDetails(annotation);
+            return {
+              id: newId(),
+              marker_number: index + 1,
+              annotation_id: annotation.id,
+              measurement_id: null,
+              region: details.region,
+              tooth_numbers: item.tooth_numbers || [],
+              title: details.title,
+              description: details.description,
+              annotation_type: annotation.type || annotation.annotation_type || null,
+              display_order: index,
+            };
+          });
+          onChange(autoFindings);
+        }
+      })
       .catch((loadError) => { if (!cancelled) setError(loadError.message); })
       .finally(() => { if (!cancelled) setLoadingAnnotations(false); });
     return () => { cancelled = true; };
@@ -304,6 +562,7 @@ function FindingEditor({ item, onChange }) {
   const patchFinding = (id, patch) => onChange(findings.map((finding) => (
     finding.id === id ? { ...finding, ...patch } : finding
   )));
+
   const addFinding = () => {
     if (!annotations.length) {
       setError('Buat dan simpan anotasi lokasi di viewer terlebih dahulu.');
@@ -311,15 +570,17 @@ function FindingEditor({ item, onChange }) {
     }
     const markerNumber = Math.max(0, ...findings.map((finding) => Number(finding.marker_number) || 0)) + 1;
     const annotation = annotations.find((entry) => !findings.some((finding) => finding.annotation_id === entry.id)) || annotations[0];
+    const details = extractAnnotationDetails(annotation);
+
     onChange([...findings, {
       id: newId(),
       marker_number: markerNumber,
       annotation_id: annotation.id,
       measurement_id: null,
-      region: '',
+      region: details.region,
       tooth_numbers: item.tooth_numbers || [],
-      title: '',
-      description: '',
+      title: details.title,
+      description: details.description,
       annotation_type: annotation.type || annotation.annotation_type || null,
       display_order: findings.length,
     }]);
@@ -338,7 +599,14 @@ function FindingEditor({ item, onChange }) {
         <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-cyan-700 text-sm font-black text-white" title="Nomor marker stabil">{finding.marker_number}</div>
         <label className="text-[11px] text-slate-400">Anotasi lokasi<select className={`${inputClass} mt-1`} value={finding.annotation_id || ''} onChange={(event) => {
           const annotation = annotations.find((entry) => entry.id === event.target.value);
-          patchFinding(finding.id, { annotation_id: event.target.value, annotation_type: annotation?.type || annotation?.annotation_type || null });
+          const details = extractAnnotationDetails(annotation);
+          patchFinding(finding.id, {
+            annotation_id: event.target.value,
+            annotation_type: annotation?.type || annotation?.annotation_type || null,
+            title: details.title || finding.title || '',
+            description: details.description || finding.description || '',
+            region: details.region || finding.region || ''
+          });
         }}><option value="">Pilih anotasi…</option>{annotations.map((annotation) => <option key={annotation.id} value={annotation.id}>{annotation.label || annotation.metadata?.finding_type || annotation.type || annotation.annotation_type} — {annotation.id.slice(0, 8)}</option>)}</select></label>
         <label className="text-[11px] text-slate-400">Gigi / regio<input className={`${inputClass} mt-1`} placeholder="Gigi 11 / regio anterior" value={finding.region || ''} onChange={(event) => patchFinding(finding.id, { region: event.target.value })} /></label>
         <button type="button" title="Hapus temuan" onClick={() => onChange(findings.filter((entry) => entry.id !== finding.id).map((entry, order) => ({ ...entry, display_order: order })))} className="self-end rounded-lg p-2 text-rose-300 hover:bg-rose-500/10"><AppIcon name="Trash2" size={16} /></button>
@@ -351,8 +619,8 @@ function FindingEditor({ item, onChange }) {
 
 function SourceFields({ sources, selectedSource, setSelectedSource, type, setType, teeth, setTeeth }) {
   return <div className="grid gap-3 md:grid-cols-2">
-    <label className="text-xs text-slate-400 md:col-span-2">Studi / series<select className={`${inputClass} mt-1`} value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}><option value="">Pilih radiografi…</option>{sources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}</select></label>
-    <label className="text-xs text-slate-400">Jenis radiografi<select className={`${inputClass} mt-1`} value={type} onChange={(e) => setType(e.target.value)}>{RADIOGRAPH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label className="text-xs text-slate-400">Nomor gigi (wajib periapikal)<input className={`${inputClass} mt-1`} placeholder="11, 36" value={teeth} onChange={(e) => setTeeth(e.target.value)} /></label>
+    <label className="text-xs text-muted md:col-span-2">Studi / series<select className={`${inputClass} mt-1`} value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}><option value="">Pilih radiografi…</option>{sources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}</select></label>
+    <label className="text-xs text-muted">Jenis radiografi<select className={`${inputClass} mt-1`} value={type} onChange={(e) => setType(e.target.value)}>{RADIOGRAPH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label className="text-xs text-muted">Nomor gigi (wajib periapikal)<input className={`${inputClass} mt-1`} placeholder="11, 36" value={teeth} onChange={(e) => setTeeth(e.target.value)} /></label>
   </div>;
 }

@@ -410,9 +410,8 @@ const SideBar = () => {
 
               {isUserMenuOpen && (
                 <div
-                  className={`absolute bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50 ${
-                    isCollapsed ? 'bottom-0 left-full ml-8 w-64' : 'bottom-full left-0 mb-2 w-full min-w-[240px]'
-                  }`}
+                  className={`absolute bg-surface-elevated border border-primary shadow-theme-lg overflow-hidden z-50 ${isCollapsed ? 'bottom-0 left-full ml-8 w-64' : 'bottom-full left-0 mb-2 w-full min-w-[240px]'
+                    }`}
                   style={{ animation: 'slideUp .2s cubic-bezier(0.4,0,0.2,1)', borderRadius: 25 }}
                 >
                   <div className="p-4 border-b border-primary bg-gradient-to-r from-accent/10 to-accent/5" style={{ borderTopLeftRadius: 25, borderTopRightRadius: 25 }}>

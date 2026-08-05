@@ -249,6 +249,8 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
                     comparisonSyncEnabled={comparisonSyncEnabled}
                     isFullscreen={isFullscreen}
                     toggleFullscreen={toggleFullscreen}
+                    analysisCaseContext={analysisCaseContext}
+                    onCaptureForCase={onCaptureForCase}
                 />
             );
         }
