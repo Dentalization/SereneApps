@@ -32,6 +32,9 @@ async function request(path = '', options = {}) {
     error.details = payload.details;
     throw error;
   }
+  if (response.status === 204) {
+    return null;
+  }
   return response.json();
 }
 
@@ -39,6 +42,7 @@ export const listAnalysisCases = () => request().then((payload) => payload.cases
 export const getAnalysisCase = (caseId) => request(`/${caseId}`).then((payload) => payload.case);
 export const createAnalysisCase = (payload) => request('', { method: 'POST', body: JSON.stringify(payload) }).then((result) => result.case);
 export const updateAnalysisCase = (caseId, payload) => request(`/${caseId}`, { method: 'PUT', body: JSON.stringify(payload) }).then((result) => result.case);
+export const deleteAnalysisCase = (caseId) => request(`/${caseId}`, { method: 'DELETE' });
 export const saveAnalysisRender = (caseId, itemId, renders) => request(`/${caseId}/items/${itemId}/render`, {
   method: 'PUT', body: JSON.stringify({ renders }),
 }).then((result) => result.render);

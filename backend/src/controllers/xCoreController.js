@@ -334,14 +334,23 @@ export const uploadStudy = async (req, res) => {
         const studyDir = path.join(UPLOAD_DIR, batchId);
         fs.mkdirSync(studyDir);
 
-        // Move files to study folder
+        // Move files to study folder — skip macOS/system hidden files
         for (const file of req.files) {
+            // Skip hidden files like .DS_Store that macOS adds to folders
+            const basename = path.basename(file.originalname);
+            if (basename.startsWith('.')) {
+                try { fs.unlinkSync(file.path); } catch (_) { /* ignore */ }
+                continue;
+            }
             const targetPath = path.join(studyDir, file.originalname);
             const parentDir = path.dirname(targetPath);
             if (!fs.existsSync(parentDir)) {
                 fs.mkdirSync(parentDir, { recursive: true });
             }
-            fs.renameSync(file.path, targetPath);
+            // Only rename if the temp file still exists
+            if (fs.existsSync(file.path)) {
+                fs.renameSync(file.path, targetPath);
+            }
         }
 
         if (runId) {
@@ -391,7 +400,7 @@ export const uploadStudy = async (req, res) => {
             // 1. Create Study
             const study = await tx.imagingStudy.create({
                 data: {
-                    patientId: targetPatientId,
+                    patientId: targetPatientId ?? null,
                     studyDate: parseResult.metadata.Date ? new Date(parseResult.metadata.Date) : new Date(),
                     modality: parseResult.modality,
                     folderName: batchId,

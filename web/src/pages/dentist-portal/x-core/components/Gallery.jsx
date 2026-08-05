@@ -360,7 +360,7 @@ const Gallery = ({
             }
         };
         fetchStudies();
-    }, [refreshTrigger, studiesEndpoint]);
+    }, [refreshTrigger, studiesEndpoint, cachedStudies]);
 
     // Keep a ref to current studies so polling doesn't cause infinite re-renders
     const studiesRef = useRef(studiesWithSeries);

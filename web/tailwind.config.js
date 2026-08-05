@@ -35,7 +35,9 @@ export default {
         },
         accent: {
           DEFAULT: 'var(--color-accent)',
-          foreground: 'var(--color-accent-foreground)'
+          foreground: 'var(--color-accent-foreground)',
+          hover: 'var(--color-accent-hover)',
+          light: 'var(--color-accent-light)'
         },
         popover: {
           DEFAULT: 'var(--color-popover)',

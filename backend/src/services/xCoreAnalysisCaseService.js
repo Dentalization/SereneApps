@@ -531,3 +531,22 @@ export async function getAnalysisReportFile({ caseId, reportId, userId }) {
   if (!rows.length) throw httpError(404, 'Report not found', 'report_not_found');
   return { ...json(rows[0]), buffer: await readStoredFile(rows[0].storage_path) };
 }
+
+export async function removeAnalysisCase({ caseId, userId }) {
+  const record = await loadCaseRows(caseId);
+  requireOwner(record, userId);
+  await prisma.$transaction(async (tx) => {
+    const reportRows = await tx.$queryRaw(Prisma.sql`
+      SELECT id, storage_path FROM xcore_analysis_reports WHERE case_id=${caseId}::uuid
+    `);
+    for (const report of reportRows) {
+      await removeStoredFile(report.storage_path).catch(() => {});
+    }
+    await tx.$executeRaw(Prisma.sql`
+      DELETE FROM xcore_analysis_reports WHERE case_id=${caseId}::uuid
+    `);
+    await tx.$executeRaw(Prisma.sql`
+      DELETE FROM xcore_analysis_cases WHERE id=${caseId}::uuid
+    `);
+  });
+}
