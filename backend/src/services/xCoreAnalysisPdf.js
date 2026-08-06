@@ -231,10 +231,14 @@ function drawFindings(doc, item, context) {
 }
 
 function measurementValue(measurement) {
-  return measurement.metadata?.value_label
-    || measurement.metadata?.label
-    || measurement.label
-    || 'Nilai tidak tersedia';
+  if (measurement.metadata?.value_label) return measurement.metadata.value_label;
+  if (measurement.metadata?.label) return measurement.metadata.label;
+  if (measurement.metadata?.distance_mm != null) return `${Number(measurement.metadata.distance_mm).toFixed(2)} mm`;
+  if (measurement.metadata?.length_mm != null) return `${Number(measurement.metadata.length_mm).toFixed(2)} mm`;
+  if (measurement.metadata?.area_mm2 != null) return `${Number(measurement.metadata.area_mm2).toFixed(2)} mm²`;
+  if (measurement.label && /\d/.test(measurement.label)) return measurement.label;
+  if (measurement.metadata?.measurement_type) return measurement.metadata.measurement_type;
+  return 'Tersimpan';
 }
 
 function drawMeasurements(doc, item, context) {

@@ -1041,20 +1041,23 @@ const ImageViewer2D = ({
         document.body.removeChild(link);
     }, [captureCurrentViewDataUrl]);
 
-    const captureForAnalysisCase = useCallback(async () => {
+    const captureForAnalysisCase = useCallback(async (forcedAnnotations) => {
         if (!onCaptureForCase) return;
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
-            await annotationPersistence.flushPendingSave();
+            const saveResult = await annotationPersistence.flushPendingSave();
+            const activeAnnotations = forcedAnnotations ?? (saveResult && Array.isArray(saveResult.annotations)
+                ? saveResult.annotations
+                : annotations);
             const reportPixelSpacing = calibrationFactor || (pixelSpacing && pixelSpacing !== 1 ? pixelSpacing : null);
             const renders = buildCanonical2DReportRenders({
                 image: imgRef.current,
                 sourceWidth: imageSize.width,
                 sourceHeight: imageSize.height,
                 imageFilter,
-                annotations,
-                markerAnnotations: [...annotations, ...measurementClinicalRecords],
+                annotations: activeAnnotations,
+                markerAnnotations: [...activeAnnotations, ...measurementClinicalRecords],
                 measurements,
                 findings: analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [],
                 pixelSpacing: reportPixelSpacing,
@@ -1070,7 +1073,7 @@ const ImageViewer2D = ({
                     window_width: windowWidth,
                     invert: inverted,
                     rotation: 0,
-                    annotation_revision: annotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
+                    annotation_revision: activeAnnotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
                 },
             });
             await onCaptureForCase(renders);
@@ -1102,6 +1105,12 @@ const ImageViewer2D = ({
             captureForAnalysisCase();
         }
     }, [imageLoaded, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
+
+    useEffect(() => {
+        if (analysisCaseContext) {
+            setCaseCaptureState('idle');
+        }
+    }, [annotations, measurements, imageFilter, inverted, windowCenter, windowWidth, analysisCaseContext]);
  
     const handleBack = useCallback(async () => {
         if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
@@ -1929,6 +1938,7 @@ const ImageViewer2D = ({
                     <img
                         ref={imgRef}
                         src={displayedImageUrl}
+                        crossOrigin="anonymous"
                         alt={seriesTitle}
                         draggable={false}
                         onLoad={(event) => {

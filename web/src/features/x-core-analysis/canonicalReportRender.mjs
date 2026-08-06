@@ -137,7 +137,8 @@ export function buildCanonical2DReportRenders({
   const scaleBar = getScaleBar?.(sourceWidth, sourceHeight, 1, pixelSpacing);
   drawScaleBar?.(ctx, scaleBar);
   const placements = markerPlacements(findings, markerAnnotations, sourceWidth, sourceHeight, dimensions.scale);
-  drawFindingMarkers(ctx, placements);
+  // Do not draw artificial blue numbered circles over user's drawn annotations
+  // drawFindingMarkers(ctx, placements);
   ctx.restore();
   const annotatedDataUrl = canvas.toDataURL('image/png');
   const renderedAt = new Date().toISOString();

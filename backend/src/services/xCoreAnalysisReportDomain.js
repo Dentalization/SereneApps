@@ -226,13 +226,7 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
     throw reportError(400, 'Waktu render tidak valid.', 'invalid_render_timestamp');
   }
   if (renderType === 'ANNOTATED') {
-    const findingCount = normalizeStructuredFindings(item.structured_findings || []).length;
-    if (result.marker_count !== findingCount) {
-      throw reportError(400, 'Jumlah marker pada render tidak sesuai dengan temuan item.', 'render_marker_count_mismatch', {
-        expected: findingCount,
-        received: result.marker_count,
-      });
-    }
+    // Renders contain user annotations (freehand, region, brush, arrow, etc.) as drawn in viewer
   }
   return result;
 }
