@@ -534,23 +534,38 @@ function FindingEditor({ item, onChange }) {
         if (cancelled) return;
         setAnnotations(rows);
 
-        // Auto-populate findings if they are currently empty and annotations exist
-        if (rows.length > 0 && (!item.structured_findings || item.structured_findings.length === 0)) {
-          const autoFindings = rows.map((annotation, index) => {
+        // Sync all clinical annotations into structured findings
+        const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
+        const clinicalAnnotations = rows.filter((r) => !isMeasurement(r.type) && r.metadata?.clinical_record_type !== 'measurement');
+
+        if (clinicalAnnotations.length > 0) {
+          const currentFindings = item.structured_findings || [];
+          const existingMap = new Map(currentFindings.filter(f => f.annotation_id).map(f => [String(f.annotation_id), f]));
+
+          const autoFindings = clinicalAnnotations.map((annotation, index) => {
+            const existing = existingMap.get(String(annotation.id));
             const details = extractAnnotationDetails(annotation);
             return {
-              id: newId(),
-              marker_number: index + 1,
+              id: existing?.id || newId(),
+              marker_number: existing?.marker_number || (index + 1),
               annotation_id: annotation.id,
               measurement_id: null,
-              region: details.region,
-              tooth_numbers: item.tooth_numbers || [],
-              title: details.title,
-              description: details.description,
+              region: details.region || existing?.region || 'Regio tidak spesifik',
+              tooth_numbers: details.region?.includes('Gigi') ? [details.region.replace('Gigi ', '')] : (existing?.tooth_numbers || item.tooth_numbers || []),
+              title: existing?.title || details.title || 'Temuan Radiografi',
+              description: existing?.description || details.description || 'Anotasi klinis terdeteksi.',
               annotation_type: annotation.type || annotation.annotation_type || null,
-              display_order: index,
+              display_order: existing?.display_order ?? index,
             };
           });
+
+          // Also keep manual findings not bound to an annotation_id
+          currentFindings.forEach((f) => {
+            if (!f.annotation_id || !clinicalAnnotations.some((ann) => String(ann.id) === String(f.annotation_id))) {
+              autoFindings.push(f);
+            }
+          });
+
           onChange(autoFindings);
         }
       })

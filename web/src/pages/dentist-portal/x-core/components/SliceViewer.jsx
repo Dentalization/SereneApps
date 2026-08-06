@@ -1674,7 +1674,7 @@ const SliceViewer = ({
         setQuadView((current) => !current);
     }, [clearAllMeasurements, quadView]);
 
-    const captureCurrentViewDataUrl = useCallback(async () => {
+    const captureCurrentViewDataUrl = useCallback(async (forcedAnnotations) => {
         const viewerArea = viewerAreaRef.current;
         if (!viewerArea || loading || error) return null;
 
@@ -1832,11 +1832,14 @@ const SliceViewer = ({
             (measurementLabels[axis] || []).forEach((label) => drawMeasurementPillToCanvas(ctx, label));
         }
 
-        if (visibleAnnotations.length > 0) {
-            drawAnnotations(ctx, visibleAnnotations, width, height);
+        const activeAnnotations = forcedAnnotations || annotations;
+        const activeVisibleAnnotations = activeAnnotations.filter((a) => a.slice_axis === axis && a.slice_index === sliceIndex);
+
+        if (activeVisibleAnnotations.length > 0) {
+            drawAnnotations(ctx, activeVisibleAnnotations, width, height);
         }
         const findings = analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [];
-        const markerAnnotations = [...annotations, ...measurementClinicalRecords];
+        const markerAnnotations = [...activeAnnotations, ...measurementClinicalRecords];
         const placements = markerPlacements(findings, markerAnnotations, width, height, 1);
         drawFindingMarkers(ctx, placements);
         const renderedAt = new Date().toISOString();
@@ -1859,7 +1862,7 @@ const SliceViewer = ({
             view_mode: quadView ? 'quad' : 'single',
             pixel_spacing: spacing,
             rendered_at: renderedAt,
-            annotation_revision: annotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
+            annotation_revision: activeAnnotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
         };
         return {
             CLEAN: { data_url: cleanDataUrl, metadata: { ...commonMetadata, render_type: 'CLEAN', marker_count: 0 } },
@@ -1886,7 +1889,6 @@ const SliceViewer = ({
         sliceIndex,
         spacing,
         study?.id,
-        visibleAnnotations,
         windowCenter,
         windowWidth,
     ]);
@@ -1948,6 +1950,12 @@ const SliceViewer = ({
             return () => clearTimeout(timer);
         }
     }, [loading, imageData, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
+
+    useEffect(() => {
+        if (analysisCaseContext) {
+            setCaseCaptureState('idle');
+        }
+    }, [annotations, measurements, inverted, windowCenter, windowWidth, sliceIndex, axis, analysisCaseContext]);
  
     const handleBack = useCallback(async () => {
         if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {

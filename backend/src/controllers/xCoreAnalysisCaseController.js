@@ -3,6 +3,7 @@ import {
   generateAnalysisReport,
   getAnalysisCase,
   getAnalysisReportFile,
+  json,
   listAnalysisCases,
   preflightAnalysisReport,
   removeAnalysisCase,
@@ -17,7 +18,7 @@ const prisma = new PrismaClient();
 function respondError(res, error) {
   console.error('[X-Core Analysis Case]', error);
   return res.status(error.status || 500).json({
-    error: error.status ? error.message : 'X-Core analysis case operation failed',
+    error: error.message || 'X-Core analysis case operation failed',
     code: error.code || 'xcore_analysis_case_error',
     ...(error.details ? { details: error.details } : {}),
   });
@@ -70,7 +71,7 @@ export async function saveCaseRender(req, res) {
       renders: req.body?.renders,
       dataUrl: req.body?.render_data_url,
     });
-    res.json({ render });
+    res.json(json({ render }));
   } catch (error) { respondError(res, error); }
 }
 

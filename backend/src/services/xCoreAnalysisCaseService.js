@@ -22,7 +22,7 @@ import {
 
 const prisma = new PrismaClient();
 
-function json(value) {
+export function json(value) {
   return JSON.parse(JSON.stringify(value, (_, item) => typeof item === 'bigint' ? item.toString() : item));
 }
 
@@ -368,7 +368,7 @@ export async function saveAnalysisCaseRender({ caseId, itemId, userId, renders, 
       }
     }
   });
-  return {
+  return json({
     analysis_fingerprint: fingerprint,
     renders: Object.fromEntries(savedRenders.map((saved) => [saved.renderType, {
       render_type: saved.renderType,
@@ -380,7 +380,7 @@ export async function saveAnalysisCaseRender({ caseId, itemId, userId, renders, 
       validation: saved.validation,
     }])),
     status: 'READY',
-  };
+  });
 }
 
 function buildPreflight(record) {
@@ -405,6 +405,69 @@ export async function preflightAnalysisReport({ caseId, userId }) {
   return buildPreflight(record);
 }
 
+function buildUnifiedStructuredFindings(item, existingFindings = [], annotations = []) {
+  const normalizedExisting = normalizeStructuredFindings(existingFindings || []);
+  const existingByAnnotationId = new Map(
+    normalizedExisting.filter((f) => f.annotation_id).map((f) => [String(f.annotation_id), f])
+  );
+
+  const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
+
+  const nonMeasurementAnnotations = annotations.filter(
+    (entry) => !isMeasurement(entry.type) && entry.metadata?.clinical_record_type !== 'measurement'
+  );
+
+  const result = [];
+  let nextMarkerNumber = 1;
+
+  nonMeasurementAnnotations.forEach((ann, index) => {
+    const existing = existingByAnnotationId.get(String(ann.id));
+    const tooth = ann.metadata?.tooth_number || ann.metadata?.toothNumber || ann.metadata?.tooth || '';
+    const findingType = ann.metadata?.finding_type || ann.metadata?.findingType || '';
+    const severity = ann.metadata?.severity || '';
+    const surface = ann.metadata?.surface || '';
+    const notes = ann.label || ann.metadata?.notes || ann.metadata?.clinical_notes || ann.metadata?.description || ann.metadata?.comment || '';
+
+    const toothStr = tooth ? (/^\d+$/.test(String(tooth)) ? `Gigi ${tooth}` : String(tooth)) : (existing?.region || '');
+    const surfaceStr = surface ? ` (${surface})` : '';
+    const regionText = (toothStr + surfaceStr).trim();
+
+    let titleText = existing?.title || findingType || ann.label || 'Temuan Radiografi';
+    if (findingType && severity && !titleText.includes(severity)) {
+      titleText += ` (${severity})`;
+    }
+
+    let descText = existing?.description || notes || '';
+    if (notes && descText && !descText.includes(notes)) {
+      descText = `${descText} — ${notes}`;
+    }
+
+    result.push({
+      id: existing?.id || ann.id,
+      marker_number: existing?.marker_number || nextMarkerNumber++,
+      annotation_id: ann.id,
+      measurement_id: null,
+      region: regionText || 'Regio tidak spesifik',
+      tooth_numbers: tooth ? [String(tooth)] : (existing?.tooth_numbers || item.tooth_numbers || []),
+      title: titleText,
+      description: descText || 'Anotasi klinis terdeteksi.',
+      annotation_type: ann.type || null,
+      display_order: existing?.display_order ?? index,
+    });
+  });
+
+  normalizedExisting.forEach((f) => {
+    if (!f.annotation_id || !nonMeasurementAnnotations.some((ann) => String(ann.id) === String(f.annotation_id))) {
+      result.push({
+        ...f,
+        marker_number: f.marker_number || nextMarkerNumber++,
+      });
+    }
+  });
+
+  return result.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+}
+
 export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' }) {
   const record = await loadCaseRows(caseId);
   requireOwner(record, userId);
@@ -419,9 +482,12 @@ export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' 
   const reportId = randomUUID();
   const snapshotItems = [];
   const imageBuffers = new Map();
+  const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
+
   for (const item of record.items) {
     const annotations = await loadScopedAnnotations(item);
-    const measurements = annotations.filter((entry) => entry.type === 'measurement' || entry.metadata?.clinical_record_type === 'measurement');
+    const measurements = annotations.filter((entry) => isMeasurement(entry.type) || entry.metadata?.clinical_record_type === 'measurement' || entry.metadata?.value_label || entry.metadata?.distance_mm || entry.metadata?.length_mm || entry.metadata?.area_mm2);
+    const unifiedFindings = buildUnifiedStructuredFindings(item, item.structured_findings, annotations);
     const annotated = item.report_renders.annotated;
     const clean = item.report_renders.clean;
     const currentFingerprint = computeAnalysisFingerprint(item, annotations);
@@ -441,7 +507,7 @@ export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' 
       ...item,
       annotations,
       measurements: [...new Map(measurements.map((entry) => [entry.id, entry])).values()],
-      structured_findings: normalizeStructuredFindings(item.structured_findings || []),
+      structured_findings: unifiedFindings.length > 0 ? unifiedFindings : normalizeStructuredFindings(item.structured_findings || []),
       render_storage_path: annotated.storage_path,
       render_checksum: annotated.checksum,
       render_metadata: annotated.render_metadata,
@@ -453,7 +519,7 @@ export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' 
   let pendingStoragePath = null;
   try {
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${caseId}, 0))`);
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${caseId}, 0))`);
       const versionRows = await tx.$queryRaw(Prisma.sql`
         SELECT COALESCE(MAX(version), 0)::int + 1 AS version
         FROM xcore_analysis_reports WHERE case_id=${caseId}::uuid
