@@ -64,12 +64,13 @@ export default function usePersistentAnnotations({
   const studyId = studyIdForApi(study);
   const canSaveToApi = Boolean(studyId && !study?.readOnly);
   const storageStudyKey = studyKeyForStorage(study);
-  const loadKey = `${storageStudyKey || studyId}__${seriesUid || ''}__${viewerType || ''}`;
+  const instanceKey = scope?.source_instance_key || scope?.sourceInstanceKey || scope?.sop_instance_uid || scope?.sopInstanceUid || '';
+  const loadKey = `${storageStudyKey || studyId}__${seriesUid || ''}__${viewerType || ''}__${instanceKey}`;
   const draftStorageKey = storageStudyKey && seriesUid && viewerType
-    ? `xcore.annotationDraft.${storageStudyKey}.${seriesUid}.${viewerType}`
+    ? `xcore.annotationDraft.${storageStudyKey}.${seriesUid}.${viewerType}.${instanceKey}`
     : '';
   const cacheStorageKey = storageStudyKey && seriesUid && viewerType
-    ? `xcore.annotations.${storageStudyKey}.${seriesUid}.${viewerType}`
+    ? `xcore.annotations.${storageStudyKey}.${seriesUid}.${viewerType}.${instanceKey}`
     : '';
   const persistedItems = useMemo(() => [
     ...(Array.isArray(annotations) ? annotations : []),
@@ -115,7 +116,9 @@ export default function usePersistentAnnotations({
     if (!draftStorageKey || typeof window === 'undefined') return null;
     try {
       const raw = window.localStorage.getItem(draftStorageKey);
-      return readAnnotationDraftBackup(raw, DRAFT_VERSION);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return readAnnotationDraftBackup(parsed, { expectedVersion: DRAFT_VERSION });
     } catch (draftError) {
       console.warn('[X-Core] Annotation draft read failed:', draftError);
       return null;
@@ -126,7 +129,9 @@ export default function usePersistentAnnotations({
     if (!cacheStorageKey || typeof window === 'undefined') return null;
     try {
       const raw = window.localStorage.getItem(cacheStorageKey);
-      return readAnnotationDraftBackup(raw, CACHE_VERSION);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return readAnnotationDraftBackup(parsed, { expectedVersion: CACHE_VERSION });
     } catch (cacheError) {
       console.warn('[X-Core] Annotation cache read failed:', cacheError);
       return null;
@@ -245,6 +250,7 @@ export default function usePersistentAnnotations({
     return saveStudyAnnotations(studyId, {
       seriesUid,
       viewerType,
+      ...scopeRef.current,
       annotations: snapshot.annotations,
       deletedAnnotationIds: snapshot.deletedAnnotationIds,
     }, { keepalive: options.keepalive })
@@ -330,7 +336,7 @@ export default function usePersistentAnnotations({
     setLoading(true);
     setError(null);
 
-    loadStudyAnnotations(studyId, { seriesUid, viewerType })
+    loadStudyAnnotations(studyId, { seriesUid, viewerType, ...scopeRef.current })
       .then((items) => {
         if (cancelled || loadKeyRef.current !== loadKey) return;
         const serverAnnotations = items.map((annotation) => normalizeAnnotationForPersistence(annotation, {

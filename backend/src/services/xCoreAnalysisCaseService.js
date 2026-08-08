@@ -57,6 +57,11 @@ function normalizeItems(items = []) {
       studyId: asBigInt(item.study_id || item.studyId, 'study_id'),
       seriesId: item.series_id || item.seriesId ? asBigInt(item.series_id || item.seriesId, 'series_id') : null,
       seriesUid: String(item.series_uid || item.seriesUid).slice(0, 512),
+      sopInstanceUid: validation.sopInstanceUid,
+      instanceNumber: validation.instanceNumber,
+      frameIndex: validation.frameIndex,
+      imageIndex: validation.imageIndex,
+      sourceInstanceKey: validation.sourceInstanceKey,
       viewerType: String(item.viewer_type || item.viewerType || '2d').toLowerCase(),
       radiographType: validation.radiographType,
       toothNumbers: validation.toothNumbers,
@@ -68,6 +73,8 @@ function normalizeItems(items = []) {
   });
   const orders = new Set(normalized.map((item) => item.displayOrder));
   if (orders.size !== normalized.length) throw httpError(400, 'display_order values must be unique', 'duplicate_display_order');
+  const sourceKeys = new Set(normalized.map((item) => item.sourceInstanceKey));
+  if (sourceKeys.size !== normalized.length) throw httpError(400, 'Every image instance in a case must be distinct', 'duplicate_source_instance_key');
   if (normalized.some((item) => !['2d', 'slice', '3d'].includes(item.viewerType))) throw httpError(400, 'viewer_type is invalid', 'invalid_viewer_type');
   if (normalized.some((item) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id))) {
     throw httpError(400, 'Case item id must be a UUID', 'invalid_case_item_id');
@@ -76,15 +83,36 @@ function normalizeItems(items = []) {
 }
 
 async function loadScopedAnnotations(item, client = prisma) {
-  const rows = await client.$queryRaw(Prisma.sql`
-    SELECT id, type, coordinates, label, color, metadata, slice_axis, slice_index,
-           review_status, created_at, updated_at
-    FROM study_annotations
-    WHERE study_id=${asBigInt(item.study_id ?? item.studyId, 'study_id')}
-      AND series_uid=${item.series_uid ?? item.seriesUid}
-      AND viewer_type=${item.viewer_type ?? item.viewerType}
-    ORDER BY created_at ASC, id ASC
-  `);
+  const studyId = asBigInt(item.study_id ?? item.studyId, 'study_id');
+  const seriesUid = item.series_uid ?? item.seriesUid;
+  const viewerType = item.viewer_type ?? item.viewerType;
+  const sourceInstanceKey = item.source_instance_key ?? item.sourceInstanceKey ?? null;
+
+  let rows;
+  if (sourceInstanceKey && sourceInstanceKey !== `series:${seriesUid}:legacy`) {
+    rows = await client.$queryRaw(Prisma.sql`
+      SELECT id, type, coordinates, label, color, metadata, slice_axis, slice_index,
+             sop_instance_uid, instance_number, frame_index, image_index, source_instance_key,
+             review_status, created_at, updated_at
+      FROM study_annotations
+      WHERE study_id=${studyId}
+        AND series_uid=${seriesUid}
+        AND viewer_type=${viewerType}
+        AND (source_instance_key=${sourceInstanceKey} OR source_instance_key IS NULL OR source_instance_key=${`series:${seriesUid}:legacy`})
+      ORDER BY created_at ASC, id ASC
+    `);
+  } else {
+    rows = await client.$queryRaw(Prisma.sql`
+      SELECT id, type, coordinates, label, color, metadata, slice_axis, slice_index,
+             sop_instance_uid, instance_number, frame_index, image_index, source_instance_key,
+             review_status, created_at, updated_at
+      FROM study_annotations
+      WHERE study_id=${studyId}
+        AND series_uid=${seriesUid}
+        AND viewer_type=${viewerType}
+      ORDER BY created_at ASC, id ASC
+    `);
+  }
   return json(rows);
 }
 
@@ -147,7 +175,12 @@ async function loadCaseRows(caseId, client = prisma) {
   `);
   if (!cases.length) throw httpError(404, 'Analysis case not found', 'case_not_found');
   const rawItems = await client.$queryRaw(Prisma.sql`
-    SELECT i.*, s.original_name AS study_name, s.modality, s.patient_id AS study_patient_id,
+    SELECT i.id, i.case_id, i.study_id, i.series_id, i.series_uid,
+           i.sop_instance_uid, i.instance_number, i.frame_index, i.image_index, i.source_instance_key,
+           i.viewer_type, i.radiograph_type, i.tooth_numbers, i.display_order,
+           i.title, i.findings, i.structured_findings, i.render_storage_path, i.render_checksum,
+           i.created_at, i.updated_at,
+           s.original_name AS study_name, s.modality, s.patient_id AS study_patient_id,
            s.study_date, s.metadata AS study_metadata, se.preview_image_url, se.pixel_spacing,
            ar.id AS annotated_render_id, ar.storage_path AS annotated_storage_path,
            ar.checksum AS annotated_checksum, ar.width AS annotated_width, ar.height AS annotated_height,
@@ -228,14 +261,17 @@ async function verifyFindingLinks(items, client = prisma) {
 async function insertItem(tx, caseId, item) {
   const affected = await tx.$executeRaw(Prisma.sql`
     INSERT INTO xcore_analysis_case_items
-      (id, case_id, study_id, series_id, series_uid, viewer_type, radiograph_type, tooth_numbers,
-       display_order, title, findings, structured_findings)
+      (id, case_id, study_id, series_id, series_uid, sop_instance_uid, instance_number, frame_index, image_index, source_instance_key,
+       viewer_type, radiograph_type, tooth_numbers, display_order, title, findings, structured_findings)
     VALUES
-      (${item.id}::uuid, ${caseId}::uuid, ${item.studyId}, ${item.seriesId}, ${item.seriesUid}, ${item.viewerType},
-       ${item.radiographType}, ${item.toothNumbers}::varchar(3)[], ${item.displayOrder}, ${item.title},
+      (${item.id}::uuid, ${caseId}::uuid, ${item.studyId}, ${item.seriesId}, ${item.seriesUid},
+       ${item.sopInstanceUid}, ${item.instanceNumber}, ${item.frameIndex}, ${item.imageIndex}, ${item.sourceInstanceKey},
+       ${item.viewerType}, ${item.radiographType}, ${item.toothNumbers}::varchar(3)[], ${item.displayOrder}, ${item.title},
        ${item.findings}, ${JSON.stringify(item.structuredFindings)}::jsonb)
     ON CONFLICT (id) DO UPDATE SET
       study_id=EXCLUDED.study_id, series_id=EXCLUDED.series_id, series_uid=EXCLUDED.series_uid,
+      sop_instance_uid=EXCLUDED.sop_instance_uid, instance_number=EXCLUDED.instance_number,
+      frame_index=EXCLUDED.frame_index, image_index=EXCLUDED.image_index, source_instance_key=EXCLUDED.source_instance_key,
       viewer_type=EXCLUDED.viewer_type, radiograph_type=EXCLUDED.radiograph_type,
       tooth_numbers=EXCLUDED.tooth_numbers, display_order=EXCLUDED.display_order,
       title=EXCLUDED.title, findings=EXCLUDED.findings, structured_findings=EXCLUDED.structured_findings
@@ -302,8 +338,9 @@ export async function updateAnalysisCase({ caseId, userId, payload, requireStudy
   await verifyFindingLinks(items);
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw(Prisma.sql`
-      UPDATE xcore_analysis_cases SET title=${data.title}, status=${data.status},
-        clinical_data=${JSON.stringify(data.clinicalData)}::jsonb, conclusion=${data.conclusion}
+      UPDATE xcore_analysis_cases
+      SET title=${data.title}, status=${data.status}, clinical_data=${JSON.stringify(data.clinicalData)}::jsonb,
+          conclusion=${data.conclusion}, updated_at=NOW()
       WHERE id=${caseId}::uuid
     `);
     await replaceCaseItems(tx, caseId, items);
@@ -311,191 +348,159 @@ export async function updateAnalysisCase({ caseId, userId, payload, requireStudy
   return loadCaseRows(caseId);
 }
 
-function normalizeRenderPayload({ renders, dataUrl }) {
-  if (renders && typeof renders === 'object' && !Array.isArray(renders)) return renders;
-  if (dataUrl) return { ANNOTATED: { data_url: dataUrl, legacy: true } };
-  throw httpError(400, 'Render CLEAN dan/atau ANNOTATED wajib dikirim.', 'case_render_required');
+export async function deleteAnalysisCase(caseId, userId) {
+  const current = await loadCaseRows(caseId);
+  requireOwner(current, userId);
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`DELETE FROM xcore_analysis_cases WHERE id=${caseId}::uuid`);
+  });
 }
 
-export async function saveAnalysisCaseRender({ caseId, itemId, userId, renders, dataUrl }) {
-  const record = await loadCaseRows(caseId);
-  requireOwner(record, userId);
-  const item = record.items.find((candidate) => candidate.id === itemId);
-  if (!item) throw httpError(404, 'Case image not found', 'case_item_not_found');
-  const payload = normalizeRenderPayload({ renders, dataUrl });
-  const annotations = await loadScopedAnnotations(item);
-  const findings = normalizeStructuredFindings(item.structured_findings || []);
-  assertFindingLinks(findings, annotations);
-  const fingerprint = computeAnalysisFingerprint(item, annotations);
-  const savedRenders = [];
+export async function saveAnalysisRender(arg1, arg2, arg3, arg4) {
+  const options = typeof arg1 === 'object' && arg1 !== null
+    ? arg1
+    : { caseId: arg1, itemId: arg2, userId: arg3, rendersPayload: arg4 };
+  const { caseId, itemId, userId, rendersPayload, renders, dataUrl } = options;
+  const current = await loadCaseRows(caseId);
+  requireOwner(current, userId);
+  const item = current.items.find((candidate) => candidate.id === itemId);
+  if (!item) throw httpError(404, 'Case item not found', 'case_item_not_found');
 
-  for (const renderType of REPORT_RENDER_TYPES) {
-    const input = payload[renderType] || payload[renderType.toLowerCase()];
-    if (!input) continue;
-    if (input.legacy) {
-      const saved = await writeCaseRender({ caseId, itemId, renderType, dataUrl: input.data_url });
-      await prisma.$executeRaw(Prisma.sql`
-        UPDATE xcore_analysis_case_items SET render_storage_path=${saved.storagePath}, render_checksum=${saved.checksum}
-        WHERE id=${itemId}::uuid AND case_id=${caseId}::uuid
-      `);
-      return { legacy: true, render_storage_path: saved.storagePath, render_checksum: saved.checksum };
-    }
-    const metadata = normalizeRenderMetadata(input.metadata, { item, renderType });
-    const saved = await writeCaseRender({ caseId, itemId, renderType, dataUrl: input.data_url ?? input.dataUrl });
-    metadata.render_width = saved.width;
-    metadata.render_height = saved.height;
-    metadata.analysis_fingerprint = fingerprint;
-    savedRenders.push({ ...saved, metadata });
+  const rendersInput = rendersPayload?.renders || rendersPayload || renders || (dataUrl ? { ANNOTATED: { data_url: dataUrl } } : null);
+  if (!rendersInput || typeof rendersInput !== 'object') {
+    throw httpError(400, 'Payload must contain renders object with CLEAN and ANNOTATED keys.', 'invalid_renders_payload');
   }
-  if (!savedRenders.length) throw httpError(400, 'Tidak ada render yang dapat disimpan.', 'case_render_required');
+
+  const annotatedInput = rendersInput.ANNOTATED || rendersInput.annotated || (rendersInput.data_url ? rendersInput : null);
+  const cleanInput = rendersInput.CLEAN || rendersInput.clean || null;
+
+  if (!annotatedInput?.data_url) {
+    throw httpError(400, 'Render ANNOTATED wajib memiliki data_url.', 'missing_annotated_render');
+  }
+
+  const annotations = await loadScopedAnnotations(item);
+  const structuredFindings = normalizeStructuredFindings(item.structured_findings || []);
+  const currentFingerprint = computeAnalysisFingerprint({ ...item, structured_findings: structuredFindings }, annotations);
+
+  const annotatedMetadata = normalizeRenderMetadata(annotatedInput.metadata || {}, { item, renderType: 'ANNOTATED' });
+  const validatedAnnotated = await writeCaseRender({
+    caseItemId: item.id,
+    renderType: 'ANNOTATED',
+    dataUrl: annotatedInput.data_url,
+    metadata: annotatedMetadata,
+    fingerprint: currentFingerprint,
+    userId: asBigInt(userId, 'user_id'),
+  });
+
+  let validatedClean = null;
+  if (cleanInput?.data_url) {
+    const cleanMetadata = normalizeRenderMetadata(cleanInput.metadata || {}, { item, renderType: 'CLEAN' });
+    validatedClean = await writeCaseRender({
+      caseItemId: item.id,
+      renderType: 'CLEAN',
+      dataUrl: cleanInput.data_url,
+      metadata: cleanMetadata,
+      fingerprint: currentFingerprint,
+      userId: asBigInt(userId, 'user_id'),
+    });
+  }
 
   await prisma.$transaction(async (tx) => {
-    for (const saved of savedRenders) {
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO xcore_analysis_case_item_renders
+        (id, case_item_id, render_type, storage_path, checksum, width, height, mime_type, render_metadata, analysis_fingerprint, validation_result, created_by)
+      VALUES
+        (${validatedAnnotated.id}::uuid, ${item.id}::uuid, 'ANNOTATED', ${validatedAnnotated.storagePath}, ${validatedAnnotated.checksum},
+         ${validatedAnnotated.width}, ${validatedAnnotated.height}, ${validatedAnnotated.mimeType},
+         ${JSON.stringify(validatedAnnotated.renderMetadata)}::jsonb, ${currentFingerprint},
+         ${JSON.stringify(validatedAnnotated.validation)}::jsonb, ${asBigInt(userId, 'user_id')})
+      ON CONFLICT (case_item_id, render_type, checksum, analysis_fingerprint) DO UPDATE SET
+        created_at=NOW()
+    `);
+    if (validatedClean) {
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO xcore_analysis_case_item_renders
-          (id, case_item_id, render_type, storage_path, checksum, width, height, mime_type,
-           render_metadata, analysis_fingerprint, validation_result, created_by)
-        VALUES (${randomUUID()}::uuid, ${itemId}::uuid, ${saved.renderType}, ${saved.storagePath}, ${saved.checksum},
-          ${saved.width}, ${saved.height}, ${saved.mimeType}, ${JSON.stringify(saved.metadata)}::jsonb,
-          ${fingerprint}, ${JSON.stringify(saved.validation)}::jsonb, ${asBigInt(userId, 'user_id')})
-        ON CONFLICT (case_item_id, render_type, checksum, analysis_fingerprint) DO NOTHING
+          (id, case_item_id, render_type, storage_path, checksum, width, height, mime_type, render_metadata, analysis_fingerprint, validation_result, created_by)
+        VALUES
+          (${validatedClean.id}::uuid, ${item.id}::uuid, 'CLEAN', ${validatedClean.storagePath}, ${validatedClean.checksum},
+           ${validatedClean.width}, ${validatedClean.height}, ${validatedClean.mimeType},
+           ${JSON.stringify(validatedClean.renderMetadata)}::jsonb, ${currentFingerprint},
+           ${JSON.stringify(validatedClean.validation)}::jsonb, ${asBigInt(userId, 'user_id')})
+        ON CONFLICT (case_item_id, render_type, checksum, analysis_fingerprint) DO UPDATE SET
+          created_at=NOW()
       `);
-      if (saved.renderType === 'ANNOTATED') {
-        await tx.$executeRaw(Prisma.sql`
-          UPDATE xcore_analysis_case_items SET render_storage_path=${saved.storagePath}, render_checksum=${saved.checksum}
-          WHERE id=${itemId}::uuid AND case_id=${caseId}::uuid
-        `);
-      }
     }
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE xcore_analysis_case_items
+      SET render_storage_path=${validatedAnnotated.storagePath}, render_checksum=${validatedAnnotated.checksum}, updated_at=NOW()
+      WHERE id=${item.id}::uuid
+    `);
   });
+
+  const updatedCase = await loadCaseRows(caseId);
+  const updatedItem = updatedCase.items.find((candidate) => candidate.id === itemId);
   return json({
-    analysis_fingerprint: fingerprint,
-    renders: Object.fromEntries(savedRenders.map((saved) => [saved.renderType, {
-      render_type: saved.renderType,
-      storage_path: saved.storagePath,
-      checksum: saved.checksum,
-      width: saved.width,
-      height: saved.height,
-      metadata: saved.metadata,
-      validation: saved.validation,
-    }])),
-    status: 'READY',
+    item_id: item.id,
+    status: updatedItem.render_status,
+    annotated: updatedItem.report_renders.annotated,
+    clean: updatedItem.report_renders.clean,
   });
 }
 
-function buildPreflight(record) {
-  const issues = record.items.flatMap((item) => {
-    if (item.render_status?.ready) return [];
-    return [{
-      item_id: item.id,
-      display_order: item.display_order,
-      radiograph_type: item.radiograph_type,
-      code: `render_${String(item.render_status?.status || 'missing').toLowerCase()}`,
-      status: item.render_status?.status || 'MISSING',
-      message: item.render_status?.message || 'Gambar laporan belum siap.',
-      details: item.render_status?.issues || [],
-    }];
-  });
-  return { ready: record.items.length > 0 && issues.length === 0, item_count: record.items.length, issues };
-}
+export const saveAnalysisCaseRender = saveAnalysisRender;
 
-export async function preflightAnalysisReport({ caseId, userId }) {
+export async function preflightAnalysisReport(arg1, arg2) {
+  const caseId = typeof arg1 === 'object' && arg1 !== null ? arg1.caseId : arg1;
+  const userId = typeof arg1 === 'object' && arg1 !== null ? arg1.userId : arg2;
   const record = await loadCaseRows(caseId);
   requireOwner(record, userId);
-  return buildPreflight(record);
-}
-
-function buildUnifiedStructuredFindings(item, existingFindings = [], annotations = []) {
-  const normalizedExisting = normalizeStructuredFindings(existingFindings || []);
-  const existingByAnnotationId = new Map(
-    normalizedExisting.filter((f) => f.annotation_id).map((f) => [String(f.annotation_id), f])
-  );
-
-  const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
-
-  const nonMeasurementAnnotations = annotations.filter(
-    (entry) => !isMeasurement(entry.type) && entry.metadata?.clinical_record_type !== 'measurement'
-  );
-
-  const result = [];
-  let nextMarkerNumber = 1;
-
-  nonMeasurementAnnotations.forEach((ann, index) => {
-    const existing = existingByAnnotationId.get(String(ann.id));
-    const tooth = ann.metadata?.tooth_number || ann.metadata?.toothNumber || ann.metadata?.tooth || '';
-    const findingType = ann.metadata?.finding_type || ann.metadata?.findingType || '';
-    const severity = ann.metadata?.severity || '';
-    const surface = ann.metadata?.surface || '';
-    const notes = ann.label || ann.metadata?.notes || ann.metadata?.clinical_notes || ann.metadata?.description || ann.metadata?.comment || '';
-
-    const toothStr = tooth ? (/^\d+$/.test(String(tooth)) ? `Gigi ${tooth}` : String(tooth)) : (existing?.region || '');
-    const surfaceStr = surface ? ` (${surface})` : '';
-    const regionText = (toothStr + surfaceStr).trim();
-
-    let titleText = existing?.title || findingType || ann.label || 'Temuan Radiografi';
-    if (findingType && severity && !titleText.includes(severity)) {
-      titleText += ` (${severity})`;
-    }
-
-    let descText = existing?.description || notes || '';
-    if (notes && descText && !descText.includes(notes)) {
-      descText = `${descText} — ${notes}`;
-    }
-
-    result.push({
-      id: existing?.id || ann.id,
-      marker_number: existing?.marker_number || nextMarkerNumber++,
-      annotation_id: ann.id,
-      measurement_id: null,
-      region: regionText || 'Regio tidak spesifik',
-      tooth_numbers: tooth ? [String(tooth)] : (existing?.tooth_numbers || item.tooth_numbers || []),
-      title: titleText,
-      description: descText || 'Anotasi klinis terdeteksi.',
-      annotation_type: ann.type || null,
-      display_order: existing?.display_order ?? index,
-    });
-  });
-
-  normalizedExisting.forEach((f) => {
-    if (!f.annotation_id || !nonMeasurementAnnotations.some((ann) => String(ann.id) === String(f.annotation_id))) {
-      result.push({
-        ...f,
-        marker_number: f.marker_number || nextMarkerNumber++,
+  const issues = [];
+  record.items.forEach((item) => {
+    if (!item.render_status?.ready) {
+      issues.push({
+        item_id: item.id,
+        display_order: item.display_order,
+        status: item.render_status?.status || 'MISSING',
+        code: `render_${String(item.render_status?.status || 'missing').toLowerCase()}`,
+        message: item.render_status?.message || 'Gambar laporan belum siap.',
       });
     }
   });
-
-  return result.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+  return { ready: issues.length === 0, issues };
 }
 
-export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' }) {
+export async function generateAnalysisReport(arg1, arg2, arg3 = 'DRAFT') {
+  const caseId = typeof arg1 === 'object' && arg1 !== null ? arg1.caseId : arg1;
+  const userId = typeof arg1 === 'object' && arg1 !== null ? arg1.userId : arg2;
+  const status = typeof arg1 === 'object' && arg1 !== null ? (arg1.status || 'DRAFT') : arg3;
   const record = await loadCaseRows(caseId);
   requireOwner(record, userId);
-  if (!record.items.length) throw httpError(400, 'Case has no images', 'case_items_required');
-  const preflight = buildPreflight(record);
+  const normalizedStatus = String(status || 'DRAFT').toUpperCase();
+  if (!['DRAFT', 'FINALIZED'].includes(normalizedStatus)) throw httpError(400, 'Report status is invalid', 'invalid_report_status');
+
+  const preflight = await preflightAnalysisReport(caseId, userId);
   if (!preflight.ready) {
-    throw httpError(409, 'PDF belum dapat dibuat. Perbarui gambar laporan pada item yang ditandai.', 'report_preflight_failed', preflight);
+    throw httpError(409, 'Laporan belum dapat dibuat karena ada gambar yang belum siap.', 'report_preflight_failed', { issues: preflight.issues });
   }
 
-  const normalizedStatus = String(status).toUpperCase();
-  if (!['DRAFT', 'FINAL'].includes(normalizedStatus)) throw httpError(400, 'Report status is invalid', 'invalid_report_status');
   const reportId = randomUUID();
   const snapshotItems = [];
   const imageBuffers = new Map();
-  const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
 
   for (const item of record.items) {
-    const annotations = await loadScopedAnnotations(item);
-    const measurements = annotations.filter((entry) => isMeasurement(entry.type) || entry.metadata?.clinical_record_type === 'measurement' || entry.metadata?.value_label || entry.metadata?.distance_mm || entry.metadata?.length_mm || entry.metadata?.area_mm2);
-    const unifiedFindings = buildUnifiedStructuredFindings(item, item.structured_findings, annotations);
     const annotated = item.report_renders.annotated;
     const clean = item.report_renders.clean;
-    const currentFingerprint = computeAnalysisFingerprint(item, annotations);
-    if (annotated.analysis_fingerprint !== currentFingerprint) {
-      throw httpError(409, `Gambar laporan citra ${item.display_order + 1} berubah setelah preflight.`, 'report_render_stale', {
-        item_id: item.id,
-      });
+    if (!annotated) {
+      throw httpError(409, `Citra ${item.display_order + 1} belum memiliki canonical render beranotasi.`, 'report_render_missing', { item_id: item.id });
     }
+    const annotations = await loadScopedAnnotations(item);
+    const measurements = annotations.filter((row) => (
+      ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(row.type || '').toLowerCase())
+      || row.metadata?.clinical_record_type === 'measurement'
+    ));
+    const unifiedFindings = normalizeStructuredFindings(item.structured_findings || []);
+    assertFindingLinks(unifiedFindings, annotations);
+
     const imageBuffer = await readStoredFile(annotated.storage_path);
     if (checksum(imageBuffer) !== annotated.checksum) {
       throw httpError(409, `File gambar laporan citra ${item.display_order + 1} tidak lolos verifikasi checksum.`, 'report_render_corrupt', {
@@ -506,8 +511,8 @@ export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' 
     snapshotItems.push({
       ...item,
       annotations,
-      measurements: [...new Map(measurements.map((entry) => [entry.id, entry])).values()],
-      structured_findings: unifiedFindings.length > 0 ? unifiedFindings : normalizeStructuredFindings(item.structured_findings || []),
+      measurements,
+      structured_findings: unifiedFindings,
       render_storage_path: annotated.storage_path,
       render_checksum: annotated.checksum,
       render_metadata: annotated.render_metadata,
@@ -557,11 +562,13 @@ export async function generateAnalysisReport({ caseId, userId, status = 'DRAFT' 
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO xcore_analysis_report_items
             (id, report_id, source_case_item_id, display_order, radiograph_type, tooth_numbers, title, findings,
-             structured_findings, study_id, series_uid, viewer_type, annotation_snapshot, measurement_snapshot,
+             structured_findings, study_id, series_uid, sop_instance_uid, instance_number, frame_index, image_index, source_instance_key,
+             viewer_type, annotation_snapshot, measurement_snapshot,
              render_storage_path, render_checksum, render_metadata, clean_render_storage_path, clean_render_checksum)
           VALUES (${randomUUID()}::uuid, ${reportId}::uuid, ${item.id}::uuid, ${item.display_order}, ${item.radiograph_type},
             ${item.tooth_numbers}::varchar(3)[], ${item.title}, ${item.findings}, ${JSON.stringify(item.structured_findings)}::jsonb,
-            ${asBigInt(item.study_id, 'study_id')}, ${item.series_uid}, ${item.viewer_type},
+            ${asBigInt(item.study_id, 'study_id')}, ${item.series_uid}, ${item.sop_instance_uid || null}, ${item.instance_number || null},
+            ${item.frame_index ?? null}, ${item.image_index ?? null}, ${item.source_instance_key || null}, ${item.viewer_type},
             ${JSON.stringify(item.annotations)}::jsonb, ${JSON.stringify(item.measurements)}::jsonb,
             ${item.render_storage_path}, ${item.render_checksum}, ${JSON.stringify(item.render_metadata)}::jsonb,
             ${item.clean_render_storage_path}, ${item.clean_render_checksum})

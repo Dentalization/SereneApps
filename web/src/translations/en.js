@@ -625,7 +625,7 @@ export default {
         activeHoursUtilization: 'Active hours utilization',
         operationalHours: 'operational hours'
       },
-      daily: {
+      labels: {
         headerTitle: 'Daily Schedule',
         scheduledLabel: '{{count}} appointments scheduled',
         appointmentsForDoctor: '{{count}} appointments',
@@ -955,63 +955,6 @@ export default {
       compliance: 'Compliance',
       marketing: 'Marketing'
     },
-    clinic: {
-      staff: {
-        searchPlaceholder: 'Search by name, email, position, or role...',
-        filters: {
-          role: {
-            label: 'Role',
-            all: 'All Roles'
-          },
-          status: {
-            label: 'Status',
-            all: 'All Status',
-            active: 'Active',
-            inactive: 'Inactive',
-            invited: 'Invited'
-          }
-        },
-        directory: {
-          headers: {
-            staff: 'Staff',
-            contact: 'Contact',
-            role: 'Role',
-            status: 'Status',
-            actions: 'Actions'
-          },
-          actions: {
-            view: 'View Profile',
-            edit: 'Edit Role',
-            remove: 'Remove'
-          },
-          empty: {
-            title: 'No staff members found',
-            description: 'Start by inviting your first staff member'
-          }
-        },
-        actions: {
-          addStaff: 'Add Staff'
-        },
-        errors: {
-          loadFailed: 'Failed to load staff data',
-          profileUpdateFailed: 'Failed to update profile'
-        },
-        totalStaff: 'Total Staff',
-        summary: {
-          total: 'Total Staff',
-          active: 'Active Staff',
-          efficiency: 'Efficiency',
-          utilization: 'Utilization',
-          satisfaction: 'Satisfaction',
-          revenue_per_staff: 'Revenue per Staff',
-          capacity: 'Capacity',
-          productivity: 'Productivity',
-          attendance: 'Attendance',
-          performance: 'Performance',
-          lastActivity: 'Last Activity'
-        }
-      },
-    },
     settings: {
       title: 'Settings',
       subtitle: 'Configure clinic, services, and system',
@@ -1217,7 +1160,7 @@ export default {
         receipt: 'Receipt',
         receiptDesc: 'Payment receipts'
       },
-      variables: {
+      variablesMap: {
         clinicName: 'Clinic Name',
         patientName: 'Patient Name',
         patientEmail: 'Patient Email',
@@ -1296,6 +1239,7 @@ export default {
       }
     }
   },
+
   // Common
   common: {
     save: 'Save',
@@ -1442,6 +1386,15 @@ export default {
 
   // Schedule
   schedule: {
+    operatingHours: 'Operating Hours',
+    open: 'Open',
+    closed: 'Closed',
+    holidays: 'Holidays',
+    addHoliday: 'Add Holiday',
+    noHolidays: 'No holidays configured',
+    scheduleSaveSuccess: 'Schedule updated successfully!',
+    scheduleSaveError: 'Failed to update schedule',
+    saveSchedule: 'Save Schedule',
     title: 'Practice Schedule',
     dailyView: 'Daily',
     weeklyView: 'Weekly',
@@ -1484,8 +1437,6 @@ export default {
     customRange: 'Custom Range',
     status: 'Status',
     channel: 'Channel',
-    provider: 'Provider',
-    location: 'Location',
     priority: 'Priority',
     clearAll: 'Clear All',
     showPending: 'Show Pending',
@@ -1494,7 +1445,6 @@ export default {
     urgentOnly: 'Urgent Only',
     highRisk: 'High Risk',
     confirm: 'Confirm',
-    reschedule: 'Reschedule',
     cancel: 'Cancel',
     startVideo: 'Start Video',
     requestPhotos: 'Request Photos',
@@ -1573,12 +1523,6 @@ export default {
     badge: 'System Settings',
     profile: 'My Profile',
     clinic: 'Clinic Profile',
-    schedule: 'Operating Hours',
-    services: 'Services & Pricing',
-    integrations: 'Integrations',
-    users: 'Users & Roles',
-    templates: 'Document Templates',
-    audit: 'Audit & Data',
     readOnly: 'Read Only',
     saveAll: 'Save All',
     accessibleSections: 'accessible sections',
@@ -1628,7 +1572,6 @@ export default {
     clinicName: 'Clinic Name',
     consultationFee: 'Consultation Fee',
     about: 'About',
-    notFilledYet: 'Not filled yet',
     
     // Preferences
     themeDisplay: 'Theme & Display',
@@ -1687,10 +1630,6 @@ export default {
     resetPreferencesConfirm: 'Are you sure you want to reset all preferences to default?',
     
     // Security
-    changePassword: 'Change Password',
-    currentPassword: 'Current Password',
-    newPassword: 'New Password',
-    confirmPassword: 'Confirm Password',
     twoFactor: 'Two-Factor Authentication',
     loginNotifications: 'Login Notifications',
     sessionTimeout: 'Session Timeout',
@@ -1699,8 +1638,6 @@ export default {
     securityQuestions: 'Security Questions',
     
     // Messages
-    preferencesSaved: 'Preferences saved successfully!',
-    resetPreferencesConfirm: 'Reset all preference settings to their defaults?',
     profileUpdated: 'Profile updated successfully!',
     securityUpdated: 'Security settings updated successfully!'
   },
@@ -1747,18 +1684,6 @@ export default {
   // Reports
   reports: {
     title: 'Reports & Analytics',
-    patientReports: 'Patient Reports',
-    financialReports: 'Financial Reports',
-    appointmentReports: 'Appointment Reports',
-    performanceMetrics: 'Performance Metrics',
-    export: 'Export',
-    dateRange: 'Date Range',
-    generateReport: 'Generate Report'
-  },
-
-  // Reports & Statistics
-  reports: {
-    title: 'Reports & Statistics',
     subtitle: 'Comprehensive analytics and business intelligence for your dental practice',
     dashboard: 'Analytics Dashboard',
     overview: 'Practice Overview',
@@ -1843,18 +1768,13 @@ export default {
     treatmentCompletion: 'Treatment Completion',
     patientSatisfaction: 'Patient Satisfaction',
     treatmentComplexity: 'Treatment Complexity',
-    treatmentDuration: 'Treatment Duration',
-    treatmentOutcomes: 'Treatment Outcomes',
     clinicalIndicators: 'Clinical Indicators',
-    qualityMetrics: 'Quality Metrics',
     
     // Patient Metrics
-    patients: 'Patients',
     patientAnalysis: 'Patient Analysis',
     newPatients: 'New Patients',
     returningPatients: 'Returning Patients',
     patientRetention: 'Patient Retention',
-    patientSatisfaction: 'Patient Satisfaction',
     patientDemographics: 'Patient Demographics',
     patientJourney: 'Patient Journey',
     patientLTV: 'Patient Lifetime Value',
@@ -1882,7 +1802,6 @@ export default {
     complications: 'Complications',
     referrals: 'Referrals',
     perTreatment: 'per Treatment',
-    treatments: 'treatments',
     popularity: 'Popularity',
     outcomes: 'Outcomes',
     treatmentDescription: "Snapshot of treatment volume, outcomes, and timing—at a glance",
@@ -1899,7 +1818,6 @@ export default {
     // Quality metrics
     satisfaction: 'Satisfaction',
     appointmentFrequency: 'Appointment Frequency',
-    treatmentCompletion: 'Treatment Completion',
     communication: 'Communication',
     
     // Data updates
@@ -1933,7 +1851,6 @@ export default {
     productivity: 'Productivity',
     efficiency: 'Efficiency',
     profitability: 'Profitability',
-    growth: 'Growth Rate',
     benchmarks: 'Benchmarks',
     targets: 'Targets',
     achievements: 'Achievements',
@@ -1978,7 +1895,6 @@ export default {
     // Filter Options
     allTreatments: 'All Treatments',
     allPatients: 'All Patients',
-    returningPatients: 'Returning Patients',
     customRange: 'Custom Range',
     startDate: 'Start Date',
     endDate: 'End Date',
@@ -2023,10 +1939,8 @@ export default {
     weekly: 'Weekly',
     monthly: 'Monthly',
     quarterly: 'Quarterly',
-    yearly: 'Yearly',
     
     // Units
-    currency: 'Currency',
     percentage: 'Percentage',
     count: 'Count',
     duration: 'Duration',
@@ -2049,7 +1963,6 @@ export default {
     welcomeMessage: 'Welcome to AI Clinical Analysis',
     welcomeSubtitle: 'Upload dental images and ask questions to get comprehensive AI-powered analysis and recommendations.',
     inputPlaceholder: 'Ask AI about dental conditions, treatments, or upload an image for analysis...',
-    thinking: 'AI is thinking...',
     thinking: 'AI is thinking...',
     
     // Image Upload
@@ -2130,28 +2043,21 @@ export default {
       }
     }
   },
-  patients: {
-    title: 'Patient Management',
+  dentistPatient: {
     tabs: {
       registry: 'Patient Registry',
       appointments: 'Appointments',
       analytics: 'Analytics',
       reports: 'Reports'
     },
-    common: {
-      gender: {
-        male: 'Male',
-        female: 'Female'
-      },
       labels: {
         visits: 'visits',
         years: '{{count}} years',
         yearsOld: '{{count}} years old'
-      }
-    },
+      },
     registry: {
       title: 'Patient Registry',
-      search: 'Search patients...',
+      searchPlaceholder: 'Search patients...',
       loading: 'Loading patients...',
       empty: {
         title: 'No patients found',
@@ -2204,7 +2110,6 @@ export default {
       }
     },
     appointments: {
-      title: 'Patient Appointments',
       scheduleNew: 'Schedule New Appointment',
       upcoming: 'Upcoming Appointments',
       past: 'Past Appointments',
@@ -2212,7 +2117,6 @@ export default {
       noAppointments: 'No appointments found'
     },
     analytics: {
-      filters: 'Analytics Filters',
       period: 'Period',
       year: 'Year',
       month: 'Month',
@@ -2230,7 +2134,7 @@ export default {
       patientCard: {
         meta: '{{age}} years • {{gender}} • {{phone}}'
       },
-      stats: {
+      kpis: {
         total: 'Total Patients',
         active: 'Active Patients',
         vip: 'VIP Patients',
@@ -2254,18 +2158,9 @@ export default {
         crown: 'Crown',
         whitening: 'Whitening',
         other: 'Other'
-      },
-      demographics: 'Demographics Breakdown',
-      table: {
-        ageGroup: 'Age Group',
-        male: 'Male',
-        female: 'Female',
-        total: 'Total',
-        percentage: 'Percentage'
       }
     },
     reports: {
-      title: 'Patient Reports',
       reportType: 'Report Type',
       generate: 'Generate Report',
       generating: 'Generating...',
@@ -2277,21 +2172,14 @@ export default {
         demographic: 'Demographics'
       },
       filters: {
-        dateRange: 'Date Range',
-        patientType: 'Patient Type',
         patientTypes: {
           all: 'All Patients',
           active: 'Active Patients',
           inactive: 'Inactive Patients',
           vip: 'VIP Patients'
         },
-        treatmentType: 'Treatment Type',
         treatmentTypes: {
-          all: 'All Treatments',
-          cleaning: 'Cleaning',
-          filling: 'Filling',
-          rootCanal: 'Root Canal',
-          extraction: 'Extraction'
+          all: 'All Treatments'
         }
       },
       preview: {
@@ -2353,31 +2241,17 @@ export default {
       }
     }
   },
-  profile: {
-    settings: 'Profile Settings',
+  dentistSettings: {
     description: 'Manage your account information and preferences',
     changePhoto: 'Change Photo',
     personalInfo: 'Personal Information',
     fullName: 'Full Name',
-    email: 'Email Address',
     phoneNumber: 'Phone Number',
-    title: 'Professional Title',
     licenseNumber: 'License Number',
-    specialization: 'Primary Specialization',
-    about: 'About',
     aboutPlaceholder: 'Tell us about yourself...',
     registrationNumber: 'Registration Number',
-    yearsOfExperience: 'Years of Experience',
-    education: 'Education Qualification',
-    consultationFee: 'Consultation Fee',
-    clinicName: 'Clinic Name',
     clinicAddress: 'Clinic Address',
-    changePassword: 'Change Password',
-    currentPassword: 'Current Password',
-    newPassword: 'New Password',
-    confirmPassword: 'Confirm New Password',
     saveProfile: 'Save Profile',
-    saving: 'Saving...',
     changing: 'Changing...',
     updateSuccess: 'Profile updated successfully!',
     updateError: 'Failed to update profile',
@@ -2390,39 +2264,19 @@ export default {
     invalidImageType: 'Please select a valid image file',
     imageTooLarge: 'Image size must be less than 5MB'
   },
-  
-  // Schedule Settings
-  schedule: {
-    operatingHours: 'Operating Hours',
-    open: 'Open',
-    closed: 'Closed',
-    holidays: 'Holidays',
-    addHoliday: 'Add Holiday',
-    noHolidays: 'No holidays configured',
-    scheduleSaveSuccess: 'Schedule updated successfully!',
-    scheduleSaveError: 'Failed to update schedule',
-    saveSchedule: 'Save Schedule'
-  },
 
   // Services Settings
   services: {
-    title: 'Services & Pricing',
     addService: 'Add Service',
     noServices: 'No services configured',
-    name: 'Service Name',
     namePlaceholder: 'Enter service name',
     category: 'Category',
     price: 'Price (IDR)',
-    duration: 'Duration (minutes)',
-    description: 'Description',
     descriptionPlaceholder: 'Enter service description',
-    active: 'Active',
     inactive: 'Inactive',
     minutes: 'min',
     addSuccess: 'Service added successfully!',
     addError: 'Failed to add service',
-    updateSuccess: 'Service updated successfully!',
-    updateError: 'Failed to update service',
     deleteSuccess: 'Service deleted successfully!',
     deleteError: 'Failed to delete service',
     deleteConfirm: 'Are you sure you want to delete this service?',
@@ -2447,7 +2301,6 @@ export default {
     testError: 'Connection test failed',
     saveSuccess: 'Integration settings saved successfully!',
     saveError: 'Failed to save integration settings',
-    toggleError: 'Failed to update integration',
     whatsapp: {
       title: 'WhatsApp Business',
       description: 'Send appointment reminders and notifications',
@@ -2461,7 +2314,7 @@ export default {
       secretKey: 'Secret Key'
     },
     payment: {
-      title: 'Payment Gateways',
+      title: 'Payment Gateway',
       serverKey: 'Server Key',
       clientKey: 'Client Key',
       secretKey: 'Secret Key',
@@ -2484,15 +2337,9 @@ export default {
 
   // Users Settings
   users: {
-    title: 'User Management',
     inviteUser: 'Invite User',
-    name: 'Name',
-    namePlaceholder: 'Enter full name',
-    email: 'Email',
     emailPlaceholder: 'Enter email address',
     role: 'Role',
-    active: 'Active',
-    inactive: 'Inactive',
     lastLogin: 'Last login',
     neverLoggedIn: 'Never logged in',
     editPermissions: 'Edit Permissions',
@@ -2542,20 +2389,13 @@ export default {
 
   // Templates Settings
   templates: {
-    title: 'Document Templates',
     createTemplate: 'Create Template',
     noTemplates: 'No templates configured',
-    name: 'Template Name',
-    namePlaceholder: 'Enter template name',
     type: 'Type',
     subject: 'Subject',
     subjectPlaceholder: 'Enter subject line',
     content: 'Content',
     contentPlaceholder: 'Enter template content...',
-    active: 'Active',
-    inactive: 'Inactive',
-    preview: 'Preview',
-    edit: 'Edit',
     delete: 'Delete',
     variables: 'Variables',
     lastModified: 'Modified',
@@ -2563,13 +2403,7 @@ export default {
     variablesHelp: 'Click on variables to insert them into your template',
     createSuccess: 'Template created successfully!',
     createError: 'Failed to create template',
-    updateSuccess: 'Template updated successfully!',
-    updateError: 'Failed to update template',
-    deleteSuccess: 'Template deleted successfully!',
-    deleteError: 'Failed to delete template',
-    deleteConfirm: 'Are you sure you want to delete this template?',
-    toggleError: 'Failed to update template status',
-    types: {
+    categoryTypes: {
       notification: 'Notification',
       document: 'Document',
       report: 'Report',
@@ -2579,8 +2413,7 @@ export default {
       reportDesc: 'Medical reports',
       receiptDesc: 'Payment receipts'
     },
-    variables: {
-      clinicName: 'Clinic Name',
+    variablesMap: {
       patientName: 'Patient Name',
       patientEmail: 'Patient Email',
       patientPhone: 'Patient Phone',
@@ -2592,7 +2425,6 @@ export default {
       treatment: 'Treatment',
       cost: 'Cost',
       totalAmount: 'Total Amount',
-      paymentMethod: 'Payment Method',
       todayDate: 'Today Date'
     }
   },
@@ -2642,7 +2474,7 @@ export default {
       status: 'Status',
       details: 'Details'
     },
-    periods: {
+    ranges: {
       '7days': 'Last 7 days',
       '30days': 'Last 30 days',
       '90days': 'Last 90 days',
@@ -2656,29 +2488,11 @@ export default {
     exportError: 'Failed to export audit logs',
     settingsSaveSuccess: 'Audit settings saved successfully!',
     settingsSaveError: 'Failed to save audit settings',
-    saving: 'Saving...',
     saveSettings: 'Save Settings'
   },
 
   // General Settings
-  settings: {
-    badge: 'SETTINGS',
-    title: 'Settings',
-    subtitle: 'Manage clinic configuration, preferences, and system settings',
-    profile: 'My Profile',
-    clinic: 'Clinic Profile', 
-    schedule: 'Operating Hours',
-    services: 'Services & Rates',
-    integrations: 'Integrations',
-    users: 'Users & Roles',
-    templates: 'Document Templates',
-    audit: 'Audit & Data',
-    readOnly: 'Read Only',
-    saveAll: 'Save All Changes',
-    accessibleSections: 'accessible sections',
-    roleAccess: 'Your Access Level',
-    roleAccessDesc: 'Full access to all settings including integrations, audit, and user management',
-    avatarUploadSuccess: 'Profile photo updated successfully!',
+  general: {
     readOnlyIntegrations: 'You can only view integration settings',
     clinicSaveSuccess: 'Clinic information updated successfully!',
     clinicSaveError: 'Failed to update clinic information',
@@ -2697,19 +2511,14 @@ export default {
   },
 
   // Common actions
-  common: {
+  actions: {
     save: 'Save',
     cancel: 'Cancel',
     update: 'Update',
     add: 'Add',
     create: 'Create',
-    delete: 'Delete',
-    edit: 'Edit',
-    saving: 'Saving...',
     sending: 'Sending...',
     creating: 'Creating...',
-    search: 'Search...',
-    role: 'Role',
     darkMode: 'Dark Mode',
     lightMode: 'Light Mode',
     locale: 'en-US'
@@ -2720,132 +2529,6 @@ export default {
       wrongPassword: 'Wrong password. Please check your password.',
       invalidCredentials: 'Invalid email or password. Please try again.',
       missingFields: 'Email and password are required'
-    }
-  },
-  admin: {
-    // Navigation labels
-    nav: {
-      dashboard: 'Dashboard',
-      clinicManagement: 'Clinic Management',
-      clinicDirectory: 'Clinic Directory',
-      clinicVerification: 'Clinic Verification',
-      ownerAccounts: 'Owner Accounts',
-      
-      dentistManagement: 'Dentist Management',
-      dentistDirectory: 'Dentist Directory',
-      verificationQueue: 'Verification Queue',
-      professionalNetwork: 'Professional Network',
-      
-      revenueBilling: 'Revenue & Billing',
-      revenueDashboard: 'Revenue Dashboard',
-      paymentProcessing: 'Payment Processing',
-      subscriptionManagement: 'Subscription Management',
-      
-      aiPlatform: 'AI Platform',
-      aiUsageAnalytics: 'AI Usage Analytics',
-      modelManagement: 'Model Management',
-      aiBilling: 'AI Billing',
-      
-      supportHelpdesk: 'Support & Helpdesk',
-      ticketManagement: 'Ticket Management',
-      knowledgeBase: 'Knowledge Base',
-      communicationCenter: 'Communication Center',
-      
-      analytics: 'Analytics & Reports',
-      businessIntelligence: 'Business Intelligence',
-      performanceMetrics: 'Performance Metrics',
-      financialReports: 'Financial Reports',
-      
-      systemAdministration: 'System Administration',
-      userManagement: 'User Management',
-      systemConfiguration: 'System Configuration',
-      monitoring: 'Monitoring & Alerts',
-      
-      complianceSecurity: 'Compliance & Security',
-      dataPrivacy: 'Data Privacy',
-      securityCenter: 'Security Center',
-      regulatoryCompliance: 'Regulatory Compliance',
-      
-      partnerships: 'Partnerships',
-      partnerDirectory: 'Partner Directory',
-      apiManagement: 'API Management',
-      integrations: 'Integrations',
-      
-      contentManagement: 'Content Management',
-      marketingContent: 'Marketing Content',
-      educationalResources: 'Educational Resources',
-      resourceLibrary: 'Resource Library'
-    },
-    
-    // User interface
-    ui: {
-      search: 'Search admin...',
-      darkMode: 'Dark Mode',
-      lightMode: 'Light Mode',
-      logout: 'Logout',
-      profile: 'Profile'
-    },
-    
-    // Sidebar interface
-    sidebar: {
-      searchPlaceholder: 'Search admin...',
-      profile: 'Profile Settings',
-      preferences: 'Preferences',
-      logout: 'Sign Out'
-    },
-    pages: {
-      dashboard: {
-        title: 'Admin Dashboard',
-        subtitle: 'Executive Summary & Platform Overview'
-      },
-      clinics: {
-        title: 'Clinic Management',
-        subtitle: 'Clinic Directory, Verification & Onboarding'
-      },
-      dentists: {
-        title: 'Dentist Verification',
-        subtitle: 'Professional Network & Credential Verification'
-      },
-      revenue: {
-        title: 'Revenue & Billing',
-        subtitle: 'Payment Processing & Financial Analytics'
-      },
-      aiPlatform: {
-        title: 'AI Platform',
-        subtitle: 'AI Usage Monitoring & Model Management'
-      },
-      support: {
-        title: 'Support & Helpdesk',
-        subtitle: 'Customer Support & Success Management'
-      },
-      analytics: {
-        title: 'Analytics & Reports',
-        subtitle: 'Business Intelligence & Data Insights'
-      },
-      system: {
-        title: 'System Administration',
-        subtitle: 'User Management & Platform Configuration'
-      },
-      compliance: {
-        title: 'Compliance & Security',
-        subtitle: 'Data Privacy & Regulatory Compliance'
-      },
-      partnerships: {
-        title: 'Partnerships & API',
-        subtitle: 'Integration Partners & API Management'
-      },
-      content: {
-        title: 'Content Management',
-        subtitle: 'Marketing & Educational Resources'
-      },
-      profile: {
-        title: 'Profile Settings',
-        subtitle: 'Manage your admin account settings'
-      },
-      preferences: {
-        title: 'Preferences',
-        subtitle: 'Customize your admin experience'
-      }
     }
   }
 };

@@ -34,6 +34,32 @@ function field(record, snakeCase, camelCase, fallback = undefined) {
   return fallback;
 }
 
+export function computeSourceInstanceKey(item = {}) {
+  const seriesUid = String(field(item, 'series_uid', 'seriesUid', '')).trim();
+  const sopInstanceUid = field(item, 'sop_instance_uid', 'sopInstanceUid')
+    ? String(field(item, 'sop_instance_uid', 'sopInstanceUid')).trim()
+    : null;
+  const rawFrameIndex = field(item, 'frame_index', 'frameIndex');
+  const frameIndex = rawFrameIndex != null && Number.isInteger(Number(rawFrameIndex)) && Number(rawFrameIndex) >= 0
+    ? Number(rawFrameIndex)
+    : null;
+  const rawImageIndex = field(item, 'image_index', 'imageIndex');
+  const imageIndex = rawImageIndex != null && Number.isInteger(Number(rawImageIndex)) && Number(rawImageIndex) >= 0
+    ? Number(rawImageIndex)
+    : null;
+
+  if (sopInstanceUid) {
+    if (frameIndex != null) {
+      return `sop:${sopInstanceUid}:frame:${frameIndex}`;
+    }
+    return `sop:${sopInstanceUid}`;
+  }
+  if (imageIndex != null) {
+    return `series:${seriesUid}:image:${imageIndex}`;
+  }
+  return `series:${seriesUid}:legacy`;
+}
+
 export function validateCaseItem(item, index = 0) {
   const errors = [];
   const radiographType = String(field(item, 'radiograph_type', 'radiographType', '')).toUpperCase();
@@ -45,7 +71,35 @@ export function validateCaseItem(item, index = 0) {
   if (toothNumbers.some((tooth) => !VALID_TEETH.has(tooth))) errors.push('tooth_numbers contains an invalid FDI permanent tooth number');
   const displayOrder = Number(field(item, 'display_order', 'displayOrder', index));
   if (!Number.isInteger(displayOrder) || displayOrder < 0) errors.push('display_order must be a non-negative integer');
-  return { errors, radiographType, toothNumbers, displayOrder };
+
+  const instanceNumber = field(item, 'instance_number', 'instanceNumber') != null ? Number(field(item, 'instance_number', 'instanceNumber')) : null;
+  const frameIndex = field(item, 'frame_index', 'frameIndex') != null ? Number(field(item, 'frame_index', 'frameIndex')) : null;
+  const imageIndex = field(item, 'image_index', 'imageIndex') != null ? Number(field(item, 'image_index', 'imageIndex')) : null;
+
+  if (instanceNumber != null && (!Number.isInteger(instanceNumber) || instanceNumber <= 0)) {
+    errors.push('instance_number must be a positive integer');
+  }
+  if (frameIndex != null && (!Number.isInteger(frameIndex) || frameIndex < 0)) {
+    errors.push('frame_index must be a non-negative integer');
+  }
+  if (imageIndex != null && (!Number.isInteger(imageIndex) || imageIndex < 0)) {
+    errors.push('image_index must be a non-negative integer');
+  }
+
+  const sopInstanceUid = field(item, 'sop_instance_uid', 'sopInstanceUid') ? String(field(item, 'sop_instance_uid', 'sopInstanceUid')).trim() : null;
+  const sourceInstanceKey = computeSourceInstanceKey(item);
+
+  return {
+    errors,
+    radiographType,
+    toothNumbers,
+    displayOrder,
+    sopInstanceUid,
+    instanceNumber,
+    frameIndex,
+    imageIndex,
+    sourceInstanceKey,
+  };
 }
 
 export function buildRadiographSectionLabels(items = []) {
@@ -84,3 +138,4 @@ export function assertCaseOwner(createdBy, userId) {
     });
   }
 }
+

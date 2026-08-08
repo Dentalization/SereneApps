@@ -47,11 +47,33 @@ export const saveAnalysisRender = (caseId, itemId, renders) => request(`/${caseI
   method: 'PUT', body: JSON.stringify({ renders }),
 }).then((result) => result.render);
 export const preflightAnalysisReport = (caseId) => request(`/${caseId}/reports/preflight`).then((result) => result.preflight);
+export async function listSeriesInstances(studyId, seriesUid) {
+  const response = await fetch(`/api/v1/x-core/studies/${studyId}/series/${seriesUid}/instances`, {
+    headers: { Authorization: `Bearer ${getAccessToken()}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || 'Daftar gambar instance tidak dapat dimuat.');
+    error.code = payload.code;
+    error.status = response.status;
+    throw error;
+  }
+  const payload = await response.json();
+  return payload.instances || [];
+}
+
 export async function listAnalysisItemAnnotations(item) {
-  const params = new URLSearchParams({
+  const queryParams = {
     series_uid: item.series_uid,
     viewer_type: item.viewer_type,
-  });
+  };
+  if (item.source_instance_key || item.sourceInstanceKey) {
+    queryParams.source_instance_key = item.source_instance_key || item.sourceInstanceKey;
+  }
+  if (item.sop_instance_uid || item.sopInstanceUid) {
+    queryParams.sop_instance_uid = item.sop_instance_uid || item.sopInstanceUid;
+  }
+  const params = new URLSearchParams(queryParams);
   const response = await fetch(`/api/v1/x-core/studies/${item.study_id}/annotations?${params}`, {
     headers: { Authorization: `Bearer ${getAccessToken()}` },
   });

@@ -203,6 +203,11 @@ const XCore = ({
                             structuredFindings: item.structured_findings || [],
                             renderStatus: item.render_status || null,
                             viewerType: item.viewer_type,
+                            sopInstanceUid: item.sop_instance_uid,
+                            instanceNumber: item.instance_number,
+                            frameIndex: item.frame_index,
+                            imageIndex: item.image_index,
+                            sourceInstanceKey: item.source_instance_key,
                         });
                         setShowAnalysisCases(false);
                         setActiveStudy({

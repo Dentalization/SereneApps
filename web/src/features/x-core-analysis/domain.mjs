@@ -42,3 +42,30 @@ export function caseItemLabel(item, items = []) {
 export function resolveSeriesUid(series = {}) {
   return String(series.series_uid || series.seriesUid || series.uid || series.id || '');
 }
+
+export function computeSourceInstanceKey(item = {}) {
+  const seriesUid = resolveSeriesUid(item);
+  const sopInstanceUid = item.sop_instance_uid || item.sopInstanceUid
+    ? String(item.sop_instance_uid || item.sopInstanceUid).trim()
+    : null;
+  const rawFrameIndex = item.frame_index ?? item.frameIndex;
+  const frameIndex = rawFrameIndex != null && Number.isInteger(Number(rawFrameIndex)) && Number(rawFrameIndex) >= 0
+    ? Number(rawFrameIndex)
+    : null;
+  const rawImageIndex = item.image_index ?? item.imageIndex;
+  const imageIndex = rawImageIndex != null && Number.isInteger(Number(rawImageIndex)) && Number(rawImageIndex) >= 0
+    ? Number(rawImageIndex)
+    : null;
+
+  if (sopInstanceUid) {
+    if (frameIndex != null) {
+      return `sop:${sopInstanceUid}:frame:${frameIndex}`;
+    }
+    return `sop:${sopInstanceUid}`;
+  }
+  if (imageIndex != null) {
+    return `series:${seriesUid}:image:${imageIndex}`;
+  }
+  return item.source_instance_key || item.sourceInstanceKey || `series:${seriesUid}:legacy`;
+}
+

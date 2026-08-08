@@ -1695,12 +1695,10 @@ export default {
       recommendations: {
         title: 'AI Recommendations'
       },
-      summary: {
         title: 'Analysis Summary',
         analysisDate: 'Analysis Date',
         confidence: 'Confidence Level',
         risk: 'Risk Level',
-        empty: 'No summary available for this analysis'
       },
       images: {
         title: 'Analysis Images',
@@ -2200,9 +2198,8 @@ export default {
         description: "Create a treatment plan to start planning this patient's dental care.",
         action: 'Create First Treatment Plan'
       }
-    }
-  },
-  dentistTeledentistry: {
+    },
+    dentistTeledentistry: {
     title: 'Teledentistry',
     subtitle: 'Virtual consultations and session management',
     breadcrumb: {

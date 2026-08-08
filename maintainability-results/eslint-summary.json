@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-06-17T05:55:23.004Z",
+  "generatedAt": "2026-08-07T17:41:45.855Z",
   "summaries": [
     {
       "component": "Backend",
       "reportPath": "/Users/adrianhalim/SereneApps/maintainability-results/eslint-backend.json",
       "missing": false,
-      "fileCount": 148,
+      "fileCount": 168,
       "errorCount": 0,
-      "warningCount": 162,
+      "warningCount": 225,
       "fixableErrorCount": 0,
       "fixableWarningCount": 0
     },
@@ -15,9 +15,9 @@
       "component": "Web application",
       "reportPath": "/Users/adrianhalim/SereneApps/maintainability-results/eslint-web.json",
       "missing": false,
-      "fileCount": 407,
-      "errorCount": 62,
-      "warningCount": 1921,
+      "fileCount": 459,
+      "errorCount": 0,
+      "warningCount": 2177,
       "fixableErrorCount": 0,
       "fixableWarningCount": 8
     },
@@ -25,9 +25,9 @@
       "component": "Mobile application",
       "reportPath": "/Users/adrianhalim/SereneApps/maintainability-results/eslint-mobile.json",
       "missing": false,
-      "fileCount": 139,
+      "fileCount": 140,
       "errorCount": 0,
-      "warningCount": 1017,
+      "warningCount": 1020,
       "fixableErrorCount": 0,
       "fixableWarningCount": 0
     }

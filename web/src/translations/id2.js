@@ -1695,12 +1695,10 @@ export default {
       recommendations: {
         title: 'Rekomendasi AI'
       },
-      summary: {
         title: 'Ringkasan Analisis',
         analysisDate: 'Tanggal Analisis',
         confidence: 'Tingkat Keyakinan',
         risk: 'Tingkat Risiko',
-        empty: 'Belum ada ringkasan untuk analisis ini'
       },
       images: {
         title: 'Gambar Analisis',
@@ -2199,15 +2197,14 @@ export default {
         description: 'Buat rencana perawatan untuk mulai merencanakan perawatan pasien ini.',
         action: 'Buat Rencana Pertama'
       }
-    }
-  },
-  dentistTeledentistry: {
-    title: 'Teledentistry',
-    subtitle: 'Manajemen konsultasi virtual dan sesi',
-    breadcrumb: {
-      portal: 'Portal Dokter Gigi',
-      teledentistry: 'Teledentistry'
     },
+    dentistTeledentistry: {
+      title: 'Teledentistry',
+      subtitle: 'Manajemen konsultasi virtual dan sesi',
+      breadcrumb: {
+        portal: 'Portal Dokter Gigi',
+        teledentistry: 'Teledentistry'
+      },
     header: {
       title: 'Teledentistry'
     },

@@ -25,48 +25,75 @@ function midpoint(start, end) {
   };
 }
 
-export function annotationAnchor(annotation = {}) {
+export function annotationAnchor(annotation = {}, sourceWidth = 1, sourceHeight = 1) {
   const coordinates = annotation.coordinates || {};
+  const normalize = (x, y) => {
+    let nx = Number(x) || 0;
+    let ny = Number(y) || 0;
+    if (Math.abs(nx) > 1 && Number(sourceWidth) > 1) nx = nx / Number(sourceWidth);
+    if (Math.abs(ny) > 1 && Number(sourceHeight) > 1) ny = ny / Number(sourceHeight);
+    return { x: clamp(nx, 0, 1), y: clamp(ny, 0, 1) };
+  };
+
   if (Number.isFinite(Number(coordinates.x)) && Number.isFinite(Number(coordinates.y))) {
-    return { x: clamp(Number(coordinates.x), 0, 1), y: clamp(Number(coordinates.y), 0, 1) };
+    return normalize(coordinates.x, coordinates.y);
   }
   if (coordinates.start && coordinates.end) {
     const point = annotation.type === 'arrow' ? coordinates.end : midpoint(coordinates.start, coordinates.end);
-    return { x: clamp(Number(point.x) || 0, 0, 1), y: clamp(Number(point.y) || 0, 0, 1) };
+    return normalize(point.x, point.y);
   }
   if (Array.isArray(coordinates.path) && coordinates.path.length) {
     const total = coordinates.path.reduce((result, point) => ({
       x: result.x + (Number(point?.x) || 0),
       y: result.y + (Number(point?.y) || 0),
     }), { x: 0, y: 0 });
-    return {
-      x: clamp(total.x / coordinates.path.length, 0, 1),
-      y: clamp(total.y / coordinates.path.length, 0, 1),
-    };
+    return normalize(total.x / coordinates.path.length, total.y / coordinates.path.length);
   }
   return null;
 }
 
-export function markerPlacements(findings = [], annotations = [], width, height, outputScale = 1) {
+export function markerPlacements(findings = [], annotations = [], width, height, outputScale = 1, sourceWidth = width, sourceHeight = height) {
   const annotationMap = new Map(annotations.map((annotation) => [String(annotation.id), annotation]));
   const radius = Math.max(11 / outputScale, Math.min(22 / outputScale, Math.min(width, height) * 0.025));
-  return findings
+  const rawPlacements = findings
     .map((finding) => {
-      const anchor = annotationAnchor(annotationMap.get(String(finding.annotation_id)));
+      const anchor = annotationAnchor(annotationMap.get(String(finding.annotation_id)), sourceWidth, sourceHeight);
       if (!anchor) return null;
-      const offset = radius * 1.25;
+      const baseX = anchor.x * width;
+      const baseY = anchor.y * height;
+      const offset = radius * 1.35;
       return {
         finding_id: finding.id,
         marker_number: Number(finding.marker_number),
         annotation_id: finding.annotation_id,
         anchor,
-        x: clamp((anchor.x * width) + offset, radius + 3, width - radius - 3),
-        y: clamp((anchor.y * height) - offset, radius + 3, height - radius - 3),
+        x: clamp(baseX + offset, radius + 3, width - radius - 3),
+        y: clamp(baseY - offset, radius + 3, height - radius - 3),
         radius,
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.marker_number - b.marker_number);
+
+  // Collision handling to prevent overlapping markers
+  for (let i = 0; i < rawPlacements.length; i += 1) {
+    for (let j = i + 1; j < rawPlacements.length; j += 1) {
+      const p1 = rawPlacements[i];
+      const p2 = rawPlacements[j];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const distance = Math.hypot(dx, dy);
+      const minDistance = (p1.radius + p2.radius) * 1.1;
+      if (distance < minDistance) {
+        const angle = distance > 0 ? Math.atan2(dy, dx) : Math.PI / 4;
+        const push = (minDistance - distance) / 2;
+        p2.x = clamp(p2.x + Math.cos(angle) * push, p2.radius + 3, width - p2.radius - 3);
+        p2.y = clamp(p2.y + Math.sin(angle) * push, p2.radius + 3, height - p2.radius - 3);
+      }
+    }
+  }
+
+  return rawPlacements;
 }
 
 export function drawFindingMarkers(ctx, placements) {
@@ -136,9 +163,8 @@ export function buildCanonical2DReportRenders({
   drawAnnotations?.(ctx, annotations, sourceWidth, sourceHeight, { displayScale: dimensions.scale });
   const scaleBar = getScaleBar?.(sourceWidth, sourceHeight, 1, pixelSpacing);
   drawScaleBar?.(ctx, scaleBar);
-  const placements = markerPlacements(findings, markerAnnotations, sourceWidth, sourceHeight, dimensions.scale);
-  // Do not draw artificial blue numbered circles over user's drawn annotations
-  // drawFindingMarkers(ctx, placements);
+  const placements = markerPlacements(findings, markerAnnotations, sourceWidth, sourceHeight, dimensions.scale, sourceWidth, sourceHeight);
+  drawFindingMarkers(ctx, placements);
   ctx.restore();
   const annotatedDataUrl = canvas.toDataURL('image/png');
   const renderedAt = new Date().toISOString();

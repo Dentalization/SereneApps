@@ -19,6 +19,7 @@ import {
     deleteAnnotationSnapshot,
     getAnnotationSnapshots,
     getStudyAnnotations,
+    getSeriesInstances,
     reviewStudyAnnotations,
     saveStudyAnnotations,
     deleteBenchmarkStudy,
@@ -85,6 +86,7 @@ router.patch(
     express.json(),
     assignStudyPatient,
 );
+router.get('/studies/:studyId/series/:seriesUid/instances', getSeriesInstances);
 router.get('/studies/:id/annotations', getStudyAnnotations);
 router.post('/studies/:id/annotations', express.json({ limit: '2mb' }), saveStudyAnnotations);
 router.post('/studies/:id/annotations/review', express.json({ limit: '1mb' }), reviewStudyAnnotations);
