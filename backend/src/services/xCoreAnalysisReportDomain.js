@@ -180,12 +180,15 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
   if (renderVersion !== REPORT_RENDER_VERSION) {
     throw reportError(400, 'Versi canonical report render tidak didukung.', 'unsupported_report_render_version');
   }
+  const sourceInstanceKey = stringValue(metadata.source_instance_key ?? metadata.sourceInstanceKey, 512);
+  const itemKey = item.source_instance_key ?? item.sourceInstanceKey ?? null;
   if (
     viewerType !== item.viewer_type
     || seriesUid !== item.series_uid
     || itemId !== item.id
     || studyId !== String(item.study_id)
     || (declaredRenderType && declaredRenderType !== renderType)
+    || (sourceInstanceKey && itemKey && sourceInstanceKey !== itemKey)
   ) {
     throw reportError(400, 'Metadata render tidak sesuai dengan item kasus.', 'render_scope_mismatch');
   }
@@ -201,6 +204,7 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
     frame_index: item.frame_index ?? item.frameIndex ?? null,
     image_index: item.image_index ?? item.imageIndex ?? null,
     source_instance_key: item.source_instance_key ?? item.sourceInstanceKey ?? null,
+    source_kind: item.source_kind ?? item.sourceKind ?? metadata.source_kind ?? metadata.sourceKind ?? null,
     viewer_type: item.viewer_type,
     source_width: Number(metadata.source_width ?? metadata.sourceWidth) || null,
     source_height: Number(metadata.source_height ?? metadata.sourceHeight) || null,

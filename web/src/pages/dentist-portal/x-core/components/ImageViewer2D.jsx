@@ -251,6 +251,8 @@ const ImageViewer2D = ({
     const measurementsRef = useRef([]);
     const measurementsHistoryRef = useRef([]);
     const measurementsRedoRef = useRef([]);
+    // Guard against concurrent capture calls (race condition fix)
+    const captureInProgressRef = useRef(false);
     const reviewMode = useMemo(() => new URLSearchParams(window.location.search).get('mode') === 'review', []);
 
     const studyKey = study?.folderName || study?.id || '';
@@ -1048,6 +1050,12 @@ const ImageViewer2D = ({
 
     const captureForAnalysisCase = useCallback(async (forcedAnnotations) => {
         if (!onCaptureForCase) return;
+        // Race-condition guard: skip if a capture is already in flight
+        if (captureInProgressRef.current) {
+            console.warn('[ImageViewer2D] captureForAnalysisCase skipped: capture already in progress');
+            return;
+        }
+        captureInProgressRef.current = true;
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
@@ -1088,6 +1096,9 @@ const ImageViewer2D = ({
                     case_item_id: analysisCaseContext?.itemId,
                     study_id: study?.id,
                     series_uid: seriesUid,
+                    // Phase 6: Instance-level identity for annotation bleed prevention
+                    source_instance_key: analysisCaseContext?.sourceInstanceKey || analysisCaseContext?.source_instance_key || null,
+                    source_kind: analysisCaseContext?.sourceKind || analysisCaseContext?.source_kind || null,
                     window_center: windowCenter,
                     window_width: windowWidth,
                     invert: inverted,
@@ -1101,6 +1112,8 @@ const ImageViewer2D = ({
             console.error('[ImageViewer2D] Case snapshot failed:', error);
             setCaseCaptureState('error');
             setCaseCaptureError(error?.message || 'Gambar laporan gagal disimpan.');
+        } finally {
+            captureInProgressRef.current = false;
         }
     }, [
         analysisCaseContext,
@@ -1125,11 +1138,14 @@ const ImageViewer2D = ({
         }
     }, [imageLoaded, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
 
+    // Mark render as stale when annotations/measurements/filter change.
+    // We do NOT auto-retrigger capture here — the drg must explicitly click
+    // "Perbarui Gambar Laporan" or trigger via handleBack.
     useEffect(() => {
-        if (analysisCaseContext) {
-            setCaseCaptureState('idle');
+        if (analysisCaseContext && (caseCaptureState === 'saved' || caseCaptureState === 'idle')) {
+            setCaseCaptureState('stale');
         }
-    }, [annotations, measurements, imageFilter, inverted, windowCenter, windowWidth, analysisCaseContext]);
+    }, [annotations, measurements, imageFilter, inverted, windowCenter, windowWidth]); // eslint-disable-line react-hooks/exhaustive-deps
  
     const handleBack = useCallback(async () => {
         if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
@@ -1816,11 +1832,11 @@ const ImageViewer2D = ({
                                 type="button"
                                 onClick={captureForAnalysisCase}
                                 disabled={caseCaptureState === 'saving'}
-                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
                                 title={caseCaptureError || 'Simpan canonical render bersih dan beranotasi untuk PDF kasus'}
                             >
-                                <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                                <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Perbarui Gambar Laporan'}</span>
+                                <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                                <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
                             </button>
                         )}
 

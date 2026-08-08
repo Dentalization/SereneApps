@@ -251,6 +251,8 @@ const SliceViewer = ({
     const annotationsRef = useRef([]);
     const annotationsHistoryRef = useRef([]);
     const annotationsRedoRef = useRef([]);
+    // Guard against concurrent capture calls (race condition fix)
+    const captureInProgressRef = useRef(false);
     const comparisonLastBroadcastRef = useRef({
         axial: { slice: null, ratio: null },
         coronal: { slice: null, ratio: null },
@@ -1927,6 +1929,12 @@ const SliceViewer = ({
 
     const captureForAnalysisCase = useCallback(async () => {
         if (!onCaptureForCase) return;
+        // Race-condition guard: skip if a capture is already in flight
+        if (captureInProgressRef.current) {
+            console.warn('[SliceViewer] captureForAnalysisCase skipped: capture already in progress');
+            return;
+        }
+        captureInProgressRef.current = true;
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
@@ -1939,6 +1947,8 @@ const SliceViewer = ({
             console.error('[SliceViewer] Case snapshot failed:', captureError);
             setCaseCaptureState('error');
             setCaseCaptureError(captureError?.message || 'Gambar laporan gagal disimpan.');
+        } finally {
+            captureInProgressRef.current = false;
         }
     }, [annotationPersistence, captureCurrentViewDataUrl, onCaptureForCase]);
  
@@ -1951,11 +1961,13 @@ const SliceViewer = ({
         }
     }, [loading, imageData, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
 
+    // Mark render as stale when slice/annotations/filter change.
+    // We do NOT auto-retrigger capture — the drg must explicitly update.
     useEffect(() => {
-        if (analysisCaseContext) {
-            setCaseCaptureState('idle');
+        if (analysisCaseContext && (caseCaptureState === 'saved' || caseCaptureState === 'idle')) {
+            setCaseCaptureState('stale');
         }
-    }, [annotations, measurementRevision, measurementClinicalRecords, inverted, windowCenter, windowWidth, sliceIndex, axis, analysisCaseContext]);
+    }, [annotations, measurementRevision, measurementClinicalRecords, inverted, windowCenter, windowWidth, sliceIndex, axis]); // eslint-disable-line react-hooks/exhaustive-deps
  
     const handleBack = useCallback(async () => {
         if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
@@ -2830,11 +2842,11 @@ const SliceViewer = ({
                             type="button"
                             onClick={captureForAnalysisCase}
                             disabled={caseCaptureState === 'saving'}
-                            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
                             title={caseCaptureError || 'Simpan canonical render slice untuk PDF kasus'}
                         >
-                            <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                            <span>{caseCaptureState === 'saving' ? 'Menyimpan' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Perbarui Gambar Laporan'}</span>
+                            <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                            <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
                         </button>
                     )}
 
