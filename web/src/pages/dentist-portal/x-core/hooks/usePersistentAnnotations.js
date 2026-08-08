@@ -118,7 +118,7 @@ export default function usePersistentAnnotations({
       const raw = window.localStorage.getItem(draftStorageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return readAnnotationDraftBackup(parsed, { expectedVersion: DRAFT_VERSION });
+      return readAnnotationDraftBackup(parsed, DRAFT_VERSION);
     } catch (draftError) {
       console.warn('[X-Core] Annotation draft read failed:', draftError);
       return null;
@@ -131,7 +131,7 @@ export default function usePersistentAnnotations({
       const raw = window.localStorage.getItem(cacheStorageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return readAnnotationDraftBackup(parsed, { expectedVersion: CACHE_VERSION });
+      return readAnnotationDraftBackup(parsed, CACHE_VERSION);
     } catch (cacheError) {
       console.warn('[X-Core] Annotation cache read failed:', cacheError);
       return null;

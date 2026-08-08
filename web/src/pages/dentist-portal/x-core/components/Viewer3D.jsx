@@ -190,19 +190,29 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
 
     // Determine initial view mode based on series type
     useEffect(() => {
+        const seriesType = activeStudy?.selectedSeriesType;
+        const classification = activeStudy?.classification;
+        const is3D = activeStudy?.selectedSeriesType === '3D Volume' || seriesType === '3D' || classification === '3D';
+        const is2D = seriesType === '2D Image' || seriesType === '2D' || classification === '2D' || activeStudy?.modality === 'Panoramic' || activeStudy?.modality === 'Cephalometric' || activeStudy?.modality === 'OPG';
+
         if (analysisCaseContext && activeStudy?.selectedSeriesType === '3D Volume') {
             setViewMode('slice'); // Analysis reports use the canonical slice/quad composite pipeline.
-        } else if (activeStudy?.selectedSeriesType === '3D Volume') {
+        } else if (analysisCaseContext && is3D) {
+            setViewMode('slice');
+        } else if (is3D) {
             setViewMode('3d'); // 3D First for volumetric series
-        } else if (activeStudy?.selectedSeriesType === '2D Image') {
+        } else if (is2D) {
             setViewMode('2d'); // Dedicated 2D viewer for panoramic/ceph
         } else {
             setViewMode('slice'); // Fallback to slice view
         }
-    }, [activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid, analysisCaseContext]);
+    }, [activeStudy?.classification, activeStudy?.modality, activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid, analysisCaseContext]);
 
     const renderActiveViewer = () => {
-        if (viewMode === '3d' && activeStudy?.selectedSeriesType === '3D Volume') {
+        const seriesType = activeStudy?.selectedSeriesType;
+        const is3D = seriesType === '3D Volume' || seriesType === '3D' || activeStudy?.classification === '3D';
+
+        if (viewMode === '3d' && is3D) {
             return (
                 <VolumeViewer3D
                     study={activeStudy}
@@ -220,7 +230,7 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
             );
         }
 
-        if (viewMode === 'linked' && activeStudy?.selectedSeriesType === '3D Volume') {
+        if (viewMode === 'linked' && is3D) {
             return (
                 <LinkedViewer
                     study={activeStudy}

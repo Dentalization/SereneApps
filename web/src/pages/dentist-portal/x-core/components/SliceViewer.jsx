@@ -1955,7 +1955,7 @@ const SliceViewer = ({
         if (analysisCaseContext) {
             setCaseCaptureState('idle');
         }
-    }, [annotations, measurements, inverted, windowCenter, windowWidth, sliceIndex, axis, analysisCaseContext]);
+    }, [annotations, measurementRevision, measurementClinicalRecords, inverted, windowCenter, windowWidth, sliceIndex, axis, analysisCaseContext]);
  
     const handleBack = useCallback(async () => {
         if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {

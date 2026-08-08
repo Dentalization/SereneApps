@@ -1079,7 +1079,7 @@ const ImageViewer2D = ({
                 markerAnnotations: [...activeAnnotations, ...measurementClinicalRecords],
                 measurements,
                 findings: analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [],
-                pixelSpacing: reportPixelSpacing,
+                pixelSpacing: effectivePixelSpacing,
                 drawAnnotations,
                 drawMeasurements: drawMeasurementOverlay,
                 drawScaleBar,
