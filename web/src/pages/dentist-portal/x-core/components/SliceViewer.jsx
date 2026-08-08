@@ -1833,14 +1833,14 @@ const SliceViewer = ({
         }
 
         const activeAnnotations = forcedAnnotations || annotations;
-        const activeVisibleAnnotations = activeAnnotations.filter((a) => a.slice_axis === axis && a.slice_index === sliceIndex);
+        const activeVisibleAnnotations = activeAnnotations.filter((a) => (!a.slice_axis || a.slice_axis === axis) && (a.slice_index == null || a.slice_index === sliceIndex));
 
         if (activeVisibleAnnotations.length > 0) {
             drawAnnotations(ctx, activeVisibleAnnotations, width, height);
         }
         const findings = analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [];
-        const markerAnnotations = [...activeAnnotations, ...measurementClinicalRecords];
-        const placements = markerPlacements(findings, markerAnnotations, width, height, 1);
+        const markerAnnotations = [...activeVisibleAnnotations, ...measurementClinicalRecords];
+        const placements = markerPlacements(findings, markerAnnotations, width, height, 1, width, height);
         drawFindingMarkers(ctx, placements);
         const renderedAt = new Date().toISOString();
         const commonMetadata = {

@@ -625,7 +625,7 @@ export default {
         activeHoursUtilization: 'Pemanfaatan jam aktif',
         operationalHours: 'jam operasional'
       },
-      daily: {
+      labels: {
         headerTitle: 'Jadwal Harian',
         scheduledLabel: '{{count}} janji temu terjadwal',
         appointmentsForDoctor: '{{count}} janji temu',
@@ -955,63 +955,6 @@ export default {
       compliance: 'Kepatuhan',
       marketing: 'Marketing'
     },
-    clinic: {
-      staff: {
-        searchPlaceholder: 'Cari berdasarkan nama, email, posisi, atau peran...',
-        filters: {
-          role: {
-            label: 'Peran',
-            all: 'Semua Peran'
-          },
-          status: {
-            label: 'Status',
-            all: 'Semua Status',
-            active: 'Aktif',
-            inactive: 'Tidak Aktif',
-            invited: 'Diundang'
-          }
-        },
-        directory: {
-          headers: {
-            staff: 'Staf',
-            contact: 'Kontak',
-            role: 'Peran',
-            status: 'Status',
-            actions: 'Tindakan'
-          },
-          actions: {
-            view: 'Lihat Profil',
-            edit: 'Edit Peran',
-            remove: 'Hapus'
-          },
-          empty: {
-            title: 'Tidak ada anggota staf ditemukan',
-            description: 'Mulai dengan mengundang anggota staf pertama Anda'
-          }
-        },
-        actions: {
-          addStaff: 'Tambah Staf'
-        },
-        errors: {
-          loadFailed: 'Gagal memuat data staf',
-          profileUpdateFailed: 'Gagal memperbarui profil'
-        },
-        totalStaff: 'Total Staf',
-        summary: {
-          total: 'Total Staf',
-          active: 'Staf Aktif',
-          efficiency: 'Efisiensi',
-          utilization: 'Utilisasi',
-          satisfaction: 'Kepuasan',
-          revenue_per_staff: 'Pendapatan per Staf',
-          capacity: 'Kapasitas',
-          productivity: 'Produktivitas',
-          attendance: 'Kehadiran',
-          performance: 'Performa',
-          lastActivity: 'Aktivitas Terakhir'
-        }
-      }
-    },
     settings: {
       title: 'Pengaturan',
       subtitle: 'Konfigurasi klinik, layanan, dan sistem',
@@ -1217,7 +1160,7 @@ export default {
         receipt: 'Kwitansi',
         receiptDesc: 'Kwitansi pembayaran'
       },
-      variables: {
+      variablesMap: {
         clinicName: 'Nama Klinik',
         patientName: 'Nama Pasien',
         patientEmail: 'Email Pasien',
@@ -1296,6 +1239,7 @@ export default {
       }
     }
   },
+
   // Common
   common: {
     save: 'Simpan',
@@ -1425,6 +1369,15 @@ export default {
 
   // Schedule
   schedule: {
+    operatingHours: 'Jam Operasional',
+    open: 'Buka',
+    closed: 'Tutup',
+    holidays: 'Hari Libur',
+    addHoliday: 'Tambah Hari Libur',
+    noHolidays: 'Belum ada hari libur dikonfigurasi',
+    scheduleSaveSuccess: 'Jadwal berhasil diperbarui!',
+    scheduleSaveError: 'Gagal memperbarui jadwal',
+    saveSchedule: 'Simpan Jadwal',
     title: 'Jadwal Praktik',
     dailyView: 'Harian',
     weeklyView: 'Mingguan',
@@ -1501,15 +1454,12 @@ export default {
       filters: 'Filter',
       customRange: 'Rentang Kustom'
     },
-    appointment: {
       confirm: 'Konfirmasi',
-      reschedule: 'Reschedule',
       cancel: 'Batal',
       startVideo: 'Mulai Video',
       requestPhotos: 'Minta Foto',
       urgent: 'Mendesak'
-    }
-  },
+    },
 
   // Patients
   patients: {
@@ -1557,12 +1507,6 @@ export default {
     badge: 'Pengaturan Sistem',
     profile: 'Profil Saya',
     clinic: 'Profil Klinik',
-    schedule: 'Jam Operasional',
-    services: 'Layanan & Tarif',
-    integrations: 'Integrasi',
-    users: 'Pengguna & Peran',
-    templates: 'Template Dokumen',
-    audit: 'Audit & Data',
     readOnly: 'Hanya Baca',
     saveAll: 'Simpan Semua',
     accessibleSections: 'bagian yang dapat diakses',
@@ -1804,7 +1748,6 @@ export default {
     newPatients: 'Pasien Baru',
     returningPatients: 'Pasien Kembali',
     patientRetention: 'Retensi Pasien',
-    patientSatisfaction: 'Kepuasan Pasien',
     patientDemographics: 'Demografi Pasien',
     patientJourney: 'Perjalanan Pasien',
     patientLTV: 'Nilai Seumur Hidup Pasien',
@@ -1832,7 +1775,6 @@ export default {
     complications: 'Komplikasi',
     referrals: 'Rujukan',
     perTreatment: 'per Perawatan',
-    treatments: 'perawatan',
     popularity: 'Popularitas',
     outcomes: 'Hasil',
     treatmentDescription: "Ringkasan volume, outcome, dan waktu perawatan—sekilas",
@@ -1849,23 +1791,11 @@ export default {
     // Quality metrics
     satisfaction: 'Kepuasan',
     appointmentFrequency: 'Frekuensi Janji Temu',
-    treatmentCompletion: 'Penyelesaian Perawatan',
     communication: 'Komunikasi',
     
     // Data updates
     dataUpdated: 'Data Diperbarui',
     lastUpdated: 'Terakhir Diperbarui',
-    patientSatisfaction: 'Kepuasan Pasien',
-    patientDemographics: 'Demografi Pasien',
-    patientJourney: 'Perjalanan Pasien',
-    patientLTV: 'Nilai Seumur Hidup Pasien',
-    patientAcquisition: 'Akuisisi Pasien',
-    totalPatients: 'Total Pasien',
-    activePatients: 'Pasien Aktif',
-    retentionRate: 'Tingkat Retensi',
-    averageAge: 'Usia Rata-rata',
-    ageDistribution: 'Distribusi Usia',
-    visitFrequency: 'Frekuensi Kunjungan',
     referralSources: 'Sumber Rujukan',
     retentionAnalysis: 'Analisis Retensi',
     retentionByYears: 'Retensi per Tahun',
@@ -1894,7 +1824,6 @@ export default {
     productivity: 'Produktivitas',
     efficiency: 'Efisiensi',
     profitability: 'Profitabilitas',
-    growth: 'Tingkat Pertumbuhan',
     benchmarks: 'Tolok Ukur',
     targets: 'Target',
     achievements: 'Pencapaian',
@@ -1939,7 +1868,6 @@ export default {
     // Filter Options
     allTreatments: 'Semua Perawatan',
     allPatients: 'Semua Pasien',
-    returningPatients: 'Pasien Kembali',
     customRange: 'Rentang Kustom',
     startDate: 'Tanggal Mulai',
     endDate: 'Tanggal Selesai',
@@ -1984,7 +1912,6 @@ export default {
     weekly: 'Mingguan',
     monthly: 'Bulanan',
     quarterly: 'Kuartalan',
-    yearly: 'Tahunan',
     
     // Units
     currency: 'Mata Uang',
@@ -2010,7 +1937,6 @@ export default {
     welcomeMessage: 'Selamat datang di Analisis Klinis AI',
     welcomeSubtitle: 'Unggah gambar dental dan ajukan pertanyaan untuk mendapatkan analisis dan rekomendasi berbasis AI yang komprehensif.',
     inputPlaceholder: 'Tanyakan AI tentang kondisi dental, perawatan, atau unggah gambar untuk analisis...',
-    thinking: 'AI sedang berpikir...',
     thinking: 'AI sedang berpikir...',
     
     // Image Upload
@@ -2089,17 +2015,13 @@ export default {
         previous7Days: '7 Hari Terakhir',
         older: 'Lebih Lama'
       }
-    }
-  },
-  patients: {
-    title: 'Manajemen Pasien',
+    },
     tabs: {
       registry: 'Daftar Pasien',
       appointments: 'Janji Temu',
       analytics: 'Analitik',
       reports: 'Laporan'
     },
-    common: {
       gender: {
         male: 'Laki-laki',
         female: 'Perempuan'
@@ -2110,9 +2032,10 @@ export default {
         yearsOld: '{{count}} tahun'
       }
     },
+  dentistPatient: {
     registry: {
       title: 'Daftar Pasien',
-      search: 'Cari pasien...',
+      searchPlaceholder: 'Cari pasien...',
       loading: 'Memuat data pasien...',
       empty: {
         title: 'Tidak ditemukan pasien',
@@ -2148,7 +2071,9 @@ export default {
         new: 'Baru',
         inactive: 'Tidak Aktif',
         vip: 'VIP'
-      },
+      }
+    },
+    analytics: {
       actions: {
         view: 'Lihat',
         edit: 'Edit',
@@ -2157,76 +2082,24 @@ export default {
         export: 'Ekspor',
         add: 'Tambah Pasien'
       },
-      stats: {
-        totalPatients: 'Total Pasien',
-        newThisMonth: 'Baru Bulan Ini',
-        activePatients: 'Pasien Aktif',
-        vipPatients: 'Pasien VIP'
-      }
-    },
-    appointments: {
-      title: 'Janji Temu Pasien',
-      scheduleNew: 'Jadwalkan Janji Baru',
-      upcoming: 'Janji Mendatang',
-      past: 'Janji Sebelumnya',
-      cancelled: 'Dibatalkan',
-      noAppointments: 'Tidak ada janji temu'
-    },
-    analytics: {
-      filters: 'Filter Analitik',
-      period: 'Periode',
-      year: 'Tahun',
-      month: 'Bulan',
-      periods: {
-        all: 'Sepanjang Waktu',
-        today: 'Hari Ini',
-        week: 'Minggu Ini',
-        month: 'Bulan Ini',
-        year: 'Tahun Ini',
-        custom: 'Rentang Khusus'
-      },
-      viewPatients: 'Lihat Pasien',
-      patientList: 'Pasien Terfilter',
-      modalTitle: 'Pasien Terfilter',
-      patientCard: {
-        meta: '{{age}} tahun • {{gender}} • {{phone}}'
-      },
-      stats: {
-        total: 'Total Pasien',
+      statusOptions: {
         active: 'Pasien Aktif',
-        vip: 'Pasien VIP',
-        avgAge: 'Rata-rata Umur'
+        inactive: 'Pasien Tidak Aktif',
+        vip: 'Pasien VIP'
       },
-      charts: {
-        ageDistribution: 'Distribusi Umur',
-        genderRatio: 'Distribusi Jenis Kelamin',
-        monthlyVisits: 'Kunjungan Bulanan',
-        treatmentTypes: 'Jenis Perawatan',
-        datasets: {
-          patients: 'Pasien',
-          visits: 'Kunjungan'
-        }
-      },
-      treatments: {
+      treatmentType: 'Jenis Perawatan',
+      treatmentTypes: {
+        all: 'Semua Perawatan',
         cleaning: 'Pembersihan',
         filling: 'Tambal',
         rootCanal: 'Perawatan Saluran Akar',
-        extraction: 'Pencabutan',
-        crown: 'Mahkota',
-        whitening: 'Pemutihan',
-        other: 'Lainnya'
-      },
-      demographics: 'Rincian Demografi',
-      table: {
         ageGroup: 'Kelompok Umur',
         male: 'Laki-laki',
         female: 'Perempuan',
-        total: 'Total',
         percentage: 'Persentase'
       }
     },
     reports: {
-      title: 'Laporan Pasien',
       reportType: 'Tipe Laporan',
       generate: 'Buat Laporan',
       generating: 'Sedang membuat...',
@@ -2314,31 +2187,17 @@ export default {
       }
     }
   },
-  profile: {
-    settings: 'Pengaturan Profil',
+  dentistSettings: {
     description: 'Kelola informasi akun dan preferensi Anda',
     changePhoto: 'Ganti Foto',
     personalInfo: 'Informasi Pribadi',
     fullName: 'Nama Lengkap',
-    email: 'Alamat Email',
     phoneNumber: 'Nomor Telepon',
-    title: 'Gelar Profesi',
     licenseNumber: 'Nomor Izin',
-    specialization: 'Spesialisasi Utama',
-    about: 'Tentang',
     aboutPlaceholder: 'Ceritakan tentang diri Anda...',
     registrationNumber: 'Nomor Registrasi',
-    yearsOfExperience: 'Tahun Pengalaman',
-    education: 'Kualifikasi Pendidikan',
-    consultationFee: 'Biaya Konsultasi',
-    clinicName: 'Nama Klinik',
     clinicAddress: 'Alamat Klinik',
-    changePassword: 'Ubah Password',
-    currentPassword: 'Password Saat Ini',
-    newPassword: 'Password Baru',
-    confirmPassword: 'Konfirmasi Password Baru',
     saveProfile: 'Simpan Profil',
-    saving: 'Menyimpan...',
     changing: 'Mengubah...',
     updateSuccess: 'Profil berhasil diperbarui!',
     updateError: 'Gagal memperbarui profil',
@@ -2351,39 +2210,20 @@ export default {
     invalidImageType: 'Pilih file gambar yang valid',
     imageTooLarge: 'Ukuran gambar harus kurang dari 5MB'
   },
-  
-  // Schedule Settings
-  schedule: {
-    operatingHours: 'Jam Operasional',
-    open: 'Buka',
-    closed: 'Tutup',
-    holidays: 'Hari Libur',
-    addHoliday: 'Tambah Hari Libur',
-    noHolidays: 'Belum ada hari libur dikonfigurasi',
-    scheduleSaveSuccess: 'Jadwal berhasil diperbarui!',
-    scheduleSaveError: 'Gagal memperbarui jadwal',
-    saveSchedule: 'Simpan Jadwal'
-  },
 
   // Services Settings
   services: {
-    title: 'Layanan & Tarif',
     addService: 'Tambah Layanan',
     noServices: 'Belum ada layanan dikonfigurasi',
-    name: 'Nama Layanan',
     namePlaceholder: 'Masukkan nama layanan',
     category: 'Kategori',
     price: 'Harga (IDR)',
     duration: 'Durasi (menit)',
-    description: 'Deskripsi',
     descriptionPlaceholder: 'Masukkan deskripsi layanan',
-    active: 'Aktif',
     inactive: 'Tidak Aktif',
     minutes: 'menit',
     addSuccess: 'Layanan berhasil ditambahkan!',
     addError: 'Gagal menambahkan layanan',
-    updateSuccess: 'Layanan berhasil diperbarui!',
-    updateError: 'Gagal memperbarui layanan',
     deleteSuccess: 'Layanan berhasil dihapus!',
     deleteError: 'Gagal menghapus layanan',
     deleteConfirm: 'Apakah Anda yakin ingin menghapus layanan ini?',
@@ -2408,7 +2248,6 @@ export default {
     testError: 'Test koneksi gagal',
     saveSuccess: 'Pengaturan integrasi berhasil disimpan!',
     saveError: 'Gagal menyimpan pengaturan integrasi',
-    toggleError: 'Gagal memperbarui integrasi',
     whatsapp: {
       title: 'WhatsApp Business',
       description: 'Kirim pengingat janji temu dan notifikasi',
@@ -2445,15 +2284,9 @@ export default {
 
   // Users Settings
   users: {
-    title: 'Manajemen Pengguna',
     inviteUser: 'Undang Pengguna',
-    name: 'Nama',
-    namePlaceholder: 'Masukkan nama lengkap',
-    email: 'Email',
     emailPlaceholder: 'Masukkan alamat email',
     role: 'Peran',
-    active: 'Aktif',
-    inactive: 'Tidak Aktif',
     lastLogin: 'Login terakhir',
     neverLoggedIn: 'Belum pernah login',
     editPermissions: 'Edit Izin',
@@ -2503,20 +2336,13 @@ export default {
 
   // Templates Settings
   templates: {
-    title: 'Template Dokumen',
     createTemplate: 'Buat Template',
     noTemplates: 'Belum ada template dikonfigurasi',
-    name: 'Nama Template',
-    namePlaceholder: 'Masukkan nama template',
     type: 'Jenis',
     subject: 'Subjek',
     subjectPlaceholder: 'Masukkan baris subjek',
     content: 'Konten',
     contentPlaceholder: 'Masukkan konten template...',
-    active: 'Aktif',
-    inactive: 'Tidak Aktif',
-    preview: 'Pratinjau',
-    edit: 'Edit',
     delete: 'Hapus',
     variables: 'Variabel',
     lastModified: 'Dimodifikasi',
@@ -2524,13 +2350,7 @@ export default {
     variablesHelp: 'Klik variabel untuk menyisipkannya ke dalam template Anda',
     createSuccess: 'Template berhasil dibuat!',
     createError: 'Gagal membuat template',
-    updateSuccess: 'Template berhasil diperbarui!',
-    updateError: 'Gagal memperbarui template',
-    deleteSuccess: 'Template berhasil dihapus!',
-    deleteError: 'Gagal menghapus template',
-    deleteConfirm: 'Apakah Anda yakin ingin menghapus template ini?',
-    toggleError: 'Gagal memperbarui status template',
-    types: {
+    categoryTypes: {
       notification: 'Notifikasi',
       document: 'Dokumen',
       report: 'Laporan',
@@ -2540,8 +2360,7 @@ export default {
       reportDesc: 'Laporan medis',
       receiptDesc: 'Kwitansi pembayaran'
     },
-    variables: {
-      clinicName: 'Nama Klinik',
+    variablesMap: {
       patientName: 'Nama Pasien',
       patientEmail: 'Email Pasien',
       patientPhone: 'Telepon Pasien',
@@ -2603,7 +2422,7 @@ export default {
       status: 'Status',
       details: 'Detail'
     },
-    periods: {
+    ranges: {
       '7days': '7 hari terakhir',
       '30days': '30 hari terakhir',
       '90days': '90 hari terakhir',
@@ -2617,29 +2436,11 @@ export default {
     exportError: 'Gagal mengekspor log audit',
     settingsSaveSuccess: 'Pengaturan audit berhasil disimpan!',
     settingsSaveError: 'Gagal menyimpan pengaturan audit',
-    saving: 'Menyimpan...',
     saveSettings: 'Simpan Pengaturan'
   },
 
   // General Settings
-  settings: {
-    badge: 'PENGATURAN',
-    title: 'Pengaturan',
-    subtitle: 'Kelola konfigurasi klinik, preferensi, dan pengaturan sistem',
-    profile: 'Profil Saya',
-    clinic: 'Profil Klinik',
-    schedule: 'Jam Operasional',
-    services: 'Layanan & Tarif',
-    integrations: 'Integrasi',
-    users: 'Pengguna & Peran',
-    templates: 'Template Dokumen',
-    audit: 'Audit & Data',
-    readOnly: 'Hanya Baca',
-    saveAll: 'Simpan Semua Perubahan',
-    accessibleSections: 'bagian yang dapat diakses',
-    roleAccess: 'Level Akses Anda',
-    roleAccessDesc: 'Akses penuh ke semua pengaturan termasuk integrasi, audit, dan manajemen pengguna',
-    avatarUploadSuccess: 'Foto profil berhasil diperbarui!',
+  general: {
     readOnlyIntegrations: 'Anda hanya dapat melihat pengaturan integrasi',
     clinicSaveSuccess: 'Informasi klinik berhasil diperbarui!',
     clinicSaveError: 'Gagal memperbarui informasi klinik',
@@ -2658,19 +2459,15 @@ export default {
   },
 
   // Common actions
-  common: {
+  actions: {
     save: 'Simpan',
     cancel: 'Batal',
     update: 'Perbarui',
     add: 'Tambah',
     create: 'Buat',
-    delete: 'Hapus',
-    edit: 'Edit',
-    saving: 'Menyimpan...',
     sending: 'Mengirim...',
     creating: 'Membuat...',
     search: 'Cari...',
-    role: 'Peran',
     darkMode: 'Mode Gelap',
     lightMode: 'Mode Terang',
     locale: 'id-ID'
@@ -2681,132 +2478,6 @@ export default {
       wrongPassword: 'Password salah. Silakan periksa kembali password Anda.',
       invalidCredentials: 'Email atau password salah. Silakan coba lagi.',
       missingFields: 'Email dan password harus diisi'
-    }
-  },
-  admin: {
-    // Navigation labels
-    nav: {
-      dashboard: 'Dashboard',
-      clinicManagement: 'Manajemen Klinik',
-      clinicDirectory: 'Direktori Klinik',
-      clinicVerification: 'Verifikasi Klinik',
-      ownerAccounts: 'Akun Owner',
-      
-      dentistManagement: 'Manajemen Dokter Gigi',
-      dentistDirectory: 'Direktori Dokter Gigi',
-      verificationQueue: 'Antrean Verifikasi',
-      professionalNetwork: 'Jaringan Profesional',
-      
-      revenueBilling: 'Pendapatan & Tagihan',
-      revenueDashboard: 'Dashboard Pendapatan',
-      paymentProcessing: 'Pemrosesan Pembayaran',
-      subscriptionManagement: 'Manajemen Langganan',
-      
-      aiPlatform: 'Platform AI',
-      aiUsageAnalytics: 'Analitik Penggunaan AI',
-      modelManagement: 'Manajemen Model',
-      aiBilling: 'Tagihan AI',
-      
-      supportHelpdesk: 'Dukungan & Helpdesk',
-      ticketManagement: 'Manajemen Tiket',
-      knowledgeBase: 'Basis Pengetahuan',
-      communicationCenter: 'Pusat Komunikasi',
-      
-      analytics: 'Analitik & Laporan',
-      businessIntelligence: 'Business Intelligence',
-      performanceMetrics: 'Metrik Kinerja',
-      financialReports: 'Laporan Keuangan',
-      
-      systemAdministration: 'Administrasi Sistem',
-      userManagement: 'Manajemen Pengguna',
-      systemConfiguration: 'Konfigurasi Sistem',
-      monitoring: 'Monitoring & Peringatan',
-      
-      complianceSecurity: 'Kepatuhan & Keamanan',
-      dataPrivacy: 'Privasi Data',
-      securityCenter: 'Pusat Keamanan',
-      regulatoryCompliance: 'Kepatuhan Regulasi',
-      
-      partnerships: 'Kemitraan',
-      partnerDirectory: 'Direktori Mitra',
-      apiManagement: 'Manajemen API',
-      integrations: 'Integrasi',
-      
-      contentManagement: 'Manajemen Konten',
-      marketingContent: 'Konten Pemasaran',
-      educationalResources: 'Sumber Edukasi',
-      resourceLibrary: 'Perpustakaan Sumber Daya'
-    },
-    
-    // User interface
-    ui: {
-      search: 'Cari admin...',
-      darkMode: 'Mode Gelap',
-      lightMode: 'Mode Terang',
-      logout: 'Keluar',
-      profile: 'Profil'
-    },
-    
-    // Sidebar interface
-    sidebar: {
-      searchPlaceholder: 'Cari admin...',
-      profile: 'Pengaturan Profil',
-      preferences: 'Preferensi',
-      logout: 'Keluar'
-    },
-    pages: {
-      dashboard: {
-        title: 'Dashboard Admin',
-        subtitle: 'Ringkasan Eksekutif & Overview Platform'
-      },
-      clinics: {
-        title: 'Manajemen Klinik',
-        subtitle: 'Direktori Klinik, Verifikasi & Onboarding'
-      },
-      dentists: {
-        title: 'Verifikasi Dokter Gigi',
-        subtitle: 'Network Profesional & Verifikasi Kredensial'
-      },
-      revenue: {
-        title: 'Pendapatan & Billing',
-        subtitle: 'Pemrosesan Pembayaran & Analitik Keuangan'
-      },
-      aiPlatform: {
-        title: 'Platform AI',
-        subtitle: 'Monitoring Penggunaan AI & Manajemen Model'
-      },
-      support: {
-        title: 'Support & Helpdesk',
-        subtitle: 'Customer Support & Manajemen Success'
-      },
-      analytics: {
-        title: 'Analitik & Laporan',
-        subtitle: 'Business Intelligence & Data Insight'
-      },
-      system: {
-        title: 'Administrasi Sistem',
-        subtitle: 'Manajemen User & Konfigurasi Platform'
-      },
-      compliance: {
-        title: 'Kepatuhan & Keamanan',
-        subtitle: 'Privasi Data & Kepatuhan Regulasi'
-      },
-      partnerships: {
-        title: 'Kemitraan & API',
-        subtitle: 'Partner Integrasi & Manajemen API'
-      },
-      content: {
-        title: 'Manajemen Konten',
-        subtitle: 'Sumber Daya Marketing & Edukasi'
-      },
-      profile: {
-        title: 'Pengaturan Profil',
-        subtitle: 'Kelola pengaturan akun admin Anda'
-      },
-      preferences: {
-        title: 'Preferensi',
-        subtitle: 'Kustomisasi pengalaman admin Anda'
-      }
     }
   }
 };

@@ -109,6 +109,11 @@ export function computeAnalysisFingerprint(item, annotations = []) {
       id: item.id,
       study_id: String(item.study_id ?? item.studyId),
       series_uid: item.series_uid ?? item.seriesUid,
+      sop_instance_uid: item.sop_instance_uid ?? item.sopInstanceUid ?? null,
+      instance_number: item.instance_number ?? item.instanceNumber ?? null,
+      frame_index: item.frame_index ?? item.frameIndex ?? null,
+      image_index: item.image_index ?? item.imageIndex ?? null,
+      source_instance_key: item.source_instance_key ?? item.sourceInstanceKey ?? null,
       viewer_type: item.viewer_type ?? item.viewerType,
       radiograph_type: item.radiograph_type ?? item.radiographType,
       tooth_numbers: item.tooth_numbers ?? item.toothNumbers ?? [],
@@ -191,6 +196,11 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
     case_item_id: item.id,
     study_id: studyId,
     series_uid: item.series_uid,
+    sop_instance_uid: item.sop_instance_uid ?? item.sopInstanceUid ?? null,
+    instance_number: item.instance_number ?? item.instanceNumber ?? null,
+    frame_index: item.frame_index ?? item.frameIndex ?? null,
+    image_index: item.image_index ?? item.imageIndex ?? null,
+    source_instance_key: item.source_instance_key ?? item.sourceInstanceKey ?? null,
     viewer_type: item.viewer_type,
     source_width: Number(metadata.source_width ?? metadata.sourceWidth) || null,
     source_height: Number(metadata.source_height ?? metadata.sourceHeight) || null,
@@ -226,7 +236,12 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
     throw reportError(400, 'Waktu render tidak valid.', 'invalid_render_timestamp');
   }
   if (renderType === 'ANNOTATED') {
-    // Renders contain user annotations (freehand, region, brush, arrow, etc.) as drawn in viewer
+    const expectedCount = Array.isArray(item.structured_findings || item.structuredFindings)
+      ? (item.structured_findings || item.structuredFindings).length
+      : 0;
+    if (result.marker_count !== expectedCount) {
+      throw reportError(400, 'Jumlah marker render beranotasi tidak sesuai dengan temuan terstruktur.', 'render_marker_count_mismatch');
+    }
   }
   return result;
 }

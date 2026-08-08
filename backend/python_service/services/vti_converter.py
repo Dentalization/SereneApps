@@ -161,55 +161,39 @@ def classify_series(num_files: int, modality: str) -> str:
     return '3D' if num_files > 10 else '2D'
 
 
-def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
-    """
-    Scan folder and group DICOM files by SeriesInstanceUID.
-    Handles both standard DICOM extensions and extensionless files (common in dental CBCT).
-
-    Returns dict: {
-        series_uid: {
-            'files': [(instance_number, z_pos, file_path), ...],
-            'modality': str,            # DICOM Modality tag (e.g. 'CT', 'DX')
-            'classification': '3D'|'2D',# Strict classification
-            'num_files': int,
-            'series_description': str,
-        }
-    }
-
-    If include_sr=True, returns (series_groups, sr_series). SR objects are kept
-    out of image-series conversion paths because they do not contain slices.
-    """
+def _find_candidate_dicom_files(study_path: str) -> list[str]:
+    """Discover candidate DICOM file paths from extensions and extensionless files."""
     extensions = ['*.dcm', '*.DCM', '*.dcom', '*.DCOM', '*.dicom', '*.DICOM', '*.ima', '*.IMA']
     all_files = []
     for ext in extensions:
         all_files.extend(glob.glob(os.path.join(study_path, "**", ext), recursive=True))
-    
-    # Also scan for extensionless files (many CBCT scanners like Morita, Planmeca, Vatech)
-    for root, dirs, files in os.walk(study_path):
+
+    skip_extensions = (
+        '.vti', '.json', '.txt', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp',
+        '.zip', '.tar', '.gz', '.py', '.js', '.html', '.css', '.log', '.sql', '.md',
+        '.dll', '.exe', '.pdb', '.db', '.dat', '.pak', '.bin', '.sys', '.ini', '.lnk',
+        '.bat', '.cmd', '.cfg', '.config', '.manifest'
+    )
+
+    for root, _, files in os.walk(study_path):
         for f in files:
             if f.startswith('.'):
                 continue
             fp = os.path.join(root, f)
             _, ext = os.path.splitext(f)
-            # Skip known non-DICOM files and binaries
-            if ext.lower() in (
-                '.vti', '.json', '.txt', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp', 
-                '.zip', '.tar', '.gz', '.py', '.js', '.html', '.css', '.log', '.sql', '.md',
-                '.dll', '.exe', '.pdb', '.db', '.dat', '.pak', '.bin', '.sys', '.ini', '.lnk',
-                '.bat', '.cmd', '.cfg', '.config', '.manifest'
-            ):
+            if ext.lower() in skip_extensions:
                 continue
-            # Include files with no extension or numeric-only names
             if not ext or f.isdigit():
                 all_files.append(fp)
-    
-    all_files = sorted(set(all_files))
-    print(f"[VTI] Found {len(all_files)} candidate files in {study_path}")
-    
-    # Temporary accumulator: {series_uid: {'files': [...], 'modality': str, 'description': str}}
+
+    return sorted(set(all_files))
+
+
+def _parse_and_group_dicom_files(all_files: list[str]) -> tuple[dict, dict]:
+    """Parse header tags and aggregate DICOM slices into normal and SR series."""
     _temp = defaultdict(lambda: {'files': [], 'modality': '', 'description': ''})
     _sr_temp = defaultdict(lambda: {'files': [], 'modality': 'SR', 'description': ''})
-    
+
     for fp in all_files:
         try:
             ds = pydicom.dcmread(fp, force=True, stop_before_pixels=True)
@@ -217,12 +201,11 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
                 ds.file_meta = pydicom.dataset.FileMetaDataset()
             if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
                 ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
-            
+
             series_uid = str(getattr(ds, 'SeriesInstanceUID', 'unknown'))
             instance_num = int(getattr(ds, 'InstanceNumber', 0))
             modality = str(getattr(ds, 'Modality', '')).strip()
-            
-            # Also grab z-position for sorting if available
+
             z_pos = 0.0
             if hasattr(ds, 'ImagePositionPatient') and ds.ImagePositionPatient:
                 z_pos = float(ds.ImagePositionPatient[2])
@@ -232,18 +215,16 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
                 if not _sr_temp[series_uid]['description']:
                     _sr_temp[series_uid]['description'] = str(getattr(ds, 'SeriesDescription', 'Structured Report')).strip()
                 continue
-            
+
             _temp[series_uid]['files'].append((instance_num, z_pos, fp))
 
-            # Read modality & description from first file encountered for this series
             if not _temp[series_uid]['modality']:
                 _temp[series_uid]['modality'] = modality
             if not _temp[series_uid]['description']:
                 _temp[series_uid]['description'] = str(getattr(ds, 'SeriesDescription', 'Unknown Series')).strip()
         except Exception as e:
             print(f"[VTI] Skipping {fp}: {e}")
-    
-    # Build final dict with classification
+
     series_groups = {}
     for series_uid, data in _temp.items():
         num_files = len(data['files'])
@@ -256,7 +237,6 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
             'num_files': num_files,
             'series_description': data['description'],
         }
-        print(f"[VTI] Series {series_uid[:30]}... → {num_files} files, Modality={modality}, Class={classification}")
 
     sr_series = {}
     for series_uid, data in _sr_temp.items():
@@ -268,17 +248,21 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
             'num_files': len(data['files']),
             'series_description': data['description'] or 'Structured Report',
         }
-        print(f"[VTI] SR series {series_uid[:30]}... → {len(data['files'])} report files")
 
-    # ── Non-DICOM Plain 2D Images (Panoramic/Ceph/Photos/etc.) ──
+    return series_groups, sr_series
+
+
+def _discover_plain_2d_series(study_path: str) -> dict:
+    """Discover non-DICOM plain image files (Panorama/Ceph/Periapical photos)."""
     pan_files = []
-    for root, dirs, files in os.walk(study_path):
+    for root, _, files in os.walk(study_path):
         for file in files:
             lower_file = file.lower()
             if any(lower_file.endswith(ext) for ext in ('.jpg', '.jpeg', '.tif', '.tiff', '.png')):
                 if not file.startswith(('thumb_', 'image_', 'labels_')):
                     pan_files.append(os.path.join(root, file))
 
+    plain_series = {}
     added_names = set()
     for pan_file in pan_files:
         filename = os.path.basename(pan_file)
@@ -290,7 +274,6 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
         import hashlib
         series_uid = "pan_opg_" + hashlib.md5(name_without_ext.encode('utf-8')).hexdigest()
 
-        # Determine modality based on keywords or fallback to 2D Image
         fn_lower = filename.lower()
         if any(kw in fn_lower for kw in ('panorama', 'panoramic', 'opg', 'panoramik')):
             modality = "Panoramic"
@@ -307,7 +290,7 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
         else:
             modality = "2D Image"
 
-        series_groups[series_uid] = {
+        plain_series[series_uid] = {
             'files': [(1, 0.0, pan_file)],
             'modality': modality,
             'classification': '2D',
@@ -315,6 +298,21 @@ def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
             'series_description': f"{modality} Image ({name_without_ext})"
         }
         print(f"[VTI] Detected plain 2D series: {filename} → UID={series_uid}, Modality={modality}")
+
+    return plain_series
+
+
+def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
+    """
+    Scan folder and group DICOM files by SeriesInstanceUID.
+    Handles both standard DICOM extensions and extensionless files.
+    """
+    all_files = _find_candidate_dicom_files(study_path)
+    print(f"[VTI] Found {len(all_files)} candidate files in {study_path}")
+
+    series_groups, sr_series = _parse_and_group_dicom_files(all_files)
+    plain_series = _discover_plain_2d_series(study_path)
+    series_groups.update(plain_series)
 
     if include_sr:
         return series_groups, sr_series
@@ -1460,13 +1458,187 @@ def parse_sr_report(file_path: str) -> list[dict]:
     return [parse_item(item) for item in content_sequence]
 
 
-def _emit_progress(progress_callback, event: dict) -> None:
-    if not progress_callback:
-        return
+def _process_2d_series_conversion(
+    study_path: str,
+    study_identifier: str,
+    series_uid: str,
+    series_info: dict,
+    sorted_files: list,
+    force: bool,
+    run_id: str,
+) -> dict:
+    safe_uid = series_uid.replace('.', '_')[:50]
+    img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
+    modality = series_info['modality']
+    classification = series_info['classification']
+    num_files = series_info['num_files']
+
+    if os.path.exists(img_path) and not force:
+        print(f"[2D] Already exists: {img_path}")
+        return {
+            "status": "exists", "type": "2d", "path": img_path,
+            "modality": modality, "classification": classification,
+        }
+
+    print(f"[2D] Processing NATIVE 2D series {series_uid[:30]}... ({num_files} files, Modality={modality})")
+    log_python_event(run_id, 'image_generation_start', {
+        "studyId": study_identifier, "seriesUid": series_uid,
+        "classification": classification, "numFiles": num_files
+    })
+    notify_backend_callback(run_id, 'image_generation_start', {
+        "studyId": study_identifier, "seriesUid": series_uid,
+        "classification": classification, "numFiles": num_files
+    })
+    info = generate_2d_image(sorted_files, img_path)
+    log_python_event(run_id, 'image_generation_end', {
+        "studyId": study_identifier, "seriesUid": series_uid, "status": info.get("status"),
+        "output_size_bytes": os.path.getsize(img_path) if os.path.exists(img_path) else 0
+    })
+    notify_backend_callback(run_id, 'image_generation_end', {
+        "studyId": study_identifier, "seriesUid": series_uid, "status": info.get("status"),
+        "output_size_bytes": os.path.getsize(img_path) if os.path.exists(img_path) else 0
+    })
+    info["type"] = "2d"
+    info["modality"] = modality
+    info["classification"] = classification
+    return info
+
+
+def _process_3d_series_conversion(
+    study_path: str,
+    study_identifier: str,
+    series_uid: str,
+    series_info: dict,
+    sorted_files: list,
+    target_spacing: tuple,
+    force: bool,
+    segment: bool,
+    progress_callback,
+    run_id: str,
+) -> tuple[dict, bool]:
+    safe_uid = series_uid.replace('.', '_')[:50]
+    modality = series_info['modality']
+    classification = series_info['classification']
+    num_files = series_info['num_files']
+
+    vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
+    labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
+    needs_segmentation = segment and (force or not os.path.exists(labels_path))
+
+    if os.path.exists(vti_path) and not force and not needs_segmentation:
+        print(f"[VTI] Already exists: {vti_path}")
+        segmentation_metadata = get_segmentation_metadata(study_path, safe_uid)
+        res = {
+            "status": "exists", "type": "3d", "path": vti_path,
+            "modality": modality, "classification": classification,
+            **segmentation_metadata,
+        }
+        wrote_default = _copy_default_volume_outputs(study_path, safe_uid)
+        return res, wrote_default
+
+    import psutil
+    process = psutil.Process()
+    start_rss = process.memory_info().rss
+    log_python_event(run_id, 'volume_preparation_start', {"studyId": study_identifier, "seriesUid": series_uid, "start_rss_bytes": start_rss})
+    notify_backend_callback(run_id, 'volume_preparation_start', {"studyId": study_identifier, "seriesUid": series_uid, "start_rss_bytes": start_rss})
+
+    _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "dicom_read", "progress": 10})
+    volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
+    peak_rss = max(start_rss, process.memory_info().rss)
+
+    _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "monai_preprocess", "progress": 35})
     try:
-        progress_callback(event)
-    except Exception as exc:
-        print(f"[VTI] Progress callback failed: {exc}")
+        processed, new_spacing, new_origin = monai_preprocess(volume, spacing, origin, orientation, target_spacing=target_spacing)
+        peak_rss = max(peak_rss, process.memory_info().rss)
+    except Exception as monai_err:
+        print(f"[VTI] ⚠️ MONAI pipeline failed: {monai_err}")
+        vol_min, vol_max = float(np.min(volume)), float(np.max(volume))
+        a_min, a_max = max(vol_min, -1000.0), min(vol_max, 3000.0)
+        if a_max > a_min:
+            processed = np.clip(volume, a_min, a_max)
+            processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
+        else:
+            processed = np.zeros_like(volume, dtype=np.float32)
+        processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
+        new_spacing, new_origin = spacing, origin
+        peak_rss = max(peak_rss, process.memory_info().rss)
+
+    _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "fov_suppress", "progress": 60})
+    processed = suppress_fov_background(processed, new_spacing)
+    peak_rss = max(peak_rss, process.memory_info().rss)
+
+    _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "vti_write", "progress": 80})
+    info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)
+    peak_rss = max(peak_rss, process.memory_info().rss)
+
+    log_python_event(run_id, 'volume_preparation_end', {"studyId": study_identifier, "seriesUid": series_uid, "peak_rss_bytes": peak_rss, "output_size_bytes": os.path.getsize(vti_path) if os.path.exists(vti_path) else 0})
+    notify_backend_callback(run_id, 'volume_preparation_end', {"studyId": study_identifier, "seriesUid": series_uid, "peak_rss_bytes": peak_rss, "output_size_bytes": os.path.getsize(vti_path) if os.path.exists(vti_path) else 0})
+
+    info["status"] = "success"
+    info["type"] = "3d"
+    info["path"] = vti_path
+    info["modality"] = modality
+    info["classification"] = classification
+
+    if segment:
+        try:
+            run_tooth_segmentation(processed, new_spacing, study_path, safe_uid, new_origin)
+        except Exception as segmentation_error:
+            failed_manifest = _empty_segmentation_manifest(status="failed")
+            failed_manifest["error"] = str(segmentation_error)
+            if os.path.exists(labels_path):
+                os.remove(labels_path)
+            write_label_manifest(study_path, safe_uid, failed_manifest)
+            print(f"[SEG] FAILED for {safe_uid}: {segmentation_error}")
+
+    info.update(get_segmentation_metadata(study_path, safe_uid))
+    wrote_default = _copy_default_volume_outputs(study_path, safe_uid)
+    return info, wrote_default
+
+
+def _write_series_manifest(study_path: str, study_id: str, series_groups: dict) -> None:
+    manifest = []
+    for series_uid, series_info in series_groups.items():
+        safe_uid = series_uid.replace('.', '_')[:50]
+        classification = series_info.get('classification', '3D')
+        modality = series_info.get('modality', 'CT')
+        num_files = series_info.get('num_files', 0)
+
+        has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+        has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+        has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+
+        segmentation_metadata = (
+            get_segmentation_metadata(study_path, safe_uid)
+            if classification == '3D'
+            else {
+                "has_labels": False,
+                "num_labels": 0,
+                "segmentation_method": None,
+                "segmentation_status": "missing",
+            }
+        )
+
+        manifest.append({
+            "series_uid": series_uid,
+            "title": series_info.get('series_description', 'Unknown Series'),
+            "type": '3D Volume' if classification == '3D' else '2D Image',
+            "classification": classification,
+            "modality": modality if modality else 'CT',
+            "num_slices": num_files,
+            "series_number": series_info.get('series_number', 0),
+            "has_vti": has_vti,
+            "has_image": has_image,
+            "has_thumb": has_thumb,
+            **segmentation_metadata,
+            "status": "ready" if (has_vti or has_image) else "pending",
+            "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
+        })
+
+    manifest.sort(key=lambda c: (0 if c['type'] == '3D Volume' else 1, c.get('series_number', 0)))
+    manifest_path = os.path.join(study_path, "series_manifest.json")
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
 
 
 def convert_study_to_vti(
@@ -1480,23 +1652,7 @@ def convert_study_to_vti(
     case_id: str = None,
     iteration: str = None,
 ) -> dict:
-    """
-    Main entry point: Convert a DICOM study folder to output files.
-
-    Uses STRICT 2D/3D classification from scan_dicom_series (Modality-based):
-    - 3D series (CT/MR or >10 files with unknown modality): MONAI pipeline → VTI
-    - 2D series (DX/PX/CR/IO or ≤10 files with unknown modality): Generate image_{uid}.jpg
-
-    A 3D series will NEVER produce image_{uid}.jpg (no fake 2D from 3D slices).
-    A 2D series will NEVER produce volume_{uid}.vti.
-
-    Args:
-        study_path: Path to study folder containing DICOM files
-        force: If True, regenerate even if files already exist
-
-    Returns:
-        Dict with conversion results per series
-    """
+    """Main entry point: Convert a DICOM study folder to output files."""
     start_time = time.time()
     study_identifier = study_id or os.path.basename(os.path.normpath(study_path))
     target_spacing_map = {
@@ -1506,18 +1662,10 @@ def convert_study_to_vti(
         "native": None,
     }
     if quality not in target_spacing_map:
-        print(f"[VTI] Unknown conversion quality '{quality}', using standard")
         quality = "standard"
     target_spacing = target_spacing_map[quality]
 
-    print(f"\n[VTI] ═══════════════════════════════════════════")
-    print(f"[VTI] MONAI Pipeline — Converting study: {study_path}")
-    print(f"[VTI] Strict 2D/3D classification enabled")
-    print(f"[VTI] Conversion quality={quality}, target_spacing={target_spacing or 'native'}")
-    print(f"[VTI] ═══════════════════════════════════════════")
     _emit_progress(progress_callback, {"studyId": study_identifier, "status": "started"})
-
-    # dicom_scan_start
     log_python_event(run_id, 'dicom_scan_start', {"studyId": study_identifier})
     notify_backend_callback(run_id, 'dicom_scan_start', {"studyId": study_identifier})
 
@@ -1525,15 +1673,11 @@ def convert_study_to_vti(
     series_groups = scan_dicom_series(study_path)
     default_volume_written = False
 
-    # dicom_scan_end
     log_python_event(run_id, 'dicom_scan_end', {"studyId": study_identifier, "series_count": len(series_groups)})
     notify_backend_callback(run_id, 'dicom_scan_end', {"studyId": study_identifier, "series_count": len(series_groups)})
-
-    # series_grouping_start
     log_python_event(run_id, 'series_grouping_start', {"studyId": study_identifier})
     notify_backend_callback(run_id, 'series_grouping_start', {"studyId": study_identifier})
 
-    # series_grouping_end
     series_details = {
         uid: {
             "modality": info.get("modality"),
@@ -1547,323 +1691,33 @@ def convert_study_to_vti(
     for series_uid, series_info in series_groups.items():
         files_with_meta = series_info['files']
         classification = series_info['classification']
-        modality = series_info['modality']
-        num_files = series_info['num_files']
         safe_uid = series_uid.replace('.', '_')[:50]
 
-        # Sort files by instance number, then by z-position
         files_with_meta.sort(key=lambda x: (x[0], x[1]))
         sorted_files = [fp for _, _, fp in files_with_meta]
 
-        # Generate thumbnail from middle slice (always, for gallery)
         thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
         if not os.path.exists(thumb_path) or force:
             generate_thumbnail(sorted_files, thumb_path)
 
-        # classification_result
-        log_python_event(run_id, 'classification_result', {
-            "studyId": study_identifier,
-            "seriesUid": series_uid,
-            "modality": modality,
-            "classification": classification,
-            "numFiles": num_files
-        })
-        notify_backend_callback(run_id, 'classification_result', {
-            "studyId": study_identifier,
-            "seriesUid": series_uid,
-            "modality": modality,
-            "classification": classification,
-            "numFiles": num_files
-        })
-
-        # ════════════════════════════════════════════
-        #  STRICT 2D PATH — Native 2D images only
-        # ════════════════════════════════════════════
         if classification == '2D':
-            img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
-
-            if os.path.exists(img_path) and not force:
-                print(f"[2D] Already exists: {img_path}")
-                results[series_uid] = {
-                    "status": "exists", "type": "2d", "path": img_path,
-                    "modality": modality, "classification": classification,
-                }
-            else:
-                print(f"[2D] Processing NATIVE 2D series {series_uid[:30]}... "
-                      f"({num_files} files, Modality={modality})")
-                log_python_event(run_id, 'image_generation_start', {
-                    "studyId": study_identifier,
-                    "seriesUid": series_uid,
-                    "classification": classification,
-                    "numFiles": num_files
-                })
-                notify_backend_callback(run_id, 'image_generation_start', {
-                    "studyId": study_identifier,
-                    "seriesUid": series_uid,
-                    "classification": classification,
-                    "numFiles": num_files
-                })
-                info = generate_2d_image(sorted_files, img_path)
-                log_python_event(run_id, 'image_generation_end', {
-                    "studyId": study_identifier,
-                    "seriesUid": series_uid,
-                    "status": info.get("status"),
-                    "output_size_bytes": os.path.getsize(img_path) if os.path.exists(img_path) else 0
-                })
-                notify_backend_callback(run_id, 'image_generation_end', {
-                    "studyId": study_identifier,
-                    "seriesUid": series_uid,
-                    "status": info.get("status"),
-                    "output_size_bytes": os.path.getsize(img_path) if os.path.exists(img_path) else 0
-                })
-                info["type"] = "2d"
-                info["modality"] = modality
-                info["classification"] = classification
-                results[series_uid] = info
-            continue
-
-        # ════════════════════════════════════════════
-        #  STRICT 3D PATH — Volumetric data only
-        #  NO image_{uid}.jpg will be generated here
-        # ════════════════════════════════════════════
-        vti_path = os.path.join(study_path, f"volume_{safe_uid}.vti")
-        labels_path = os.path.join(study_path, f"labels_{safe_uid}.vti")
-        labels_manifest_path = _label_manifest_path(study_path, safe_uid)
-        needs_segmentation = segment and (force or not os.path.exists(labels_path))
-
-        if os.path.exists(vti_path) and not force and not needs_segmentation:
-            print(f"[VTI] Already exists: {vti_path}")
-            segmentation_metadata = get_segmentation_metadata(study_path, safe_uid)
-            results[series_uid] = {
-                "status": "exists", "type": "3d", "path": vti_path,
-                "modality": modality, "classification": classification,
-                **segmentation_metadata,
-            }
-            if not default_volume_written:
-                default_volume_written = _copy_default_volume_outputs(study_path, safe_uid) or default_volume_written
+            results[series_uid] = _process_2d_series_conversion(
+                study_path, study_identifier, series_uid, series_info, sorted_files, force, run_id
+            )
             continue
 
         try:
-            print(f"[VTI] Processing 3D series {series_uid[:30]}... "
-                  f"({num_files} files, Modality={modality})")
-
-            # volume_preparation_start
-            import psutil
-            process = psutil.Process()
-            start_rss = process.memory_info().rss
-            log_python_event(run_id, 'volume_preparation_start', {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "start_rss_bytes": start_rss
-            })
-            notify_backend_callback(run_id, 'volume_preparation_start', {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "start_rss_bytes": start_rss
-            })
-
-            peak_rss = start_rss
-
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "status": "processing",
-                "stage": "MONAI",
-                "progress": 40,
-            })
-
-            # Step 1: Robust DICOM loading with pydicom (handles force=True)
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "status": "processing",
-                "stage": "dicom_read",
-                "progress": 10,
-                "seriesDescription": series_info.get('series_description', ''),
-                "numFiles": num_files,
-            })
-            volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
-            peak_rss = max(peak_rss, process.memory_info().rss)
-            print(f"[VTI] Raw volume: shape={volume.shape}, dtype={volume.dtype}")
-
-            # Step 2: MONAI preprocessing pipeline
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier, "seriesUid": series_uid,
-                "status": "processing", "stage": "monai_preprocess", "progress": 35,
-            })
-            try:
-                processed, new_spacing, new_origin = monai_preprocess(
-                    volume,
-                    spacing,
-                    origin,
-                    orientation,
-                    target_spacing=target_spacing,
-                )
-                peak_rss = max(peak_rss, process.memory_info().rss)
-                print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
-            except Exception as monai_err:
-                # Fallback: if MONAI fails, do basic normalization without MONAI
-                print(f"[VTI] ⚠️  MONAI pipeline failed: {monai_err}")
-                print(f"[VTI] Falling back to basic normalization...")
-                import traceback
-                traceback.print_exc()
-
-                # Basic fallback: scale to [0, 1] manually
-                vol_min = float(np.min(volume))
-                vol_max = float(np.max(volume))
-                a_min = max(vol_min, -1000.0)
-                a_max = min(vol_max, 3000.0)
-                if a_max > a_min:
-                    processed = np.clip(volume, a_min, a_max)
-                    processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
-                else:
-                    processed = np.zeros_like(volume, dtype=np.float32)
-
-                # Transpose (Z, Y, X) → (X, Y, Z) for write_vti_vtk which expects XYZ order
-                processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
-
-                # Spacing from read_dicom_volume is already (X, Y, Z) = (px, py, sz)
-                new_spacing = spacing
-                new_origin = origin
-                peak_rss = max(peak_rss, process.memory_info().rss)
-                print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
-
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier, "seriesUid": series_uid,
-                "status": "processing", "stage": "fov_suppress", "progress": 60,
-            })
-            processed = suppress_fov_background(processed, new_spacing)
-            peak_rss = max(peak_rss, process.memory_info().rss)
-
-            # Step 3: Write VTI using VTK writer with ZLib compression
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier, "seriesUid": series_uid,
-                "status": "processing", "stage": "vti_write", "progress": 80,
-            })
-            info = write_vti_vtk(processed, new_spacing, new_origin, vti_path)
-            peak_rss = max(peak_rss, process.memory_info().rss)
-
-            # volume_preparation_end
-            log_python_event(run_id, 'volume_preparation_end', {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "peak_rss_bytes": peak_rss,
-                "output_size_bytes": os.path.getsize(vti_path) if os.path.exists(vti_path) else 0
-            })
-            notify_backend_callback(run_id, 'volume_preparation_end', {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "peak_rss_bytes": peak_rss,
-                "output_size_bytes": os.path.getsize(vti_path) if os.path.exists(vti_path) else 0
-            })
-            
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier, "seriesUid": series_uid,
-                "status": "processing", "stage": "segmentation" if segment else "thumbnail", "progress": 90,
-            })
-
-            _emit_progress(progress_callback, {
-                "studyId": study_identifier,
-                "seriesUid": series_uid,
-                "status": "ready",
-                "vtiPath": vti_path,
-            })
-            info["status"] = "success"
-            info["type"] = "3d"
-            info["path"] = vti_path
-            info["modality"] = modality
-            info["classification"] = classification
-
-            if segment:
-                segmentation_info = None
-                try:
-                    segmentation_info = run_tooth_segmentation(
-                        processed,
-                        new_spacing,
-                        study_path,
-                        safe_uid,
-                        new_origin,
-                    )
-                except Exception as segmentation_error:
-                    failed_manifest = _empty_segmentation_manifest(status="failed")
-                    failed_manifest["error"] = str(segmentation_error)
-                    if os.path.exists(labels_path):
-                        os.remove(labels_path)
-                    write_label_manifest(study_path, safe_uid, failed_manifest)
-                    print(f"[SEG] FAILED for {safe_uid}: {segmentation_error}")
-                info.update(get_segmentation_metadata(study_path, safe_uid))
-                if segmentation_info:
-                    info["labels_path"] = segmentation_info["path"]
-            else:
-                info.update(get_segmentation_metadata(study_path, safe_uid))
-
+            info, wrote_def = _process_3d_series_conversion(
+                study_path, study_identifier, series_uid, series_info, sorted_files,
+                target_spacing, force, segment, progress_callback, run_id
+            )
             results[series_uid] = info
-
-            if not default_volume_written:
-                default_volume_written = _copy_default_volume_outputs(study_path, safe_uid) or default_volume_written
-                print(f"[VTI] Default volume.vti updated from {os.path.basename(vti_path)}")
-
+            default_volume_written = default_volume_written or wrote_def
         except Exception as e:
-            import traceback
             print(f"[VTI] FAILED: {e}")
-            traceback.print_exc()
             results[series_uid] = {"status": "error", "error": str(e)}
 
-    import json
-    
-    manifest = []
-    for series_uid, series_info in series_groups.items():
-        safe_uid = series_uid.replace('.', '_')[:50]
-        classification = series_info.get('classification', '3D')
-        
-        has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
-        has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
-        has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
-        segmentation_metadata = (
-            get_segmentation_metadata(study_path, safe_uid)
-            if classification == '3D'
-            else {
-                "has_labels": False,
-                "num_labels": 0,
-                "segmentation_method": None,
-                "segmentation_status": "missing",
-            }
-        )
-        
-        if classification == '3D':
-            series_status = 'ready' if has_vti else 'pending'
-        else:
-            series_status = 'ready' if has_image else 'pending'
-        
-        manifest.append({
-            "series_uid": series_uid,
-            "title": series_info.get('series_description', 'Unknown Series'),
-            "type": '3D Volume' if classification == '3D' else '2D Image',
-            "classification": classification,
-            "modality": series_info.get('modality', 'CT'),
-            "num_slices": series_info.get('num_files', 0),
-            "series_number": 0,
-            "has_vti": has_vti,
-            "has_image": has_image,
-            "has_thumb": has_thumb,
-            **segmentation_metadata,
-            "status": series_status,
-        })
-    
-    manifest_path = os.path.join(study_path, "series_manifest.json")
-    with open(manifest_path, 'w') as f:
-        json.dump(manifest, f, indent=2)
-    print(f"[VTI] Series manifest written: {manifest_path}")
-    log_python_event(run_id, 'manifest_persisted', {
-        "studyId": study_identifier,
-        "series_count": len(manifest),
-        "manifest_size_bytes": os.path.getsize(manifest_path) if os.path.exists(manifest_path) else 0
-    })
-    notify_backend_callback(run_id, 'manifest_persisted', {
-        "studyId": study_identifier,
-        "series_count": len(manifest),
-        "manifest_size_bytes": os.path.getsize(manifest_path) if os.path.exists(manifest_path) else 0
-    })
+    _write_series_manifest(study_path, study_identifier, series_groups)
 
     elapsed = time.time() - start_time
     print(f"\n[VTI] ═══════════════════════════════════════════")

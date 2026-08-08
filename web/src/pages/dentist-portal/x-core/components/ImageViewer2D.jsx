@@ -316,7 +316,12 @@ const ImageViewer2D = ({
     const annotationPersistenceScope = useMemo(() => ({
         sourceWidth: imageSize.width,
         sourceHeight: imageSize.height,
-    }), [imageSize.height, imageSize.width]);
+        source_instance_key: analysisCaseContext?.sourceInstanceKey || analysisCaseContext?.source_instance_key || null,
+        sop_instance_uid: analysisCaseContext?.sopInstanceUid || analysisCaseContext?.sop_instance_uid || null,
+        instance_number: analysisCaseContext?.instanceNumber ?? analysisCaseContext?.instance_number ?? null,
+        frame_index: analysisCaseContext?.frameIndex ?? analysisCaseContext?.frame_index ?? null,
+        image_index: analysisCaseContext?.imageIndex ?? analysisCaseContext?.image_index ?? null,
+    }), [analysisCaseContext, imageSize.height, imageSize.width]);
 
     useEffect(() => {
         annotationsRef.current = annotations;
@@ -1050,12 +1055,26 @@ const ImageViewer2D = ({
             const activeAnnotations = forcedAnnotations ?? (saveResult && Array.isArray(saveResult.annotations)
                 ? saveResult.annotations
                 : annotations);
-            const reportPixelSpacing = calibrationFactor || (pixelSpacing && pixelSpacing !== 1 ? pixelSpacing : null);
+            const effectiveImageFilter = (() => {
+                const parts = [];
+                if (inverted) parts.push('invert(100%)');
+                if (windowCenter !== 0.5) {
+                    const brightnessVal = Math.max(0.2, Math.min(3.0, 1 + (0.5 - windowCenter) * 2));
+                    parts.push(`brightness(${brightnessVal.toFixed(2)})`);
+                }
+                if (windowWidth !== 1.0 && windowWidth > 0) {
+                    const contrastVal = Math.max(0.2, Math.min(3.0, 1 / windowWidth));
+                    parts.push(`contrast(${contrastVal.toFixed(2)})`);
+                }
+                if (imageFilter && imageFilter !== 'none') parts.push(imageFilter);
+                return parts.length > 0 ? parts.join(' ') : 'none';
+            })();
+
             const renders = buildCanonical2DReportRenders({
                 image: imgRef.current,
                 sourceWidth: imageSize.width,
                 sourceHeight: imageSize.height,
-                imageFilter,
+                imageFilter: effectiveImageFilter,
                 annotations: activeAnnotations,
                 markerAnnotations: [...activeAnnotations, ...measurementClinicalRecords],
                 measurements,

@@ -121,22 +121,17 @@ const StepThree = () => {
 };
 
 const StepFour = () => {
-  try {
-    return (
-      <div>
-        <h3 className="text-xl font-semibold mb-4">Step 4: Icon Component Test</h3>
-        <p>✅ Icon component imported successfully</p>
-        <div className="mt-4 flex space-x-4">
-          <Icon name="Calendar" size={24} className="text-blue-500" />
-          <Icon name="Users" size={24} className="text-green-500" />
-          <Icon name="TrendingUp" size={24} className="text-purple-500" />
-        </div>
+  return (
+    <div>
+      <h3 className="text-xl font-semibold mb-4">Step 4: Icon Component Test</h3>
+      <p>✅ Icon component imported successfully</p>
+      <div className="mt-4 flex space-x-4">
+        <Icon name="Calendar" size={24} className="text-blue-500" />
+        <Icon name="Users" size={24} className="text-green-500" />
+        <Icon name="TrendingUp" size={24} className="text-purple-500" />
       </div>
-    );
-  } catch (err) {
-    console.error('❌ Icon render failed:', err);
-    return <div className="text-red-500">Icon render error: {err.message}</div>;
-  }
+    </div>
+  );
 };
 
 const StepFive = () => {

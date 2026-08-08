@@ -1463,30 +1463,36 @@ model StudyDentistShare {
 }
 
 model StudyAnnotation {
-  id              String       @id @default(cuid())
-  studyId         BigInt       @map("study_id")
-  seriesUid       String       @map("series_uid")
-  viewerType      String       @map("viewer_type")
-  sliceAxis       String?      @map("slice_axis")
-  sliceIndex      Int?         @map("slice_index")
-  type            String
-  coordinates     Json
-  label           String?
-  color           String?
-  metadata        Json?        @default("{}")
-  reviewStatus    String       @default("draft") @map("review_status")
-  reviewedBy      BigInt?      @map("reviewed_by")
-  reviewedAt      DateTime?    @map("reviewed_at") @db.Timestamptz(6)
-  reviewerComment String?      @map("reviewer_comment")
-  confidenceScore Float        @default(0.7) @map("confidence_score")
-  createdBy       BigInt       @map("created_by")
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  study           ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
-  creator         User         @relation("StudyAnnotationCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  reviewer        User?        @relation("StudyAnnotationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  id                String       @id @default(cuid())
+  studyId           BigInt       @map("study_id")
+  seriesUid         String       @map("series_uid")
+  viewerType        String       @map("viewer_type")
+  sliceAxis         String?      @map("slice_axis")
+  sliceIndex        Int?         @map("slice_index")
+  sopInstanceUid    String?      @map("sop_instance_uid")
+  instanceNumber    Int?         @map("instance_number")
+  frameIndex        Int?         @map("frame_index")
+  imageIndex        Int?         @map("image_index")
+  sourceInstanceKey String?      @map("source_instance_key")
+  type              String
+  coordinates       Json
+  label             String?
+  color             String?
+  metadata          Json?        @default("{}")
+  reviewStatus      String       @default("draft") @map("review_status")
+  reviewedBy        BigInt?      @map("reviewed_by")
+  reviewedAt        DateTime?    @map("reviewed_at") @db.Timestamptz(6)
+  reviewerComment   String?      @map("reviewer_comment")
+  confidenceScore   Float        @default(0.7) @map("confidence_score")
+  createdBy         BigInt       @map("created_by")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  study             ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  creator           User         @relation("StudyAnnotationCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  reviewer          User?        @relation("StudyAnnotationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
 
   @@index([studyId, seriesUid, viewerType], map: "idx_study_annotations_scope")
+  @@index([studyId, seriesUid, viewerType, sourceInstanceKey], map: "idx_study_annotations_instance_scope")
   @@index([studyId, seriesUid, viewerType, sliceAxis, sliceIndex], map: "idx_study_annotations_slice")
   @@index([createdBy], map: "idx_study_annotations_created_by")
   @@index([reviewStatus], map: "idx_study_annotations_review_status")
@@ -1561,6 +1567,11 @@ model XCoreAnalysisCaseItem {
   studyId            BigInt                        @map("study_id")
   seriesId           BigInt?                       @map("series_id")
   seriesUid          String                        @map("series_uid")
+  sopInstanceUid     String?                       @map("sop_instance_uid")
+  instanceNumber     Int?                          @map("instance_number")
+  frameIndex         Int?                          @map("frame_index")
+  imageIndex         Int?                          @map("image_index")
+  sourceInstanceKey  String                        @default("series:legacy") @map("source_instance_key")
   viewerType         String                        @default("2d") @map("viewer_type") @db.VarChar(16)
   radiographType     String                        @map("radiograph_type") @db.VarChar(24)
   toothNumbers       String[]                      @default([]) @map("tooth_numbers") @db.VarChar(3)
@@ -1578,8 +1589,10 @@ model XCoreAnalysisCaseItem {
   renders            XCoreAnalysisCaseItemRender[]
 
   @@unique([caseId, displayOrder])
+  @@unique([caseId, studyId, seriesUid, sourceInstanceKey], map: "xcore_analysis_case_items_instance_unique")
   @@index([caseId, displayOrder], map: "idx_xcore_analysis_case_items_case")
   @@index([studyId, seriesUid, viewerType], map: "idx_xcore_analysis_case_items_study_scope")
+  @@index([studyId, seriesUid, sourceInstanceKey], map: "idx_xcore_analysis_case_items_instance_scope")
   @@map("xcore_analysis_case_items")
 }
 
@@ -1637,6 +1650,11 @@ model XCoreAnalysisReportItem {
   structuredFindings     Json                @default("[]") @map("structured_findings")
   studyId                BigInt              @map("study_id")
   seriesUid              String              @map("series_uid")
+  sopInstanceUid         String?             @map("sop_instance_uid")
+  instanceNumber         Int?                @map("instance_number")
+  frameIndex             Int?                @map("frame_index")
+  imageIndex             Int?                @map("image_index")
+  sourceInstanceKey      String?             @map("source_instance_key")
   viewerType             String              @map("viewer_type") @db.VarChar(16)
   annotationSnapshot     Json                @default("[]") @map("annotation_snapshot")
   measurementSnapshot    Json                @default("[]") @map("measurement_snapshot")

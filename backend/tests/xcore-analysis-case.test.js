@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import {
   assertCaseOwner,
   buildRadiographSectionLabels,
+  computeSourceInstanceKey,
   suggestRadiographType,
   validateCaseItem,
 } from '../src/services/xCoreAnalysisCaseDomain.js';
@@ -205,3 +206,18 @@ test('migration preserves legacy pointers and adds immutable typed render histor
   assert.match(migration, /clean_render_storage_path/);
   assert.doesNotMatch(migration, /DROP TABLE xcore_analysis/);
 });
+
+test('computes canonical source instance keys according to precedence rules', () => {
+  assert.equal(computeSourceInstanceKey({ series_uid: 'uid-1', sop_instance_uid: 'sop.1.2.3' }), 'sop:sop.1.2.3');
+  assert.equal(computeSourceInstanceKey({ series_uid: 'uid-1', sop_instance_uid: 'sop.1.2.3', frame_index: 2 }), 'sop:sop.1.2.3:frame:2');
+  assert.equal(computeSourceInstanceKey({ series_uid: 'uid-1', image_index: 5 }), 'series:uid-1:image:5');
+  assert.equal(computeSourceInstanceKey({ series_uid: 'uid-1' }), 'series:uid-1:legacy');
+});
+
+test('instance-level imaging migration 062 adds columns and unique constraints', async () => {
+  const migration = await fs.readFile(new URL('../migrations/062_xcore_instance_level_imaging.sql', import.meta.url), 'utf8');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS sop_instance_uid/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS source_instance_key/);
+  assert.match(migration, /xcore_analysis_case_items_instance_unique/);
+});
+

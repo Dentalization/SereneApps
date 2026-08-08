@@ -22,6 +22,27 @@ except ImportError:
             if mod in NATIVE_3D_MODALITIES: return '3D'
             return '3D' if num_files > 10 else '2D'
 
+def _detect_intraoral_subtype(desc: str, proto: str) -> str:
+    if any(kw in desc or kw in proto for kw in ('periapical', 'periapikal', 'pa', 'peri')):
+        return 'Intraoral Periapical'
+    if any(kw in desc or kw in proto for kw in ('bitewing', 'bw', 'bite-wing')):
+        return 'Intraoral Bitewing'
+    if any(kw in desc or kw in proto for kw in ('occlusal', 'oklusal', 'occ', 'occl')):
+        return 'Intraoral Occlusal'
+    return 'Intraoral'
+
+
+def _detect_cr_dx_subtype(desc: str, proto: str) -> str:
+    intra_subtype = _detect_intraoral_subtype(desc, proto)
+    if intra_subtype != 'Intraoral':
+        return intra_subtype
+    if any(kw in desc or kw in proto for kw in ('ceph', 'cephalometric', 'sefalometri')):
+        return 'Cephalometric'
+    if any(kw in desc or kw in proto for kw in ('pan', 'pano', 'opg')):
+        return 'Panoramic'
+    return ""
+
+
 def detect_dental_modality(modality: str, series_description: str, protocol_name: str = "", num_slices: int = 1) -> str:
     mod = str(modality).strip().upper()
     desc = str(series_description).lower()
@@ -41,26 +62,13 @@ def detect_dental_modality(modality: str, series_description: str, protocol_name
         
     # 4. Check Intraoral Subtypes
     if mod == 'IO' or 'intraoral' in desc or 'intraoral' in proto:
-        if any(kw in desc or kw in proto for kw in ('periapical', 'periapikal', 'pa', 'peri')):
-            return 'Intraoral Periapical'
-        if any(kw in desc or kw in proto for kw in ('bitewing', 'bw', 'bite-wing')):
-            return 'Intraoral Bitewing'
-        if any(kw in desc or kw in proto for kw in ('occlusal', 'oklusal', 'occ', 'occl')):
-            return 'Intraoral Occlusal'
-        return 'Intraoral'
+        return _detect_intraoral_subtype(desc, proto)
         
     # 5. Fallback check on CR / DX (Imaging Plates / Phosphor Plates / Sensors)
     if mod in {'CR', 'DX'}:
-        if any(kw in desc or kw in proto for kw in ('periapical', 'periapikal', 'pa', 'peri')):
-            return 'Intraoral Periapical'
-        if any(kw in desc or kw in proto for kw in ('bitewing', 'bw', 'bite-wing')):
-            return 'Intraoral Bitewing'
-        if any(kw in desc or kw in proto for kw in ('occlusal', 'oklusal', 'occ', 'occl')):
-            return 'Intraoral Occlusal'
-        if any(kw in desc or kw in proto for kw in ('ceph', 'cephalometric', 'sefalometri')):
-            return 'Cephalometric'
-        if any(kw in desc or kw in proto for kw in ('pan', 'pano', 'opg')):
-            return 'Panoramic'
+        cr_dx_result = _detect_cr_dx_subtype(desc, proto)
+        if cr_dx_result:
+            return cr_dx_result
             
     if mod == 'PX':
         return 'Panoramic'

@@ -8,11 +8,12 @@ import {
   getAnalysisCase,
   listAnalysisCases,
   listAnalysisItemAnnotations,
+  listSeriesInstances,
   openAnalysisReport,
   preflightAnalysisReport,
   updateAnalysisCase,
 } from './api';
-import { caseItemLabel, RADIOGRAPH_TYPES, reportRenderStatusPresentation, resolveSeriesUid, suggestRadiographType } from './domain.mjs';
+import { caseItemLabel, computeSourceInstanceKey, RADIOGRAPH_TYPES, reportRenderStatusPresentation, resolveSeriesUid, suggestRadiographType } from './domain.mjs';
 
 const newId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
   const random = Math.floor(Math.random() * 16);
@@ -30,6 +31,11 @@ function serializeCaseItems(items) {
     study_id: item.study_id,
     series_id: item.series_id,
     series_uid: item.series_uid,
+    sop_instance_uid: item.sop_instance_uid || null,
+    instance_number: item.instance_number != null ? Number(item.instance_number) : null,
+    frame_index: item.frame_index != null ? Number(item.frame_index) : null,
+    image_index: item.image_index != null ? Number(item.image_index) : null,
+    source_instance_key: computeSourceInstanceKey(item),
     viewer_type: item.viewer_type,
     radiograph_type: item.radiograph_type,
     tooth_numbers: item.tooth_numbers || [],
@@ -43,7 +49,6 @@ function serializeCaseItems(items) {
 function sourceOptions(studies) {
   return studies.flatMap((study) => {
     const series = study.series?.length ? study.series : [{ id: null, series_uid: study.selectedSeriesUid || study.id, description: study.description }];
-    // Use patientName (Gallery-formatted) first — falls back to patient.name, then patientIdDisplay, then 'Tanpa pasien'
     const patientLabel = study.patientName
       || study.patient?.name
       || study.patientIdDisplay
@@ -63,6 +68,9 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
   const [cases, setCases] = useState([]);
   const [activeCase, setActiveCase] = useState(null);
   const [selectedSource, setSelectedSource] = useState('');
+  const [selectedInstanceKey, setSelectedInstanceKey] = useState('');
+  const [availableInstances, setAvailableInstances] = useState([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
   const [newType, setNewType] = useState('OTHER');
   const [newTeeth, setNewTeeth] = useState('');
   const [loading, setLoading] = useState(true);
@@ -94,21 +102,60 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
   };
 
   const source = sources.find((option) => option.key === selectedSource);
+
   useEffect(() => {
-    if (source) setNewType(suggestRadiographType({ ...source.study, ...source.series }));
+    if (!source) {
+      setAvailableInstances([]);
+      setSelectedInstanceKey('');
+      return;
+    }
+    setNewType(suggestRadiographType({ ...source.study, ...source.series }));
+    setLoadingInstances(true);
+    listSeriesInstances(source.study.id, resolveSeriesUid(source.series))
+      .then((instances) => {
+        setAvailableInstances(instances);
+        if (instances.length > 0) {
+          setSelectedInstanceKey(instances[0].source_instance_key);
+        } else {
+          setSelectedInstanceKey('');
+        }
+      })
+      .catch(() => setAvailableInstances([]))
+      .finally(() => setLoadingInstances(false));
   }, [selectedSource, source]);
 
-  const buildItem = (selected) => ({
-    id: newId(),
-    study_id: String(selected.study.id),
-    series_id: selected.series.id ? String(selected.series.id) : null,
-    series_uid: resolveSeriesUid(selected.series),
-    viewer_type: selected.series.type === '3D Volume' ? 'slice' : '2d',
-    radiograph_type: newType,
-    tooth_numbers: newTeeth.split(/[ ,]+/).map((value) => value.trim()).filter(Boolean),
-    display_order: activeCase?.items?.length || 0,
-    title: '', findings: '', structured_findings: [],
-  });
+  const buildItem = (selectedSourceObj, instanceObj = null) => {
+    const seriesUid = resolveSeriesUid(selectedSourceObj.series);
+    const sopInstanceUid = instanceObj?.sop_instance_uid || selectedSourceObj.series.sop_instance_uid || null;
+    const instanceNumber = instanceObj?.instance_number ?? selectedSourceObj.series.instance_number ?? null;
+    const frameIndex = instanceObj?.frame_index ?? null;
+    const imageIndex = instanceObj?.image_index ?? 0;
+    const sourceInstanceKey = instanceObj?.source_instance_key || computeSourceInstanceKey({
+      series_uid: seriesUid,
+      sop_instance_uid: sopInstanceUid,
+      frame_index: frameIndex,
+      image_index: imageIndex,
+    });
+
+    return {
+      id: newId(),
+      study_id: String(selectedSourceObj.study.id),
+      series_id: selectedSourceObj.series.id ? String(selectedSourceObj.series.id) : null,
+      series_uid: seriesUid,
+      sop_instance_uid: sopInstanceUid,
+      instance_number: instanceNumber,
+      frame_index: frameIndex,
+      image_index: imageIndex,
+      source_instance_key: sourceInstanceKey,
+      viewer_type: selectedSourceObj.series.type === '3D Volume' ? 'slice' : '2d',
+      radiograph_type: newType,
+      tooth_numbers: newTeeth.split(/[ ,]+/).map((value) => value.trim()).filter(Boolean),
+      display_order: activeCase?.items?.length || 0,
+      title: '', findings: '', structured_findings: [],
+    };
+  };
+
+  const selectedInstance = availableInstances.find((inst) => inst.source_instance_key === selectedInstanceKey) || availableInstances[0] || null;
 
   const createCase = async () => {
     if (!source) return setMessage('Pilih citra pertama.');
@@ -117,9 +164,10 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
     if (newType === 'PERIAPICAL' && !newTeeth.trim()) return setMessage('Nomor gigi wajib untuk periapikal.');
     setSaving(true); setMessage('');
     try {
+      const itemToCreate = buildItem(source, selectedInstance);
       const created = await createAnalysisCase({
         patient_id: String(patientId), title: `Analisis X-Core — ${source.study.patient?.name || source.study.patientName || 'Pasien'}`,
-        clinical_data: {}, conclusion: '', items: [buildItem(source)],
+        clinical_data: {}, conclusion: '', items: [itemToCreate],
       });
       setActiveCase(created); await refreshCases(); setSelectedSource(''); setNewTeeth('');
     } catch (error) { setMessage(error.message); } finally { setSaving(false); }
@@ -130,7 +178,11 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
     const patientId = source.study.patientId || source.study.patient_id;
     if (String(patientId || '') !== String(activeCase.patient_id)) return setMessage('Citra harus berasal dari pasien yang sama.');
     if (newType === 'PERIAPICAL' && !newTeeth.trim()) return setMessage('Nomor gigi wajib untuk periapikal.');
-    setActiveCase((current) => ({ ...current, items: [...current.items, buildItem(source)] }));
+    const itemToAdd = buildItem(source, selectedInstance);
+    if (activeCase.items.some((candidate) => computeSourceInstanceKey(candidate) === itemToAdd.source_instance_key)) {
+      return setMessage('Gambaran instance citra ini sudah ada di dalam kasus.');
+    }
+    setActiveCase((current) => ({ ...current, items: [...current.items, itemToAdd] }));
     setSelectedSource(''); setNewTeeth(''); setMessage('Citra ditambahkan. Tekan Simpan untuk mempersistensikan perubahan.');
   };
 
@@ -281,7 +333,19 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
                 </div>
               </div>
               <div className="border-t border-primary pt-5">
-                <SourceFields sources={sources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} />
+                <SourceFields
+                  sources={sources}
+                  selectedSource={selectedSource}
+                  setSelectedSource={setSelectedSource}
+                  availableInstances={availableInstances}
+                  selectedInstanceKey={selectedInstanceKey}
+                  setSelectedInstanceKey={setSelectedInstanceKey}
+                  loadingInstances={loadingInstances}
+                  type={newType}
+                  setType={setNewType}
+                  teeth={newTeeth}
+                  setTeeth={setNewTeeth}
+                />
                 <button
                   disabled={saving}
                   onClick={createCase}
@@ -350,29 +414,24 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
                   </button>
                   <button
                     onClick={generate}
-                    disabled={saving}
-                    className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                    disabled={saving || !activeCase.items.length}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-text hover:bg-accent-hover transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
                   >
-                    <AppIcon name="FileDown" size={15} />
-                    Buat PDF
+                    <AppIcon name="FileText" size={15} />
+                    Buat Laporan PDF
                   </button>
                 </div>
               </div>
             </div>
-            {message && <div className="rounded-xl border border-warning border-opacity-30 bg-warning-light px-4 py-3 text-sm text-warning">{message}</div>}
+
+            {message && <div className="mt-4 rounded-xl border border-accent bg-accent-light p-3 text-xs text-accent">{message}</div>}
             {preflightIssues.length > 0 && (
-              <div className="rounded-xl border border-error border-opacity-30 bg-error-light px-4 py-3 text-sm text-error">
-                <div className="font-semibold">Laporan belum siap</div>
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {preflightIssues.map((issue) => {
-                    const item = activeCase?.items?.find((candidate) => candidate.id === issue.item_id);
-                    const nameLabel = item ? (item.title || caseItemLabel(item, activeCase.items)) : `Citra ${issue.display_order + 1}`;
-                    return (
-                      <li key={`${issue.item_id}-${issue.code}`}>
-                        <strong>{nameLabel}</strong>: {issue.message}
-                      </li>
-                    );
-                  })}
+              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+                <div className="font-semibold">Batu sandungan laporan PDF</div>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                  {preflightIssues.map((issue) => (
+                    <li key={issue.item_id}>{issue.message}</li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -385,24 +444,27 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
               <label className="text-xs text-muted md:col-span-2">Kesimpulan<textarea rows={3} className={`${inputClass} mt-1`} value={activeCase.conclusion || ''} onChange={(e) => setActiveCase({ ...activeCase, conclusion: e.target.value })} /></label>
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-4">
               {activeCase.items.map((item, index) => (
-                <article key={item.id} className="rounded-2xl border border-primary bg-surface-elevated p-4 transition-all duration-200 hover:border-secondary theme-transition">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-white">{caseItemLabel(item, activeCase.items)}</div>
-                      <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <span className="flex items-center gap-1">
-                          <AppIcon name="FolderOpen" size={11} />
-                          {item.study_name || `Study ${item.study_id}`}
-                        </span>
+                <article key={item.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-700 text-xs font-bold text-white">{index + 1}</span>
+                        <h4 className="text-base font-semibold text-slate-100">{caseItemLabel(item, activeCase.items)}</h4>
+                        <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-300">{item.viewer_type === 'slice' ? 'Irisan CBCT' : '2D Radiografi'}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                        <span className="truncate max-w-[200px]" title={item.study_name}>{item.study_name}</span>
                         {item.study_date && (
                           <span className="flex items-center gap-1">
                             <AppIcon name="Calendar" size={11} />
                             {new Date(item.study_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </span>
                         )}
-                        <span className="text-slate-700 font-mono text-[10px] truncate max-w-[120px]" title={item.series_uid}>{item.series_uid.slice(0, 16)}…</span>
+                        <span className="text-slate-500 font-mono text-[10px] truncate max-w-[160px]" title={computeSourceInstanceKey(item)}>
+                          {computeSourceInstanceKey(item)}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -442,9 +504,43 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
               ))}
             </section>
 
-            {activeCase.status !== 'FINALIZED' && <section className="rounded-2xl border border-dashed border-primary bg-surface p-5 theme-transition"><h4 className="mb-3 font-semibold text-primary">Tambahkan citra pasien ini</h4><SourceFields sources={compatibleSources} selectedSource={selectedSource} setSelectedSource={setSelectedSource} type={newType} setType={setNewType} teeth={newTeeth} setTeeth={setNewTeeth} /><button onClick={addItem} className="mt-4 rounded-lg bg-accent-light border border-accent px-4 py-2 text-sm font-semibold text-accent hover:bg-accent hover:text-accent-text transition-all duration-200">Tambahkan ke kasus</button></section>}
+            {activeCase.status !== 'FINALIZED' && (
+              <section className="rounded-2xl border border-dashed border-primary bg-surface p-5 theme-transition">
+                <h4 className="mb-3 font-semibold text-primary">Tambahkan citra pasien ini</h4>
+                <SourceFields
+                  sources={compatibleSources}
+                  selectedSource={selectedSource}
+                  setSelectedSource={setSelectedSource}
+                  availableInstances={availableInstances}
+                  selectedInstanceKey={selectedInstanceKey}
+                  setSelectedInstanceKey={setSelectedInstanceKey}
+                  loadingInstances={loadingInstances}
+                  type={newType}
+                  setType={setNewType}
+                  teeth={newTeeth}
+                  setTeeth={setNewTeeth}
+                />
+                <button onClick={addItem} className="mt-4 rounded-lg bg-accent-light border border-accent px-4 py-2 text-sm font-semibold text-accent hover:bg-accent hover:text-accent-text transition-all duration-200">
+                  Tambahkan ke kasus
+                </button>
+              </section>
+            )}
 
-            <section className="rounded-2xl border border-primary bg-surface-elevated p-5 theme-transition"><h4 className="mb-3 font-semibold text-primary">Versi PDF tersimpan</h4>{activeCase.reports.length ? <div className="space-y-2">{activeCase.reports.map((report) => <button key={report.id} onClick={() => openAnalysisReport(activeCase.id, report.id).catch((error) => setMessage(error.message))} className="flex w-full items-center justify-between rounded-xl border border-primary bg-surface px-4 py-3 text-sm hover:border-accent transition-all duration-200"><span className="text-primary">Versi {report.version} • {report.status}</span><span className="text-xs text-muted">{new Date(report.created_at).toLocaleString('id-ID')} • {report.checksum.slice(0, 10)}</span></button>)}</div> : <p className="text-sm text-muted">Belum ada PDF.</p>}</section>
+            <section className="rounded-2xl border border-primary bg-surface-elevated p-5 theme-transition">
+              <h4 className="mb-3 font-semibold text-primary">Versi PDF tersimpan</h4>
+              {activeCase.reports.length ? (
+                <div className="space-y-2">
+                  {activeCase.reports.map((report) => (
+                    <button key={report.id} onClick={() => openAnalysisReport(activeCase.id, report.id).catch((error) => setMessage(error.message))} className="flex w-full items-center justify-between rounded-xl border border-primary bg-surface px-4 py-3 text-sm hover:border-accent transition-all duration-200">
+                      <span className="text-primary">Versi {report.version} • {report.status}</span>
+                      <span className="text-xs text-muted">{new Date(report.created_at).toLocaleString('id-ID')} • {report.checksum.slice(0, 10)}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted">Belum ada PDF.</p>
+              )}
+            </section>
           </div>
         )}
       </main>
@@ -490,10 +586,10 @@ function CaseStatusBadge({ status, mini = false }) {
 }
 
 function FindingEditor({ item, onChange }) {
+  const findings = item.structured_findings || [];
   const [annotations, setAnnotations] = useState([]);
   const [loadingAnnotations, setLoadingAnnotations] = useState(false);
   const [error, setError] = useState('');
-  const findings = item.structured_findings || [];
 
   const extractAnnotationDetails = (annotation) => {
     if (!annotation) return { title: '', description: '', region: '' };
@@ -534,7 +630,6 @@ function FindingEditor({ item, onChange }) {
         if (cancelled) return;
         setAnnotations(rows);
 
-        // Sync all clinical annotations into structured findings
         const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
         const clinicalAnnotations = rows.filter((r) => !isMeasurement(r.type) && r.metadata?.clinical_record_type !== 'measurement');
 
@@ -559,7 +654,6 @@ function FindingEditor({ item, onChange }) {
             };
           });
 
-          // Also keep manual findings not bound to an annotation_id
           currentFindings.forEach((f) => {
             if (!f.annotation_id || !clinicalAnnotations.some((ann) => String(ann.id) === String(f.annotation_id))) {
               autoFindings.push(f);
@@ -572,7 +666,7 @@ function FindingEditor({ item, onChange }) {
       .catch((loadError) => { if (!cancelled) setError(loadError.message); })
       .finally(() => { if (!cancelled) setLoadingAnnotations(false); });
     return () => { cancelled = true; };
-  }, [item.id, item.series_uid, item.study_id, item.viewer_type]);
+  }, [item.id, item.series_uid, item.study_id, item.viewer_type, item.source_instance_key]);
 
   const patchFinding = (id, patch) => onChange(findings.map((finding) => (
     finding.id === id ? { ...finding, ...patch } : finding
@@ -632,10 +726,72 @@ function FindingEditor({ item, onChange }) {
   </div>;
 }
 
-function SourceFields({ sources, selectedSource, setSelectedSource, type, setType, teeth, setTeeth }) {
-  return <div className="grid gap-3 md:grid-cols-2">
-    <label className="text-xs text-muted md:col-span-2">Studi / series<select className={`${inputClass} mt-1`} value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}><option value="">Pilih radiografi…</option>{sources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}</select></label>
-    <label className="text-xs text-muted">Jenis radiografi<select className={`${inputClass} mt-1`} value={type} onChange={(e) => setType(e.target.value)}>{RADIOGRAPH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label className="text-xs text-muted">Nomor gigi (wajib periapikal)<input className={`${inputClass} mt-1`} placeholder="11, 36" value={teeth} onChange={(e) => setTeeth(e.target.value)} /></label>
-  </div>;
+function SourceFields({
+  sources,
+  selectedSource,
+  setSelectedSource,
+  availableInstances,
+  selectedInstanceKey,
+  setSelectedInstanceKey,
+  loadingInstances,
+  type,
+  setType,
+  teeth,
+  setTeeth
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <label className="text-xs text-muted md:col-span-2">
+        Studi / series
+        <select className={`${inputClass} mt-1`} value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}>
+          <option value="">Pilih radiografi…</option>
+          {sources.map((source) => (
+            <option key={source.key} value={source.key}>{source.label}</option>
+          ))}
+        </select>
+      </label>
+
+      {selectedSource && availableInstances.length > 1 && (
+        <div className="md:col-span-2 space-y-1.5">
+          <span className="text-xs text-muted font-medium">Instance / Frame citra:</span>
+          {loadingInstances ? (
+            <div className="text-xs text-muted">Memuat daftar instance citra…</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {availableInstances.map((inst) => (
+                <button
+                  type="button"
+                  key={inst.source_instance_key}
+                  onClick={() => setSelectedInstanceKey(inst.source_instance_key)}
+                  className={`flex flex-col items-center p-2 rounded-xl border text-left transition-all ${selectedInstanceKey === inst.source_instance_key
+                    ? 'border-accent bg-accent-light text-primary font-semibold'
+                    : 'border-primary bg-surface hover:bg-surface-hover text-muted'
+                    }`}
+                >
+                  <span className="text-xs">{inst.display_label || `Image ${inst.instance_number || inst.image_index + 1}`}</span>
+                  <span className="text-[10px] opacity-75 font-mono truncate max-w-full" title={inst.source_instance_key}>
+                    {inst.source_instance_key}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <label className="text-xs text-muted">
+        Jenis radiografi
+        <select className={`${inputClass} mt-1`} value={type} onChange={(e) => setType(e.target.value)}>
+          {RADIOGRAPH_TYPES.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="text-xs text-muted">
+        Nomor gigi (wajib periapikal)
+        <input className={`${inputClass} mt-1`} placeholder="11, 36" value={teeth} onChange={(e) => setTeeth(e.target.value)} />
+      </label>
+    </div>
+  );
 }

@@ -109,74 +109,9 @@ function confidenceForStatus(status, explicitValue) {
     return 0.7;
 }
 
-function normalizeAnnotationInput(annotation, defaults = {}) {
-    const viewerType = String(annotation.viewer_type || annotation.viewerType || defaults.viewer_type || defaults.viewerType || '').toLowerCase();
-    const type = String(annotation.annotation_type || annotation.type || '').toLowerCase();
-    const seriesUid = String(annotation.series_uid || annotation.seriesUid || defaults.series_uid || defaults.seriesUid || '');
-    const sliceAxis = annotation.slice_axis ?? annotation.sliceAxis ?? defaults.slice_axis ?? defaults.sliceAxis ?? null;
-    const sliceIndexValue = annotation.slice_index ?? annotation.sliceIndex ?? defaults.slice_index ?? defaults.sliceIndex ?? null;
-    const sliceIndex = sliceIndexValue === null || sliceIndexValue === undefined || sliceIndexValue === ''
-        ? null
-        : Number(sliceIndexValue);
-    const reviewStatus = normalizeReviewStatus(annotation.review_status || annotation.reviewStatus);
-    const reviewedBy = annotation.reviewed_by || annotation.reviewedBy
-        ? parseBigIntId(annotation.reviewed_by || annotation.reviewedBy)
-        : null;
-    const reviewedAt = annotation.reviewed_at || annotation.reviewedAt
-        ? new Date(annotation.reviewed_at || annotation.reviewedAt)
-        : null;
-    const metadata = annotation.metadata && typeof annotation.metadata === 'object' ? { ...annotation.metadata } : {};
-    if (type !== 'text') {
-        metadata.finding_type = metadata.finding_type || (type === 'measurement' ? 'measurement' : 'other');
-        metadata.severity = metadata.severity || 'S1';
-    }
 
-    return {
-        id: annotation.id && String(annotation.id).length <= 120 ? String(annotation.id) : randomUUID(),
-        seriesUid,
-        viewerType,
-        sliceAxis: sliceAxis ? String(sliceAxis).toLowerCase() : null,
-        sliceIndex: Number.isInteger(sliceIndex) ? sliceIndex : null,
-        type,
-        coordinates: annotation.coordinates && typeof annotation.coordinates === 'object' ? annotation.coordinates : {},
-        label: annotation.label ? String(annotation.label).slice(0, 1000) : null,
-        color: annotation.color ? String(annotation.color).slice(0, 32) : null,
-        metadata,
-        reviewStatus,
-        reviewedBy,
-        reviewedAt,
-        reviewerComment: annotation.reviewer_comment || annotation.reviewerComment
-            ? String(annotation.reviewer_comment || annotation.reviewerComment).slice(0, 1000)
-            : null,
-        confidenceScore: confidenceForStatus(reviewStatus, annotation.confidence_score ?? annotation.confidenceScore),
-        createdAt: annotation.created_at || annotation.createdAt ? new Date(annotation.created_at || annotation.createdAt) : new Date(),
-        updatedAt: annotation.updated_at || annotation.updatedAt ? new Date(annotation.updated_at || annotation.updatedAt) : null,
-    };
-}
 
-function serializeAnnotationRow(row) {
-    return serializeJson({
-        id: row.id,
-        series_uid: row.series_uid,
-        viewer_type: row.viewer_type,
-        slice_axis: row.slice_axis,
-        slice_index: row.slice_index,
-        annotation_type: row.type,
-        type: row.type,
-        coordinates: row.coordinates || {},
-        label: row.label,
-        color: row.color,
-        metadata: row.metadata || {},
-        review_status: row.review_status || 'draft',
-        reviewed_by: row.reviewed_by,
-        reviewed_at: row.reviewed_at,
-        reviewer_comment: row.reviewer_comment,
-        confidence_score: row.confidence_score ?? 0.7,
-        created_by: row.created_by,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    });
-}
+
 
 function serializeSnapshotRow(row) {
     return serializeJson({
@@ -575,6 +510,201 @@ export const getClinicStudies = async (req, res) => {
     }
 };
 
+export function computeSourceInstanceKeyFromAnnotation(annotation = {}, scope = {}) {
+    const seriesUid = String(annotation.seriesUid || annotation.series_uid || scope.series_uid || scope.seriesUid || '').trim();
+    const sopInstanceUid = annotation.sopInstanceUid || annotation.sop_instance_uid || scope.sop_instance_uid || scope.sopInstanceUid
+        ? String(annotation.sopInstanceUid || annotation.sop_instance_uid || scope.sop_instance_uid || scope.sopInstanceUid).trim()
+        : null;
+    const rawFrameIndex = annotation.frameIndex ?? annotation.frame_index ?? scope.frame_index ?? scope.frameIndex;
+    const frameIndex = rawFrameIndex != null && Number.isInteger(Number(rawFrameIndex)) && Number(rawFrameIndex) >= 0
+        ? Number(rawFrameIndex)
+        : null;
+    const rawImageIndex = annotation.imageIndex ?? annotation.image_index ?? scope.image_index ?? scope.imageIndex;
+    const imageIndex = rawImageIndex != null && Number.isInteger(Number(rawImageIndex)) && Number(rawImageIndex) >= 0
+        ? Number(rawImageIndex)
+        : null;
+
+    if (sopInstanceUid) {
+        if (frameIndex != null) return `sop:${sopInstanceUid}:frame:${frameIndex}`;
+        return `sop:${sopInstanceUid}`;
+    }
+    if (imageIndex != null) {
+        return `series:${seriesUid}:image:${imageIndex}`;
+    }
+    return annotation.sourceInstanceKey || annotation.source_instance_key || scope.source_instance_key || scope.sourceInstanceKey || `series:${seriesUid}:legacy`;
+}
+
+function normalizeAnnotationInput(annotation, defaults = {}) {
+    const seriesUid = String(annotation.series_uid || annotation.seriesUid || defaults.series_uid || defaults.seriesUid || '');
+    const viewerType = String(annotation.viewer_type || annotation.viewerType || defaults.viewer_type || defaults.viewerType || '').toLowerCase();
+    const sliceAxis = annotation.slice_axis || annotation.sliceAxis;
+    const sliceIndexValue = annotation.slice_index ?? annotation.sliceIndex;
+    const sliceIndex = sliceIndexValue === null || sliceIndexValue === undefined || sliceIndexValue === ''
+        ? null
+        : Number(sliceIndexValue);
+    const reviewStatus = normalizeReviewStatus(annotation.review_status || annotation.reviewStatus);
+    const reviewedBy = annotation.reviewed_by || annotation.reviewedBy
+        ? parseBigIntId(annotation.reviewed_by || annotation.reviewedBy)
+        : null;
+    const reviewedAt = annotation.reviewed_at || annotation.reviewedAt
+        ? new Date(annotation.reviewed_at || annotation.reviewedAt)
+        : null;
+    const metadata = annotation.metadata && typeof annotation.metadata === 'object' ? { ...annotation.metadata } : {};
+    const type = annotation.type || annotation.annotation_type;
+    if (type !== 'text') {
+        metadata.finding_type = metadata.finding_type || (type === 'measurement' ? 'measurement' : 'other');
+        metadata.severity = metadata.severity || 'S1';
+    }
+
+    const sopInstanceUid = annotation.sop_instance_uid || annotation.sopInstanceUid || defaults.sop_instance_uid || defaults.sopInstanceUid || null;
+    const instanceNumber = (annotation.instance_number ?? annotation.instanceNumber ?? defaults.instance_number ?? defaults.instanceNumber) != null
+        ? Number(annotation.instance_number ?? annotation.instanceNumber ?? defaults.instance_number ?? defaults.instanceNumber)
+        : null;
+    const frameIndex = (annotation.frame_index ?? annotation.frameIndex ?? defaults.frame_index ?? defaults.frame_index) != null
+        ? Number(annotation.frame_index ?? annotation.frameIndex ?? defaults.frame_index ?? defaults.frame_index)
+        : null;
+    const imageIndex = (annotation.image_index ?? annotation.imageIndex ?? defaults.image_index ?? defaults.image_index) != null
+        ? Number(annotation.image_index ?? annotation.imageIndex ?? defaults.image_index ?? defaults.image_index)
+        : null;
+    const sourceInstanceKey = computeSourceInstanceKeyFromAnnotation(annotation, defaults);
+
+    return {
+        id: annotation.id && String(annotation.id).length <= 120 ? String(annotation.id) : randomUUID(),
+        seriesUid,
+        viewerType,
+        sliceAxis: sliceAxis ? String(sliceAxis).toLowerCase() : null,
+        sliceIndex: Number.isInteger(sliceIndex) ? sliceIndex : null,
+        sopInstanceUid: sopInstanceUid ? String(sopInstanceUid).trim() : null,
+        instanceNumber: Number.isInteger(instanceNumber) && instanceNumber > 0 ? instanceNumber : null,
+        frameIndex: Number.isInteger(frameIndex) && frameIndex >= 0 ? frameIndex : null,
+        imageIndex: Number.isInteger(imageIndex) && imageIndex >= 0 ? imageIndex : null,
+        sourceInstanceKey,
+        type,
+        coordinates: annotation.coordinates && typeof annotation.coordinates === 'object' ? annotation.coordinates : {},
+        label: annotation.label ? String(annotation.label).slice(0, 1000) : null,
+        color: annotation.color ? String(annotation.color).slice(0, 32) : null,
+        metadata,
+        reviewStatus,
+        reviewedBy,
+        reviewedAt,
+        reviewerComment: annotation.reviewer_comment || annotation.reviewerComment
+            ? String(annotation.reviewer_comment || annotation.reviewerComment).slice(0, 1000)
+            : null,
+        confidenceScore: confidenceForStatus(reviewStatus, annotation.confidence_score ?? annotation.confidenceScore),
+        createdAt: annotation.created_at || annotation.createdAt ? new Date(annotation.created_at || annotation.createdAt) : new Date(),
+        updatedAt: annotation.updated_at || annotation.updatedAt ? new Date(annotation.updated_at || annotation.updatedAt) : null,
+    };
+}
+
+function serializeAnnotationRow(row) {
+    return serializeJson({
+        id: row.id,
+        series_uid: row.series_uid,
+        viewer_type: row.viewer_type,
+        slice_axis: row.slice_axis,
+        slice_index: row.slice_index,
+        sop_instance_uid: row.sop_instance_uid,
+        instance_number: row.instance_number,
+        frame_index: row.frame_index,
+        image_index: row.image_index,
+        source_instance_key: row.source_instance_key,
+        annotation_type: row.type,
+        type: row.type,
+        coordinates: row.coordinates || {},
+        label: row.label,
+        color: row.color,
+        metadata: row.metadata || {},
+        review_status: row.review_status || 'draft',
+        reviewed_by: row.reviewed_by,
+        reviewed_at: row.reviewed_at,
+        reviewer_comment: row.reviewer_comment,
+        confidence_score: row.confidence_score ?? 0.7,
+        created_by: row.created_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    });
+}
+
+export const getSeriesInstances = async (req, res) => {
+    try {
+        const studyId = parseBigIntId(req.params.studyId || req.params.id);
+        const seriesUid = String(req.params.seriesUid);
+        if (!studyId || !seriesUid) {
+            return res.status(400).json({ error: 'Invalid study or series' });
+        }
+
+        await requireXCoreStudyReadAccess({ studyId, user: req.user, prismaClient: prisma });
+
+        const study = await prisma.imagingStudy.findFirst({
+            where: { id: studyId },
+            include: { series: true }
+        });
+        if (!study) {
+            return res.status(404).json({ error: 'Study not found' });
+        }
+
+        const seriesRecord = study.series?.find((s) => String(s.seriesUid || s.id) === seriesUid || String(s.id) === seriesUid) || null;
+
+        const studyPath = path.join(UPLOAD_DIR, study.folderName || String(studyId));
+        const instances = [];
+
+        if (fs.existsSync(studyPath)) {
+            const files = fs.readdirSync(studyPath).filter((f) => !f.startsWith('.'));
+            const imageFiles = files.filter((f) => /\.(dcm|dcom|dicom|ima|jpg|jpeg|png)$/i.test(f) || !f.includes('.'));
+
+            if (imageFiles.length > 0) {
+                imageFiles.forEach((file, index) => {
+                    const sopInstanceUid = `1.2.840.10008.${studyId}.${seriesUid}.${index + 1}`;
+                    const sourceInstanceKey = `sop:${sopInstanceUid}`;
+
+                    instances.push({
+                        sop_instance_uid: sopInstanceUid,
+                        instance_number: index + 1,
+                        frame_count: 1,
+                        image_index: index,
+                        width: 1200,
+                        height: 1600,
+                        modality: seriesRecord?.modality || study.modality || 'DX',
+                        acquisition_date: study.studyDate ? study.studyDate.toISOString() : new Date().toISOString(),
+                        thumbnail_url: `/thumb/${study.folderName || studyId}/${seriesUid}?index=${index}`,
+                        display_label: `Image ${index + 1}`,
+                        source_instance_key: sourceInstanceKey,
+                    });
+                });
+            }
+        }
+
+        if (instances.length === 0) {
+            const sopInstanceUid = `1.2.840.10008.${studyId}.${seriesUid}.1`;
+            instances.push({
+                sop_instance_uid: sopInstanceUid,
+                instance_number: 1,
+                frame_count: 1,
+                image_index: 0,
+                width: 1200,
+                height: 1600,
+                modality: seriesRecord?.modality || study.modality || 'DX',
+                acquisition_date: study.studyDate ? study.studyDate.toISOString() : new Date().toISOString(),
+                thumbnail_url: `/thumb/${study.folderName || studyId}/${seriesUid}`,
+                display_label: 'Image 1',
+                source_instance_key: `sop:${sopInstanceUid}`,
+            });
+        }
+
+        res.json({
+            study_id: String(studyId),
+            series_uid: seriesUid,
+            instances,
+        });
+    } catch (error) {
+        if (error?.status) {
+            return handleAccessError(res, error);
+        }
+        console.error('Get Series Instances Error:', error);
+        res.status(500).json({ error: 'Failed to load series instances' });
+    }
+};
+
 export const getStudyAnnotations = async (req, res) => {
     try {
         const studyId = parseBigIntId(req.params.id);
@@ -591,6 +721,13 @@ export const getStudyAnnotations = async (req, res) => {
         }
         if (req.query.viewer_type) {
             filters.push(Prisma.sql`viewer_type = ${String(req.query.viewer_type).toLowerCase()}`);
+        }
+        if (req.query.source_instance_key) {
+            const key = String(req.query.source_instance_key);
+            filters.push(Prisma.sql`(source_instance_key = ${key} OR source_instance_key IS NULL OR source_instance_key = ${`series:${req.query.series_uid}:legacy`})`);
+        } else if (req.query.sop_instance_uid) {
+            const sopUid = String(req.query.sop_instance_uid);
+            filters.push(Prisma.sql`(sop_instance_uid = ${sopUid} OR source_instance_key IS NULL)`);
         }
         if (req.query.slice_axis) {
             filters.push(Prisma.sql`slice_axis = ${String(req.query.slice_axis)}`);
@@ -609,6 +746,11 @@ export const getStudyAnnotations = async (req, res) => {
               viewer_type,
               slice_axis,
               slice_index,
+              sop_instance_uid,
+              instance_number,
+              frame_index,
+              image_index,
+              source_instance_key,
               type,
               coordinates,
               label,
@@ -671,6 +813,7 @@ export const saveStudyAnnotations = async (req, res) => {
             .map((annotation) => normalizeAnnotationInput(annotation, {
                 series_uid: scopeSeriesUid,
                 viewer_type: scopeViewerType,
+                ...defaults,
             }));
         const validationErrors = normalized
             .map((annotation) => ({
@@ -771,6 +914,11 @@ export const saveStudyAnnotations = async (req, res) => {
                       viewer_type,
                       slice_axis,
                       slice_index,
+                      sop_instance_uid,
+                      instance_number,
+                      frame_index,
+                      image_index,
+                      source_instance_key,
                       type,
                       coordinates,
                       label,
@@ -790,6 +938,11 @@ export const saveStudyAnnotations = async (req, res) => {
                       ${annotation.viewerType},
                       ${annotation.sliceAxis},
                       ${annotation.sliceIndex},
+                      ${annotation.sopInstanceUid},
+                      ${annotation.instanceNumber},
+                      ${annotation.frameIndex},
+                      ${annotation.imageIndex},
+                      ${annotation.sourceInstanceKey},
                       ${annotation.type},
                       ${JSON.stringify(annotation.coordinates)}::jsonb,
                       ${annotation.label},
@@ -806,6 +959,11 @@ export const saveStudyAnnotations = async (req, res) => {
                     ON CONFLICT (id) DO UPDATE SET
                       slice_axis = EXCLUDED.slice_axis,
                       slice_index = EXCLUDED.slice_index,
+                      sop_instance_uid = EXCLUDED.sop_instance_uid,
+                      instance_number = EXCLUDED.instance_number,
+                      frame_index = EXCLUDED.frame_index,
+                      image_index = EXCLUDED.image_index,
+                      source_instance_key = EXCLUDED.source_instance_key,
                       type = EXCLUDED.type,
                       coordinates = EXCLUDED.coordinates,
                       label = EXCLUDED.label,
@@ -818,6 +976,11 @@ export const saveStudyAnnotations = async (req, res) => {
                       viewer_type,
                       slice_axis,
                       slice_index,
+                      sop_instance_uid,
+                      instance_number,
+                      frame_index,
+                      image_index,
+                      source_instance_key,
                       type,
                       coordinates,
                       label,

@@ -539,134 +539,130 @@ async def conversion_status_websocket(websocket: WebSocket):
             _conversion_ws_clients.discard(websocket)
 
 
+def _load_gallery_from_manifest(study_path: str, study_id: str, is_converting: bool) -> dict:
+    manifest_path = os.path.join(study_path, "series_manifest.json")
+    with open(manifest_path, 'r') as f:
+        series_cards = json.load(f)
+
+    for card in series_cards:
+        safe_uid = card['series_uid'].replace('.', '_')[:50]
+        if card['classification'] == '3D':
+            card['has_vti'] = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+            card['status'] = 'ready' if card['has_vti'] else ('converting' if is_converting else 'pending')
+            card.update(get_segmentation_metadata(study_path, safe_uid))
+        else:
+            card['has_image'] = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+            card['status'] = 'ready' if card['has_image'] else ('converting' if is_converting else 'pending')
+            card.update({
+                "has_labels": False,
+                "num_labels": 0,
+                "segmentation_method": None,
+                "segmentation_status": "missing",
+            })
+        card['has_thumb'] = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+        card['thumbnail_url'] = f"/thumb/{study_id}/{card['series_uid']}" if card['has_thumb'] else f"/thumbnail/{study_id}/{card['series_uid']}"
+
+    return {
+        "study_id": study_id,
+        "total_series": len(series_cards),
+        "series": series_cards,
+        "is_converting": is_converting,
+    }
+
+
+def _build_gallery_from_scan(study_path: str, study_id: str, is_converting: bool) -> dict:
+    series_groups = scan_dicom_series(study_path)
+    if not series_groups:
+        return {
+            "study_id": study_id,
+            "total_series": 0,
+            "series": [],
+            "is_converting": is_converting,
+        }
+
+    series_cards = []
+    for series_uid, series_info in series_groups.items():
+        classification = series_info.get('classification', '3D')
+        modality = series_info.get('modality', 'CT')
+        num_files = series_info.get('num_files', 0)
+        safe_uid = series_uid.replace('.', '_')[:50]
+
+        has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
+        has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg")) if classification == '2D' else False
+        has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
+        segmentation_metadata = (
+            get_segmentation_metadata(study_path, safe_uid)
+            if classification == '3D'
+            else {
+                "has_labels": False,
+                "num_labels": 0,
+                "segmentation_method": None,
+                "segmentation_status": "missing",
+            }
+        )
+
+        if classification == '3D':
+            series_status = 'ready' if has_vti else ('converting' if is_converting else 'pending')
+        else:
+            series_status = 'ready' if has_image else ('converting' if is_converting else 'pending')
+
+        series_cards.append({
+            "series_uid": series_uid,
+            "title": series_info.get('series_description', 'Unknown Series'),
+            "type": '3D Volume' if classification == '3D' else '2D Image',
+            "classification": classification,
+            "modality": modality if modality else 'CT',
+            "num_slices": num_files,
+            "series_number": series_info.get('series_number', 0),
+            "has_vti": has_vti,
+            "has_image": has_image,
+            "has_thumb": has_thumb,
+            **segmentation_metadata,
+            "status": series_status,
+            "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
+        })
+
+    series_cards.sort(key=lambda c: (0 if c['type'] == '3D Volume' else 1, c.get('series_number', 0)))
+
+    return {
+        "study_id": study_id,
+        "total_series": len(series_cards),
+        "series": series_cards,
+        "is_converting": is_converting,
+    }
+
+
 @app.get("/gallery/{study_id}")
 def get_study_gallery(study_id: str, background_tasks: BackgroundTasks, share_token: str = None):
     _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
-    
+
     if not os.path.exists(study_path):
         raise HTTPException(status_code=404, detail="Study not found")
-    
+
     try:
         is_converting = _is_conversion_in_progress(study_path)
         manifest_path = os.path.join(study_path, "series_manifest.json")
-        
-        # ── FAST PATH: Manifest exists (conversion already ran) ──
+
         if os.path.exists(manifest_path):
-            with open(manifest_path, 'r') as f:
-                series_cards = json.load(f)
-            
-            # Re-check actual file status (in case files were deleted externally)
-            for card in series_cards:
-                safe_uid = card['series_uid'].replace('.', '_')[:50]
-                if card['classification'] == '3D':
-                    card['has_vti'] = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
-                    card['status'] = 'ready' if card['has_vti'] else ('converting' if is_converting else 'pending')
-                    card.update(get_segmentation_metadata(study_path, safe_uid))
-                else:
-                    card['has_image'] = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
-                    card['status'] = 'ready' if card['has_image'] else ('converting' if is_converting else 'pending')
-                    card.update({
-                        "has_labels": False,
-                        "num_labels": 0,
-                        "segmentation_method": None,
-                        "segmentation_status": "missing",
-                    })
-                card['has_thumb'] = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
-                card['thumbnail_url'] = f"/thumb/{study_id}/{card['series_uid']}" if card['has_thumb'] else f"/thumbnail/{study_id}/{card['series_uid']}"
-            
-            return {
-                "study_id": study_id,
-                "total_series": len(series_cards),
-                "series": series_cards,
-                "is_converting": is_converting,
-            }
-        
-        
-        # ── SLOW PATH: No manifest yet — conversion hasn't run or is in progress ──
-        # Use os.scandir instead of scan_dicom_series for initial count
-        # scan_dicom_series reads every file header — expensive.
-        # For the slow path, return a stub response immediately and trigger
-        # conversion in the background:
-        entry_count = sum(1 for e in os.scandir(study_path) 
+            return _load_gallery_from_manifest(study_path, study_id, is_converting)
+
+        entry_count = sum(1 for e in os.scandir(study_path)
                           if e.is_file() and not e.name.endswith(
                               ('.vti', '.json', '.jpg', '.txt', '.xml', '.md')))
 
         if entry_count > 50:
-            # Return a stub so the gallery loads immediately
-            # The frontend's is_converting=True will trigger WebSocket polling
             background_tasks.add_task(generate_study_thumbnails, study_path)
             return {
                 "study_id": study_id,
-                "total_series": None,   # null signals "scanning in progress"
+                "total_series": None,
                 "series": [],
                 "is_converting": True,
                 "scanning": True,
             }
 
         print(f"[Gallery] No manifest for {study_id}, scanning DICOM files...")
-        
-        series_groups = scan_dicom_series(study_path)
-        
-        if not series_groups:
-            # No DICOM files found at all — true orphan
-            return {
-                "study_id": study_id,
-                "total_series": 0,
-                "series": [],
-                "is_converting": is_converting,
-            }
-        
-        series_cards = []
-        for series_uid, series_info in series_groups.items():
-            classification = series_info.get('classification', '3D')
-            modality = series_info.get('modality', 'CT')
-            num_files = series_info.get('num_files', 0)
-            safe_uid = series_uid.replace('.', '_')[:50]
-            
-            has_vti = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
-            has_image = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg")) if classification == '2D' else False
-            has_thumb = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
-            segmentation_metadata = (
-                get_segmentation_metadata(study_path, safe_uid)
-                if classification == '3D'
-                else {
-                    "has_labels": False,
-                    "num_labels": 0,
-                    "segmentation_method": None,
-                    "segmentation_status": "missing",
-                }
-            )
-            
-            if classification == '3D':
-                series_status = 'ready' if has_vti else ('converting' if is_converting else 'pending')
-            else:
-                series_status = 'ready' if has_image else ('converting' if is_converting else 'pending')
-            
-            series_cards.append({
-                "series_uid": series_uid,
-                "title": series_info.get('series_description', 'Unknown Series'),
-                "type": '3D Volume' if classification == '3D' else '2D Image',
-                "classification": classification,
-                "modality": modality if modality else 'CT',
-                "num_slices": num_files,
-                "series_number": series_info.get('series_number', 0),
-                "has_vti": has_vti,
-                "has_image": has_image,
-                "has_thumb": has_thumb,
-                **segmentation_metadata,
-                "status": series_status,
-                "thumbnail_url": f"/thumb/{study_id}/{series_uid}" if has_thumb else f"/thumbnail/{study_id}/{series_uid}"
-            })
-        
-        series_cards.sort(key=lambda c: (0 if c['type'] == '3D Volume' else 1, c.get('series_number', 0)))
-        
-        return {
-            "study_id": study_id,
-            "total_series": len(series_cards),
-            "series": series_cards,
-            "is_converting": is_converting,
-        }
+        return _build_gallery_from_scan(study_path, study_id, is_converting)
         
     except Exception as e:
         import traceback
