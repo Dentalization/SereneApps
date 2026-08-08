@@ -1572,6 +1572,7 @@ model XCoreAnalysisCaseItem {
   frameIndex         Int?                          @map("frame_index")
   imageIndex         Int?                          @map("image_index")
   sourceInstanceKey  String                        @default("series:legacy") @map("source_instance_key")
+  sourceKind         String?                       @map("source_kind") @db.VarChar(16)
   viewerType         String                        @default("2d") @map("viewer_type") @db.VarChar(16)
   radiographType     String                        @map("radiograph_type") @db.VarChar(24)
   toothNumbers       String[]                      @default([]) @map("tooth_numbers") @db.VarChar(3)

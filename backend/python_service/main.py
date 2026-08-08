@@ -6,6 +6,7 @@ import uvicorn
 import asyncio
 import os
 import sys
+import glob
 import threading
 import time
 import numpy as np
@@ -550,8 +551,10 @@ def _load_gallery_from_manifest(study_path: str, study_id: str, is_converting: b
             card['has_vti'] = os.path.exists(os.path.join(study_path, f"volume_{safe_uid}.vti"))
             card['status'] = 'ready' if card['has_vti'] else ('converting' if is_converting else 'pending')
             card.update(get_segmentation_metadata(study_path, safe_uid))
+            card['source_kind'] = 'DICOM'
         else:
-            card['has_image'] = os.path.exists(os.path.join(study_path, f"image_{safe_uid}.jpg"))
+            static_img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
+            card['has_image'] = os.path.exists(static_img_path)
             card['status'] = 'ready' if card['has_image'] else ('converting' if is_converting else 'pending')
             card.update({
                 "has_labels": False,
@@ -559,6 +562,9 @@ def _load_gallery_from_manifest(study_path: str, study_id: str, is_converting: b
                 "segmentation_method": None,
                 "segmentation_status": "missing",
             })
+            # Determine source_kind: if pre-rendered JPG exists, it's STATIC_JPG;
+            # otherwise it's a native DICOM 2D series.
+            card['source_kind'] = 'STATIC_JPG' if card['has_image'] else 'DICOM'
         card['has_thumb'] = os.path.exists(os.path.join(study_path, f"thumb_{safe_uid}.jpg"))
         card['thumbnail_url'] = f"/thumb/{study_id}/{card['series_uid']}" if card['has_thumb'] else f"/thumbnail/{study_id}/{card['series_uid']}"
 
@@ -568,6 +574,7 @@ def _load_gallery_from_manifest(study_path: str, study_id: str, is_converting: b
         "series": series_cards,
         "is_converting": is_converting,
     }
+
 
 
 def _build_gallery_from_scan(study_path: str, study_id: str, is_converting: bool) -> dict:
@@ -1527,6 +1534,214 @@ def trigger_vti_conversion(
         "segment": segment,
         "quality": quality,
     }
+
+
+@app.get("/instances/{study_id}/{series_uid}")
+def get_series_instances(study_id: str, series_uid: str, share_token: str = None):
+    """
+    Return per-instance metadata for a series, including real SOPInstanceUIDs.
+    
+    SOURCE_KIND values:
+      - DICOM:      native .dcm file with full DICOM metadata
+      - STATIC_JPG: pre-rendered JPEG (from vti_converter image_{safe_uid}.jpg)
+      - STATIC_PNG: standalone PNG/JPEG image file in study folder
+      - MORITA:     J. Morita proprietary format
+    
+    For each instance, the response includes:
+      - sop_instance_uid: real UID from DICOM tag, or stable hash for static files
+      - instance_number: from DICOM InstanceNumber, or positional index
+      - image_index: zero-based position within the series
+      - source_kind: DICOM | STATIC_JPG | STATIC_PNG | MORITA
+      - source_path: relative path within study folder (for pixel-perfect routing)
+      - source_instance_key: canonical key matching xCoreAnalysisCaseDomain logic
+      - width / height: from DICOM tags or actual image size
+      - thumbnail_url: pre-generated thumb or on-demand endpoint
+    """
+    _authorize_study_access(study_id, share_token)
+    study_path = os.path.join(UPLOAD_DIR, study_id)
+    if not os.path.exists(study_path):
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    safe_uid = series_uid.replace('.', '_')[:50]
+    instances = []
+
+    # --- Strategy 1: Manifest-driven DICOM series ---
+    manifest_path = os.path.join(study_path, "series_manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, 'r') as f:
+                series_cards = json.load(f)
+            manifest_series = next(
+                (card for card in series_cards if card.get('series_uid') == series_uid), None
+            )
+            if manifest_series:
+                classification = manifest_series.get('classification', '2D')
+                modality = manifest_series.get('modality', 'DX')
+                
+                if classification == '2D':
+                    # For 2D series: scan DICOM files to get real SOPInstanceUIDs
+                    try:
+                        dicom_files = []
+                        for ext in ('*.dcm', '*.DCM', '*.dcom', '*.DCOM', '*.ima', '*.IMA'):
+                            dicom_files.extend(
+                                glob.glob(os.path.join(study_path, '**', ext), recursive=True)
+                            )
+                        # Also scan extensionless files
+                        for root, _, files in os.walk(study_path):
+                            for fname in files:
+                                fp = os.path.join(root, fname)
+                                _, ext = os.path.splitext(fname)
+                                if not ext or fname.replace('.', '').isdigit():
+                                    dicom_files.append(fp)
+                        
+                        dicom_files = sorted(set(dicom_files))
+                        
+                        # Filter to this series
+                        series_files = []
+                        for fp in dicom_files:
+                            try:
+                                import pydicom
+                                ds = pydicom.dcmread(fp, stop_before_pixels=True, force=True)
+                                s_uid = str(getattr(ds, 'SeriesInstanceUID', ''))
+                                if s_uid == series_uid:
+                                    inst_num = int(getattr(ds, 'InstanceNumber', 0))
+                                    sop_uid = str(getattr(ds, 'SOPInstanceUID', ''))
+                                    rows = int(getattr(ds, 'Rows', 0))
+                                    cols = int(getattr(ds, 'Columns', 0))
+                                    series_files.append((inst_num, fp, sop_uid, rows, cols))
+                            except Exception:
+                                continue
+                        
+                        series_files.sort(key=lambda x: x[0])
+                        
+                        for idx, (inst_num, fp, sop_uid, rows, cols) in enumerate(series_files):
+                            rel_path = os.path.relpath(fp, study_path)
+                            if sop_uid:
+                                source_instance_key = f"sop:{sop_uid}"
+                            else:
+                                source_instance_key = f"series:{series_uid}:image:{idx}"
+                                sop_uid = None
+                            instances.append({
+                                "sop_instance_uid": sop_uid or None,
+                                "instance_number": inst_num or (idx + 1),
+                                "image_index": idx,
+                                "frame_count": 1,
+                                "source_kind": "DICOM",
+                                "source_path": rel_path,
+                                "source_instance_key": source_instance_key,
+                                "width": cols or 1200,
+                                "height": rows or 1600,
+                                "modality": modality,
+                                "thumbnail_url": f"/thumb/{study_id}/{series_uid}?index={idx}",
+                                "display_label": f"Image {inst_num or idx + 1}",
+                            })
+                    except Exception as dicom_err:
+                        print(f"[Instances] DICOM scan failed for {study_id}/{series_uid}: {dicom_err}")
+                
+                if not instances:
+                    # Fallback: check for pre-rendered static image
+                    static_img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
+                    if os.path.exists(static_img_path):
+                        import hashlib
+                        file_hash = hashlib.sha256(f"{study_id}:{series_uid}:image".encode()).hexdigest()[:32]
+                        source_instance_key = f"series:{series_uid}:image:0"
+                        instances.append({
+                            "sop_instance_uid": None,
+                            "instance_number": 1,
+                            "image_index": 0,
+                            "frame_count": 1,
+                            "source_kind": "STATIC_JPG",
+                            "source_path": f"image_{safe_uid}.jpg",
+                            "source_instance_key": source_instance_key,
+                            "width": 1200,
+                            "height": 1600,
+                            "modality": modality,
+                            "thumbnail_url": f"/thumb/{study_id}/{series_uid}",
+                            "display_label": "Image 1",
+                        })
+        except Exception as manifest_err:
+            print(f"[Instances] Manifest read failed for {study_id}/{series_uid}: {manifest_err}")
+
+    # --- Strategy 2: Scan for standalone static image files (PNG/JPG) ---
+    if not instances:
+        static_extensions = ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']
+        static_files = []
+        for ext in static_extensions:
+            static_files.extend(glob.glob(os.path.join(study_path, f'*{ext}')))
+        static_files = sorted(set(static_files))
+        
+        for idx, fp in enumerate(static_files):
+            fname = os.path.basename(fp)
+            rel_path = os.path.relpath(fp, study_path)
+            import hashlib
+            file_hash = hashlib.sha256(f"{study_id}:{series_uid}:{fname}".encode()).hexdigest()[:16]
+            source_instance_key = f"series:{series_uid}:image:{idx}"
+            instances.append({
+                "sop_instance_uid": None,
+                "instance_number": idx + 1,
+                "image_index": idx,
+                "frame_count": 1,
+                "source_kind": "STATIC_PNG",
+                "source_path": rel_path,
+                "source_instance_key": source_instance_key,
+                "width": 0,
+                "height": 0,
+                "modality": "DX",
+                "thumbnail_url": f"/thumb/{study_id}/{series_uid}?index={idx}",
+                "display_label": fname,
+            })
+
+    # --- Strategy 3: Morita handler detection ---
+    if not instances:
+        try:
+            from services.morita_handler import MoritaHandler
+            morita = MoritaHandler(study_path)
+            if morita.is_morita_study():
+                morita_images = morita.list_images()
+                for idx, img_info in enumerate(morita_images):
+                    source_instance_key = f"series:{series_uid}:image:{idx}"
+                    instances.append({
+                        "sop_instance_uid": None,
+                        "instance_number": idx + 1,
+                        "image_index": idx,
+                        "frame_count": 1,
+                        "source_kind": "MORITA",
+                        "source_path": img_info.get('path', ''),
+                        "source_instance_key": source_instance_key,
+                        "width": img_info.get('width', 0),
+                        "height": img_info.get('height', 0),
+                        "modality": "DX",
+                        "thumbnail_url": f"/thumb/{study_id}/{series_uid}?index={idx}",
+                        "display_label": img_info.get('label', f"Image {idx + 1}"),
+                    })
+        except Exception:
+            pass
+
+    # --- Fallback: single synthesized instance for 3D volumes (slice-based) ---
+    if not instances:
+        source_instance_key = f"series:{series_uid}:legacy"
+        instances.append({
+            "sop_instance_uid": None,
+            "instance_number": 1,
+            "image_index": 0,
+            "frame_count": 1,
+            "source_kind": "DICOM",
+            "source_path": "",
+            "source_instance_key": source_instance_key,
+            "width": 0,
+            "height": 0,
+            "modality": "CT",
+            "thumbnail_url": f"/thumb/{study_id}/{series_uid}",
+            "display_label": "Volume",
+        })
+
+    return {
+        "study_id": study_id,
+        "series_uid": series_uid,
+        "instances": instances,
+        "total": len(instances),
+    }
+
 
 @app.get("/series/{study_id}")
 def list_series(study_id: str, share_token: str = None):

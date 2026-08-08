@@ -104,6 +104,19 @@ test('render metadata keeps CLEAN and ANNOTATED distinct and validates marker co
     () => normalizeRenderMetadata({ ...base, render_type: 'CLEAN' }, { item: items[0], renderType: 'ANNOTATED' }),
     (error) => error.code === 'render_scope_mismatch',
   );
+  // Phase 6: instance-level mismatch check
+  assert.throws(
+    () => normalizeRenderMetadata(
+      { ...base, source_instance_key: 'series:pa-11:image:1' },
+      { item: { ...items[0], source_instance_key: 'series:pa-11:image:0' }, renderType: 'ANNOTATED' }
+    ),
+    (error) => error.code === 'render_scope_mismatch',
+  );
+  const normalizedWithKind = normalizeRenderMetadata(
+    { ...base, source_kind: 'STATIC_JPG' },
+    { item: { ...items[0], source_kind: 'STATIC_JPG' }, renderType: 'ANNOTATED' }
+  );
+  assert.equal(normalizedWithKind.source_kind, 'STATIC_JPG');
 });
 
 test('fingerprint changes after annotation or finding changes and marks render stale', () => {

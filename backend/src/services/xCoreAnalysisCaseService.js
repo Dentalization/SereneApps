@@ -62,6 +62,7 @@ function normalizeItems(items = []) {
       frameIndex: validation.frameIndex,
       imageIndex: validation.imageIndex,
       sourceInstanceKey: validation.sourceInstanceKey,
+      sourceKind: item.source_kind || item.sourceKind || null,
       viewerType: String(item.viewer_type || item.viewerType || '2d').toLowerCase(),
       radiographType: validation.radiographType,
       toothNumbers: validation.toothNumbers,
@@ -177,6 +178,7 @@ async function loadCaseRows(caseId, client = prisma) {
   const rawItems = await client.$queryRaw(Prisma.sql`
     SELECT i.id, i.case_id, i.study_id, i.series_id, i.series_uid,
            i.sop_instance_uid, i.instance_number, i.frame_index, i.image_index, i.source_instance_key,
+           i.source_kind,
            i.viewer_type, i.radiograph_type, i.tooth_numbers, i.display_order,
            i.title, i.findings, i.structured_findings, i.render_storage_path, i.render_checksum,
            i.created_at, i.updated_at,
@@ -261,17 +263,18 @@ async function verifyFindingLinks(items, client = prisma) {
 async function insertItem(tx, caseId, item) {
   const affected = await tx.$executeRaw(Prisma.sql`
     INSERT INTO xcore_analysis_case_items
-      (id, case_id, study_id, series_id, series_uid, sop_instance_uid, instance_number, frame_index, image_index, source_instance_key,
+      (id, case_id, study_id, series_id, series_uid, sop_instance_uid, instance_number, frame_index, image_index, source_instance_key, source_kind,
        viewer_type, radiograph_type, tooth_numbers, display_order, title, findings, structured_findings)
     VALUES
       (${item.id}::uuid, ${caseId}::uuid, ${item.studyId}, ${item.seriesId}, ${item.seriesUid},
-       ${item.sopInstanceUid}, ${item.instanceNumber}, ${item.frameIndex}, ${item.imageIndex}, ${item.sourceInstanceKey},
+       ${item.sopInstanceUid}, ${item.instanceNumber}, ${item.frameIndex}, ${item.imageIndex}, ${item.sourceInstanceKey}, ${item.sourceKind || null},
        ${item.viewerType}, ${item.radiographType}, ${item.toothNumbers}::varchar(3)[], ${item.displayOrder}, ${item.title},
        ${item.findings}, ${JSON.stringify(item.structuredFindings)}::jsonb)
     ON CONFLICT (id) DO UPDATE SET
       study_id=EXCLUDED.study_id, series_id=EXCLUDED.series_id, series_uid=EXCLUDED.series_uid,
       sop_instance_uid=EXCLUDED.sop_instance_uid, instance_number=EXCLUDED.instance_number,
       frame_index=EXCLUDED.frame_index, image_index=EXCLUDED.image_index, source_instance_key=EXCLUDED.source_instance_key,
+      source_kind=EXCLUDED.source_kind,
       viewer_type=EXCLUDED.viewer_type, radiograph_type=EXCLUDED.radiograph_type,
       tooth_numbers=EXCLUDED.tooth_numbers, display_order=EXCLUDED.display_order,
       title=EXCLUDED.title, findings=EXCLUDED.findings, structured_findings=EXCLUDED.structured_findings

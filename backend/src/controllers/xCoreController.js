@@ -643,51 +643,97 @@ export const getSeriesInstances = async (req, res) => {
             return res.status(404).json({ error: 'Study not found' });
         }
 
-        const seriesRecord = study.series?.find((s) => String(s.seriesUid || s.id) === seriesUid || String(s.id) === seriesUid) || null;
+        const seriesRecord = study.series?.find(
+            (s) => String(s.seriesUid || s.id) === seriesUid || String(s.id) === seriesUid
+        ) || null;
 
-        const studyPath = path.join(UPLOAD_DIR, study.folderName || String(studyId));
-        const instances = [];
+        // --- Try Python service for real instance metadata ---
+        const studyKey = study.folderName || String(studyId);
+        let instances = [];
+        let pythonServiceSucceeded = false;
 
-        if (fs.existsSync(studyPath)) {
-            const files = fs.readdirSync(studyPath).filter((f) => !f.startsWith('.'));
-            const imageFiles = files.filter((f) => /\.(dcm|dcom|dicom|ima|jpg|jpeg|png)$/i.test(f) || !f.includes('.'));
-
-            if (imageFiles.length > 0) {
-                imageFiles.forEach((file, index) => {
-                    const sopInstanceUid = `1.2.840.10008.${studyId}.${seriesUid}.${index + 1}`;
-                    const sourceInstanceKey = `sop:${sopInstanceUid}`;
-
-                    instances.push({
-                        sop_instance_uid: sopInstanceUid,
-                        instance_number: index + 1,
-                        frame_count: 1,
-                        image_index: index,
-                        width: 1200,
-                        height: 1600,
-                        modality: seriesRecord?.modality || study.modality || 'DX',
+        try {
+            const pyUrl = `${PY_SERVICE_BASE_URL}/instances/${encodeURIComponent(studyKey)}/${encodeURIComponent(seriesUid)}`;
+            const pyResp = await fetch(pyUrl, { signal: AbortSignal.timeout(8000) });
+            if (pyResp.ok) {
+                const pyData = await pyResp.json();
+                if (Array.isArray(pyData.instances) && pyData.instances.length > 0) {
+                    instances = pyData.instances.map((inst, idx) => ({
+                        sop_instance_uid: inst.sop_instance_uid || null,
+                        instance_number: inst.instance_number || (idx + 1),
+                        frame_count: inst.frame_count || 1,
+                        image_index: inst.image_index ?? idx,
+                        source_kind: inst.source_kind || 'DICOM',
+                        source_path: inst.source_path || null,
+                        width: inst.width || 0,
+                        height: inst.height || 0,
+                        modality: inst.modality || seriesRecord?.modality || study.modality || 'DX',
                         acquisition_date: study.studyDate ? study.studyDate.toISOString() : new Date().toISOString(),
-                        thumbnail_url: `/thumb/${study.folderName || studyId}/${seriesUid}?index=${index}`,
-                        display_label: `Image ${index + 1}`,
-                        source_instance_key: sourceInstanceKey,
+                        thumbnail_url: inst.thumbnail_url || `/thumb/${studyKey}/${seriesUid}?index=${idx}`,
+                        display_label: inst.display_label || `Image ${inst.instance_number || idx + 1}`,
+                        source_instance_key: inst.source_instance_key || (
+                            inst.sop_instance_uid
+                                ? `sop:${inst.sop_instance_uid}`
+                                : `series:${seriesUid}:image:${inst.image_index ?? idx}`
+                        ),
+                    }));
+                    pythonServiceSucceeded = true;
+                }
+            }
+        } catch (pyError) {
+            console.warn('[getSeriesInstances] Python service unavailable, falling back to filesystem scan:', pyError.message);
+        }
+
+        // --- Filesystem fallback (when Python service is offline) ---
+        if (!pythonServiceSucceeded) {
+            const studyPath = path.join(UPLOAD_DIR, studyKey);
+            if (fs.existsSync(studyPath)) {
+                const files = fs.readdirSync(studyPath).filter((f) => !f.startsWith('.'));
+                const imageFiles = files.filter((f) => /\.(dcm|dcom|dicom|ima|jpg|jpeg|png)$/i.test(f) || !f.includes('.'));
+
+                if (imageFiles.length > 0) {
+                    imageFiles.forEach((file, index) => {
+                        const ext = path.extname(file).toLowerCase();
+                        const isStatic = ['.jpg', '.jpeg', '.png'].includes(ext);
+                        const sourceKind = isStatic ? 'STATIC_PNG' : 'DICOM';
+                        const sourceInstanceKey = `series:${seriesUid}:image:${index}`;
+
+                        instances.push({
+                            sop_instance_uid: null,
+                            instance_number: index + 1,
+                            frame_count: 1,
+                            image_index: index,
+                            source_kind: sourceKind,
+                            source_path: file,
+                            width: 0,
+                            height: 0,
+                            modality: seriesRecord?.modality || study.modality || 'DX',
+                            acquisition_date: study.studyDate ? study.studyDate.toISOString() : new Date().toISOString(),
+                            thumbnail_url: `/thumb/${studyKey}/${seriesUid}?index=${index}`,
+                            display_label: isStatic ? file : `Image ${index + 1}`,
+                            source_instance_key: sourceInstanceKey,
+                        });
                     });
-                });
+                }
             }
         }
 
+        // --- Ultimate fallback: single legacy instance ---
         if (instances.length === 0) {
-            const sopInstanceUid = `1.2.840.10008.${studyId}.${seriesUid}.1`;
             instances.push({
-                sop_instance_uid: sopInstanceUid,
+                sop_instance_uid: null,
                 instance_number: 1,
                 frame_count: 1,
                 image_index: 0,
-                width: 1200,
-                height: 1600,
+                source_kind: 'DICOM',
+                source_path: '',
+                width: 0,
+                height: 0,
                 modality: seriesRecord?.modality || study.modality || 'DX',
                 acquisition_date: study.studyDate ? study.studyDate.toISOString() : new Date().toISOString(),
-                thumbnail_url: `/thumb/${study.folderName || studyId}/${seriesUid}`,
+                thumbnail_url: `/thumb/${studyKey}/${seriesUid}`,
                 display_label: 'Image 1',
-                source_instance_key: `sop:${sopInstanceUid}`,
+                source_instance_key: `series:${seriesUid}:legacy`,
             });
         }
 
@@ -704,6 +750,7 @@ export const getSeriesInstances = async (req, res) => {
         res.status(500).json({ error: 'Failed to load series instances' });
     }
 };
+
 
 export const getStudyAnnotations = async (req, res) => {
     try {

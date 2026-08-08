@@ -39,6 +39,11 @@ class ErrorBoundary extends React.Component {
                                 <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
                                     The application encountered an unexpected issue. Please try reloading or contact support if the problem persists.
                                 </p>
+                                {this.state.error?.message && (
+                                    <div className="mt-2 text-xs font-mono text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200 break-all text-left">
+                                        <strong>Error:</strong> {this.state.error.message}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -50,16 +55,16 @@ class ErrorBoundary extends React.Component {
                                 Reload Page
                             </button>
                             <button
-                                onClick={() => window.location.reload()}
+                                onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
                                 className="flex-1 px-6 py-3 bg-gray-50 text-gray-700 rounded-xl font-medium hover:bg-gray-100 border border-gray-200 transition"
                             >
                                 Try Again
                             </button>
                         </div>
 
-                        {/* Technical Details (Hidden by default) */}
+                        {/* Technical Details */}
                         <div className="pt-6 border-t border-gray-100">
-                            <details className="group">
+                            <details className="group" open>
                                 <summary className="flex items-center justify-center gap-2 cursor-pointer text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors list-none">
                                     <AppIcon name="ChevronDown" size={16} className="group-open:rotate-180 transition-transform" />
                                     <span>Technical Details</span>

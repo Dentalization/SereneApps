@@ -173,6 +173,9 @@ export function buildCanonical2DReportRenders({
     case_item_id: metadata.case_item_id,
     study_id: String(metadata.study_id),
     series_uid: metadata.series_uid,
+    // Phase 6: Instance-level identity for annotation bleed prevention
+    source_instance_key: metadata.source_instance_key || null,
+    source_kind: metadata.source_kind || null,
     viewer_type: '2d',
     source_width: sourceWidth,
     source_height: sourceHeight,

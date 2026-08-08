@@ -13,7 +13,7 @@ import {
   preflightAnalysisReport,
   updateAnalysisCase,
 } from './api';
-import { caseItemLabel, computeSourceInstanceKey, RADIOGRAPH_TYPES, reportRenderStatusPresentation, resolveSeriesUid, suggestRadiographType } from './domain.mjs';
+import { caseItemLabel, computeSourceInstanceKey, RADIOGRAPH_TYPES, reportRenderStatusPresentation, resolveSeriesUid, resolveViewerTypeFromSource, SOURCE_KIND, suggestRadiographType } from './domain.mjs';
 
 const newId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
   const random = Math.floor(Math.random() * 16);
@@ -36,6 +36,7 @@ function serializeCaseItems(items) {
     frame_index: item.frame_index != null ? Number(item.frame_index) : null,
     image_index: item.image_index != null ? Number(item.image_index) : null,
     source_instance_key: computeSourceInstanceKey(item),
+    source_kind: item.source_kind || null,
     viewer_type: item.viewer_type,
     radiograph_type: item.radiograph_type,
     tooth_numbers: item.tooth_numbers || [],
@@ -147,7 +148,8 @@ export default function AnalysisCaseWorkspace({ studies: initialStudies = [], st
       frame_index: frameIndex,
       image_index: imageIndex,
       source_instance_key: sourceInstanceKey,
-      viewer_type: selectedSourceObj.series.type === '3D Volume' ? 'slice' : '2d',
+      source_kind: instanceObj?.source_kind || selectedSourceObj.series?.source_kind || null,
+      viewer_type: resolveViewerTypeFromSource(selectedSourceObj.series, instanceObj?.source_kind || null),
       radiograph_type: newType,
       tooth_numbers: newTeeth.split(/[ ,]+/).map((value) => value.trim()).filter(Boolean),
       display_order: activeCase?.items?.length || 0,
@@ -769,8 +771,13 @@ function SourceFields({
                     }`}
                 >
                   <span className="text-xs">{inst.display_label || `Image ${inst.instance_number || inst.image_index + 1}`}</span>
+                  {inst.source_kind && inst.source_kind !== SOURCE_KIND.DICOM && (
+                    <span className="text-[9px] font-mono px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wide">
+                      {inst.source_kind.replace('_', ' ')}
+                    </span>
+                  )}
                   <span className="text-[10px] opacity-75 font-mono truncate max-w-full" title={inst.source_instance_key}>
-                    {inst.source_instance_key}
+                    {inst.sop_instance_uid ? `UID:${inst.sop_instance_uid.slice(-8)}` : inst.source_instance_key.slice(-20)}
                   </span>
                 </button>
               ))}
