@@ -1938,7 +1938,11 @@ const SliceViewer = ({
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
-            await annotationPersistence.flushPendingSave();
+            try {
+                await annotationPersistence.flushPendingSave();
+            } catch (flushError) {
+                console.warn('[SliceViewer] flushPendingSave failed, proceeding with in-memory annotations:', flushError);
+            }
             const renders = await captureCurrentViewDataUrl();
             if (!renders) throw new Error('Viewer belum siap untuk dirender');
             await onCaptureForCase(renders);
@@ -1964,7 +1968,7 @@ const SliceViewer = ({
     // Mark render as stale when slice/annotations/filter change.
     // We do NOT auto-retrigger capture — the drg must explicitly update.
     useEffect(() => {
-        if (analysisCaseContext && (caseCaptureState === 'saved' || caseCaptureState === 'idle')) {
+        if (analysisCaseContext && caseCaptureState === 'saved') {
             setCaseCaptureState('stale');
         }
     }, [annotations, measurementRevision, measurementClinicalRecords, inverted, windowCenter, windowWidth, sliceIndex, axis]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2838,16 +2842,23 @@ const SliceViewer = ({
                     </button>
 
                     {analysisCaseContext && onCaptureForCase && (
-                        <button
-                            type="button"
-                            onClick={captureForAnalysisCase}
-                            disabled={caseCaptureState === 'saving'}
-                            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
-                            title={caseCaptureError || 'Simpan canonical render slice untuk PDF kasus'}
-                        >
-                            <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                            <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => captureForAnalysisCase()}
+                                disabled={caseCaptureState === 'saving'}
+                                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                                title={caseCaptureError || 'Simpan canonical render slice untuk PDF kasus'}
+                            >
+                                <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                                <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
+                            </button>
+                            {caseCaptureError && caseCaptureState === 'error' && (
+                                <span className="text-[10px] text-rose-300 font-medium px-2 py-1 rounded bg-rose-500/10 border border-rose-500/30 max-w-[200px] truncate" title={caseCaptureError}>
+                                    {caseCaptureError}
+                                </span>
+                            )}
+                        </div>
                     )}
 
                     {study?.selectedSeriesType === '3D Volume' && (

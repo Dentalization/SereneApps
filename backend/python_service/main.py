@@ -918,7 +918,7 @@ def _compute_density_histogram(values, bins=None, spacing=(1.0, 1.0, 1.0), study
 def _read_vti_scalar_values_and_spacing(vti_path: str) -> tuple[np.ndarray, tuple]:
     try:
         import vtk
-        from vtk.util.numpy_support import vtk_to_numpy
+        from vtk.util.numpy_support import vtk_to_numpy  # type: ignore
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
 
@@ -1003,7 +1003,7 @@ def _compute_density_histogram_for_vti(
 def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
     try:
         import vtk
-        from vtk.util.numpy_support import vtk_to_numpy
+        from vtk.util.numpy_support import vtk_to_numpy  # type: ignore
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
 
