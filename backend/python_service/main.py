@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -918,7 +918,7 @@ def _compute_density_histogram(values, bins=None, spacing=(1.0, 1.0, 1.0), study
 def _read_vti_scalar_values_and_spacing(vti_path: str) -> tuple[np.ndarray, tuple]:
     try:
         import vtk
-        from vtk.util.numpy_support import vtk_to_numpy
+        from vtk.util.numpy_support import vtk_to_numpy  # type: ignore
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
 
@@ -988,7 +988,7 @@ def _compute_density_histogram_for_vti(
         try:
             volume, spacing, _ = _read_vti_volume(vti_path)
             values = suppress_fov_background(volume, spacing).ravel()
-        except Exception as exc:
+        except Exception:
             values, spacing = _read_vti_scalar_values_and_spacing(vti_path)
 
         result = _compute_density_histogram(values, spacing=spacing, study_vti=os.path.basename(vti_path))
@@ -1003,7 +1003,7 @@ def _compute_density_histogram_for_vti(
 def _read_vti_volume(vti_path: str) -> tuple[np.ndarray, tuple, tuple]:
     try:
         import vtk
-        from vtk.util.numpy_support import vtk_to_numpy
+        from vtk.util.numpy_support import vtk_to_numpy  # type: ignore
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"VTK Python bindings unavailable: {exc}") from exc
 
@@ -1642,8 +1642,6 @@ def get_series_instances(study_id: str, series_uid: str, share_token: str = None
                     # Fallback: check for pre-rendered static image
                     static_img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
                     if os.path.exists(static_img_path):
-                        import hashlib
-                        file_hash = hashlib.sha256(f"{study_id}:{series_uid}:image".encode()).hexdigest()[:32]
                         source_instance_key = f"series:{series_uid}:image:0"
                         instances.append({
                             "sop_instance_uid": None,
@@ -1673,8 +1671,6 @@ def get_series_instances(study_id: str, series_uid: str, share_token: str = None
         for idx, fp in enumerate(static_files):
             fname = os.path.basename(fp)
             rel_path = os.path.relpath(fp, study_path)
-            import hashlib
-            file_hash = hashlib.sha256(f"{study_id}:{series_uid}:{fname}".encode()).hexdigest()[:16]
             source_instance_key = f"series:{series_uid}:image:{idx}"
             instances.append({
                 "sop_instance_uid": None,

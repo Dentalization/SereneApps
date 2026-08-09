@@ -1050,19 +1050,30 @@ const ImageViewer2D = ({
 
     const captureForAnalysisCase = useCallback(async (forcedAnnotations) => {
         if (!onCaptureForCase) return;
-        // Race-condition guard: skip if a capture is already in flight
-        if (captureInProgressRef.current) {
-            console.warn('[ImageViewer2D] captureForAnalysisCase skipped: capture already in progress');
+        const sourceWidth = imageSize.width || imgRef.current?.naturalWidth || 0;
+        const sourceHeight = imageSize.height || imgRef.current?.naturalHeight || 0;
+        const isImageReady = imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0;
+        if (!sourceWidth || !sourceHeight || !isImageReady) {
+            console.warn('[ImageViewer2D] captureForAnalysisCase skipped: image element or dimensions not ready yet');
+            setCaseCaptureState('idle');
             return;
         }
+
         captureInProgressRef.current = true;
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
-            const saveResult = await annotationPersistence.flushPendingSave();
-            const activeAnnotations = forcedAnnotations ?? (saveResult && Array.isArray(saveResult.annotations)
-                ? saveResult.annotations
-                : annotations);
+            let saveResult = null;
+            try {
+                saveResult = await annotationPersistence.flushPendingSave();
+            } catch (flushError) {
+                console.warn('[ImageViewer2D] flushPendingSave failed, proceeding with in-memory annotations:', flushError);
+            }
+            const activeAnnotations = Array.isArray(forcedAnnotations)
+                ? forcedAnnotations
+                : (saveResult && Array.isArray(saveResult.annotations)
+                    ? saveResult.annotations
+                    : (Array.isArray(annotations) ? annotations : []));
             const effectiveImageFilter = (() => {
                 const parts = [];
                 if (inverted) parts.push('invert(100%)');
@@ -1080,8 +1091,8 @@ const ImageViewer2D = ({
 
             const renders = buildCanonical2DReportRenders({
                 image: imgRef.current,
-                sourceWidth: imageSize.width,
-                sourceHeight: imageSize.height,
+                sourceWidth,
+                sourceHeight,
                 imageFilter: effectiveImageFilter,
                 annotations: activeAnnotations,
                 markerAnnotations: [...activeAnnotations, ...measurementClinicalRecords],
@@ -1142,7 +1153,7 @@ const ImageViewer2D = ({
     // We do NOT auto-retrigger capture here — the drg must explicitly click
     // "Perbarui Gambar Laporan" or trigger via handleBack.
     useEffect(() => {
-        if (analysisCaseContext && (caseCaptureState === 'saved' || caseCaptureState === 'idle')) {
+        if (analysisCaseContext && caseCaptureState === 'saved') {
             setCaseCaptureState('stale');
         }
     }, [annotations, measurements, imageFilter, inverted, windowCenter, windowWidth]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1828,16 +1839,23 @@ const ImageViewer2D = ({
                             <AppIcon name="Camera" size={15} />
                         </button>
                         {analysisCaseContext && onCaptureForCase && (
-                            <button
-                                type="button"
-                                onClick={captureForAnalysisCase}
-                                disabled={caseCaptureState === 'saving'}
-                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
-                                title={caseCaptureError || 'Simpan canonical render bersih dan beranotasi untuk PDF kasus'}
-                            >
-                                <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
-                                <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => captureForAnalysisCase()}
+                                    disabled={caseCaptureState === 'saving'}
+                                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${caseCaptureState === 'saved' ? 'bg-emerald-500/20 text-emerald-300' : caseCaptureState === 'stale' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : caseCaptureState === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                                    title={caseCaptureError || 'Simpan canonical render bersih dan beranotasi untuk PDF kasus'}
+                                >
+                                    <AppIcon name={caseCaptureState === 'saving' ? 'Loader2' : caseCaptureState === 'saved' ? 'Check' : caseCaptureState === 'stale' ? 'RefreshCw' : 'Camera'} size={15} className={caseCaptureState === 'saving' ? 'animate-spin' : ''} />
+                                    <span>{caseCaptureState === 'saving' ? 'Menyimpan…' : caseCaptureState === 'saved' ? 'Siap untuk laporan' : caseCaptureState === 'stale' ? 'Perlu diperbarui' : caseCaptureState === 'error' ? 'Gagal — coba lagi' : 'Simpan Gambar Laporan'}</span>
+                                </button>
+                                {caseCaptureError && caseCaptureState === 'error' && (
+                                    <span className="text-[10px] text-rose-300 font-medium px-2 py-1 rounded bg-rose-500/10 border border-rose-500/30 max-w-[200px] truncate" title={caseCaptureError}>
+                                        {caseCaptureError}
+                                    </span>
+                                )}
+                            </div>
                         )}
 
                         <Dropdown label="Export" icon="Download" labelClassName="hidden lg:inline">

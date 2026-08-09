@@ -873,7 +873,7 @@ test('Endo-Core MVP enforces FDI, duplicates, ownership, workflow, lifecycle, an
       tokens.frontOffice,
     );
     assert.equal(clinicSummary.status, 200);
-    const serializedSummary = JSON.stringify(clinicSummary.json);
+    const serializedSummary = JSON.stringify(clinicSummary.json, (key, value) => (key === 'id' || key === 'updatedAt' ? undefined : value));
     assert.match(serializedSummary, /Endodontic specialist case/);
     assert.doesNotMatch(serializedSummary, /36|pulp|periapical|diagnostic|Assessment documented|completionSummary/i);
 

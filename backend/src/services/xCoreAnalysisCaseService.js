@@ -386,25 +386,25 @@ export async function saveAnalysisRender(arg1, arg2, arg3, arg4) {
   const currentFingerprint = computeAnalysisFingerprint({ ...item, structured_findings: structuredFindings }, annotations);
 
   const annotatedMetadata = normalizeRenderMetadata(annotatedInput.metadata || {}, { item, renderType: 'ANNOTATED' });
+  const annotatedRenderId = randomUUID();
   const validatedAnnotated = await writeCaseRender({
-    caseItemId: item.id,
+    caseId,
+    itemId: item.id,
     renderType: 'ANNOTATED',
     dataUrl: annotatedInput.data_url,
-    metadata: annotatedMetadata,
-    fingerprint: currentFingerprint,
-    userId: asBigInt(userId, 'user_id'),
   });
 
+  let cleanRenderId = null;
+  let cleanMetadata = null;
   let validatedClean = null;
   if (cleanInput?.data_url) {
-    const cleanMetadata = normalizeRenderMetadata(cleanInput.metadata || {}, { item, renderType: 'CLEAN' });
+    cleanMetadata = normalizeRenderMetadata(cleanInput.metadata || {}, { item, renderType: 'CLEAN' });
+    cleanRenderId = randomUUID();
     validatedClean = await writeCaseRender({
-      caseItemId: item.id,
+      caseId,
+      itemId: item.id,
       renderType: 'CLEAN',
       dataUrl: cleanInput.data_url,
-      metadata: cleanMetadata,
-      fingerprint: currentFingerprint,
-      userId: asBigInt(userId, 'user_id'),
     });
   }
 
@@ -413,9 +413,9 @@ export async function saveAnalysisRender(arg1, arg2, arg3, arg4) {
       INSERT INTO xcore_analysis_case_item_renders
         (id, case_item_id, render_type, storage_path, checksum, width, height, mime_type, render_metadata, analysis_fingerprint, validation_result, created_by)
       VALUES
-        (${validatedAnnotated.id}::uuid, ${item.id}::uuid, 'ANNOTATED', ${validatedAnnotated.storagePath}, ${validatedAnnotated.checksum},
+        (${annotatedRenderId}::uuid, ${item.id}::uuid, 'ANNOTATED', ${validatedAnnotated.storagePath}, ${validatedAnnotated.checksum},
          ${validatedAnnotated.width}, ${validatedAnnotated.height}, ${validatedAnnotated.mimeType},
-         ${JSON.stringify(validatedAnnotated.renderMetadata)}::jsonb, ${currentFingerprint},
+         ${JSON.stringify(annotatedMetadata)}::jsonb, ${currentFingerprint},
          ${JSON.stringify(validatedAnnotated.validation)}::jsonb, ${asBigInt(userId, 'user_id')})
       ON CONFLICT (case_item_id, render_type, checksum, analysis_fingerprint) DO UPDATE SET
         created_at=NOW()
@@ -425,9 +425,9 @@ export async function saveAnalysisRender(arg1, arg2, arg3, arg4) {
         INSERT INTO xcore_analysis_case_item_renders
           (id, case_item_id, render_type, storage_path, checksum, width, height, mime_type, render_metadata, analysis_fingerprint, validation_result, created_by)
         VALUES
-          (${validatedClean.id}::uuid, ${item.id}::uuid, 'CLEAN', ${validatedClean.storagePath}, ${validatedClean.checksum},
+          (${cleanRenderId}::uuid, ${item.id}::uuid, 'CLEAN', ${validatedClean.storagePath}, ${validatedClean.checksum},
            ${validatedClean.width}, ${validatedClean.height}, ${validatedClean.mimeType},
-           ${JSON.stringify(validatedClean.renderMetadata)}::jsonb, ${currentFingerprint},
+           ${JSON.stringify(cleanMetadata)}::jsonb, ${currentFingerprint},
            ${JSON.stringify(validatedClean.validation)}::jsonb, ${asBigInt(userId, 'user_id')})
         ON CONFLICT (case_item_id, render_type, checksum, analysis_fingerprint) DO UPDATE SET
           created_at=NOW()

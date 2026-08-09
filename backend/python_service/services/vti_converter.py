@@ -91,6 +91,12 @@ def notify_backend_callback(run_id: str, event_type: str, details: dict = None):
     except Exception as e:
         print(f"[X-Core Benchmark] Error sending notification callback to backend: {e}")
 
+def _emit_progress(progress_callback, payload: dict):
+    if callable(progress_callback):
+        try:
+            progress_callback(payload)
+        except Exception as err:
+            print(f"[vti_converter] Progress callback failed: {err}")
 
 
 # ── Strict 2D / 3D Classification Constants ──

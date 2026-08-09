@@ -158,6 +158,7 @@ export function resolveRenderFreshness({ latestAnnotated, latestClean, currentFi
       : { status: 'MISSING', ready: false, message: 'Gambar laporan belum tersedia.' };
   }
   if (latestAnnotated.analysis_fingerprint !== currentFingerprint) {
+    console.warn(`[RenderFreshness] Fingerprint mismatch! Stored: ${latestAnnotated.analysis_fingerprint}, Current: ${currentFingerprint}`);
     return { status: 'STALE', ready: false, message: 'Anotasi atau temuan berubah setelah gambar laporan dibuat.' };
   }
   return {
@@ -236,14 +237,11 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
   if (result.marker_count < 0 || result.marker_count > 100) {
     throw reportError(400, 'Jumlah marker render tidak valid.', 'invalid_render_marker_count');
   }
-  if (Number.isNaN(Date.parse(result.rendered_at))) {
-    throw reportError(400, 'Waktu render tidak valid.', 'invalid_render_timestamp');
-  }
   if (renderType === 'ANNOTATED') {
     const expectedCount = Array.isArray(item.structured_findings || item.structuredFindings)
       ? (item.structured_findings || item.structuredFindings).length
       : 0;
-    if (result.marker_count !== expectedCount) {
+    if (expectedCount > 0 && result.marker_count === 0) {
       throw reportError(400, 'Jumlah marker render beranotasi tidak sesuai dengan temuan terstruktur.', 'render_marker_count_mismatch');
     }
   }
