@@ -2411,7 +2411,6 @@ const VolumeViewer3D = ({
                     dataRange,
                     imageData,
                     slabPlanes,
-                    sharpenTimer,
                     sharedPicker,
                     labelActors,
                     overlayActors: [],
