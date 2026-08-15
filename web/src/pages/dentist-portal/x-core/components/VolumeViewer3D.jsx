@@ -2346,6 +2346,28 @@ const VolumeViewer3D = ({
                 const renderWindow = fullScreenRenderer.getRenderWindow();
                 const interactor = fullScreenRenderer.getInteractor();
 
+                // Optimize render resolution on high-DPI/Retina screens for silky-smooth volume raycasting
+                if (typeof window !== 'undefined') {
+                    fullScreenRenderer.resize = () => {
+                        if (!containerRef.current) return;
+                        const dims = containerRef.current.getBoundingClientRect();
+                        const effectiveDpr = Math.min(window.devicePixelRatio || 1, 1.25);
+                        const glRw = fullScreenRenderer.getOpenGLRenderWindow?.() || fullScreenRenderer.getApiSpecificRenderWindow?.();
+                        if (glRw) {
+                            glRw.setSize(Math.floor(dims.width * effectiveDpr), Math.floor(dims.height * effectiveDpr));
+                        }
+                        renderWindow?.render?.();
+                    };
+                    fullScreenRenderer.resize();
+                }
+
+                if (interactor?.setDesiredUpdateRate) {
+                    interactor.setDesiredUpdateRate(30.0);
+                }
+                if (interactor?.setStillUpdateRate) {
+                    interactor.setStillUpdateRate(0.001);
+                }
+
                 const mapper = vtkVolumeMapper.newInstance();
                 mapper.setInputData(imageData);
                 applyMapperQuality(mapper, qualityRef.current, 'bone');
@@ -3653,16 +3675,28 @@ const VolumeViewer3D = ({
         return null;
     }, [projectWorldToViewportCached]);
 
+    const getPointerDisplayCoords = useCallback((event) => {
+        const ctx = vtkContextRef.current;
+        const container = containerRef.current;
+        if (!ctx || !container) return { x: 0, y: 0 };
+        const rect = container.getBoundingClientRect();
+        const view = ctx.renderWindow?.getViews?.()?.[0] || ctx.interactor?.getView?.();
+        const viewSize = view?.getSize?.() || [rect.width, rect.height];
+        const scaleX = viewSize[0] / Math.max(rect.width, 1);
+        const scaleY = viewSize[1] / Math.max(rect.height, 1);
+        return {
+            x: (event.clientX - rect.left) * scaleX,
+            y: (rect.height - (event.clientY - rect.top)) * scaleY,
+        };
+    }, []);
+
     const pickSurfaceWorldPointFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
         if (!ctx || !container || !ctx.surfacePickActor || !ctx.sharedPicker) return null;
         lastSurfacePickAnchorRef.current = null;
 
-        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const rect = container.getBoundingClientRect();
-        const x = (event.clientX - rect.left) * dpr;
-        const y = (rect.height - (event.clientY - rect.top)) * dpr;
+        const { x, y } = getPointerDisplayCoords(event);
 
         try {
             const picker = ctx.sharedPicker;
@@ -3685,7 +3719,7 @@ const VolumeViewer3D = ({
             return null;
         }
         return null;
-    }, []);
+    }, [getPointerDisplayCoords]);
 
     const pickWorldAnnotationIdFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
@@ -3693,10 +3727,7 @@ const VolumeViewer3D = ({
         const actors = ctx?.surfaceAnnotationActors || [];
         if (!ctx || !container || actors.length === 0 || !ctx.sharedPicker) return null;
 
-        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const rect = container.getBoundingClientRect();
-        const x = (event.clientX - rect.left) * dpr;
-        const y = (rect.height - (event.clientY - rect.top)) * dpr;
+        const { x, y } = getPointerDisplayCoords(event);
 
         try {
             const picker = ctx.sharedPicker;
@@ -3718,17 +3749,14 @@ const VolumeViewer3D = ({
         } catch (_) {
             return null;
         }
-    }, []);
+    }, [getPointerDisplayCoords]);
 
     const pickWorldPointFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
         if (!ctx || !container) return null;
 
-        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const rect = container.getBoundingClientRect();
-        const x = (event.clientX - rect.left) * dpr;
-        const y = (rect.height - (event.clientY - rect.top)) * dpr;
+        const { x, y } = getPointerDisplayCoords(event);
 
         try {
             const picker = ctx.sharedPicker || vtkCellPicker.newInstance();
@@ -3758,7 +3786,7 @@ const VolumeViewer3D = ({
         } catch (_) {
             return null;
         }
-    }, []);
+    }, [getPointerDisplayCoords]);
 
     const pickAnnotationWorldPointFromPointer = useCallback((event) => (
         pickSurfaceWorldPointFromPointer(event)
