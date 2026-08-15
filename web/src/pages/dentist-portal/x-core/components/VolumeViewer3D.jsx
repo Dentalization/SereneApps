@@ -105,7 +105,10 @@ import { calculateAnnotationQualityScore, getAnnotationReviewIssues } from '../u
 import {
     buildSurfaceAnchor,
     createInteractionQualityController,
+    createProjectionCache,
     createRafInputScheduler,
+    createRenderCoalescer,
+    INTERACTION_STATE,
 } from '../utils/annotationPerformance.mjs';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -979,6 +982,10 @@ const VolumeViewer3D = ({
     const mprSyncPointerRef = useRef(null);
     const measurementPointerRef = useRef(null);
     const measurementInputSchedulerRef = useRef(null);
+    const overlayDraftInputSchedulerRef = useRef(null);
+    const overlayDraftPointerRef = useRef(null);
+    const renderCoalescerRef = useRef(null);
+    const cameraProjectionRevisionRef = useRef(0);
     const lastBrushRenderRef = useRef(0);
     const annotationInteractionQualityRef = useRef(null);
     const heatmapVolumeActorRef = useRef(null);
@@ -1014,6 +1021,14 @@ const VolumeViewer3D = ({
     }
     if (!measurementInputSchedulerRef.current) {
         measurementInputSchedulerRef.current = createRafInputScheduler();
+    }
+    if (!overlayDraftInputSchedulerRef.current) {
+        overlayDraftInputSchedulerRef.current = createRafInputScheduler();
+    }
+    if (!renderCoalescerRef.current) {
+        renderCoalescerRef.current = createRenderCoalescer({
+            render: () => vtkContextRef.current?.renderWindow?.render?.(),
+        });
     }
 
     // Core state
@@ -1610,14 +1625,15 @@ const VolumeViewer3D = ({
                 const ctx = vtkContextRef.current;
                 if (!ctx?.mapper) return;
                 applyMapperQuality(ctx.mapper, qualityRef.current, presetRef.current);
-                ctx.renderWindow?.render?.();
+                renderCoalescerRef.current?.requestRender?.('quality_restore');
             },
-            render: () => vtkContextRef.current?.renderWindow?.render?.(),
+            render: () => renderCoalescerRef.current?.requestRender?.('interactive_quality'),
             interactiveSampleDistance: SAMPLE_DISTANCE_INTERACTIVE,
             interactiveMaxSamplesPerRay: Math.min(QUALITY_SETTINGS.standard.maxSamples, 420),
+            settleDelayMs: 180,
         });
         return () => {
-            annotationInteractionQualityRef.current?.end?.();
+            annotationInteractionQualityRef.current?.cancel?.();
             annotationInteractionQualityRef.current = null;
         };
     }, [cacheKey]);
@@ -1627,7 +1643,7 @@ const VolumeViewer3D = ({
     }, []);
 
     const endAnnotationInteractionQuality = useCallback(() => {
-        annotationInteractionQualityRef.current?.end?.();
+        annotationInteractionQualityRef.current?.end?.({ delayMs: 180 });
     }, []);
 
     useEffect(() => () => {
@@ -1637,7 +1653,9 @@ const VolumeViewer3D = ({
         brushInputSchedulerRef.current?.cancel?.();
         surfaceInputSchedulerRef.current?.cancel?.();
         measurementInputSchedulerRef.current?.cancel?.();
-        annotationInteractionQualityRef.current?.end?.();
+        overlayDraftInputSchedulerRef.current?.cancel?.();
+        renderCoalescerRef.current?.cancel?.();
+        annotationInteractionQualityRef.current?.cancel?.();
         if (measurementPersistTimerRef.current) clearTimeout(measurementPersistTimerRef.current);
         if (autoRotateResumeTimerRef.current) clearTimeout(autoRotateResumeTimerRef.current);
         if (autoRotateIntervalRef.current) clearInterval(autoRotateIntervalRef.current);
@@ -2347,17 +2365,12 @@ const VolumeViewer3D = ({
                     vtkPlane.newInstance()
                 ];
 
-                // Super-sampling: coarse while interacting, fine on idle
-                let sharpenTimer = null;
+                // Super-sampling: coarse while interacting, fine on idle via centralized controller
                 interactor.onStartInteraction(() => {
-                    if (sharpenTimer) { clearTimeout(sharpenTimer); sharpenTimer = null; }
-                    mapper.setSampleDistance(SAMPLE_DISTANCE_INTERACTIVE);
+                    annotationInteractionQualityRef.current?.begin?.();
                 });
                 interactor.onEndInteraction(() => {
-                    sharpenTimer = setTimeout(() => {
-                        applyMapperQuality(mapper, qualityRef.current, presetRef.current);
-                        renderWindow.render();
-                    }, 200);
+                    annotationInteractionQualityRef.current?.end?.({ delayMs: 180 });
                 });
 
                 setLoadingStage('Rendering...');
@@ -3453,8 +3466,8 @@ const VolumeViewer3D = ({
         const viewUp = camera.getViewUp?.() || [];
         const rect = container.getBoundingClientRect();
         const pack = (values) => values.map((value) => Number(value || 0).toFixed(2)).join(',');
-        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}_${projectionTick}`;
-    }, [projectionTick]);
+        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    }, []);
 
     const getStableCameraProjectionKey = useCallback(() => {
         const ctx = vtkContextRef.current;
@@ -6311,6 +6324,18 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         });
     }, [measureMode3D, pickWorldPointFromPointer, polylineMeasureMode]);
 
+    const processWorldOverlayDraftPointerMove = useCallback((screenPointSample = null) => {
+        const screenPoint = screenPointSample || overlayDraftPointerRef.current;
+        if (!screenPoint) return;
+        setWorldOverlayDraft((current) => {
+            if (!current?.startWorld) return current;
+            if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 1.5) {
+                return current;
+            }
+            return { ...current, hoverScreen: screenPoint };
+        });
+    }, []);
+
     const handleViewportPointerMove = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && isViewportUiEvent(event)) return;
         if (brushTraceActiveRef.current && annotateMode && annotationTool === 'brush') {
@@ -6333,16 +6358,9 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.preventDefault();
             event.stopPropagation();
             const screenPoint = getViewportPointerPoint(event);
-            setWorldOverlayDraft((current) => {
-                if (!current?.startWorld) return current;
-                if (!screenPoint) {
-                    return current.hoverScreen ? { ...current, hoverScreen: null } : current;
-                }
-                if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 1.5) {
-                    return current;
-                }
-                return { ...current, hoverScreen: screenPoint };
-            });
+            if (!screenPoint) return;
+            overlayDraftPointerRef.current = screenPoint;
+            overlayDraftInputSchedulerRef.current?.push(screenPoint, processWorldOverlayDraftPointerMove);
             return;
         }
 
@@ -6367,7 +6385,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         event.stopPropagation();
         measurementPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
         measurementInputSchedulerRef.current?.push(measurementPointerRef.current, processMeasurementPointerMove);
-    }, [annotateMode, annotationTool, getViewportPointerPoint, implantPlaceMode, isViewportUiEvent, measureMode3D, mprSyncEnabled, polylineMeasureMode, processBrushPointerMove, processMeasurementPointerMove, processMprSyncPointerMove, processSurfacePointerMove, worldOverlayDraft]);
+    }, [annotateMode, annotationTool, getViewportPointerPoint, implantPlaceMode, isViewportUiEvent, measureMode3D, mprSyncEnabled, polylineMeasureMode, processBrushPointerMove, processMeasurementPointerMove, processMprSyncPointerMove, processSurfacePointerMove, processWorldOverlayDraftPointerMove, worldOverlayDraft]);
 
     const handleViewportPointerUp = useCallback((event) => {
         if (!brushTraceActiveRef.current && !surfaceTraceActiveRef.current && !worldOverlayDraft?.startWorld && isViewportUiEvent(event)) return;
@@ -6405,6 +6423,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             event.preventDefault();
             event.stopPropagation();
             try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch (_) { }
+            overlayDraftInputSchedulerRef.current?.cancel?.();
+            overlayDraftPointerRef.current = null;
             endAnnotationInteractionQuality();
             const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
             const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
@@ -6537,6 +6557,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         if (worldOverlayDraft?.startWorld) {
             setWorldOverlayDraft(null);
         }
+        overlayDraftInputSchedulerRef.current?.cancel?.();
+        overlayDraftPointerRef.current = null;
 
         annotationCanvasRef.current?.clear();
         endAnnotationInteractionQuality();
@@ -6546,6 +6568,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
         setMeasureHoverPoint(null);
         measurementPointerRef.current = null;
         measurementInputSchedulerRef.current?.cancel?.();
+        overlayDraftInputSchedulerRef.current?.cancel?.();
+        overlayDraftPointerRef.current = null;
         if (!brushTraceActiveRef.current) {
             brushInputSchedulerRef.current?.cancel?.();
             annotationCanvasRef.current?.update({
