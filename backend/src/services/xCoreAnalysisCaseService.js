@@ -99,7 +99,7 @@ async function loadScopedAnnotations(item, client = prisma) {
       WHERE study_id=${studyId}
         AND series_uid=${seriesUid}
         AND viewer_type=${viewerType}
-        AND source_instance_key=${sourceInstanceKey}
+        AND (source_instance_key=${sourceInstanceKey} OR source_instance_key IS NULL OR source_instance_key=${`series:${seriesUid}:legacy`})
       ORDER BY created_at ASC, id ASC
     `);
   } else {
@@ -320,7 +320,9 @@ export async function createAnalysisCase({ userId, patientId, payload, requireSt
   const data = normalizeCasePayload(payload);
   const items = normalizeItems(payload.items);
   await verifyStudies(items, parsedPatientId, requireStudyAccess);
-  await verifyFindingLinks(items);
+  if (data.status === 'FINALIZED') {
+    await verifyFindingLinks(items);
+  }
   const caseId = randomUUID();
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw(Prisma.sql`
@@ -339,7 +341,9 @@ export async function updateAnalysisCase({ caseId, userId, payload, requireStudy
   const items = normalizeItems(payload.items || current.items);
   if (current.status === 'FINALIZED' && payload.items) throw httpError(409, 'Finalized case images cannot be changed', 'case_finalized');
   await verifyStudies(items, current.patient_id, requireStudyAccess);
-  await verifyFindingLinks(items);
+  if (data.status === 'FINALIZED') {
+    await verifyFindingLinks(items);
+  }
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw(Prisma.sql`
       UPDATE xcore_analysis_cases

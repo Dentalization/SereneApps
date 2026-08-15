@@ -542,8 +542,17 @@ async def conversion_status_websocket(websocket: WebSocket):
 
 def _load_gallery_from_manifest(study_path: str, study_id: str, is_converting: bool) -> dict:
     manifest_path = os.path.join(study_path, "series_manifest.json")
-    with open(manifest_path, 'r') as f:
-        series_cards = json.load(f)
+    try:
+        if not os.path.exists(manifest_path) or os.path.getsize(manifest_path) == 0:
+            return _build_gallery_from_scan(study_path, study_id, is_converting)
+        with open(manifest_path, 'r') as f:
+            content = f.read().strip()
+            if not content:
+                return _build_gallery_from_scan(study_path, study_id, is_converting)
+            series_cards = json.loads(content)
+    except Exception as e:
+        print(f"[Gallery] Warning: Failed to load manifest for {study_id}: {e}, falling back to scan")
+        return _build_gallery_from_scan(study_path, study_id, is_converting)
 
     for card in series_cards:
         safe_uid = card['series_uid'].replace('.', '_')[:50]
