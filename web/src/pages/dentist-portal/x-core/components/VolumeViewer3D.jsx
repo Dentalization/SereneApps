@@ -818,7 +818,8 @@ function disposeVolumeContext(ctx) {
     try { ctx.clipPlane?.delete?.(); } catch (_) { }
     try { ctx.slabPlanes?.forEach?.((plane) => plane?.delete?.()); } catch (_) { }
     try { ctx.sharedPicker?.delete?.(); } catch (_) { }
-    disposeGenericActors(ctx.renderer, ctx.measurementActors || []);
+    disposeGenericActors(ctx.renderer, ctx.committedMeasurementActors || []);
+    disposeGenericActors(ctx.renderer, ctx.draftMeasurementActors || []);
     disposeGenericActors(ctx.renderer, ctx.implantActors || []);
     disposeGenericActors(ctx.renderer, ctx.implantSafetyActors || []);
     disposeGenericActors(ctx.renderer, ctx.surfaceAnnotationActors || []);
@@ -989,6 +990,12 @@ const VolumeViewer3D = ({
     const overlayDraftPointerRef = useRef(null);
     const renderCoalescerRef = useRef(null);
     const cameraProjectionRevisionRef = useRef(0);
+    const measureHoverPointRef = useRef(null);
+    const measureHoverSyncRafRef = useRef(0);
+    const measureHoverSyncFrameRef = useRef(0);
+    const lastSyncedMeasureHoverPointRef = useRef(null);
+    const lastMeasurePickTimeRef = useRef(0);
+    const lastMeasurePickDurationRef = useRef(20);
     const lastBrushRenderRef = useRef(0);
     const annotationInteractionQualityRef = useRef(null);
     const heatmapVolumeActorRef = useRef(null);
@@ -1353,11 +1360,14 @@ const VolumeViewer3D = ({
             });
         };
 
+        const camera = ctx.renderer?.getActiveCamera?.();
+        const cameraSub = camera?.onModified?.(bumpProjection);
+        const renderWindowSub = ctx.renderWindow?.onModified?.(bumpProjection);
         const interactSub = ctx.interactor.onInteraction?.(bumpProjection);
         const endSub = ctx.interactor.onEndInteraction?.(bumpProjection);
         return () => {
             if (renderRaf) cancelAnimationFrame(renderRaf);
-            [interactSub, endSub].forEach((sub) => {
+            [cameraSub, renderWindowSub, interactSub, endSub].forEach((sub) => {
                 try { sub?.unsubscribe?.(); } catch (_) { }
                 try { sub?.remove?.(); } catch (_) { }
             });
@@ -1658,6 +1668,7 @@ const VolumeViewer3D = ({
         if (brushMoveRafRef.current) cancelAnimationFrame(brushMoveRafRef.current);
         if (surfaceMoveRafRef.current) cancelAnimationFrame(surfaceMoveRafRef.current);
         if (mprSyncMoveRafRef.current) cancelAnimationFrame(mprSyncMoveRafRef.current);
+        if (measureHoverSyncRafRef.current) cancelAnimationFrame(measureHoverSyncRafRef.current);
         brushInputSchedulerRef.current?.cancel?.();
         surfaceInputSchedulerRef.current?.cancel?.();
         measurementInputSchedulerRef.current?.cancel?.();
@@ -2447,7 +2458,8 @@ const VolumeViewer3D = ({
                     clipPlane: null,
                     clipWidget: null,
                     surfacePickActor: null,
-                    measurementActors: [],
+                    committedMeasurementActors: [],
+                    draftMeasurementActors: [],
                     implantActors: [],
                     nerveActor: null,
                     surfaceAnnotationActors: [],
@@ -3501,18 +3513,6 @@ const VolumeViewer3D = ({
         }
     }, []);
 
-    const getCameraProjectionKey = useCallback(() => {
-        const ctx = vtkContextRef.current;
-        const camera = ctx?.renderer?.getActiveCamera?.();
-        const container = containerRef.current;
-        if (!camera || !container) return '';
-        const position = camera.getPosition?.() || [];
-        const focalPoint = camera.getFocalPoint?.() || [];
-        const viewUp = camera.getViewUp?.() || [];
-        const rect = container.getBoundingClientRect();
-        const pack = (values) => values.map((value) => Number(value || 0).toFixed(2)).join(',');
-        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}`;
-    }, []);
 
     const getStableCameraProjectionKey = useCallback(() => {
         const ctx = vtkContextRef.current;
@@ -3522,10 +3522,21 @@ const VolumeViewer3D = ({
         const position = camera.getPosition?.() || [];
         const focalPoint = camera.getFocalPoint?.() || [];
         const viewUp = camera.getViewUp?.() || [];
+        const parallelScale = camera.getParallelScale?.() || 0;
+        const viewAngle = camera.getViewAngle?.() || 0;
+        const distance = camera.getDistance?.() || 0;
+        const clippingRange = camera.getClippingRange?.() || [];
+        const isParallel = camera.getParallelProjection?.() ? 1 : 0;
+        const mTime = camera.getMTime?.() || 0;
         const rect = container.getBoundingClientRect();
         const pack = (values) => values.map((value) => Number(value || 0).toFixed(2)).join(',');
-        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Math.round(rect.width)}x${Math.round(rect.height)}`;
+        return `${pack(position)}_${pack(focalPoint)}_${pack(viewUp)}_${Number(parallelScale).toFixed(3)}_${Number(viewAngle).toFixed(2)}_${Number(distance).toFixed(2)}_${pack(clippingRange)}_${isParallel}_${mTime}_${Math.round(rect.width)}x${Math.round(rect.height)}`;
     }, []);
+
+    const getCameraProjectionKey = useCallback(() => {
+        const baseKey = getStableCameraProjectionKey();
+        return `${baseKey}_${projectionTick}`;
+    }, [getStableCameraProjectionKey, projectionTick]);
 
     const projectWorldToViewportCached = useCallback((worldPoint) => {
         if (!isWorldPoint3D(worldPoint)) return null;
@@ -4444,7 +4455,8 @@ const VolumeViewer3D = ({
             }));
         }
         setMeasurePoints([]);
-        setMeasureHoverPoint(null);
+        measureHoverPointRef.current = null;
+        lastSyncedMeasureHoverPointRef.current = null;
         setPolylineDraft([]);
     }, [applyMeasurementChange]);
 
@@ -4465,7 +4477,8 @@ const VolumeViewer3D = ({
         setMeasurements3D(measurements3DRef.current);
         setPolylineMeasurements(polylineMeasurementsRef.current);
         setMeasurePoints([]);
-        setMeasureHoverPoint(null);
+        measureHoverPointRef.current = null;
+        lastSyncedMeasureHoverPointRef.current = null;
         setPolylineDraft([]);
         setMeasurementRevision((value) => value + 1);
         showUndoToast('Undid measurement');
@@ -4488,7 +4501,8 @@ const VolumeViewer3D = ({
         setMeasurements3D(measurements3DRef.current);
         setPolylineMeasurements(polylineMeasurementsRef.current);
         setMeasurePoints([]);
-        setMeasureHoverPoint(null);
+        measureHoverPointRef.current = null;
+        lastSyncedMeasureHoverPointRef.current = null;
         setPolylineDraft([]);
         setMeasurementRevision((value) => value + 1);
         showUndoToast('Redid measurement');
@@ -5518,8 +5532,48 @@ const VolumeViewer3D = ({
     useEffect(() => {
         if (measureMode3D) return;
         setMeasurePoints([]);
+        if (polylineMeasureMode) return;
+        measureHoverPointRef.current = null;
+        lastSyncedMeasureHoverPointRef.current = null;
         setMeasureHoverPoint(null);
-    }, [measureMode3D]);
+    }, [measureMode3D, polylineMeasureMode]);
+
+    useEffect(() => {
+        if (!measureMode3D && !polylineMeasureMode) {
+            if (measureHoverSyncRafRef.current) {
+                cancelAnimationFrame(measureHoverSyncRafRef.current);
+                measureHoverSyncRafRef.current = 0;
+            }
+            measureHoverSyncFrameRef.current = 0;
+            return undefined;
+        }
+
+        const syncMeasureHoverPoint = () => {
+            measureHoverSyncRafRef.current = requestAnimationFrame(syncMeasureHoverPoint);
+            measureHoverSyncFrameRef.current += 1;
+            if (measureHoverSyncFrameRef.current % 2 !== 0) return;
+
+            const nextPoint = measureHoverPointRef.current;
+            const previousPoint = lastSyncedMeasureHoverPointRef.current;
+            const unchanged = !nextPoint
+                ? !previousPoint
+                : Boolean(previousPoint && arraysNearlyEqual(previousPoint, nextPoint, 1e-3));
+            if (unchanged) return;
+
+            const syncedPoint = nextPoint ? [...nextPoint] : null;
+            lastSyncedMeasureHoverPointRef.current = syncedPoint;
+            setMeasureHoverPoint(syncedPoint);
+        };
+
+        measureHoverSyncRafRef.current = requestAnimationFrame(syncMeasureHoverPoint);
+        return () => {
+            if (measureHoverSyncRafRef.current) {
+                cancelAnimationFrame(measureHoverSyncRafRef.current);
+                measureHoverSyncRafRef.current = 0;
+            }
+            measureHoverSyncFrameRef.current = 0;
+        };
+    }, [measureMode3D, polylineMeasureMode]);
 
     useEffect(() => {
         if (!(annotateMode && annotationTool === 'freehand')) {
@@ -5569,31 +5623,45 @@ const VolumeViewer3D = ({
         const ctx = vtkContextRef.current;
         if (!ctx || loading || error) return;
 
-        if (ctx.measurementActors?.length) {
-            disposeOverlayActors(ctx.renderer, ctx.measurementActors);
-            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.measurementActors.includes(actor));
+        if (ctx.committedMeasurementActors?.length) {
+            disposeOverlayActors(ctx.renderer, ctx.committedMeasurementActors);
+            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.committedMeasurementActors.includes(actor));
         }
 
         const pointToPointActors = measurements3D
             .filter((item) => Array.isArray(item.pointA) && Array.isArray(item.pointB))
             .flatMap((item) => createMeasurementActors(item.pointA, item.pointB));
-
         const polylineActors = polylineMeasurements
             .filter((item) => Array.isArray(item.points) && item.points.length >= 2)
             .flatMap((item) => createPolylineActors(item.points));
-
-        const draftActors = polylineDraft.length > 0
-            ? createPolylineActors(polylineDraft)
-            : [];
-
-        const actors = [...pointToPointActors, ...polylineActors, ...draftActors];
+        const actors = [...pointToPointActors, ...polylineActors];
 
         actors.forEach((actor) => ctx.renderer.addActor(actor));
-        ctx.measurementActors = actors;
+        ctx.committedMeasurementActors = actors;
         ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
         ctx.renderWindow.render();
         setMeasurementRevision((value) => value + 1);
-    }, [cacheKey, createMeasurementActors, createPolylineActors, error, loading, measurements3D, polylineMeasurements, polylineDraft]);
+    }, [cacheKey, createMeasurementActors, createPolylineActors, error, loading, measurements3D, polylineMeasurements]);
+
+    useEffect(() => {
+        const ctx = vtkContextRef.current;
+        if (!ctx || loading || error) return;
+
+        if (ctx.draftMeasurementActors?.length) {
+            disposeOverlayActors(ctx.renderer, ctx.draftMeasurementActors);
+            ctx.overlayActors = (ctx.overlayActors || []).filter((actor) => !ctx.draftMeasurementActors.includes(actor));
+        }
+        if (polylineDraft.length < 2) {
+            ctx.draftMeasurementActors = [];
+            return;
+        }
+
+        const draftActors = createPolylineActors(polylineDraft);
+        draftActors.forEach((actor) => ctx.renderer.addActor(actor));
+        ctx.draftMeasurementActors = draftActors;
+        ctx.overlayActors = [...(ctx.overlayActors || []), ...draftActors];
+        ctx.renderWindow.render();
+    }, [polylineDraft, createPolylineActors, error, loading]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -5604,18 +5672,33 @@ const VolumeViewer3D = ({
         const renderedEntries = renderedAnnotationIdsRef.current;
         const actorSet = new Set(ctx.surfaceAnnotationActors || []);
 
-        const annotationSignature = (annotation) => JSON.stringify({
-            id: annotation.id,
-            type: annotation.type,
-            color: annotation.color,
-            opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
-            selected: annotation.id === selectedWorldAnnotationId,
-            pathLength: annotation.coordinates?.world_path?.length || 0,
-            brushCenters: annotation.coordinates?.world_brush?.centers?.length || 0,
-            brushRadius: annotation.coordinates?.world_brush?.radius_mm || 0,
-            brushVolume: annotation.metadata?.lesion_volume_mm3 || 0,
-            area: annotation.metadata?.lesion_area_mm2 || 0,
-        });
+        const annotationSignature = (annotation) => {
+            const centers = annotation.coordinates?.world_brush?.centers;
+            let brushBbox = null;
+            if (Array.isArray(centers) && centers.length > 0) {
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+                for (const point of centers) {
+                    if (point[0] < minX) minX = point[0]; if (point[0] > maxX) maxX = point[0];
+                    if (point[1] < minY) minY = point[1]; if (point[1] > maxY) maxY = point[1];
+                    if (point[2] < minZ) minZ = point[2]; if (point[2] > maxZ) maxZ = point[2];
+                }
+                brushBbox = `${minX.toFixed(1)},${maxX.toFixed(1)},${minY.toFixed(1)},${maxY.toFixed(1)},${minZ.toFixed(1)},${maxZ.toFixed(1)}`;
+            }
+            return JSON.stringify({
+                id: annotation.id,
+                type: annotation.type,
+                color: annotation.color,
+                opacity: annotation.displayOpacity ?? annotation.opacity ?? 1,
+                selected: annotation.id === selectedWorldAnnotationId,
+                pathLength: annotation.coordinates?.world_path?.length || 0,
+                brushBbox,
+                brushRadius: annotation.coordinates?.world_brush?.radius_mm || 0,
+                brushVolume: annotation.metadata?.lesion_volume_mm3 || 0,
+                area: annotation.metadata?.lesion_area_mm2 || 0,
+            });
+        };
 
         renderedEntries.forEach((entry, id) => {
             if (currentIds.has(id)) return;
@@ -6295,6 +6378,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                     measurements3D: [...items.measurements3D, measurement],
                     polylineMeasurements: items.polylineMeasurements,
                 }));
+                measureHoverPointRef.current = null;
+                lastSyncedMeasureHoverPointRef.current = null;
                 setMeasureHoverPoint(null);
                 setMeasurePoints([]);
             }
@@ -6367,12 +6452,19 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     const processMeasurementPointerMove = useCallback((pointerSample = null) => {
         const pointer = pointerSample || measurementPointerRef.current;
         if (!pointer || (!measureMode3D && !polylineMeasureMode)) return;
+
+        const now = performance.now();
+        const throttleMs = Math.max(16, Math.min(66, lastMeasurePickDurationRef.current * 1.5));
+        if (now - lastMeasurePickTimeRef.current < throttleMs) {
+            measurementInputSchedulerRef.current?.push(pointer, processMeasurementPointerMove);
+            return;
+        }
+        lastMeasurePickTimeRef.current = now;
+
+        const pickStart = performance.now();
         const point = pickWorldPointFromPointer(pointer);
-        setMeasureHoverPoint((current) => {
-            if (!point) return current ? null : current;
-            if (current && arraysNearlyEqual(current, point, 1e-3)) return current;
-            return [...point];
-        });
+        lastMeasurePickDurationRef.current = performance.now() - pickStart;
+        measureHoverPointRef.current = point ? [...point] : null;
     }, [measureMode3D, pickWorldPointFromPointer, polylineMeasureMode]);
 
     const processWorldOverlayDraftPointerMove = useCallback((screenPointSample = null) => {
@@ -6616,7 +6708,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     }, [endAnnotationInteractionQuality, worldOverlayDraft]);
 
     const handleViewportPointerLeave = useCallback(() => {
-        setMeasureHoverPoint(null);
+        measureHoverPointRef.current = null;
+        lastSyncedMeasureHoverPointRef.current = null;
         measurementPointerRef.current = null;
         measurementInputSchedulerRef.current?.cancel?.();
         overlayDraftInputSchedulerRef.current?.cancel?.();
@@ -6767,7 +6860,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 event.preventDefault();
                 setMeasureMode3D(false);
                 setMeasurePoints([]);
-                setMeasureHoverPoint(null);
+                measureHoverPointRef.current = null;
+                lastSyncedMeasureHoverPointRef.current = null;
                 return;
             }
             if (polylineMeasureMode) {
@@ -6841,7 +6935,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             sourceType: 'distance_3d',
             distance: measurement.distance,
             label: measurement.label || '',
-            worldPoint: measurement.midpoint,
+            worldPoint: measurement.midpoint || (measurement.pointA && measurement.pointB ? midpoint(measurement.pointA, measurement.pointB) : null),
             labelOffset: normalizeScreenOffsetPx(measurement.labelOffset),
             draggable: true,
         }));

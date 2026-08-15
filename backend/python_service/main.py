@@ -386,6 +386,61 @@ def _authorize_study_access(study_id: str, share_token: str = None) -> dict | No
     return _validate_share_token(study_id, share_token)
 
 
+def _morita_volume_metadata(study_path: str, selected_series_uid: str = None) -> dict | None:
+    """Build viewer metadata for a study containing a J. Morita raw volume."""
+    series_groups = scan_dicom_series(study_path)
+    if not any(info.get("source_format") == "jm_volume" for info in series_groups.values()):
+        return None
+
+    ordered_series = sorted(
+        series_groups.items(),
+        key=lambda item: (0 if item[1].get("classification") == "3D" else 1, item[0]),
+    )
+    selected_uid, selected = next(
+        ((uid, info) for uid, info in ordered_series if uid == selected_series_uid),
+        ordered_series[0],
+    )
+    cards = []
+    for number, (uid, info) in enumerate(ordered_series, start=1):
+        classification = info.get("classification", "2D")
+        cards.append({
+            "series_uid": uid,
+            "series_number": number,
+            "series_description": info.get("series_description", "Unknown Series"),
+            "modality": info.get("modality", "CBCT"),
+            "type": "3D Volume" if classification == "3D" else "2D Image",
+            "classification": classification,
+            "num_slices": info.get("num_files", 0),
+            "is_current": uid == selected_uid,
+        })
+
+    volume = selected.get("morita_volume")
+    if volume:
+        x_size, y_size, z_size = volume["dimensions"]
+        spacing = volume["spacing"]
+        return {
+            "num_slices": z_size,
+            "dimensions": [z_size, y_size, x_size],
+            "pixel_spacing": spacing[0],
+            "slice_thickness": spacing[2],
+            "voxel_size": list(spacing),
+            "modality": "CBCT",
+            "series": cards,
+            "total_series_found": len(cards),
+        }
+
+    return {
+        "num_slices": selected.get("num_files", 1),
+        "dimensions": [0, 0, 0],
+        "pixel_spacing": 1.0,
+        "slice_thickness": 1.0,
+        "voxel_size": [1.0, 1.0, 1.0],
+        "modality": selected.get("modality", "2D Image"),
+        "series": cards,
+        "total_series_found": len(cards),
+    }
+
+
 def _ensure_vti_conversion_singleflight(
     study_path: str,
     force: bool = False,
@@ -1451,6 +1506,16 @@ def get_series_thumb(study_id: str, series_uid: str, share_token: str = None):
             media_type="image/jpeg",
             headers={"Cache-Control": "public, max-age=86400"}
         )
+
+    matching_series = scan_dicom_series(study_path).get(series_uid)
+    if matching_series and matching_series.get("source_format") == "jm_volume":
+        generate_study_thumbnails(study_path)
+        if os.path.exists(thumb_path):
+            return FileResponse(
+                path=thumb_path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
     
     # Fallback: generate thumbnail (on-demand)
     try:
@@ -1767,6 +1832,13 @@ def list_series(study_id: str, share_token: str = None):
         raise HTTPException(status_code=404, detail="Study not found")
     
     try:
+        morita_metadata = _morita_volume_metadata(study_path)
+        if morita_metadata:
+            return {
+                "study_id": study_id,
+                "total_series": morita_metadata["total_series_found"],
+                "series": morita_metadata["series"],
+            }
         handler = DicomHandler(study_path)
         metadata = handler.get_metadata()
         
@@ -1872,6 +1944,9 @@ def get_metadata(study_id: str, series_uid: str = None, share_token: str = None)
         raise HTTPException(status_code=404, detail="Study not found")
 
     try:
+        morita_metadata = _morita_volume_metadata(study_path, series_uid)
+        if morita_metadata:
+            return morita_metadata
         try:
             handler = DicomHandler(study_path, series_uid=series_uid)
             if len(handler.files) == 0:

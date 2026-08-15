@@ -2,6 +2,30 @@ import os
 import sys
 import json
 import re
+import struct
+
+
+def parse_jm_volume_details(file_path):
+    """Return lightweight slice and spacing metadata from a J. Morita .vol."""
+    try:
+        with open(file_path, "rb") as file:
+            header = file.read(1024 * 1024)
+
+        marker = b"CArray3D"
+        bounds_offset = header.find(marker) + len(marker)
+        if header.find(marker) < 0 or len(header) < bounds_offset + 24:
+            return {}
+
+        _x_min, _x_max, _y_min, _y_max, z_min, z_max = struct.unpack_from("<6i", header, bounds_offset)
+        spacing_match = re.search(rb"tfZGridSize\s+value\s*=\s*['\"]([^'\"]+)", header)
+        spacing = spacing_match.group(1).decode("ascii", errors="ignore") if spacing_match else "0.25"
+        return {
+            "numSlices": max(1, z_max - z_min + 1),
+            "sliceThickness": spacing,
+            "pixelSpacing": spacing,
+        }
+    except (OSError, struct.error):
+        return {}
 
 
 def parse_ver_ctrl(file_path):
@@ -96,13 +120,21 @@ def scan_folder(folder_path):
     slx_files = []
     bmp_files = []
     dcm_files = []
+    jm_volume_files = []
 
     for root, _dirs, files in os.walk(folder_path):
         for filename in files:
             lower_filename = filename.lower()
             file_path = os.path.join(root, filename)
 
-            if lower_filename.endswith(".slx"):
+            if lower_filename.endswith(".vol"):
+                try:
+                    with open(file_path, "rb") as file:
+                        if b"JmVolumeVersion=" in file.read(128):
+                            jm_volume_files.append(file_path)
+                except OSError:
+                    pass
+            elif lower_filename.endswith(".slx"):
                 slx_files.append(file_path)
             elif lower_filename.endswith(".bmp"):
                 bmp_files.append(file_path)
@@ -131,12 +163,25 @@ def scan_folder(folder_path):
         except Exception:
             pass
 
-    if is_cbct:
+    if jm_volume_files:
+        result["modality"] = "CBCT"
+    elif is_cbct:
         result["modality"] = "CBCT"
     elif total_slices > 0:
         result["modality"] = "2D"
 
-    if total_slices > 0:
+    if jm_volume_files:
+        volume_details = parse_jm_volume_details(jm_volume_files[0])
+        result["series"].append({
+            "modality": "CBCT",
+            "numSlices": volume_details.get("numSlices", 1),
+            "kv": result["metadata"].get("kv"),
+            "ma": result["metadata"].get("ma"),
+            "sliceThickness": volume_details.get("sliceThickness", slice_thickness or "0.25"),
+            "pixelSpacing": volume_details.get("pixelSpacing", result["metadata"].get("PixelSpacing", "0.25")),
+            "exposureTime": result["metadata"].get("ExposureTime"),
+        })
+    elif total_slices > 0:
         result["series"].append({
             "modality": result["modality"],
             "numSlices": total_slices,
@@ -153,7 +198,12 @@ def scan_folder(folder_path):
             lower_filename = filename.lower()
             if not lower_filename.endswith((".jpg", ".jpeg", ".tif", ".tiff", ".png")):
                 continue
-            if any(keyword in lower_filename for keyword in ("panorama", "panoramic", "opg", "ceph", "cephalometric")):
+            if filename.startswith(("thumb_", "image_", "labels_")):
+                continue
+            if any(keyword in lower_filename for keyword in (
+                "panorama", "panoramic", "panoramik", "opg",
+                "ceph", "cephalometric", "cephalometri", "sefalometri",
+            )):
                 pan_files.append(os.path.join(root, filename))
 
     added_names = set()
@@ -166,7 +216,9 @@ def scan_folder(folder_path):
         added_names.add(normalized_name)
 
         lower_filename = filename.lower()
-        pan_modality = "OPG" if any(keyword in lower_filename for keyword in ("panorama", "panoramic", "opg")) else "Ceph"
+        pan_modality = "OPG" if any(keyword in lower_filename for keyword in (
+            "panorama", "panoramic", "panoramik", "opg",
+        )) else "Ceph"
         result["series"].append({
             "modality": pan_modality,
             "numSlices": 1,
