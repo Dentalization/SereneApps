@@ -33,6 +33,8 @@ from typing import Optional
 from datetime import datetime, timezone
 import urllib.request
 
+from services.morita_volume import discover_jm_volumes, load_jm_volume_for_viewer
+
 def log_python_event(run_id: str, event_type: str, details: dict = None):
     if not run_id:
         return
@@ -260,11 +262,34 @@ def _parse_and_group_dicom_files(all_files: list[str]) -> tuple[dict, dict]:
 
 def _discover_plain_2d_series(study_path: str) -> dict:
     """Discover non-DICOM plain image files (Panorama/Ceph/Periapical photos)."""
+    series_groups = {}
+
+    # ── J. Morita raw CBCT volumes ──
+    # A Morita .vol is neither DICOM nor a generic image.  Detect it before the
+    # plain-image pass so its acquisition TIFF is not exposed as a false 2D
+    # radiograph.
+    jm_volumes = discover_jm_volumes(study_path)
+    for volume in jm_volumes:
+        series_uid = volume["series_uid"]
+        series_groups[series_uid] = {
+            'files': [(0, 0.0, volume['file_path'])],
+            'modality': 'CBCT',
+            'classification': '3D',
+            'num_files': volume['num_slices'],
+            'series_description': volume['description'],
+            'source_format': 'jm_volume',
+            'morita_volume': volume,
+        }
+        print(f"[VTI] Detected J. Morita volume: {os.path.basename(volume['file_path'])} → UID={series_uid}")
+
+    # ── Non-DICOM Plain 2D Images (Panoramic/Ceph/Photos/etc.) ──
     pan_files = []
     for root, _, files in os.walk(study_path):
         for file in files:
             lower_file = file.lower()
             if any(lower_file.endswith(ext) for ext in ('.jpg', '.jpeg', '.tif', '.tiff', '.png')):
+                if jm_volumes and lower_file in {'capture.tif', 'capture.tiff'}:
+                    continue
                 if not file.startswith(('thumb_', 'image_', 'labels_')):
                     pan_files.append(os.path.join(root, file))
 
@@ -305,7 +330,8 @@ def _discover_plain_2d_series(study_path: str) -> dict:
         }
         print(f"[VTI] Detected plain 2D series: {filename} → UID={series_uid}, Modality={modality}")
 
-    return plain_series
+    series_groups.update(plain_series)
+    return series_groups
 
 
 def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
@@ -668,6 +694,49 @@ def monai_preprocess(
     print(f"[MONAI] Final spacing: {final_spacing}, origin: {new_origin}")
 
     return result, final_spacing, new_origin
+
+
+def prepare_volume_for_vti(series_info: dict, sorted_files: list[str], target_spacing: tuple | None) -> tuple:
+    """Prepare either a DICOM or J. Morita raw volume for VTI output."""
+    if series_info.get('source_format') == 'jm_volume':
+        processed, spacing, origin = load_jm_volume_for_viewer(
+            series_info['morita_volume'], requested_spacing=target_spacing,
+        )
+        print(f"[VTI] J. Morita volume prepared: shape={processed.shape}, spacing={spacing}")
+        return processed, spacing, origin
+
+    volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
+    print(f"[VTI] Raw volume: shape={volume.shape}, dtype={volume.dtype}")
+    try:
+        processed, new_spacing, new_origin = monai_preprocess(
+            volume,
+            spacing,
+            origin,
+            orientation,
+            target_spacing=target_spacing,
+        )
+        print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
+        return processed, new_spacing, new_origin
+    except Exception as monai_err:
+        # Preserve the established fallback for non-standard DICOM payloads.
+        print(f"[VTI] ⚠️  MONAI pipeline failed: {monai_err}")
+        print("[VTI] Falling back to basic normalization...")
+        import traceback
+        traceback.print_exc()
+
+        vol_min = float(np.min(volume))
+        vol_max = float(np.max(volume))
+        a_min = max(vol_min, -1000.0)
+        a_max = min(vol_max, 3000.0)
+        if a_max > a_min:
+            processed = np.clip(volume, a_min, a_max)
+            processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
+        else:
+            processed = np.zeros_like(volume, dtype=np.float32)
+
+        processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
+        print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
+        return processed, spacing, origin
 
 
 def _binary_erode(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
@@ -1386,6 +1455,27 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
         return False
 
 
+def generate_series_thumbnail(series_info: dict, sorted_files: list[str], output_path: str) -> bool:
+    """Generate a thumbnail for any supported source format."""
+    if series_info.get('source_format') != 'jm_volume':
+        return generate_thumbnail(sorted_files, output_path)
+
+    try:
+        volume, _spacing, _origin = load_jm_volume_for_viewer(
+            series_info['morita_volume'], requested_spacing=(1.0, 1.0, 1.0),
+        )
+        import cv2
+        middle_slice = (volume[:, :, volume.shape[2] // 2] * 255.0).astype(np.uint8)
+        thumbnail = cv2.resize(middle_slice, (256, 256), interpolation=cv2.INTER_AREA)
+        generated = bool(cv2.imwrite(output_path, thumbnail, [int(cv2.IMWRITE_JPEG_QUALITY), 85]))
+        if generated:
+            print(f"[THUMB] Generated from J. Morita volume: {output_path}")
+        return generated
+    except Exception as error:
+        print(f"[THUMB] Failed to render J. Morita volume: {error}")
+        return False
+
+
 def generate_study_thumbnails(study_path: str, force: bool = False) -> dict:
     """
     Fast gallery-first pass: generate only per-series thumbnails.
@@ -1410,7 +1500,7 @@ def generate_study_thumbnails(study_path: str, force: bool = False) -> dict:
 
         files_with_meta.sort(key=lambda item: (item[0], item[1]))
         sorted_files = [fp for _, _, fp in files_with_meta]
-        generated = generate_thumbnail(sorted_files, thumb_path)
+        generated = generate_series_thumbnail(series_info, sorted_files, thumb_path)
         results[series_uid] = {
             "status": "success" if generated else "error",
             "path": thumb_path,
@@ -1704,7 +1794,7 @@ def convert_study_to_vti(
 
         thumb_path = os.path.join(study_path, f"thumb_{safe_uid}.jpg")
         if not os.path.exists(thumb_path) or force:
-            generate_thumbnail(sorted_files, thumb_path)
+            generate_series_thumbnail(series_info, sorted_files, thumb_path)
 
         if classification == '2D':
             results[series_uid] = _process_2d_series_conversion(
